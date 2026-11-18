@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { serialQueue } from "@octocodeai/octocode-common/serial-queue";
 import { say } from "../shared/commands.ts";
@@ -16,11 +16,11 @@ interface WebServer {
  * with the server: its page is useless once the server stops. An injected `open` replaces it. A notice from the
  * opener (the page fell back to the default browser) is shown to the session.
  */
-export function webLauncher(api: ExtensionAPI, open?: (url: string) => Promise<string | void>) {
-	const appWindow = createAppWindow({ mode: () => api.getSettings().web?.window ?? "app" });
+export function webLauncher(api: FeatureSetup, open?: (url: string) => Promise<string | void>) {
+	const appWindow = createAppWindow({ mode: () => api.settings.get().web?.window ?? "app" });
 	const opener = open ?? appWindow.open;
-	let context: ExtensionContext | undefined;
-	api.on("session_start", (_event, ctx) => {
+	let context: FeatureContext | undefined;
+	api.bus.on("session_start", (_event, ctx) => {
 		context = ctx;
 	});
 	let server: WebServer | undefined;
@@ -33,8 +33,8 @@ export function webLauncher(api: ExtensionAPI, open?: (url: string) => Promise<s
 			await previous?.close();
 			await appWindow.close();
 		});
-	api.on("session_start", close);
-	api.on("session_shutdown", close);
+	api.bus.on("session_start", close);
+	api.bus.on("session_shutdown", close);
 	return (sessionKey: string, start: () => Promise<WebServer>, view: "board" | "activity", item?: string) =>
 		enqueue(async () => {
 			if (server && !((await server.validate?.().catch(() => false)) ?? true)) {

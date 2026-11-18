@@ -13,7 +13,7 @@ import * as startup from "./interactive-mode/startup.ts";
 import type { InteractiveModeOptions } from "./interactive-mode/types.ts";
 
 export { createInteractiveTui, createInteractiveTuiReference } from "./tui-renderer.ts";
-export { formatCrashExtensionHint, formatResumeCommand } from "./interactive-mode/helpers.ts";
+export { formatCrashFeatureHint, formatResumeCommand } from "./interactive-mode/helpers.ts";
 export type { InteractiveModeOptions } from "./interactive-mode/types.ts";
 
 export class InteractiveMode {

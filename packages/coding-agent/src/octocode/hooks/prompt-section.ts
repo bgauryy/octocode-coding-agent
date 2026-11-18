@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import type { HookConfig } from "./contracts.ts";
 import type { HooksView } from "./register/types.ts";
 
@@ -13,12 +13,12 @@ export function hooksPromptSection(config: HookConfig): string {
 			.filter((group) => group.hooks.length > 0)
 			.map((group) => `- ${event}${group.matcher && group.matcher !== "*" ? `: ${group.matcher}` : ""}`),
 	);
-	return lines.length > 0 ? renderInstruction("sections/hooks.md", { hooks: [...new Set(lines)].join("\n") }) : "";
+	return lines.length > 0 ? renderPrompt("sections/hooks.md", { hooks: [...new Set(lines)].join("\n") }) : "";
 }
 
 /** Keeps the section in step with the hooks loaded now: a reload, a resume or a pause changes it, and "" removes it. */
-export function registerHooksPromptSection(api: ExtensionAPI, hooks: Pick<HooksView, "promptSection">): void {
-	api.on("before_agent_start", async (event) => {
+export function registerHooksPromptSection(api: FeatureSetup, hooks: Pick<HooksView, "promptSection">): void {
+	api.bus.on("before_agent_start", async (event) => {
 		event.systemPromptOptions.sections.hooks = hooks.promptSection();
 		return undefined;
 	});

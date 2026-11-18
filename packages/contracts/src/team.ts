@@ -70,11 +70,89 @@ export interface Traffic {
 	text: string;
 	at: number;
 	replyTo?: number;
+	/** Set when the sender asked for an answer (a request). */
+	replyRequired?: true;
 	/** When the first recipient took it (epoch ms); absent while every delivery is still queued. */
 	deliveredAt?: number;
-	state: "queued" | "delivered" | "awaiting reply" | "answered" | "dead-lettered";
+	state: TrafficState;
 	/** The recipients that left the team without reading it (`read` false) or, for a question, without answering it; absent when none did. */
 	dropped?: TrafficDrop[];
+	/** Each recipient's own delivery state; absent in older snapshots. */
+	deliveries?: TrafficDelivery[];
+	/** Who sent it and who received it, resolved when it is read (`team/endpoint.ts`); absent where no resolver ran. */
+	fromEndpoint?: Endpoint;
+	toEndpoints?: Endpoint[];
+}
+
+/** How far a message (or one recipient's copy of it) got. */
+export type TrafficState = "queued" | "delivered" | "awaiting reply" | "answered" | "dead-lettered";
+
+/** One recipient's copy of a message: `read` is set on a dead letter and says whether the recipient read it before leaving. */
+export interface TrafficDelivery {
+	recipient: string;
+	state: TrafficState;
+	deliveredAt?: number;
+	read?: boolean;
+}
+
+/**
+ * One end of a message: who it is and where it runs. `worktree` is `main` for the viewer's checkout, else `worktree <name>`
+ * (with ` (gone)` when its folder was removed). A sender that is not an agent (`user`, `team`, `external`) has that name as
+ * its role. `departed` marks an agent that left the team: the facts are its last recorded row.
+ */
+export interface Endpoint {
+	id: string;
+	role?: string;
+	sessionId?: string;
+	parentId?: string;
+	worktree?: string;
+	branch?: string;
+	tmuxPane?: string;
+	departed?: true;
+}
+
+/** Where an agent's own transcript holds what it did near a point in time; the entry is a line index of its session file. */
+export interface TranscriptRef {
+	agentId: string;
+	sessionId?: string;
+	entry: number;
+}
+
+/**
+ * One row of the agents' message feed, a team message or an internal notice (`internal`: a check-in, lease or dead-letter
+ * notice, or mail from a local API client; these are never stored as team messages). `key` is stable and orders the feed.
+ */
+export interface FeedEntry {
+	key: string;
+	/** The team message id; absent on a notice. */
+	id?: number;
+	at: number;
+	internal?: true;
+	/** A notice's custom message type. */
+	label?: string;
+	from: Endpoint;
+	to: Endpoint[];
+	text: string;
+	replyTo?: number;
+	replyRequired?: true;
+	state?: TrafficState;
+	deliveredAt?: number;
+	deliveries?: TrafficDelivery[];
+	dropped?: TrafficDrop[];
+	/** The sender's transcript entry nearest the send (a notice: the receiver's entry that holds it), for its thinking and output. */
+	transcript?: TranscriptRef;
+}
+
+/** Where the next page of the feed starts: entries older than this point. */
+export interface FeedCursor {
+	at: number;
+	key: string;
+}
+
+/** One page of the feed, newest first; `next` is set while older entries remain. */
+export interface FeedPage {
+	entries: FeedEntry[];
+	next?: FeedCursor;
 }
 
 /** One recipient that dropped a message (`Traffic.dropped`). */

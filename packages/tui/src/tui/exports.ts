@@ -29,6 +29,7 @@ export type { RenderErrorListener } from "./render-isolation.ts";
 export {
 	isRenderStable,
 	linkRenderChild,
+	recordUntrackedRenders,
 	renderChanged,
 	renderSerial,
 	settleRender,

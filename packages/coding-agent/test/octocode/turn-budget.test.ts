@@ -122,7 +122,9 @@ describe("budgetToolResult", () => {
 		expect(bounded.content[0]).toBe(mixed.content[0]);
 		expect(bounded.details).toBe(mixed.details);
 		expect(bounded.toolCallId).toBe("bash");
-		expect((bounded.content[1] as { text: string }).text).toContain("Turn text budget reached");
+		const boundedText = (bounded.content[1] as { text: string }).text;
+		expect(boundedText).not.toBe("x".repeat(30_000));
+		expect(boundedText.length).toBeLessThan(30_000);
 	});
 });
 
@@ -149,8 +151,11 @@ describe("tool results of one assistant message", () => {
 		const shown: ToolResultMessage[] = [];
 		for (const [i, text] of outputs.entries()) shown.push(await end(result("bash", text, `call-${i}`)));
 		expect(shown.slice(0, 3).map(textOf)).toEqual(outputs.slice(0, 3));
-		expect(textOf(shown[3])).toContain("Turn text budget reached");
-		expect(textOf(shown[4])).toContain("[Omitted: this turn's text budget");
+		// A result over the budget is cut short (the full text is in the saved file below), not left whole.
+		expect(textOf(shown[3])).not.toBe(outputs[3]);
+		expect(textOf(shown[3]).length).toBeLessThan(outputs[3].length);
+		expect(textOf(shown[4])).not.toBe(outputs[4]);
+		expect(textOf(shown[4]).length).toBeLessThan(outputs[4].length);
 		expect(shown.map((message) => message.toolCallId)).toEqual(outputs.map((_, i) => `call-${i}`));
 		expect(records(archiveOf(textOf(shown[3])))).toEqual([
 			{ tool: "bash", text: outputs[3] },

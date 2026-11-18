@@ -3,8 +3,8 @@ import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { credentialSourceLabel } from "../../src/core/provider-composer/types.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import { canRunTask, type ModelRef, routeModel } from "../../src/octocode/subagents/model.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
-import { meteredBilling } from "./fake-host.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
+import { meteredBilling, asSetup } from "./fake-host.ts";
 
 const m = (provider: string, id: string, input: number, output: number, context = 200_000): ModelRef => ({
 	provider,
@@ -61,7 +61,7 @@ describe("credential labels", () => {
 function modelsTool(available: ModelRef[] = refs) {
 	let tool: ToolDefinition | undefined;
 	registerModelsTool(
-		{ registerTool: (definition: ToolDefinition) => void (tool = definition) } as never,
+		asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
 		() => new Map(),
 	);
 	return async (input: Record<string, unknown>) => {

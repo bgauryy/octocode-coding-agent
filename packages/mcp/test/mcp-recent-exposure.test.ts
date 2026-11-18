@@ -38,7 +38,7 @@ async function session(dirs: { agent: string; cwd: string }, options: Parameters
 		cwd: dirs.cwd,
 		...options,
 	});
-	h.api.getActiveTools = () =>
+	h.api.tools.getActive = () =>
 		[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 	hosts.push(h);
 	await h.start();
@@ -131,9 +131,10 @@ describe("mcpExposure recent", () => {
 				cwd: at.cwd,
 			});
 			hosts.push(h);
-			h.api.getActiveTools = () =>
+			h.api.tools.getActive = () =>
 				[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
-			h.api.appendEntry = (customType: string, data: unknown) => entries.push({ type: "custom", customType, data });
+			h.api.session.appendEntry = (customType: string, data: unknown) =>
+				entries.push({ type: "custom", customType, data });
 			const ctx = {
 				...h.ctx,
 				sessionManager: { buildSessionProjection: () => ({ messages: [] }), getBranch: () => entries },

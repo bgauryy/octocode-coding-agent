@@ -147,7 +147,7 @@ export function startBackground(
 					: `Background subagent ${who} ${reported ? `reported ${reported}` : "finished"} (${stats})`
 			}${citable(identity.id)}`;
 			const durationMs = Date.now() - details.startedAt;
-			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details, durationMs);
+			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details);
 			end = {
 				outcome: outcome.error ? "failed" : (reported ?? "done"),
 				headline: firstLine(outcome.error ?? outcome.text),

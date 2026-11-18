@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { getOctocodeSkillsDir } from "../config.ts";
-import { BUILTIN_FEATURES, NATIVE_FEATURE } from "./resource-loader/builtins.ts";
 import type { Theme } from "../theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
@@ -9,8 +8,8 @@ export type { ResourceDiagnostic } from "./diagnostics.ts";
 import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { createEventBus, type EventBus, type ListenerErrorReporter } from "@octocodeai/octocode-agent-core";
 import { discoveryInput } from "./discovery/service.ts";
-import { createExtensionRuntime } from "./features/runtime.ts";
-import type { Feature, InlineExtension, LoadExtensionsResult } from "./features/types.ts";
+import { createFeatureRuntime } from "./features/runtime.ts";
+import type { Feature, LoadedFeatures } from "./features/types.ts";
 import { DefaultPackageManager, type PathMetadata } from "./package-manager.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
 import { SettingsManager } from "./settings-manager.ts";
@@ -26,10 +25,10 @@ import { ResourceCollections } from "./resource-loader/collections.ts";
 import { collectEnabledResources } from "./resource-loader/enabled-resources.ts";
 import { FeatureSetLoader, ignoredCodeWarnings } from "./resource-loader/feature-loading.ts";
 import type { ResourceRoots } from "./resource-loader/source-info.ts";
-import type { DefaultResourceLoaderOptions, ResourceExtensionPaths, ResourceLoader } from "./resource-loader/types.ts";
+import type { DefaultResourceLoaderOptions, ResourceFeaturePaths, ResourceLoader } from "./resource-loader/types.ts";
 
 export { loadProjectContextFiles } from "./resource-loader/context-files.ts";
-export type { DefaultResourceLoaderOptions, ResourceExtensionPaths, ResourceLoader } from "./resource-loader/types.ts";
+export type { DefaultResourceLoaderOptions, ResourceFeaturePaths, ResourceLoader } from "./resource-loader/types.ts";
 
 export class DefaultResourceLoader implements ResourceLoader {
 	private cwd: string;
@@ -38,21 +37,21 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private eventBus: EventBus;
 	private reportHandlerError: ListenerErrorReporter = (message) => process.stderr.write(`${message}\n`);
 	private packageManager: DefaultPackageManager;
-	private extensionFactories: InlineExtension[];
+	private injectedFeatures: Feature[];
 	private builtinFeatures: readonly Feature[];
 	private disabledFeatures: Set<string>;
 	private noContextFiles: boolean;
 	private contextRoot?: string;
 	private systemPromptSource?: string;
 	private appendSystemPromptSource?: string[];
-	private extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
+	private featuresOverride?: (base: LoadedFeatures) => LoadedFeatures;
 	private agentsFilesOverride?: (base: { agentsFiles: Array<{ path: string; content: string }> }) => {
 		agentsFiles: Array<{ path: string; content: string }>;
 	};
 	private systemPromptOverride?: (base: string | undefined) => string | undefined;
 	private appendSystemPromptOverride?: (base: string[]) => string[];
 
-	private extensionsResult: LoadExtensionsResult;
+	private featuresResult: LoadedFeatures;
 	private readonly collections: ResourceCollections;
 	private agentsFiles: Array<{ path: string; content: string }>;
 	private systemPrompt?: string;
@@ -71,14 +70,13 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.eventBus =
 			options.eventBus ??
 			createEventBus({ onHandlerError: (message, error) => this.reportHandlerError(message, error) });
-		const nativeFeatures = options.nativeFeatures !== false;
-		this.extensionFactories = options.extensionFactories ?? [];
-		this.builtinFeatures = options.builtinFeatures ?? (nativeFeatures ? BUILTIN_FEATURES : []);
+		const nativeFeatures = options.nativeFeatures;
+		this.injectedFeatures = options.features ?? [];
+		this.builtinFeatures = options.builtinFeatures ?? nativeFeatures?.builtins ?? [];
 		this.packageManager = new DefaultPackageManager({
 			cwd: this.cwd,
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
-			builtinExtensions: this.builtinFeatures.map((feature) => feature.id),
 			builtinSkillsDir: nativeFeatures ? getOctocodeSkillsDir() : undefined,
 		});
 		this.disabledFeatures = new Set(options.disabledFeatures);
@@ -101,15 +99,15 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.contextRoot = options.contextRoot;
 		this.systemPromptSource = options.systemPrompt;
 		this.appendSystemPromptSource = options.appendSystemPrompt;
-		this.extensionsOverride = options.extensionsOverride;
+		this.featuresOverride = options.featuresOverride;
 		this.agentsFilesOverride = options.agentsFilesOverride;
 		this.systemPromptOverride = options.systemPromptOverride;
 		this.appendSystemPromptOverride = options.appendSystemPromptOverride;
 
-		this.extensionsResult = {
-			extensions: [],
+		this.featuresResult = {
+			features: [],
 			errors: [],
-			runtime: createExtensionRuntime(),
+			runtime: createFeatureRuntime(),
 		};
 		this.agentsFiles = [];
 		this.appendSystemPrompt = [];
@@ -123,8 +121,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 			eventBus: this.eventBus,
 			packageManager: this.packageManager,
 			builtinFeatures: this.builtinFeatures,
-			nativeFeature: nativeFeatures ? NATIVE_FEATURE : undefined,
-			injected: this.extensionFactories,
+			nativeFeature: nativeFeatures?.native,
+			injected: this.injectedFeatures,
 			disabledFeatures: this.disabledFeatures,
 		});
 	}
@@ -137,8 +135,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.reportHandlerError = report;
 	}
 
-	getExtensions(): LoadExtensionsResult {
-		return this.extensionsResult;
+	getFeatures(): LoadedFeatures {
+		return this.featuresResult;
 	}
 
 	getSkills(): LoadSkillsResult {
@@ -180,12 +178,12 @@ export class DefaultResourceLoader implements ResourceLoader {
 		return this.appendSystemPromptSourcePaths.map((path) => ({ path }));
 	}
 
-	extendResources(paths: ResourceExtensionPaths): void {
+	extendResources(paths: ResourceFeaturePaths): void {
 		this.collections.extend(paths, this.resourceMetadataByPath);
 	}
 
 	async reload(): Promise<void> {
-		resetTimings("extensions");
+		resetTimings("features");
 
 		// reload() preserves SettingsManager.projectTrusted and reloads settings for that trust state.
 		await this.settingsManager.reload();
@@ -194,21 +192,19 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.resourceMetadataByPath = new Map();
 		const metadataByPath = this.resourceMetadataByPath;
 
-		this.collections.resetExtensionSourceInfos();
+		this.collections.resetFeatureSourceInfos();
 
 		const enabled = collectEnabledResources(resolvedPaths, metadataByPath);
 
-		const extensionsResult = await this.featureLoader.loadFeatures(enabled.extensions);
-		extensionsResult.warnings = ignoredCodeWarnings(
-			enabled.extensions,
-			metadataByPath,
+		const featuresResult = await this.featureLoader.loadFeatures();
+		featuresResult.warnings = ignoredCodeWarnings(
 			discoveryInput({
 				cwd: this.cwd,
 				agentDir: this.agentDir,
 				projectTrusted: this.settingsManager.isProjectTrusted(),
 			}),
 		);
-		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
+		this.featuresResult = this.featuresOverride ? this.featuresOverride(featuresResult) : featuresResult;
 
 		this.collections.load(enabled, metadataByPath);
 
@@ -257,7 +253,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 		await this.settingsManager.reload();
 		const metadataByPath = new Map();
 		this.resourceMetadataByPath = metadataByPath;
-		this.collections.resetExtensionSourceInfos();
+		this.collections.resetFeatureSourceInfos();
 		const enabled = collectEnabledResources(await this.featureLoader.resolveResources(), metadataByPath);
 		this.collections.load(enabled, metadataByPath);
 	}

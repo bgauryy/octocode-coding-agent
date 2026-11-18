@@ -6,6 +6,7 @@ import {
 	rememberReadContinuations,
 	snapshotReadCall,
 } from "../../src/octocode/files/read-continuations.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { completedLocalReads, type snapshotLocalReads } from "../../src/octocode/shared/local-reads.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
@@ -42,6 +43,34 @@ describe("paged reader receipts", () => {
 		]);
 		clearReadContinuations(calls);
 		expect((await snapshotReadCall(calls, RESEARCH.reader, input, cwd)).size).toBe(0);
+	});
+	/** Credit page one, then the cursor page, into a guard the way the `file` tool records reads. */
+	async function guardAfterPages(second: string) {
+		const { cwd, file, calls } = await fixture();
+		const guard = new FileGuard();
+		const first = await snapshotReadCall(calls, RESEARCH.reader, { queries: [{ path: file }] }, cwd);
+		const pageOne = await completedLocalReads(
+			first,
+			{ structuredContent: { path: file, content: "1\tone\n2\ttwo" } },
+			cwd,
+		);
+		const input = { cursor: "page-two" };
+		const pageTwo = await completedLocalReads(
+			await snapshotReadCall(calls, RESEARCH.reader, input, cwd),
+			{ structuredContent: { path: file, content: second } },
+			cwd,
+			input,
+		);
+		for (const read of [...pageOne, ...pageTwo]) guard.record(read.file, read, !read.whole, read.lines);
+		return { guard, file };
+	}
+	it("allows a whole-file write after two pages that cover the whole file", async () => {
+		const { guard, file } = await guardAfterPages("3\tthree\n4\tfour");
+		expect(guard.check(file, "write", "notes.txt")).toBeUndefined();
+	});
+	it("still refuses a whole-file write after pages that leave lines unread", async () => {
+		const { guard, file } = await guardAfterPages("3\tthree");
+		expect(guard.check(file, "write", "notes.txt")).toMatch(/whole file/);
 	});
 	it("refuses credit after a change between pages, even when the new page matches disk", async () => {
 		const { cwd, file, calls } = await fixture();

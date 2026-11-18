@@ -1,9 +1,8 @@
 import {
 	applyEditsToNormalizedContent,
-	detectLineEnding,
+	applyReplacementsToOriginal,
 	generateDiffString,
 	normalizeToLF,
-	restoreLineEndings,
 } from "../../../core/tools/edit-diff.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import { dirname } from "node:path";
@@ -60,10 +59,13 @@ export function applyEdit(
 		throwIfAborted();
 		// The model does not include an invisible BOM in oldText, so match without it.
 		const { bom, text } = splitBom(buffer.toString("utf-8"));
-		const ending = detectLineEnding(text);
-		const { baseContent, newContent } = applyEditsToNormalizedContent(normalizeToLF(text), [...edits], display);
+		const { baseContent, newContent, replacements } = applyEditsToNormalizedContent(
+			normalizeToLF(text),
+			[...edits],
+			display,
+		);
 		throwIfAborted();
-		await ops.writeFile(file, bom + restoreLineEndings(newContent, ending));
+		await ops.writeFile(file, bom + applyReplacementsToOriginal(text, replacements));
 		throwIfAborted();
 		return {
 			message: `Successfully replaced ${edits.length} block(s) in ${display}.`,

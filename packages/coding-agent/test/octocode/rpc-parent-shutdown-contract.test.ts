@@ -24,7 +24,7 @@ fs.writeFileSync(marker, String(child.pid));
 const session = {
  sessionId: "rpc-shutdown-contract", subscribe: () => () => {},
  agent: { subscribe: () => () => {} },
- bindExtensions: async () => { fs.writeFileSync(marker + ".ready", "yes"); },
+ bindFeatures: async () => { fs.writeFileSync(marker + ".ready", "yes"); },
 };
 await runRpcMode({
  session, setRebindSession() {},

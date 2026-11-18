@@ -20,6 +20,8 @@ import {
 import { removeSocket } from "./registry.ts";
 
 const MAX_CONNECTIONS = 16;
+/** What a client refused for capacity is told to wait before trying again: calls hold a slot only while they run. */
+const OVERLOAD_RETRY_MS = 1_000;
 /** A client that lets this much output queue up is not reading; drop it instead of buffering without limit. */
 const MAX_QUEUED_BYTES = 4 * 1_048_576;
 
@@ -161,7 +163,13 @@ export class ApiServer {
 		socket.on("error", () => socket.destroy());
 		if (rejected) {
 			socket.end(
-				`${JSON.stringify(failure(null, ERR.unavailable, "Too many connections", { execution: "not-sent" }))}\n`,
+				`${JSON.stringify(
+					failure(null, ERR.unavailable, "Too many connections", {
+						execution: "not-sent",
+						reason: "overloaded",
+						retryAfterMs: OVERLOAD_RETRY_MS,
+					}),
+				)}\n`,
 				() => socket.destroy(),
 			);
 			return;

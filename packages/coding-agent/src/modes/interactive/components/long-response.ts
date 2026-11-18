@@ -11,7 +11,7 @@ import {
 	type TuiMouseEvent,
 } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
-import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { expandHint } from "../../../octocode/shared/text.ts";
 
 export const RESPONSE_FOLD_THRESHOLD = 120;
 export const RESPONSE_HEAD_LINES = 40;
@@ -23,21 +23,13 @@ export class LongResponse implements Component {
 	private readonly region: MouseRegion;
 	private readonly content: Component;
 	private expanded: boolean;
-	private readonly mouse: boolean;
 	private readonly changed: (expanded: boolean) => void;
 	private readonly streaming: boolean;
-	private folded?: { rows: string[]; width: number; key: string; lines: string[] };
+	private folded?: { rows: string[]; width: number; hint: string; lines: string[] };
 
-	constructor(
-		content: Component,
-		expanded: boolean,
-		mouse: boolean,
-		changed: (expanded: boolean) => void,
-		streaming = false,
-	) {
+	constructor(content: Component, expanded: boolean, changed: (expanded: boolean) => void, streaming = false) {
 		this.content = content;
 		this.expanded = expanded;
-		this.mouse = mouse;
 		this.changed = changed;
 		this.streaming = streaming;
 		this.region = new MouseRegion(content, (event) => {
@@ -69,17 +61,17 @@ export class LongResponse implements Component {
 		settleRender(this, isRenderStable(this.content, before));
 		this.foldable = !this.streaming && rows.length > RESPONSE_FOLD_THRESHOLD;
 		if (!this.foldable || this.expanded) return rows;
-		const key = keyText("app.tools.expand");
+		const hint = expandHint();
 		// Preserve row identity so scrolling does not re-flatten every ancestor of an unchanged reply.
-		if (this.folded?.rows === rows && this.folded.width === width && this.folded.key === key) return this.folded.lines;
-		const hint = [key, this.mouse ? "click" : ""].filter(Boolean).join(" or ");
-		const label = `… ${rows.length - RESPONSE_HEAD_LINES - RESPONSE_TAIL_LINES} lines hidden${hint ? ` (${hint} to expand)` : ""}`;
+		if (this.folded?.rows === rows && this.folded.width === width && this.folded.hint === hint)
+			return this.folded.lines;
+		const label = `… ${rows.length - RESPONSE_HEAD_LINES - RESPONSE_TAIL_LINES} lines hidden${hint ? ` ${hint}` : ""}`;
 		const lines = [
 			...rows.slice(0, RESPONSE_HEAD_LINES),
 			...new Text(theme.fg("dim", label), 1, 0).render(width),
 			...rows.slice(-RESPONSE_TAIL_LINES),
 		];
-		this.folded = { rows, width, key, lines };
+		this.folded = { rows, width, hint, lines };
 		return lines;
 	}
 }

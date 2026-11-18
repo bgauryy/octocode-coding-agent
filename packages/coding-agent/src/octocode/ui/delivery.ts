@@ -1,16 +1,16 @@
 import { GLYPH } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { plural } from "../shared/text.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { STATUS } from "../shared/status.ts";
 
-type Send = ExtensionAPI["sendMessage"];
+type Send = FeatureSetup["session"]["sendMessage"];
 type Message = Parameters<Send>[0];
 type Options = Parameters<Send>[1];
 
 /**
- * Keeps extension messages (subagent reports, background job reports, teammate messages) that `api.sendMessage` queued
+ * Keeps feature messages (subagent reports, background job reports, teammate messages) that `api.session.sendMessage` queued
  * during a run from being lost.
  *
  * While a run is active, a message that may start a turn joins Octocode's steering or follow-up queue. Octocode shows only the
@@ -20,11 +20,11 @@ type Options = Parameters<Send>[1];
  * queue, it is appended to the conversation without starting a turn: the user interrupted, so nothing restarts, but
  * nothing is lost. A status segment shows how many messages wait meanwhile.
  *
- * Installed on `api` itself, before any feature registers, so every `api.sendMessage` call goes through it. Messages
+ * Installed on `api` itself, before any feature registers, so every `api.session.sendMessage` call goes through it. Messages
  * without a details object, `nextTurn` messages and `triggerTurn: false` messages are not queued this way and pass
  * through untracked.
  */
-function stillQueued(ctx: ExtensionContext, details: object): boolean {
+function stillQueued(ctx: FeatureContext, details: object): boolean {
 	try {
 		return ctx.isMessageQueued(details);
 	} catch {
@@ -36,7 +36,7 @@ function stillQueued(ctx: ExtensionContext, details: object): boolean {
 export class Delivery {
 	private readonly waiting = new Map<object, { message: Message; accepted?: Promise<void> }>();
 	private running = false;
-	private ctx: ExtensionContext | undefined;
+	private ctx: FeatureContext | undefined;
 	private generation = 0;
 
 	private readonly send: Send;
@@ -44,21 +44,21 @@ export class Delivery {
 		this.send = send;
 	}
 
-	static install(api: ExtensionAPI): Delivery {
-		const delivery = new Delivery(api.sendMessage.bind(api));
-		(api as { sendMessage: Send }).sendMessage = (message, options) => delivery.deliver(message, options);
-		api.on("session_start", async (_event, ctx) => delivery.reset(ctx));
-		api.on("session_shutdown", async () => delivery.reset(undefined));
-		api.on("agent_start", async (_event, ctx) => {
+	static install(api: FeatureSetup): Delivery {
+		const delivery = new Delivery(api.session.sendMessage);
+		api.session.sendMessage = (message, options) => delivery.deliver(message, options);
+		api.bus.on("session_start", async (_event, ctx) => delivery.reset(ctx));
+		api.bus.on("session_shutdown", async () => delivery.reset(undefined));
+		api.bus.on("agent_start", async (_event, ctx) => {
 			delivery.ctx = ctx;
 			delivery.running = true;
 		});
-		api.on("message_start", async (event) => {
+		api.bus.on("message_start", async (event) => {
 			const { message } = event;
 			if (message.role === "custom" && isRecord(message.details) && delivery.waiting.delete(message.details))
 				delivery.paint();
 		});
-		api.on("agent_settled", async (_event, ctx) => delivery.settle(ctx));
+		api.bus.on("agent_settled", async (_event, ctx) => delivery.settle(ctx));
 		return delivery;
 	}
 
@@ -87,7 +87,7 @@ export class Delivery {
 			}
 			throw error;
 		});
-		// Some extension notices intentionally fire and forget; keep their rejection observable to awaiting callers.
+		// Some feature notices intentionally fire and forget; keep their rejection observable to awaiting callers.
 		void result.catch(() => {});
 		return result;
 	}
@@ -103,7 +103,7 @@ export class Delivery {
 	}
 
 	/** The run is over: Octocode starts queued messages before it settles, so any still waiting were cleared. */
-	private async settle(ctx: ExtensionContext): Promise<void> {
+	private async settle(ctx: FeatureContext): Promise<void> {
 		this.running = false;
 		this.ctx = ctx;
 		const generation = this.generation;
@@ -158,7 +158,7 @@ export class Delivery {
 		}
 	}
 
-	private reset(ctx: ExtensionContext | undefined): void {
+	private reset(ctx: FeatureContext | undefined): void {
 		this.generation++;
 		this.waiting.clear();
 		this.running = false;

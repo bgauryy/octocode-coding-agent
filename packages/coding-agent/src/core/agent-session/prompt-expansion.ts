@@ -1,7 +1,7 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import { featureOfCommand, getBuiltinCommand, parseSlashCommand } from "../slash-commands.ts";
 /**
- * Prompt input handling before a message is sent or queued: extension commands, `input` handlers,
+ * Prompt input handling before a message is sent or queued: feature commands, `input` handlers,
  * skill commands, prompt templates, skill mentions and image normalization.
  */
 
@@ -12,7 +12,7 @@ import { repoKey } from "../../utils/git-repository.ts";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { expandClaudeArguments, expandClaudeVariables } from "../claude-arguments.ts";
-import type { ExtensionRunner, InputSource } from "../features/index.ts";
+import type { FeatureHost, InputSource } from "../features/index.ts";
 import { expandPromptTemplate, parseCommandArgs } from "../prompt-templates.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import { getSkillCommands } from "../skill-commands.ts";
@@ -33,11 +33,11 @@ export { type ParsedSkillBlock, parseSkillBlock } from "../skill-block.ts";
 export type ExpansionHost = Pick<SessionInternals, "session" | "cwd">;
 
 /**
- * Try to execute an extension command. Returns true if command was found and executed, whether or not it succeeded;
- * `onFailure` hears a handler's failure, which is also emitted as an extension error.
+ * Try to execute a feature command. Returns true if command was found and executed, whether or not it succeeded;
+ * `onFailure` hears a handler's failure, which is also emitted as a feature error.
  */
-export async function tryExecuteExtensionCommand(
-	runner: ExtensionRunner,
+export async function tryExecuteFeatureCommand(
+	runner: FeatureHost,
 	text: string,
 	onFailure?: (message: string) => void,
 ): Promise<boolean> {
@@ -56,7 +56,7 @@ export async function tryExecuteExtensionCommand(
 		return false;
 	}
 
-	// Get command context from extension runner (includes session control methods)
+	// Get command context from feature runner (includes session control methods)
 	const ctx = runner.createCommandContext();
 
 	try {
@@ -64,7 +64,7 @@ export async function tryExecuteExtensionCommand(
 		return true;
 	} catch (err) {
 		runner.emitError({
-			extensionPath: `command:${commandName}`,
+			source: `command:${commandName}`,
 			event: "command",
 			error: errorMessage(err),
 		});
@@ -74,9 +74,9 @@ export async function tryExecuteExtensionCommand(
 }
 
 /**
- * Throw an error if the text is an extension command.
+ * Throw an error if the text is a feature command.
  */
-export function throwIfExtensionCommand(runner: ExtensionRunner, text: string): void {
+export function throwIfFeatureCommand(runner: FeatureHost, text: string): void {
 	const commandName = parseSlashCommand(text)?.name;
 	if (!commandName) return;
 	const command = runner.getCommand(commandName);
@@ -87,7 +87,7 @@ export function throwIfExtensionCommand(runner: ExtensionRunner, text: string): 
 }
 
 export async function runInputHandlers(
-	runner: ExtensionRunner,
+	runner: FeatureHost,
 	text: string,
 	images: ImageContent[] | undefined,
 	source: InputSource,
@@ -142,7 +142,7 @@ export async function normalizePromptImages(
 /**
  * Expand direct and qualified skill commands to their full content.
  * Returns the expanded text, or the original text if not a skill command or skill not found.
- * Emits errors via extension runner if file read fails.
+ * Emits errors via feature runner if file read fails.
  */
 function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: Set<string>): string {
 	if (!text.startsWith("/")) return text;
@@ -154,7 +154,7 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 	const args = rawArgs.trim();
 	const skills = session.resourceLoader.getSkills().skills;
 	const commands = getSkillCommands(skills, [
-		...session.extensionRunner.getRegisteredCommands(),
+		...session.featureHost.getRegisteredCommands(),
 		...session.promptTemplates,
 	]);
 	const skill =
@@ -186,12 +186,12 @@ function expandSkillCommand(host: ExpansionHost, text: string, expandedPaths?: S
 						},
 					)
 				: rawBody;
-		const skillBlock = `<skill name="${skill.name}" location="${filePath}">\n${renderInstruction("system/skill-references.md", { dir: baseDir })}\n\n${body}\n</skill>`;
+		const skillBlock = `<skill name="${skill.name}" location="${filePath}">\n${renderPrompt("system/skill-references.md", { dir: baseDir })}\n\n${body}\n</skill>`;
 		return args && skill.argumentStyle !== "claude" ? `${skillBlock}\n\n${args}` : skillBlock;
 	} catch (err) {
-		// Emit error like extension commands do
-		session.extensionRunner.emitError({
-			extensionPath: skill.filePath,
+		// Emit error like feature commands do
+		session.featureHost.emitError({
+			source: skill.filePath,
 			event: "skill_expansion",
 			error: errorMessage(err),
 		});
@@ -204,15 +204,10 @@ export function expandSkillInput(host: ExpansionHost, text: string): { text: str
 	const { session } = host;
 	const expandedPaths = new Set<string>();
 	let expanded = expandSkillCommand(host, text, expandedPaths);
-	expanded = expandPromptTemplate(
-		expanded,
-		[...session.promptTemplates],
-		session.extensionRunner.getRegisteredCommands(),
-		{
-			sessionId: session.sessionManager.getSessionId(),
-			projectDir: repoKey(host.cwd).root,
-		},
-	);
+	expanded = expandPromptTemplate(expanded, [...session.promptTemplates], session.featureHost.getRegisteredCommands(), {
+		sessionId: session.sessionManager.getSessionId(),
+		projectDir: repoKey(host.cwd).root,
+	});
 	return { text: expanded, expandedPaths };
 }
 
@@ -242,8 +237,8 @@ export function expandMentionSkills(host: ExpansionHost, text: string, expandedP
 				let end = identity.promptByteLimit;
 				while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
 				contents = bytes.subarray(0, end).toString("utf8");
-				session.extensionRunner.emitError({
-					extensionPath: identity.canonicalPath,
+				session.featureHost.emitError({
+					source: identity.canonicalPath,
 					event: "skill_expansion",
 					error: `Skill ${identity.name} exceeded the main prompt context limit and was truncated.`,
 				});
@@ -253,8 +248,8 @@ export function expandMentionSkills(host: ExpansionHost, text: string, expandedP
 				text: `<skill>\n<name>${identity.name}</name>\n<path>${identity.canonicalPath}</path>\n${contents}\n</skill>`,
 			});
 		} catch (error) {
-			session.extensionRunner.emitError({
-				extensionPath: identity.canonicalPath,
+			session.featureHost.emitError({
+				source: identity.canonicalPath,
 				event: "skill_expansion",
 				error: errorMessage(error),
 			});

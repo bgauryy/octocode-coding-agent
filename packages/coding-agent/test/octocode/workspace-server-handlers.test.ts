@@ -57,9 +57,8 @@ describe("workspace HTTP handlers without network I/O", () => {
 		expect(app.changed).toHaveBeenCalledOnce();
 		expect(app.store.get(item.ref)).toMatchObject({ state: "ongoing", assignee: app.session.sessionId });
 		const prompt = app.session.sendUserMessage.mock.calls[0][0];
-		expect(prompt).toMatch(/^Implement backlog item B1\n/);
+		expect(prompt.split("\n")[0]).toContain("B1");
 		for (const comment of comments) expect(prompt.split(comment)).toHaveLength(2);
-		expect(prompt).toContain("follow every Next page");
 		expect((await app.request("/api/workspace", command)).body).toEqual(result.body);
 		expect(app.session.sendUserMessage).toHaveBeenCalledOnce();
 		expect((await app.request("/api/workspace", { ...command, id: "stale-click" })).body).toMatchObject({

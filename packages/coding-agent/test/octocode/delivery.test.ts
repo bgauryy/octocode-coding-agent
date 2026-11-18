@@ -22,26 +22,28 @@ describe("Delivery", () => {
 	it("propagates synchronous throws and asynchronous rejection to a composed team-mail caller", async () => {
 		const fake = fakeHost();
 		const rejected = vi.fn();
-		vi.spyOn(fake.api, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
+		vi.spyOn(fake.api.session, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
 		Delivery.install(fake.api);
 		const mail = new Mail(fake.api);
 		expect(mail.notice("failure notice", rejected)).toBe(true);
 		await vi.waitFor(() => expect(rejected).toHaveBeenCalledOnce());
 		const throws = fakeHost();
-		vi.spyOn(throws.api, "sendMessage").mockImplementationOnce(() => {
+		vi.spyOn(throws.api.session, "sendMessage").mockImplementationOnce(() => {
 			throw new Error("not ready");
 		});
 		Delivery.install(throws.api);
-		expect(() => throws.api.sendMessage(report("sync"))).toThrow("not ready");
+		expect(() => throws.api.session.sendMessage(report("sync"))).toThrow("not ready");
 	});
 	it("preserves an asynchronous host rejection for callers and removes its queued ledger entry", async () => {
 		const fake = fakeHost();
-		vi.spyOn(fake.api, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
+		vi.spyOn(fake.api.session, "sendMessage").mockRejectedValueOnce(new Error("host rejected"));
 		const delivery = Delivery.install(fake.api);
 		const ctx = fakeCtx({ cwd: "/x", mode: "tui" });
 		await fake.emit("session_start", {}, ctx);
 		await fake.emit("agent_start", {}, ctx);
-		await expect(fake.api.sendMessage(report("rejected"), { deliverAs: "steer" })).rejects.toThrow("host rejected");
+		await expect(fake.api.session.sendMessage(report("rejected"), { deliverAs: "steer" })).rejects.toThrow(
+			"host rejected",
+		);
 		expect(delivery.pending).toBe(0);
 		await fake.emit("agent_settled", {}, ctx);
 		expect(fake.sent).toHaveLength(0);
@@ -54,12 +56,14 @@ describe("Delivery", () => {
 		const first = new Promise<void>((resolve) => {
 			accept = resolve;
 		});
-		vi.spyOn(fake.api, "sendMessage").mockReturnValueOnce(first).mockRejectedValueOnce(new Error("append rejected"));
+		vi.spyOn(fake.api.session, "sendMessage")
+			.mockReturnValueOnce(first)
+			.mockRejectedValueOnce(new Error("append rejected"));
 		const delivery = Delivery.install(fake.api);
 		const ctx = fakeCtx({ cwd: "/x", mode: "tui" });
 		await fake.emit("session_start", {}, ctx);
 		await fake.emit("agent_start", {}, ctx);
-		const accepted = fake.api.sendMessage(report("delayed"), { deliverAs: "steer" });
+		const accepted = fake.api.session.sendMessage(report("delayed"), { deliverAs: "steer" });
 		expect(delivery.pending).toBe(1);
 		const settling = fake.emit("agent_settled", {}, ctx);
 		await Promise.resolve();
@@ -78,12 +82,12 @@ describe("Delivery", () => {
 		const first = new Promise<void>((resolve) => {
 			accept = resolve;
 		});
-		const send = vi.spyOn(fake.api, "sendMessage").mockReturnValueOnce(first);
+		const send = vi.spyOn(fake.api.session, "sendMessage").mockReturnValueOnce(first);
 		Delivery.install(fake.api);
 		const old = fakeCtx({ cwd: "/x", mode: "tui" });
 		await fake.emit("session_start", {}, old);
 		await fake.emit("agent_start", {}, old);
-		const handoff = fake.api.sendMessage(report("old"), { deliverAs: "steer" });
+		const handoff = fake.api.session.sendMessage(report("old"), { deliverAs: "steer" });
 		const settling = fake.emit("agent_settled", {}, old);
 		await fake.emit("session_start", {}, fakeCtx({ cwd: "/x", mode: "tui" }));
 		accept();
@@ -95,7 +99,7 @@ describe("Delivery", () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { deliverAs: "steer" });
 		expect(t.ctx.ui.statuses.get(STATUS.queued)).toMatch(/^\S+ 1 queued$/);
 		expect(t.ctx.ui.statusTones.get(STATUS.queued)).toBe("accent");
 		const next = fakeCtx({ cwd: "/x", mode: "tui" });
@@ -110,15 +114,18 @@ describe("Delivery", () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);
 		// Idle: Octocode appends or starts a turn right away; nothing waits.
-		t.api.sendMessage(report("idle"), { triggerTurn: true });
+		t.api.session.sendMessage(report("idle"), { triggerTurn: true });
 		expect(t.delivery.pending).toBe(0);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { triggerTurn: true, deliverAs: "followUp" });
-		t.api.sendMessage(report("b"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { triggerTurn: true, deliverAs: "followUp" });
+		t.api.session.sendMessage(report("b"), { deliverAs: "steer" });
 		// Held by Octocode until the turn ends, never cleared; next-turn messages wait for the user; no details, no identity.
-		t.api.sendMessage(report("fyi"), { triggerTurn: false });
-		t.api.sendMessage(report("later"), { deliverAs: "nextTurn" });
-		t.api.sendMessage({ customType: "x", content: "plain", display: true, details: undefined }, { deliverAs: "steer" });
+		t.api.session.sendMessage(report("fyi"), { triggerTurn: false });
+		t.api.session.sendMessage(report("later"), { deliverAs: "nextTurn" });
+		t.api.session.sendMessage(
+			{ customType: "x", content: "plain", display: true, details: undefined },
+			{ deliverAs: "steer" },
+		);
 		expect(t.sent).toHaveLength(6);
 		expect(t.delivery.pending).toBe(2);
 		expect(t.ctx.ui.statuses.get(STATUS.queued)).toContain("2 queued");
@@ -142,7 +149,7 @@ describe("Delivery", () => {
 		await fake.emit("session_start", {}, ctx);
 		// Octocode is running before_agent_start handlers: it queues the report, but agent_start has not fired.
 		idle = false;
-		fake.api.sendMessage(report("early"), { triggerTurn: true, deliverAs: "followUp" });
+		fake.api.session.sendMessage(report("early"), { triggerTurn: true, deliverAs: "followUp" });
 		expect(delivery.pending).toBe(1);
 		await fake.emit("agent_start", {}, ctx);
 		// Esc cleared Octocode's queue: the report is added back, not lost.
@@ -158,8 +165,8 @@ describe("Delivery", () => {
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
 		const queued = report("a");
-		t.api.sendMessage(queued, { triggerTurn: true, deliverAs: "followUp" });
-		t.api.sendMessage(report("b"), { deliverAs: "steer" });
+		t.api.session.sendMessage(queued, { triggerTurn: true, deliverAs: "followUp" });
+		t.api.session.sendMessage(report("b"), { deliverAs: "steer" });
 		// A look-alike message (another details object) does not count as delivery.
 		await t.emit("message_start", { message: { role: "custom", ...report("a") } }, t.ctx);
 		await t.emit("message_start", { message: { role: "user", content: "hi" } }, t.ctx);
@@ -182,7 +189,7 @@ describe("Delivery", () => {
 		await cleared.emit("session_start", {}, cleared.ctx);
 		await cleared.emit("agent_start", {}, cleared.ctx);
 		const report1 = report("a");
-		cleared.api.sendMessage(report1, { deliverAs: "steer" });
+		cleared.api.session.sendMessage(report1, { deliverAs: "steer" });
 		await cleared.emit("agent_settled", {}, cleared.ctx);
 		// RPC or the application port cleared the queue: the report is added back, not left waiting for shutdown.
 		expect(cleared.sent.at(-1)).toEqual({ message: report1, options: { triggerTurn: false } });
@@ -192,7 +199,7 @@ describe("Delivery", () => {
 		Object.assign(t.ctx, { isMessageQueued: () => true });
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { deliverAs: "steer" });
 		await t.emit("agent_settled", {}, t.ctx);
 		// RPC abort keeps Octocode's queue: the next run starts the message, so re-sending would duplicate it.
 		expect(t.sent).toHaveLength(1);
@@ -203,7 +210,7 @@ describe("Delivery", () => {
 		const tui = setup();
 		await tui.emit("session_start", {}, tui.ctx);
 		await tui.emit("agent_start", {}, tui.ctx);
-		tui.api.sendMessage(report("a"), { deliverAs: "steer" });
+		tui.api.session.sendMessage(report("a"), { deliverAs: "steer" });
 		await tui.emit("session_shutdown", {}, tui.ctx);
 		expect(tui.delivery.pending).toBe(0);
 		expect(tui.ctx.ui.statuses.get(STATUS.queued)).toBeUndefined();
@@ -213,7 +220,7 @@ describe("Delivery", () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { deliverAs: "steer" });
 		t.sent.push = () => {
 			throw new Error("stale");
 		};
@@ -228,9 +235,9 @@ describe("Delivery", () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { deliverAs: "steer" });
-		t.api.sendMessage(report("b"), { deliverAs: "steer" });
-		t.api.sendMessage(report("c"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("b"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("c"), { deliverAs: "steer" });
 		const push = t.sent.push.bind(t.sent);
 		t.sent.push = (entry) => {
 			if (String(entry.message.content).includes("report b")) throw new Error("closed");
@@ -258,7 +265,7 @@ describe("Delivery", () => {
 		const t = setup();
 		await t.emit("session_start", {}, t.ctx);
 		await t.emit("agent_start", {}, t.ctx);
-		t.api.sendMessage(report("a"), { deliverAs: "steer" });
+		t.api.session.sendMessage(report("a"), { deliverAs: "steer" });
 		t.sent.push = () => {
 			throw new Error("stale");
 		};

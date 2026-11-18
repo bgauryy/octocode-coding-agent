@@ -5,7 +5,7 @@ import { Permission } from "../../src/octocode/permission/ask.ts";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

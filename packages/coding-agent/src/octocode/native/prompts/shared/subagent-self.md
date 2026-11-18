@@ -1,0 +1,1 @@
+- Finish your task yourself: you cannot start native Octocode subagents. Use a declared vendor runner only for work your coordinator authorized.

@@ -41,7 +41,7 @@ describe("searchable selector navigation", () => {
 	it("describes an empty reference result as items", () => {
 		const { component } = picker();
 		component.handleInput("zzz");
-		expect(component.render(80).join("\n")).toContain("No matching items");
+		expect(component.render(80).join("\n")).toContain('No items match "zzz" · esc clears');
 	});
 	it("fits Unicode command rows at narrow and wide widths", () => {
 		const component = new SearchableSelectorComponent(

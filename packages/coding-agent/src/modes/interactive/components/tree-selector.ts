@@ -3,7 +3,7 @@ import type { SessionTreeNode } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
-import { LabelInput, SearchLine, TreeHelp } from "./tree-selector/chrome.ts";
+import { LabelInput, TreeHelp } from "./tree-selector/chrome.ts";
 import { TreeList } from "./tree-selector/tree-list.ts";
 import type { FilterMode } from "./tree-selector/types.ts";
 
@@ -25,6 +25,8 @@ export class TreeSelectorComponent extends Container implements Focusable {
 	}
 	set focused(value: boolean) {
 		this._focused = value;
+		// The search line shows the hardware cursor while no label is being edited.
+		this.treeList.focused = value && !this.labelInput;
 		// Propagate to labelInput when it's active
 		if (this.labelInput) {
 			this.labelInput.focused = value;
@@ -61,7 +63,6 @@ export class TreeSelectorComponent extends Container implements Focusable {
 		this.addChild(new DynamicBorder());
 		this.addChild(new Text(theme.bold("  Session Tree"), 1, 0));
 		this.addChild(new TreeHelp());
-		this.addChild(new SearchLine(this.treeList));
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
 		this.addChild(this.treeContainer);
@@ -92,6 +93,7 @@ export class TreeSelectorComponent extends Container implements Focusable {
 
 		// Propagate current focused state to the new labelInput
 		this.labelInput.focused = this._focused;
+		this.treeList.focused = false;
 
 		this.treeContainer.clear();
 		this.labelInputContainer.clear();
@@ -100,6 +102,7 @@ export class TreeSelectorComponent extends Container implements Focusable {
 
 	private hideLabelInput(): void {
 		this.labelInput = null;
+		this.treeList.focused = this._focused;
 		this.labelInputContainer.clear();
 		this.treeContainer.clear();
 		this.treeContainer.addChild(this.treeList);

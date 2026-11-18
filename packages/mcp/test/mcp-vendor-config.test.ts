@@ -275,13 +275,13 @@ describe("requestMcpReload", () => {
 		const host = mcpHost({ loadConfig: () => ({ servers: structuredClone(servers), errors: [] }) });
 		await host.start();
 		servers = [entry("kept"), entry("changed", "new-command"), entry("new")];
-		const result = await requestMcpReload(host.api.events);
+		const result = await requestMcpReload(host.api.channels);
 		expect(result).toEqual({ added: ["changed", "new"], removed: ["dropped", "changed"] });
 		expect(host.state.servers.map((server) => server.entry.name).sort()).toEqual(["changed", "kept", "new"]);
 		expect(host.state.findServer("changed")?.entry.config).toMatchObject({ command: "new-command" });
-		expect(await requestMcpReload(host.api.events)).toEqual({ added: [], removed: [] });
+		expect(await requestMcpReload(host.api.channels)).toEqual({ added: [], removed: [] });
 		await host.close();
-		expect(await requestMcpReload(host.api.events)).toBeUndefined();
+		expect(await requestMcpReload(host.api.channels)).toBeUndefined();
 	});
 });
 

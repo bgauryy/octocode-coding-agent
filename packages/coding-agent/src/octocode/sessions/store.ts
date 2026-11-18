@@ -76,7 +76,7 @@ export async function gitCommitsBetween(cwd: string, from: string, to: string): 
 	}
 }
 
-/** The session extras: one row per Octocode session this extension has run. */
+/** The session extras: one row per Octocode session this feature has run. */
 export class SessionIndex {
 	readonly agent: AgentDb;
 	/** The writer of the same database file: the per-turn bookkeeping (`…Later`) goes there, off this thread. */

@@ -7,7 +7,8 @@ import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createHarness, createHarnessWithExtensions, type Harness } from "./test-harness.ts";
+import { createHarness, createHarnessWithFeatures, type Harness } from "./test-harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 describe("test harness", () => {
 	let harness: Harness;
@@ -274,12 +275,12 @@ describe("test harness", () => {
 	it("loads inline extension factories and disambiguates duplicate commands", async () => {
 		const calls: string[] = [];
 
-		harness = await createHarnessWithExtensions({
-			extensionFactories: [
+		harness = await createHarnessWithFeatures({
+			features: testFeatures([
 				{
 					path: "<alpha>",
 					factory: (api) => {
-						api.registerCommand("shared-cmd", {
+						api.commands.register("shared-cmd", {
 							description: "Alpha command",
 							handler: async (args) => {
 								calls.push(`alpha:${args}`);
@@ -290,7 +291,7 @@ describe("test harness", () => {
 				{
 					path: "<beta>",
 					factory: (api) => {
-						api.registerCommand("shared-cmd", {
+						api.commands.register("shared-cmd", {
 							description: "Beta command",
 							handler: async (args) => {
 								calls.push(`beta:${args}`);
@@ -298,10 +299,10 @@ describe("test harness", () => {
 						});
 					},
 				},
-			],
+			]),
 		});
 
-		const runner = harness.session.extensionRunner;
+		const runner = harness.session.featureHost;
 		expect(runner).toBeDefined();
 
 		const commands = runner.getRegisteredCommands();

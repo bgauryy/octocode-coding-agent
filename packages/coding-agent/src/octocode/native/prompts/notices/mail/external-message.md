@@ -1,0 +1,1 @@
+External message, not from the user, via {{#if socket}}owner-only socket{{else}}API token{{/if}} from {{#if team}}{{team}} (process {{from}}){{else}}{{from}}{{/if}}{{#if name}}, process {{name}}{{/if}}{{#if instanceId}}, instance {{instanceId}}{{/if}}{{#if pid}}, pid {{pid}}{{/if}}{{#if cwd}}, in {{cwd}}{{/if}} (self-reported) at {{at}}

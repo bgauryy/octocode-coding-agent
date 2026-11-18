@@ -137,7 +137,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	/**
-	 * A built-in provider as shipped, before models.json and extensions: the models a `models.json` entry can inherit
+	 * A built-in provider as shipped, before models.json and features: the models a `models.json` entry can inherit
 	 * from (see `provider-composer/known-models.ts`).
 	 */
 	getBuiltinProvider(providerId: string): Provider | undefined {
@@ -149,7 +149,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getProviderIds();
 	}
 
-	/** The models.json file defining the provider; undefined for a built-in or extension provider. */
+	/** The models.json file defining the provider; undefined for a built-in or feature provider. */
 	getProviderDefinitionFile(providerId: string): string | undefined {
 		return this.layers.config.getProviderFile(providerId);
 	}

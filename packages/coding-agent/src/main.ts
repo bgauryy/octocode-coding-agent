@@ -10,6 +10,7 @@ import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dis
 import { SettingsManager } from "./core/settings-manager.ts";
 import { resetTimings } from "./core/timings.ts";
 import "./octocode/mcp-host/core-install.ts";
+import { NATIVE_FEATURES } from "./main/native-features.ts";
 import { runAuthCommand } from "./main/auth-command.ts";
 import { runModelDiscoveryCommand } from "./main/model-discovery.ts";
 import { runSession } from "./main/run-session.ts";
@@ -48,5 +49,5 @@ export async function main(args: string[]) {
 	configureHttpDispatcher();
 	if (await runModelDiscoveryCommand(args)) return;
 	if (await runSubcommand(args, { cwd, agentDir })) return;
-	await runSession(args, { cwd, agentDir, offlineMode });
+	await runSession(args, { cwd, agentDir, offlineMode, nativeFeatures: NATIVE_FEATURES });
 }

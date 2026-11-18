@@ -1,5 +1,5 @@
 import { TuiAltScreen } from "@octocodeai/octocode-tui";
-import type { ExtensionUIContext } from "../../src/core/features/index.ts";
+import type { SessionUI } from "../../src/core/features/index.ts";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
@@ -28,6 +28,7 @@ const hooks: HooksView = {
 	notification: () => {},
 	messageSend: async () => undefined,
 	messageReceive: async () => {},
+	taskCompleted: async () => undefined,
 };
 const empty = (): inventory.Inventory => ({ items: [], stale: [], ignored: [], notes: [] });
 const rendered = (view: HarnessPicker) => stripAnsi(view.render(80).join("\n"));
@@ -48,7 +49,7 @@ it("opens loading immediately, offers retry after failure, then shows empty sect
 		.mockResolvedValue(empty());
 	const { command, ctx } = fixture();
 	Object.assign(ctx.ui, {
-		custom: async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
+		custom: async (factory: Parameters<SessionUI["custom"]>[0]) => {
 			const tui = new TuiAltScreen(new VirtualTerminal(80, 24));
 			vi.spyOn(tui, "requestRender").mockImplementation(() => {});
 			const view = await factory(tui, theme, new KeybindingsManager(), () => {});
@@ -76,7 +77,7 @@ it.each(["escape", "replacement"])(
 		const tui = new TuiAltScreen(new VirtualTerminal(80, 24));
 		const redraw = vi.spyOn(tui, "requestRender").mockImplementation(() => {});
 		Object.assign(ctx.ui, {
-			custom: async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
+			custom: async (factory: Parameters<SessionUI["custom"]>[0]) => {
 				const view = await factory(tui, theme, new KeybindingsManager(), () => {});
 				if (!(view instanceof HarnessPicker)) throw new Error("Expected harness picker");
 				if (close === "escape") view.handleInput("\x1b");

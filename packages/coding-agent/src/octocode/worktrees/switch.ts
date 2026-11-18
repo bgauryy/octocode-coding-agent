@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { say } from "../shared/commands.ts";
 import { existingWorktree, mainCheckout } from "./target.ts";
 
@@ -12,7 +12,7 @@ export const MAIN_CHECKOUT = "main";
  * folder). A `session_before_switch` handler may cancel, and the folder asks for project trust like any other. Declined
  * while a turn runs, since the switch would end it.
  */
-export async function switchToWorktree(name: string, ctx: ExtensionCommandContext): Promise<void> {
+export async function switchToWorktree(name: string, ctx: CommandContext): Promise<void> {
 	if (!ctx.isIdle()) {
 		say(ctx, "A turn is running: wait for it to finish (or interrupt it) before switching worktrees.", "warning");
 		return;

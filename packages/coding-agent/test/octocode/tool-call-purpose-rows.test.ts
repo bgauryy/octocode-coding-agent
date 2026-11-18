@@ -61,10 +61,10 @@ describe("one purpose line style for every tool call", () => {
 		for (const text of lines) expect(arrows(text).length).toBeGreaterThan(0);
 		expect(arrows(lines[0])).toEqual(["↳ List the folder"]);
 		expect(arrows(lines[1])).toEqual([
-			"↳ 1 · Find owner 0 — Because reason 0",
-			"↳ 2 · Find owner 1 — Because reason 1",
+			"↳ 1 · Find owner 0 · Because reason 0",
+			"↳ 2 · Find owner 1 · Because reason 1",
 		]);
-		expect(arrows(lines[2])).toEqual(["↳ Find owner 0 — Because reason 0"]);
+		expect(arrows(lines[2])).toEqual(["↳ Find owner 0 · Because reason 0"]);
 		expect(arrows(lines[3])).toEqual(["↳ Independent check"]);
 		for (const text of lines) {
 			const joined = text.join("\n");
@@ -108,7 +108,8 @@ describe("one purpose line style for every tool call", () => {
 
 	it("gives MCP calls the shared header: state mark, label and a short summary", () => {
 		const [title] = rows(MCP, { queries: queries(2) }, mcpTool(MCP));
-		expect(title.trim()).toMatch(/^\S+ octocode\/localSearch/);
+		// The title is the tool's own name; its server follows as meta.
+		expect(title.trim()).toBe("○ localSearch(2 queries) · octocode");
 		expect(title).not.toContain("queries=[");
 		expect(title).not.toContain("mainGoal");
 	});

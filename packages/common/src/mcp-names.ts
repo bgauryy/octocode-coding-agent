@@ -1,6 +1,9 @@
 /** The MCP server name Octocode registers its built-in browser under (and looks for in `mcp.json`). */
 export const BROWSER_SERVER = "browser";
 
+/** The MCP server name of the recommended local-model server (`mcp/src/recommended/freellama.json`): the main session's, not a child's. */
+export const FREELLAMA_SERVER = "freellama";
+
 /** The base prompt section that describes every enabled MCP server, one block per server (`mcp/src/section.ts`). */
 export const MCPS_SECTION = "mcps";
 
@@ -43,7 +46,7 @@ export function createToolNameMatcher(entries: readonly string[]): (name: string
 	return (name) => names.has(name) || patterns.some((pattern) => pattern.test(name));
 }
 
-/** The built-in MCP extension's tool that lists, connects and edits servers. */
+/** The built-in MCP feature's tool that lists, connects and edits servers. */
 export const MCP_MANAGE_TOOL_NAME = "mcp";
 
 export const isMcpToolName = (name: string): boolean => name.startsWith("mcp__");

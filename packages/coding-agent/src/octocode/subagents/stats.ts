@@ -1,5 +1,5 @@
 import { childCacheLabel } from "./cache-monitor.ts";
-import { REPORT_STATUSES } from "../instructions/report.ts";
+import { REPORT_STATUSES } from "../native/prompts/report.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { plural } from "../shared/text.ts";

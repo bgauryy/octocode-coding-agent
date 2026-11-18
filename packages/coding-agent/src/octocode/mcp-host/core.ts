@@ -109,5 +109,16 @@ const models: McpHostPorts["models"] = {
 const browser: McpHostPorts["browser"] = { mcpAsked: browserMcpAsked };
 
 export function installMcpCorePorts(): void {
-	installMcpHost({ identity, paths, plugins, vendors, output, images, trust, models, browser, review });
+	installMcpHost({
+		identity,
+		paths,
+		plugins,
+		vendors,
+		output,
+		images,
+		trust,
+		models,
+		browser,
+		review,
+	});
 }

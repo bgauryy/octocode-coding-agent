@@ -2,7 +2,7 @@
  * Writes the exact final prompt of the main agent and each subagent to a temp folder: what each one receives with its
  * first model request, captured from a real session on a scripted model. Every build runs this (`--fail-open`, so a
  * capture problem warns rather than fails the build); `scripts/agent-eval/understand.mjs` reads the result. It also
- * writes the templated, committed copy to `src/octocode/instructions/final/` (see `final/README.md`).
+ * writes the templated, committed copy to `src/octocode/native/prompts/final/` (see `final/README.md`).
  *
  * `--exposure <mcpExposure value>` captures every agent under that setting instead of the default (for example `direct`,
  * every tool declared in full) into `.octocode/tmp/agent-prompts-exposure-<value>/`, and leaves the default capture and the
@@ -22,7 +22,7 @@ import {
 } from "../test/octocode/agent-context/render.ts";
 
 const REPOSITORY = path.resolve(import.meta.dirname, "..", "..", "..");
-const FINAL = path.join(import.meta.dirname, "..", "src", "octocode", "instructions", "final");
+const FINAL = path.join(import.meta.dirname, "..", "src", "octocode", "native", "prompts", "final");
 const OUTPUT = path.join(REPOSITORY, ".octocode", "tmp", "agent-prompts");
 
 /**

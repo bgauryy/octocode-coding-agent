@@ -1,8 +1,24 @@
 /** One should-fire and one near-miss prompt per bundled skill; the near-miss shares vocabulary but not the task. */
 export const PROMPTS: Record<string, { fire: string; nearMiss: string }> = {
-	"octocode-backlog-grooming": {
+	"octocode-research": {
+		fire: "Who calls parseConfig in this repo, and what changes if I rename it? Cite the callers.",
+		nearMiss: "What does the word 'research' mean? One sentence.",
+	},
+	"octocode-backlog": {
 		fire: "Groom our backlog: close the stale or duplicate items and reprioritize the rest.",
-		nearMiss: "Add a single new task to the backlog titled 'update README'.",
+		nearMiss: "What does the word 'backlog' mean in Scrum? One sentence.",
+	},
+	"octocode-subagents": {
+		fire: "Split this refactor across two subagents in worktrees, brief each one and merge their work.",
+		nearMiss: "What is a subagent? One sentence.",
+	},
+	"octocode-memory": {
+		fire: "Remember for future sessions: in this repo we always use yarn, never npm.",
+		nearMiss: "How much memory does this Node process use right now?",
+	},
+	"octocode-output": {
+		fire: "Compare the build times and bundle sizes of these three configurations for me.",
+		nearMiss: "Reply with just the word yes.",
 	},
 	"octocode-context-optimization": {
 		fire: "Our skill listings and MCP tool files are huge. Shrink the skill descriptions.",
@@ -60,9 +76,25 @@ export const PROMPTS: Record<string, { fire: string; nearMiss: string }> = {
 		fire: "Review GitHub pull request #482 and give an APPROVE, COMMENT or REQUEST_CHANGES verdict.",
 		nearMiss: "Review my uncommitted local changes for typos.",
 	},
-	"octocode-research": {
+	"octocode-local-research": {
 		fire: "How does the session manager in this repo persist sessions, and who calls it?",
 		nearMiss: "How do JavaScript closures work?",
+	},
+	"octocode-github-research": {
+		fire: "Which commit and pull request in vitest-dev/vitest changed the default of clearMocks, and why?",
+		nearMiss: "What is a pull request? One sentence.",
+	},
+	"octocode-clasify": {
+		fire: "Sort these 300 log files by whether each one shows a timeout, so I only read the ones that matter.",
+		nearMiss: "Grep the logs for the exact string ETIMEDOUT.",
+	},
+	"octocode-critical-thinking": {
+		fire: "Before we migrate production to the new database this weekend, stress-test the plan: tail risks, second-order effects, what could go wrong.",
+		nearMiss: "Define the term 'critical thinking' in one sentence.",
+	},
+	"octocode-maintenance": {
+		fire: "Do a health sweep of this repo: outdated dependencies, dead code, stale docs, lint drift and flaky tests.",
+		nearMiss: "Fix this one failing assertion in test/math.test.ts.",
 	},
 	"octocode-rfc-generator": {
 		fire: "Write an RFC for migrating our job queue to a new broker, with tasks, validation and rollout.",

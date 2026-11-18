@@ -9,6 +9,8 @@ import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createBashTool } from "../src/core/tools/bash.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 describe("AgentSession dynamic tool registration", () => {
 	let tempDir: string;
@@ -35,9 +37,10 @@ describe("AgentSession dynamic tool registration", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([
 				(api) => {
-					api.registerTool(
+					api.tools.register(
 						createBashTool(tempDir, {
 							spawnHook: (ctx) => {
 								sessionEnv = ctx.env;
@@ -45,7 +48,7 @@ describe("AgentSession dynamic tool registration", () => {
 							},
 						}),
 					);
-					api.registerTool({
+					api.tools.register({
 						...createBashTool(tempDir, {
 							exposeSessionEnvironment: false,
 							spawnHook: (ctx) => {
@@ -57,7 +60,7 @@ describe("AgentSession dynamic tool registration", () => {
 						label: "bash without session env",
 					});
 				},
-			],
+			]),
 		});
 		await resourceLoader.reload();
 
@@ -102,10 +105,11 @@ describe("AgentSession dynamic tool registration", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", () => {
-						api.registerTool({
+					api.bus.on("session_start", () => {
+						api.tools.register({
 							name: "dynamic_tool",
 							label: "Dynamic Tool",
 							description: "Tool registered from session_start",
@@ -119,7 +123,7 @@ describe("AgentSession dynamic tool registration", () => {
 						});
 					});
 				},
-			],
+			]),
 		});
 		await resourceLoader.reload();
 
@@ -134,7 +138,7 @@ describe("AgentSession dynamic tool registration", () => {
 
 		expect(session.getAllTools().map((tool) => tool.name)).not.toContain("dynamic_tool");
 
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 
 		const allTools = session.getAllTools();
 		const dynamicTool = allTools.find((tool) => tool.name === "dynamic_tool");
@@ -168,6 +172,7 @@ describe("AgentSession dynamic tool registration", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
 		});
 		await resourceLoader.reload();
 
@@ -212,10 +217,11 @@ describe("AgentSession dynamic tool registration", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", () => {
-						api.registerTool({
+					api.bus.on("session_start", () => {
+						api.tools.register({
 							name: "hidden_tool",
 							label: "Hidden Tool",
 							description: "Description should not appear in available tools",
@@ -227,7 +233,7 @@ describe("AgentSession dynamic tool registration", () => {
 						});
 					});
 				},
-			],
+			]),
 		});
 		await resourceLoader.reload();
 
@@ -240,7 +246,7 @@ describe("AgentSession dynamic tool registration", () => {
 			resourceLoader,
 		});
 
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 
 		expect(session.getAllTools().map((tool) => tool.name)).toContain("hidden_tool");
 		expect(session.getActiveToolNames()).toContain("hidden_tool");

@@ -42,7 +42,7 @@ describe("AgentSession built-in compaction policy", () => {
 				settings: { cacheRetention: "none" },
 				builtinCompactionFactories: [
 					(api) => {
-						api.on("session_before_compact", (event) => {
+						api.bus.on("session_before_compact", (event) => {
 							preparations.push(event);
 							return {
 								compaction: {
@@ -104,7 +104,7 @@ describe("AgentSession built-in compaction policy", () => {
 			tools: [],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "big model summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

@@ -21,8 +21,8 @@ export class ProviderRegistrations {
 
 	registerNativeProvider(provider: Provider): void {
 		if (!provider.id.trim()) throw new Error("Provider id must not be empty.");
-		this.layers.extensionProviders.delete(provider.id);
-		this.layers.nativeExtensionProviders.set(provider.id, provider);
+		this.layers.featureProviders.delete(provider.id);
+		this.layers.nativeFeatureProviders.set(provider.id, provider);
 		this.layers.recomposeProvider(provider.id);
 		this.availability.updateModelSnapshot();
 		this.availability.markProvisionallyConfigured(
@@ -34,7 +34,7 @@ export class ProviderRegistrations {
 	}
 
 	registerProvider(providerId: string, config: ProviderConfigInput): void {
-		const effective = this.layers.setExtensionProvider(providerId, config);
+		const effective = this.layers.setFeatureProvider(providerId, config);
 		this.layers.recomposeProvider(providerId);
 		this.availability.updateModelSnapshot();
 		this.availability.markProvisionallyConfigured(
@@ -46,8 +46,8 @@ export class ProviderRegistrations {
 	}
 
 	unregisterProvider(providerId: string): void {
-		this.layers.extensionProviders.delete(providerId);
-		this.layers.nativeExtensionProviders.delete(providerId);
+		this.layers.featureProviders.delete(providerId);
+		this.layers.nativeFeatureProviders.delete(providerId);
 		this.layers.recomposeProvider(providerId);
 		this.availability.updateModelSnapshot();
 		this.refresh();

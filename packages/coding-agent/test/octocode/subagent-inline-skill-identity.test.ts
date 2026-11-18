@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { loadSkillsFromDir } from "../../src/core/skills.ts";
 import { taskSkillText } from "../../src/octocode/subagents/task-skills.ts";
 
@@ -32,7 +33,7 @@ it("inlines the captured canonical file and reference root after a discovery lin
 	expect(text).toContain("BODY_original");
 	expect(text).not.toContain("BODY_replacement");
 	expect(text).toContain(`location="${path.join(root, "original", "SKILL.md")}"`);
-	expect(text).toContain(`References are relative to ${path.join(root, "original")}.`);
+	expect(text).toContain(renderPrompt("system/skill-references.md", { dir: path.join(root, "original") }).trim());
 });
 
 it("refuses a captured canonical file replaced by a link", () => {

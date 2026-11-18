@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createExtensionUIContext } from "../src/modes/rpc/rpc-mode/ui-context.ts";
+import { createSessionUI } from "../src/modes/rpc/rpc-mode/ui-context.ts";
 import type { RpcExtensionUIRequest } from "../src/modes/rpc/rpc-types.ts";
 
 describe("setStatus over RPC", () => {
 	it("sends the tone as data beside the plain text, and no tone field when none was given", () => {
 		const requests: RpcExtensionUIRequest[] = [];
-		const ui = createExtensionUIContext((value) => {
+		const ui = createSessionUI((value) => {
 			if ("type" in value && value.type === "extension_ui_request") requests.push(value);
 		}, new Map());
 		ui.setStatus("jobs", "2 bash jobs", "accent");

@@ -10,10 +10,10 @@ import { createToolNameMatcher, isPluginMcpServerName, mcpNamespace } from "@oct
 import { isStringRecord, LOOPBACK_HOSTS, validateInstall, validateOAuth, validateRoles } from "./server-validation.ts";
 
 /**
- * MCP server configuration and the servers extensions register with `api.registerMcpServer()`.
+ * MCP server configuration and the servers features register with `api.mcpServers.register()`.
  *
- * The core only validates and stores registrations. The MCP extension (built in, or another
- * extension that handles `mcp_servers_change`) connects them next to the servers from `mcp.json`.
+ * The core only validates and stores registrations. The MCP feature (built in, or another
+ * feature that handles `mcp_servers_change`) connects them next to the servers from `mcp.json`.
  */
 
 /**
@@ -125,7 +125,7 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 	return `server "${name}" needs either "command" (stdio) or "url" (Streamable HTTP)`;
 }
 
-/** Servers registered by the extensions of one runtime. */
+/** Servers registered by the features of one runtime. */
 export class McpServerRegistry {
 	private servers = new Map<string, RegisteredMcpServer>();
 	private changeListener: (() => void) | undefined;
@@ -133,17 +133,13 @@ export class McpServerRegistry {
 	private updated(changes: readonly McpServerChange[]): Map<string, RegisteredMcpServer> {
 		const servers = new Map(this.servers);
 		for (const change of changes) {
-			if (change.type === "unregister") {
-				if (servers.get(change.name)?.extensionPath === change.extensionPath) servers.delete(change.name);
-				continue;
-			}
 			const { server } = change;
 			const existing = servers.get(server.name);
-			if (existing !== undefined && existing.extensionPath !== server.extensionPath) {
+			if (existing !== undefined && existing.source !== server.source) {
 				// An inherited server yields to another owner's registration of the same name, and never displaces one.
 				if (server.inherited && !existing.inherited) continue;
 				if (!existing.inherited)
-					throw new Error(`MCP server "${server.name}" is already registered by extension "${existing.extensionPath}"`);
+					throw new Error(`MCP server "${server.name}" is already registered by feature "${existing.source}"`);
 			}
 			const clash = [...servers.values()].find(
 				(existing) => existing.name !== server.name && mcpNamespace(existing.name) === mcpNamespace(server.name),
@@ -162,19 +158,13 @@ export class McpServerRegistry {
 	apply(changes: readonly McpServerChange[]): void {
 		if (changes.length === 0) return;
 		const servers = this.updated(changes);
-		const changed = changes.some((change) => change.type === "register") || servers.size !== this.servers.size;
 		this.servers = servers;
-		if (changed) this.changeListener?.();
+		this.changeListener?.();
 	}
 
 	/** Register or replace the same owner's server. */
 	register(server: RegisteredMcpServer): void {
 		this.apply([{ type: "register", server }]);
-	}
-
-	/** Remove a server registered by `extensionPath`. Servers of other extensions are left alone. */
-	unregister(name: string, extensionPath: string): void {
-		this.apply([{ type: "unregister", name, extensionPath }]);
 	}
 
 	get(name: string): RegisteredMcpServer | undefined {

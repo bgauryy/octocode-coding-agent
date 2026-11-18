@@ -1,223 +1,451 @@
-# agentic-testkit
+# @octocodeai/octocode-agentic-testkit
 
-Vitest-native behavior tests for agent harnesses: scripted model replies, mock MCP servers, a recorded trace of one run and matchers over that trace. It knows no harness: a harness plugs in through a small adapter. Status: 0.1.0, internal (not published); see [CHANGELOG](CHANGELOG.md).
+Behavior tests for AI agents and agent harnesses, in Vitest. Run your agent unchanged against a scripted model and
+mock MCP servers, then check what it did: which tools it called and with what, in what order, whether it recovered
+from a failure, how its prompt cache behaved, what its sub-agents did, what it cost and which files it left. The agent
+can be a CLI (Claude Code, Codex, octocodecode) or an in-process agent (LangChain, the Vercel AI SDK, your own loop),
+and the tools any MCP server, real or mocked. Scripted tests are free and deterministic; the same tests run against a
+real model when you need a rate.
 
-## Install and entry points
+The kit is general-purpose: it knows no particular agent, model provider, MCP server or skill. It meets an agent only
+where every agent already talks to the outside (a model endpoint and MCP servers), and each harness plugs in through
+a small adapter.
 
-Requires Node 24.15+ and Vitest 5. Inside this repository, add `"@octocodeai/octocode-agentic-testkit": "workspace:*"`; Vitest resolves the TypeScript source, plain Node the built `dist/` (`yarn build`).
+Status: 0.2.0, ready for npm and not yet published; see the [CHANGELOG](CHANGELOG.md). It runs on Node 24.15+ with
+Vitest 5, on macOS and Linux (the OS sandbox is macOS-only), and its types load in TypeScript 5 and 7.
 
-| Import                                                 | Gives                                                                 |
-| ------------------------------------------------------ | --------------------------------------------------------------------- |
-| `@octocodeai/octocode-agentic-testkit`                 | gateway, trace, MCP mocks, memory, `live()`, matchers, reference loop |
-| `@octocodeai/octocode-agentic-testkit/setup`           | registers the matchers (Vitest `setupFiles`)                          |
-| `@octocodeai/octocode-agentic-testkit/cache-report`    | run-cache summary (Vitest `globalSetup`)                              |
-| `@octocodeai/octocode-agentic-testkit/tiers`           | named model tiers                                                     |
-| `@octocodeai/octocode-agentic-testkit/adapters/<name>` | `reference`, `claude-code`, `codex`, `octocodecode`                   |
+| Read                                | For                                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| this page                           | setup, what to test, connecting an agent, adding a real model, the imports                |
+| [MCP-AND-SKILLS](MCP-AND-SKILLS.md) | testing an MCP server or a skill: surface, results, sizes, routing, efficiency, workflows |
+| [GUIDE](GUIDE.md)                   | the workflow, recipes, caching and troubleshooting                                        |
+| [REFERENCE](REFERENCE.md)           | every option, result type and matcher                                                     |
+| [examples](examples/README.md)      | tested adapters for the AI SDK, LangChain and a hand-written agent loop                   |
 
-New here? Read the [developer guide](GUIDE.md) for the workflow: running suites, writing a test, tiers, caching and adapters.
+## How it works
 
-## What you can test
+```mermaid
+flowchart LR
+  T[Vitest test] --> A[Adapter]
+  A --> H[Your agent, unchanged]
+  H -->|model calls| G[Gateway]
+  G -->|script or forward| M[(Model)]
+  H -->|tool calls| X[MCP: mock, or your real server]
+  G --> R[Trace]
+  X --> R
+  R --> E[expect matchers]
+```
 
-| Area                  | Example question                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------ |
-| Agent flow            | Did it call the tool, with these args, before answering? Did it retry the failed call unchanged? |
-| Triggers              | Did the skill load for this prompt? Did it stay unloaded for that one?                           |
-| MCP                   | Which tools did the server execute, with what args, and what did it fail with?                   |
-| Multi-agent           | Was a child spawned, did it report back, is any child orphaned?                                  |
-| Caching and context   | Is the request prefix byte-stable? Is there duplicate text? How fast does the history grow?      |
-| Memory and compaction | Was a fact recalled before acting? Did compaction happen?                                        |
+The kit sits where an agent already talks to the outside. The **gateway** is the agent's model endpoint: it answers
+from a script (or forwards to a real model) and records every request. The **MCP servers** are the agent's tools:
+mocks that run scripted handlers, or your real server behind `recordMcp`; both record every call. Both write to one **trace**, and `expect(trace)` matchers check it.
+An **adapter** is the only code that knows how to start your agent and point it at the two.
 
-## Three probes
+A check that needs data nothing recorded throws `cannot observe: <what>`, also under `.not`, so missing data never
+passes.
 
-The testkit never reaches into the harness. It stands where the harness already talks to the outside.
+## Set up
 
-| Probe         | How the harness reaches it                                                                                | Gives you                                                                                             | Required |
-| ------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- |
-| Model gateway | Point the harness's model base URL at `gateway.url` (OpenAI chat-completions or Anthropic messages shape) | Every request (messages, tools, usage) and the scripted tool calls and answers                        | yes      |
-| MCP mock      | Register `mock.listen()` as an HTTP MCP server                                                            | Server-side `tool_exec` / `tool_error` events, per-tool `vi.fn` spies, injected failures and timeouts | no       |
-| Events        | The harness (or its adapter) calls `trace.record(...)`                                                    | `skill_load`, `spawn`, `report`, `memory_*`, `compaction`                                             | no       |
+Install it with Vitest (and `@types/node` for TypeScript):
 
-All three write to one `Trace`. A matcher that needs a probe you did not wire fails with `cannot observe: <what>` instead of passing.
+```sh
+npm install --save-dev @octocodeai/octocode-agentic-testkit vitest @types/node
+```
 
-## Quickstart
+Inside this repository, add the workspace instead:
+
+```json
+{
+	"devDependencies": {
+		"@octocodeai/octocode-agentic-testkit": "workspace:*",
+		"vitest": "5.1.0",
+		"@types/node": "24.19.2"
+	}
+}
+```
+
+It needs Node 24.15 or later and Vitest 5. `testkitConfig` gives Vitest what the kit needs: the matcher setup, the
+run-cache summary, the `forks` pool (agents run as child processes and loopback servers), 60-second timeouts and the
+`AgentReporter`. Your own `setupFiles`, `globalSetup` and `reporters` are added after the kit's; any other option you
+pass replaces its default.
+
+```ts
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+import { testkitConfig } from "@octocodeai/octocode-agentic-testkit/config";
+
+export default defineConfig({ test: testkitConfig({ include: ["test/**/*.test.ts"], testTimeout: 120_000 }) });
+```
+
+A test file that imports the kit gets the matcher types (`expect(trace).toHaveCalledTool(...)`). For the others, add
+the setup module to `tsconfig.json`:
+
+```json
+{ "compilerOptions": { "types": ["node", "@octocodeai/octocode-agentic-testkit/setup"] } }
+```
+
+## Your first test
 
 ```ts
 import { expect, it } from "vitest";
-import { startGateway, script, mockMcp, referenceAdapter } from "../src/index.ts"; // matchers register via setupFiles
+import { mockMcp, referenceAdapter, script, startGateway } from "@octocodeai/octocode-agentic-testkit";
 
 it("searches before answering", async () => {
+	// The model's replies, in order: a tool call, then an answer.
 	const gw = await startGateway({
 		responder: script([{ toolCalls: [{ name: "search", args: { query: "cache" } }] }, { text: "done" }]),
 	});
+	// A mock MCP server with one tool; its calls land on the same trace.
 	const docs = mockMcp({
 		name: "docs",
 		trace: gw.trace,
 		tools: [
 			{
 				name: "search",
-				description: "Search",
+				description: "Search the docs",
 				inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
 			},
 		],
 	});
+	// The agent under test: here the kit's in-process reference loop.
 	const session = await referenceAdapter({ trace: gw.trace, mcp: [docs.client()] }).start({ gatewayUrl: gw.url });
 	await session.run("find the cache docs");
+
 	expect(gw.trace).toHaveCalledMcp("docs", "search", { args: { query: "cache" }, before: "answer" });
+
 	await session.close();
 	await docs.close();
 	await gw.close();
 });
 ```
 
-Run: `vitest run` (config: `pool: "forks"`, real timers, `setupFiles: ["./src/setup.ts"]`).
+The same code runs as `test/quickstart.test.ts`. For several turns, several fresh agents per test, a pass policy and
+a spend cap, wrap it in `agentSuite` ([REFERENCE](REFERENCE.md#suites)), which starts and closes everything for you.
 
-## Adapters
+## What to test
 
-An adapter is the only code that knows how a harness is configured.
+Most checks need no model at all: the script decides what the "model" says, and the check is about what your code
+does with it. Add a real model only when the question is what a model chooses.
 
-```ts
-interface AgentAdapter<R = unknown> {
-	name: string;
-	start(ctx: {
-		gatewayUrl: string;
-		mcpUrls?: Record<string, string>;
-		workdir?: string;
-		env?: Record<string, string>;
-	}): Promise<{ run(prompt: string): Promise<R>; close(): Promise<void> }>;
-}
-```
+### If you build an agent: prompts, tools, skills, MCP servers
 
-| Adapter                                      | Status | How it connects                                                                                                                                                                                                                                              |
-| -------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `reference` (`src/adapters/reference`)       | works  | In-process tool loop (skills, memory, spawn, compaction); MCP clients passed as options, not `mcpUrls`; emits every event kind                                                                                                                               |
-| `octocodecode` (`src/adapters/octocodecode`) | works  | Spawns the built CLI in a temp HOME with `models.json` (gateway) and `mcp.json` (mock URLs); bundle path from `bundle` option or `TESTKIT_OCTOCODECODE_BUNDLE`; `parseSkillListing` reads its skill prompt                                                   |
-| `claude-code` (`src/adapters/claude-code`)   | works  | Spawns `claude -p … --output-format stream-json --verbose --strict-mcp-config --mcp-config <file>` with `ANTHROPIC_BASE_URL` at the gateway, a dummy key and a temp HOME/`CLAUDE_CONFIG_DIR`; mock MCP tools sit behind `ToolSearch` but stay callable       |
-| `codex` (`src/adapters/codex`)               | works  | Temp HOME/`CODEX_HOME` `config.toml`: `mock` provider (`wire_api = "responses"`, websockets off), `[mcp_servers.*]` with `default_tools_approval_mode = "approve"`, dead `HTTPS_PROXY` (Codex ignores `OPENAI_BASE_URL`); tool calls use `{namespace, name}` |
+| Question                                                                           | Check                                                                     | Model    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------- |
+| Does it call the right tool, with the right arguments, before answering?           | `toHaveCalledTool`, `toHaveCalledMcp` with `args` and `before`            | scripted |
+| Does it keep a required order, or avoid extra calls?                               | `toFollowTrajectory` (`strict`, `ordered`, `superset`, `subset`)          | scripted |
+| Does it recover from a failed tool without resending it?                           | `mock.tool(name).failOnce("error")`, `toReflect`, `toNotRetryIdentically` | scripted |
+| Are my tool descriptions present, small, distinct and free of hidden instructions? | `analyzeSurface`, `toPassSurfaceReview`                                   | none     |
+| Does a prompt route to the right tool or skill?                                    | `probeRouting`, `toHaveLoadedSkill`                                       | real     |
+| Does it never make a dangerous call?                                               | `guards: [never("delete_*")]`, `toHaveBlocked`                            | either   |
+| Is the answer well formed, or good?                                                | `toMatchSchema`; `judge`, `judgePanel`                                    | either   |
+| Did it leave the right files, and touch nothing else?                              | `toHaveWorkspace`, `toChangeOnly`, `runVerifier`, `toPassVerifier`        | either   |
+| Does it stay within requests, tokens and dollars?                                  | `toStayWithin`, `caps`, `budgetUsd`                                       | either   |
+| How often does it get it right? Did my change help?                                | `live`, `agentSuite({ runs, pass })`, `passHatK`, `liveCompare`           | real     |
+| Does it reach the goal over several user turns?                                    | `converse` with `scriptedUser` or `modelUser`                             | either   |
 
-Write one in four steps:
+### If you build a harness: the loop, context, caching, sub-agents
 
-1. Create an isolated HOME and workdir; never touch the real one.
-2. Write the harness's config so its model URL is `ctx.gatewayUrl` and its MCP servers are `ctx.mcpUrls`.
-3. `run(prompt)` starts the harness with `ctx.env` and returns what you can report (exit code, output).
-4. `close()` kills the process group and removes the temp directories.
+| Question                                                                                                        | Check                                                                      |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Does each request keep the previous one's prefix, so the provider cache hits?                                   | `toKeepStablePrefix`, `toKeepCacheWarm`, `toHaveCacheReadRatio`            |
+| Does the context grow within a budget, without duplicated blocks?                                               | `toGrowAtMost`, `toHaveNoDuplicateBlocks`, `promptShape`                   |
+| Are tool results and answers bounded?                                                                           | `toKeepEnvelopesUnder`                                                     |
+| Do sub-agents start, report back and never get orphaned?                                                        | `toHaveSpawned`, `toHaveHandedOff`, `toHaveNoOrphanAgents`                 |
+| Does compaction happen when it should, and keep the cache after?                                                | `toHaveCompacted`, `toKeepStablePrefix({ allowAfterCompaction })`          |
+| Does it survive HTTP 429 and 5xx, malformed tool arguments, cut-off or refused replies and dropped connections? | fault steps in `script` ([REFERENCE](REFERENCE.md#scripted-model-replies)) |
+| Does it handle MCP errors, timeouts and schema violations?                                                      | `failOnce("error")`, `failOnce("timeout")`, `tool_error` reasons           |
+| Does it read memory before acting?                                                                              | `toHaveRecalledBefore`                                                     |
+| Is it contained when a real model drives it?                                                                    | the OS `sandbox`, on by default for forwarded CLI runs                     |
 
-Core code (everything outside `src/adapters`) must not mention a harness; `test/decoupling.test.ts` enforces it.
+All of these run on real CLIs: the gateway works out which agent sent each request from the conversations, so spawn,
+handoff and compaction checks need no cooperation from the harness ([REFERENCE](REFERENCE.md#agents-without-headers)).
 
-## Matchers
-
-All matchers take a `Trace` (`gw.trace`). "Cannot observe" always throws `cannot observe: ...`, also under `.not`, so missing data is never a pass.
-
-| Matcher                                         | Observes                                                     | Fails when                                                  | Cannot observe when                                             |
-| ----------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| `toHaveCalledTool(name, {args, before, times})` | model tool calls                                             | not called, args differ, count differs, call after `before` | empty trace; `before` target absent                             |
-| `toHaveCalledMcp(server, tool, opts)`           | server-side executions                                       | tool not executed (or args/count/order differ)              | no events from that server                                      |
-| `toHaveLoadedSkill(name)`                       | `skill_load`, `skill` calls, `SKILL.md` reads                | not loaded                                                  | no events                                                       |
-| `toKeepStablePrefix()`                          | request prefixes (messages, tools, model)                    | a request rewrites an earlier one                           | fewer than two requests                                         |
-| `toHaveNoDuplicateBlocks()`                     | repeated large blocks                                        | a block repeats                                             | no requests                                                     |
-| `toGrowAtMost(bytes)`                           | request size per agent                                       | a turn grows more than `bytes`                              | no agent has two requests                                       |
-| `toHaveCacheReadRatio({min})`                   | usage (reported or estimated)                                | ratio below `min`                                           | no usage on any request                                         |
-| `toNotRetryIdentically(tool)`                   | tool errors and model calls (raw or `mcp__<server>__<tool>`) | same args re-sent after an error                            | no error for the tool; no model calls; no call before the error |
-| `toReflect({after: "error"})`                   | next action after a tool error                               | model answers without another tool call                     | no tool error; no action after it (unless the trace was cut)    |
-| `toHaveSpawned(role, {times})`                  | `spawn` events                                               | role not spawned, count differs                             | no spawn events and no spans                                    |
-| `toHaveNoOrphanAgents()`                        | child spans and `report`                                     | a child never reported                                      | no child spans                                                  |
-| `toHaveHandedOff(from, to)`                     | `spawn` and `report`                                         | not spawned or no report back                               | no spawn events                                                 |
-| `toHaveRecalledBefore(key, tool)`               | `memory_*` events and the tool call                          | key not read before the call                                | no memory events; tool never called                             |
-| `toHaveCompacted()`                             | `compaction` events                                          | none                                                        | empty trace                                                     |
-
-Each matcher has a negative case in `test/matchers.negative.test.ts`.
-
-## Grading an answer: `judge()`
-
-Behavior goes through matchers; the wording of an answer needs a grader. `judge({ rubric, transcript, model })` sends the rubric and the transcript to a model you pass in (a resolved tier, or any `{ baseUrl, model, api: "openai" | "anthropic", key }` endpoint) and returns one verdict with a reason per criterion. `pass` is true only when every criterion passes. A criterion the judge skips fails; a reply that is not the requested JSON throws, so a broken judge is never a pass. The judge call is not cached by the run cache and sends no prompt-cache markers.
-
-```ts
-const j = await judge({
-	rubric: [{ id: "cites-file", text: "Names the file that holds the fix" }],
-	transcript: answerText, // or chat messages
-	model: tier, // from resolveTier()
-});
-expect(j.pass, explainJudgement(j)).toBe(true);
-```
-
-Judge verdicts are model output: use a paid or local tier for the grader, and run them as a rate with `live()` when a single verdict is noisy.
-
-## Tiers
-
-| Tier        | Model                                                                          | Cost                | Flag                                       | Use for                                            |
-| ----------- | ------------------------------------------------------------------------------ | ------------------- | ------------------------------------------ | -------------------------------------------------- |
-| Scripted    | `script()` / `scripts()` replies                                               | free, deterministic | none (default)                             | harness wiring, matchers, caching, MCP, flows      |
-| Local       | Ollama (`TESTKIT_OLLAMA_MODEL`, `TESTKIT_OLLAMA_URL`, `TESTKIT_OLLAMA_TRIALS`) | free, slow, noisy   | `TESTKIT_OLLAMA=1`                         | trigger rates with small models                    |
-| Haiku-class | cheap hosted model through the gateway's `forward`                             | paid                | `TESTKIT_LIVE=1` (+ `TESTKIT_FORWARD_KEY`) | trigger rates where small models confound          |
-| Stronger    | larger hosted model                                                            | paid, most          | `TESTKIT_LIVE=1`                           | final checks on behavior a cheap model cannot show |
-
-Tier env (resolved by `resolveTier`; a missing piece skips the test with a reason, it never falls through to a paid tier):
-
-| Variable                                         | Meaning                                                                     |
-| ------------------------------------------------ | --------------------------------------------------------------------------- |
-| `TESTKIT_TIER`                                   | `local`, `haiku` or `deepseek`; unset skips                                 |
-| `TESTKIT_<TIER>_BASE_URL`                        | upstream origin (`local`: Ollama `/v1`, default `localhost:11434`)          |
-| `TESTKIT_<TIER>_KEY`                             | API key of a paid tier; pass it by env only, never write it to disk         |
-| `TESTKIT_<TIER>_MODEL`                           | model id (defaults: `bonsai-2:9b`, `claude-haiku-5-5`, `DeepSeek-V4-Flash`) |
-| `TESTKIT_TRIGGER_TRIALS`, `TESTKIT_TOKEN_BUDGET` | trigger matrix: max trials per prompt, input-token cap per tier run         |
-
-`haiku` and `deepseek` use the Anthropic Messages wire (`forward.api: "anthropic"`); `local` uses OpenAI chat. `node scripts/run-tier.mjs <tier> -- <command>` fills these variables for one command from the user's `models.json` without printing the key.
-
-## Cost rules
-
-- Default to scripted; add a model only for a question a script cannot answer (does the model choose the tool).
-- Paid tests never run without `TESTKIT_LIVE=1` and are skipped with a reason, never silently dropped.
-- Forwarded runs use the run cache by default; set `TESTKIT_CASSETTE=record` to refresh it or `replay` to prohibit upstream calls (see Caching).
-- Cap spend with `caps.maxRequests`; prefer `live()` below to a fixed large loop.
-- Bound prompt and tool size with byte ceilings about 5% over the measured value.
-
-## Caching
-
-Two independent caches save different work:
-
-| Cache                 | Hit does what?                                                    | What proves it?                                                                             |
-| --------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Run cache (cassette)  | Replays the stored model reply; **no upstream request**           | `hits`, `upstreamCallsAvoided` in the run report                                            |
-| Provider prompt cache | Sends the request upstream, reuses the stable prompt prefix there | Provider-reported `cachedTokens` on the trace (`cache_read_input_tokens` on Anthropic wire) |
-
-A gateway with `forward` defaults to cassette mode `auto`: replay a hit, record a miss. Scripted gateways do not need a cassette and stay uncached unless explicitly recorded. `TESTKIT_CASSETTE=auto|record|replay|off` sets the default; `cassette.mode` overrides it. `replay` fails clearly on a missing file, missing request or stale fingerprint; `auto` replaces stale recordings and reports `stale` rather than silently trusting them.
+A harness check, scripted and free:
 
 ```ts
 const gw = await startGateway({
-	forward: { baseUrl, model, api: "anthropic", key, promptCache: true },
-	cassette: {
-		file: "./__cassettes__/search.json",
-		fingerprint: { adapter: { name: "inproc", version: "1" }, tier: "haiku", model },
+	responder: script([
+		{ toolCalls: [{ name: "Bash", args: { command: "cat a.txt", description: "read" } }] },
+		{ text: "read it" },
+	]),
+});
+const session = await claudeCodeAdapter().start({ gatewayUrl: gw.url, files: { "a.txt": "hello" } });
+await session.run("read a.txt");
+expect(gw.trace).toKeepEnvelopesUnder({ toolOutputChars: 20_000 });
+expect(gw.trace).toKeepStablePrefix(); // the tool round only appended to the cached prefix
+await session.close();
+await gw.close();
+```
+
+The same code runs as `test/readme.test.ts`.
+
+### If you build an MCP server or a skill
+
+Put your real server in front of any agent with `recordMcp`, and install your skill into a harness's isolated home:
+
+```ts
+import { recordMcp, startGateway, script } from "@octocodeai/octocode-agentic-testkit";
+import { claudeCodeAdapter } from "@octocodeai/octocode-agentic-testkit/adapters/claude-code";
+
+const gw = await startGateway({
+	responder: script([{ toolCalls: [{ name: "mcp__docs__search", args: { q: "cache" } }] }, { text: "done" }]),
+});
+const server = recordMcp({ name: "docs", trace: gw.trace, target: { command: "my-mcp-server", args: ["--stdio"] } });
+const session = await claudeCodeAdapter({ skills: { "find-docs": SKILL_MD } }).start({
+	gatewayUrl: gw.url,
+	mcpUrls: { docs: await server.listen() },
+});
+await session.run("find the cache docs");
+expect(gw.trace).toHaveCalledMcp("docs", "search", { before: "answer" });
+expect(server.summary().maxChars).toBeLessThan(20_000); // the largest answer the model had to read
+```
+
+| Question                                                                | Check                                                                   |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| What does every request pay for my tools, and what does a host cut off? | `analyzeSurface({ servers: [server] }, CLAUDE_CODE_LIMITS)`             |
+| Do my tools answer correctly, how large and how fast?                   | `server.client().callTool`, `server.calls()`, `server.summary()`        |
+| Does a real harness call them and show the model the answer?            | a CLI adapter with `mcpUrls`, `toHaveCalledMcp`, `toKeepEnvelopesUnder` |
+| Does the intended workflow run, and recover from errors?                | `toFollowTrajectory({ mode: "ordered" })`, `toReflect`                  |
+| Does a model pick my tool or skill for the right prompts?               | `probeRouting`, `toHaveLoadedSkill` with `live`                         |
+| How many calls and tokens does a task take, and did my change help?     | `toStayWithin`, `server.summary()`, `liveCompare`                       |
+
+[MCP-AND-SKILLS](MCP-AND-SKILLS.md) walks through each step against a real server (octocode-mcp, in
+`test/example-mcp-server.test.ts`).
+
+## Connect your agent
+
+| Your agent                                                        | Adapter                                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Claude Code, Codex or octocodecode                                | bundled: `claudeCodeAdapter`, `codexAdapter`, `octocodecodeAdapter`            |
+| another CLI                                                       | a CLI adapter with `runProcess` ([checklist](REFERENCE.md#plug-in-your-agent)) |
+| LangChain, the Vercel AI SDK or your own loop in the test process | an in-process adapter ([examples](examples/README.md))                         |
+| no harness yet, only tools and prompts                            | `referenceAdapter`, the kit's own small tool loop                              |
+
+An adapter starts your agent pointed at the gateway and the mock servers, and runs one turn per `run()`:
+
+```ts
+import { defineAdapter } from "@octocodeai/octocode-agentic-testkit";
+
+export const myAgent = defineAdapter({
+	name: "my-agent",
+	async start(ctx) {
+		// ctx.gatewayUrl: the model base URL (`${ctx.gatewayUrl}/v1` for OpenAI-style clients)
+		// ctx.mcpUrls: mock MCP servers by name, to register as HTTP MCP servers
+		const agent = createMyAgent({ baseURL: `${ctx.gatewayUrl}/v1`, apiKey: "testkit", mcp: ctx.mcpUrls });
+		return {
+			run: async (input) => agent.send(typeof input === "string" ? input : input.prompts.join("\n")),
+			close: async () => agent.dispose(),
+		};
 	},
 });
 ```
 
-The header fingerprints adapter name/version, tier, model and an optional bundle hash. Supply the adapter/version for the harness under test; when testing a built bundle, add `bundle: fileHash(bundlePath)` to the fingerprint. The gateway fills the model and wire API when no tier is supplied. The key is the masked canonical request hash plus occurrence index: repeated identical requests retain separate replies. Occurrences count per gateway, so statistical trials that open a gateway per trial must pass `cassette: { sample: trial }`; otherwise trial 2 replays trial 1. Changing a prompt produces a miss; changing the fingerprint makes an existing recording stale. Older headerless cassette files need re-recording.
+`defineAdapter` infers the result type of `run`, so a suite's `turn.result` is typed. The rules that make an adapter
+trustworthy (an isolated HOME, a skip with a reason when the agent is missing, a sandbox for real-model runs) are in
+the [adapter checklist](REFERENCE.md#plug-in-your-agent).
 
-Without `cassette.file`, files live under `.octocode/tmp/testkit-cassettes/` with a filename derived from tier, model and upstream URL hash. Automatically named files older than 14 days are pruned. Explicit cassette files are not pruned. Files contain model replies and usage, not request bodies or authentication headers; treat model output as potentially sensitive. Do not commit recordings without reviewing them.
+### In-process frameworks
 
-The package's Vitest config prints one summary and writes `.octocode/tmp/testkit-cache-report.json` at teardown. `TESTKIT_REPORT_DIR` overrides that location. A custom Vitest config must register `src/cache-report.ts` as `globalSetup` and set `TESTKIT_REPORT_DIR`; outside this config the fallback directory is the OS temp directory.
+Any framework whose model client takes a base URL connects the same way. Each example is a tested file in
+[examples/adapters](examples/adapters).
 
-Read `hits`, `misses`, `stale` and `recorded` first, then `upstreamCallsAvoided` and `timeSavedMs` (sum of recorded upstream latency minus replay lookup time; not a whole-suite wall-clock speedup). `providerCache.cachedTokens` counts provider cache reads on newly recorded calls only; replayed usage is preserved in the trace but is not another provider cache read. The `cassettes` map breaks the totals down by file; `recordedRequests` preserves each new call's latency and provider usage (including `cachedTokens`). Tests with fake upstreams also contribute to this report; isolate a live test with `-t` when measuring a real provider.
+**Vercel AI SDK** ([ai-sdk.ts](examples/adapters/ai-sdk.ts)): `createOpenAI({ baseURL }).chat(model)` or
+`createAnthropic({ baseURL })`, MCP tools as `dynamicTool`s, `generateText` with `stopWhen: isStepCount(n)`, and the
+response messages kept for the next turn.
 
-For Anthropic, forwarding adds ephemeral `cache_control` markers by default (`forward.promptCache: false` turns them off) to the stable system prompt and last tool definition. The prefix must exceed the provider's cache minimum. `TESTKIT_TIER=haiku` enables the gated three-turn inproc cache test; it records once, checks real cache reads on a warm request, then replays with no `forward` configured. Paid tests require explicitly configured tier credentials.
+```ts
+import { expect, it } from "vitest";
+import { mockMcp, script, startGateway, type ToolDef } from "@octocodeai/octocode-agentic-testkit";
+import { aiSdkAdapter } from "./adapters/ai-sdk.ts"; // copied from examples/adapters
 
-## Statistical tests: `live()`
+const search: ToolDef = {
+	name: "search",
+	description: "Search the docs",
+	inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+};
 
-A model's behavior is a rate, not a boolean. `live(name, {maxTrials, threshold, minTrials?, confidence = 0.95}, trial)` runs trials until a Beta(1+successes, 1+failures) posterior decides:
+it("an AI SDK agent searches before answering", async () => {
+	const gw = await startGateway({
+		responder: script([
+			{ toolCalls: [{ name: "mcp__docs__search", args: { query: "parseConfig" } }] },
+			{ text: "src/loader.ts" },
+		]),
+	});
+	const docs = mockMcp({ name: "docs", trace: gw.trace, tools: [search] });
+	// wire: "openai" (default) or "anthropic"
+	const session = await aiSdkAdapter({ wire: "anthropic" }).start({
+		gatewayUrl: gw.url,
+		mcpUrls: { docs: await docs.listen() },
+	});
+	expect((await session.run("Where is parseConfig defined?")).answer).toBe("src/loader.ts");
+	expect(gw.trace).toHaveCalledMcp("docs", "search", { args: { query: "parseConfig" }, before: "answer" });
+	await session.close();
+	await docs.close();
+	await gw.close();
+});
+```
 
-| Posterior P(rate > threshold) | Decision                                                       |
-| ----------------------------- | -------------------------------------------------------------- |
-| ≥ confidence                  | `pass`, stop early                                             |
-| ≤ 1 − confidence              | `fail`, stop early                                             |
-| otherwise                     | keep sampling; `inconclusive` after `maxTrials` fails the test |
+**LangChain** ([langchain.ts](examples/adapters/langchain.ts)): `new ChatOpenAI({ apiKey, configuration: { baseURL } })`,
+MCP tools as `tool(fn, { name, description, schema })`, `createAgent({ model, tools, systemPrompt })`, and the agent
+state's messages kept for the next turn. As an `agentSuite`, each test is the agent's next turn:
 
-A trial that throws or returns `false` is a failure. With threshold 0.8 and confidence 0.95, 13 straight passes are enough to pass; 5 are not. The summary lands in the test's `meta.live`.
+```ts
+import { agentSuite, script, type ToolDef } from "@octocodeai/octocode-agentic-testkit";
+import { langChainAdapter } from "./adapters/langchain.ts"; // copied from examples/adapters
 
-## Limits
+const search: ToolDef = {
+	name: "search",
+	description: "Search the docs",
+	inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+};
 
-- Matchers see only what the three probes show; an agent with no MCP or event probe is invisible to the matchers that need them.
-- `cannot observe` on a missing probe cannot tell "probe not wired" from "agent did nothing"; wire the probe or assert on the gateway side.
-- Token counts are estimates (chars / 4) unless forwarded from a real provider.
-- Streaming and tool-call shapes: OpenAI chat-completions, Anthropic messages and OpenAI Responses SSE. Responses input maps messages, function calls and function outputs; other item types are not interpreted.
-- Real-harness adapters spawn processes: need the built harness, local loopback sockets and a real clock (no fake timers).
-- Claude Code and Codex adapters each skip with a reason when their CLI is missing.
+agentSuite(
+	"a LangChain agent",
+	{
+		adapter: langChainAdapter({ systemPrompt: "Answer from the docs." }),
+		gateway: {
+			responder: script([
+				{ toolCalls: [{ name: "mcp__docs__search", args: { query: "parseConfig" } }] },
+				{ text: "It is in src/loader.ts." },
+				{ text: "src/loader.ts, as I said." },
+			]),
+		},
+		mcp: { docs: [search] },
+	},
+	(t) => {
+		t.test("searches, then answers", async ({ run, expect }) => {
+			expect((await run("Where is parseConfig defined?")).trace).toHaveCalledMcp("docs", "search", {
+				before: "answer",
+			});
+		});
+		t.test("answers the follow-up from the conversation", async ({ run, expect }) => {
+			const turn = await run("Which file was it?");
+			expect(turn.trace.of("model_tool_call")).toHaveLength(0);
+			expect(turn.answer).toBe("src/loader.ts, as I said.");
+		});
+	},
+);
+```
+
+**Your own loop** ([agent-loop.ts](examples/adapters/agent-loop.ts)): the pattern for any in-process library with a
+pluggable model client, Pi-style agent loops included. Give its client the gateway's base URL; the loop, tools and
+history stay yours. Its `delegate` tool shows a sub-agent the gateway recognizes without headers:
+
+```ts
+import { expect, it } from "vitest";
+import { scripts, startGateway } from "@octocodeai/octocode-agentic-testkit";
+import { agentLoopAdapter } from "./adapters/agent-loop.ts"; // copied from examples/adapters
+
+it("hands the search to a researcher", async () => {
+	const task = "Find every caller of parseConfig under src/";
+	const gw = await startGateway({
+		responder: scripts({
+			main: [{ toolCalls: [{ name: "delegate", args: { agent: "researcher", task } }] }, { text: "cli.ts calls it." }],
+			researcher: [{ text: "cli.ts calls parseConfig" }],
+		}),
+	});
+	const session = await agentLoopAdapter({ subagents: { researcher: "Research, then report in one line." } }).start({
+		gatewayUrl: gw.url,
+	});
+	expect((await session.run("Who calls parseConfig?")).answer).toBe("cli.ts calls it.");
+	expect(gw.trace).toHaveSpawned("researcher");
+	expect(gw.trace).toHaveHandedOff("main", "researcher");
+	await session.close();
+	await gw.close();
+});
+```
+
+The three snippets run as `test/readme.test.ts`. Against a real model, nothing in the adapter changes: start the
+gateway with `forward` instead of a script.
+
+### CLI harnesses
+
+A CLI adapter writes the harness's own config into a temp HOME (provider base URL = the gateway, MCP servers = the
+mocks), runs the CLI with `runProcess`, and passes `sandbox: await sandboxFor(opts.sandbox, ctx, root)` so that a
+real-model run is sandboxed. Start from `src/adapters/codex` (a config file) or `src/adapters/claude-code` (flags and
+environment).
+
+## Add a real model
+
+Scripted tests prove your code handles what a model says. A real model tells you what a model will say. Turn one on
+in steps:
+
+1. **Pick a tier.** `TESTKIT_TIER=haiku` (or `local` for Ollama, `deepseek`, or any name) with
+   `TESTKIT_<NAME>_BASE_URL`, `_MODEL`, `_KEY` and `_API` (`openai`, `anthropic` or `responses`).
+   `yarn tier <name> -- <command>` fills them from your `models.json` without printing the key. A missing variable
+   skips with a reason; nothing falls through to a paid tier.
+2. **Forward the gateway.** `startGateway({ forward: forwardOf(tier) })`. The request goes upstream as your agent sent
+   it, and the reply comes back as the provider sent it ([what crosses wires](REFERENCE.md#real-model-runs)).
+3. **Gate and cap.** Paid tests run only with `TESTKIT_LIVE=1`. Cap them with `caps: { maxRequests, maxUsd, pricing }`
+   or a suite's `budgetUsd`.
+4. **Record once, replay free.** Forwarded runs record to a cassette and replay its hits. In CI, set
+   `TESTKIT_CASSETTE=replay` and a committed `TESTKIT_CASSETTE_DIR` ([caching](GUIDE.md#caching)).
+5. **Measure a rate, not a sample.** `live()` runs trials until a Bayesian decision, `agentSuite({ runs: 5, pass: 0.8 })`
+   applies a pass policy, and `liveCompare` tells whether a change helped.
+6. **Grade wording only when wording is the point:** `judge({ rubric, transcript, model })`, or `judgePanel` with
+   several graders.
+7. **Simulate the user** for multi-turn goals: `converse(session, modelUser({ model, goal }), { maxTurns })`.
+
+```ts
+import { claudeCodeAdapter } from "@octocodeai/octocode-agentic-testkit/adapters/claude-code";
+import { live, startGateway } from "@octocodeai/octocode-agentic-testkit";
+import { forwardOf, resolveTier } from "@octocodeai/octocode-agentic-testkit/tiers";
+
+const tier = resolveTier();
+live("picks search for a docs question", { maxTrials: 20, threshold: 0.8 }, async ({ trial }) => {
+	if ("skip" in tier) throw new Error(tier.skip);
+	const gw = await startGateway({ forward: forwardOf(tier.tier), cassette: { sample: trial } });
+	const session = await claudeCodeAdapter().start({ gatewayUrl: gw.url }); // sandboxed: the gateway forwards
+	try {
+		await session.run("where are the cache docs?");
+		return gw.trace.of("model_tool_call").some((e) => e.name === "mcp__docs__search");
+	} finally {
+		await session.close();
+		await gw.close();
+	}
+});
+```
+
+When the gateway forwards to a real model, a CLI adapter's process runs in an OS sandbox by default: it can write only
+inside its run, cannot read credential paths and reaches only loopback ([REFERENCE](REFERENCE.md#sandbox)).
+
+## Imports
+
+| Import                                                         | Gives                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@octocodeai/octocode-agentic-testkit`                         | everything for tests and adapters: gateway, scripts, trace, mocks, `recordMcp`, guards, suites, `live`, `judge`, comparisons, simulated users, workspace grading, surface review, `defineAdapter`, `runProcess`, the reference adapter |
+| `…/config`                                                     | `testkitConfig`                                                                                                                                                                                                                        |
+| `…/setup`                                                      | matcher registration and types                                                                                                                                                                                                         |
+| `…/cache-report`                                               | the run-cache summary (`globalSetup`)                                                                                                                                                                                                  |
+| `…/reporter`                                                   | `AgentReporter` (default export): suite pass rates, spend, mock-tool coverage                                                                                                                                                          |
+| `…/tiers`                                                      | `resolveTier`, `forwardOf`, `Tier`                                                                                                                                                                                                     |
+| `…/adapters/reference`, `claude-code`, `codex`, `octocodecode` | the bundled adapters and their option types                                                                                                                                                                                            |
+
+The root exports the types you write tests with: `Trace`, `TraceEvent`, `CapturedRequest`, `Step`, `Responder`,
+`GatewayOptions`, `ToolDef`, `MockMcp`, `RecordedMcp`, `Guard`, `AgentAdapter`, `AgentSuiteOptions`, `Turn`,
+`LiveOptions`, `Judgement`, `SurfaceReport`, `ComparisonSummary`, `VerifierResult` and the rest. The export list is
+pinned by `test/public-api.test.ts`, and `yarn check:consumer` proves a project outside the repository can build and
+run against the built package.
+
+## Run this package's tests
+
+| Goal                              | Command (in this package)                                            | Cost |
+| --------------------------------- | -------------------------------------------------------------------- | ---- |
+| every free test                   | `yarn test` (from the repository root: `yarn test:agentic`)          | $0   |
+| types                             | `yarn typecheck`                                                     | $0   |
+| the package as a consumer sees it | `yarn build && yarn check:consumer`                                  | $0   |
+| a paid tier                       | `TESTKIT_LIVE=1 yarn tier haiku -- yarn test:live`                   | paid |
+| the real-provider forwarding runs | `TESTKIT_LIVE=1 yarn test:live test/live/forward-wires.live.test.ts` | paid |
+
+The [GUIDE](GUIDE.md#run-the-suites) lists the rest.
+
+## Rules the kit keeps
+
+- **No data is not a pass.** A check without the data it needs throws `cannot observe`, also under `.not`.
+- **Every matcher has a must-fail test**, and a new one must add it.
+- **Scripted tests are deterministic and free:** no retries, real timers, identical results run after run.
+- **A trial returns a boolean.** `true` passes; `false`, or anything else such as a forgotten `return`, fails.
+- **Infrastructure errors are not failures.** A trial that throws `NoAnswer` (timeout, 429, 5xx) is counted apart.
+
+Where the kit stops (what each probe cannot see, how far agent inference goes, the macOS-only sandbox) is in
+[Limits](REFERENCE.md#limits).

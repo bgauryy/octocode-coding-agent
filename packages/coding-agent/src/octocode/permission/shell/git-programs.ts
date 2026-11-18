@@ -89,6 +89,13 @@ export function programSetting(text: string): string | undefined {
 	return name.startsWith("GIT_CONFIG") && name !== "GIT_CONFIG_NOSYSTEM" ? because : undefined;
 }
 
+/** Whether `programSetting` owns the variable `name`: one git (or the programs it starts) reads, judged by its value there. */
+export function gitVariable(name: string): boolean {
+	return (
+		name.startsWith("GIT_") || PROGRAM_VARIABLES.has(name) || LOCATION_VARIABLES.has(name) || CONFIG_FILES.has(name)
+	);
+}
+
 /** Why the `-c` (or clone `--config`) setting `setting` may run a program; undefined for a data key or a harmless program value. */
 function configSetting(setting: Word): string | undefined {
 	if (setting === undefined)

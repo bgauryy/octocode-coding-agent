@@ -18,7 +18,7 @@ import {
  * and whether a session starts. Everything runs in an isolated `HOME`, so the user's trust records are never touched.
  */
 let endpoint: Endpoint;
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: 90_000 });
 
 const RESOLVER = pathToFileURL(fileURLToPath(new URL("../../scripts/source-resolver.ts", import.meta.url))).href;
 const CLI = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));
@@ -72,6 +72,10 @@ async function headless(box: Sandbox, ...args: string[]) {
 
 const trustList = async (box: Sandbox) => (await headless(box, "trust", "list")).out;
 const prompt = (text: string) => ["--offline", "--model", "scripted/model", "-p", text];
+/** The running session's footer: its context gauge (the footer names the model without its provider). */
+const FOOTER = /\bctx\b/;
+/** The prompt ignores Enter for 300 ms after it appears (a key typed ahead must not answer it). */
+const armed = () => new Promise((resolve) => setTimeout(resolve, 400));
 
 /** An interactive CLI in a tmux window of its own. */
 function terminal(box: Sandbox) {
@@ -102,7 +106,7 @@ function terminal(box: Sandbox) {
 			const deadline = Date.now() + ms;
 			while (Date.now() < deadline) {
 				if (predicate(screen())) return;
-				await new Promise((resolve) => setTimeout(resolve, 100));
+				await new Promise((resolve) => setTimeout(resolve, 40));
 			}
 			throw new Error(`Timed out waiting for ${what}. Screen:\n${screen()}`);
 		},
@@ -110,33 +114,18 @@ function terminal(box: Sandbox) {
 }
 
 describe.skipIf(!tmuxAvailable)("folder trust prompt", () => {
-	it("an untrusted project asks first, naming the folder and the project files, before any session", async () => {
-		const box = untrustedProject();
-		const term = terminal(box);
-		await term.until((s) => s.includes("Do you trust this folder?"), "trust prompt");
-		const screen = term.screen();
-		// The folder is shown whole: a path wider than the terminal wraps onto the next indented row.
-		expect(screen.replace(/\n +/g, "")).toContain(box.project);
-		expect(screen).toContain("Found here:");
-		expect(screen).toContain("AGENTS.md");
-		expect(screen).toContain("Trust this folder");
-		expect(screen).toContain("Do not trust");
-		// Nothing was read or sent yet, and nothing is recorded.
-		expect(endpoint.requests).toHaveLength(0);
-		expect(await trustList(box)).toContain("No trust decisions are stored.");
-	});
-
 	it("Trust records a grant and starts the session", async () => {
 		const box = untrustedProject();
 		const term = terminal(box);
 		await term.until((s) => s.includes("Do you trust this folder?"), "trust prompt");
-		term.keys("1");
-		await term.until((s) => !s.includes("Do you trust this folder?") && /scripted\/model/.test(s), "session started");
+		await armed();
+		term.keys("2", "Enter");
+		await term.until((s) => !s.includes("Do you trust this folder?") && FOOTER.test(s), "session started");
 		expect(await trustList(box)).toContain(box.project);
 		// The next start in the same folder does not ask again.
 		spawnSync("tmux", ["-L", sockets[0], "kill-server"]);
 		const again = terminal(box);
-		await again.until((s) => /scripted\/model/.test(s), "second start");
+		await again.until((s) => FOOTER.test(s), "second start");
 		expect(again.screen()).not.toContain("Do you trust this folder?");
 	});
 
@@ -144,10 +133,13 @@ describe.skipIf(!tmuxAvailable)("folder trust prompt", () => {
 		const box = untrustedProject();
 		const term = terminal(box);
 		await term.until((s) => s.includes("Do you trust this folder?"), "trust prompt");
-		term.keys("d");
+		await armed();
+		// Do not trust is the last answer: the folder has a parent, so the answers run Not now, this folder, parent,
+		// grandparent (when offered), Do not trust; End reaches it whatever is offered.
+		term.keys("End", "Enter");
 		await term.until((s) => s.includes("EXIT="), "process exit");
 		expect(term.screen()).toMatch(/EXIT=0/);
-		expect(term.screen()).not.toMatch(/scripted\/model/);
+		expect(term.screen()).not.toMatch(FOOTER);
 		expect(endpoint.requests).toHaveLength(0);
 		const after = await headless(box, ...prompt("hello"));
 		expect(after.code).toBe(1);
@@ -155,11 +147,17 @@ describe.skipIf(!tmuxAvailable)("folder trust prompt", () => {
 		expect(endpoint.requests).toHaveLength(0);
 	});
 
-	it("Not now exits and records nothing, so the next start asks again", async () => {
+	it("asks first, naming the folder and its project files; Not now exits and records nothing, so the next start asks again", async () => {
 		const box = untrustedProject();
 		const term = terminal(box);
 		await term.until((s) => s.includes("Do you trust this folder?"), "trust prompt");
-		term.keys("n");
+		// The folder is shown whole: a path wider than the terminal wraps onto the next indented row.
+		expect(term.screen().replace(/\n +/g, "")).toContain(box.project);
+		expect(term.screen()).toContain("AGENTS");
+		// Nothing was read or sent yet.
+		expect(endpoint.requests).toHaveLength(0);
+		await armed();
+		term.keys("Enter");
 		await term.until((s) => s.includes("EXIT="), "process exit");
 		expect(await trustList(box)).toContain("No trust decisions are stored.");
 		const again = terminal(box);

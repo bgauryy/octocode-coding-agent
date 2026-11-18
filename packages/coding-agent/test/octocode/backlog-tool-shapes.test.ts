@@ -445,6 +445,6 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 			result: { content: [{ type: "text", text: "Updated B2 [done p2] second" }], details: { item } },
 			status: "completed",
 		});
-		expect(shown).toMatchObject({ title: "Backlog", summary: "update B2 → done" });
+		expect(shown).toMatchObject({ title: "Backlog", summary: "B2 → ongoing · second" });
 	});
 });

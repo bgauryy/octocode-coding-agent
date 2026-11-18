@@ -2,21 +2,20 @@ import { childCacheLabel } from "./cache-monitor.ts";
 import { Box, type Component, Container } from "@octocodeai/octocode-tui";
 import type {
 	AgentToolResult,
-	ExtensionAPI,
 	MessageRenderer,
 	ToolRenderResultOptions,
+	SetupPick,
 } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../history/archive.ts";
 import { fencedParts } from "../shared/fence.ts";
 import { presentAgentReport } from "./presentation.ts";
-import { formatDuration, formatSpend, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
+import { formatSpend, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { resultBlock, toolHeader } from "../render/tool.ts";
 import { addReply, contentText, emptyTotals } from "../shared/util.ts";
 import { modelLabel, withoutProvider } from "./model.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
-import { ENTITY } from "../shared/entity.ts";
 import { noticeText } from "./notices.ts";
 import { shareRowModel, shareRowState, sharedRowModel, sharedRowState } from "../render/row-mark.ts";
 import { shareWorktree, sharedWorktree } from "./render-worktree.ts";
@@ -67,7 +66,7 @@ export function compactionNote(details: Pick<RunDetails, "compactions">): string
 }
 
 /**
- * What the child's extensions said that a person would have read on screen (warnings, errors, the latest compaction
+ * What the child's features said that a person would have read on screen (warnings, errors, the latest compaction
  * failure), one line each and whole, identical repeats folded with a count. Notices past the inline page end in one line
  * naming the file that holds every notice. Text of the child: callers place it with the child's own words, never among
  * the parent's.
@@ -155,12 +154,12 @@ function usageTotals(details: Partial<ResultDetails>) {
 export const capitalize = (text: string): string => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 
 /**
- * `Done · 4 tool calls · 38s`; `Blocked · …` when the report says so. `named` adds the agent id after the outcome for a
- * row whose header does not carry it. Tokens, cost and model go to the expanded view (`finishedStats`).
+ * `Done · 4 tool calls`; `Blocked · …` when the report says so. `named` adds the agent id after the outcome for a row
+ * whose header does not carry it. The header carries the duration; tokens, cost and model go to the expanded view
+ * (`finishedStats`).
  */
 export function doneSummary(
 	details: Pick<RunDetails, "id" | "toolCalls" | "denied" | "outcome">,
-	durationMs: number | undefined,
 	named = false,
 ): string {
 	return [
@@ -168,7 +167,6 @@ export function doneSummary(
 		named ? details.id : "",
 		details.toolCalls > 0 ? toolCallCount(details.toolCalls) : "",
 		deniedLabel(details),
-		durationMs === undefined ? "" : formatDuration(durationMs, true),
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -199,8 +197,8 @@ function promptPreface(theme: Theme, task: string | undefined, next: string | un
 
 /** Characters of the goal a row shows. */
 const GOAL_ROW_CHARS = 60;
-/** A subagent's row title: the subagent mark, as in the team panel, then the tool's name. */
-const AGENT_TITLE = `${ENTITY.subagent} Agent`;
+/** A subagent's row title: a word, as every tool row's (the team panel keeps the subagent mark). */
+const AGENT_TITLE = "Agent";
 
 /**
  * `audit auth token refresh · claude-haiku-5-5:low · isolated`: what the row says about the run, never the prompt or the
@@ -305,7 +303,7 @@ export function renderAgentResult(
 		});
 	}
 	return reportBlock(theme, context, {
-		summary: doneSummary(details, context.durationMs, true),
+		summary: doneSummary(details, true),
 		stats: finishedStats(details, details),
 		report: body,
 		preface: promptPreface(theme, task, body.trim() ? "Report" : undefined),
@@ -328,9 +326,14 @@ function reportBlock(
 	const hasReport = shown.text.trim() !== "" || shown.earlier > 0;
 	const container = new Container();
 	// The summary row stays as it is: the prompt hint goes after the report, so a long summary is never clipped for it.
+	// Its outcome leads; the parts after it (id, tool calls, stats) drop whole from the end where the row is narrow.
+	const [outcome = "", ...meta] = (
+		expanded && options.stats ? `${options.summary} · ${options.stats}` : options.summary
+	).split(" · ");
 	container.addChild(
 		resultBlock(theme, context, {
-			summary: expanded && options.stats ? `${options.summary} · ${options.stats}` : options.summary,
+			summary: outcome,
+			summaryMeta: meta,
 			lines: [],
 			// With a report, the prompt hint follows the report; without one it is the row's own hint line.
 			...(hasReport && !expanded ? { max: 0 } : { prefaceLabel: "prompt", preface: options.preface }),
@@ -389,6 +392,6 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 };
 
 /** Draws background subagent reports (`AGENT_RESULT_TYPE` custom messages) in the transcript. */
-export function registerAgentMessageRenderer(api: Pick<ExtensionAPI, "registerMessageRenderer">): void {
-	api.registerMessageRenderer(AGENT_RESULT_TYPE, renderAgentMessage);
+export function registerAgentMessageRenderer(api: SetupPick<"renderers", "message">): void {
+	api.renderers.message(AGENT_RESULT_TYPE, renderAgentMessage);
 }

@@ -1,27 +1,16 @@
 /**
- * `octocode context`: what agents read of skills and MCP servers, outside a session. `list` shows, for the user folder
- * and for the project of the working directory (`contextOptimizationDirs`), each skill's source and optimized
- * description and each MCP server's generated file; `check` and `apply` validate and store skill rewrites, each in the
- * store that records the skill (the project's first, as a session reads them). The `octocode-context-optimization`
- * skill drives these commands; MCP server files are rewritten with the skill's scripts.
+ * `octocode context`: what agents read of skills, outside a session. `list` shows, for the user folder and for the
+ * project of the working directory (`contextOptimizationDirs`), each skill's source and optimized description;
+ * `check` and `apply` validate and store skill rewrites, each in the store that records the skill (the project's
+ * first, as a session reads them). The `octocode-context-optimization` skill drives these commands.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { prepareAgentDb } from "../../storage/database.ts";
-import {
-	generatedDir,
-	readGenerated,
-	withPluginServers,
-	hostTrust,
-	loadMcpConfig,
-	presetEntries,
-	browserPreset,
-	recommendedPresets,
-} from "../../../../mcp/src/api.ts";
+import { hostTrust } from "../../../../mcp/src/api.ts";
 import { APP_NAME } from "../../config.ts";
-import { contextSizeWarnings, generatedInstructionChars } from "../../core/context-budget.ts";
+import { contextSizeWarnings } from "../../core/context-budget.ts";
 import { loadProjectContextFiles } from "../../core/resource-loader/context-files.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { contextOptimizationDirs } from "../shared/home.ts";
@@ -41,8 +30,7 @@ const CONTEXT_USAGE = `Usage:
   ${APP_NAME} context apply --overrides <file> [--optimized-by <model>]
 
 Overrides file: { "skills": { "<skill name>": "<description agents read>" } }
-Run in the project whose skills you optimize; user-level skills are shared by every project.
-MCP server files: ${APP_NAME} mcp compact --help`;
+Run in the project whose skills you optimize; user-level skills are shared by every project.`;
 
 /** The skills listing's share of the prompt (`formatSkillsForPrompt`), for the size line. */
 const SKILLS_LISTING_BUDGET_CHARS = 8_000;
@@ -70,83 +58,19 @@ function scopes(options: ContextCommandOptions): Scope[] {
 	].map((scope) => ({ ...scope, store: readSkillsStore(scope.dir) }));
 }
 
-/** A generated file's stem for a server name (the store's own rule: characters outside `\w.-` become `_`). */
-const serverStem = (name: string): string => name.replace(/[^\w.-]/g, "_");
-
 /**
- * The stems of the servers a session here configures: defaults, every loaded MCP file and enabled plugins, read through
- * `packages/mcp`'s loader without connecting to any server.
- */
-function configuredServerStems(options: ContextCommandOptions): Set<string> {
-	const place = {
-		agentDir: options.agentDir,
-		cwd: options.cwd,
-		projectTrusted: hostTrust().folderTrusted(options.cwd),
-	};
-	const loaded = loadMcpConfig({
-		...place,
-		defaults: presetEntries([...recommendedPresets(), browserPreset()]),
-	});
-	return new Set(withPluginServers(loaded, place).servers.map((server) => serverStem(server.name)));
-}
-
-function mcpFiles(
-	dir: string,
-	configured: ReadonlySet<string>,
-): Array<{
-	server: string;
-	chars: number;
-	instructionChars: number;
-	optimized: boolean;
-	generatedAt: string;
-	stale: boolean;
-}> {
-	let names: string[] = [];
-	try {
-		names = readdirSync(dir).filter((file) => file.endsWith(".json"));
-	} catch {
-		return [];
-	}
-	return names.flatMap((file) => {
-		const server = file.slice(0, -".json".length);
-		const generated = readGenerated(dir, server);
-		if (!generated) return [];
-		const { overrides, generatedAt } = generated.meta;
-		// No configured server has this name any more (it was removed or renamed): the record only costs store space.
-		return [
-			{
-				server,
-				chars: generated.text.length,
-				instructionChars: generatedInstructionChars(generated.text),
-				optimized: overrides !== undefined,
-				generatedAt,
-				stale: !configured.has(server),
-			},
-		];
-	});
-}
-
-/**
- * What a session in this folder would be warned about in `/context`: a configured server whose recorded instructions,
- * or the project's context files together, pass 1% of the default window. The project's record of a server comes
- * first, as a session reads it. A folder that cannot be read warns about nothing.
+ * What a session in this folder would be warned about in `/context`: the project's context files together pass 1% of
+ * the default window. A folder that cannot be read warns about nothing.
  */
 function sizeWarnings(options: ContextCommandOptions): string[] {
 	try {
-		const configured = configuredServerStems(options);
-		const servers = new Map<string, number>();
-		for (const scope of scopes(options)) {
-			const dir = scope.name === "user" ? generatedDir(options.agentDir) : join(scope.dir, "mcp");
-			for (const file of mcpFiles(dir, configured))
-				if (!file.stale && !servers.has(file.server)) servers.set(file.server, file.instructionChars);
-		}
 		const files = loadProjectContextFiles({
 			cwd: options.cwd,
 			agentDir: options.agentDir,
 			projectTrusted: hostTrust().folderTrusted(options.cwd),
 		});
 		return contextSizeWarnings({
-			servers: [...servers].map(([server, chars]) => ({ server, chars })),
+			servers: [],
 			contextFilesChars: files.reduce((sum, file) => sum + file.content.length, 0),
 		});
 	} catch {
@@ -171,13 +95,10 @@ function skillRows(store: SkillsStore) {
 }
 
 function list(options: ContextCommandOptions, json: boolean, log: (line: string) => void): number {
-	const configured = configuredServerStems(options);
 	const rows = scopes(options).map((scope) => ({
 		scope: scope.name,
 		dir: scope.dir,
 		skills: skillRows(scope.store),
-		// The user folder's MCP files are `generatedDir`, which also moves an earlier release's folder there.
-		mcp: mcpFiles(scope.name === "user" ? generatedDir(options.agentDir) : join(scope.dir, "mcp"), configured),
 	}));
 	if (json) {
 		log(JSON.stringify({ scopes: rows }, null, 2));
@@ -198,11 +119,7 @@ function list(options: ContextCommandOptions, json: boolean, log: (line: string)
 			log(
 				`  skill ${skill.name}  ${skill.optimized ? "optimized" : "source"}  ${skill.sourceChars} → ${skill.chars}${skill.stale ? "  stale (skill file no longer exists)" : ""}`,
 			);
-		for (const file of row.mcp)
-			log(
-				`  mcp ${file.server}  ${file.optimized ? "optimized" : "source"}  ${file.chars} characters${file.stale ? "  stale (no configured MCP server has this name)" : ""}`,
-			);
-		if (!row.skills.length && !row.mcp.length) log("  (nothing recorded)");
+		if (!row.skills.length) log("  (nothing recorded)");
 	}
 	return 0;
 }

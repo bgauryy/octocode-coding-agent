@@ -1,4 +1,4 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 
 /** The heading of a summary's closing label, and the line inside it that lists keywords (the archive index reads both). */
 export const TLDR_HEADING = "## TL;DR";
@@ -27,7 +27,7 @@ export function summarySection(summary: string, heading: string): string[] {
  * decided, what went wrong and where the work stopped. What code attaches after the summary (file lists, saved
  * results, the user's own messages, recovery pointers) is not asked for.
  */
-export const SUMMARY_CHECKPOINT_FORMAT = renderInstruction("workflows/compaction/checkpoint-format.md", {
+export const SUMMARY_CHECKPOINT_FORMAT = renderPrompt("workflows/compaction/checkpoint-format.md", {
 	goalHeading: GOAL_HEADING,
 	tldrHeading: TLDR_HEADING,
 	topicsLabel: TOPICS_LABEL,
@@ -38,5 +38,5 @@ export const SUMMARY_CHECKPOINT_FORMAT = renderInstruction("workflows/compaction
  * target to give.
  */
 export function summarySizeTarget(tokens: number): string {
-	return tokens > 0 ? renderInstruction("workflows/compaction/size-target.md", { tokens }) : "";
+	return tokens > 0 ? renderPrompt("workflows/compaction/size-target.md", { tokens }) : "";
 }

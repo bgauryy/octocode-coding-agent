@@ -33,6 +33,8 @@ export interface ShellMutation {
 	afterUnjoinedCd?: true;
 	/** Why an awk call is outside its fail-safe allowlist (`awk-program.ts`): only the read-only role and the isolated-tree guard act on it, so other modes read awk as they did before it (its in-place edit, not its program). */
 	awkUnread?: string;
+	/** Why a variable the line sets (`PATH=/tmp/x cat f`, `export X=1`) or a `-v` subscript test (`programSwap`) may run a program or code no command names: only the read-only role, the isolated-tree guard and bash ordering act on it, since in other modes the command it reaches is judged as written. */
+	programSwap?: string;
 	/** The parse gave up on (part of) the command: no parser, too large, timed out, or syntax it does not know. Its `writes` may be missing some. */
 	unparsed: boolean;
 }

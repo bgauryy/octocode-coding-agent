@@ -108,6 +108,19 @@ export function liveMembers(members: Member[], now: number): Member[] {
 	return members.filter((member) => now - member.updatedAt <= UNRESPONSIVE_MS);
 }
 
+/**
+ * The other main sessions working in this session's checkout: live rows with no parent, oldest first. Worktrees of one
+ * repository share the team database, so a session in another worktree (another `checkout`) is left out, and with no
+ * checkout of its own this session shows none.
+ */
+export function peers(members: Member[], selfId: string | undefined, now: number): Member[] {
+	const home = members.find((member) => member.id === selfId)?.checkout;
+	if (!home) return [];
+	return liveMembers(members, now)
+		.filter((member) => !member.parentId && member.id !== selfId && member.checkout === home)
+		.sort((a, b) => a.joinedAt - b.joinedAt);
+}
+
 /** The agents of this session the panel shows at `now`: `others` in team order, and `tree` with depth and finish time. */
 export function roster(
 	members: Member[],

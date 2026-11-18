@@ -1,13 +1,13 @@
 import type { OptionRole, Question, QuestionOption } from "@octocodeai/octocode-contracts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionUIAskOptions } from "../../core/features/types.ts";
 import { type AskView, isRecommended } from "../shared/ask-view.ts";
 import { type AskQuestion, SUBMIT_PICKS, TYPE_OWN } from "./dialog/answers.ts";
+import { autoSeconds } from "./countdown.ts";
 
 /** Builders for the one `Question` and its render projection `viewOf`; `decode.ts` reads the replies back. */
 
 /** How a host asks: `signal` dismisses the dialogs, `blocking` marks work waiting on the person, `timeout` is milliseconds, `header` a subagent's permission header. */
-export type AskOptions = ExtensionUIAskOptions;
+export type { AskOptions } from "../../core/features/types.ts";
 
 const YES = "Yes";
 const NO = "No";
@@ -22,9 +22,10 @@ const writeInOf = (question: string): NonNullable<Question["writeIn"]> => ({ lab
  * askUser's questions as `Question`s with ids `q1`, `q2`, …: text when it has no options, multi when `multiSelect`, else
  * choice. A label ending in "(Recommended)" marks its option recommended (the label keeps the suffix, as the model wrote
  * it). The write-in row is offered as today. A forwarded child question leads `question` with its label and text, as the
- * answer line reads it, and travels again as the body so hosts can identify the forwarded content.
+ * answer line reads it, and travels again as the body so hosts can identify the forwarded content. `timeoutSeconds` is
+ * askUser's `timeout`, carried by each question that offers options.
  */
-export function fromAskUser(questions: readonly AskQuestion[]): Question[] {
+export function fromAskUser(questions: readonly AskQuestion[], timeoutSeconds?: number): Question[] {
 	return questions.map((q, index): Question => {
 		const id = `q${index + 1}`;
 		const header = q.header ? { header: q.header } : {};
@@ -36,6 +37,7 @@ export function fromAskUser(questions: readonly AskQuestion[]): Question[] {
 			question: q.question,
 			...header,
 			...body,
+			...(timeoutSeconds ? { timeoutSeconds } : {}),
 			options: q.options.map((option, at) => ({
 				id: optionId(at),
 				label: option.label,
@@ -151,6 +153,7 @@ export function viewOf(q: Question): AskView {
 		options: rows,
 		...(q.writeIn !== undefined ? { writeIn: q.writeIn } : {}),
 		...(q.type === "multi" ? { multiSelect: true } : {}),
+		...(autoSeconds([q]) ? { timeoutSeconds: autoSeconds([q]) } : {}),
 	};
 }
 

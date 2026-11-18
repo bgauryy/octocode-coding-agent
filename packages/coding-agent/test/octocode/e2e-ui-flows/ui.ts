@@ -18,13 +18,24 @@ export const KEY = {
 
 /** A model turn that streams nothing until the user aborts it (or `release()` is called). */
 export function hang(text = "released") {
-	let release: () => void = () => {};
+	// A release that comes before the model is called (the run is still preparing) answers that call at once.
+	let released = false;
+	let release: () => void = () => {
+		released = true;
+	};
+	const state = { started: false };
 	const step = (_context: unknown, options?: { signal?: AbortSignal }) =>
 		new Promise<ReturnType<typeof fauxAssistantMessage>>((resolve) => {
+			state.started = true;
 			release = () => resolve(fauxAssistantMessage(text));
+			if (released) return release();
 			options?.signal?.addEventListener("abort", release, { once: true });
 		});
-	return Object.assign(step, { release: () => release() });
+	return Object.assign(step, {
+		release: () => release(),
+		/** True once the run reached the model: its prompt is in the session. */
+		started: () => state.started,
+	});
 }
 
 export interface UiHarness extends InteractiveHarness {

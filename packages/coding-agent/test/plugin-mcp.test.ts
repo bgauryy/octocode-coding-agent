@@ -4,14 +4,16 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { inspectPluginMcp, loadConfiguredPluginMcp } from "../src/core/plugin-mcp.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createMcpExtension } from "../../mcp/src/index.ts";
+import { createMcpFeature } from "../../mcp/src/index.ts";
 import { getMcpHookCaller } from "../../mcp/src/hook-caller.ts";
-import type { ExtensionAPI } from "../src/core/features/types.ts";
+import type { FeatureSetup } from "../src/core/features/types.ts";
 import { createInMemoryTransportPair } from "../../mcp/src/client/testing/index.ts";
 import { LATEST_PROTOCOL_VERSION } from "../../mcp/src/client/index.ts";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { createHarness } from "./suite/harness.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -99,19 +101,18 @@ it("registers enabled plugin servers through the existing resource runtime and r
 	const loader = new DefaultResourceLoader({
 		cwd: f.root,
 		agentDir,
-		nativeFeatures: false,
 	});
 	await loader.reload();
-	expect(loader.getExtensions().errors).toEqual([]);
+	expect(loader.getFeatures().errors).toEqual([]);
 	expect(
 		loader
-			.getExtensions()
+			.getFeatures()
 			.runtime.mcpServers.list()
 			.map((server) => server.name),
 	).toContain("plugin:review-kit:check");
 	fs.writeFileSync(settingsFile, JSON.stringify({ plugins: [{ ...entry, enabled: false }] }));
 	await loader.reload();
-	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
+	expect(loader.getFeatures().runtime.mcpServers.list()).toEqual([]);
 });
 
 it("skips plugin servers quietly when MCP is disabled", async () => {
@@ -119,10 +120,10 @@ it("skips plugin servers quietly when MCP is disabled", async () => {
 	const agentDir = path.join(f.root, "agent");
 	fs.mkdirSync(agentDir);
 	fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ plugins: [f.entry] }));
-	const loader = new DefaultResourceLoader({ cwd: f.root, agentDir, nativeFeatures: false, disabledFeatures: ["mcp"] });
+	const loader = new DefaultResourceLoader({ cwd: f.root, agentDir, disabledFeatures: ["mcp"] });
 	await loader.reload();
-	expect(loader.getExtensions().errors).toEqual([]);
-	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
+	expect(loader.getFeatures().errors).toEqual([]);
+	expect(loader.getFeatures().runtime.mcpServers.list()).toEqual([]);
 });
 
 it("connects an enabled plugin server through the MCP owner and makes it callable by hooks", async () => {
@@ -153,26 +154,25 @@ it("connects an enabled plugin server through the MCP owner and makes it callabl
 		void pair.server.send({ jsonrpc: "2.0", id: message.id, result });
 	});
 	await pair.server.start();
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const loader = new DefaultResourceLoader({
 		cwd: f.root,
 		agentDir,
-		nativeFeatures: false,
-		extensionFactories: [
+		features: testFeatures([
 			(host) => {
 				api = host;
-				return createMcpExtension({
+				return createMcpFeature({
 					loadConfig: () => ({ servers: [], errors: [] }),
 					createTransport: () => pair.client,
 				})(host);
 			},
-		],
+		]),
 	});
 	await loader.reload();
 	const harness = await createHarness({ resourceLoader: loader });
 	try {
-		await harness.session.bindExtensions({});
-		const result = await getMcpHookCaller(api.events)!({
+		await harness.session.bindFeatures({});
+		const result = await getMcpHookCaller(api.channels)!({
 			server: "plugin:review-kit:check",
 			tool: "policy",
 			input: {},
@@ -183,7 +183,7 @@ it("connects an enabled plugin server through the MCP owner and makes it callabl
 		expect(result.content).toEqual([{ type: "text", text: '{"decision":"block","reason":"plugin policy"}' }]);
 		expect(mcpNamespace("plugin:review-kit:check")).toBe("mcp__plugin_review-kit_check");
 		expect(mcpNamespace("existing-server")).toBe("mcp__existing_server");
-		expect(api.getAllTools().map((tool) => tool.name)).toContain("mcp__plugin_review-kit_check__policy");
+		expect(api.tools.getAll().map((tool) => tool.name)).toContain("mcp__plugin_review-kit_check__policy");
 	} finally {
 		harness.cleanup();
 		await pair.client.close();
@@ -203,15 +203,14 @@ it("loads project plugin servers only after project settings are trusted", async
 		cwd: f.root,
 		agentDir,
 		settingsManager,
-		nativeFeatures: false,
 	});
 	await loader.reload();
-	expect(loader.getExtensions().runtime.mcpServers.list()).toEqual([]);
+	expect(loader.getFeatures().runtime.mcpServers.list()).toEqual([]);
 	settingsManager.setProjectTrusted(true);
 	await loader.reload();
 	expect(
 		loader
-			.getExtensions()
+			.getFeatures()
 			.runtime.mcpServers.list()
 			.map((server) => server.name),
 	).toEqual(["plugin:review-kit:check"]);
@@ -244,23 +243,24 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 	const settings = SettingsManager.inMemory({
 		plugins: [f.entry],
 	});
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const loader = new DefaultResourceLoader({
 		cwd: f.root,
 		agentDir,
 		settingsManager: settings,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	await loader.reload();
-	expect(loader.getExtensions().extensions.some((extension) => extension.path === "builtin:mcp")).toBe(true);
+	expect(loader.getFeatures().features.some((feature) => feature.path === "builtin:mcp")).toBe(true);
 	const harness = await createHarness({ resourceLoader: loader });
 	try {
-		await harness.session.bindExtensions({});
-		const caller = getMcpHookCaller(api.events);
+		await harness.session.bindFeatures({});
+		const caller = getMcpHookCaller(api.channels);
 		expect(caller).toBeTypeOf("function");
 		const result = await caller!({
 			server: "plugin:review-kit:check",
@@ -272,8 +272,8 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
 		});
 		expect(result.content).toEqual([{ type: "text", text: "built-in owner reached" }]);
 	} finally {
-		await harness.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
-		expect(getMcpHookCaller(api.events)).toBeUndefined();
+		await harness.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
+		expect(getMcpHookCaller(api.channels)).toBeUndefined();
 		harness.cleanup();
 	}
 }, 15_000);

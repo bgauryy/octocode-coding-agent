@@ -12,7 +12,7 @@ import type { Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../../theme/theme.ts";
 import type { SourceInfo } from "../../source-info.ts";
-import type { ExtensionToolContext } from "./context.ts";
+import type { ToolContext } from "./context.ts";
 
 // Tool Types
 // ============================================================================
@@ -89,7 +89,7 @@ export type ToolExposure = "direct" | "model-only" | "hidden";
 
 /**
  * Hints about what a tool does, with the meaning of MCP tool annotations. They come from the tool's
- * author and are not verified; permission extensions can use them to decide which calls to confirm.
+ * author and are not verified; permission features can use them to decide which calls to confirm.
  */
 export interface ToolAnnotations {
 	/** The tool does not modify its environment. */
@@ -174,7 +174,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	/**
 	 * One short line on what the tool is for, plus when to use it where that decides the choice between tools (how to
 	 * call it belongs in the description), listed as `- name: snippet` in the `<tools>` section of the system prompt, in
-	 * declaration order, with or without a custom prompt. Every native tool sets one; SDK and extension tools may. A tool
+	 * declaration order, with or without a custom prompt. Every native tool sets one; SDK and feature tools may. A tool
 	 * without one is not listed and the section is absent when no active tool has one. MCP tools are described in
 	 * `<mcps>`, so a snippet on one is ignored.
 	 */
@@ -246,7 +246,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	/**
 	 * Tools this one needs beside it: while it is active they are registered and active too, whatever `--tools`, the
 	 * `defaultTools` setting or a deselection say. The operator's `--exclude-tools` and a tool policy still remove them.
-	 * Honored only on native and base tools; an extension or SDK tool's companions follow the selection like any tool.
+	 * Honored only on native and base tools; a feature or SDK tool's companions follow the selection like any tool.
 	 */
 	companionTools?: readonly string[];
 
@@ -278,13 +278,17 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 		params: Static<TParams>,
 		signal: AbortSignal | undefined,
 		onUpdate: AgentToolUpdateCallback<TDetails> | undefined,
-		ctx: ExtensionToolContext,
+		ctx: ToolContext,
 	): Promise<AgentToolResult<TDetails>>;
 
 	/** How every surface (terminal, web, export, ACP) draws calls to this tool; see {@link ToolDisplayFunction}. */
 	display?(input: ToolDisplayInput<Static<TParams>, TDetails>): ToolDisplay;
 
-	/** Custom rendering for tool call display */
+	/**
+	 * Custom rendering for tool call display. Return TUI components (`Text`, `Lines`, `Container`, `Box`, `Markdown`) or a
+	 * class declared with `trackRenderChanges` that calls `renderChanged(this)` when its rows change: any other component
+	 * makes the whole row render again on every frame, off screen too. The same holds for `renderResult`.
+	 */
 	renderCall?: (args: Static<TParams>, theme: Theme, context: ToolRenderContext<TState, Static<TParams>>) => Component;
 
 	/** Custom rendering for tool result display */

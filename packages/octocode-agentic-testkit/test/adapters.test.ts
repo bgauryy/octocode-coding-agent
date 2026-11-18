@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { octocodecodeAdapter, octocodecodeAvailable } from "../src/adapters/octocodecode/index.ts";
 import { referenceAdapter } from "../src/adapters/reference/index.ts";
 import { script } from "../src/gateway.ts";
-import { gateway } from "./helpers.ts";
+import { gateway, mcp, searchTool } from "./helpers.ts";
 
 /** A stand-in CLI: reports where it was pointed to, so the adapter's wiring is observable without the real bundle. */
 function fakeBundle(): string {
@@ -69,10 +69,27 @@ describe("reference adapter", () => {
 		expect(gw.trace.requests).toHaveLength(1);
 	});
 
-	it("rejects mcpUrls instead of silently ignoring them", async () => {
-		const gw = await gateway();
-		await expect(
-			referenceAdapter({ trace: gw.trace }).start({ gatewayUrl: gw.url, mcpUrls: { docs: "http://x" } }),
-		).rejects.toThrow(/mcp/);
+	it("connects mcpUrls as MCP clients", async () => {
+		const gw = await gateway({
+			responder: script([{ toolCalls: [{ name: "search", args: { query: "x" } }] }, { text: "done" }]),
+		});
+		const docs = mcp(gw, "docs", [searchTool]);
+		const session = await referenceAdapter({ trace: gw.trace }).start({
+			gatewayUrl: gw.url,
+			mcpUrls: { docs: await docs.listen() },
+		});
+		await session.run("find x");
+		await session.close();
+		expect(gw.trace).toHaveCalledMcp("docs", "search", { args: { query: "x" }, before: "answer" });
+	});
+
+	it("keeps one conversation across runs with conversation: true", async () => {
+		const gw = await gateway({ responder: script([{ text: "first" }, { text: "second" }]) });
+		const session = await referenceAdapter({ trace: gw.trace, conversation: true }).start({ gatewayUrl: gw.url });
+		await session.run("one");
+		const r = await session.run("two");
+		await session.close();
+		expect(r.messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user", "assistant"]);
+		expect(gw.trace).toKeepStablePrefix();
 	});
 });

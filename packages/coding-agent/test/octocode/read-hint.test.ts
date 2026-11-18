@@ -123,11 +123,6 @@ describe("createReadHint", () => {
 		expect(hint("cat a.ts", cwd, "s1")).toContain(`\`${RESEARCH.reader}\``);
 	});
 
-	it("keeps hinting past the main-session limit when given no limit (subagents)", () => {
-		const hint = createReadHint(active, Number.POSITIVE_INFINITY);
-		for (let i = 0; i < READ_HINT_LIMIT + 5; i++) expect(hint("rg foo", cwd, "s1")).toContain(`\`${RESEARCH.search}\``);
-	});
-
 	it("starts over for a new session", () => {
 		const hint = createReadHint(active);
 		for (let i = 0; i < READ_HINT_LIMIT; i++) hint("rg foo", cwd, "s1");

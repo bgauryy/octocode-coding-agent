@@ -7,7 +7,7 @@ import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-commo
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog, type BacklogOptions } from "../../src/octocode/backlog/context.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
-import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
+import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
 import { oneWrite } from "../../src/octocode/backlog/tool-support.ts";
 import * as liveness from "../../src/octocode/shared/session-liveness.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -75,7 +75,7 @@ describe("backlog step completion reporting", () => {
 		});
 		expect(snapshot.items[0].state).toBe("ongoing");
 		const display = t.tool.display({ args: { op: "step", id: first.ref }, status: "completed", result });
-		expect(display.outcome.text).toContain("T1 → done · 1/3 steps done");
+		expect(display.summary).toContain("T1 → done · 1/3 steps done");
 		await t.call({ op: "step", id: second.ref, note: "Passed: verification" });
 		expect(
 			t.store.tasks.list({ item: item.ref }).every((step) => step.state === "done" || step.state === "dropped"),

@@ -25,7 +25,6 @@ type Host = Pick<
 	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
-	| "hiddenThinkingLabel"
 	| "uiStore"
 	| "outputPad"
 	| "pendingTools"
@@ -106,13 +105,11 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					undefined,
 					host.uiStore.getState().view.hideThinking,
 					host.getMarkdownThemeWithSettings(),
-					host.hiddenThinkingLabel,
+					undefined,
 					host.outputPad,
 					host.getMarkdownTransformers(),
 					contentOptions(),
 				);
-				// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
-				component.setMouseHint(host.ui.mode === "fullscreen");
 				component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 				assistants.set(message.id, component);
 				host.chatContainer.addChild(component);

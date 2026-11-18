@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { formatClock } from "../../shared/format.ts";
 import { headerText } from "../../shared/fence.ts";
@@ -11,6 +11,8 @@ import type { ExternalAdmission, TurnCeiling } from "./contracts.ts";
  * field here is a claim. The transport is the one thing this process knows.
  */
 export interface CallerClaim {
+	/** The sender's team name (`shy-barnacle`), as it says it. */
+	team?: string;
 	name?: string;
 	instanceId?: string;
 	pid?: number;
@@ -28,6 +30,8 @@ export interface ExternalFacts extends CallerClaim {
 	replyRequired?: boolean;
 	/** The name of the running instance the claimed caller named: what it can be messaged at. */
 	replyTo?: string;
+	/** The claimed team name when exactly one live member of this team has it and runs that pid: it reaches the caller too. */
+	teamReply?: string;
 	/** That instance confirmed on its own registered socket that this call is its own (`bridge/verify.ts`). */
 	verified?: boolean;
 	/** Another live record carries that instance's name, so its label adds the instance id. */
@@ -42,6 +46,7 @@ export function callerFrom(params: Record<string, unknown>): CallerClaim {
 		typeof value === "string" && value.trim() ? headerText(value, max) : undefined;
 	const pid = Number.isSafeInteger(given.pid) && (given.pid as number) > 0 ? (given.pid as number) : undefined;
 	const claim = {
+		team: text(given.team, 64),
 		name: text(given.name, 64),
 		instanceId: text(given.instanceId, 64),
 		pid,
@@ -56,15 +61,21 @@ export function externalFacts(
 	transport: ExternalFacts["transport"],
 	waiting: boolean,
 	replyRequired = false,
+	members: readonly unknown[] = [],
 ): ExternalFacts {
 	// Only a running instance can be replied to, by the name its own record (`<id>.json`) holds: the hint repeats no text
 	// the caller wrote. The claim must be self-consistent (its pid is the named instance's, as `external/peers.ts` sends it).
 	const record = caller.instanceId ? readInstance(apiDir(), caller.instanceId) : undefined;
 	const instance = record?.pid === caller.pid ? record : undefined;
 	const replyTo = instance?.name ?? instance?.id;
+	// The claimed team name is offered back only when this team's own roster agrees: one live member of that name, running that pid.
+	const named = caller.team
+		? members.filter((member) => isRecord(member) && member.id === caller.team && member.pid === caller.pid)
+		: [];
 	return {
 		from,
 		...caller,
+		...(named.length === 1 && caller.team ? { teamReply: caller.team } : {}),
 		...(transport ? { transport } : {}),
 		waiting,
 		...(replyRequired ? { replyRequired } : {}),
@@ -99,8 +110,9 @@ export function admission(facts: ExternalFacts, text: string, ceiling?: TurnCeil
 /** The header the model reads above the fence. Claimed values are quoted: they are the sender's words, on one line. */
 export function externalHeader(facts: ExternalFacts, at: number): string {
 	const quote = (value: string | undefined) => (value === undefined ? undefined : JSON.stringify(value));
-	return renderInstruction("notices/mail/external-message.md", {
+	return renderPrompt("notices/mail/external-message.md", {
 		socket: facts.transport === "socket",
+		team: quote(facts.team),
 		from: quote(facts.from),
 		// A sender that goes by its process name needs saying only once.
 		name: facts.name === facts.from ? undefined : quote(facts.name),
@@ -113,9 +125,9 @@ export function externalHeader(facts: ExternalFacts, at: number): string {
 
 /** What the reader can do about it, below the fence. */
 export function externalFooter(facts: ExternalFacts): string {
-	return renderInstruction("notices/mail/external-reply.md", {
+	return renderPrompt("notices/mail/external-reply.md", {
 		waiting: facts.waiting,
 		replyRequired: facts.replyRequired === true && facts.replyTo !== undefined,
-		replyTo: facts.replyTo,
-	});
+		replyTo: facts.teamReply ?? facts.replyTo,
+	}).trim();
 }

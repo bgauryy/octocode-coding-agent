@@ -1,11 +1,15 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
+import { sessionPhaseOf, type SessionPhaseStore } from "../shared/session-phase.ts";
 import { type AgentEvent, describeEvent } from "./catalog.ts";
 
 /** What the gate needs of the host; a source that only sends (team mail) has no `appendEntry`, and then no row is drawn. */
-type GateApi = Pick<ExtensionAPI, "sendMessage"> & Partial<Pick<ExtensionAPI, "appendEntry">>;
-type Message = Parameters<ExtensionAPI["sendMessage"]>[0];
-type SendOptions = NonNullable<Parameters<ExtensionAPI["sendMessage"]>[1]>;
+type GateApi = {
+	readonly session: Pick<FeatureSetup["session"], "sendMessage"> &
+		Partial<Pick<FeatureSetup["session"], "appendEntry">>;
+};
+type Message = Parameters<FeatureSetup["session"]["sendMessage"]>[0];
+type SendOptions = NonNullable<Parameters<FeatureSetup["session"]["sendMessage"]>[1]>;
 
 /** The session entry (never sent to the model) that shows one batch of wake events as a single row. */
 export const WAKE_TYPE = "octocode-wake";
@@ -27,7 +31,18 @@ interface Pending extends WakeLine {
 	sends: number;
 }
 
+/**
+ * A wake sent and not yet taken up by a run: its labels, and whether its send has settled. A send made while a run is in
+ * progress or settling resolves before the turn it asks for can start (the host queues it, or defers it until the
+ * `agent_settled` handlers return), so a settled send counts until a run starts or the settle ends (`agent_settle_end`).
+ */
+interface Sent {
+	labels: string[];
+	answered: boolean;
+}
+
 interface Held {
+	labels: string[];
 	message: Message;
 	options: SendOptions;
 	done: { resolve: () => void; reject: (error: unknown) => void };
@@ -55,6 +70,8 @@ export class WakeGate {
 	private readonly now: () => number;
 	private busy = false;
 	private inRun = false;
+	/** Between `agent_settled` and `agent_settle_end`: sends made now are deferred until the settle ends. */
+	private settling = false;
 	/** Items the current (or just ended) run wrote with its tool calls. */
 	private wrote = new Set<string>();
 	/** Wake events since the last run segment started, one line per event key. */
@@ -64,9 +81,13 @@ export class WakeGate {
 	private held: Held[] = [];
 	private timer: NodeJS.Timeout | undefined;
 	private dropped = 0;
+	/** The wakes sent whose turn has not begun, for the session's phase (`shared/session-phase.ts`). */
+	private readonly sent = new Set<Sent>();
+	private readonly phase: SessionPhaseStore;
 
 	constructor(api: GateApi, options: { holdMs?: () => number; now?: () => number } = {}) {
 		this.api = api;
+		this.phase = sessionPhaseOf(api);
 		this.holdMs = options.holdMs ?? (() => 0);
 		this.now = options.now ?? Date.now;
 	}
@@ -77,7 +98,7 @@ export class WakeGate {
 	}
 
 	/**
-	 * Sends `message` like `api.sendMessage`. A message that wakes the session (`wakes`: its own turn trigger by default, or
+	 * Sends `message` like `api.session.sendMessage`. A message that wakes the session (`wakes`: its own turn trigger by default, or
 	 * the batch's when only the batch's last send triggers) is also listed in the next woken batch's row; an event whose key
 	 * the batch already lists is listed once, and a send that fails takes its line back. Returns what `sendMessage` returns;
 	 * a held send resolves or rejects when it is finally sent.
@@ -94,17 +115,18 @@ export class WakeGate {
 				? (Array.isArray(events) ? events : [events]).map((event) => this.record(event))
 				: [];
 		const hold = wakes && !this.busy && this.held.length === 0 ? this.holdMs() : 0;
+		const labels = listed.map((line) => line.label);
 		let sending: void | Promise<void>;
+		let direct = false;
 		try {
-			sending =
-				hold <= 0 && this.held.length === 0
-					? this.api.sendMessage(message, options)
-					: this.hold(message, options, hold);
+			direct = hold <= 0 && this.held.length === 0;
+			sending = direct ? this.api.session.sendMessage(message, options) : this.hold(message, options, hold, labels);
 		} catch (error) {
 			this.unlist(listed);
 			throw error;
 		}
 		if (isPromise(sending)) sending.then(undefined, () => this.unlist(listed));
+		if (direct) this.track(labels, sending);
 		return sending;
 	}
 
@@ -127,10 +149,11 @@ export class WakeGate {
 	}
 
 	/** Queues a send for the end of the hold window (which the first held wake opens); later sends keep their order behind it. */
-	private hold(message: Message, options: SendOptions, ms: number): Promise<void> {
+	private hold(message: Message, options: SendOptions, ms: number, labels: string[]): Promise<void> {
 		const sent = new Promise<void>((resolve, reject) =>
-			this.held.push({ message, options, done: { resolve, reject } }),
+			this.held.push({ labels, message, options, done: { resolve, reject } }),
 		);
+		this.publish();
 		// A caller that ignores the result must not leave an unhandled rejection; one that awaits it still sees it.
 		sent.catch(() => undefined);
 		if (!this.timer) {
@@ -152,6 +175,7 @@ export class WakeGate {
 		const batch = this.held;
 		this.held = [];
 		const wake = !ending && batch.some((each) => each.options.triggerTurn === true);
+		const labels = wake ? batch.flatMap((each) => each.labels) : [];
 		let reported = false;
 		const failed = (each: Held, error: unknown) => {
 			if (ending && !reported) {
@@ -163,18 +187,58 @@ export class WakeGate {
 		batch.forEach((each, index) => {
 			const options = { ...each.options, triggerTurn: wake && index === batch.length - 1 };
 			try {
-				const sending = this.api.sendMessage(each.message, options);
+				const sending = this.api.session.sendMessage(each.message, options);
+				if (index === batch.length - 1) this.track(labels, sending);
 				if (isPromise(sending)) sending.then(each.done.resolve, (error: unknown) => failed(each, error));
 				else each.done.resolve();
 			} catch (error) {
 				failed(each, error);
 			}
 		});
+		this.publish();
+	}
+
+	/** Publishes the wakes held for the window and those sent whose turn has not begun. */
+	private publish(): void {
+		this.phase.setWakes("gate", [
+			...this.held.flatMap((each) => each.labels),
+			...[...this.sent].flatMap((each) => each.labels),
+		]);
+	}
+
+	/**
+	 * A wake was sent: it counts until a run starts (`segmentStarted`) or its send is rejected. A send that settled without a
+	 * run stops counting at once while the session is idle, since nothing will start it; during a run or its settle, when
+	 * that settle ends (`settleEnded`).
+	 */
+	private track(labels: string[], sending: void | Promise<void>): void {
+		if (labels.length === 0) return;
+		const entry: Sent = { labels, answered: false };
+		this.sent.add(entry);
+		this.publish();
+		const end = () => {
+			if (this.sent.delete(entry)) this.publish();
+		};
+		const answered = () => {
+			if (!this.sent.has(entry)) return;
+			if (this.busy || this.settling) entry.answered = true;
+			else end();
+		};
+		if (isPromise(sending)) sending.then(answered, end);
+		else answered();
+	}
+
+	/** Forgets the sent wakes: a run began, so what they started has begun. */
+	private landed(): void {
+		if (this.sent.size === 0) return;
+		this.sent.clear();
+		this.publish();
 	}
 
 	/** A run segment starts: it opens a run (resetting what the last one did) and gets the row for the wakes behind it. */
 	segmentStarted(showRow: boolean): void {
 		this.busy = true;
+		this.landed();
 		if (!this.inRun) {
 			this.inRun = true;
 			this.wrote = new Set();
@@ -182,13 +246,26 @@ export class WakeGate {
 		const cutoff = this.now() - PENDING_MAX_AGE_MS;
 		const lines = this.pending.filter((line) => line.at >= cutoff).map(({ kind, label }) => ({ kind, label }));
 		this.pending = [];
-		if (showRow && lines.length > 0) this.api.appendEntry?.(WAKE_TYPE, { events: lines });
+		if (showRow && lines.length > 0) this.api.session.appendEntry?.(WAKE_TYPE, { events: lines });
 	}
 
 	/** The run settled; `continues` is true while a queued message starts its next segment. What it did stays readable until the next run. */
 	settled(continues: boolean): void {
 		this.busy = continues;
 		this.inRun = continues;
+		this.settling = true;
+	}
+
+	/**
+	 * The settle ended (`agent_settle_end`): the sends it deferred have run, and a run they started has begun. A settled send
+	 * still listed started nothing, so it stops counting; while a run continues, its own settle decides.
+	 */
+	settleEnded(): void {
+		this.settling = false;
+		if (this.busy) return;
+		let changed = false;
+		for (const entry of this.sent) if (entry.answered && this.sent.delete(entry)) changed = true;
+		if (changed) this.publish();
 	}
 
 	/** A tool that writes items starts: its call id and the item refs it names. */
@@ -237,6 +314,7 @@ export class WakeGate {
 	 */
 	dispose(): void {
 		if (this.held.length > 0) this.flush(true);
+		this.landed();
 	}
 }
 

@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import ignore from "ignore";
 import { addIgnoreRules } from "../../utils/ignore.ts";
-import { discoverExtensionsInDir } from "./extension-discovery.ts";
 import { collectFiles, collectSkillEntries, readDirectoryEntries } from "./discovery.ts";
 import { FILE_PATTERNS, type ResourceType } from "./resource-types.ts";
 
@@ -29,14 +28,11 @@ export function collectAutoThemeEntries(dir: string): string[] {
 
 /**
  * Collect resource files from a directory based on resource type.
- * Extensions use smart discovery (index.ts in subdirs), others use recursive collection.
+ * Skills use skill-folder discovery, prompts and themes collect files recursively.
  */
 export function collectResourceFiles(dir: string, resourceType: ResourceType): string[] {
 	if (resourceType === "skills") {
 		return collectSkillEntries(dir, "octocode");
-	}
-	if (resourceType === "extensions") {
-		return discoverExtensionsInDir(dir);
 	}
 	return collectFiles(dir, FILE_PATTERNS[resourceType]);
 }

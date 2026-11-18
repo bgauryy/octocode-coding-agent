@@ -6,8 +6,8 @@ import {
 } from "../src/core/model-runtime/instruction-boundary.ts";
 import { buildSystemPromptSections, diffSystemPromptSections } from "../src/core/system-prompt.ts";
 import { SYSTEM_PROMPT_SECTIONS, systemPromptSectionSpec } from "../src/core/system-prompt-spec.ts";
-import { leanPromptSections } from "../src/octocode/instructions/lean.ts";
-import { octocodePromptSections } from "../src/octocode/instructions/policy.ts";
+import { leanPromptSections } from "../src/octocode/native/prompts/lean.ts";
+import { octocodePromptSections } from "../src/octocode/native/prompts/policy.ts";
 import { FAKE_RESEARCH } from "./octocode/fake-research.ts";
 
 describe("system prompt section spec", () => {
@@ -25,7 +25,7 @@ describe("system prompt section spec", () => {
 			"research:session:keep",
 			"delegation:session:keep",
 			"children:session:keep",
-			"coordinator:session:keep",
+			"subagent:session:keep",
 			"safety:session:keep",
 			"communication:session:keep",
 			"lean:session:keep",
@@ -38,6 +38,7 @@ describe("system prompt section spec", () => {
 			"environment:volatile:keep",
 			"planning:volatile:keep",
 			"mcp_status:volatile:keep",
+			"tools_off:volatile:keep",
 		]);
 	});
 
@@ -88,13 +89,20 @@ describe("system prompt section spec", () => {
 			"preamble",
 			"tools",
 			"rules",
+			"mcps",
 			"mcps:docs",
+			"mcps:/",
 			"work",
 			"skills",
 			"cwd",
+			"environment",
 			"environment:date",
+			"environment:/",
 			MCP_STATUS_SECTION,
 		]);
+		// A family without head text opens its tag alone; its members stay bare.
+		expect(sections.mcps).toBe("<mcps>");
+		expect(sections["mcps:docs"]).toBe('<mcp name="docs" tools="mcp__docs__*">Docs</mcp>');
 		// An empty custom section still removes a section.
 		expect(buildSystemPromptSections({ customPrompt: "X", cwd: "/tmp", sections: { cwd: "" } }).cwd).toBeUndefined();
 	});
@@ -118,7 +126,14 @@ describe("system prompt section spec", () => {
 			sections: { work: "Work.", extension: "Extension.", [MCP_STATUS_SECTION]: "- docs: connecting" },
 			environment: "Date: 2026-10-31",
 		});
-		expect(Object.keys(sections).slice(-4)).toEqual(["extension", "cwd", "environment:date", MCP_STATUS_SECTION]);
+		expect(Object.keys(sections).slice(-6)).toEqual([
+			"extension",
+			"cwd",
+			"environment",
+			"environment:date",
+			"environment:/",
+			MCP_STATUS_SECTION,
+		]);
 		const message = { role: "system", content: "", sections, timestamp: 0 };
 		expect(findInstructionVolatileBoundary([message])).toBe("cwd");
 	});
@@ -136,7 +151,7 @@ describe("system prompt section spec", () => {
 		} as Record<string, string>;
 		delete old[MCPS_SECTION];
 		expect(diffSystemPromptSections(old, current)).toEqual({
-			[MCPS_SECTION]: "<mcps>\nservers\n</mcps>",
+			[MCPS_SECTION]: "<mcps>\nservers",
 			mcp_contract_octocode: null,
 			mcp_status: null,
 		});

@@ -66,17 +66,17 @@ export {
 export interface McpServerEntry {
 	name: string;
 	config: McpServerConfig;
-	/** Config file that defined the entry, or the path of the extension that registered it. */
+	/** Config file that defined the entry, or the path of the feature that registered it. */
 	source: string;
 	/**
-	 * The global or the project `mcp.json`, or `extension` for servers registered with
-	 * `api.registerMcpServer()`. Changes to extension servers are not saved.
+	 * The global or the project `mcp.json`, or `feature` for servers registered with
+	 * `api.mcpServers.register()`. Changes to feature servers are not saved.
 	 */
-	scope?: "global" | "project" | "extension" | "default";
+	scope?: "global" | "project" | "feature" | "default";
 	/** Latest `mcp.json` overriding this server's `enabled`, `defaultActive`, `exposure` or `toolExposure`. */
 	override?: string;
 	overrideScope?: "global" | "project";
-	/** The harness whose file defined the entry (`claude`, `codex`, `cursor`, ...); absent for defaults and extensions. */
+	/** The harness whose file defined the entry (`claude`, `codex`, `cursor`, ...); absent for defaults and features. */
 	vendor?: McpConfigVendor;
 	/** Off until the user checks and approves this exact entry (`/security`); never set on a built-in entry. */
 	withheld?: true;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "../src/core/tools/bash/budget.ts";
-import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../src/utils/output-budget.ts";
+import { RESULT_DEFAULT_BYTES, RESULT_DEFAULT_LINES } from "../src/utils/output-budget.ts";
 import { type BashOperations, createBashTool } from "../src/core/tools/bash.ts";
 
 const text = (result: any): string => result.content.map((part: any) => part.text).join("\n");
@@ -29,14 +29,13 @@ describe("bashBudget", () => {
 		expect(bashBudget(2000).maxLines).toBe(50);
 	});
 
-	it("sets the budget with maxOutputTokens at about 4 bytes a token, from 100 tokens up to the most one result may ask for", () => {
+	it("lowers the budget with maxOutputTokens at about 4 bytes a token, down to 100 tokens, and never raises it past the setting", () => {
 		expect(bashBudget(undefined, 1000)).toEqual({ maxBytes: 4000, maxLines: 100 });
 		expect(bashBudget(undefined, 5).maxBytes).toBe(400);
-		// Above the setting is honored (RFC core-tools B3), since the full output is saved either way.
-		expect(bashBudget(undefined, 8000)).toEqual({ maxBytes: 32_000, maxLines: 800 });
-		expect(bashBudget(undefined, 1_000_000)).toEqual({ maxBytes: REQUEST_MAX_CHARS, maxLines: 1250 });
-		expect(bashBudget(8 * 1024, 1_000_000).maxBytes).toBe(REQUEST_MAX_CHARS);
-		// A setting above that ceiling stays the ceiling.
+		expect(bashBudget(undefined, 5000)).toEqual({ maxBytes: 20_000, maxLines: 500 });
+		expect(bashBudget(undefined, 8000)).toEqual({ maxBytes: 20_000, maxLines: 500 });
+		expect(bashBudget(undefined, 1_000_000)).toEqual({ maxBytes: 20_000, maxLines: 500 });
+		expect(bashBudget(8 * 1024, 1_000_000).maxBytes).toBe(8 * 1024);
 		expect(bashBudget(80_000, 1_000_000).maxBytes).toBe(80_000);
 		expect(bashBudget(undefined, Number.NaN).maxBytes).toBe(RESULT_DEFAULT_BYTES);
 	});
@@ -120,31 +119,23 @@ describe("bash result header and budget", () => {
 		rmSync(result.details?.fullOutputPath as string, { force: true });
 	});
 
-	it("raises the budget for a call with maxOutputTokens above the setting, and still names the saved file when trimmed", async () => {
+	it("keeps the setting as the ceiling when a call asks for more, and still names the saved file when trimmed", async () => {
 		// 1,200 lines of 10 bytes: under the default 20,000 bytes but over its 500 lines, so the default budget trims it.
 		const lines = chatty((i) => `line ${String(i).padStart(4, "0")}`, 1200);
-		const trimmed = await createBashTool(dir, { operations: lines }).execute("c6a", { command: "x" });
-		expect(text(trimmed).split("\n")[0]).toMatch(/trimmed: /);
-		rmSync(trimmed.details?.fullOutputPath as string, { force: true });
-		const whole = await createBashTool(dir, { operations: lines }).execute("c6b", {
+		for (const maxOutputTokens of [undefined, 12_500, 1_000_000]) {
+			const result = await createBashTool(dir, { operations: lines }).execute("c6", { command: "x", maxOutputTokens });
+			const file = result.details?.fullOutputPath as string;
+			expect(text(result).split("\n")[0]).toMatch(/trimmed: first \d+ \+ last \d+ lines/);
+			expect(text(result).split("\n")[0].endsWith(`full output: ${file}]`)).toBe(true);
+			expect(readFileSync(file, "utf8").split("\n")).toHaveLength(1201);
+			rmSync(file, { force: true });
+		}
+		// A bigger setting is what a bigger result comes from.
+		const wide = await createBashTool(dir, { operations: lines, maxOutputBytes: 60_000 }).execute("c6w", {
 			command: "x",
-			maxOutputTokens: 12_500,
+			maxOutputTokens: 1_000_000,
 		});
-		expect(text(whole).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s · 1,200 lines · 12 KB\]$/);
-		expect(text(whole)).toContain("line 0001\n");
-		expect(text(whole)).toContain("line 1000\n");
-		// Past the most a call may ask for, the result is trimmed to that and the header names the saved file.
-		const big = await createBashTool(dir, { operations: chatty((i) => `row ${i} ${"x".repeat(90)}`, 2000) }).execute(
-			"c6c",
-			{ command: "x", maxOutputTokens: 1_000_000 },
-		);
-		const file = big.details?.fullOutputPath as string;
-		expect(text(big).split("\n")[0]).toMatch(/trimmed: first \d+ \+ last \d+ lines/);
-		expect(text(big).split("\n")[0].endsWith(`full output: ${file}]`)).toBe(true);
-		const kept = Buffer.byteLength(text(big));
-		expect(kept).toBeGreaterThan(BASH_MAX_BYTES * 2);
-		expect(kept).toBeLessThanOrEqual(REQUEST_MAX_CHARS + 400);
-		rmSync(file, { force: true });
+		expect(text(wide).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s · 1,200 lines · 12 KB\]$/);
 	});
 
 	it("says `last 1 line` when only the final line of a very long one fits", async () => {

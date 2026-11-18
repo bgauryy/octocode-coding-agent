@@ -1,4 +1,4 @@
-/** UI primitives extensions use to interact with the user. */
+/** UI primitives features use to interact with the user. */
 
 import type {
 	AutocompleteProvider,
@@ -20,7 +20,7 @@ import type { SessionPickerOptions } from "../../session-picker.ts";
 // ============================================================================
 
 /** An approval's identity as an RPC client receives it on a `select` request, and as a `Question` carries it (`approval`). */
-export interface ExtensionUIPermissionRequest {
+export interface PermissionPrompt {
 	toolCallId?: string;
 	toolName?: string;
 	action?: string;
@@ -34,7 +34,7 @@ export interface ExtensionUIPermissionRequest {
  * The structured card the terminal draws for a question (`octocode/ask/question.ts` `viewOf` builds it): a short question,
  * dim metadata, a quoted body, details behind a toggle, options with descriptions and a write-in row.
  */
-export interface ExtensionUIAskView {
+export interface AskView {
 	/** One sentence, drawn bold. */
 	question: string;
 	/** Dim lines under the question: who asks, from where. */
@@ -47,19 +47,23 @@ export interface ExtensionUIAskView {
 	/** The option row that opens an inline editor instead of answering at once. */
 	writeIn?: { label: string; title: string; placeholder?: string } | false;
 	multiSelect?: boolean;
+	/** Seconds from the card's start until the host takes the recommended option(s); the card shows the countdown. */
+	timeoutSeconds?: number;
 }
 
-/** How a custom dialog is answered by a remote client (see `ExtensionUIContext.custom`). */
-export interface ExtensionUIRemoteAnswer<T> {
+/** How a custom dialog is answered by a remote client (see `SessionUI.custom`). */
+export interface RemoteAnswer<T> {
 	title: string;
 	/** The choices a client may send; each must be answered by `answer({ choice })`. */
 	options: string[];
 	allowsText?: boolean;
-	ask?: ExtensionUIAskView;
+	ask?: AskView;
 	answer(answer: { choice: string } | { text: string }): T | undefined;
+	/** A client has started answering (`UIPromptTracker.hold`): stop the countdown the dialog runs, if any. */
+	hold?(): void;
 }
 
-export interface ExtensionUIDialogOptions {
+export interface DialogOptions {
 	/** AbortSignal to programmatically dismiss the dialog. */
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */
@@ -71,11 +75,11 @@ export interface ExtensionUIDialogOptions {
 	blocking?: boolean;
 }
 
-/** How `ExtensionUIContext.ask` is called. */
-export interface ExtensionUIAskOptions {
+/** How `SessionUI.ask` is called. */
+export interface AskOptions {
 	/** Dismisses the dialogs. */
 	signal?: AbortSignal;
-	/** The dialogs block work that goes on without the user (as `ExtensionUIDialogOptions.blocking`). */
+	/** The dialogs block work that goes on without the user (as `DialogOptions.blocking`). */
 	blocking?: boolean;
 	/** Timeout in milliseconds. */
 	timeout?: number;
@@ -85,16 +89,21 @@ export interface ExtensionUIAskOptions {
 	 * it is never shown.
 	 */
 	header?: string;
+	/**
+	 * Stops the timer the caller runs over these dialogs, which would dismiss them with a default. A client that starts
+	 * answering (`UIPromptTracker.hold`) calls it, so nothing is taken for the person afterwards.
+	 */
+	hold?: () => void;
 }
 
 type WidgetPlacement = "aboveEditor" | "belowEditor";
 
-export interface ExtensionWidgetOptions {
+export interface WidgetOptions {
 	/** Where the widget is rendered. Defaults to "aboveEditor". */
 	placement?: WidgetPlacement;
 }
 
-/** Raw terminal input listener for extensions. */
+/** Raw terminal input listener for features. */
 type TerminalInputHandler = (data: string) => { consume?: boolean; data?: string } | undefined;
 
 /** Working indicator configuration for the interactive streaming loader. */
@@ -110,18 +119,18 @@ export type AutocompleteProviderFactory = (current: AutocompleteProvider) => Aut
 export type EditorFactory = (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => EditorComponent;
 
 /**
- * UI context for extensions to request interactive UI.
+ * UI context for features to request interactive UI.
  * Each mode (interactive, RPC, print) provides its own implementation.
  */
-export interface ExtensionUIContext {
+export interface SessionUI {
 	/** Show a selector and return the user's choice. */
-	select(title: string, options: string[], opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+	select(title: string, options: string[], opts?: DialogOptions): Promise<string | undefined>;
 
 	/** Show a confirmation dialog. */
-	confirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
+	confirm(title: string, message: string, opts?: DialogOptions): Promise<boolean>;
 
 	/** Show a text input dialog. */
-	input(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+	input(title: string, placeholder?: string, opts?: DialogOptions): Promise<string | undefined>;
 
 	/**
 	 * Show a batch of typed questions together and return one `Reply` per question, in order (`Question` and `Reply` are
@@ -130,7 +139,7 @@ export interface ExtensionUIContext {
 	 * dialogs. Callers use `octocode/ask/ask.ts`, never this directly. A dismissed question is a `cancelled` reply, not a
 	 * rejection.
 	 */
-	ask?(questions: Question[], opts?: ExtensionUIAskOptions): Promise<Reply[]>;
+	ask?(questions: Question[], opts?: AskOptions): Promise<Reply[]>;
 
 	/** Show a notification to the user. */
 	notify(message: string, type?: "info" | "warning" | "error"): void;
@@ -151,34 +160,28 @@ export interface ExtensionUIContext {
 	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;
 
-	/** Show or hide the built-in interactive working loader row during streaming. */
-	setWorkingVisible(visible: boolean): void;
-
 	/**
 	 * Configure the interactive working indicator shown during streaming.
 	 *
 	 * - Omit the argument to restore the default animated spinner.
 	 * - Use `frames: ["●"]` for a static indicator.
 	 * - Use `frames: []` to hide the indicator entirely.
-	 * - Custom frames are rendered as provided, so extensions must add their own colors.
+	 * - Custom frames are rendered as provided, so features must add their own colors.
 	 */
 	setWorkingIndicator(options?: WorkingIndicatorOptions): void;
 
-	/** Set the label shown for hidden thinking blocks. Call with no argument to restore default. */
-	setHiddenThinkingLabel(label?: string): void;
-
 	/** Set a widget to display above or below the editor. Accepts string array or component factory. */
-	setWidget(key: string, content: string[] | undefined, options?: ExtensionWidgetOptions): void;
+	setWidget(key: string, content: string[] | undefined, options?: WidgetOptions): void;
 	setWidget(
 		key: string,
 		content: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined,
-		options?: ExtensionWidgetOptions,
+		options?: WidgetOptions,
 	): void;
 
-	/** Set a custom footer component, or undefined to restore the built-in footer.
+	/** Mount the footer component (Octocode's own, from session start); undefined leaves the footer slot empty.
 	 *
 	 * The factory receives a FooterDataProvider for data not otherwise accessible:
-	 * git branch and extension statuses from setStatus(). Context usage is on
+	 * git branch and feature statuses from setStatus(). Context usage is on
 	 * ctx.getContextUsage(), token stats on ctx.sessionManager.getEntries(), model info on ctx.model.
 	 */
 	setFooter(
@@ -195,7 +198,7 @@ export interface ExtensionUIContext {
 
 	/**
 	 * Show a custom component with keyboard focus. Resolves with the result passed to `done`, or undefined when the
-	 * component is closed without one: another dialog or view took its place, the extension UI was reset (reload or
+	 * component is closed without one: another dialog or view took its place, the feature UI was reset (reload or
 	 * session replacement), or the mode has no custom UI. The component is disposed when it closes.
 	 */
 	custom<T>(
@@ -216,7 +219,7 @@ export interface ExtensionUIContext {
 			 * wins and the terminal component is closed through its `done`. `answer` maps the client's choice or text to the
 			 * dialog's result, or undefined to refuse it.
 			 */
-			remote?: ExtensionUIRemoteAnswer<T>;
+			remote?: RemoteAnswer<T>;
 		},
 	): Promise<T | undefined>;
 
@@ -226,17 +229,11 @@ export interface ExtensionUIContext {
 	 */
 	pickSession?(options: SessionPickerOptions): Promise<SessionInfo | undefined>;
 
-	/** Paste text into the editor, triggering paste handling (collapse for large content). */
-	pasteToEditor(text: string): void;
-
 	/** Set the text in the core input editor. */
 	setEditorText(text: string): void;
 
-	/** Get the current text from the core input editor. */
-	getEditorText(): string;
-
 	/** Show a multi-line editor for text editing. */
-	editor(title: string, prefill?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
+	editor(title: string, prefill?: string, opts?: DialogOptions): Promise<string | undefined>;
 
 	/** Stack additional autocomplete behavior on top of the built-in provider. */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
@@ -291,18 +288,9 @@ export interface ExtensionUIContext {
 	/** Get the current theme for styling. */
 	readonly theme: Theme;
 
-	/** Get all available themes with their names and file paths. */
-	getAllThemes(): { name: string; path: string | undefined }[];
-
 	/** Load a theme by name without switching to it. Returns undefined if not found. */
 	getTheme(name: string): Theme | undefined;
 
 	/** Set the current theme by name or Theme object. */
 	setTheme(theme: string | Theme): { success: boolean; error?: string };
-
-	/** Get current tool output expansion state. */
-	getToolsExpanded(): boolean;
-
-	/** Set tool output expansion state. */
-	setToolsExpanded(expanded: boolean): void;
 }

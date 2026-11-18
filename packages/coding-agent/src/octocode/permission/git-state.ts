@@ -1,4 +1,4 @@
-import type { ExtensionContext, ToolCallEvent } from "../../core/features/index.ts";
+import type { FeatureContext, ToolCallEvent } from "../../core/features/index.ts";
 import { optionalString } from "../shared/util.ts";
 import type { GateVerdict } from "./gate.ts";
 import { SHELL_TOOLS } from "./shell.ts";
@@ -28,7 +28,7 @@ export function gitStateGate(scope: {
 	isolated: boolean;
 	/** Whether another live session works in this checkout; the main session's gate exists only when this is given. */
 	peers?: () => boolean;
-}): ((event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>) | undefined {
+}): ((event: ToolCallEvent, ctx: FeatureContext) => Promise<GateVerdict | undefined>) | undefined {
 	if (!scope.subagent) {
 		const { peers } = scope;
 		if (!peers) return undefined;

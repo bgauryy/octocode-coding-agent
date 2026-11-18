@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, compactions, agentEvents } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { saveCompaction } from "../../src/octocode/archive/summaries.ts";
 import { expireArchiveDetails, mayRemoveArchive } from "../../src/octocode/archive/retention.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";

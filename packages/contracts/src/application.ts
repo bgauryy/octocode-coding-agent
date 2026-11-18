@@ -8,6 +8,7 @@ import {
 	type ApplicationAssetPayload,
 } from "./content.ts";
 import { AwaitingSchema } from "./application-awaiting.ts";
+import { ApplicationPhaseSchema } from "./application-phase.ts";
 import { ReplySchema } from "./question.ts";
 import { ApplicationToolProgressSchema } from "./tool-progress.ts";
 import { ToolDisplaySchema } from "./tool-display.ts";
@@ -57,6 +58,11 @@ export const ApplicationCommandSchema = Type.Union([
 			oneOf: [{ required: ["choice"] }, { required: ["text"] }, { required: ["replies"] }],
 		},
 	),
+	// The person started answering the dialog `awaiting` names: the host stops any countdown over it (askUser's `timeout`).
+	Type.Object(
+		{ ...identity, action: Type.Literal("hold"), dialogId: Type.String({ minLength: 1, maxLength: 64 }) },
+		{ additionalProperties: false },
+	),
 ]);
 export type ApplicationCommand = Static<typeof ApplicationCommandSchema>;
 export type ApplicationCursor = Static<typeof ApplicationCursorSchema>;
@@ -65,6 +71,7 @@ export type ApplicationReceipt = Static<typeof ReceiptSchema>;
 export type ApplicationTool = Static<typeof ApplicationToolSchema>;
 export type ApplicationEvent = Static<typeof ApplicationEventSchema>;
 export type ApplicationAwaiting = Static<typeof AwaitingSchema>;
+export { isPendingApplicationPhase, isTerminalApplicationPhase, type ApplicationPhase } from "./application-phase.ts";
 export type ApplicationSnapshot = Static<typeof ApplicationSnapshotSchema>;
 export type ApplicationFrame = Static<typeof ApplicationFrameSchema>;
 export interface ApplicationConnection extends AsyncIterable<ApplicationFrame> {
@@ -251,6 +258,13 @@ export const ApplicationEventSchema = Type.Union([
 		awaiting: Type.Optional(AwaitingSchema),
 	}),
 	Type.Object({
+		type: Type.Literal("session.phase"),
+		/** What the session is doing now; a run that settled while agents or timers remain is `waiting` or `scheduled`, not done. */
+		phase: ApplicationPhaseSchema,
+		/** While the phase is not terminal: when the job it belongs to started (ms since the epoch). */
+		jobStartedAt: Type.Optional(Type.Number()),
+	}),
+	Type.Object({
 		type: Type.Literal("command.receipt"),
 		receipt: ReceiptSchema,
 	}),
@@ -267,6 +281,9 @@ export const ApplicationSnapshotSchema = Type.Object({
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),
 	awaiting: Type.Optional(AwaitingSchema),
+	/** Absent until the host publishes one (an older host never does). */
+	phase: Type.Optional(ApplicationPhaseSchema),
+	jobStartedAt: Type.Optional(Type.Number()),
 	sessionId: Type.String(),
 	runId: Type.Optional(Type.String()),
 	messages: Type.Array(MessageSchema),
@@ -367,13 +384,15 @@ export function applicationCommandFingerprint(command: ApplicationCommand): stri
 		action: command.action,
 		...(command.action === "abort"
 			? { runId: command.runId }
-			: command.action === "answer"
-				? {
-						dialogId: command.dialogId,
-						...(command.choice !== undefined ? { choice: command.choice } : {}),
-						...(command.text !== undefined ? { text: command.text } : {}),
-						...(command.replies !== undefined ? { replies: command.replies } : {}),
-					}
-				: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
+			: command.action === "hold"
+				? { dialogId: command.dialogId }
+				: command.action === "answer"
+					? {
+							dialogId: command.dialogId,
+							...(command.choice !== undefined ? { choice: command.choice } : {}),
+							...(command.text !== undefined ? { text: command.text } : {}),
+							...(command.replies !== undefined ? { replies: command.replies } : {}),
+						}
+					: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
 	});
 }

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -13,12 +13,14 @@ import {
 	COMPACT_TOOL,
 	CompactRequests,
 	registerCompactTool,
-} from "../../src/octocode/compaction/compact-tool.ts";
-import { contextNoticeText } from "../../src/octocode/compaction/context-notice.ts";
+} from "../../src/octocode/native/tools/compact/tool.ts";
+import { contextNoticeText } from "../../src/octocode/monitor/attention/context.ts";
 import { ThrashBreaker, THRASH_STREAK } from "../../src/octocode/compaction/pacing.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 let saved: NodeJS.ProcessEnv;
 beforeEach(() => {
@@ -169,8 +171,8 @@ describe("compact tool in a real session", () => {
 			provider: "faux",
 			models: [{ id: "faux-1", contextWindow: 20_000, maxTokens: 2048 }],
 		});
-		const factory: ExtensionFactory = (api) => {
-			api.registerProvider("faux", {
+		const factory: FeatureRegister = (api) => {
+			api.providers.register("faux", {
 				name: "Faux",
 				api: faux.api,
 				baseUrl: "http://127.0.0.1:0",
@@ -185,8 +187,9 @@ describe("compact tool in a real session", () => {
 			cwd,
 			agentDir,
 			settingsManager,
-			extensionFactories: [{ name: "compact-test", factory }],
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([{ name: "compact-test", factory }]),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -214,7 +217,7 @@ describe("compact tool in a real session", () => {
 			return JSON.stringify(context);
 		};
 		try {
-			await session.bindExtensions({ mode: "print", shutdownHandler: () => undefined });
+			await session.bindFeatures({ mode: "print", shutdownHandler: () => undefined });
 			await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 			const compact = session.compact.bind(session);
 			const spy = vi.spyOn(session, "compact").mockImplementation((options) => {

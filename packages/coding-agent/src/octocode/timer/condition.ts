@@ -6,6 +6,8 @@ export type { ConditionDeps };
 /** What one check needs besides the condition: where it runs and what the row recorded. */
 export interface CheckInput {
 	cwd: string;
+	/** The wait is at its deadline: this check is its last. */
+	expiring?: boolean;
 	signal?: AbortSignal;
 	row?: { id: number; checks: number; spentUsd: number; sessionId: string };
 }

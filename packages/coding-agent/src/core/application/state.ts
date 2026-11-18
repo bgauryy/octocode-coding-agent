@@ -5,6 +5,7 @@ import type {
 	ApplicationError,
 	ApplicationEvent,
 	ApplicationMessage,
+	ApplicationPhase,
 	ApplicationReceipt,
 	ApplicationTool,
 	ApplicationSnapshot,
@@ -23,6 +24,10 @@ export interface ApplicationRuntimeState {
 	status: "idle" | "compacting" | "retrying";
 	/** The blocking dialog the run waits on, until it closes. */
 	awaiting?: ApplicationAwaiting;
+	/** What the session is doing, as the host last published it; undefined before the first publication. */
+	phase?: ApplicationPhase;
+	/** While `phase` is not terminal: when its job started (ms since the epoch). */
+	jobStartedAt?: number;
 	steering: string[];
 	followUp: string[];
 	errors: ApplicationError[];
@@ -76,6 +81,9 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 			break;
 		case "session.awaiting":
 			store.setState({ awaiting: event.awaiting ? { ...event.awaiting } : undefined });
+			break;
+		case "session.phase":
+			store.setState({ phase: structuredClone(event.phase), jobStartedAt: event.jobStartedAt });
 			break;
 		case "queue.changed":
 			store.setState({ steering: [...event.steering], followUp: [...event.followUp] });

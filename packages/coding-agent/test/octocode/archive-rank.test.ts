@@ -1,15 +1,23 @@
 import fs from "node:fs";
-import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { renderMessages } from "../../src/octocode/compaction/archive/render.ts";
-import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
-import { archiveFolder, libraryPath, type Segment, writeSegment } from "../../src/octocode/history/archive.ts";
+import { RECORD_FILE, writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
+import {
+	archiveFolder,
+	LIBRARY_FILE,
+	libraryPath,
+	type Segment,
+	writeSegment,
+} from "../../src/octocode/history/archive.ts";
 import { parseKeywords, rankHistory, stem, wordTerms } from "../../src/octocode/history/rank.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { referenceRank } from "./archive-rank-oracle.ts";
+import { termTest } from "../../src/octocode/history/rank/terms.ts";
+import { archiveRankedLines, archiveRankedWindow } from "../../src/octocode/history/archive/ranked.ts";
 
 const why = { reason: "the user asked what was decided earlier" };
 
@@ -282,7 +290,7 @@ describe("the next page of a ranked search", () => {
 		});
 		const first = await rankHistory(files, "alpha topic", 1);
 		expect(first.pages).toBeGreaterThan(1);
-		const opened = vi.spyOn(fsPromises, "open");
+		const opened = vi.spyOn(fs, "openSync");
 		const second = await rankHistory(files, "alpha topic", 2);
 		expect(second.page).toBe(2);
 		expect(second.text).not.toBe(first.text);
@@ -302,31 +310,31 @@ describe("ranked search memory and cancellation", () => {
 		return { file, session: { id: name, relation: "same repository" as const }, label: name };
 	};
 
-	it("reads again only the files holding a shown passage, not every file it scanned", async () => {
+	it("reads on this thread only the files holding a shown passage: the first pass runs in the index worker", async () => {
 		const dir = tmp();
 		const files = [
 			write(dir, "hit", "### assistant\nthe zebra migration finished"),
 			...["a", "b", "c", "d"].map((name) => write(dir, name, `### assistant\nnothing relevant in ${name}`)),
 		];
-		const opened = vi.spyOn(fsPromises, "open");
+		const opened = vi.spyOn(fs, "openSync");
 		const found = await rankHistory(files, "zebra migration", 1);
 		const paths = opened.mock.calls.map(([file]) => String(file));
 		opened.mockRestore();
 		expect(found.hits).toBe(1);
 		expect(found.text).toContain("the zebra migration finished");
-		// Every file once in the first pass; only the matching one again to show its lines.
-		expect(paths.filter((file) => file === files[0].file)).toHaveLength(2);
-		for (const other of files.slice(1)) expect(paths.filter((file) => file === other.file)).toHaveLength(1);
+		// Only the matching file, to show its lines.
+		expect(paths.filter((file) => file === files[0].file)).toHaveLength(1);
+		for (const other of files.slice(1)) expect(paths.filter((file) => file === other.file)).toHaveLength(0);
 	});
 
 	it("says when a ranked file changed before its lines were shown", async () => {
 		const dir = tmp();
 		const files = [write(dir, "moving", "### assistant\nthe walrus deploy failed")];
-		const real = fsPromises.open;
+		const real = fs.openSync;
 		let calls = 0;
-		const opened = vi.spyOn(fsPromises, "open").mockImplementation(async (...args: Parameters<typeof real>) => {
+		const opened = vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof real>) => {
 			// Between the two passes, the file grows.
-			if (++calls === 2) fs.appendFileSync(files[0].file, "\nmore lines written later");
+			if (++calls === 1) fs.appendFileSync(files[0].file, "\nmore lines written later");
 			return real(...args);
 		});
 		const found = await rankHistory(files, "walrus deploy", 1);
@@ -335,16 +343,164 @@ describe("ranked search memory and cancellation", () => {
 		expect(found.text).toContain("the file changed after it was ranked");
 	});
 
-	it("checks for cancellation inside one long file, not only between files", async () => {
+	it("stops a ranking inside one long file when cancelled, and the next search still answers", async () => {
 		const dir = tmp();
-		const long = Array.from({ length: 1_000 }, (_, i) => `### assistant\nthe okapi step ${i}`).join("\n");
+		const long = Array.from({ length: 60_000 }, (_, i) => `### assistant\nthe okapi step ${i} okapi okapi`).join("\n");
 		const files = [write(dir, "long", long)];
-		let checks = 0;
-		const signal = {
-			throwIfAborted: () => {
-				if (++checks > 2) throw new Error("cancelled");
-			},
-		} as unknown as AbortSignal;
-		await expect(rankHistory(files, "okapi step", 1, undefined, signal)).rejects.toThrow("cancelled");
+		const controller = new AbortController();
+		const started = Date.now();
+		const ranking = rankHistory(files, "okapi step", 1, undefined, controller.signal);
+		setTimeout(() => controller.abort(new Error("cancelled")), 300);
+		await expect(ranking).rejects.toThrow("cancelled");
+		const cancelledAfter = Date.now() - started;
+		const full = Date.now();
+		const found = await rankHistory(files, "okapi step", 1);
+		expect(found.hits).toBe(60_000);
+		// The cancelled ranking stopped well before a whole ranking takes.
+		expect(cancelledAfter).toBeLessThan(300 + (Date.now() - full));
+	});
+});
+
+/** A small corpus with what ranking reads differently: identifiers, paths, `ies` stems, fences, headings, phrases, Greek. */
+function corpus(): Array<{ file: string; session: { id: string; relation: "same repository" }; label: string }> {
+	const words = [
+		"registry",
+		"registries",
+		"queries",
+		"query",
+		"loginRedirect",
+		"auth-storage/keychain.ts",
+		"B314",
+		"cache",
+		"caches",
+		"prompt",
+		"failing",
+		"failed",
+		"ΟΔΟΣ",
+		"οδός",
+		"deploy",
+		"walrus",
+		"zebra",
+		"migration",
+		"the",
+		"of",
+		"rule",
+		"notices",
+		"attention",
+		"context_bands",
+		"TriggerDelivery",
+		"plan",
+	];
+	let seed = 7;
+	const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648);
+	const sentence = (n: number) => Array.from({ length: n }, () => words[next() % words.length]).join(" ");
+	const files: Array<{ file: string; session: { id: string; relation: "same repository" }; label: string }> = [];
+	for (const id of ["s1", "s2", "s3"]) {
+		setCurrentSession(id);
+		for (let k = 0; k < 3; k++) {
+			const messages: string[] = [];
+			for (let m = 0; m < 25; m++) {
+				const kind = next() % 5;
+				if (kind === 0) messages.push(`### user\n${sentence(12)}\n${sentence(5)}`);
+				else if (kind === 1)
+					messages.push(
+						`### assistant\n\`\`\`ts\n${sentence(8)}\n## not a heading ${sentence(3)}\n\`\`\`\n${sentence(6)}`,
+					);
+				else if (kind === 2)
+					messages.push(`Tool \`bash\` ${sentence(4)}\n${Array.from({ length: 50 }, () => sentence(6)).join("\n")}`);
+				else if (kind === 3)
+					messages.push(`### assistant\n${"x".repeat(450)} ${sentence(3)}\nprompt cache ${sentence(4)}`);
+				else messages.push(`### assistant\n${sentence(20)}`);
+			}
+			const written = writeSegment(
+				{ ...segment(id), tldr: `${sentence(3)} work`, topics: [sentence(2)] },
+				messages.join("\n\n"),
+			).file;
+			files.push({
+				file: written,
+				session: { id, relation: "same repository" },
+				label: `segment ${k + 1} · ${sentence(2)}`,
+			});
+		}
+		writeSessionRecord({
+			session: id,
+			repository: "/repo",
+			workspace: "/repo",
+			goal: { role: "user", text: `goal ${sentence(6)}` },
+			ending: [{ role: "assistant", text: `\`\`\`\n${sentence(5)}\n\`\`\`\n${sentence(5)}` }],
+			toolCalls: 3,
+		});
+		files.push({
+			file: path.join(archiveFolder(id), RECORD_FILE),
+			session: { id, relation: "same repository" },
+			label: "record: goal and ending",
+		});
+		files.push({
+			file: path.join(archiveFolder(id), LIBRARY_FILE),
+			session: { id, relation: "same repository" },
+			label: "library",
+		});
+	}
+	setCurrentSession("me");
+	return files;
+}
+
+describe("archive keywords: prefilter and byte-range second pass", () => {
+	const queries = [
+		"registry",
+		"rule registry attention notices migrate context bands trigger delivery plan",
+		"loginRedirect auth-storage/keychain.ts",
+		'"prompt cache" deploy',
+		"οδοσ",
+		"failing caches",
+		"the of",
+		"kerberos",
+	];
+
+	it("ranks, scores and shows lines exactly as the full tokenizing scan did, on every page", async () => {
+		const files = corpus();
+		let hits = 0;
+		for (const keywords of queries)
+			for (const filter of [undefined, /walrus|zebra/i]) {
+				const reference = await referenceRank(files, keywords, 1, filter);
+				for (let page = 1; page <= Math.max(1, reference.pages); page++) {
+					const expected = page === 1 ? reference : await referenceRank(files, keywords, page, filter);
+					const found = await rankHistory(files, keywords, page, filter);
+					expect({ keywords, at: page, ...found }).toEqual({ keywords, at: page, ...expected });
+				}
+				hits += reference.hits;
+			}
+		expect(hits).toBeGreaterThan(500);
+	});
+
+	it("reads each passage's ranked text the same from its byte range as from the whole file", () => {
+		for (const { file } of corpus()) {
+			const lines = fs.readFileSync(file, "utf8").split("\n");
+			const { ranked, context } = archiveRankedLines(file, lines);
+			for (let start = 0; start < lines.length; start += 7) {
+				const end = Math.min(lines.length, start + 40);
+				expect(archiveRankedWindow(file, lines.slice(start, end), context(start))).toEqual(ranked.slice(start, end));
+			}
+		}
+	});
+
+	it("lets through every word whose terms include a query term", () => {
+		const samples = [
+			"registries",
+			"Registry",
+			"loginRedirect",
+			"auth-storage/keychain.ts",
+			"ΟΔΟΣ",
+			"ΑΣBc",
+			"İstanbul",
+			"queries",
+			"failing",
+			"CACHES",
+			"B314x",
+			"x.y-z/w",
+		];
+		for (const word of samples)
+			for (const term of wordTerms(word))
+				expect(termTest([term]).test(word.toLowerCase()), `${word} → ${term}`).toBe(true);
 	});
 });

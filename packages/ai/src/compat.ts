@@ -174,7 +174,7 @@ const builtinApiProviderInstances = new Map<Api, ReturnType<typeof getApiProvide
 
 /**
  * Registers the builtin API implementations into the api-registry without
- * clobbering existing entries: compat may load after a test or extension has
+ * clobbering existing entries: compat may load after a test or feature has
  * already registered an override for a builtin api id.
  */
 function registerBuiltInApiProviders(): void {

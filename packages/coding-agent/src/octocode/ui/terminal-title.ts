@@ -8,11 +8,13 @@ export { TITLE_FRAME_MS, type TitleState };
 /** Busy frames: the footer's braille loader. Every frame is one cell wide, so the tab label never shifts while it animates. */
 const BUSY_FRAMES = SPINNER.braille;
 
-/** Each state's mark after the octopus (busy states animate through several; idle has none) and the word the tab shows. */
+/** Each state's mark after the squid (busy states animate through several; idle has none) and the word the tab shows. */
 export const TITLE_STATE: Readonly<Record<TitleState, { frames: readonly string[]; label: string }>> = {
 	idle: { frames: [""], label: "Idle" },
 	thinking: { frames: BUSY_FRAMES, label: "Thinking" },
 	running: { frames: BUSY_FRAMES, label: "Running" },
+	// The team panel's word for an agent whose own turn is over while its children or jobs work.
+	background: { frames: ["⏳"], label: "Waiting" },
 	waiting: { frames: ["⚠️"], label: "Needs you" },
 	done: { frames: ["🟢"], label: "Done" },
 	failed: { frames: ["🔴"], label: "Error" },
@@ -20,6 +22,8 @@ export const TITLE_STATE: Readonly<Record<TitleState, { frames: readonly string[
 
 /** Most characters of the description a tab shows. */
 const DESCRIPTION_MAX = 40;
+/** Most characters of the agent's name a tab shows. */
+const NAME_MAX = 32;
 
 /** `fix login · repo`: the description (escape sequences dropped, one line, capped), then the working directory. */
 export function plainTitle(description: string | undefined, cwd: string): string {
@@ -28,8 +32,9 @@ export function plainTitle(description: string | undefined, cwd: string): string
 }
 
 /**
- * `🐙⠋ Running - fix login · repo · 2 agents`: the octopus with the state's mark (frame `frame` of a busy state) and word,
- * the plain title, then how many background subagents still run.
+ * `🦑⠋ shy-barnacle Running - fix login · repo · 2 agents`: the main session's squid with the state's mark (frame
+ * `frame` of a busy state), the agent's team name once it joined, the state's word, the plain title, then how many
+ * background subagents still run.
  */
 export function terminalTitle(
 	state: TitleState,
@@ -37,21 +42,24 @@ export function terminalTitle(
 	cwd: string,
 	agents = 0,
 	frame = 0,
+	name?: string,
 ): string {
 	const { frames, label } = TITLE_STATE[state];
 	const agentsMark = agents > 0 ? `${SEPARATOR}${agents} agent${agents > 1 ? "s" : ""}` : "";
 	const subject = plainTitle(description, cwd);
-	return `${ENTITY.subagent}${frames[frame % frames.length]} ${label}${subject ? ` - ${subject}` : ""}${agentsMark}`;
+	const who = name ? cleanTitle(name, NAME_MAX) : "";
+	return `${ENTITY.main}${frames[frame % frames.length]} ${who ? `${who} ` : ""}${label}${subject ? ` - ${subject}` : ""}${agentsMark}`;
 }
 
 /**
  * Folds run events into a title state. During a run: `waiting` while a dialog is open, `running` while a tool
- * executes, else `thinking`. After it: `running` while background work (subagents, jobs) still runs, then the outcome
- * (`done`, `failed`, or `idle` when interrupted) until `seen`.
+ * executes, else `thinking`. After it: `background` while background work (subagents, jobs, wakes) still runs, then
+ * the outcome (`done`, `failed`, or `idle` when interrupted) until `seen`.
  */
 export class TitleTracker {
 	private active = false;
-	private background = 0;
+	/** The session's phase is waiting, resuming or scheduled: work or a wake is outstanding. */
+	private pending = false;
 	private readonly tools = new Set<string>();
 	/** Open dialogs by id, each with whether it blocks: the agent (or a background subagent) waits on the user. */
 	private readonly prompts = new Map<string | undefined, boolean>();
@@ -60,7 +68,7 @@ export class TitleTracker {
 	get state(): TitleState {
 		if (!this.active) {
 			if ([...this.prompts.values()].some(Boolean)) return "waiting";
-			return this.background > 0 ? "running" : this.outcome;
+			return this.pending ? "background" : this.outcome;
 		}
 		if (this.prompts.size > 0) return "waiting";
 		return this.tools.size > 0 ? "running" : "thinking";
@@ -100,14 +108,14 @@ export class TitleTracker {
 		this.outcome = outcome;
 	}
 
-	/** How many background subagents and jobs run now; the outcome waits until none does. */
-	setBackground(count: number): void {
-		this.background = count;
+	/** Whether the session's phase is non-final with no run of its own (`isPendingPhase`); the outcome waits until it is not. */
+	setPending(pending: boolean): void {
+		this.pending = pending;
 	}
 
-	/** The user is back: a finished outcome has been seen. A run or background work in progress keeps its state. */
+	/** The user is back: a finished outcome has been seen. A run or outstanding work keeps its state. */
 	seen(): void {
-		if (this.background === 0) this.outcome = "idle";
+		if (!this.pending) this.outcome = "idle";
 	}
 
 	reset(): void {

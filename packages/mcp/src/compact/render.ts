@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { assignMcpToolNames } from "../tool-names.ts";
-import { structureApplicability, withOverrideNotes } from "./applicability.ts";
+import { structureApplicability } from "./applicability.ts";
 import { inlineTinyRefs } from "./inline-refs.ts";
 import { dedupeFieldDocs } from "./field-docs.ts";
 import { isHoistableUnion, oneLine } from "./schema-nodes.ts";
 import { hoistedBlock, indentBlock, INDENT, sharedBlock } from "./file.ts";
 import { schemaToTs } from "./schema-to-ts.ts";
-import type { CompactServerInput, CompactToolInput, DescriptionOverrides } from "./types.ts";
+import type { CompactServerInput, CompactToolInput } from "./types.ts";
 
 /** Bump when the rendered text changes for the same catalog, so stored files regenerate. */
 export const COMPACT_GENERATOR_VERSION = 15;
@@ -16,9 +16,6 @@ export const COMPACT_GENERATOR_VERSION = 15;
  * field of that name in the server has that doc.
  */
 const SHARED_DOC_MIN_TOOLS = 3;
-
-/** Prefix of a field path in {@link DescriptionOverrides.fields} that addresses the tool's output schema. */
-export const OUTPUT_FIELD_PREFIX = "output.";
 
 /**
  * An object type repeated by at least this many tools, and at least this long, becomes one server-level alias; so
@@ -111,8 +108,7 @@ function canonical(value: unknown): string {
 /**
  * sha256 of the server name, instructions, each tool's name, description and schemas, and the call names that differ
  * from what a lone server would assign (a collision with another server's tool). The renderer version is not part of
- * it: overrides describe the catalog, so they survive renderer changes and are re-checked by `checkFidelity`; stored
- * files record `generatorVersion` separately.
+ * it: stored files record `generatorVersion` separately, so a renderer change regenerates them.
  */
 export function catalogHash(input: CompactServerInput): string {
 	const tools = [...input.tools]
@@ -140,45 +136,14 @@ export function catalogHash(input: CompactServerInput): string {
 		.digest("hex");
 }
 
-const sha256 = (value: unknown) => createHash("sha256").update(canonical(value)).digest("hex");
-
-/**
- * sha256 of one tool's name, description and schemas, without the server name: overrides written for the tool still
- * describe it while this hash holds, whatever else the catalog changes or what the server is called.
- */
-export function toolHash({ name, description, inputSchema, outputSchema }: CompactToolInput): string {
-	return sha256({ name, description, inputSchema, outputSchema });
-}
-
-/** sha256 of the server instructions, so a server override is kept exactly while they are unchanged. */
-export function instructionsHash(instructions: string | undefined): string {
-	return sha256(instructions ?? "");
-}
-
-/** The `output.`-prefixed entries of a tool's field overrides, without the prefix. */
-function outputFieldDocs(fieldDocs: Record<string, string>): Record<string, string> | undefined {
-	const entries = Object.entries(fieldDocs)
-		.filter(([path]) => path.startsWith(OUTPUT_FIELD_PREFIX))
-		.map(([path, doc]) => [path.slice(OUTPUT_FIELD_PREFIX.length), doc] as const);
-	return entries.length ? Object.fromEntries(entries) : undefined;
-}
-
-function renderTool(
-	tool: CompactToolInput,
-	name: FunctionName,
-	overrides: DescriptionOverrides | undefined,
-	context: RenderContext = {},
-): string {
+function renderTool(tool: CompactToolInput, name: FunctionName, context: RenderContext = {}): string {
 	const scope = scopeOf(name.fn);
-	const { schema, fieldDocs } = withOverrideNotes(inlineTinyRefs(tool.inputSchema), overrides?.fields?.[tool.name]);
-	const input = schemaToTs(structureApplicability(schema), { scope, fieldDocs, ...context });
-	const outputDocs = fieldDocs && outputFieldDocs(fieldDocs);
+	const input = schemaToTs(structureApplicability(inlineTinyRefs(tool.inputSchema)), { scope, ...context });
 	const output: { type: string; aliases: string[] } =
 		tool.outputSchema === undefined
 			? { type: "unknown", aliases: [] }
 			: schemaToTs(tool.outputSchema, {
 					scope: `${scope}Out_`,
-					fieldDocs: outputDocs,
 					sharedDocs: context.sharedDocs,
 					hoisted: context.hoisted,
 					onDoc: context.onDoc,
@@ -186,7 +151,7 @@ function renderTool(
 	let block = "";
 	for (const alias of [...input.aliases, ...output.aliases]) block += `${indentBlock(alias, INDENT)}\n`;
 	if (name.explicit) block += `${INDENT}${CALL_AS}${name.call}\n`;
-	const description = oneLine(overrides?.tools?.[tool.name] ?? tool.description);
+	const description = oneLine(tool.description);
 	if (description) block += `${INDENT}/** ${description} */\n`;
 	block += `${INDENT}function ${name.fn}(input: ${indentBlock(input.type, INDENT).trimStart()}): ${indentBlock(output.type, INDENT).trimStart()};\n`;
 	return block;
@@ -200,11 +165,10 @@ function renderTool(
 function findSharedDocs(
 	tools: readonly CompactToolInput[],
 	names: ReadonlyMap<string, FunctionName>,
-	overrides?: DescriptionOverrides,
 ): Map<string, string> {
 	const docsByField = new Map<string, Map<string, Set<string>>>();
 	for (const tool of tools)
-		renderTool(tool, names.get(tool.name)!, overrides, {
+		renderTool(tool, names.get(tool.name)!, {
 			onDoc: (field, doc) => {
 				const docs = docsByField.get(field) ?? new Map<string, Set<string>>();
 				const seen = docs.get(doc) ?? new Set<string>();
@@ -225,12 +189,11 @@ function findSharedDocs(
 function findHoistedTypes(
 	tools: readonly CompactToolInput[],
 	names: ReadonlyMap<string, FunctionName>,
-	overrides: DescriptionOverrides | undefined,
 	sharedDocs: ReadonlyMap<string, string>,
 ): Map<string, string> {
 	const seen = new Map<string, { field: string; tools: Set<string>; sources: Set<object> }>();
 	for (const tool of tools)
-		renderTool(tool, names.get(tool.name)!, overrides, {
+		renderTool(tool, names.get(tool.name)!, {
 			sharedDocs,
 			onObject: (field, type, source) => {
 				if (type.length < HOISTED_TYPE_MIN_CHARS && !isHoistableUnion(type)) return;
@@ -261,24 +224,22 @@ function findHoistedTypes(
 }
 
 /**
- * The model-facing text for one server: its instructions, docs shared by several tools, and one typed function per tool inside `declare namespace`. Tools are sorted by name; overrides
- * replace prose only.
+ * The model-facing text for one server: its instructions, docs shared by several tools, and one typed function per tool inside `declare namespace`. Tools are sorted by name.
  */
-export function renderServer(input: CompactServerInput, overrides?: DescriptionOverrides): string {
+export function renderServer(input: CompactServerInput): string {
 	const tools = [...input.tools].sort(byName);
 	const names = functionNames(input);
-	const sharedDocs = findSharedDocs(tools, names, overrides);
-	const hoisted = findHoistedTypes(tools, names, overrides, sharedDocs);
+	const sharedDocs = findSharedDocs(tools, names);
+	const hoisted = findHoistedTypes(tools, names, sharedDocs);
 	// Only a name the section's calling rule cannot produce needs a word here.
 	let out = [...names.values()].some((name) => name.explicit)
 		? `// A function after a "${CALL_AS.trim()} <name>" line is called by that name.\n`
 		: "";
-	const instructions = oneLine(overrides?.server ?? input.instructions);
+	const instructions = oneLine(input.instructions);
 	if (instructions) out += `/** ${instructions} */\n`;
 	out += `declare namespace ${namespaceName(input.server)} {\n`;
 	if (sharedDocs.size) out += sharedBlock(sharedDocs);
 	if (hoisted.size) out += hoistedBlock([...hoisted].map(([type, name]) => [name, type]));
-	for (const tool of tools)
-		out += dedupeFieldDocs(renderTool(tool, names.get(tool.name)!, overrides, { sharedDocs, hoisted }));
+	for (const tool of tools) out += dedupeFieldDocs(renderTool(tool, names.get(tool.name)!, { sharedDocs, hoisted }));
 	return `${out}}\n`;
 }

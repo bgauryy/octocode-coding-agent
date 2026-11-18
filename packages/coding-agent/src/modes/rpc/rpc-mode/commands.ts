@@ -278,7 +278,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		case "get_commands": {
 			const commands: RpcSlashCommand[] = [];
 
-			for (const command of host.session.extensionRunner.getRegisteredCommands()) {
+			for (const command of host.session.featureHost.getRegisteredCommands()) {
 				commands.push({
 					name: command.invocationName,
 					description: command.description,
@@ -290,7 +290,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 
 			for (const { template, name } of getPromptCommands(
 				host.session.promptTemplates,
-				host.session.extensionRunner.getRegisteredCommands(),
+				host.session.featureHost.getRegisteredCommands(),
 			)) {
 				commands.push({
 					name,
@@ -301,7 +301,7 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 			}
 
 			for (const { skill, name } of getSkillCommands(host.session.resourceLoader.getSkills().skills, [
-				...host.session.extensionRunner.getRegisteredCommands(),
+				...host.session.featureHost.getRegisteredCommands(),
 				...host.session.promptTemplates,
 			])) {
 				commands.push({

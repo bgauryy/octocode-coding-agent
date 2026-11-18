@@ -2,11 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { isRequestTooLarge, planTooLargeRecovery } from "../../src/octocode/compaction/images.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCachePolicy } from "./fake-host.ts";
+import { fakeCachePolicy, asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -66,14 +66,14 @@ const turnEnd = (
 
 function register(percent = 10) {
 	const handlers = new Map<string, Handler>();
-	const api = {
+	const api = asSetup({
 		on: (name: string, handler: Handler) => {
 			handlers.set(name, handler);
 			return undefined;
 		},
 		getSettings: () => ({}),
 		getThinkingLevel: () => "off",
-	} as unknown as ExtensionAPI;
+	}) as unknown as FeatureSetup;
 	const notify = vi.fn();
 	registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 	const ctx = {

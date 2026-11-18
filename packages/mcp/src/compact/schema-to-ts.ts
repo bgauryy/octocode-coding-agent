@@ -22,14 +22,10 @@ const HOISTED_BRANCHES_MIN_CHARS = 200;
 export interface SchemaToTsOptions {
 	/** Prefix for aliases, so tools sharing `$defs` ids (`0`, `4`) never collide. */
 	scope: string;
-	/** Replacement descriptions by dotted field path. */
-	fieldDocs?: Record<string, string>;
 	/** Field name → doc documented once for the server; a field with that doc renders without one. Shared only when every field of the name has it. */
 	sharedDocs?: ReadonlyMap<string, string>;
 	/** Called with each field's name and doc text ("" for none), so a first pass can find docs shared across tools. */
 	onDoc?: (field: string, doc: string) => void;
-	/** Called with each field's dotted path (as `fieldDocs` addresses it), whether it is required here and its schema description ("" for none). */
-	onField?: (path: string, required: boolean, description: string) => void;
 	/**
 	 * Called with each object-typed field's name, its type rendered at top level and its schema node, to find types
 	 * repeated by tools or within one.
@@ -76,15 +72,11 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 	const refTarget = (ref: unknown) => resolveLocalRef(rootNode, ref);
 	const deref = (schema: unknown): unknown => derefNode(rootNode, schema);
 	const { notes, alternativesNote } = createNotes(deref);
-	const docText = (schema: unknown, path: string) => {
+	const docText = (schema: unknown) => {
 		const node = deref(schema);
-		const description = options.fieldDocs?.[path] ?? (isNode(node) ? node.description : undefined);
+		const description = isNode(node) ? node.description : undefined;
 		const noteList = notes(schema);
 		return [oneLine(description), noteList.length ? `(${oneLine(noteList.join(", "))})` : ""].filter(Boolean).join(" ");
-	};
-	const upstreamDoc = (schema: unknown) => {
-		const node = deref(schema);
-		return isNode(node) && typeof node.description === "string" ? node.description : "";
 	};
 	/** A union branch or tuple item's type, after its own description. */
 	const described = (schema: unknown, type: string) => {
@@ -327,14 +319,12 @@ export function schemaToTs(root: JsonSchema, options: SchemaToTsOptions): { type
 			if (isShapeless(property) && inherited !== undefined && !isShapeless(inherited)) {
 				// "As on the parent": an optional field adds nothing to the intersection; a required one says so, untyped.
 				if (!required.has(key)) continue;
-				options.onField?.(fieldPath, true, "");
 				out += `${inner}${identifier(key)}: unknown;\n`;
 				continue;
 			}
-			const doc = isNode(property) && restated.has(property) ? "" : docText(property, fieldPath);
+			const doc = isNode(property) && restated.has(property) ? "" : docText(property);
 			const placeholder = !doc && placeholders?.has(key);
 			if (!placeholder && (!isNode(property) || !restated.has(property))) options.onDoc?.(key, doc);
-			options.onField?.(fieldPath, required.has(key), upstreamDoc(property));
 			const shown = doc && options.sharedDocs?.get(key) !== doc ? `/** ${doc} */ ` : "";
 			out += `${inner}${shown}${identifier(key)}${required.has(key) ? "" : "?"}: ${fieldType(property, inner, fieldPath, key)};\n`;
 		}

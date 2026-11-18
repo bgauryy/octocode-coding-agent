@@ -6,7 +6,6 @@ import { type FooterState, footerLines } from "../../src/octocode/ui/footer/rows
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
 const state: FooterState = {
 	model: "model-x",
-	provider: "provider",
 	thinking: "high",
 	context: { percent: 42, limit: 200_000 },
 	usage: { input: 12_400, cacheRead: 0, output: 3_100, cost: 0.84, unpriced: false },
@@ -63,7 +62,7 @@ describe("footer data visibility", () => {
 		const warning = "custom ext status value";
 		const statuses = new Map([["ext", { text: warning, tone: "warning" as const }]]);
 		const lines = footerLines({ ...state, cwd: "/work/projects/app" }, "main", statuses, theme, width);
-		expect(lines[1]).toMatch(/^(app|\/…\/projects\/app|\/work\/projects\/app) ⎇/);
+		expect(lines[0]).toMatch(/^(app|\/…\/projects\/app|\/work\/projects\/app) ⎇/);
 		// Shown once and uncut: either on line 2 or in the alert rows, never a truncated copy on each.
 		expect(lines.filter((line) => line.includes("custom ext"))).toHaveLength(1);
 		expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
@@ -87,7 +86,7 @@ describe("footer data visibility", () => {
 		const lines = footerLines(state, "main", statuses, theme, 40);
 		const text = lines.join("\n");
 		expect(text).toContain(failure);
-		expect(lines[1]).toMatch(/^\/work\/project ⎇ main/);
+		expect(lines[0]).toMatch(/^\/work\/project ⎇ main/);
 		expect(lines.at(-1)).toContain("/status");
 		expect(lines.length).toBeLessThanOrEqual(5);
 		expect(lines.every((line) => visibleWidth(line) <= 40)).toBe(true);

@@ -13,6 +13,8 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { createHarness, getAssistantTexts, getToolResult, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 it("runs native tools and releases team resources across a real session reload", async () => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-lifecycle-"));
@@ -40,33 +42,34 @@ it("runs native tools and releases team resources across a real session reload",
 			cwd: root,
 			agentDir: join(root, ".octocode", "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", async (event) => {
+					api.bus.on("session_start", async (event) => {
 						events.push(`start:${event.reason}`);
 					});
-					api.on("session_shutdown", async (event) => {
+					api.bus.on("session_shutdown", async (event) => {
 						events.push(`stop:${event.reason}`);
 						expect(store?.list() ?? []).toEqual([]);
 						expect(store?.leases() ?? []).toEqual([]);
 					});
 				},
-			],
+			]),
 		});
 		await loader.reload();
 		harness = await createHarness({ resourceLoader: loader });
 		const fauxApi = getApiProvider(harness.faux.api);
 		if (!fauxApi) throw new Error("Missing faux API");
-		await harness.session.bindExtensions({ mode: "rpc", onError: (error) => errors.push(error.error) });
+		await harness.session.bindFeatures({ mode: "rpc", onError: (error) => errors.push(error.error) });
 		expect(events).toEqual(["start:startup"]);
 		store = TeamStore.open(harness.tempDir);
 		for (let run = 0; run < 2; run++) {
-			const native = loader.getExtensions().extensions.filter((entry) => entry.path === "<inline:octocode>");
+			const native = loader.getFeatures().features.filter((entry) => entry.path === "<inline:octocode>");
 			expect(native).toHaveLength(1);
 			const names = harness.session.getAllTools().map((tool) => tool.name);
 			expect(new Set(names).size).toBe(names.length);
@@ -169,12 +172,12 @@ it("runs native tools and releases team resources across a real session reload",
 				expect(store.leases()).toEqual([]);
 			}
 		}
-		await harness.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await harness.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		stopped = true;
 		expect(events).toEqual(["start:startup", "stop:reload", "start:reload", "stop:quit"]);
 		expect(errors).toEqual([]);
 	} finally {
-		if (!stopped) await harness?.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		if (!stopped) await harness?.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		store?.close();
 		harness?.cleanup();
 		vi.unstubAllEnvs();

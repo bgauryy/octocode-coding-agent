@@ -3,15 +3,8 @@ import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import type { Catalog } from "./catalog.ts";
 import { closeModels } from "./close-models.ts";
 import { type ConfiguredModels, settingKey } from "./configured-models.ts";
-import {
-	routeThinking,
-	SUBAGENT_DEFAULT_THINKING,
-	SUBAGENT_THINKING_ENV,
-	subagentThinking,
-	THINKING_LEVELS,
-	thinkingSuffix,
-	withThinking,
-} from "./thinking.ts";
+import { routeThinking, THINKING_LEVELS, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
+import { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking } from "./thinking.ts";
 import {
 	canRunTask,
 	isModelTier,

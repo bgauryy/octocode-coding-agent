@@ -63,7 +63,7 @@ flowchart TD
   S -->|wrong premise, severe problem| N["Tell the coordinator at once"]
 ```
 
-A working child that has exchanged no message with its coordinator for `subagents.checkInSeconds` (default 300) is asked the same question by its own harness. The check-in only joins a request the child was about to make, so it never wakes an idle child. See [check-in](../packages/coding-agent/docs/native-features.md#subagent-check-in).
+A working child that has exchanged no message with its coordinator for `monitor.checkInSeconds` (default 300) is asked the same question by its own harness. The check-in only joins a request the child was about to make, so it never wakes an idle child. See [check-in](../packages/coding-agent/docs/native-features.md#subagent-check-in).
 
 ### Memory and subagents
 

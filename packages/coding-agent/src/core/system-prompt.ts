@@ -9,7 +9,7 @@ import { getSystemMessageText } from "@octocodeai/octocode-ai";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { getReadmePath } from "../config.ts";
-import { renderInstruction } from "./prompt-template.ts";
+import { renderPrompt } from "./prompt-template.ts";
 import { checkoutLabel, octocodeWorktreeAt } from "./worktree-path.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 import { formatHarnessesForPrompt } from "./discovery/vendors/prompt.ts";
@@ -50,7 +50,7 @@ export interface BuildSystemPromptOptions {
 	/**
 	 * The one-line purpose of each MCP server whose tools are declared, keyed by tool namespace (`mcp__<server>`), from
 	 * the server's own description. Rendered in the `tools` section as `- mcp__<server>__*: purpose` after the native
-	 * tools, in key order, so the first list the model reads names every server. The producer (the MCP extension) sets
+	 * tools, in key order, so the first list the model reads names every server. The producer (the MCP feature) sets
 	 * it for servers whose `mcps` block leaves the purpose out, so each purpose is stated once.
 	 */
 	mcpServers?: Record<string, string>;
@@ -82,6 +82,8 @@ export interface BuildSystemPromptOptions {
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-loaded skills. */
 	skills?: Skill[];
+	/** Names the skills section lists; the other skills are counted, not listed. Absent: all are listed. */
+	skillCatalog?: readonly string[];
 }
 
 export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
@@ -118,7 +120,7 @@ export interface EnvironmentSurface {
 }
 
 /**
- * The `environment` section (`octocode/instructions/system/environment.md`): platform and shell, today's local date,
+ * The `environment` section (`octocode/native/prompts/system/environment.md`): platform and shell, today's local date,
  * a linked worktree, and where the session runs (surface, terminal host, whether replies draw Mermaid). It sits in
  * the volatile tier after the cache breakpoints, so a new day or a changed surface changes only this section. No
  * process name or pid: sessions of one configuration in different processes keep the same prefix.
@@ -132,7 +134,7 @@ export function currentEnvironment(
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	const shell = env.SHELL?.split(/[\\/]/).pop() || (process.platform === "win32" ? "cmd" : "sh");
 	const kind = surface.surface;
-	return renderInstruction("system/environment.md", {
+	return renderPrompt("system/environment.md", {
 		platform: process.platform,
 		arch: process.arch,
 		shell,
@@ -165,7 +167,7 @@ export function linkedWorktreeFact(folder: string): string | undefined {
 	}
 	return `linked worktree${main ? ` of ${main}` : ""}${branch ? `, branch ${branch}` : ""}`;
 }
-/** Normalize prompt input into the mutable, collection-complete shape exposed to extensions. */
+/** Normalize prompt input into the mutable, collection-complete shape exposed to features. */
 export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOptions): NormalizedBuildSystemPromptOptions {
 	return {
 		customPrompt: input.customPrompt,
@@ -187,6 +189,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		environment: input.environment,
 		contextFiles: (input.contextFiles ?? []).map((file) => ({ ...file })),
 		skills: (input.skills ?? []).map((skill) => ({ ...skill })),
+		...(input.skillCatalog ? { skillCatalog: [...input.skillCatalog] } : {}),
 	};
 }
 
@@ -194,7 +197,7 @@ function renderProjectContext(contextFiles: Array<{ path: string; content: strin
 	const files = contextFiles.map(
 		({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
 	);
-	return renderInstruction("system/project-context.md", { files: files.join("\n\n") });
+	return renderPrompt("system/project-context.md", { files: files.join("\n\n") });
 }
 
 function buildRules(
@@ -213,7 +216,7 @@ function buildRules(
 		rules.push(normalized);
 	};
 
-	if (bashSearch) addRule(renderInstruction("system/rules-bash.md"));
+	if (bashSearch) addRule(renderPrompt("system/rules-bash.md"));
 
 	for (const name of selectedTools) {
 		for (const rule of toolGuidelines[name] ?? []) addRule(rule);
@@ -221,7 +224,7 @@ function buildRules(
 	for (const rule of promptGuidelines) addRule(rule);
 	// The floor for sessions without Octocode's Communication policy or a lean child's section, which say the same with more detail.
 	if (includeFloor) {
-		for (const rule of renderInstruction("system/rules-floor.md").split("\n")) addRule(rule);
+		for (const rule of renderPrompt("system/rules-floor.md").split("\n")) addRule(rule);
 	}
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
@@ -270,26 +273,32 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		environment,
 		contextFiles,
 		skills,
+		skillCatalog,
 	} = options;
 
 	for (const name of [...Object.keys(customSections), ...Object.keys(baseSections)])
 		assertSystemPromptSectionName(name);
 
 	const declaredTools = selectedTools.filter((name) => !hiddenTools.includes(name));
-	const contents: Record<string, string> = { preamble: customPrompt || renderInstruction("system/preamble.md") };
+	const contents: Record<string, string> = { preamble: customPrompt || renderPrompt("system/preamble.md") };
 	// One line per declared tool that has a snippet, in the order requests declare them (a tool hidden from requests is
 	// left out). A snippet is a fact about the tool, like its declaration, so the list follows the tool set under a
 	// custom prompt too. MCP tools are described in `mcps`, so a snippet on one is ignored; each server in `mcpServers`
 	// instead gets one `mcp__<server>__*` line after them. A tool without a snippet is not listed and the section is
-	// absent when none has one: SDK sessions and extension tools set it optionally, while a test requires it of every
+	// absent when none has one: SDK sessions and feature tools set it optionally, while a test requires it of every
 	// native tool.
 	// On-demand tools follow the rest whether loaded or not, so a load leaves the section as it was.
 	const onDemand = new Set(onDemandTools);
 	const listedTools = [...declaredTools.filter((name) => !onDemand.has(name)), ...onDemandTools].filter(
 		(name) => !isMcpToolName(name) && !!toolSnippets[name],
 	);
+	// Named whether loaded or not, like the listing itself, so a load leaves the section unchanged.
+	const listedOnDemand = listedTools.filter((name) => onDemand.has(name));
 	contents.tools = [
 		...listedTools.map((name) => `- ${name}: ${toolSnippets[name]}`),
+		...(listedOnDemand.length > 0
+			? [renderPrompt("system/tools-on-demand.md", { names: listedOnDemand.join(", ") }).trim()]
+			: []),
 		...Object.entries(mcpServers)
 			.filter(([, purpose]) => purpose)
 			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -306,7 +315,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		!customPrompt && !customSections.communication && !customSections.lean,
 		!customPrompt && declaredTools.includes(BASH_TOOL) && !researchSearch,
 	);
-	contents.docs = renderInstruction("system/docs.md", { root: dirname(getReadmePath()) });
+	contents.docs = renderPrompt("system/docs.md", { root: dirname(getReadmePath()) });
 	// A custom prompt stands in for the default docs (and the default rule lines above); every other section stays.
 	if (customPrompt)
 		for (const name of Object.keys(contents))
@@ -317,7 +326,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	if (contextFiles.length > 0) contents.project_context = renderProjectContext(contextFiles);
 	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
 	const reader = skillReader(selectedTools, declaredTools);
-	if (reader && skills.length > 0) contents.skills = formatSkillsForPrompt(skills, reader).trim();
+	if (reader && skills.length > 0) contents.skills = formatSkillsForPrompt(skills, reader, skillCatalog).trim();
 	const harnesses = formatHarnessesForPrompt(input.harnesses ?? []);
 	if (harnesses) contents.harnesses = harnesses;
 	contents.cwd = cwd.replace(/\\/g, "/");

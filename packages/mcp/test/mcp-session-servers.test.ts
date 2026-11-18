@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import {
 	getMcpSessionHandoff,
 	parseMcpSessionServers,
@@ -42,22 +42,22 @@ describe("session MCP servers handed to children", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-session-servers-"));
 		const file = path.join(dir, "servers.json");
 		fs.writeFileSync(file, serializeMcpSessionServers({ echo: stdio })!);
-		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
+		const api = { mcpServers: { register: vi.fn() } } as unknown as FeatureSetup;
 		registerInheritedMcpServers(api, { [MCP_SESSION_SERVERS_FILE_ENV]: file });
-		expect(api.registerMcpServer).not.toHaveBeenCalled();
+		expect(api.mcpServers.register).not.toHaveBeenCalled();
 		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1" });
-		expect(api.registerMcpServer).not.toHaveBeenCalled();
+		expect(api.mcpServers.register).not.toHaveBeenCalled();
 		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file });
 		// Marked inherited, so the child's own registration of the same name replaces it.
-		expect(api.registerMcpServer).toHaveBeenCalledWith("echo", stdio, { inherited: true });
+		expect(api.mcpServers.register).toHaveBeenCalledWith("echo", stdio, { inherited: true });
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("keeps an unreadable file from failing the child", () => {
-		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
+		const api = { mcpServers: { register: vi.fn() } } as unknown as FeatureSetup;
 		const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: "/nonexistent/x.json" });
-		expect(api.registerMcpServer).not.toHaveBeenCalled();
+		expect(api.mcpServers.register).not.toHaveBeenCalled();
 		expect(write).toHaveBeenCalled();
 		write.mockRestore();
 	});

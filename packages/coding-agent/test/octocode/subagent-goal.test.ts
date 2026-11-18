@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { withIdentity } from "../../src/octocode/instructions/task.ts";
+import { withIdentity } from "../../src/octocode/native/prompts/task.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { renderAgentCall } from "../../src/octocode/subagents/render.ts";
@@ -165,7 +165,7 @@ describe("the agent tool's goal", () => {
 
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {
 		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {}))).toBe(
-			`○ 🐙 Agent(${GOAL})`,
+			`○ Agent(${GOAL})`,
 		);
 		expect(rendered(renderAgentCall({ goal: "a\u001b[2Jb" }, theme, {}))).not.toContain("\u001b");
 		const s = setup();
@@ -251,8 +251,11 @@ describe("a subagent's usage", () => {
 				durationMs: 250,
 			}),
 		);
-		// Tokens and cost are in the expanded summary; the collapsed row is outcome, tool calls and time.
-		expect(done).toMatch(/Done · [a-z]+-[a-z]+ · 250ms · ↑100 \+300 cached ↓20 · cost n\/a/);
+		// Tokens and cost are in the expanded summary; the duration is drawn only in the header.
+		expect(done).toMatch(
+			/^  ⎿  Done · [a-z]+-[a-z]+ · ↑100 \+300 cached ↓20 · cost n\/a · conversation cache: 75% cached · 300 read · 0 written\n/,
+		);
+		expect(done).not.toContain("250ms");
 	});
 });
 

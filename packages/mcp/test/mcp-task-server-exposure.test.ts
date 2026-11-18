@@ -11,12 +11,14 @@ const entry = (name: string, defaultActive?: boolean): McpServerEntry => ({
 
 /** The child's host selection: `--tools` entries and `--exclude-tools`, as `SessionToolLoadout.selectsTools` applies them. */
 const child = (selection: { allowed?: string[]; excluded?: string[]; modifiers?: string[] }) => ({
-	selectsTools: (prefix: string, activeByDefault: boolean) =>
-		selectsToolPrefix(prefix, activeByDefault, {
-			allowed: selection.allowed,
-			excluded: selection.excluded ?? [],
-			modifiers: selection.modifiers ?? [],
-		}),
+	tools: {
+		selects: (prefix: string, activeByDefault: boolean) =>
+			selectsToolPrefix(prefix, activeByDefault, {
+				allowed: selection.allowed,
+				excluded: selection.excluded ?? [],
+				modifiers: selection.modifiers ?? [],
+			}),
+	},
 });
 
 describe("servers a child's task named", () => {

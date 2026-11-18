@@ -10,8 +10,8 @@
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { deferredInputSchema } from "../../../../mcp/src/api.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import type { FeatureSetup, SetupPick, FeatureContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { contextMessages } from "../files/reads.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 
@@ -91,7 +91,7 @@ export function restoredSchemas(
 	budget: number,
 ): { content: string; tools: string[]; omitted: string[] } | undefined {
 	const byName = new Map(declared.map((tool) => [tool.name, tool]));
-	const intro = renderInstruction("notices/compaction/restored-schemas.md").trim();
+	const intro = renderPrompt("notices/compaction/restored-schemas.md").trim();
 	const picked: Array<{ name: string; block: string }> = [];
 	const omitted: string[] = [];
 	let left = budget - intro.length;
@@ -114,11 +114,11 @@ export function restoredSchemas(
 		: undefined;
 }
 
-type RestoreContext = Pick<ExtensionContext, "sessionManager"> & Partial<Pick<ExtensionContext, "model">>;
+type RestoreContext = Pick<FeatureContext, "sessionManager"> & Partial<Pick<FeatureContext, "model">>;
 
 /** Sends the schemas of the deferred tools this session called back into the context; returns the tools restored. */
 export function restoreDeferredSchemas(
-	api: Pick<ExtensionAPI, "sendMessage" | "getAllTools" | "getActiveTools">,
+	api: SetupPick<"session", "sendMessage"> & SetupPick<"tools", "getAll" | "getActive">,
 	ctx: RestoreContext,
 ): string[] {
 	try {
@@ -128,15 +128,15 @@ export function restoreDeferredSchemas(
 		// A compaction whose tail already shows a schema (an earlier restore or a tool result) does not repeat it.
 		const kept = contextMessages(ctx).map((entry) => entry.message);
 		const shown = stillRestored(kept);
-		for (const name of schemaInResults(kept, api.getAllTools())) shown.add(name);
+		for (const name of schemaInResults(kept, api.tools.getAll())) shown.add(name);
 		const window = ctx.model?.contextWindow;
 		const budget =
 			typeof window === "number" && Number.isFinite(window) && window > 0
 				? Math.min(RESTORE_SCHEMAS_CHARS, Math.floor(window * CHARS_PER_TOKEN * RESTORE_SCHEMAS_SHARE))
 				: RESTORE_SCHEMAS_CHARS;
 		const restored = restoredSchemas(
-			api.getAllTools(),
-			api.getActiveTools(),
+			api.tools.getAll(),
+			api.tools.getActive(),
 			called.filter((name) => !shown.has(name)),
 			budget,
 		);
@@ -145,7 +145,7 @@ export function restoreDeferredSchemas(
 			tools: restored.tools,
 			...(restored.omitted.length > 0 ? { omitted: restored.omitted } : {}),
 		};
-		void api.sendMessage(
+		void api.session.sendMessage(
 			{ customType: RESTORED_SCHEMAS_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);
@@ -158,8 +158,8 @@ export function restoreDeferredSchemas(
 }
 
 /** After every compaction, the schemas of the deferred tools the session called follow the summary. */
-export function registerDeferredSchemaRestore(api: ExtensionAPI): void {
-	api.on("session_compact", async (_event, ctx) => {
+export function registerDeferredSchemaRestore(api: FeatureSetup): void {
+	api.bus.on("session_compact", async (_event, ctx) => {
 		restoreDeferredSchemas(api, ctx);
 	});
 }

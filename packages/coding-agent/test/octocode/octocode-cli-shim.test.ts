@@ -70,39 +70,60 @@ describe("resolveOctocodeCli", () => {
 	});
 });
 
-describe("the octocode shim", () => {
+describe("the agent shell shims", () => {
 	const cli = { bin: "/opt/it's/octocode.js", version: "1.2.3" };
+	const agent = { command: "/usr/bin/node", prefix: ["--import", "file:///a/resolver.ts", "/a/src/cli.ts"] };
 
-	it("execs the runtime on the bin with every argument, quoting both", () => {
-		const files = shimFiles(cli, "/usr/bin/node", "darwin");
-		expect(Object.keys(files)).toEqual(["octocode"]);
+	it("runs the coding agent as `octocode` and the research CLI as `octocode-cli`, quoting every word", () => {
+		const files = shimFiles(cli, "/usr/bin/node", "darwin", agent);
+		expect(Object.keys(files).sort()).toEqual(["octocode", "octocode-cli"]);
 		expect(files.octocode.startsWith("#!/bin/sh\n")).toBe(true);
-		expect(files.octocode).toContain(`exec '/usr/bin/node' '/opt/it'\\''s/octocode.js' "$@"\n`);
+		expect(files.octocode).toContain(`exec '/usr/bin/node' '--import' 'file:///a/resolver.ts' '/a/src/cli.ts' "$@"\n`);
+		expect(files["octocode-cli"]).toContain(`exec '/usr/bin/node' '/opt/it'\\''s/octocode.js' "$@"\n`);
 	});
 
-	it("adds a .cmd on Windows", () => {
-		const files = shimFiles({ bin: "C:\\o\\octocode.js", version: "1" }, "C:\\node.exe", "win32");
-		expect(Object.keys(files).sort()).toEqual(["octocode", "octocode.cmd"]);
-		expect(files["octocode.cmd"]).toBe('@echo off\r\n"C:\\node.exe" "C:\\o\\octocode.js" %*\r\n');
+	it("writes only `octocode` when the research CLI is missing", () => {
+		expect(Object.keys(shimFiles(undefined, "node", "linux", agent))).toEqual(["octocode"]);
+	});
+
+	it("adds a .cmd for each on Windows", () => {
+		const files = shimFiles({ bin: "C:\\o\\octocode.js", version: "1" }, "C:\\node.exe", "win32", {
+			command: "C:\\node.exe",
+			prefix: ["C:\\a\\cli.js"],
+		});
+		expect(Object.keys(files).sort()).toEqual(["octocode", "octocode-cli", "octocode-cli.cmd", "octocode.cmd"]);
+		expect(files["octocode-cli.cmd"]).toBe('@echo off\r\n"C:\\node.exe" "C:\\o\\octocode.js" %*\r\n');
+		expect(files["octocode.cmd"]).toBe('@echo off\r\n"C:\\node.exe" "C:\\a\\cli.js" %*\r\n');
 	});
 
 	it("doubles % in the .cmd paths so cmd.exe does not expand them", () => {
-		const files = shimFiles({ bin: "C:\\100%\\%PATH%\\octocode.js", version: "1" }, "C:\\n%o\\node.exe", "win32");
-		expect(files["octocode.cmd"]).toBe('@echo off\r\n"C:\\n%%o\\node.exe" "C:\\100%%\\%%PATH%%\\octocode.js" %*\r\n');
+		const files = shimFiles(
+			{ bin: "C:\\100%\\%PATH%\\octocode.js", version: "1" },
+			"C:\\n%o\\node.exe",
+			"win32",
+			agent,
+		);
+		expect(files["octocode-cli.cmd"]).toBe(
+			'@echo off\r\n"C:\\n%%o\\node.exe" "C:\\100%%\\%%PATH%%\\octocode.js" %*\r\n',
+		);
 	});
 
-	it("writes an executable script in its own folder, per runtime and bin, and leaves an unchanged one alone", () => {
+	it("writes executable scripts in their own folder, per runtime, bin and entry, and leaves unchanged ones alone", () => {
 		const root = tmp();
-		const dir = writeOctocodeShim(cli, root, "/usr/bin/node", "linux");
+		const dir = writeOctocodeShim(cli, root, "/usr/bin/node", "linux", agent);
 		expect(path.dirname(dir)).toBe(root);
-		const file = path.join(dir, "octocode");
-		expect(fs.readFileSync(file, "utf8")).toBe(shimFiles(cli, "/usr/bin/node", "linux").octocode);
-		expect(fs.statSync(file).mode & 0o111).not.toBe(0);
-		const written = fs.statSync(file).ino;
-		expect(writeOctocodeShim(cli, root, "/usr/bin/node", "linux")).toBe(dir);
-		expect(fs.statSync(file).ino).toBe(written);
-		expect(writeOctocodeShim({ ...cli, bin: "/other.js" }, root, "/usr/bin/node", "linux")).not.toBe(dir);
-		expect(fs.readdirSync(dir)).toEqual(["octocode"]);
+		const expected = shimFiles(cli, "/usr/bin/node", "linux", agent);
+		for (const name of ["octocode", "octocode-cli"]) {
+			const file = path.join(dir, name);
+			expect(fs.readFileSync(file, "utf8")).toBe(expected[name]);
+			expect(fs.statSync(file).mode & 0o111).not.toBe(0);
+		}
+		const written = fs.statSync(path.join(dir, "octocode")).ino;
+		expect(writeOctocodeShim(cli, root, "/usr/bin/node", "linux", agent)).toBe(dir);
+		expect(fs.statSync(path.join(dir, "octocode")).ino).toBe(written);
+		expect(writeOctocodeShim({ ...cli, bin: "/other.js" }, root, "/usr/bin/node", "linux", agent)).not.toBe(dir);
+		expect(writeOctocodeShim(cli, root, "/usr/bin/node", "linux", { ...agent, prefix: ["/b/cli.js"] })).not.toBe(dir);
+		expect(fs.readdirSync(dir).sort()).toEqual(["octocode", "octocode-cli"]);
 	});
 
 	it("comes first on the shell path, before Octocode's bin", () => {
@@ -135,14 +156,19 @@ describe("the octocode shim", () => {
 	});
 
 	it.skipIf(process.platform === "win32")(
-		"runs the research CLI as `octocode` in a shell built from getShellEnv",
+		"runs the agent as `octocode` and the research CLI as `octocode-cli` in a shell built from getShellEnv",
 		() => {
 			const real = resolveOctocodeCli()!;
 			const dir = writeOctocodeShim(real, tmp());
 			setShellPathEntries(() => [dir]);
-			const result = spawnSync("/bin/sh", ["-c", "octocode --version"], { env: getShellEnv(), encoding: "utf8" });
-			expect(result.status).toBe(0);
-			expect(result.stdout.trim()).toBe(`octocode ${real.version}`);
+			const run = (command: string) => spawnSync("/bin/sh", ["-c", command], { env: getShellEnv(), encoding: "utf8" });
+			const research = run("octocode-cli --version");
+			expect(research.status).toBe(0);
+			expect(research.stdout.trim()).toBe(`octocode ${real.version}`);
+			const agentHelp = run("octocode context --help");
+			expect(agentHelp.status).toBe(0);
+			expect(agentHelp.stdout).toMatch(/context/i);
 		},
+		60_000,
 	);
 });

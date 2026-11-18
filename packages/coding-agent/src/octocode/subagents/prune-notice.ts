@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openBacklog } from "../backlog/context.ts";
 import { noteSavedRef } from "./ref-link.ts";
@@ -9,7 +9,7 @@ import { describePrune, pruneWorktrees } from "./worktree.ts";
  * linked on the backlog item its child worked on, as a finished run would. Resolves to the note to show, never rejects.
  */
 export async function pruneNotice(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	home?: string,
 ): Promise<{ text: string; level: "info" | "warning" } | undefined> {
 	try {

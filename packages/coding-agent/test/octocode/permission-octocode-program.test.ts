@@ -8,8 +8,9 @@ import { planReadOnly } from "../../src/octocode/permission/shell/plan-reads.ts"
 import { tmp } from "./helpers.ts";
 
 /**
- * `octocode` in a shell is one program the guards do not model, whatever its subcommand: the product starts a session
- * of its own, and the guards hold no knowledge of what another program by that name does with its arguments.
+ * `octocode` and `octocode-cli` in a shell are programs the guards do not model, whatever their subcommand: `octocode`
+ * (the product, or another program by that name) starts a session of its own, and `octocode-cli` (the research CLI
+ * agent shells put on PATH) runs tools the guards hold no knowledge of.
  */
 
 beforeAll(shellParserReady);
@@ -26,6 +27,13 @@ const RUNS = [
 	"echo q | xargs octocode some-subcommand",
 ];
 
+const CLI_RUNS = [
+	"octocode-cli",
+	"octocode-cli --help",
+	"octocode-cli some-subcommand '{}' --json",
+	"echo q | xargs octocode-cli some-subcommand",
+];
+
 describe("an `octocode` run in a shell", () => {
 	it.each(RUNS)("is refused to a read-only role: %s", (command) => {
 		expect(refusal(command)).toContain("`octocode`");
@@ -35,9 +43,23 @@ describe("an `octocode` run in a shell", () => {
 		expect(planReadOnly(command)).toBe(false);
 	});
 
+	it("names the session of its own only for `octocode`", () => {
+		expect(refusal("octocode --help")).toContain("session of its own");
+		expect(refusal("octocode-cli --help")).not.toContain("session of its own");
+	});
+
 	it("leaves the read-only programs around it judged as before", () => {
 		expect(refusal("rg octocode src | head -5")).toBeUndefined();
 		expect(planReadOnly("rg octocode src | head -5")).toBe(true);
+		expect(refusal("rg octocode-cli src | head -5")).toBeUndefined();
+	});
+
+	it.each(CLI_RUNS)("refuses the research CLI to a read-only role: %s", (command) => {
+		expect(refusal(command)).toContain("`octocode-cli`");
+	});
+
+	it.each(CLI_RUNS)("blocks the research CLI in plan mode: %s", (command) => {
+		expect(planReadOnly(command)).toBe(false);
 	});
 
 	it("makes a verification receipt stale, as any program the guard cannot read", async () => {

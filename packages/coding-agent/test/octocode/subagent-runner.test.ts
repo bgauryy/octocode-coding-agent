@@ -2,16 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { connectAcp } from "../../src/octocode/external/acp-host.ts";
 import { runnerTurn, type RunnerTurnInput } from "../../src/octocode/external/runner-session.ts";
-import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import type { Runners } from "../../src/octocode/subagents/runner-port.ts";
 import { registerChildRunnerTask } from "../../src/octocode/subagents/runner-task.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { fakeCtx, fakeHost, fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/external-acp-agent.mjs", import.meta.url));
@@ -71,13 +71,16 @@ describe("the runner field of agent tasks", () => {
 		const declared = (runners?: Runners) => {
 			const f = fakeHost();
 			const modes = agentModes();
-			registerAgentTool(f.api, {
-				profiles: () => new Map(),
-				team: new Team(f.api),
-				permission: fakePermission(),
-				registerTool: modes.collect,
-				runners,
-			});
+			registerAgentTool(
+				f.api,
+				asSetup({
+					profiles: () => new Map(),
+					team: new Team(f.api),
+					permission: fakePermission(),
+					registerTool: modes.collect,
+					runners,
+				}),
+			);
 			modes.register(f.api);
 			return f.tools.get("agent");
 		};
@@ -224,7 +227,7 @@ describe("the models tool", () => {
 		const run = async (list: () => Promise<string[]>) => {
 			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 			registerModelsTool(
-				{ registerTool: (definition: never) => void (tool = definition) } as never,
+				asSetup({ registerTool: (definition: never) => void (tool = definition) }) as never,
 				() => new Map(),
 				list,
 			);

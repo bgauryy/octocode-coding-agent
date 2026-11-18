@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { recordShellMutation } from "../../src/octocode/files/bash/mutation.ts";
 import { currentMutationRevision, recordMutation } from "../../src/octocode/files/feedback/revisions.ts";

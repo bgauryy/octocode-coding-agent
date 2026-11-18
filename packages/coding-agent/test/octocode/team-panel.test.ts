@@ -3,8 +3,10 @@ import path from "node:path";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { AgentsView, trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
-import { collapsedRows, FINISHED_MS, shownWorking } from "../../src/octocode/team/panel/compact.ts";
+import { AgentsView, trafficRow } from "../../src/octocode/team/panel.ts";
+import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
+import { FINISHED_MS, shownWorking } from "../../src/octocode/team/panel/compact.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { FinishedTracker } from "../../src/octocode/team/panel/finished.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -13,7 +15,9 @@ import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
-/** An agent's name line and the stats line under it (two lines per agent from 60 columns). */
+/** Lines without the style resets a cut (`…`) adds, for exact comparisons. */
+const plain = (lines: string[]) => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+/** An agent's grid row and the line under it (its stats line when open and it has stats). */
 const groupOf = (lines: string[], name: string): [string, string] => {
 	const at = lines.findIndex((line) => line.includes(name));
 	return [lines[at], lines[at + 1]];
@@ -43,9 +47,10 @@ describe("agents panel", () => {
 		expect(shownWorking({ ...fresh, joinedAt: NOW - 5_000 }, NOW)).toBe(false);
 		expect(shownWorking({ ...fresh, toolCalls: 2 }, NOW)).toBe(false);
 		expect(shownWorking(member("peer-1a2b", { joinedAt: NOW - 1_000 }), NOW)).toBe(false);
-		const rows = widgetLines([member("me-0001"), fresh], "me-0001", NOW, theme, 120).join("\n");
-		expect(rows).toContain("working");
-		expect(rows).not.toContain("idle");
+		const rows = widgetLines([member("me-0001"), fresh], "me-0001", NOW, theme, 120);
+		// The spinner says it works; the mark is the only state shown, never a word.
+		expect(rows[1]).toBe(" └ ⠋ general-1a2b · general · 1s");
+		expect(rows.join("\n")).not.toMatch(/working|idle/);
 	});
 
 	it("bounds six working agents by the terminal height and keeps their names distinct", () => {
@@ -95,41 +100,55 @@ describe("agents panel", () => {
 			theme,
 			48,
 		);
-		expect(rows[1]).toContain("research-a");
-		expect(rows[1]).toContain("working");
-		// One head row (tree, name, state, elapsed; the model only when it fits whole): the detail row gave way at this width.
-		expect(rows).toHaveLength(2);
-		expect(rows[1]).toMatch(/^ └ ⠋ research-a · working · 1m$/);
-		expect(rows.join("\n")).not.toMatch(/\b(age|model)\b/);
+		// The narrow form: tree, mark and name; the cut goal under the name; the model, without its provider, on the stats line.
+		expect(plain(rows)).toEqual([
+			" 🦑 main ○ · main",
+			" └ ⠋ research-a · research-a",
+			"     Investigate Investigate Investigate Invest…",
+			"     a-very-long-model-name",
+		]);
+		expect(rows.join("\n")).not.toMatch(/\b(age|working)\b/);
 		expect(rows.every((row) => visibleWidth(row) <= 48)).toBe(true);
 	});
 
-	it("narrow layout: elapsed time follows the member's join time, and the detail row gives way to the state at 32 columns", () => {
+	it("elapsed time follows the member's join time; below 60 columns the narrow form leaves it for the goal line", () => {
 		const agents = [member("research-a", { parentId: "main", goal: "Inspect ".repeat(20) })];
-		const before = widgetLines(agents, "main", NOW, theme, 32);
-		const after = widgetLines(agents, "main", NOW + 5_000, theme, 32);
-		expect(before[1]).toBe(" └ ○ research-a · idle · 1m");
-		expect(after[1]).toBe(" └ ○ research-a · idle · 1m05s");
-		expect(before).toHaveLength(2);
+		expect(plain(widgetLines(agents, "main", NOW, theme, 80))[1]).toMatch(
+			/^ └ ○ research-a · research-a · 1m · Inspect Inspect .*…$/,
+		);
+		expect(widgetLines(agents, "main", NOW + 5_000, theme, 80)[1]).toMatch(
+			/^ └ ○ research-a · research-a · 1m05s · Inspect /,
+		);
+		expect(plain(widgetLines(agents, "main", NOW, theme, 32))).toEqual([
+			" 🦑 main ○ · main",
+			" └ ○ research-a · research-a",
+			"     Inspect Inspect Inspect In…",
+		]);
 	});
 
-	it("narrow layout: the detail row shows the goal of an idle agent, and its activity while it works, from 54 columns", () => {
+	it("narrow layout: below 60 columns the goal and the ↳ action take their own lines under the name", () => {
 		const id = "researcher-with-a-really-long-name-0001";
-		// Below 60 columns an agent keeps a head row and a detail row; from 60 the goal and activity share the name line.
 		const idle = widgetLines([member(id, { parentId: "main", goal: "Inspect ".repeat(20) })], "main", NOW, theme, 56);
-		expect(idle[2]).toMatch(/^ {5}Inspect Inspect/);
+		expect(idle[1]).toBe(" └ ○ researcher-with-a-r… · researcher-…");
+		expect(plain(idle)[2]).toMatch(/^ {5}Inspect Inspect .*…$/);
+		expect(idle).toHaveLength(3);
 		const busy = member(id, {
 			parentId: "main",
 			status: "working",
 			goal: "Inspect things",
 			activity: "localFetch x.ts",
 		});
-		expect(widgetLines([busy], "main", NOW, theme, 56)[2]).toContain("localFetch x.ts");
-		// From 50 to 53 columns the detail row keeps only the goal; below 50 it gives way.
-		expect(widgetLines([busy], "main", NOW, theme, 52)[2]).toContain("Inspect things");
-		expect(widgetLines([busy], "main", NOW, theme, 52)[2]).not.toContain("localFetch");
-		expect(widgetLines([busy], "main", NOW, theme, 48)).toHaveLength(2);
-		expect(groupOf(widgetLines([busy], "main", NOW, theme, 100), id)[0]).toContain("localFetch x.ts");
+		for (const width of [56, 52, 48])
+			expect(widgetLines([busy], "main", NOW, theme, width)).toEqual([
+				" 🦑 main ○ · main",
+				" └ ⠋ researcher-with-a-r… · researcher-…",
+				"     Inspect things",
+				"     ↳ localFetch x.ts",
+			]);
+		// From 60 columns the goal and the action share the grid row when the action fits whole.
+		expect(groupOf(widgetLines([busy], "main", NOW, theme, 100), "researcher-with-a-r")[0]).toMatch(
+			/^ └ ⠋ researcher-with-a-r… · researcher-… · 1m · Inspect things › localFetch x\.ts$/,
+		);
 	});
 
 	const team = [
@@ -167,89 +186,102 @@ describe("agents panel", () => {
 		}),
 	];
 
-	it("aligns the columns: every row puts model, state, time and tools at the same offsets", () => {
+	it("aligns the columns: every grid row puts its separators, elapsed time, tokens, goal and action at the same offsets", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 160);
-		const rows = ["researcher-3fa9", "general-77aa", "reviewer-a1b2"].map((name) => groupOf(lines, name)[1]);
-		const at = (needle: RegExp) => rows.map((row) => row.search(needle));
-		expect(new Set(at(/working|idle/)).size).toBe(1);
-		expect(new Set(at(/claude-opus|claude-haiku|gpt-5/)).size).toBe(1);
-		// Right-aligned: every tool count ends at the same offset.
-		expect(
-			new Set(
-				rows.map((row) => {
-					const hit = /\d+ tool calls?/.exec(row)!;
-					return hit.index + hit[0].length;
-				}),
-			).size,
-		).toBe(1);
-		expect(rows.every((row) => visibleWidth(row) <= 160)).toBe(true);
+		const rows = ["researcher-3fa9", "general-77aa", "reviewer-a1b2"].map((name) => groupOf(lines, name)[0]);
+		const ends = (needle: RegExp) =>
+			rows.map((row) => {
+				const hit = needle.exec(row);
+				return hit ? hit.index + hit[0].length : -1;
+			});
+		// The first separator, and the right-aligned elapsed time.
+		expect(new Set(rows.map((row) => row.indexOf(" · "))).size).toBe(1);
+		expect(ends(/2m14s|5s|45s/)).toEqual(Array(3).fill(ends(/2m14s/)[0]));
+		// Tokens (from 160 columns) end at the same cell; the goal column starts at the same cell.
+		const [first, , last] = ends(/\d+k tok/);
+		expect(first).toBe(last);
+		expect(rows[0].indexOf("Find where")).toBe(rows[2].indexOf("Review the diff"));
+		// Actions that fit whole follow the goal column at the same cell.
+		expect(rows[0].indexOf("›")).toBe(rows[1].indexOf("›"));
+		expect(lines.every((row) => visibleWidth(row) <= 160)).toBe(true);
 	});
 
-	it("roots the list at this session's totals, then model, state, age, tokens, tools and what each agent is doing now, working first", () => {
+	it("roots the list at this session's row (mark and time, no tally or cost), then each agent's grid row, working first, and its stats when open", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 200);
 		const squash = (line: string | undefined) => line!.replace(/ +/g, " ");
-		expect(squash(lines[0])).toBe(" 🦑 main-aaaaaa 2 working · 1 idle · 20k tok · ≈$0.04");
-		// Line 1 says who and what (goal › activity, then flags); line 2 under the name says how.
-		expect(squash(lines[1])).toBe(" ├ ⠋ 🐙 researcher-3fa9 Find where tools register › localSearch registerTool");
-		expect(squash(lines[2])).toBe(" │ claude-opus-4-5 working 2m14s 15k tok 12 tool calls ≈$0.04");
+		// No tally and no cost on the root row: the marks say the states, and the footer's Σ is the one total.
+		expect(squash(lines[0])).toBe(" 🦑 main-aaaaaa ○ · main · 1m");
+		// The grid row says who, spend and what (goal › action); the stats line under the name says how.
+		expect(squash(lines[1])).toBe(
+			" ├ ⠋ researcher-3fa9 · researcher · 2m14s ≈$0.04 · 15k tok · Find where tools register › localSearch registerTool",
+		);
+		expect(squash(lines[2])).toBe(" │ claude-opus-4-5 · 15k tok · 12 tool calls");
 		// A grandchild sits under its parent with the tree line beside it; no goal or usage leaves those cells empty.
-		expect(squash(lines[3])).toBe(" │ └ ⠋ 🐙 general-77aa bash yarn test");
-		expect(squash(lines[4])).toBe(" │ claude-haiku-4-5 working 5s 1 tool call");
-		expect(squash(lines[5])).toBe(" └ ○ 🐙 reviewer-a1b2 Review the diff ✉ 1 · 1 lock");
-		expect(squash(lines[6])).toBe(" gpt-5 idle 45s 5k tok 3 tool calls");
-		// A role the id already starts with (`researcher-3fa9`) is not repeated.
-		expect(lines.slice(1).join("\n")).not.toMatch(/ (researcher|reviewer|general) /);
+		expect(squash(lines[3])).toBe(" │ └ ⠋ general-77aa · general · 5s · › bash yarn test");
+		expect(squash(lines[4])).toBe(" │ claude-haiku-4-5 · 1 tool call");
+		// The waiting messages close the goal cell; the locks are on the stats line.
+		expect(squash(lines[5])).toBe(" └ ○ reviewer-a1b2 · reviewer · 45s · 5k tok · Review the diff ✉ 1");
+		expect(squash(lines[6])).toBe(" gpt-5 · 5k tok · 3 tool calls · 1 lock");
+		expect(lines).toHaveLength(7);
+		expect(lines.join("\n")).not.toMatch(/working|idle|🐙/);
+		// A role the id already starts with (`researcher-3fa9`) still shows.
+		expect(lines.slice(1).join("\n")).toMatch(/ · researcher · /);
 		// Provider prefixes stay out of the panel.
 		expect(lines.join("\n")).not.toMatch(/anthropic\//);
 	});
 
-	it("drops per-agent cost and tools first, keeps tokens, and shortens the goal before the activity; then two lines", () => {
-		const wide = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
-		expect(wide.every((line) => visibleWidth(line) <= 120)).toBe(true);
-		const [, wideStats] = groupOf(wide, "researcher-3fa9");
-		for (const kept of ["$0.04", "12 tool calls", "15k tok"]) expect(wideStats).toContain(kept);
-		// Narrower: the cost goes first, then the tool counts; tokens, model, state and time stay.
-		const medium = widgetLines(team, "main-aaaaaa", NOW, theme, 70);
-		expect(medium.every((line) => visibleWidth(line) <= 70)).toBe(true);
-		const [mediumHead, mediumStats] = groupOf(medium, "researcher-3fa9");
-		expect(mediumStats).not.toContain("$0.04");
-		expect(mediumStats).toContain("12 tool calls");
-		const narrow = widgetLines(team, "main-aaaaaa", NOW, theme, 60);
-		expect(narrow.every((line) => visibleWidth(line) <= 60)).toBe(true);
-		const [narrowHead, narrowStats] = groupOf(narrow, "researcher-3fa9");
-		expect(narrowStats).not.toContain("tool calls");
-		for (const kept of ["claude-opus-4-5", "working", "2m14s", "15k tok"]) expect(narrowStats).toContain(kept);
-		// The goal is shortened before the activity.
-		expect(mediumHead).toMatch(/Find where[^›]*… › localSearch regist/);
-		expect(narrowHead).toContain("Find where");
-		expect(narrow.join("\n")).toContain("✉ 1 · 1 lock");
-		// Below 60 columns an agent keeps the compact head row and detail row.
-		const compact = widgetLines(team, "main-aaaaaa", NOW, theme, 56);
-		expect(compact.every((line) => visibleWidth(line) <= 56)).toBe(true);
-		expect(compact[1]).toContain("researcher-3fa9 · working");
-		expect(compact.join("\n")).toContain("✉ 1 · 1 lock");
+	it("gives way in ladder order: tokens below 160, the action to a ↳ line, then the elapsed time; the cost stays; below 60 the narrow form", () => {
+		const at = (width: number) => {
+			const lines = widgetLines(team, "main-aaaaaa", NOW, theme, width);
+			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+			const start = lines.findIndex((line) => line.includes("researcher-3fa9"));
+			return { lines, head: lines[start], below: lines.slice(start + 1, start + 3) };
+		};
+		const wide = at(120);
+		expect(wide.head).toBe(
+			" ├ ⠋ researcher-3fa9 · researcher · 2m14s ≈$0.04 · Find where tools register › localSearch registerTool",
+		);
+		expect(wide.below[0]).toBe(" │   claude-opus-4-5 · 15k tok · 12 tool calls");
+		// The action does not fit whole beside the goal: it moves below, whole, and the goal stays whole.
+		const medium = at(70);
+		expect(medium.head).toBe(" ├ ⠋ researcher-3fa9 · researcher · ≈$0.04 · Find where tools register");
+		expect(medium.below).toEqual([" │   claude-opus-4-5 · 15k tok · 12 tool calls", " │   ↳ localSearch registerTool"]);
+		// Narrower: the elapsed time leaves every row, the role is cut to 8 cells, and the cost leaves with it.
+		const narrow = at(60);
+		expect(narrow.head).toBe(" ├ ⠋ researcher-3fa9 · researc… · Find where tools register");
+		expect(narrow.lines.join("\n")).not.toMatch(/2m14s|45s/);
+		expect(narrow.lines.join("\n")).toContain("Review the diff ✉ 1");
+		// Below 60 columns: the narrow form, goal and action under the name.
+		const compact = at(56);
+		expect(compact.head).toBe(" ├ ⠋ researcher-3fa9 · researcher");
+		expect(compact.lines.slice(2, 5)).toEqual([
+			" │   Find where tools register",
+			" │   claude-opus-4-5 · 15k tok · 12 tool calls",
+			" │   ↳ localSearch registerTool",
+		]);
+		expect(compact.lines.join("\n")).toContain(" └ ○ reviewer-a1b2 · reviewer · ✉ 1");
 	});
 
-	it("keeps a long activity readable at 120 columns by shortening the goal, not by dropping tokens or the cached share", () => {
+	it("keeps a long activity whole on a ↳ line under the goal column, and inline when it fits, never dropping tokens or the cached share", () => {
 		const busy = member("glowing-prawn", {
 			parentId: "main-aaaaaa",
 			status: "working",
 			goal: "ask parent a color, sleep, report",
 			model: "guy-provider/claude-haiku-5-5",
 			joinedAt: NOW - 5_000,
-			input: 275,
+			// `input` is every prompt token: 275 new ones and 58.4k read from cache.
+			input: 58_675,
 			cacheRead: 58_400,
 			output: 135,
 			activity: "Running shell: sleep 25",
 		});
-		const [row, stats] = groupOf(
-			widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 70),
-			"glowing-prawn",
-		);
-		expect(row).toContain("› Running shell: sleep 25");
-		expect(row).toMatch(/ask parent a[^›]*… ›/);
-		expect(stats).toContain("58.5k tok");
-		expect(stats).toContain("100% cached");
+		const lines = widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 70);
+		const [row, stats] = groupOf(lines, "glowing-prawn");
+		expect(row).toBe(" └ ⠋ glowing-prawn · glowing-pra… · 5s · ask parent a color, sleep, r…");
+		expect(stats).toBe("     claude-haiku-5-5 · 410 tok · 99% cached");
+		const action = lines[lines.indexOf(stats) + 1];
+		expect(action.trim()).toBe("↳ Running shell: sleep 25");
+		expect(action.indexOf("↳")).toBe(row.indexOf("glowing-prawn"));
 		// With room (200 columns) the whole goal shows too.
 		expect(
 			groupOf(widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 200), "glowing-prawn")[0],
@@ -268,25 +300,27 @@ describe("agents panel", () => {
 			{ ...live, updatedAt: at },
 		];
 		const lines = widgetLines([main, live], "main-aaaaaa", NOW, theme, 120, [], undefined, finished);
-		expect(lines[0]).toBe(" 🦑 main-aaaaaa  1 working · 1 left");
-		expect(lines[1]).toContain("wobbly-siphon");
-		const [goneHead, goneStats] = groupOf(lines, "sly-crab");
-		expect(goneHead).toMatch(/^ └ ○ 🐙 sly-crab/);
-		expect(goneStats).toMatch(/left +15s/);
-		expect(goneStats).not.toContain("working");
-		expect(lines.indexOf(goneHead)).toBeGreaterThan(lines.findIndex((line) => line.includes("wobbly-siphon")));
+		// The root row has no tally: each agent's mark says its state, and `left` is on the departed agent's ↳ line.
+		expect(lines).toEqual([
+			" 🦑 main-aaaaaa ○  · main         ·  1m",
+			" ├ ⠋ wobbly-siphon · wobbly-siph… ·  1m",
+			" └ ○ sly-crab      · sly-crab     · 15s",
+			"     ↳ left",
+		]);
 		// The elapsed time stays the run's length while the row is shown (`FINISHED_MS` after it left, inclusive).
 		const later = widgetLines(beat(lastShown), "main-aaaaaa", lastShown, theme, 120, [], undefined, finished);
-		expect(groupOf(later, "sly-crab")[1]).toMatch(/left +15s/);
-		// Then the row is gone (root plus the live agent's two lines); a lone departed agent keeps the panel for that long only.
+		const [laterHead, laterReason] = groupOf(later, "sly-crab");
+		expect(laterHead).toMatch(/^ └ ○ sly-crab +· sly-crab +· +15s$/);
+		expect(laterReason).toBe("     ↳ left");
+		// Then the row is gone (root plus the live agent's row); a lone departed agent keeps the panel for that long only.
 		expect(
 			widgetLines(beat(lastShown + 1), "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished),
-		).toHaveLength(3);
+		).toHaveLength(2);
 		expect(widgetLines([main], "main-aaaaaa", NOW, theme, 120, [], undefined, finished)).toHaveLength(3);
 		expect(widgetLines([main], "main-aaaaaa", lastShown + 1, theme, 120, [], undefined, finished)).toEqual([]);
-		// Collapsed to one row per agent (few terminal rows) it still reads left.
+		// Collapsed to one grid row per agent (few terminal rows) it keeps its tree connector and its neutral mark.
 		const [row] = collapsedRows([{ member: gone, depth: 0, doneAt: NOW - 9_000 }], NOW, theme, 120);
-		expect(row).toBe(" ○ sly-crab · left · 15s");
+		expect(row).toBe(" └ ○ sly-crab · sly-crab · 15s");
 	});
 
 	it("does not claim a departed child succeeded when its outcome is unknown", () => {
@@ -301,7 +335,7 @@ describe("agents panel", () => {
 		expect(lines.join("\n")).not.toContain("done");
 	});
 
-	it("shows every token with the cached share and marks a model without pricing in the row and the root row", () => {
+	it("shows new tokens with the cached share and marks a model without pricing in its row", () => {
 		const priced = member("researcher-3fa9", {
 			parentId: "main-aaaaaa",
 			toolCalls: 2,
@@ -320,11 +354,14 @@ describe("agents panel", () => {
 		const lines = widgetLines([member("main-aaaaaa"), priced, free], "main-aaaaaa", NOW, theme, 200).map((line) =>
 			line.replace(/ +/g, " "),
 		);
-		expect(lines[0]).toBe(" 🦑 main-aaaaaa 2 idle · 1.2M tok · ≈$2.28 + n/a");
-		expect(lines[1]).toBe(" ├ ○ 🐙 researcher-3fa9");
-		expect(lines[2]).toBe(" │ idle 1m 1.2M tok 94% cached 2 tool calls ≈$2.28");
-		expect(lines[3]).toBe(" └ ○ 🐙 general-77aa");
-		expect(lines[4]).toBe(" idle 1m 4.5k tok 1 tool call cost n/a");
+		// 72k new prompt tokens and 35k output; the 1.128M cache reads show as the cached share. The root row has no total.
+		expect(lines).toEqual([
+			" 🦑 main-aaaaaa ○ · main · 1m",
+			" ├ ○ researcher-3fa9 · researcher · 1m ≈$2.28 · 107k tok 94% cached",
+			" │ 107k tok · 94% cached · 2 tool calls",
+			" └ ○ general-77aa · general · 1m cost n/a · 4.5k tok",
+			" 4.5k tok · 1 tool call",
+		]);
 	});
 
 	it('keeps every line within a narrow width, the "+N more" line too', () => {
@@ -415,7 +452,7 @@ describe("panel traffic", () => {
 		const lines = widgetLines(
 			[
 				live("main-aaaaaa"),
-				live("researcher-bbbbbb", { parentId: "main-aaaaaa" }),
+				live("researcher-bbbbbb", { parentId: "main-aaaaaa", model: "claude-haiku-4-5" }),
 				live("tester-cccccc", { parentId: "main-aaaaaa" }),
 			],
 			"main-aaaaaa",
@@ -425,10 +462,12 @@ describe("panel traffic", () => {
 			traffic,
 		);
 		expect(lines.join("\n")).toContain(`#${mine}`);
-		// The message follows its sender's two lines, not a block of its own.
+		// The message block follows its sender's row and stats line, under the sender's tree line.
 		const at = lines.findIndex((line) => line.includes(`#${mine}`));
-		expect(lines[at - 2]).toContain("researcher-bbbbbb");
-		expect(lines[at - 1]).toContain("idle");
+		expect(lines[at - 2]).toMatch(/^ ├ ○ researcher-bbbbbb /);
+		expect(lines[at - 1]).toBe(" │   claude-haiku-4-5");
+		expect(lines[at]).toMatch(new RegExp(`^ │   ✉ #${mine} → tester-cccccc · queued · `));
+		expect(lines[at + 1]).toBe(' │     "ours"');
 		expect(lines.join("\n")).not.toContain("theirs");
 	});
 
@@ -444,9 +483,15 @@ describe("panel traffic", () => {
 			state: "delivered" as const,
 		}));
 		const lines = widgetLines(panel, "main-aaaaaa", now, theme, 60, traffic);
-		expect(lines.filter((line) => line.includes("↳"))).toHaveLength(1);
-		const cut = lines.filter((line) => line.includes("…"));
-		expect(cut.length).toBeGreaterThan(0);
+		// One block: the latest message's head, then its body on two lines ending in a one-character ellipsis.
+		const heads = lines.filter((line) => line.includes("✉"));
+		expect(heads).toHaveLength(1);
+		expect(heads[0]).toMatch(/^ {5}✉ #5 → tester-c · delivered · /);
+		const block = lines.slice(lines.indexOf(heads[0]));
+		expect(block).toHaveLength(3);
+		expect(plain(block)[2]).toMatch(/^ {8}y+…"$/);
+		expect(plain(lines)[1]).toMatch(/^ └ ○ researcher-bbbbbb · researc… · x+…$/);
+		expect(lines.every((line) => visibleWidth(line) <= 60)).toBe(true);
 		expect(lines.join("\n")).not.toContain("...");
 	});
 });

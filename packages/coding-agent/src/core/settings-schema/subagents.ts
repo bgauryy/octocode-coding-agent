@@ -3,7 +3,8 @@ import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 
 /**
  * The `subagents` settings: opt-in limits, off when absent, whose one reader is `spawnRefusal`
- * (octocode/subagents/spawn-limits.ts), and the check-in, whose one reader is `checkInConfig` (octocode/team/check-in.ts).
+ * (octocode/subagents/spawn-limits.ts), and the deprecated check-in and silence keys, read by the monitor
+ * (octocode/monitor/attention/) only when the `monitor.*` key is unset.
  */
 export const SubagentSettingsSchema = Type.Object(
 	{
@@ -45,7 +46,7 @@ export const SubagentSettingsSchema = Type.Object(
 			Type.Number({
 				minimum: 0,
 				description:
-					"Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
+					"Deprecated: use monitor.checkInSeconds, which wins when both are set. Seconds a running subagent and its parent may go without a message before the subagent is asked whether it needs something; 0 turns it off.",
 				default: SETTINGS_DEFAULTS.subagents.checkInSeconds,
 			}),
 		),
@@ -53,8 +54,7 @@ export const SubagentSettingsSchema = Type.Object(
 			Type.Number({
 				minimum: 0,
 				description:
-					"Minutes a working subagent may make no progress (no model reply or tool event) before its parent is told, again at twice and four times the interval; the parent decides what to do, nothing is stopped. 0 turns it off.",
-				default: SETTINGS_DEFAULTS.subagents.silenceMinutes,
+					"Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off.",
 			}),
 		),
 		wakeHoldSeconds: Type.Optional(
@@ -64,6 +64,13 @@ export const SubagentSettingsSchema = Type.Object(
 				description:
 					"Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
 				default: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds,
+			}),
+		),
+		peerOverlapWake: Type.Optional(
+			Type.Boolean({
+				description:
+					"Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
+				default: SETTINGS_DEFAULTS.subagents.peerOverlapWake,
 			}),
 		),
 	},

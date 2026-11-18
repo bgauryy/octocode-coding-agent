@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { ContextEditEntryDraft } from "../../core/features/index.ts";
 import { imageExtension, saveContentCopy } from "../shared/spill.ts";
 import { partText, stringOrEmpty } from "../shared/util.ts";
@@ -51,7 +51,7 @@ function saveImages(message: unknown): SavedImages {
 
 /** The note that replaces a message's images: where each is saved, and which could not be. */
 function imageNote({ copies, failed, total }: SavedImages, from = "an earlier tool call"): string {
-	return renderInstruction("notices/compaction/image-omitted.md", {
+	return renderPrompt("notices/compaction/image-omitted.md", {
 		from,
 		saved: copies.join(", "),
 		failed: failed.join(", "),

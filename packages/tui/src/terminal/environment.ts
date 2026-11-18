@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getNativePlatformHelper } from "../native-platform.ts";
 import { PASTE_IDLE_TIMEOUT_MS } from "../stdin-buffer.ts";
 
 const NATIVE_SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
@@ -17,6 +18,25 @@ export function isAppleTerminalSession(): boolean {
  * Best-effort: some environments (restricted seccomp or LSM policies) return EACCES
  * for `kill(2)`; in that case the dimensions refresh is skipped rather than crashing.
  */
+/** Terminals whose Return cannot carry Shift, so Enter asks the OS whether Shift is held. */
+export function detectsNativeShiftEnter(): boolean {
+	return isAppleTerminalSession() || process.platform === "win32";
+}
+
+/**
+ * On Windows, add ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) to the stdin console handle so the terminal sends VT
+ * sequences for modified keys (e.g. \x1b[Z for Shift+Tab). Without this, libuv's ReadConsoleInputW discards modifier
+ * state and Shift+Tab arrives as plain \t. Must run after setRawMode(true), which resets console mode flags.
+ */
+export function enableWindowsVTInput(): void {
+	if (process.platform !== "win32") return;
+	try {
+		getNativePlatformHelper()?.enableVirtualTerminalInput?.();
+	} catch {
+		// Native helper not available — Shift+Tab won't be distinguishable from Tab.
+	}
+}
+
 export function refreshTerminalDimensions(): void {
 	if (process.platform === "win32" || process.pid <= 0) return;
 	try {

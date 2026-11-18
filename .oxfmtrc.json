@@ -17,7 +17,7 @@
 		"packages/coding-agent/src/core/export-html/template.html",
 		"packages/coding-agent/src/core/export-html/template.css",
 		"**/fixtures/",
-		"packages/coding-agent/src/octocode/instructions/**/*.md",
+		"packages/coding-agent/src/octocode/native/{prompts,tools,hooks,agents}/**/*.md",
 		"**/AGENTS.md",
 		".yarn/",
 		"yarn.lock"

@@ -5,8 +5,8 @@ import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
  */
 
 import { join } from "node:path";
-import chalk from "chalk";
 import { getAgentDir } from "../../../config.ts";
+import { theme } from "../../../theme/theme.ts";
 import { foregroundChildActive } from "../../../utils/foreground-child.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { endIfStalled, watchMainThread } from "../../../utils/stall-guard.ts";
@@ -23,7 +23,7 @@ type LifecycleHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
 	| "clearEditor"
-	| "clearExtensionTerminalInputListeners"
+	| "clearFeatureTerminalInputListeners"
 	| "clearStatusIndicator"
 	| "disposeActiveSelector"
 	| "backgroundError"
@@ -66,7 +66,7 @@ export function handleCtrlD(host: LifecycleHost): void {
 
 /**
  * Gracefully shutdown the agent.
- * Stops the TUI before emitting shutdown events so extension UI cleanup cannot
+ * Stops the TUI before emitting shutdown events so feature UI cleanup cannot
  * repaint the final frame while the process is exiting.
  */
 export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boolean }): Promise<void> {
@@ -77,8 +77,8 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	// dispatch and re-sends the signal if only its own listeners remain.
 
 	if (options?.fromSignal) {
-		// Signal-triggered shutdown (SIGINT/SIGTERM/SIGHUP). Emit extension cleanup
-		// (session_shutdown) BEFORE touching the terminal. Extension teardown
+		// Signal-triggered shutdown (SIGINT/SIGTERM/SIGHUP). Emit feature cleanup
+		// (session_shutdown) BEFORE touching the terminal. Feature teardown
 		// such as removing sockets does not write to the tty, so it must not be
 		// skipped if a later terminal-restore write fails on a dead or stalled
 		// terminal. If the terminal is gone, the restore writes below emit EIO,
@@ -93,8 +93,8 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		process.exit(0);
 	}
 
-	// Interactive quit (Ctrl+D, Ctrl+C, /quit, extension shutdown()). Stop the
-	// TUI before emitting shutdown events so extension UI cleanup cannot repaint
+	// Interactive quit (Ctrl+D, Ctrl+C, /quit, feature shutdown()). Stop the
+	// TUI before emitting shutdown events so feature UI cleanup cannot repaint
 	// the final frame while the process is exiting.
 	// Drain any in-flight Kitty key release events before stopping.
 	// This prevents escape sequences from leaking to the parent shell over slow SSH.
@@ -106,7 +106,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 
 	const resumeCommand = formatResumeCommand(host.sessionManager);
 	if (resumeCommand) {
-		process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
+		process.stdout.write(`${theme.fg("dim", "To resume this session:")} ${resumeCommand}\n`);
 	}
 
 	await host.ui.terminal.drainOutput?.();
@@ -228,7 +228,7 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 	);
 
 	// Restore the terminal before the process dies on an uncaught throw.
-	// Without this, an unhandled exception from extension code (or anywhere
+	// Without this, an unhandled exception from feature code (or anywhere
 	// in Octocode) leaves the terminal in raw mode with no cursor.
 	// backgroundError keeps the session for errors that tear no state (see crash-reporting.ts) and crashes for the rest.
 	const uncaughtExceptionHandler = (error: Error) => host.backgroundError("uncaughtException", error);
@@ -321,7 +321,7 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 		}
 		host.clearStatusIndicator();
 		host.themeController.disableAutoSync();
-		host.clearExtensionTerminalInputListeners();
+		host.clearFeatureTerminalInputListeners();
 		host.footerDataProvider.dispose();
 		disposeLoadedResources(host.loadedResourcesContainer);
 		if (host.unsubscribe) {

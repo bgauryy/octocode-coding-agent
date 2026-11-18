@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { type agentEvents, AgentDbError, isBusy } from "../../../../../db/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentDbPath } from "../../shared/home.ts";
@@ -14,7 +14,7 @@ import type { TeamView } from "../ticker.ts";
 
 /** What the database access reads of the team (`Team`, `session.ts`): the current values each time. */
 interface DatabaseHost {
-	ctx(): ExtensionContext | undefined;
+	ctx(): FeatureContext | undefined;
 	env(): NodeJS.ProcessEnv;
 }
 

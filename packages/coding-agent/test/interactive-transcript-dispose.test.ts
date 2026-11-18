@@ -6,8 +6,8 @@ import { disposeTranscript } from "../src/modes/interactive/interactive-mode/tra
 import { stop } from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { renderCurrentSessionState } from "../src/modes/interactive/interactive-mode/session-binding.ts";
 import { showTreeNavigationResult } from "../src/modes/interactive/interactive-mode/session-navigation.ts";
-import { toolTimerText, startToolTimer } from "../src/core/tools/render-utils.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { resultBlock, toolHeader } from "../src/octocode/render/tool.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const ROWS = 20;
@@ -20,12 +20,10 @@ function runningRows(ui: TUI, chat: Container): void {
 	for (let i = 0; i < ROWS; i++) chat.addChild(new BashExecutionComponent(`sleep ${i}`, ui));
 	const timed = {
 		renderCall: (_a: unknown, _t: unknown, ctx: any) => {
-			startToolTimer(ctx);
-			return { render: () => [], invalidate() {} };
+			return toolHeader(theme, { ...ctx, toolCallId: undefined }, "timed", "");
 		},
 		renderResult: (_r: unknown, o: { isPartial: boolean }, _t: unknown, ctx: any) => {
-			toolTimerText(ctx, o.isPartial);
-			return { render: () => [], invalidate() {} };
+			return resultBlock(theme, ctx, { summary: o.isPartial ? "running" : "done" });
 		},
 	};
 	for (let i = 0; i < ROWS; i++) {
@@ -93,7 +91,7 @@ describe("transcript rows are disposed when dropped", () => {
 			disposeActiveSelector: vi.fn(),
 			clearStatusIndicator: vi.fn(),
 			themeController: { disableAutoSync: vi.fn() },
-			clearExtensionTerminalInputListeners: vi.fn(),
+			clearFeatureTerminalInputListeners: vi.fn(),
 			footerDataProvider: { dispose: vi.fn() },
 			unsubscribe: vi.fn(),
 			isInitialized: true,

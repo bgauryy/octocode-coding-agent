@@ -3,8 +3,8 @@ import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import type { ReportStatus } from "../instructions/report.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import type { ReportStatus } from "../native/prompts/report.ts";
 import { envInt } from "@octocodeai/octocode-common/env";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
@@ -13,7 +13,7 @@ import { deriveAgentRoute, type AgentRoute } from "@octocodeai/octocode-contract
 import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
 import { type CacheChoice, childCachePreferences, defaultTaskCache, type Identity } from "./process/env.ts";
 import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
-import { routeThinking } from "./thinking.ts";
+import { routeThinking } from "../render/route-thinking.ts";
 import { maxRequests } from "./budget.ts";
 import type { Team } from "../team/session.ts";
 import { currentCatalog } from "./catalog.ts";
@@ -147,7 +147,7 @@ export class Slots {
 
 /** State of one agent tool registration; a replaced session starts clean. */
 export interface AgentRuns {
-	api: ExtensionAPI;
+	api: FeatureSetup;
 	team: Team;
 	background: Background;
 	/** Foreground runs, so `/agents kill` can stop one without aborting the whole turn. */
@@ -217,7 +217,7 @@ export type RunRoute = Extract<ModelRoute, { model?: string }> & { via?: string;
  * process's memory and never reaches a child, which inherits the environment and the shared credential store instead.
  * An environment key the child inherits keeps the provider usable.
  */
-function sessionOnlyProvider(registry: ExtensionContext["modelRegistry"] | undefined, provider: string): boolean {
+function sessionOnlyProvider(registry: FeatureContext["modelRegistry"] | undefined, provider: string): boolean {
 	return registry?.getProviderAuthStatus?.(provider).source === "runtime" && !getEnvApiKey(provider);
 }
 
@@ -228,7 +228,7 @@ function sessionOnlyError(provider: string): Error {
 }
 
 /** The models a child process can authenticate for; naming a session-only provider explicitly is refused with the reason. */
-function childAvailable(registry: ExtensionContext["modelRegistry"] | undefined, explicit: string | undefined) {
+function childAvailable(registry: FeatureContext["modelRegistry"] | undefined, explicit: string | undefined) {
 	if (!registry) return [];
 	const provider = explicit?.includes("/") ? explicit.slice(0, explicit.indexOf("/")) : undefined;
 	if (provider && sessionOnlyProvider(registry, provider)) throw sessionOnlyError(provider);
@@ -245,7 +245,7 @@ export type RunPlan = Pick<Run, "profile" | "route">;
 export function planRun(
 	profiles: Map<string, AgentProfile>,
 	params: Pick<AgentParams, "profile" | "model" | "headless" | "background">,
-	ctx: Pick<ExtensionContext, "modelRegistry" | "model">,
+	ctx: Pick<FeatureContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
 ): RunPlan {
 	let profile = params.profile ? profiles.get(params.profile) : undefined;
@@ -311,7 +311,7 @@ export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
 	params: Pick<AgentParams, "goal" | "name" | "sessionId" | "background" | "isolate" | "hooks" | "cache">,
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model" | "modelRegistry">>,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager"> & Partial<Pick<FeatureContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
 	slot: { held: boolean } = { held: true },
@@ -347,7 +347,7 @@ export function claimRun(
 		: undefined;
 	if (childModel && ctx.modelRegistry) {
 		const policy = ctx.modelRegistry.getCachePolicy(childModel, [
-			{ source: "parent settings", values: runs.api.getSettings() },
+			{ source: "parent settings", values: runs.api.settings.get() },
 		]);
 		// The task's tier for its history, else the default for its shape; a retention the user configured wins over both.
 		const choice =

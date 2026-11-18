@@ -8,7 +8,7 @@ import { hookIdentity } from "./config/calls.ts";
 import { hookToggleIds } from "./config/toggles.ts";
 
 /**
- * The extension guard's view of hooks: one review item per handler, identified by its file, event, matcher and place
+ * The feature guard's view of hooks: one review item per handler, identified by its file, event, matcher and place
  * (not its content, so a changed handler shows as changed), and pinned to its definition and any script it names.
  */
 

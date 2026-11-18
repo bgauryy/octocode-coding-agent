@@ -5,7 +5,7 @@ import type { Theme } from "../../../theme/theme.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { CustomEntry } from "../../session-manager.ts";
 import type { SourceInfo } from "../../source-info.ts";
-import type { ExtensionCommandContext } from "./context.ts";
+import type { CommandContext } from "./context.ts";
 
 // Message and Entry Rendering
 // ============================================================================
@@ -55,7 +55,7 @@ export interface RegisteredCommand {
 	 */
 	argumentWords?: readonly string[];
 	getArgumentCompletions?: (argumentPrefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
-	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
+	handler: (args: string, ctx: CommandContext) => Promise<void>;
 }
 
 export interface ResolvedCommand extends RegisteredCommand {

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openBacklog } from "../backlog/context.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
@@ -9,7 +9,7 @@ import { cutText } from "@octocodeai/octocode-common/text";
 import { type ItemLink, trackSavedRef } from "./item-link.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 
-type Ctx = Pick<ExtensionContext, "cwd" | "sessionManager">;
+type Ctx = Pick<FeatureContext, "cwd" | "sessionManager">;
 
 /** Preserve a child's open steps in its report before an isolated worktree is removed. Reads never declare a workspace. */
 export function isolatedChildSteps(cwd: string, agent: string): string {

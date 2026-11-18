@@ -7,7 +7,7 @@ import { processStartTime } from "../../src/octocode/shared/process.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

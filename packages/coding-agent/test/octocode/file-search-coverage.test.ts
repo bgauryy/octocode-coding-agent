@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { contextReads } from "../../src/octocode/files/reads.ts";
 import { registerReadReceipts } from "../../src/octocode/files/read-receipts.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { snapshotLocalReads } from "../../src/octocode/shared/local-reads.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";

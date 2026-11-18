@@ -1,4 +1,4 @@
-/** A bordered, full-width manager view whose content a command rebuilds while it runs (`/mcp`, `/llama`). */
+/** A bordered, full-width manager view whose content a command rebuilds while it runs (`/mcp`). */
 
 import {
 	type Component,
@@ -9,7 +9,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionCommandContext } from "../core/features/types.ts";
+import type { CommandContext } from "../core/features/types.ts";
 import type { KeybindingsManager } from "../core/keybindings.ts";
 import type { Theme } from "./theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -41,7 +41,7 @@ export function renderClipped(content: Component, width: number): string[] {
  * must settle that wait and drop its subscriptions in `dispose()`.
  */
 export async function runInView<V extends Component>(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	create: (tui: TUI, theme: Theme, keybindings: KeybindingsManager) => V,
 	run: (view: V) => Promise<void>,
 ): Promise<void> {

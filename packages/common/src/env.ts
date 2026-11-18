@@ -50,7 +50,7 @@ export const SESSION_RETENTION_DAYS_ENV = "OCTOCODE_SESSION_RETENTION_DAYS";
 
 /** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
 export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
-/** Set for a child of a `lean: true` profile: a short subagent prompt replaces the native policy (`instructions/lean.ts`). */
+/** Set for a child of a `lean: true` profile: a short subagent prompt replaces the native policy (`native/prompts/lean.ts`). */
 export const LEAN_ENV = "OCTOCODE_LEAN";
 /**
  * What the operator of a run took away with `--exclude-tools` (comma-separated) and `--no-mcp` (`1`). The run sets them for
@@ -64,6 +64,11 @@ export const OPERATOR_NO_MCP_ENV = "OCTOCODE_OPERATOR_NO_MCP";
  * `skill` tool stays declared even with none; children of one profile then share the cached prompt whatever their skills.
  */
 export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
+/**
+ * Comma-separated skill names a subagent's prompt lists (its profile's `catalog:`); the others stay loadable by name and
+ * the prompt counts them. Unset: the whole catalog is listed.
+ */
+export const SKILL_CATALOG_ENV = "OCTOCODE_SKILL_CATALOG";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
@@ -207,5 +212,5 @@ export const MCP_DEFER_ROLES_ENV = "OCTOCODE_MCP_DEFER_ROLES";
 /** JSON array of the MCP tools (`<server>/<tool>`) a child's coordinator counts as in use, so both defer the same tools (`mcpExposure: "recent"`; `mcp/src/deferral.ts`). */
 export const MCP_RECENT_TOOLS_ENV = "OCTOCODE_MCP_RECENT_TOOLS";
 
-/** Owner-only handoff of enabled, non-stopped extension MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
+/** Owner-only handoff of enabled, non-stopped feature MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
 export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { constants as osConstants } from "node:os";
 import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveBashShell, spawnShell } from "../../utils/shell.ts";
+import { RefusalWatch, sandboxDenials } from "../../utils/command-sandbox.ts";
 import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { recordShellGroup } from "../shared/shell-groups.ts";
 import { signalTree } from "../../utils/process-tree.ts";
@@ -214,7 +215,11 @@ export function foregroundOperations(
 	onGroup: (pid: number) => void,
 	handoff?: Handoff,
 	onExit?: (signal: NodeJS.Signals | null) => void,
-	{ watch, stopAtDeadline = false }: { watch?: PendingWatch; stopAtDeadline?: boolean } = {},
+	{
+		watch,
+		stopAtDeadline = false,
+		unsandboxed = false,
+	}: { watch?: PendingWatch; stopAtDeadline?: boolean; unsandboxed?: boolean } = {},
 ): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout: requestedTimeout, env }) => {
@@ -226,6 +231,7 @@ export function foregroundOperations(
 			const child = await spawnShell(resolveBashShell(settings), command, {
 				cwd,
 				env: nonInteractiveEnv(env ?? process.env),
+				unsandboxed,
 			});
 			const pid = child.pid;
 			if (pid) track(pid);
@@ -235,12 +241,14 @@ export function foregroundOperations(
 			let movedAfter: number | undefined;
 			const startedAt = Date.now();
 			const kept = handoff ? new KeptOutput() : undefined;
+			const refusal = new RefusalWatch();
 			const stop = () => {
 				killTree(pid);
 				waiter.stopped();
 			};
 			const read = (chunk: Buffer) => {
 				kept?.push(chunk);
+				refusal.push(chunk);
 				onData(chunk);
 			};
 			const waiter = waitForExit(child);
@@ -291,6 +299,9 @@ export function foregroundOperations(
 				const code = await waiter.done;
 				if (signal?.aborted) throw new Error("aborted");
 				if (timedOut) throw new Error(`timeout:${movedAfter ?? timeout}`);
+				// A failed command says what the sandbox refused it, so the cause is a path or host, not a bare EPERM.
+				const refused = code === 0 ? undefined : await sandboxDenials(child, { suspected: refusal.seen });
+				if (refused) onData(Buffer.from(`\n${refused}\n`));
 				onExit?.(child.signalCode);
 				if (pid) onGroup(pid);
 				// A signal-killed shell has no exit code: the shell convention keeps it from reading as success.

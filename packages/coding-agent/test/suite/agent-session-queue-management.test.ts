@@ -1,11 +1,12 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getMessageText, getUserTexts, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
-async function createWaitingHarness(extensionFactories: Array<(api: ExtensionAPI) => void> = []) {
+async function createWaitingHarness(factories: Array<(api: FeatureSetup) => void> = []) {
 	let release: () => void = () => {};
 	const released = new Promise<void>((resolve) => {
 		release = resolve;
@@ -20,7 +21,7 @@ async function createWaitingHarness(extensionFactories: Array<(api: ExtensionAPI
 			return { content: [{ type: "text", text: "released" }], details: {} };
 		},
 	};
-	const harness = await createHarness({ tools: [waitTool], extensionFactories });
+	const harness = await createHarness({ tools: [waitTool], features: testFeatures(factories) });
 	harness.setResponses([fauxAssistantMessage(fauxToolCall("wait", {}), { stopReason: "toolUse" })]);
 	const toolStarted = new Promise<void>((resolve) => {
 		const unsubscribe = harness.session.subscribe((event) => {
@@ -44,7 +45,7 @@ describe("AgentSession queue management", () => {
 	});
 
 	it("lists queued inputs in delivery order with kind, text, source and attachment count", async () => {
-		let api: ExtensionAPI | undefined;
+		let api: FeatureSetup | undefined;
 		const { harness, release, promptPromise } = await createWaitingHarness([
 			(host) => {
 				api = host;
@@ -56,17 +57,17 @@ describe("AgentSession queue management", () => {
 
 		await session.followUp("after");
 		await session.steer("first", [{ type: "image", data: "AAAA", mimeType: "image/png" }]);
-		api?.sendUserMessage("from extension", { deliverAs: "steer" });
+		api?.session.sendUserMessage("from feature", { deliverAs: "steer" });
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const queued = session.getQueuedInputs();
 		expect(queued.map(({ mode, text, imageCount, source }) => ({ mode, text, imageCount, source }))).toEqual([
 			{ mode: "steer", text: "first", imageCount: 1, source: "interactive" },
-			{ mode: "steer", text: "from extension", imageCount: 0, source: "extension" },
+			{ mode: "steer", text: "from feature", imageCount: 0, source: "feature" },
 			{ mode: "followUp", text: "after", imageCount: 0, source: "interactive" },
 		]);
 		expect(new Set(queued.map((entry) => entry.id)).size).toBe(3);
-		expect(session.getSteeringMessages()).toEqual(["first", "from extension"]);
+		expect(session.getSteeringMessages()).toEqual(["first", "from feature"]);
 		expect(session.getFollowUpMessages()).toEqual(["after"]);
 
 		session.clearQueue();
@@ -242,7 +243,7 @@ describe("AgentSession queue management", () => {
 		const seen: string[] = [];
 		const { harness, release, promptPromise } = await createWaitingHarness([
 			(api) => {
-				api.on("user_input", (event) => {
+				api.bus.on("user_input", (event) => {
 					seen.push(event.text);
 				});
 			},

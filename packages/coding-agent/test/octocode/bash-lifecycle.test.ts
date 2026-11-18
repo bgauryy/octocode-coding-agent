@@ -7,7 +7,7 @@ import { setCurrentSession } from "../../src/storage/runtime-paths.ts";
 import { runToolCall } from "@octocodeai/octocode-agent-core";
 import { createLocalBashOperations } from "../../src/core/tools/bash/local-operations.ts";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { foregroundOperations } from "../../src/octocode/files/bash-run.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

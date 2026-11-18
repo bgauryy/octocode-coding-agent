@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,6 +56,6 @@ describe("ongoing backlog items after a compaction", () => {
 	});
 
 	it("still lets the Recovery block deny an item the summary invented when the session holds none", () => {
-		expect(liveStateLines(ctx(), [], 0)[0]).toContain("this session holds: none.");
+		expect(liveStateLines(ctx(), [], 0)[0]).toContain(renderPrompt("notices/recovery/live-items.md"));
 	});
 });

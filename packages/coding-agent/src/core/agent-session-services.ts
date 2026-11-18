@@ -101,43 +101,31 @@ export async function createAgentSessionServices(
 			}
 			for (const message of modelRuntime.getConfigWarnings()) diagnostics.push({ type: "warning", message });
 		}
-		const extensionsResult = resourceLoader.getExtensions();
-		for (const { name, config, extensionPath } of extensionsResult.runtime.pendingProviderRegistrations) {
+		const featuresResult = resourceLoader.getFeatures();
+		for (const { name, config, source } of featuresResult.runtime.pendingProviderRegistrations) {
 			try {
 				modelRuntime.registerProvider(name, config);
 			} catch (error) {
 				const message = errorMessage(error);
 				diagnostics.push({
 					type: "error",
-					message: `Extension "${extensionPath}" error: ${message}`,
+					message: `Feature "${source}" error: ${message}`,
 				});
 			}
 		}
-		extensionsResult.runtime.pendingProviderRegistrations = [];
-		for (const { provider, extensionPath } of extensionsResult.runtime.pendingNativeProviderRegistrations) {
+		featuresResult.runtime.pendingProviderRegistrations = [];
+		for (const { provider, source } of featuresResult.runtime.pendingNativeProviderRegistrations) {
 			try {
 				modelRuntime.registerNativeProvider(provider);
 			} catch (error) {
 				const message = errorMessage(error);
 				diagnostics.push({
 					type: "error",
-					message: `Extension "${extensionPath}" error: ${message}`,
+					message: `Feature "${source}" error: ${message}`,
 				});
 			}
 		}
-		extensionsResult.runtime.pendingNativeProviderRegistrations = [];
-		for (const { definition, extensionPath } of extensionsResult.runtime.pendingVirtualModelRegistrations) {
-			try {
-				modelRuntime.registerVirtualModel(definition);
-			} catch (error) {
-				const message = errorMessage(error);
-				diagnostics.push({
-					type: "error",
-					message: `Extension "${extensionPath}" error: ${message}`,
-				});
-			}
-		}
-		extensionsResult.runtime.pendingVirtualModelRegistrations = [];
+		featuresResult.runtime.pendingNativeProviderRegistrations = [];
 		await modelRuntime.refresh({ allowNetwork: false });
 		if (!options.modelRuntime) {
 			for (const message of modelRuntime.getMissingCredentialWarnings()) diagnostics.push({ type: "warning", message });

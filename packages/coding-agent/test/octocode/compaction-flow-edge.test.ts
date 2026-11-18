@@ -17,6 +17,7 @@ import { deriveInsights } from "../../src/octocode/profiler/insights.ts";
 import { allEvents, type Lane } from "../../src/octocode/profiler/timeline.ts";
 import { IDENTITY_REMINDER_TYPE, registerIdentityReminder } from "../../src/octocode/subagents/identity-reminder.ts";
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = {
 	provider: "p",
@@ -61,11 +62,11 @@ async function sharedRequest(
 	sessionModel: Record<string, unknown> = model,
 ): Promise<{ context: Context; options: SimpleStreamOptions }> {
 	const calls: Array<{ context: Context; options: SimpleStreamOptions }> = [];
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => "high",
 		getSettings: () => ({}),
 		getHiddenDeclarations: () => [],
-	} as never;
+	}) as never;
 	const ctx = {
 		modelRegistry: {
 			getCachePolicy: () => ({ options: { cacheRetention: "long", instructionCacheRetention: "long" } }),
@@ -173,11 +174,11 @@ describe("the cache-sharing summary sends the live request's messages", () => {
 		// once a newer one arrives (identity-reminder.ts:104-109). The shared request must hide it too.
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
 		registerIdentityReminder(
-			{
+			asSetup({
 				on: (name: string, handler: (event: unknown, ctx: unknown) => Promise<unknown>) => handlers.set(name, handler),
 				appendEntry: () => undefined,
 				sendMessage: () => undefined,
-			} as never,
+			}) as never,
 			{ [AGENT_ID_ENV]: "kid" },
 		);
 		const entries = [
@@ -225,14 +226,14 @@ describe("a model switch right before compaction", () => {
 			projected("r", "message", lastReply),
 		];
 		const calls: SimpleStreamOptions[] = [];
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "high",
 			createUsageRecorder: () => () => undefined,
 			getActiveTools: () => [],
 			getHiddenDeclarations: () => [],
 			getSettings: () => ({}),
 			appendEntry: () => undefined,
-		} as never;
+		}) as never;
 		const ctx = {
 			model,
 			modelRegistry: {

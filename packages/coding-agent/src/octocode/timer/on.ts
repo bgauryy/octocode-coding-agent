@@ -7,15 +7,39 @@ export interface EventFilter {
 	path?: string;
 	agent?: string;
 	command?: string;
+	epic?: string;
+	change?: string;
 }
+
+/** What `until` an event stands for, and the filter fields it takes: `required` all, and at least one of `oneOf` when given. */
+interface Listener {
+	required: readonly (keyof EventFilter)[];
+	optional?: readonly (keyof EventFilter)[];
+	oneOf?: readonly (keyof EventFilter)[];
+	until(filter: EventFilter): object;
+}
+
+const defined = <T extends object>(value: T) =>
+	Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
 
 /** The filter fields each listenable event takes, and the `until` condition each maps to. */
 const LISTENERS = {
-	"agent.ended": { fields: ["agent"], until: (f: EventFilter) => ({ agent: { name: f.agent } }) },
-	"item.state": { fields: ["ref", "state"], until: (f: EventFilter) => ({ item: { ref: f.ref, state: f.state } }) },
-	"path.unlocked": { fields: ["path"], until: (f: EventFilter) => ({ unlocked: f.path }) },
-	"check.result": { fields: ["command"], until: (f: EventFilter) => ({ command: f.command }) },
-} as const;
+	"agent.ended": { required: ["agent"], until: (f) => ({ agent: { name: f.agent } }) },
+	"item.state": { required: ["ref", "state"], until: (f) => ({ item: { ref: f.ref, state: f.state } }) },
+	"item.changed": {
+		required: [],
+		optional: ["ref", "epic", "path", "change"],
+		oneOf: ["ref", "epic", "path"],
+		until: (f) => ({ changed: defined({ ref: f.ref, epic: f.epic, path: f.path, change: f.change }) }),
+	},
+	"peer.landed": {
+		required: ["ref"],
+		optional: ["path", "agent"],
+		until: (f) => ({ landed: defined({ ref: f.ref, path: f.path, agent: f.agent }) }),
+	},
+	"path.unlocked": { required: ["path"], until: (f) => ({ unlocked: f.path }) },
+	"check.result": { required: ["command"], until: (f) => ({ command: f.command }) },
+} satisfies Record<string, Listener>;
 
 /** The events `on` listens for. */
 export const LISTEN_EVENTS = Object.keys(LISTENERS) as [keyof typeof LISTENERS, ...(keyof typeof LISTENERS)[]];
@@ -31,13 +55,26 @@ export function untilOfEvent(event: unknown, filter: EventFilter | undefined, ch
 	if (kind === "time.due") throw new Error("time.due is a time: use set with after or every.");
 	if (CATALOG[kind].listener === "implicit")
 		throw new Error(`${kind} already wakes you without a wait; listening for it adds nothing.`);
-	const listener = LISTENERS[kind as keyof typeof LISTENERS];
+	const listener = (LISTENERS as Record<string, Listener>)[kind];
+	const takes = [...listener.required, ...(listener.optional ?? [])] as string[];
 	const given = Object.entries(filter ?? {}).filter(([, value]) => value !== undefined);
-	const unknown = given.filter(([key]) => !(listener.fields as readonly string[]).includes(key));
+	const unknown = given.filter(([key]) => !takes.includes(key));
 	if (unknown.length)
-		throw new Error(`${kind} filters on ${listener.fields.join(", ")}, not ${unknown.map(([key]) => key).join(", ")}.`);
-	for (const field of listener.fields)
-		if (typeof filter?.[field] !== "string" || !filter[field].trim()) throw new Error(`${kind} needs filter.${field}.`);
+		throw new Error(`${kind} filters on ${takes.join(", ")}, not ${unknown.map(([key]) => key).join(", ")}.`);
+	const set = (field: keyof EventFilter) => typeof filter?.[field] === "string" && filter[field].trim() !== "";
+	for (const field of listener.required) if (!set(field)) throw new Error(`${kind} needs filter.${field}.`);
+	if (listener.oneOf && !listener.oneOf.some(set))
+		throw new Error(`${kind} needs one of filter.${listener.oneOf.join(", filter.")}.`);
+	if (check !== undefined && filter?.command !== undefined && sameCommand(check, filter.command))
+		throw new Error(
+			"check repeats filter.command: the command alone wakes you free when it exits 0. check is a question in words that a paid small model judges after that; drop it.",
+		);
 	const until = listener.until(filter ?? {});
 	return check === undefined ? until : { ...until, check };
 }
+
+/** The same shell text, ignoring quotes and spacing: `grep -q "x" f` and `grep -q x f`. */
+const sameCommand = (a: string, b: string): boolean => {
+	const bare = (text: string) => text.replace(/["']/g, "").replace(/\s+/g, " ").trim();
+	return bare(a) === bare(b);
+};

@@ -1,6 +1,6 @@
 import { INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import {
 	INFERRED_CACHE_TTL_SECONDS,
 	cacheClock,
@@ -14,6 +14,7 @@ import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
+import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 type TestModel = {
@@ -60,7 +61,7 @@ function fakeHost(models: TestModel[]) {
 			...config.models.map((model) => ({ ...model, provider: name })),
 		];
 	});
-	const api = {
+	const api = asSetup({
 		on: (name: string, handler: Handler) => {
 			handlers.set(name, handler);
 			return undefined;
@@ -68,7 +69,7 @@ function fakeHost(models: TestModel[]) {
 		registerProvider,
 		getSettings: () => ({}),
 		getThinkingLevel: () => "off",
-	} as unknown as ExtensionAPI;
+	}) as unknown as FeatureSetup;
 	const current = { model: models[0] };
 	const usage = { percent: 12 as number | null };
 	const ctx = {
@@ -85,7 +86,7 @@ function fakeHost(models: TestModel[]) {
 		sessionManager: { getSessionId: () => "s1", getBranch: () => [], getHeader: () => null },
 		getContextUsage: () => ({ tokens: 1, contextWindow: 1_000_000, percent: usage.percent }),
 	};
-	return {
+	return asSetup({
 		api,
 		ctx,
 		handlers,
@@ -93,7 +94,7 @@ function fakeHost(models: TestModel[]) {
 		usage,
 		catalog: () => catalog,
 		fire: (name: string, event: unknown = {}) => handlers.get(name)!(event, ctx),
-	};
+	});
 }
 
 const turnEnd = (entries: Array<{ id: string; message: unknown }>, message: unknown) => ({
@@ -304,11 +305,15 @@ describe("granted tier and warming", () => {
 				now,
 			),
 		).toEqual({ action: "stop" });
-		// A subagent reports a UI over RPC but nobody idles at it: it never keeps a cache warm, by argument or by its env.
-		expect(warmingDecision({ ...idle, action: "warm" }, ctx, 5 * minute, now, true)).toEqual({ action: "stop" });
+		// A subagent reports a UI over RPC but nobody idles at it: it keeps a cache warm only when its own gaps show its
+		// coordinator's next message comes within the lifetime, by argument or by its env; without such gaps it stops.
+		expect(warmingDecision(idle, ctx, 5 * minute, now, true)).toEqual({ action: "warm" });
+		const fresh = { hasUI: true, sessionManager: { getBranch: () => branch.slice(-1) } } as never;
+		expect(warmingDecision({ ...idle, action: "warm" }, fresh, 5 * minute, now, true)).toEqual({ action: "stop" });
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		try {
-			expect(warmingDecision({ ...idle, action: "warm" }, ctx, 5 * minute, now)).toEqual({ action: "stop" });
+			expect(warmingDecision({ ...idle, action: "warm" }, fresh, 5 * minute, now)).toEqual({ action: "stop" });
+			expect(warmingDecision({ ...idle, action: "warm" }, ctx, 60 * minute, now)).toEqual({ action: "stop" });
 		} finally {
 			vi.unstubAllEnvs();
 		}

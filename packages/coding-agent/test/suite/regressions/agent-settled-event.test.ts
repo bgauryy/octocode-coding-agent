@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getUserTexts, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 function createWaitTool(released: Promise<void>): AgentTool {
 	return {
@@ -27,20 +28,20 @@ describe("agent settled event and idle waiting", () => {
 	});
 
 	it("emits one agent_settled event after automatic retry finishes", async () => {
-		const extensionEvents: string[] = [];
+		const featureEvents: string[] = [];
 		const publicEvents: string[] = [];
 		const harness = await createHarness({
 			settings: { retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 } },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_end", () => {
-						extensionEvents.push("agent_end");
+					api.bus.on("agent_end", () => {
+						featureEvents.push("agent_end");
 					});
-					api.on("agent_settled", (_event, ctx) => {
-						extensionEvents.push(`agent_settled:${ctx.isIdle()}`);
+					api.bus.on("agent_settled", (_event, ctx) => {
+						featureEvents.push(`agent_settled:${ctx.isIdle()}`);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.session.subscribe((event) => {
@@ -59,7 +60,7 @@ describe("agent settled event and idle waiting", () => {
 		expect(harness.eventsOfType("agent_settled")).toEqual([
 			expect.objectContaining({ type: "agent_settled", aborted: false }),
 		]);
-		expect(extensionEvents).toEqual(["agent_end", "agent_end", "agent_settled:true"]);
+		expect(featureEvents).toEqual(["agent_end", "agent_end", "agent_settled:true"]);
 		expect(publicEvents).toEqual(["agent_settled"]);
 	});
 
@@ -67,18 +68,18 @@ describe("agent settled event and idle waiting", () => {
 		let queuedFollowUp = false;
 		const settledIdleStates: boolean[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_end", () => {
+					api.bus.on("agent_end", () => {
 						if (queuedFollowUp) return;
 						queuedFollowUp = true;
-						api.sendUserMessage("status follow-up", { deliverAs: "followUp" });
+						api.session.sendUserMessage("status follow-up", { deliverAs: "followUp" });
 					});
-					api.on("agent_settled", (_event, ctx) => {
+					api.bus.on("agent_settled", (_event, ctx) => {
 						settledIdleStates.push(ctx.isIdle());
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
@@ -103,9 +104,9 @@ describe("agent settled event and idle waiting", () => {
 		const commandResults: boolean[] = [];
 		const harness = await createHarness({
 			tools: [createWaitTool(released)],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.registerCommand("after-idle", {
+					api.commands.register("after-idle", {
 						description: "Wait for idle",
 						handler: async (_args, ctx) => {
 							markCommandStarted();
@@ -114,10 +115,10 @@ describe("agent settled event and idle waiting", () => {
 						},
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({
+		await harness.session.bindFeatures({
 			commandContextActions: {
 				waitForIdle: () => harness.session.waitForIdle(),
 				newSession: async () => ({ cancelled: false }),

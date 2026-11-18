@@ -8,7 +8,7 @@ import {
 	INSTRUCTION_CACHE_RETENTION_ENV,
 	PROMPT_CACHE_KEY_ENV,
 } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { ROLE_PROMPT_FILE_ENV } from "../../instructions/role.ts";
+import { ROLE_PROMPT_FILE_ENV } from "../../native/prompts/role.ts";
 import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BACKLOG_ITEM_ENV,
@@ -20,6 +20,7 @@ import {
 	LEAN_ENV,
 	MEMORY_AUTO_ENV,
 	SKILLS_IN_TASK_ENV,
+	SKILL_CATALOG_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
 	AGENT_RUN_ID_ENV,
@@ -46,7 +47,7 @@ import {
 	PARENT_HOLDS_LEASES_ENV,
 	PARENT_WAITS_ENV,
 } from "../../team/store/env.ts";
-import type { AgentProfile } from "../profiles.ts";
+import { type AgentProfile, GENERAL_CATALOG } from "../profiles.ts";
 import { DEFAULT_MAX_REQUESTS } from "../budget.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
@@ -208,6 +209,9 @@ export function subagentProcessEnv(
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),
+		...((profile ? profile.catalog : GENERAL_CATALOG)?.length
+			? { [SKILL_CATALOG_ENV]: (profile ? profile.catalog! : GENERAL_CATALOG).join(",") }
+			: {}),
 		...(identity?.skillsInTask ? { [SKILLS_IN_TASK_ENV]: "1" } : {}),
 		[SUBAGENT_ENV]: "1",
 		[NESTING_ENV]: String(nestingOf(base) + 1),

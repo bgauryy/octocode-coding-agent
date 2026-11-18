@@ -46,8 +46,8 @@ describe("one chrome vocabulary", () => {
 	});
 });
 
-describe("manage page with the selection scrolled off", () => {
-	it("brings the selection back on Enter instead of ignoring it", () => {
+describe("manage page paging", () => {
+	it("page keys move the cursor by the visible rows, so Enter acts on a row in view", () => {
 		const rows = Array.from({ length: 40 }, (_, index) => ({ id: `r${index}`, name: `row ${index}` }));
 		const selected: string[] = [];
 		const page = new ManagePageComponent({
@@ -58,15 +58,16 @@ describe("manage page with the selection scrolled off", () => {
 			onSelect: (id) => selected.push(id),
 			onCancel() {},
 		});
-		page.render(60);
+		const first = page.render(60).map(stripAnsi);
+		const rowsShown = first.filter((line) => /row \d+/.test(line)).length;
+		expect(first.join("\n")).toContain(`1–${rowsShown}/40`);
 		page.handleInput("\x1b[6~");
 		page.handleInput("\x1b[6~");
-		expect(page.render(60).map(stripAnsi).join("\n")).not.toContain("row 0 ");
+		const shown = page.render(60).map(stripAnsi);
+		expect(shown.join("\n")).not.toContain("row 0 ");
+		expect(shown.some((line) => line.includes(`› row ${rowsShown * 2}`))).toBe(true);
 		page.handleInput("\r");
-		expect(selected).toEqual([]);
-		expect(page.render(60).map(stripAnsi).join("\n")).toContain("row 0");
-		page.handleInput("\r");
-		expect(selected).toEqual(["r0"]);
+		expect(selected).toEqual([`r${rowsShown * 2}`]);
 	});
 });
 

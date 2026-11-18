@@ -1,6 +1,6 @@
 import { animationClock, Box, MOTION, Text } from "@octocodeai/octocode-tui";
 import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultBlock } from "../../render/tool.ts";
 import { STATUS } from "../../shared/status.ts";
@@ -15,7 +15,7 @@ import type { HookHandler } from "../contracts.ts";
  * Shows `label` in the footer status while `work` runs, with its elapsed time in the TUI. For hooks that run after Octocode
  * removed its working indicator (Stop runs after `agent_end`): without it a slow hook looks like a finished, stuck run.
  */
-async function withStatus<T>(ctx: ExtensionContext, label: string, work: () => Promise<T>): Promise<T> {
+async function withStatus<T>(ctx: FeatureContext, label: string, work: () => Promise<T>): Promise<T> {
 	if (!ctx.hasUI) return work();
 	const started = Date.now();
 	const show = () => {
@@ -44,17 +44,17 @@ function hooksLabel(event: HookEvent, hooks: HookHandler[]): string {
 	return `${event} hook: ${command}${hooks.length > 1 ? ` +${hooks.length - 1}` : ""}`;
 }
 
-export function registerStopHook(api: ExtensionAPI, session: HookSession, dispatch: Dispatch, child = false): void {
+export function registerStopHook(api: FeatureSetup, session: HookSession, dispatch: Dispatch, child = false): void {
 	/** Stop-hook continuations in a row (reset by a prompt or a tool call). */
 	let stopContinues = 0;
-	api.on("before_agent_start", async () => {
+	api.bus.on("before_agent_start", async () => {
 		stopContinues = 0;
 		return undefined;
 	});
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) stopContinues = 0;
 	});
-	api.on("agent_before_settle", async (event, ctx) => {
+	api.bus.on("agent_before_settle", async (event, ctx) => {
 		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		if (event.outcome === "error") {
 			const details = last?.errorMessage;
@@ -101,8 +101,8 @@ export function registerStopHook(api: ExtensionAPI, session: HookSession, dispat
 }
 
 /** `⚑ Stop hook`, then the hook's feedback: untrusted text, sanitized and previewed by resultBlock, never drawn as Markdown. */
-export function registerStopRenderer(api: ExtensionAPI): void {
-	api.registerMessageRenderer(STOP_TYPE, (message, { expanded, outputPad }, theme) => {
+export function registerStopRenderer(api: FeatureSetup): void {
+	api.renderers.message(STOP_TYPE, (message, { expanded, outputPad }, theme) => {
 		const text = contentText(message.content);
 		const box = new Box(outputPad ?? 1, 0);
 		box.addChild(

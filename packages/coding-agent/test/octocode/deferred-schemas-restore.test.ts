@@ -10,6 +10,7 @@ import {
 	restoreDeferredSchemas,
 } from "../../src/octocode/compaction/deferred-schemas.ts";
 import { withNativeDeferral } from "../../src/octocode/permission/native-deferral.ts";
+import { asSetup } from "./fake-host.ts";
 
 const call = (...names: string[]) => ({
 	role: "assistant",
@@ -22,7 +23,7 @@ const nativeTool = (name: string) => ({
 	parameters: Type.Object({ reason: Type.String(), op: Type.Union([Type.Literal("search"), Type.Literal("fetch")]) }),
 	execute: vi.fn(async () => ({ content: [], details: {} })),
 });
-const settings = (value: object) => ({ getSettings: () => value }) as never;
+const settings = (value: object) => asSetup({ getSettings: () => value }) as never;
 /** Pinned, so no test reads the usage record of a real agent directory. */
 const DEFERRED = { nativeToolExposure: { web: "deferred", archive: "deferred" } };
 const DIRECT = { nativeToolExposure: { web: "direct" } };
@@ -99,11 +100,11 @@ describe("schemas of deferred tools after a compaction", () => {
 		const web = withNativeDeferral(settings(DEFERRED), nativeTool("web") as never);
 		const search = mcpTool("mcp__octocode__localSearch", true);
 		const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
-		const api = {
+		const api = asSetup({
 			getAllTools: () => [web, search] as never,
 			getActiveTools: () => ["web", "mcp__octocode__localSearch"],
 			sendMessage: (message: Record<string, unknown>, options: unknown) => void sent.push({ message, options }),
-		};
+		});
 		const context: unknown[] = [];
 		const branch = [call("web"), call("mcp__octocode__localSearch")];
 		const ctx = {

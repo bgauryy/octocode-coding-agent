@@ -47,6 +47,9 @@ process.env.OCTOCODE_MCP_FREELLAMA = "0";
 process.env.NODE_COMPILE_CACHE = testCompileCacheDir();
 // No models.dev requests from tests; the catalog is tested with an injected fetch.
 process.env.OCTOCODE_MODELS_DEV = "0";
+// File paths become OSC 8 links when the terminal supports them; a suite started from Ghostty or iTerm2 would otherwise
+// render different bytes than one started from CI. Tests of links pass `enabled` or set the capability themselves.
+process.env.OCTOCODE_HYPERLINKS = "0";
 
 // `vi.waitFor` gives up after 1 s unless told otherwise. The suite polls for work done by child processes, sockets and
 // git (journal lines, a started peer, a released lease), which takes longer than that when the machine is far more

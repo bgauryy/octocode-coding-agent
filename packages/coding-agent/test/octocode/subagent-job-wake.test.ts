@@ -2,13 +2,14 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { jobNotice } from "../../src/octocode/subagents/report.ts";
 import { createHarness, getAssistantTexts, type Harness } from "../suite/harness.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const harnesses: Harness[] = [];
 const savedSubagent = process.env[SUBAGENT_ENV];
@@ -41,7 +42,7 @@ async function run(subagent: boolean) {
 	};
 	const harness = await createHarness({
 		tools: [outlast],
-		extensionFactories: [(api) => void registerBashTool(api, undefined, jobs)],
+		features: testFeatures([(api) => void registerBashTool(api, undefined, jobs)]),
 	});
 	harnesses.push(harness);
 	harness.setResponses([

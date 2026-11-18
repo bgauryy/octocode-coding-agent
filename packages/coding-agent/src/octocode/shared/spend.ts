@@ -18,7 +18,7 @@ function entrySpend(entry: unknown): Spend | undefined {
 }
 
 /**
- * Counts the spend a surface totals one entry at a time. No extension event announces a `usage` entry, so a surface finds
+ * Counts the spend a surface totals one entry at a time. No feature event announces a `usage` entry, so a surface finds
  * them by looking at the session again and again; each is counted once, by id. `recordedIn` looks only at the entries
  * appended since its last look (`EntryCursor`), and at the whole session when that cannot be proven.
  */

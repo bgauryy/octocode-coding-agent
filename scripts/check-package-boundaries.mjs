@@ -13,12 +13,13 @@ export const PACKAGE_POLICY = {
 	db: ["common", "contracts"],
 	mcp: ["agent", "ai", "common", "contracts", "tui"],
 	ai: ["common", "contracts", "telemetry"],
-	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "webview"],
+	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "tui-ink", "webview"],
 	contracts: [],
 	"octocode-agentic-testkit": [],
 	telemetry: [],
 	terminal: ["common"],
 	tui: ["common"],
+	"tui-ink": ["common", "tui"],
 	webview: ["common", "contracts"],
 };
 

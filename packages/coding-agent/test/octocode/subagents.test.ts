@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
+import { ROLE_PROMPT_FILE_ENV, readRolePrompt, writeRolePrompt } from "../../src/octocode/native/prompts/role.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { publishRoles, RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
@@ -17,7 +17,7 @@ import { localResearchTools, mcpFloor } from "../../src/octocode/subagents/core-
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { askSpawn, loadProfiles, parseProfile, profileReach } from "../../src/octocode/subagents/profiles.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
-import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakePermission, fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** A child's saved session, as `childSession` names it. */
@@ -177,7 +177,7 @@ describe("profile permissions", () => {
 		for (const name of ["browser"]) {
 			const profile = parseProfile(
 				name,
-				fs.readFileSync(path.join(__dirname, "../..", "src/octocode/instructions/roles", `${name}.md`), "utf8"),
+				fs.readFileSync(path.join(__dirname, "../..", "src/octocode/native/agents", `${name}.md`), "utf8"),
 			);
 			expect(profile.permissions, name).toEqual(["browser.control"]);
 			expect(profile.ignoredPermissions, name).toBeUndefined();
@@ -250,7 +250,7 @@ describe("subagents", () => {
 			"read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
-			"mcp__browser__*",
+			"mcp__browser__*,mcp__freellama__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -308,7 +308,7 @@ describe("subagents", () => {
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",
-			"browser,bash,mcp__browser__*",
+			"browser,bash,mcp__browser__*,mcp__freellama__*",
 		]);
 	});
 
@@ -515,14 +515,14 @@ describe("subagents", () => {
 			parameters: { properties: Record<string, { maxLength?: number; description?: string }> };
 		}> = [];
 		const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
-		const api = {
+		const api = asSetup({
 			registerTool: (tool: never) => tools.push(tool),
 			registerCommand: (name: string, command: never) => commands.set(name, command),
 			registerMessageRenderer: () => undefined,
 			on: () => undefined,
 			events: { on: () => () => undefined, emit: () => undefined },
 			sendMessage: () => undefined,
-		} as never;
+		}) as never;
 		const control = registerAgentTool(api, {
 			profiles: () => new Map(),
 			team: {

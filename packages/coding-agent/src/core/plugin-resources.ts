@@ -69,7 +69,7 @@ function configuredComponents(
 	return result;
 }
 
-/** Activate instruction resources only; plugin code never enters the extension loader here. */
+/** Activate instruction resources only; plugin code never enters the feature loader here. */
 export function loadConfiguredPluginSkills(entries: Settings["plugins"]): LoadSkillsResult {
 	const result: LoadSkillsResult = {
 		skills: [],

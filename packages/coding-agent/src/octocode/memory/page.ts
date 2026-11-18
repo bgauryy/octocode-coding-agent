@@ -1,6 +1,6 @@
 /** `/memory` in the terminal: the shared list → detail → action pages (commands design §3). */
 
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { type PageRow, type PageSection, showCommandPage } from "../shared/page.ts";
 import { memoryLabel } from "./query.ts";
 import { type Memory, memoryAge } from "./store.ts";
@@ -28,7 +28,7 @@ const row = (memory: Memory): PageRow => ({
 
 /** The memories (already grouped) by section, then "+ Add". Resolves with a memory id, `ADD_ROW`, or undefined on Escape. */
 export async function memoryListPage(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	memories: readonly Memory[],
 	title: string,
 	initialId?: string,
@@ -50,7 +50,7 @@ export async function memoryListPage(
 
 /** One memory: facts above its actions. Resolves with the chosen action, or undefined on Escape. */
 export async function memoryDetailPage(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	memory: Memory,
 	actions: readonly string[],
 ): Promise<string | undefined> {

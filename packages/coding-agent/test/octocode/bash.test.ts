@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "../../src/config.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { RERUN_HINT } from "../../src/octocode/files/outcome.ts";
 import { recordMutation } from "../../src/octocode/files/feedback/revisions.ts";
@@ -70,6 +70,7 @@ describe("bash tool", () => {
 			"maxOutputTokens",
 			"background",
 			"verify",
+			"sandbox",
 			"item",
 			"reason",
 		]);
@@ -779,8 +780,8 @@ describe("bash rendering", () => {
 				tool.renderCall({ command: "sleep 1", timeout: 30 }, theme, { lastComponent: undefined, isPartial: true }),
 			),
 		).toBe("○ Bash(sleep 1) · timeout 30s");
-		expect(rendered(tool.renderCall({ command: "serve", background: true }, theme, done({ durationMs: 40 })))).toBe(
-			"✓ Bash(serve) · background · 40ms",
+		expect(rendered(tool.renderCall({ command: "serve", background: true }, theme, done({ durationMs: 4_000 })))).toBe(
+			"✓ Bash(serve) · background · 4s",
 		);
 	});
 
@@ -804,7 +805,7 @@ describe("bash rendering", () => {
 				{ content: [{ type: "text", text }] },
 				{ expanded: false, isPartial: false },
 				theme,
-				done({ durationMs: 5 }),
+				done({ durationMs: 1_500 }),
 			),
 		).split("\n");
 		expect(lines).toEqual([

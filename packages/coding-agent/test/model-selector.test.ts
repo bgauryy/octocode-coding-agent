@@ -1,9 +1,10 @@
 import { setKeybindings, visibleWidth, type TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { modelListLines } from "../src/modes/interactive/components/model-selector/rows.ts";
+import { modelRowLines } from "../src/modes/interactive/components/model-selector/rows.ts";
 import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
+import { keyText } from "../src/theme/theme-tui-helpers.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
 
@@ -56,7 +57,7 @@ describe("model selector", () => {
 		selector.handleInput("\x1b[B");
 		expect(getModelRow("current-model")).toBe("  ✓ current-model");
 		expect(getModelRow("browsed-model")).toBe("›   browsed-model");
-		selector.handleInput("\x04");
+		selector.handleInput("\x1bi");
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain(
 			`Model Name: Browsed Model · Provider: ${currentModel.provider} (local)`,
 		);
@@ -91,14 +92,14 @@ describe("model selector", () => {
 		finish({ aborted: false, errors: new Map() });
 		await vi.waitFor(() => expect(stripAnsi(selector.render(120).join("\n"))).toContain("Model catalogs refreshed."));
 		// An ignored input key must not reset the filtered selection either.
-		selector.handleInput("\x1b[H");
+		selector.handleInput("\x07");
 		selector.handleInput("\r");
 		expect(select).toHaveBeenCalledWith(harness.getModel("second-model"));
 	});
 
-	it("pages the model rows without changing the search query", async () => {
+	it("pages the model rows by the visible rows, stopping at the end, without changing the search query", async () => {
 		harness = await createHarness({
-			models: Array.from({ length: 9 }, (_, index) => ({ id: `model-${index}`, name: `Model ${index}` })),
+			models: Array.from({ length: 15 }, (_, index) => ({ id: `model-${index}`, name: `Model ${index}` })),
 		});
 		vi.spyOn(harness.session.modelRuntime, "refresh").mockResolvedValue({ aborted: false, errors: new Map() });
 		const select = vi.fn();
@@ -111,17 +112,25 @@ describe("model selector", () => {
 			vi.fn(),
 		);
 		selector.handleInput("\x1b[6~");
-		expect(selector.getSearchInput().getValue()).toBe("");
+		expect(selector.getQuery()).toBe("");
+		const screen = () => stripAnsi(selector.render(120).join("\n"));
+		expect(screen()).toContain("/15");
+		expect(screen()).toMatch(/^› ✓? *model-10$/m);
+		selector.handleInput("\x1b[6~");
 		selector.handleInput("\r");
-		expect(select).toHaveBeenCalledWith(harness.getModel("model-3"));
+		expect(select).toHaveBeenCalledWith(harness.getModel("model-14"));
 	});
 
-	it("clips the model position counter along with Unicode rows", async () => {
+	it("clips Unicode model rows and their provider heading", async () => {
 		harness = await createHarness({ models: [{ id: "命令👩‍💻", name: "Unicode" }] });
 		const model = harness.getModel("命令👩‍💻")!;
-		const items = Array.from({ length: 100 }, () => ({ id: model.id, provider: model.provider, model }));
+		const item = { id: model.id, provider: model.provider, model };
 		for (const width of [1, 5, 12, 80, 160]) {
-			const lines = modelListLines(items, 99, () => ({ current: false, isDefault: false }), 3, width);
+			const lines = modelRowLines(
+				item,
+				{ selected: true, width, heading: true },
+				{ current: true, isDefault: true, kind: "局部" },
+			);
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 		}
 	});
@@ -157,7 +166,7 @@ describe("model selector", () => {
 		expect(screen()).toContain("Provider: all");
 		selector.handleInput("\x1b[D");
 		expect(screen()).toContain("Provider: other-provider");
-		expect(selector.getSearchInput().getValue()).toBe("");
+		expect(selector.getQuery()).toBe("");
 		selector.dispose();
 	});
 
@@ -184,7 +193,7 @@ describe("model selector", () => {
 		expect(saveDefault).toHaveBeenCalledWith(currentModel);
 	});
 
-	it("saves the highlighted row as default with d while the filter is empty", async () => {
+	it("saves the highlighted row as default only with the save key", async () => {
 		harness = await createHarness({
 			models: [
 				{ id: "alpha-model", name: "Alpha", reasoning: true },
@@ -203,12 +212,36 @@ describe("model selector", () => {
 			saveDefault,
 		);
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain(
-			"enter select · ctrl+s set default · ctrl+d details · esc/ctrl+c back",
+			`enter select · ctrl+s set default · ${keyText("app.models.details")} details · esc/ctrl+c cancel`,
 		);
 		selector.handleInput("\x1b[B");
-		selector.handleInput("d");
+		selector.handleInput("\x13");
 		expect(saveDefault).toHaveBeenCalledTimes(1);
 		expect(saveDefault.mock.calls[0][0].id).toBe("beta-model");
+	});
+
+	it("treats a bare d as filter text, also from an empty filter", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "alpha-model", name: "Alpha", reasoning: true },
+				{ id: "deepseek-model", name: "Deepseek", reasoning: true },
+			],
+		});
+		const saveDefault = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			harness.getModel("alpha-model"),
+			harness.session.modelRuntime,
+			[],
+			() => {},
+			() => {},
+			undefined,
+			saveDefault,
+		);
+		selector.handleInput("d");
+		expect(saveDefault).not.toHaveBeenCalled();
+		expect(selector.getQuery()).toBe("d");
+		selector.dispose();
 	});
 
 	it("treats d as filter text once the filter has content", async () => {
@@ -226,7 +259,7 @@ describe("model selector", () => {
 		);
 		selector.handleInput("d");
 		expect(saveDefault).not.toHaveBeenCalled();
-		expect(selector.getSearchInput().getValue()).toBe("da");
+		expect(selector.getQuery()).toBe("ad");
 		selector.dispose();
 	});
 
@@ -333,7 +366,7 @@ describe("model selector", () => {
 			vi.fn(),
 		);
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain("plan billing");
-		selector.handleInput("\x04");
+		selector.handleInput("\x1bi");
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Billing: billed by plan");
 		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("Billing: metered");
 		selector.dispose();

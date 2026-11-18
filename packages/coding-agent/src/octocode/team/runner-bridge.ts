@@ -2,7 +2,7 @@ import { serveTools } from "../../../../mcp/src/api.ts";
 import { RunnerMember, type RunnerMemberInput } from "./runner-member.ts";
 import { callRunnerTeam, runnerTeamTool } from "./runner-tools.ts";
 import type { SendHost } from "./session/send.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 
 /** One authenticated server and member for one external turn, never a catalog of ambient tools. */
 export async function openRunnerBridge(
@@ -17,7 +17,7 @@ export async function openRunnerBridge(
 			version: "1.0.0",
 			tools: () => [runnerTeamTool],
 			call: (call) => callRunnerTeam(member, call),
-			instructions: renderInstruction("tools/agent/runner-server.md"),
+			instructions: renderPrompt("tools/agent/runner-server.md"),
 		});
 		let closing: Promise<void> | undefined;
 		return {

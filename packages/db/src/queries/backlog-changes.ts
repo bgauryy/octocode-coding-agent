@@ -49,8 +49,10 @@ export function snapshot(db: DatabaseSync, repo: string): BacklogSnapshot {
 }
 
 /**
- * One audit row after a cursor. For an item row (`entity` `backlog`) the item's fields after the change (and its
- * assignee before it); null for link and step rows. `actor` is the JSON the write recorded (`{id, kind?, surface?}`).
+ * One audit row after a cursor. For an item row (`entity` `backlog`) the item's fields after the change (and its state,
+ * assignee, parent and paths before it); a link row names its `relation` and `target` (the stored JSON), a comment row its
+ * `text`, a step row (`backlog_tasks` of an item) its state before and after in `step_state`/`before_step_state`; the other
+ * fields are null. `actor` is the JSON the write recorded (`{id, kind?, surface?}`).
  */
 export interface AuditAfterRow {
 	id: number;
@@ -65,6 +67,18 @@ export interface AuditAfterRow {
 	title: string | null;
 	/** 1 when the item is closed after the change. */
 	closed: number;
+	before_state: string | null;
+	/** The parent epic's ref (`B7`) after and before the change. */
+	parent_ref: string | null;
+	before_parent_ref: string | null;
+	/** The stored `paths` text (one path per line) after and before the change. */
+	paths: string | null;
+	before_paths: string | null;
+	relation: string | null;
+	target: string | null;
+	text: string | null;
+	step_state: string | null;
+	before_step_state: string | null;
 }
 
 /**
@@ -94,7 +108,17 @@ export function auditAfter(db: DatabaseSync, repo: string, afterId: number, limi
 			CASE WHEN entity = 'backlog' THEN after_value ->> '$.assignee' END AS assignee,
 			CASE WHEN entity = 'backlog' THEN before_value ->> '$.assignee' END AS before_assignee,
 			CASE WHEN entity = 'backlog' THEN after_value ->> '$.title' END AS title,
-			CASE WHEN entity = 'backlog' AND after_value ->> '$.closed' IS NOT NULL THEN 1 ELSE 0 END AS closed
+			CASE WHEN entity = 'backlog' AND after_value ->> '$.closed' IS NOT NULL THEN 1 ELSE 0 END AS closed,
+			CASE WHEN entity = 'backlog' THEN before_value ->> '$.state' END AS before_state,
+			CASE WHEN entity = 'backlog' THEN (SELECT 'B' || p.seq FROM backlog p WHERE p.id = after_value ->> '$.parent_id') END AS parent_ref,
+			CASE WHEN entity = 'backlog' THEN (SELECT 'B' || p.seq FROM backlog p WHERE p.id = before_value ->> '$.parent_id') END AS before_parent_ref,
+			CASE WHEN entity = 'backlog' THEN after_value ->> '$.paths' END AS paths,
+			CASE WHEN entity = 'backlog' THEN before_value ->> '$.paths' END AS before_paths,
+			CASE WHEN entity = 'backlog_links' THEN COALESCE(after_value, before_value) ->> '$.relation' END AS relation,
+			CASE WHEN entity = 'backlog_links' THEN COALESCE(after_value, before_value) ->> '$.target' END AS target,
+			CASE WHEN entity = 'backlog_comments' THEN after_value ->> '$.text' END AS text,
+			CASE WHEN entity = 'backlog_tasks' THEN after_value ->> '$.state' END AS step_state,
+			CASE WHEN entity = 'backlog_tasks' THEN before_value ->> '$.state' END AS before_step_state
 		FROM backlog_audits WHERE workspace_id = ? AND id > ? ORDER BY id LIMIT ?
 	`),
 		repo,
@@ -109,4 +133,35 @@ export function auditAfter(db: DatabaseSync, repo: string, afterId: number, limi
 	const more = rows.length > limit;
 	const page = more ? rows.slice(0, limit) : rows;
 	return { resync: false, cursor: page.at(-1)?.id ?? afterId, rows: page, more };
+}
+
+/** A session waiting for items (an active `wait` on `item`): the refs it names. */
+export interface ItemWatcher {
+	session: string;
+	refs: string[];
+}
+
+/**
+ * The sessions of workspace `repo` whose active `item` waits name any of `refs`, with every ref each names. A condition
+ * that does not decode (a kind this version does not know) names nothing.
+ */
+export function itemWatchers(db: DatabaseSync, repo: string, refs: readonly string[]): ItemWatcher[] {
+	const wanted = new Set(refs);
+	const named = new Map<string, Set<string>>();
+	const rows = allRows<{ session_id: string; condition: string }>(
+		db.prepare(
+			"SELECT session_id, condition FROM timers WHERE workspace_id = ? AND status = 'active' AND condition_kind = 'item'",
+		),
+		repo,
+	);
+	for (const row of rows) {
+		const ref = (JSON.parse(row.condition) as { ref?: unknown }).ref;
+		if (typeof ref !== "string") continue;
+		const mine = ref.split(/[\s,]+/).filter(Boolean);
+		if (!mine.some((each) => wanted.has(each))) continue;
+		const set = named.get(row.session_id) ?? new Set<string>();
+		for (const each of mine) set.add(each);
+		named.set(row.session_id, set);
+	}
+	return [...named].map(([session, set]) => ({ session, refs: [...set] }));
 }

@@ -5,24 +5,24 @@ import { registerHarnessCommand } from "./harness/command.ts";
 import { registerPlanning } from "./plan/register.ts";
 import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { registerDeferredSchemaRestore } from "./compaction/deferred-schemas.ts";
-import { AGENT_GOAL_ENV, AGENT_ID_ENV, AGENT_ROLE_ENV } from "./team/store/env.ts";
+import { AGENT_GOAL_ENV } from "./team/store/env.ts";
 import { FileGuard } from "./files/tool/guard.ts";
-import { registerWebCommands } from "./remote/register.ts";
 import { setShellPathEntries } from "../utils/shell.ts";
 import { registerOctocodeCli } from "./cli/command.ts";
 import { octocodeShimDir } from "./cli/shim.ts";
-import { getApplicationPortForSession } from "../core/application/index.ts";
-import { sessionNativeTools, startTrustedWorkspaceWeb } from "./workspace-web.ts";
-import { teamView, WorkspaceRuntime } from "./workspace/runtime.ts";
-import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
+import type { FeatureSetup } from "../core/features/index.ts";
 import { currentToolRoles } from "../../../mcp/src/api.ts";
-import { agentModes, agentOperation } from "./agent-tool.ts";
+import { agentModes, agentOperation } from "./native/tools/agent/tool.ts";
 import { runningApiInstances } from "./api/register.ts";
-import { registerAskUser } from "./ask/tool.ts";
-import { registerBacklog } from "./backlog/index.ts";
+import { registerAskUser } from "./native/tools/ask-user/tool.ts";
+import { composeBacklog } from "./compose-backlog.ts";
+import { composePolicy, type ComposedLater } from "./compose-policy.ts";
 import { registerArchiveCommand } from "./archive/command.ts";
-import { registerArchiveTool } from "./archive/tool.ts";
+import { registerMessagesCommand } from "./team/messages/command.ts";
+import { liveMessagesData } from "./profiler/messages-source.ts";
+import { registerArchiveTool } from "./native/tools/archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
+import { awaitsAnswer } from "./awaits-answer.ts";
 import { registerClaudeCode } from "./claude-code/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { connectedRunners, runnerRows } from "./external/connected.ts";
@@ -30,20 +30,18 @@ import { externalListing } from "./external/describe.ts";
 import { externalAgentSelection } from "./external/enabled.ts";
 import { externalPermission } from "./external/permission-dialog.ts";
 import { Peers } from "./external/peers.ts";
+import { agentNameOf } from "./shared/agent-name.ts";
 import { externalIdentity, registerExternal } from "./external/register.ts";
 import { applyBashEnvironmentSetting } from "./files/bash-env.ts";
-import { registerBashTool } from "./files/bash.ts";
+import { applySessionSandbox } from "./permission/sandbox/apply.ts";
+import { registerBashTool } from "./native/tools/bash/tool.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
 import { registerNestedContext } from "./files/nested-context.ts";
 import { contextReads } from "./files/reads.ts";
-import { projectEditHunk, registerFileTool } from "./files/tool.ts";
-import { registerHooksPromptSection } from "./hooks/prompt-section.ts";
-import { registerHooks } from "./hooks/register.ts";
-import type { HooksView } from "./hooks/register/types.ts";
+import { registerFileTool } from "./native/tools/file/tool.ts";
 import { registerMemory } from "./memory/register.ts";
-import { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { Permission } from "./permission/ask.ts";
 import { registerPermissionCommand } from "./permission/command.ts";
 import { createProvenance } from "./permission/provenance.ts";
@@ -52,6 +50,8 @@ import { installPermissionPorts } from "./permission/ports.ts";
 import { planReadOnly } from "./permission/shell/plan-reads.ts";
 import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerProcesses } from "./processes/register.ts";
+import { registerMonitor } from "./monitor/register.ts";
+import { registerMonitorRoom } from "./monitor-room/command.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
 import { Subcommands } from "./shared/commands.ts";
 import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -62,22 +62,22 @@ import "./guard/install.ts";
 import { registerSkills } from "./skills.ts";
 import { registerPromptOptimization } from "./prompt-optimization/register.ts";
 import { registerTerminal } from "./terminal/register.ts";
-import { registerSkillTool } from "./skill/tool.ts";
+import { registerSkillTool } from "./native/tools/skill/tool.ts";
+import { registerSkillFirstUse } from "./skill/first-use.ts";
 import { statusCommand } from "./status-command.ts";
 import { refreshCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
-import { registerModelsTool } from "./subagents/models-tool.ts";
+import { registerModelsTool } from "./native/tools/models/tool.ts";
 import { registerChildRunnerTask } from "./subagents/runner-task.ts";
 import type { AgentProfile } from "./subagents/profiles.ts";
 import { registerChildSession } from "./subagents/child-session.ts";
 import { loadSessionProfiles } from "./subagents/session-profiles.ts";
 import { registerHarnessSync } from "./subagents/harness-sync.ts";
 import { type AgentControl, budgetsThrough, mergeThrough, registerAgentTool } from "./subagents/tool.ts";
-import { messagePolicy } from "./message-policy.ts";
 import { Team } from "./team/session.ts";
 import { changeNote } from "./team/edits.ts";
-import { registerCollab } from "./team/tools.ts";
+import { registerCollab } from "./native/tools/coordinate/tool.ts";
 import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
 import { registerStallRecorder } from "./profiler/stalls.ts";
@@ -86,7 +86,7 @@ import { packageVersion, registerUi } from "./ui/chrome.ts";
 import { Delivery } from "./ui/delivery.ts";
 import { registerEditor } from "./ui/editor.ts";
 import { registerNotify } from "./ui/notify.ts";
-import { registerWebTool } from "./web/web.ts";
+import { registerWebTool } from "./native/tools/web/tool.ts";
 import { installOctocodeDiscovery } from "./discovery/index.ts";
 import { registerLeaveConfirmation, registerReaderRole } from "./session-guards.ts";
 import { collaborationPorts, registerExternalApi, registerTeamSessions } from "./team-surfaces.ts";
@@ -121,21 +121,17 @@ function composedLater<T extends object>() {
 	};
 }
 
-export default function octocode(host: ExtensionAPI): void {
+export default function octocode(host: FeatureSetup): void {
 	const api = withNativePermissionOwners(host);
 	installOctocodeDiscovery(); // Agents, hooks, plugins and MCP servers join configuration discovery.
 	const isSubagent = envFlag(process.env, SUBAGENT_ENV);
-	setShellPathEntries(() => [octocodeShimDir()].filter((dir) => dir !== undefined)); // `octocode` in agent shells.
+	setShellPathEntries(() => [octocodeShimDir()].filter((dir) => dir !== undefined)); // `octocode` and `octocode-cli` in agent shells.
 	installPermissionPorts({ mcpReadOnly: () => currentToolRoles().readOnly });
-	// First, so every feature's api.sendMessage goes through it and its agent_settled handler runs before theirs.
+	// First, so every feature's api.session.sendMessage goes through it and its agent_settled handler runs before theirs.
 	Delivery.install(api);
 	const commands = new Subcommands();
 	// Composed where their handlers belong in the order, after features whose callbacks already use them.
-	const later = composedLater<{
-		hooks: HooksView;
-		sourcePolicy: ReturnType<typeof registerSourcePolicy>;
-		messaging: ReturnType<typeof messagePolicy>;
-	}>();
+	const later = composedLater<ComposedLater>();
 	const guard = new FileGuard();
 	const team = new Team(api);
 	let profiles = new Map<string, AgentProfile>();
@@ -150,17 +146,18 @@ export default function octocode(host: ExtensionAPI): void {
 	const runners = connectedRunners(externalAccess.enabled, externalPermission(permission), externalAccess.runners);
 	// With Claude Code connected on its plan, its models run this session's turns with Octocode's tools over MCP.
 	registerClaudeCode(api, runners.states);
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
 		setCurrentSession(ctx.sessionManager.getSessionId(), ctx.cwd, ctx.sessionManager);
 		startPermissionState(permission, provenance, ctx, event.reason);
 		applyBashEnvironmentSetting();
+		applySessionSandbox(permission, ctx);
 	});
 	const localReads = registerReadReceipts(api);
 	// After the receipts: it reads the files they credit.
 	registerNestedContext(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
-	api.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
+	api.bus.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 	recordChildReports(api, provenance, permission, isSubagent);
 	guard.reservedBy = (file) => team.reservation(file, file);
 	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
@@ -189,28 +186,14 @@ export default function octocode(host: ExtensionAPI): void {
 	registerLeaveConfirmation(api, { isSubagent, jobs, agents: () => agents, external: () => external });
 	registerCheckpoints(api, checkpoints, (file) => guard.forget(file), commands);
 	registerTeamSessions(api, team, checkpoints, { commands, isSubagent });
-	const workspace = isSubagent
-		? undefined
-		: new WorkspaceRuntime(api, {
-				application: (ctx) => getApplicationPortForSession(ctx.sessionManager.getSessionId()),
-				...teamView(team, true),
-				tell: (to, text, signal) => team.send(to, text, { from: "user", signal }),
-				stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
-			});
-	const backlogWeb = registerBacklog(api, {
+	composeBacklog(api, {
 		commands,
 		isSubagent,
-		agentId: () => team.id,
-		openWeb: (ctx, backlog, changed) => startTrustedWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
+		team,
+		stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
+		completing: (info, ctx, signal) => later.get("hooks").taskCompleted(info, ctx, signal),
+		serving: () => agents?.serving() ?? new Map(),
 	});
-	if (!isSubagent)
-		registerWebCommands(api, {
-			commands,
-			workspace,
-			openWorkspace: backlogWeb.open,
-			nativeTools: sessionNativeTools,
-			boardChanged: backlogWeb.refresh,
-		});
 	registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
 	commands.add(
 		"status",
@@ -219,8 +202,8 @@ export default function octocode(host: ExtensionAPI): void {
 				`Octocode ${packageVersion() ?? ""}`.trim(),
 				`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
 				`Hooks: ${later.get("hooks").summary()}`,
-				// The registered commands, so a child session lists only its own; `/mcp` and `/llama` belong to their own extensions.
-				`Commands: ${[...commands.list().map(([name]) => name), "mcp", "llama"].map((name) => `/${name}`).join(", ")}`,
+				// The registered commands, so a child session lists only its own; `/mcp` belongs to its own feature.
+				`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,
 			].join("\n"),
 		),
 	);
@@ -232,6 +215,9 @@ export default function octocode(host: ExtensionAPI): void {
 		: new Peers({
 				authorize: (target, text, ctx, signal) => later.get("messaging").authorizePeer(target, text, ctx, signal),
 				notice: (content) => void sendPeerNotice(api, "octocode-peer-notice", content),
+				quiet: (content) => void team.notice(content),
+				ownName: () => agentNameOf(api).get(),
+				members: () => team.members(),
 			});
 	const collab = registerCollab(api, team, {
 		stopAgent: isSubagent ? undefined : (id, by) => agents?.stop(id, by),
@@ -268,6 +254,7 @@ export default function octocode(host: ExtensionAPI): void {
 			runners,
 		});
 		commands.add("agents", agents.command);
+		registerMessagesCommand(commands, (ctx) => liveMessagesData(ctx, team));
 		// A user's narrowing mode change names the running subagents it would stop and asks first.
 		permission.setConfirmStop(stopConfirmation(() => agents?.running() ?? [], isSubagent));
 		registerModels(commands, () => profiles);
@@ -294,37 +281,14 @@ export default function octocode(host: ExtensionAPI): void {
 		profiles: () => profiles,
 		canExternal: () => agentTool.has("external"),
 	});
-	const hooks = later.set(
-		"hooks",
-		registerHooks(api, {
-			env: process.env,
-			onFailure: (what, note, allowed) => permission.noted(what, note, { allowed, via: "hook" }),
-			metadata: () => ({
-				permissionMode: permission.mode,
-				agentName: process.env[AGENT_ID_ENV],
-				agentType: process.env[AGENT_ROLE_ENV],
-			}),
-			paused: planning.blocked,
-			projectEdit: (query, path, cwd) => projectEditHunk(query, path, guard, cwd),
-		}),
-	);
-	registerHooksPromptSection(api, hooks);
-	const applySourcePolicy = () => {
-		const policy = later.get("sourcePolicy");
-		permission.setSourcePolicy(policy.evaluate, policy.unprojected);
-	};
-	const sourcePolicy = later.set("sourcePolicy", registerSourcePolicy(api, { onChange: applySourcePolicy }));
-	applySourcePolicy();
-	permission.setResolver((ctx, invocation, signal) =>
-		hooks.permissionRequest(invocation, ctx as ExtensionContext, signal),
-	);
-	permission.setUpdateHandler(async (ctx, updates, signal) => {
-		await sourcePolicy.refresh(ctx as ExtensionContext);
-		signal.throwIfAborted();
-		return sourcePolicy.prepareUpdates(ctx as ExtensionContext, updates);
+	const { hooks, sourcePolicy, messaging } = composePolicy(api, {
+		later,
+		permission,
+		planning,
+		provenance,
+		team,
+		guard,
 	});
-	const messaging = later.set("messaging", messagePolicy({ api, hooks, permission, planning, provenance, team }));
-	team.setMessageHook(messaging.beforeMessage);
 	if (!isSubagent) {
 		external = registerExternal(
 			api,
@@ -345,7 +309,17 @@ export default function octocode(host: ExtensionAPI): void {
 	agentTool.register(api);
 	// After the hooks (handlers run in registration order): a PreCompact hook runs before Octocode adds its `file` tool's
 	// paths to the file lists Octocode carries into its summary. Octocode writes the summary itself.
-	registerCompactTool(api, registerCompaction(api, guard, isSubagent, team.parentId), isSubagent);
+	registerCompactTool(
+		api,
+		registerCompaction(
+			api,
+			guard,
+			isSubagent,
+			team.parentId,
+			awaitsAnswer(isSubagent, () => (team.id === undefined ? 0 : team.unansweredPeerAsks(team.id))),
+		),
+		isSubagent,
+	);
 	registerDeferredSchemaRestore(api);
 	if (isSubagent) registerChildSession(api);
 	registerArchiveCommand(commands);
@@ -355,16 +329,19 @@ export default function octocode(host: ExtensionAPI): void {
 		agentId: () => team.id,
 		parentId: () => team.parentId,
 	});
-	registerSkillTool(api);
+	registerSkillFirstUse(api, registerSkillTool(api));
 	const runGuards = registerRunGuards(api); // after the file guard: see run-guards.ts
 	registerHarnessCommand(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state. A child follows the parent's `/harness` switches instead.
 	if (isSubagent) registerHarnessSync(api);
 	else registerNotify(api, { onNotice: hooks.notification });
+	// After `registerProcesses`, which titles the process: an alert wakes the session whose title owns its cause.
+	registerMonitor(api, { isSubagent, jobs: () => [...jobs.jobs.values()], notify: hooks.notification });
+	registerMonitorRoom(commands, api);
 	const externalApi = isSubagent
 		? undefined
 		: registerExternalApi(api, commands, { team, messaging, permission, planning, external: () => external });
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		// Per-session state first: a later step that throws (API port in use) must not carry the old session's over.
 		turn.reset();
 		await external?.reset();
@@ -377,7 +354,6 @@ export default function octocode(host: ExtensionAPI): void {
 		// index is not parsed here: its first reader does that, after the first paint.
 		if (!isSubagent) refreshCatalog();
 	});
-
 	// The tool-call pipeline, its cleanup and the user's own `!cmd` (`tool-gates.ts`).
 	registerToolGates(api, {
 		loop: runGuards.loop,
@@ -392,8 +368,17 @@ export default function octocode(host: ExtensionAPI): void {
 		peerSessions: () =>
 			team.members().some((member) => member.role === "main" && member.id !== team.id && !member.worktree),
 	});
-	registerNativeSessionLifecycle(api, { isSubagent, team, permission, jobs, agents, external, api: externalApi });
-	api.on("session_shutdown", async () => closeArchive());
+	registerNativeSessionLifecycle(api, {
+		isSubagent,
+		team,
+		permission,
+		jobs,
+		agents,
+		external,
+		api: externalApi,
+		commands,
+	});
+	api.bus.on("session_shutdown", async () => closeArchive());
 	// Register each native command once, after every feature has supplied its handler.
 	commands.register(api);
 }

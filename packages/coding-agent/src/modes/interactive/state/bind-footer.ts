@@ -1,5 +1,5 @@
 /**
- * Binds the footer data (git branch, extension statuses, provider count) to the renderer. The
+ * Binds the footer data (git branch, feature statuses, provider count) to the renderer. The
  * `FooterDataProvider` is itself a `StateSource` whose snapshot is replaced on each real change, so a selection of it
  * asks for one frame per change and none for a write that changed nothing; its writers never request frames.
  */

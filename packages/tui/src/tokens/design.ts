@@ -40,6 +40,16 @@ export const GLYPH = {
 	userBar: "▎",
 } as const;
 
+/**
+ * Sea marks for the tone of a notice, shown beside its state glyph and never instead of it: `calm` good news or a plain
+ * note, `caution` a warning or trade-off, `problem` an error or risk.
+ */
+export const TONE = {
+	calm: "🐚",
+	caution: "🦀",
+	problem: "🦈",
+} as const;
+
 /** The one ellipsis, and the one separator between items on a line. */
 export const ELLIPSIS = "…";
 export const SEPARATOR = " · ";

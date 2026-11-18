@@ -1,7 +1,7 @@
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { estimateTokens } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
 
 /**
  * When compaction runs, beyond Octocode's threshold: a breaker for compactions that keep refilling the context, and a
@@ -72,10 +72,10 @@ export function needsDownshiftCompaction(
 }
 
 /** The characters of the tool definitions declared to the model (name, description, parameters, guidelines of the active tools). */
-export function toolDefinitionChars(api: Pick<ExtensionAPI, "getActiveTools" | "getAllTools">): number {
+export function toolDefinitionChars(api: SetupPick<"tools", "getActive" | "getAll">): number {
 	try {
-		const active = new Set(api.getActiveTools());
-		return api.getAllTools().reduce((sum, tool) => {
+		const active = new Set(api.tools.getActive());
+		return api.tools.getAll().reduce((sum, tool) => {
 			if (!active.has(tool.name)) return sum;
 			const { name, description, parameters, promptGuidelines } = tool;
 			return sum + JSON.stringify({ name, description, parameters, promptGuidelines }).length;
@@ -93,7 +93,7 @@ export function toolDefinitionChars(api: Pick<ExtensionAPI, "getActiveTools" | "
  * system message is there, and the active tool definitions (`toolChars`) when none are declared.
  */
 export function contextTokens(
-	ctx: Pick<ExtensionContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
 	toolChars = 0,
 ): number | undefined {
 	const tokens = ctx.getContextUsage()?.tokens;
@@ -112,7 +112,7 @@ export function contextTokens(
 
 /** Whether the context (by `contextTokens`) is known to fit the session's context window, so the next request can be sent. */
 export function fitsWindow(
-	ctx: Pick<ExtensionContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
 	toolChars = 0,
 ): boolean {
 	const window = ctx.getContextUsage()?.contextWindow ?? 0;

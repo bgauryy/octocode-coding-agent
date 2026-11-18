@@ -19,8 +19,8 @@ import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { serializeSessionBranch } from "../../core/session-export.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
-import { ExtensionEditorComponent } from "./components/extension-editor.ts";
-import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
+import { DialogEditorComponent } from "./components/dialog-editor.ts";
+import { DialogSelectorComponent } from "./components/dialog-selector.ts";
 import { createShareTrailingEntries } from "./session-share.ts";
 import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -45,7 +45,7 @@ interface BugReportOptions {
 type Overlay = Container & { dispose?: () => void };
 
 const DISCLAIMER =
-	"This report can be exported locally or sent to your configured report service. It includes your Octocode version, operating system, the current model and provider configuration (without API keys), loaded extensions, settings, and provider error diagnostics from this session.";
+	"This report can be exported locally or sent to your configured report service. It includes your Octocode version, operating system, the current model and provider configuration (without API keys), loaded features, settings, and provider error diagnostics from this session.";
 const TRANSCRIPT_NOTE =
 	"The transcript contains your messages, model output, tool calls and their results, including file contents and command output read during this session.";
 
@@ -84,7 +84,7 @@ export async function reportBug(context: BugReportContext, initialHint?: string)
 
 	let bundle: BugReportBundle;
 	try {
-		bundle = buildBundle(context.session, options, summary);
+		bundle = buildBundle(context.session, context.ui.terminal, options, summary);
 	} catch (error: unknown) {
 		context.showError(`Failed to build bug report: ${errorMessage(error)}`);
 		return;
@@ -155,8 +155,13 @@ async function promptForOptions(
 	};
 }
 
-function buildBundle(session: AgentSession, options: BugReportOptions, summary: string | undefined): BugReportBundle {
-	const extensions = session.resourceLoader.getExtensions();
+function buildBundle(
+	session: AgentSession,
+	terminal: TUI["terminal"],
+	options: BugReportOptions,
+	summary: string | undefined,
+): BugReportBundle {
+	const features = session.resourceLoader.getFeatures();
 	return {
 		metadata: collectBugReportMetadata({
 			hint: options.hint,
@@ -168,12 +173,17 @@ function buildBundle(session: AgentSession, options: BugReportOptions, summary: 
 			model: session.model,
 			modelRuntime: session.modelRuntime,
 			thinkingLevel: session.thinkingLevel,
-			extensions: extensions.extensions,
-			extensionErrors: extensions.errors,
+			features: features.features,
+			featureErrors: features.errors,
 			globalSettings: session.settingsManager.getGlobalSettings(),
 			projectSettings: session.settingsManager.getProjectSettings(),
 		}),
-		diagnostics: collectBugReportDiagnostics(session.sessionManager, readCrashLog(), readProblems()),
+		diagnostics: collectBugReportDiagnostics(
+			session.sessionManager,
+			readCrashLog(),
+			readProblems(),
+			terminal.getOutputTelemetry?.().stalls,
+		),
 		summary,
 		sessionJsonl: options.includeSession
 			? serializeSessionBranch(session.sessionManager, (parentId, timestamp) =>
@@ -240,7 +250,7 @@ function input(
 			restoreEditor(context, component);
 			resolve(value);
 		};
-		const component = new ExtensionEditorComponent(
+		const component = new DialogEditorComponent(
 			context.ui,
 			context.keybindings,
 			title,
@@ -265,7 +275,7 @@ function choose(
 			restoreEditor(context, component);
 			resolve(value);
 		};
-		const component = new ExtensionSelectorComponent(title, options, finish, () => finish(), {
+		const component = new DialogSelectorComponent(title, options, finish, () => finish(), {
 			tui: context.ui,
 			description,
 		});

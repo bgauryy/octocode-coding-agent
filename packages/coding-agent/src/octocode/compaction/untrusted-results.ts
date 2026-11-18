@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted, headerText } from "../shared/fence.ts";
@@ -35,7 +35,7 @@ function untrustedOrigin(toolName: string, input: unknown, details: unknown): st
 const fenceText = (origin: string, text: string): string =>
 	fenceUntrusted(`Result of ${headerText(origin)}`, text, {
 		marker: `untrusted-${sha256(text).slice(0, 16)}`,
-		note: renderInstruction("notices/mail/fence-tool-result.md"),
+		note: renderPrompt("notices/mail/fence-tool-result.md"),
 	});
 
 /** The arguments of each tool call in `messages`, by call id: a result's origin is in the call that asked for it. */

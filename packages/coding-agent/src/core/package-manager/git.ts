@@ -93,8 +93,8 @@ async function cleanAndInstallGitDependencies(
 	targetDir: string,
 	markerPath: string,
 ): Promise<void> {
-	// Clean untracked files (extensions should be pristine). If this fails after
-	// deleting dependencies, repair them so the existing extension still loads.
+	// Clean untracked files (installed packages should be pristine). If this fails after
+	// deleting dependencies, repair them so the existing package still loads.
 	try {
 		await host.runCommand("git", ["clean", "-fdx"], { cwd: targetDir });
 	} catch (error) {

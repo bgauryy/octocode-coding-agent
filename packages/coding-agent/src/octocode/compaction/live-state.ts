@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { backlog, timers } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
@@ -24,7 +24,7 @@ const TITLE_CHARS = 100;
  * unreadable backlog database is said in a line, not left out: a missing list would read as "holds nothing".
  */
 export function liveStateLines(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	entries: readonly unknown[],
 	since: number,
 ): string[] {
@@ -35,20 +35,19 @@ export function liveStateLines(
 		const rows = backlog.ongoingItems(agent.db, repoKey, ctx.sessionManager.getSessionId());
 		// Held items are listed once, with their goals, by the session-state brief sent after the compaction
 		// (`sessions/brief.ts`, read from the same table later); this block only states that there are none.
-		if (rows.length === 0) lines.push(renderInstruction("notices/recovery/live-items.md"));
+		if (rows.length === 0) lines.push(renderPrompt("notices/recovery/live-items.md"));
 	} catch {
-		lines.push(renderInstruction("notices/recovery/live-unreadable.md"));
+		lines.push(renderPrompt("notices/recovery/live-unreadable.md"));
 	}
 	const work = runningWorkBrief(entries, since, ctx.sessionManager.getSessionFile());
-	if (work.length > 0) lines.push(renderInstruction("notices/recovery/live-work.md", { work: work.join("; ") }));
+	if (work.length > 0) lines.push(renderPrompt("notices/recovery/live-work.md", { work: work.join("; ") }));
 	const active = activeTimers(ctx);
-	if (active.length > 0)
-		lines.push(renderInstruction("notices/recovery/live-timers.md", { timers: active.join("; ") }));
+	if (active.length > 0) lines.push(renderPrompt("notices/recovery/live-timers.md", { timers: active.join("; ") }));
 	return lines;
 }
 
 /** The session's active timers as `#3 until command exits 0 (note), due 2026-…Z`, read from the timer table. */
-function activeTimers(ctx: Pick<ExtensionContext, "sessionManager">): string[] {
+function activeTimers(ctx: Pick<FeatureContext, "sessionManager">): string[] {
 	try {
 		const rows = timers.forSession(sharedAgentDb().db, ctx.sessionManager.getSessionId());
 		return timerWorkRows(rows).map((row) => {

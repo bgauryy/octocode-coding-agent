@@ -1,0 +1,1 @@
+A scheduled task outlives the turn that asked for it and a subagent ends with its report, so a subagent cannot set one. Report to your coordinator that the task needs a schedule, or use after or every. Nothing was set.

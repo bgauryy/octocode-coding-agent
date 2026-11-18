@@ -38,7 +38,7 @@ import { USAGE_FILE_NAME, UsageRecorder, usageGroupOf, usageSnapshot } from "@oc
 import { deferredParameters, type McpNativeTools, redeclaresInPlace, thinParameters } from "../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext, ToolDefinition } from "../../core/features/index.ts";
 import { addsInPlace, type Forms, type OnDemandApi, onDemandForm, undeclared } from "./native-forms.ts";
 
 /** The native tools deferred under `recent` and `usage`: the contracts list a pin can name. */
@@ -140,7 +140,7 @@ export const nativeToolsSaved = (): ReadonlyMap<string, number> => saved;
 const declarationBytes = (tool: { description: string; parameters: unknown }): number =>
 	Buffer.byteLength(JSON.stringify({ description: tool.description, parameters: tool.parameters }));
 
-/** The latest forms of each deferrable tool by name, across extension loads: what the `mcp` tool reads. */
+/** The latest forms of each deferrable tool by name, across feature loads: what the `mcp` tool reads. */
 const formsByName = new Map<string, Forms>();
 /** The deferred tools read in full this session that are not yet declared in full (`redeclareLoadedNatives`). */
 const loadedNatives = new Set<string>();
@@ -150,8 +150,8 @@ function markLoaded(name: string): void {
 	if (forms?.isDeferred) loadedNatives.add(name);
 	// Reading an undeclared on-demand tool declares it from the next request on.
 	if (forms && undeclared(name, forms)) {
-		const active = forms.onDemand!.getActiveTools();
-		forms.onDemand!.setActiveTools([...active, name]);
+		const active = forms.onDemand!.tools.getActive();
+		forms.onDemand!.tools.setActive([...active, name]);
 	}
 }
 
@@ -180,14 +180,14 @@ export function nativeToolsPort(): McpNativeTools {
  * After a tool call ends, declares each loaded deferred tool in full, once, where the model's transport adds a
  * definition in place; elsewhere the tool list would be resent, so the tool stays thin and its schema stays a tool result.
  */
-export function redeclareLoadedNatives(api: Pick<ExtensionAPI, "registerTool">, ctx: { model?: unknown }): void {
+export function redeclareLoadedNatives(api: SetupPick<"tools", "register">, ctx: { model?: unknown }): void {
 	if (loadedNatives.size === 0 || !redeclaresInPlace(ctx.model)) return;
 	const registered = formsByApi.get(api);
 	for (const name of loadedNatives) {
 		const forms = registered?.get(name);
 		if (!forms || !forms.isDeferred || forms.redeclared) continue;
 		try {
-			api.registerTool(forms.direct);
+			api.tools.register(forms.direct);
 			forms.redeclared = true;
 		} catch {
 			// The tool stays thin; its schema still arrives as a tool result.
@@ -195,12 +195,12 @@ export function redeclareLoadedNatives(api: Pick<ExtensionAPI, "registerTool">, 
 	}
 }
 
-/** The forms of the deferrable tools each extension load registered, by the API it registered them through. */
+/** The forms of the deferrable tools each feature load registered, by the API it registered them through. */
 const formsByApi = new WeakMap<object, Map<string, Forms>>();
 
-function readSettings(api: Pick<ExtensionAPI, "getSettings">): ExposureSettings {
+function readSettings(api: SetupPick<"settings", "get">): ExposureSettings {
 	try {
-		return typeof api.getSettings === "function" ? api.getSettings() : undefined;
+		return typeof api.settings.get === "function" ? api.settings.get() : undefined;
 	} catch {
 		return undefined;
 	}
@@ -208,11 +208,11 @@ function readSettings(api: Pick<ExtensionAPI, "getSettings">): ExposureSettings 
 
 /**
  * A deferrable tool with its calls recorded, declared deferred when `nativeToolDeferred` says so; any other tool
- * unchanged. Settings cannot be read while extensions load: the record decides then, and `settleNativeDeferral`
+ * unchanged. Settings cannot be read while features load: the record decides then, and `settleNativeDeferral`
  * applies the settings and the session's own declarations when the session starts.
  */
 export function withNativeDeferral<P extends TSchema, D, S>(
-	api: Pick<ExtensionAPI, "getSettings">,
+	api: SetupPick<"settings", "get">,
 	tool: ToolDefinition<P, D, S>,
 ): ToolDefinition<P, D, S> {
 	if (!DEFERRABLE_ANY.has(tool.name)) return tool;
@@ -257,8 +257,8 @@ function transcriptDeclares(
  * place. Anything unreadable leaves the registration as it is.
  */
 export function settleNativeDeferral(
-	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
-	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
+	api: SetupPick<"settings", "get"> & SetupPick<"tools", "register"> & Partial<OnDemandApi>,
+	ctx: Pick<FeatureContext, "sessionManager"> & { model?: unknown },
 ): void {
 	const registered = formsByApi.get(api);
 	usage.reset();
@@ -270,8 +270,8 @@ export function settleNativeDeferral(
 
 /** Declare each deferrable tool as `settleNativeDeferral` describes, for the session's model now. */
 function applyNativeDeclarations(
-	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
-	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
+	api: SetupPick<"settings", "get"> & SetupPick<"tools", "register"> & Partial<OnDemandApi>,
+	ctx: Pick<FeatureContext, "sessionManager"> & { model?: unknown },
 ): void {
 	const registered = formsByApi.get(api);
 	if (!registered) return;
@@ -294,11 +294,11 @@ function applyNativeDeclarations(
 		return transcriptDeclares(forms, declaredTools, name);
 	};
 	const onDemandApi =
-		typeof api.getActiveTools === "function" && typeof api.setActiveTools === "function"
+		typeof api.tools.getActive === "function" && typeof api.tools.setActive === "function"
 			? (api as OnDemandApi)
 			: undefined;
 	const tierApplies =
-		onDemandApi !== undefined && addsInPlace(ctx.model) && onDemandApi.getActiveTools().includes(MCP_MANAGE_TOOL_NAME);
+		onDemandApi !== undefined && addsInPlace(ctx.model) && onDemandApi.tools.getActive().includes(MCP_MANAGE_TOOL_NAME);
 	for (const [name, forms] of registered) {
 		// The settings were unreadable at registration, so a new session under `usage` reads the snapshot only now.
 		const fresh = exposureSetting(settings) === "usage" ? nativeToolDeferred(name, settings) : forms.byRecord;
@@ -310,7 +310,7 @@ function applyNativeDeclarations(
 		const loaded = transcript === false && !headTools.has(name);
 		if (tierApplies && ON_DEMAND.has(name) && chosen === undefined && ((fresh && transcript === undefined) || loaded)) {
 			try {
-				api.registerTool(onDemandForm(forms, loaded));
+				api.tools.register(onDemandForm(forms, loaded));
 			} catch {
 				continue;
 			}
@@ -318,19 +318,19 @@ function applyNativeDeclarations(
 			forms.isDeferred = false;
 			forms.redeclared = false;
 			declared.set(name, !loaded);
-			const active = onDemandApi.getActiveTools();
-			if (!loaded && active.includes(name)) onDemandApi.setActiveTools(active.filter((tool) => tool !== name));
+			const active = onDemandApi.tools.getActive();
+			if (!loaded && active.includes(name)) onDemandApi.tools.setActive(active.filter((tool) => tool !== name));
 			continue;
 		}
 		const target = chosen ?? transcript ?? fresh;
 		if (target === forms.isDeferred && !forms.redeclared && !wasOnDemand) continue;
 		try {
-			api.registerTool(target ? forms.deferred : forms.direct);
+			api.tools.register(target ? forms.deferred : forms.direct);
 		} catch {
 			continue;
 		}
-		const active = wasOnDemand?.getActiveTools();
-		if (active && !active.includes(name)) wasOnDemand!.setActiveTools([...active, name]);
+		const active = wasOnDemand?.tools.getActive();
+		if (active && !active.includes(name)) wasOnDemand!.tools.setActive([...active, name]);
 		forms.isDeferred = target;
 		forms.redeclared = false;
 		declared.set(name, target);
@@ -343,8 +343,8 @@ function applyNativeDeclarations(
  * which leaves every tool the transcript declares as it is: declared tools are never withdrawn.
  */
 export function reconsiderNativeOnDemand(
-	api: Pick<ExtensionAPI, "getSettings" | "registerTool"> & Partial<OnDemandApi>,
-	ctx: Pick<ExtensionContext, "sessionManager"> & { model?: unknown },
+	api: SetupPick<"settings", "get"> & SetupPick<"tools", "register"> & Partial<OnDemandApi>,
+	ctx: Pick<FeatureContext, "sessionManager"> & { model?: unknown },
 ): void {
 	if (addsInPlace(ctx.model)) {
 		applyNativeDeclarations(api, ctx);
@@ -357,12 +357,12 @@ export function reconsiderNativeOnDemand(
 		forms.onDemand = undefined;
 		if (!wasUndeclared) continue;
 		try {
-			api.registerTool(forms.deferred);
+			api.tools.register(forms.deferred);
 		} catch {
 			continue;
 		}
 		forms.isDeferred = true;
 		declared.set(name, true);
-		onDemandApi.setActiveTools([...onDemandApi.getActiveTools(), name]);
+		onDemandApi.tools.setActive([...onDemandApi.tools.getActive(), name]);
 	}
 }

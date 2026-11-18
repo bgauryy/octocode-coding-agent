@@ -11,7 +11,7 @@ export interface ToolSelection {
 
 /**
  * Whether the selection can activate tools named `<prefix>…`, such as the tools of one MCP server (`mcp__<server>__`),
- * so an extension knows whether starting their source is worth it. Tools active by default are selected unless excluded
+ * so a feature knows whether starting their source is worth it. Tools active by default are selected unless excluded
  * or outside the allowlist, where any entry that can match such a name counts. Others need an entry that names them: an
  * allowlist entry starting with the prefix (not a broad `*` or `mcp__*`), or an exact name among the modifiers.
  */

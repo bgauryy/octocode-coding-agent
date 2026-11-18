@@ -77,7 +77,6 @@ export function anthropicSdkMessages(
 			const nonempty = content.filter((part) => part.type !== "text" || part.text.trim());
 			if (nonempty.length) messages.push({ role: "user", content: nonempty });
 		} else if (message.role === "assistant") {
-			messages.push(...pending.splice(0));
 			const content: Exclude<AssistantModelMessage["content"], string> = [];
 			for (const block of message.content) {
 				if (block.type === "text" && block.text.trim())
@@ -103,7 +102,10 @@ export function anthropicSdkMessages(
 				if (block.type === "toolCall")
 					content.push({ type: "tool-call", toolCallId: block.id, toolName: block.name, input: block.arguments ?? {} });
 			}
+			// A reply that converts to nothing is dropped, and held system updates wait for the next sent one: flushed here
+			// they would land before a user message, which Anthropic rejects ("role 'system' must precede an 'assistant'").
 			if (!content.length) continue;
+			messages.push(...pending.splice(0));
 			if (
 				managed &&
 				message.api === model.api &&

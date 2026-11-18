@@ -40,7 +40,7 @@ function host(server: McpServerEntry, options: Parameters<typeof mcpHost>[0] = {
 		exposure: "direct",
 		...options,
 	});
-	h.api.getActiveTools = () =>
+	h.api.tools.getActive = () =>
 		[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 	hosts.push(h);
 	return h;

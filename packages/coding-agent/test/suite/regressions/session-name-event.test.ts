@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("session name changes emit an event", () => {
 	const harnesses: Harness[] = [];
@@ -21,39 +22,39 @@ describe("session name changes emit an event", () => {
 		expect(harness.eventsOfType("session_info_changed").map((event) => event.name)).toEqual(["hello world"]);
 	});
 
-	it("emits session_info_changed when an extension calls api.setSessionName", async () => {
-		let api: ExtensionAPI | undefined;
+	it("emits session_info_changed when an extension calls api.session.setName", async () => {
+		let api: FeatureSetup | undefined;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(host) => {
 					api = host;
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
-		api?.setSessionName("from extension");
+		api?.session.setName("from extension");
 
 		expect(harness.sessionManager.getSessionName()).toBe("from extension");
 		expect(harness.eventsOfType("session_info_changed").map((event) => event.name)).toEqual(["from extension"]);
 	});
 
 	it("emits session_info_changed to extensions", async () => {
-		let api: ExtensionAPI | undefined;
+		let api: FeatureSetup | undefined;
 		const events: Array<{ name: string | undefined }> = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(host) => {
 					api = host;
-					host.on("session_info_changed", (event) => {
+					host.bus.on("session_info_changed", (event) => {
 						events.push({ name: event.name });
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
-		api?.setSessionName("first");
+		api?.session.setName("first");
 		harness.session.setSessionName("second");
 
 		expect(events).toEqual([{ name: "first" }, { name: "second" }]);

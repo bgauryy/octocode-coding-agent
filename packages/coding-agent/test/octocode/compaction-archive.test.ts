@@ -23,7 +23,7 @@ import {
 } from "../../src/octocode/history/archive.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { asSetup, fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 let saved: string | undefined;
@@ -457,13 +457,13 @@ describe("the pointer in the summary and after a default summary", () => {
 	const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
 
 	it("puts the pointer in the Recovery section of Octocode's summary, and a rewritten summary does not carry it", async () => {
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			createUsageRecorder: () => () => {},
 			appendEntry: () => {},
-		} as never;
+		}) as never;
 		const ctx = {
 			model,
 			modelRegistry: {
@@ -520,7 +520,7 @@ describe("archive wiring in the session", () => {
 	function session(persistent = true) {
 		const f = fakeHost();
 		const sendMessage = vi.fn();
-		(f.api as unknown as { sendMessage: unknown }).sendMessage = sendMessage;
+		(f.api.session as { sendMessage: unknown }).sendMessage = sendMessage;
 		registerCompaction(f.api, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
 		const notices: string[] = [];
 		const ctx = {
@@ -554,7 +554,7 @@ describe("archive wiring in the session", () => {
 				ctx,
 			);
 		const compacted = (entry: unknown = compactionEntry()) =>
-			f.fire("session_compact", { reason: "manual", fromExtension: false, compactionEntry: entry }, ctx);
+			f.fire("session_compact", { reason: "manual", fromFeature: false, compactionEntry: entry }, ctx);
 		return { f, ctx, notices, sendMessage, before, compacted };
 	}
 
@@ -582,7 +582,7 @@ describe("archive wiring in the session", () => {
 		const s = session();
 		await s.before();
 		await s.compacted(compactionEntry({ fromHook: true }));
-		expect(readSegments().at(-1)!.method).toBe("extension");
+		expect(readSegments().at(-1)!.method).toBe("feature");
 		await s.before();
 		s.sendMessage.mockClear();
 		await s.compacted(

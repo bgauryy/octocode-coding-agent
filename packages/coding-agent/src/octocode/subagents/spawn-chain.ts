@@ -3,7 +3,7 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { textResult } from "../shared/util.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import type { RunDetails } from "./run-types.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { routeSummary } from "./model.ts";
 import { openBacklog } from "../backlog/context.ts";
 import { startedNotice } from "../backlog/graph-notice.ts";
@@ -22,7 +22,7 @@ export function chainPlan(
 	runs: Pick<AgentRuns, "chain" | "running" | "background">,
 	settings: Pick<Settings, "subagents">,
 	params: { item?: string | undefined; after?: string[] | undefined; background?: boolean | undefined },
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	resuming: boolean,
 ): { linked: ItemLink | undefined; after: Prerequisite[] } {
 	const queuing =
@@ -51,7 +51,7 @@ export function chainPlan(
 async function chainHandoff(
 	runs: Pick<AgentRuns, "team">,
 	after: readonly Prerequisite[],
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	artifactAccess: "local" | "none",
 ): Promise<string> {
 	const { reports, text } = handoffLines(after, openBacklog(ctx, { isSubagent: false }));
@@ -86,7 +86,7 @@ export interface QueuedRun {
 	/** Resolves when it may start (`queueChild`); the note for its report, and the content its prerequisites hand it. */
 	start(
 		signal: AbortSignal,
-		ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+		ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 		access: "local" | "none",
 	): Promise<{ note: string; referenced: string }>;
 	/** It started: the coordinator is told (`item-started.md`). */

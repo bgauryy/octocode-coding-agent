@@ -7,6 +7,7 @@ import { resolveToolPath, workspacePaths } from "../shared/home.ts";
 import { optionalString } from "../shared/util.ts";
 import { SHELL_TOOLS } from "./shell.ts";
 import { readOnlyCommand } from "./shell/read-only.ts";
+import { joiningCd } from "./bash-cwd.ts";
 import { shellMutation } from "./shell/mutation.ts";
 import { roleExecChange } from "./shell/role-exec.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
@@ -25,7 +26,7 @@ import { mcpCallChange } from "./mcp-reads.ts";
  * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/code/temp/`, to the throwaway folder
  * `.octocode/tmp/` and to Markdown docs under
  * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
- * subagent profiles, prompts, themes, extensions, hooks, settings, system prompts): a task names its output path only in
+ * subagent profiles, prompts, themes, features, hooks, settings, system prompts): a task names its output path only in
  * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
  * refuses what the parse shows as a change anywhere but the temporary folders (`shell/mutation.ts`), programs
  * that write or run code through their options or change remote state (`shell/role-exec.ts`: `gh pr merge`, `man -P`), and any git call
@@ -130,10 +131,19 @@ export function readOnlyRoleRefusal(
 		if (!isWithin(target, canonicalPath(root)) && !underHome(target)) return !throwawayOutside(target);
 		return directories.has(file) ? !mayCreateDirectory(target, cwd, env) : !mayWrite(target, cwd, env);
 	});
-	if (changed !== undefined)
-		return refusal(
-			`Changing ${changed} from the shell${effect.afterUnjoinedCd && !path.isAbsolute(changed) ? " (a `cd` joined by `;` or a newline may have failed, leaving it here: join it with `&&`)" : ""}`,
-		);
+	if (changed !== undefined) {
+		const joined = effect.afterUnjoinedCd && !path.isAbsolute(changed) ? joiningCd(command) : undefined;
+		// Offer the rewrite only when the guard accepts it as written.
+		const accepted =
+			joined !== undefined &&
+			joined !== command &&
+			readOnlyRoleRefusal({ toolName: event.toolName, input: { ...input, command: joined } }, cwd, env) === undefined;
+		const hint =
+			joined === undefined
+				? ""
+				: " (a `cd` joined by `;` or a newline may have failed, leaving it here: join it with `&&`)";
+		return refusal(`Changing ${changed} from the shell${hint}`) + (accepted ? ` Run exactly: ${joined}` : "");
+	}
 	if (effect.opaque.length > 0)
 		return refusal(
 			`\`${effect.opaque[0]}\` (${effect.opaque[0] === "octocode" ? "it starts a session of its own, without this role's limits; " : ""}an opaque command: it changes files or repository state without naming a path, so its effect cannot be checked; use the declared read tools, or give your coordinator the exact command and mark what it would settle as unverified)`,
@@ -146,6 +156,7 @@ export function readOnlyRoleRefusal(
 		return refusal(
 			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop); write with absolute paths or use `cd /absolute/dir && …`",
 		);
+	if (effect.programSwap) return refusal(`A command that may run a program it does not name: ${effect.programSwap}`);
 	if (effect.uncertain)
 		return refusal(
 			`A shell write whose target the guard cannot resolve${effect.uncertainBecause ? `: ${effect.uncertainBecause}` : ""}; spell the path out`,

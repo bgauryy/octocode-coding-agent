@@ -1,5 +1,5 @@
 /**
- * Live servers registered by extensions or the model's `mcp` tool, and the servers the parent stopped for this session
+ * Live servers registered by features or the model's `mcp` tool, and the servers the parent stopped for this session
  * only (the `mcp` tool's `stop`; `/mcp disable` is saved to `mcp.json`, which children already read). Subagents
  * inherit both through an owner-only transient file, without changing `mcp.json`. Configured servers are loaded by
  * each session's normal config loader; the child then leaves out the ones the parent stopped, unless its tool
@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { McpExtensionApi } from "./host/types.ts";
+import type { McpFeatureApi } from "./host/types.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { envFlag, MCP_SESSION_SERVERS_FILE_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -139,7 +139,7 @@ export function parseMcpSessionServers(text: string): {
  * when it cannot be read, the child runs with its configured servers only.
  */
 export function registerInheritedMcpServers(
-	api: McpExtensionApi,
+	api: McpFeatureApi,
 	env: NodeJS.ProcessEnv = process.env,
 ): { stopped: string[]; only?: string[]; named?: string[] } {
 	const file = env[MCP_SESSION_SERVERS_FILE_ENV];
@@ -148,7 +148,7 @@ export function registerInheritedMcpServers(
 		if (fs.statSync(file).size > MAX_FILE_BYTES) throw new Error("file too large");
 		const { servers, stopped, only, named, errors } = parseMcpSessionServers(fs.readFileSync(file, "utf8"));
 		for (const message of errors) process.stderr.write(`Ignored inherited MCP server: ${message}\n`);
-		for (const [name, config] of Object.entries(servers)) api.registerMcpServer(name, config, { inherited: true });
+		for (const [name, config] of Object.entries(servers)) api.mcpServers.register(name, config, { inherited: true });
 		return { stopped, ...(only ? { only, named } : {}) };
 	} catch (error) {
 		process.stderr.write(
@@ -165,8 +165,8 @@ export function registerInheritedMcpServers(
 export function isParentStopped(
 	stopped: ReadonlySet<string>,
 	name: string,
-	api: Pick<McpExtensionApi, "selectsTools">,
+	api: { tools: Pick<McpFeatureApi["tools"], "selects"> },
 ): boolean {
 	if (!stopped.has(name)) return false;
-	return !(typeof api.selectsTools === "function" && api.selectsTools(`${mcpNamespace(name)}__`, false));
+	return !(typeof api.tools.selects === "function" && api.tools.selects(`${mcpNamespace(name)}__`, false));
 }

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { wakeGateOf } from "./gate.ts";
 
 /**
@@ -12,7 +12,7 @@ let feedbackSeq = 0;
 let peerSeq = 0;
 
 /** A graph notice (items ready, or left waiting): the first item it names heads the row line. */
-export function sendGraphNotice(api: ExtensionAPI, customType: string, content: string): void | Promise<void> {
+export function sendGraphNotice(api: FeatureSetup, customType: string, content: string): void | Promise<void> {
 	const ref = ITEM_REF.exec(content)?.[0] ?? "backlog";
 	return wakeGateOf(api).emit(
 		{ kind: "item.ready", ref, prerequisites: [] },
@@ -22,7 +22,7 @@ export function sendGraphNotice(api: ExtensionAPI, customType: string, content: 
 }
 
 /** A background hook's feedback that restarts an idle session. */
-export function sendHookFeedback(api: ExtensionAPI, customType: string, content: string): void | Promise<void> {
+export function sendHookFeedback(api: FeatureSetup, customType: string, content: string): void | Promise<void> {
 	return wakeGateOf(api).emit(
 		{ kind: "hook.feedback", hook: "background", event: "feedback", text: content, seq: ++feedbackSeq },
 		{ customType, content, display: false },
@@ -32,7 +32,7 @@ export function sendHookFeedback(api: ExtensionAPI, customType: string, content:
 
 /** The retry of a wake the provider failed (`attempt` of 5). */
 export function sendWakeRetry(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	customType: string,
 	content: string,
 	attempt: number,
@@ -46,7 +46,7 @@ export function sendWakeRetry(
 }
 
 /** A notice about a peer session that starts a turn. */
-export function sendPeerNotice(api: ExtensionAPI, customType: string, content: string): void | Promise<void> {
+export function sendPeerNotice(api: FeatureSetup, customType: string, content: string): void | Promise<void> {
 	return wakeGateOf(api).emit(
 		{ kind: "peer.notice", text: content, seq: ++peerSeq },
 		{ customType, content, display: true },

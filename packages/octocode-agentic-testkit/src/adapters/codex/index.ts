@@ -1,8 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AdapterContext, AgentAdapter } from "../../adapter.ts";
-import { cliMissing, runProcess, type ExternalRun } from "../claude-code/index.ts";
+import { sandboxFor, singlePrompt, type AdapterContext, type AgentAdapter } from "../../adapter.ts";
+import { runProcess, writeFiles } from "../../process.ts";
+import type { SandboxOptions } from "../../sandbox.ts";
+import { cliMissing, skillFiles, type ExternalRun } from "../claude-code/index.ts";
 
 export interface CodexOptions {
 	command?: string;
@@ -10,6 +12,14 @@ export interface CodexOptions {
 	/** Model id sent to the mock provider. */
 	model?: string;
 	keep?: boolean;
+	/**
+	 * OS sandbox for the `codex` process. Default: on when the gateway forwards to a real model; `false` opts out.
+	 * Sandboxed, Codex runs with `--sandbox danger-full-access`: macOS refuses a nested Seatbelt sandbox, and the
+	 * outer one already confines it.
+	 */
+	sandbox?: false | SandboxOptions;
+	/** Skills by name, written to `<CODEX_HOME>/skills/<name>/SKILL.md` (frontmatter included). */
+	skills?: Record<string, string>;
 }
 
 export function codexMissing(command = "codex"): string | undefined {
@@ -26,6 +36,7 @@ const toml = (s: string): string => JSON.stringify(s);
 export function codexAdapter(opts: CodexOptions = {}): AgentAdapter<ExternalRun> {
 	return {
 		name: "codex",
+		unavailable: () => cliMissing(opts.command ?? "codex"),
 		async start(ctx: AdapterContext) {
 			const command = opts.command ?? "codex";
 			const root = mkdtempSync(join(tmpdir(), "testkit-codex-"));
@@ -33,6 +44,8 @@ export function codexAdapter(opts: CodexOptions = {}): AgentAdapter<ExternalRun>
 			const codexHome = join(home, ".codex");
 			const workspace = ctx.workdir ?? join(root, "workspace");
 			for (const d of [codexHome, workspace, join(root, "tmp")]) mkdirSync(d, { recursive: true });
+			writeFiles(workspace, ctx.files ?? {});
+			writeFiles(join(codexHome, "skills"), skillFiles(opts.skills));
 			const lines = [
 				`model_provider = "mock"`,
 				`model = ${toml(opts.model ?? "scripted")}`,
@@ -48,13 +61,7 @@ export function codexAdapter(opts: CodexOptions = {}): AgentAdapter<ExternalRun>
 				`trust_level = "trusted"`,
 			];
 			for (const [name, url] of Object.entries(ctx.mcpUrls ?? {}))
-				lines.push(
-					``,
-					`[mcp_servers.${name}]`,
-					`default_tools_approval_mode = "approve"`,
-					`url = ${toml(url)}`,
-					`http_headers = { x-testkit-agent = "main", x-testkit-span = "main" }`,
-				);
+				lines.push(``, `[mcp_servers.${name}]`, `default_tools_approval_mode = "approve"`, `url = ${toml(url)}`);
 			writeFileSync(join(codexHome, "config.toml"), `${lines.join("\n")}\n`);
 			const env = {
 				PATH: process.env.PATH ?? "",
@@ -70,13 +77,23 @@ export function codexAdapter(opts: CodexOptions = {}): AgentAdapter<ExternalRun>
 				CI: "1",
 				...ctx.env,
 			};
+			const sandbox = await sandboxFor(opts.sandbox, ctx, root);
+			const own = sandbox ? "danger-full-access" : "read-only";
 			return {
-				run: (prompt) =>
-					runProcess(
+				run: async (input) => {
+					const i = singlePrompt("codex", input);
+					return runProcess(
 						command,
-						["exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral", prompt],
-						{ env, cwd: workspace, timeoutMs: opts.timeoutMs ?? 120_000, home },
-					),
+						["exec", "--json", "--skip-git-repo-check", "--sandbox", own, "--ephemeral", i.prompt],
+						{
+							env: { ...env, ...i.env },
+							cwd: workspace,
+							timeoutMs: i.timeoutMs ?? opts.timeoutMs ?? 120_000,
+							home,
+							sandbox,
+						},
+					);
+				},
 				close: async () => {
 					if (!opts.keep) rmSync(root, { recursive: true, force: true });
 				},

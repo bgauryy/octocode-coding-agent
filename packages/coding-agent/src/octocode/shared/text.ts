@@ -1,10 +1,17 @@
-import { getCapabilities, hyperlink, type Keybinding, truncateToWidth } from "@octocodeai/octocode-tui";
+import {
+	getCapabilities,
+	hyperlink,
+	type Keybinding,
+	pointerClicksActive,
+	truncateToWidth,
+} from "@octocodeai/octocode-tui";
 import { ITEM_REF, itemLinkUrl, itemLinksClickable } from "./item-ref.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { clip, plural, queryTarget } from "@octocodeai/octocode-common/clip";
 import { shortcutText } from "./keys.ts";
 
 export { clip, plural, queryTarget };
+export { linkPath } from "@octocodeai/octocode-tui";
 
 export const GUTTER = "  ⎿  ";
 export const INDENT = "     ";
@@ -16,12 +23,16 @@ export function expandKey(): string {
 }
 
 /**
- * The one expand hint, `(ctrl+o to expand)`, as plain text for the caller to style; empty when the key is unbound, so a
- * row never advertises a key that does nothing. Say it only where content is hidden.
+ * The one expand hint, `(ctrl+o to expand)` or `(ctrl+o or click to expand)`, as plain text for the caller to style.
+ * It names only what works: no key when unbound, no click without the mouse; empty when neither. Say it only where
+ * content is hidden. A row that does not toggle on click passes `clickable: false`, so it never advertises one.
  */
-export function expandHint(verb = "expand"): string {
-	const key = expandKey();
-	return key === UNBOUND ? "" : `(${key} to ${verb})`;
+export function expandHint(verb = "expand", key = expandKey(), clickable = true): string {
+	const bound = key !== UNBOUND && key !== "";
+	const click = clickable && pointerClicksActive();
+	if (bound && click) return `(${key} or click to ${verb})`;
+	if (bound) return `(${key} to ${verb})`;
+	return click ? `(click to ${verb})` : "";
 }
 
 /** Compact shortcut text, including an explicit unbound state. */

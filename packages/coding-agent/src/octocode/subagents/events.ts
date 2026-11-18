@@ -197,7 +197,7 @@ function promptResponse(event: Record<string, unknown>): ChildEffect[] {
 				message: `Subagent rejected its task: ${typeof event.error === "string" ? event.error : "no reason given"}`,
 			},
 		];
-	// An extension command consumed the prompt: no run starts, so no `agent_settled` will come.
+	// A feature command consumed the prompt: no run starts, so no `agent_settled` will come.
 	return isRecord(event.data) && event.data.disposition === "handled" ? [{ kind: "close" }] : [];
 }
 

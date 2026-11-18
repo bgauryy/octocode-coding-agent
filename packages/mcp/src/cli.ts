@@ -13,7 +13,6 @@ import { hostIdentity, hostTrust } from "./host.ts";
 import { globalMcpConfigPath, projectMcpConfigPath } from "./paths.ts";
 import { withPluginServers } from "./cli/plugins.ts";
 import { MCP_COMMANDS } from "./cli/commands.ts";
-import { compact, compactUsage } from "./cli/compact.ts";
 import { add, remove } from "./cli/edit.ts";
 import { list } from "./cli/list.ts";
 import { login } from "./cli/login.ts";
@@ -31,7 +30,6 @@ const help = (): string => `${chalk.bold("Usage:")}
   ${hostIdentity().appName} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
   ${hostIdentity().appName} mcp list [--json]
   ${hostIdentity().appName} mcp tools [server] [tool] [--json]
-  ${compactUsage()}
   ${hostIdentity().appName} mcp config [--json]
   ${hostIdentity().appName} mcp login <server> [--timeout <seconds>]
   ${hostIdentity().appName} mcp logout <server>
@@ -174,8 +172,6 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 			);
 			return 0;
 		}
-		case "compact":
-			return compact(rest, loaded, options, credentials, log, error, untrustedNote);
 		case "list": {
 			const parsed = parseOptions(rest, { json: "flag" }, error);
 			if (!parsed) return 1;

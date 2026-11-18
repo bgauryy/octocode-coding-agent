@@ -42,12 +42,11 @@ describe("configured plugin skill activation", () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 				...f,
-				nativeFeatures: false,
 			});
 			await loader.reload();
 			expect(loader.getSkills().skills.map((s) => s.name)).toContain("review-kit:review");
-			expect(loader.getExtensions().extensions).toEqual([]);
-			expect(loader.getExtensions().errors).toEqual([]);
+			expect(loader.getFeatures().features).toEqual([]);
+			expect(loader.getFeatures().errors).toEqual([]);
 			fs.writeFileSync(
 				path.join(f.agentDir, "settings.json"),
 				JSON.stringify({ plugins: [{ ...f.settings.plugins[0], enabled: false }] }),
@@ -70,7 +69,6 @@ describe("configured plugin skill activation", () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 				...f,
-				nativeFeatures: false,
 			});
 			await loader.reload();
 			if (protocol === "claude")
@@ -93,7 +91,7 @@ describe("configured plugin skill activation", () => {
 		fs.writeFileSync(path.join(f.cwd, ".octocode/settings.json"), JSON.stringify(f.settings));
 		const settingsManager = SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true });
 		settingsManager.setProjectTrusted(false);
-		const loader = new DefaultResourceLoader({ ...f, settingsManager, nativeFeatures: false });
+		const loader = new DefaultResourceLoader({ ...f, settingsManager });
 		await loader.reload();
 		expect(loader.getSkills().skills).toEqual([]);
 	});
@@ -106,7 +104,6 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await loader.reload();
 		expect(loader.getSkills().skills).toEqual([]);
@@ -128,7 +125,6 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await expect(loader.reload()).resolves.toBeUndefined();
 		expect(loader.getSkills().skills).toEqual([]);
@@ -142,7 +138,6 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await loader.reload();
 		expect(loader.getSkills().skills).toEqual([]);
@@ -166,7 +161,6 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await loader.reload();
 		const loaded = loader.getPrompts();
@@ -192,7 +186,6 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await loader.reload();
 		expect(expandPromptTemplate('/review-kit:review "a file"  main', loader.getPrompts().prompts)).toBe(
@@ -206,14 +199,12 @@ describe("configured plugin skill activation", () => {
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 		});
 		await loader.reload();
 		expect(loader.getPrompts().prompts.map((p) => p.name)).toEqual(["review-kit:about"]);
 		const disabled = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 			...f,
-			nativeFeatures: false,
 			noPromptTemplates: true,
 		});
 		await disabled.reload();
@@ -248,7 +239,6 @@ it("uses one plugin data identity for skills, commands and reviewed hooks", asyn
 	const loader = new DefaultResourceLoader({
 		settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
 		...f,
-		nativeFeatures: false,
 	});
 	await loader.reload();
 	const hooks = loadHooks(f.cwd, false, undefined, { plugins: [entry] });

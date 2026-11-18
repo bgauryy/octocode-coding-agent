@@ -1,6 +1,6 @@
 import { HistoryRepair } from "./repair.ts";
 import { repairOnStart, writeOwnRows } from "./repair-stamps.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { agentEvents } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { activate, activationId } from "../shared/activation.ts";
@@ -17,7 +17,7 @@ const PROJECTION_RETRIES = 40;
 
 /** Native lifecycle hooks; no configured user command is run by these records. */
 export function registerArchiveLifecycle(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: {
 		canProject: () => boolean;
 		agentId: () => string | undefined;
@@ -48,7 +48,7 @@ export function registerArchiveLifecycle(
 	 * Whether `ctx` still belongs to the live session. A disposed session marks its ctx stale without a
 	 * `session_shutdown`, so this instance would stay subscribed to the shared database's commits: it stops itself.
 	 */
-	const live = (ctx: ExtensionContext): boolean => {
+	const live = (ctx: FeatureContext): boolean => {
 		try {
 			void ctx.hasUI;
 			return true;
@@ -57,7 +57,7 @@ export function registerArchiveLifecycle(
 			return false;
 		}
 	};
-	const report = (ctx: ExtensionContext, error: unknown) => {
+	const report = (ctx: FeatureContext, error: unknown) => {
 		if (!live(ctx)) return;
 		const message = `Archive persistence: ${errorMessage(error)}`;
 		if (message === lastProblem) return;
@@ -65,7 +65,7 @@ export function registerArchiveLifecycle(
 		if (ctx.hasUI) notify(ctx.ui, message, "warning");
 		else process.stderr.write(`${message}\n`);
 	};
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		stop();
 		const id = activate(ctx.sessionManager, event);
 		const file = ctx.sessionManager.getSessionFile();
@@ -158,7 +158,7 @@ export function registerArchiveLifecycle(
 			report(ctx, error);
 		}
 	});
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("session_compact", async (event, ctx) => {
 		const transcript = ctx.sessionManager.getSessionFile();
 		if (!transcript) return;
 		try {

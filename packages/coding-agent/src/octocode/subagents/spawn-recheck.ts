@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { type AgentProfile, spawnRequest } from "./profiles.ts";
 
@@ -9,7 +9,7 @@ import { type AgentProfile, spawnRequest } from "./profiles.ts";
  */
 export async function spawnStillAllowed(
 	permission: Permission,
-	ctx: Pick<ExtensionContext, "hasUI" | "ui" | "cwd">,
+	ctx: Pick<FeatureContext, "hasUI" | "ui" | "cwd">,
 	profile: AgentProfile | undefined,
 	task: string,
 	defaultTools: readonly string[] | undefined,

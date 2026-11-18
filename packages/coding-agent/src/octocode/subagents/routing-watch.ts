@@ -1,10 +1,10 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { type Catalog, readCatalog } from "./catalog.ts";
 import { registryBilling } from "./model.ts";
 import { type RoutingFacts, routingFacts } from "./models-command.ts";
 import { providerHealth } from "./provider-health.ts";
-import { providerCount } from "../instructions/policy.ts";
+import { providerCount } from "../native/prompts/policy.ts";
 import type { AgentProfile } from "./profiles.ts";
 
 /** The custom message type of the routing notice. */
@@ -20,7 +20,7 @@ export interface RoutingReading {
 
 /** The routing facts for this session's model and providers now, from the saved models.dev index only (no fetch). */
 export function currentRouting(
-	ctx: Pick<ExtensionContext, "model" | "modelRegistry">,
+	ctx: Pick<FeatureContext, "model" | "modelRegistry">,
 	profiles: Iterable<AgentProfile>,
 ): RoutingReading {
 	const model = ctx.model;
@@ -102,7 +102,7 @@ export class RoutingWatch {
 			recovered.length < on.length ||
 			before?.sessionModel !== current.sessionModel;
 		this.#refusedOff = new Set([...this.#refusedOff, ...refused].filter((provider) => !now.includes(provider)));
-		return renderInstruction("notices/routing-changed.md", {
+		return renderPrompt("notices/routing-changed.md", {
 			id: ROUTING_NOTICE_ID,
 			user,
 			refused: refused.map(quote).join(", "),

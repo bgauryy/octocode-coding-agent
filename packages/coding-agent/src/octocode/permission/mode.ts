@@ -1,6 +1,9 @@
 import { envChoice, PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "@octocodeai/octocode-common/env";
 import { shortcutText } from "../shared/keys.ts";
 import { plural } from "../shared/text.ts";
+import { ACTION_CLASSES, type ActionClass, MATRIX, type Rule } from "./action-classes.ts";
+
+export { ACTION_CLASSES, type ActionClass } from "./action-classes.ts";
 
 /**
  * Permission modes: which agent actions run, which ask the user first. One table decides every class in every mode;
@@ -20,136 +23,6 @@ export const CHOOSABLE_MODES = ["manual", "workspace", "full"] as const satisfie
 
 /** Whether `mode` runs every routine action unasked (`full` and `bypass`): the counter, the warning colour and the run summary follow it. */
 export const runsUnasked = (mode: PermissionMode): boolean => mode === "full" || mode === "bypass";
-
-export const ACTION_CLASSES = [
-	"read.outside",
-	"file.workspace",
-	"file.outside",
-	"shell",
-	"shell.destructive",
-	"web",
-	"browser",
-	"browser.control",
-	"browser.cookies",
-	"net.private",
-	"upload.outside",
-	"mcp.read",
-	"mcp.write",
-	"mcp.destructive",
-	"agent.spawn",
-	"message.external",
-	"worktree.merge",
-] as const;
-export type ActionClass = (typeof ACTION_CLASSES)[number];
-
-type Rule = "allow" | "ask";
-
-/**
- * Per class: what manual, workspace and full do, how the class reads in a message, `why` it asks (the reason line every
- * prompt shows), and `all`, the kind a session grant can cover ("Allow all shell commands for this session"). A class
- * without a kind (destructive shell, browser control, destructive MCP) asks on every call.
- */
-const MATRIX: Record<ActionClass, { rules: [Rule, Rule, Rule]; noun: string; why: string; all?: string }> = {
-	"read.outside": {
-		rules: ["ask", "allow", "allow"],
-		noun: "reading outside the workspace",
-		why: "it reads files outside the repository",
-		all: "reads outside the workspace",
-	},
-	"file.workspace": {
-		rules: ["ask", "allow", "allow"],
-		noun: "the file change",
-		why: "it changes files in the repository",
-		all: "file changes in the repository",
-	},
-	"file.outside": {
-		rules: ["ask", "ask", "allow"],
-		noun: "changing a file outside the workspace",
-		why: "it changes a file outside the repository, or one that runs in later sessions",
-		all: "file changes outside the workspace",
-	},
-	shell: {
-		rules: ["ask", "allow", "allow"],
-		noun: "the shell command",
-		why: "a shell command can do anything you can",
-		all: "shell commands",
-	},
-	"shell.destructive": {
-		rules: ["ask", "ask", "allow"],
-		noun: "the destructive shell command",
-		why: "the command matches a common destructive pattern (wipes data, formats a disk, powers off); the check flags common cases and is not a security boundary",
-	},
-	web: {
-		rules: ["ask", "allow", "allow"],
-		noun: "the web request",
-		why: "it sends a request to a website",
-		all: "web requests",
-	},
-	browser: {
-		rules: ["ask", "allow", "allow"],
-		noun: "the browser action",
-		why: "it acts in a real browser",
-		all: "browser actions",
-	},
-	"browser.control": {
-		rules: ["ask", "ask", "allow"],
-		noun: "taking control of the browser",
-		why: "it takes control of a browser: running custom code against it, moving its cookies or replaying a request",
-	},
-	"browser.cookies": {
-		rules: ["ask", "ask", "ask"],
-		noun: "browser cookie access",
-		why: "it reads, sets or moves the browser's cookies, which can hold logins",
-		all: "browser cookie access",
-	},
-	"net.private": {
-		rules: ["ask", "ask", "allow"],
-		noun: "opening a private or local address",
-		why: "the address is private or local, so it can reach internal services",
-		all: "private or local addresses",
-	},
-	"upload.outside": {
-		rules: ["ask", "ask", "allow"],
-		noun: "uploading files from outside the workspace",
-		why: "it sends files from outside the repository to a page",
-		all: "uploads from outside the workspace",
-	},
-	"mcp.read": {
-		rules: ["allow", "allow", "allow"],
-		noun: "the MCP read",
-		why: "a trusted server entry declares the tool read-only and no argument makes it write; it never asks, and is recorded",
-		all: "MCP reads",
-	},
-	"mcp.write": {
-		rules: ["ask", "allow", "allow"],
-		noun: "the MCP tool call",
-		why: "an MCP tool may change something outside this session",
-		all: "MCP tool calls",
-	},
-	"mcp.destructive": {
-		rules: ["ask", "ask", "allow"],
-		noun: "the destructive MCP tool call",
-		why: "the MCP server marks the tool destructive (`destructiveHint`); the hint can only add this ask, never remove one",
-	},
-	"agent.spawn": {
-		rules: ["ask", "allow", "allow"],
-		noun: "starting a subagent",
-		why: "a subagent acts on its own with tools of its own",
-		all: "subagents",
-	},
-	"message.external": {
-		rules: ["ask", "ask", "allow"],
-		noun: "this external message",
-		why: "another process on this machine, not you, wants to reach the agent, and nothing verifies who it is",
-		all: "external messages",
-	},
-	"worktree.merge": {
-		rules: ["ask", "ask", "ask"],
-		noun: "the worktree merge",
-		why: "it changes the main checkout's history, and only you may ask for that; a message from another process grants nothing",
-		all: "worktree merges",
-	},
-};
 
 /** Why `action` asks, as the prompt's reason line says it. */
 export const actionWhy = (action: ActionClass): string => MATRIX[action].why;
@@ -211,7 +84,7 @@ export const modeAllowing = (action: ActionClass): PermissionMode | undefined =>
 
 /** Asks that a session grant may never answer: their content differs every time, or the hint says it destroys data. */
 export const UNGRANTABLE: ReadonlySet<ActionClass> = new Set(
-	ACTION_CLASSES.filter((action) => kindOf(action) === undefined),
+	ACTION_CLASSES.filter((action) => kindOf(action) === undefined && !MATRIX[action].keyed),
 );
 
 /** Classes a profile's `permissions:` front matter may declare: what its child needs and the mode would otherwise ask about. */

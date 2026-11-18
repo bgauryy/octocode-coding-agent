@@ -17,6 +17,7 @@ import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
 import { summarySizeTarget } from "../../src/core/compaction/summary-format.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = {
 	provider: "p",
@@ -73,14 +74,14 @@ function setup(options: Setup = {}) {
 	const notices: string[] = [];
 	const notes: Array<{ customType: string; data: unknown }> = [];
 	const recordedUsage: unknown[] = [];
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => options.thinking ?? "high",
 		createUsageRecorder: () => (message: unknown) => recordedUsage.push(message),
 		getActiveTools: () => [],
 		getHiddenDeclarations: () => [],
 		getSettings: () => options.settings ?? { thinkingBudgets: { high: 4_000 }, transport: "sse" },
 		appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		modelRegistry: {

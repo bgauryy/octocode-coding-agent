@@ -33,7 +33,7 @@ export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
 
 /**
  * Runs the one-shot command `args` names, if any, and says whether it did. Package and config commands exit the
- * process, so an extension they load cannot keep it alive; the others set `process.exitCode` and return.
+ * process, so a feature they load cannot keep it alive; the others set `process.exitCode` and return.
  */
 export async function runSubcommand(args: string[], context: SubcommandContext): Promise<boolean> {
 	if (await handlePackageCommand(args)) {

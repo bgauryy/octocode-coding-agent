@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionToolContext } from "../../coding-agent/src/core/features/types.ts";
+import type { ToolContext } from "../../coding-agent/src/core/features/types.ts";
 import { createMcpManageTool, type ManagedMcpServer, type McpManageOperations } from "../src/manage-tool.ts";
 
 function setup(servers: ManagedMcpServer[] = [{ name: "docs", state: "connected · 3 tools", connected: true }]) {
@@ -17,7 +17,7 @@ function setup(servers: ManagedMcpServer[] = [{ name: "docs", state: "connected 
 		stop: vi.fn(async () => undefined),
 	};
 	const tool = createMcpManageTool(operations);
-	const ctx = { hasUI: false } as unknown as ExtensionToolContext;
+	const ctx = { hasUI: false } as unknown as ToolContext;
 	const run = (params: Record<string, unknown>, signal = new AbortController().signal) =>
 		tool.execute("call", params as never, signal, undefined, ctx);
 	const text = async (params: Record<string, unknown>) => ((await run(params)).content[0] as { text: string }).text;

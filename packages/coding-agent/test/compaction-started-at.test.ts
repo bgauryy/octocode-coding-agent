@@ -12,7 +12,7 @@ it("records when a compaction run started in the entry's details", async () => {
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_before_compact", async (event) => ({
+				api.bus.on("session_before_compact", async (event) => ({
 					compaction: {
 						summary: "Checkpoint",
 						firstKeptEntryId: event.preparation.firstKeptEntryId,

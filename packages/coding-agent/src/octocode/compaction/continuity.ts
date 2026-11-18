@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
 import type { CompactionEntry, SessionEntry } from "../../core/session-manager.ts";
 import { CheckpointPersistenceError } from "../../core/compaction/index.ts";
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
@@ -27,8 +27,8 @@ export const CONTINUITY_TYPE = "octocode-compaction-continuity";
  * and the automatic failure limit counts it. Undefined for any other error.
  */
 export function persistenceFailure(
-	api: Pick<ExtensionAPI, "appendEntry">,
-	ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+	api: SetupPick<"session", "appendEntry">,
+	ctx: Pick<FeatureContext, "hasUI" | "ui">,
 	error: unknown,
 ): NativeCompactionResult | undefined {
 	if (!(error instanceof CheckpointPersistenceError || error instanceof UsagePersistenceError)) return undefined;
@@ -93,7 +93,7 @@ export function latestCompaction(session: BranchSource): CompactionEntry | undef
  * A quick second compaction can keep the first one's continuity message in its retained tail, while its own summary
  * (`ownSummary`: Octocode's) or continuity message already carries that message's user messages and saved results
  * (`carriedUserMessages`, `carriedSavedResults`): shown both, the model would read each twice. After any other summary
- * (another extension's, or Octocode's default one without its continuity message) nothing carried them, so they stay.
+ * (another feature's, or Octocode's default one without its continuity message) nothing carried them, so they stay.
  * Hiding them changes no prefix a provider can still reuse: the latest summary before them is new. Returns `messages`
  * itself when nothing is hidden.
  */
@@ -127,18 +127,18 @@ export class FallbackContinuity {
 
 	/**
 	 * After a compaction is saved: sends the held sections when `entry` is the default summary they were built for
-	 * (Octocode's own summary and another extension's have `fromHook`). Returns whether it sent them; the sections already
+	 * (Octocode's own summary and another feature's have `fromHook`). Returns whether it sent them; the sections already
 	 * hold the archive pointer, so no separate pointer is needed then.
 	 */
-	deliver(api: Pick<ExtensionAPI, "sendMessage">, entry: CompactionEntry): boolean {
+	deliver(api: SetupPick<"session", "sendMessage">, entry: CompactionEntry): boolean {
 		const pending = this.#pending;
 		this.#pending = undefined;
 		if (!pending || entry.fromHook || entry.firstKeptEntryId !== pending.firstKeptEntryId) return false;
 		try {
-			void api.sendMessage(
+			void api.session.sendMessage(
 				{
 					customType: CONTINUITY_TYPE,
-					content: `${renderInstruction("notices/compaction/default-summary.md")}${pending.text}`,
+					content: `${renderPrompt("notices/compaction/default-summary.md")}${pending.text}`,
 					display: false,
 					details: { compactionId: entry.id },
 				},

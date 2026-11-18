@@ -51,7 +51,7 @@ export class CacheWarmer {
 	private readonly models: Pick<ModelRuntime, "streamSimple">;
 	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
 	private readonly getMode: () => CacheWarmingMode;
-	/** Lets extensions override `event.action`; failures fall back to Octocode's decision. */
+	/** Lets features override `event.action`; failures fall back to Octocode's decision. */
 	private readonly decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction>;
 	/** Called with the persisted usage entry after each successful refresh. */
 	onWarmed?: (entry: UsageEntry) => void;
@@ -83,7 +83,7 @@ export class CacheWarmer {
 			state: refreshing ? "refreshing" : "scheduled",
 			nextWarmAt: run.nextWarmAt,
 			decision,
-			extensionOverride: run.extensionOverride,
+			featureOverride: run.featureOverride,
 		};
 	}
 
@@ -129,7 +129,7 @@ export class CacheWarmer {
 			controller: new AbortController(),
 			phase: "streaming",
 			nextWarmAt: 0,
-			extensionOverride: false,
+			featureOverride: false,
 		};
 		this.schedule(this.run);
 	}
@@ -168,13 +168,13 @@ export class CacheWarmer {
 		run.controller.abort();
 	}
 
-	private stop(reason: string, stopped?: Pick<CacheWarmingStatus, "decision" | "extensionOverride">): void {
+	private stop(reason: string, stopped?: Pick<CacheWarmingStatus, "decision" | "featureOverride">): void {
 		this.clearRun();
 		this.inactive = { state: "inactive", reason, ...stopped };
 	}
 
 	private schedule(run: ActiveRun, refreshedAt = Date.now()): void {
-		run.extensionOverride = false;
+		run.featureOverride = false;
 		run.nextWarmAt = refreshedAt + run.delayMs;
 		// A timer can run late after sleep or event-loop blockage. Keep half of
 		// the planned pre-expiry margin for that delay and request dispatch; a
@@ -196,7 +196,7 @@ export class CacheWarmer {
 		if (this.refreshDeadlineMissed(run)) return;
 		let decision: CacheWarmingDecision;
 		let action: CacheWarmingAction;
-		// The agent can settle while an extension is deciding. Its idle probability
+		// The agent can settle while a feature is deciding. Its idle probability
 		// changes the economics, so send a fresh decision for the new phase.
 		while (true) {
 			decision = this.evaluate(run);
@@ -210,23 +210,23 @@ export class CacheWarmer {
 					action,
 				});
 			} catch {
-				// Extension failures fall back to the current economic decision.
+				// Feature failures fall back to the current economic decision.
 			}
 			if (!this.validateRun(run) || this.refreshDeadlineMissed(run)) return;
 			if (decision.phase === run.phase) break;
 		}
-		const extensionOverride = action !== decision.action;
+		const featureOverride = action !== decision.action;
 		if (action === "stop") {
-			const reason = extensionOverride
-				? "stopped by extension"
+			const reason = featureOverride
+				? "stopped by feature"
 				: decision.economicsAvailable
 					? "expected savings below threshold"
 					: "cache economics unavailable";
-			this.stop(reason, { decision, extensionOverride });
+			this.stop(reason, { decision, featureOverride });
 			return;
 		}
 
-		run.extensionOverride = extensionOverride;
+		run.featureOverride = featureOverride;
 		const appendUsage = this.sessionManager.captureUsageWriter();
 		const sessionId = this.sessionManager.getSessionId();
 		const refreshedAt = Date.now();
@@ -250,9 +250,8 @@ export class CacheWarmer {
 			].some((value) => value > 0);
 			if (succeeded || hasUsage) {
 				const note =
-					[extensionOverride ? "extension override" : "", succeeded ? "" : message.stopReason]
-						.filter(Boolean)
-						.join(", ") || undefined;
+					[featureOverride ? "feature override" : "", succeeded ? "" : message.stopReason].filter(Boolean).join(", ") ||
+					undefined;
 				const entry = appendUsage(
 					"cache_warm",
 					message.provider,

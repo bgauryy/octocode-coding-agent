@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { atomicWriteFile, sha256, sha256File } from "@octocodeai/octocode-common/atomic-file";
-import { fakePermission } from "./fake-host.ts";
+import { fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const noTemp = (dir: string) => fs.readdirSync(dir).filter((name) => name.endsWith(".tmp"));
@@ -12,13 +12,13 @@ const noTemp = (dir: string) => fs.readdirSync(dir).filter((name) => name.endsWi
 function fileTool(guard = new FileGuard()) {
 	let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 	registerFileTool(
-		{
+		asSetup({
 			registerTool: (definition: never) => {
 				tool = definition;
 				return tool;
 			},
 			on: () => undefined,
-		} as never,
+		}) as never,
 		guard,
 		fakePermission(),
 	);

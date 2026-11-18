@@ -21,7 +21,7 @@ const FREE_FORM = new Map<string, string>([
 	// Batch entries are plain objects so every request stays small (about 150 characters instead of 550-700 for spelled-out
 	// entries); each entry is validated in code against the single call's own schema, so none goes unchecked.
 	// `backlogPlan.items` is not here: its entries are typed, so strict mode constrains them like any other field.
-	["agent.tasks", "batch entries, each validated against the single task call's schema (agent-batch.ts)"],
+	["agent.tasks", "batch entries, each validated against the single task call's schema (native/tools/agent/batch.ts)"],
 ]);
 
 type Node = Record<string, unknown>;
@@ -110,12 +110,16 @@ describe("native tool schemas are strict-eligible", () => {
 			// Every tool declared in full: a deferred declaration (`mcpExposure: "recent"`) carries only its top-level field
 			// names, by design open, and the schema checked here is the one a used tool declares.
 			const fake = fakeHost({ mcpExposure: "direct" });
-			Object.assign(fake.api, { getSessionName: () => undefined });
+			Object.assign(fake.api.session, { getName: () => undefined });
 			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: !subagent });
 			Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-			const tools = fake.api.getAllTools() as unknown as Array<{ name: string; description: string; parameters: Node }>;
+			const tools = fake.api.tools.getAll() as unknown as Array<{
+				name: string;
+				description: string;
+				parameters: Node;
+			}>;
 			expect(tools.length).toBeGreaterThan(5);
 			const violations = tools.flatMap((tool) => {
 				const why = strictViolation(tool.name, tool.description, tool.parameters);
@@ -127,12 +131,12 @@ describe("native tool schemas are strict-eligible", () => {
 
 	it("the free-form allowlist names only fields that exist", async () => {
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const tools = fake.api.getAllTools() as unknown as Array<{ name: string; parameters: Node }>;
+		const tools = fake.api.tools.getAll() as unknown as Array<{ name: string; parameters: Node }>;
 		for (const path of FREE_FORM.keys()) {
 			const [name, ...keys] = path.split(".");
 			let node: unknown = tools.find((tool) => tool.name === name)?.parameters;

@@ -1,10 +1,12 @@
 import { type AssistantMessage, createFauxCore, type TranscriptContext } from "@octocodeai/octocode-ai";
-import type { ExtensionFactory, ToolDefinition } from "../../../src/core/features/index.ts";
+import type { FeatureRegister, ToolDefinition } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import type { SessionManager } from "../../../src/core/session-manager.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { createTestSession } from "../../helpers/session.ts";
 import type { Fixture } from "../agent-context/capture.ts";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 /**
  * A real main session (native tools, the Octocode extension, bundled skills, the Octocode MCP server) on the scripted model
@@ -29,8 +31,8 @@ export async function replaySession(
 		models: [{ id: "replay", contextWindow: options.contextWindow, maxTokens: 16_384 }],
 		tokenSize: { min: delta, max: delta },
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -48,7 +50,8 @@ export async function replaySession(
 		cwd: fx.cwd,
 		agentDir: fx.agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noPromptTemplates: true,
 		noThemes: true,
 	});
@@ -62,7 +65,7 @@ export async function replaySession(
 		customTools: options.tools,
 	});
 	try {
-		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "replay")!);
 	} catch (error) {
 		session.dispose?.();

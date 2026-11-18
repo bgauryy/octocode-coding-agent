@@ -1,7 +1,7 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 
-/** The session entry (`api.appendEntry`, never sent to the model) for a window in which the event loop was blocked. */
+/** The session entry (`api.session.appendEntry`, never sent to the model) for a window in which the event loop was blocked. */
 export const STALL_ENTRY = "octocode-stall";
 
 /** A window whose longest event-loop delay reached this is recorded; shorter delays are not worth a line. */
@@ -31,7 +31,7 @@ const ms = (nanoseconds: number): number => Math.round(nanoseconds / 1e6);
  * written once the run has ended, off its path: recording never lengthens a run, and an entry never lands between an
  * assistant's tool calls and their results. The monitor is off between runs.
  */
-export function registerStallRecorder(api: ExtensionAPI): void {
+export function registerStallRecorder(api: FeatureSetup): void {
 	let histogram: ReturnType<typeof monitorEventLoopDelay> | undefined;
 	let from = 0;
 	/** A run is going: a compaction inside it leaves the monitor on for the rest of the run. */
@@ -49,7 +49,7 @@ export function registerStallRecorder(api: ExtensionAPI): void {
 	const flush = (): void => {
 		const records = pending;
 		pending = [];
-		for (const record of records) api.appendEntry(STALL_ENTRY, record);
+		for (const record of records) api.session.appendEntry(STALL_ENTRY, record);
 	};
 	const stop = (): void => {
 		histogram?.disable();
@@ -70,35 +70,35 @@ export function registerStallRecorder(api: ExtensionAPI): void {
 		from = Date.now();
 	};
 
-	api.on("agent_start", async () => {
+	api.bus.on("agent_start", async () => {
 		inRun = true;
 		start();
 	});
 	// A threshold compaction runs after the run ended, outside the window above: watch it on its own.
-	api.on("session_before_compact", async () => {
+	api.bus.on("session_before_compact", async () => {
 		if (histogram) close("turn");
 		else start();
 	});
-	api.on("session_compact", async () => {
+	api.bus.on("session_compact", async () => {
 		close("compaction");
 		if (inRun) return;
 		stop();
 		if (pending.length > 0) setImmediate(flush);
 	});
-	api.on("message_end", async (event) => {
+	api.bus.on("message_end", async (event) => {
 		if (event.message.role === "assistant") close("request");
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		if (!event.parentToolCallId) close(`tool ${event.toolName}`);
 	});
-	api.on("agent_end", async () => {
+	api.bus.on("agent_end", async () => {
 		inRun = false;
 		close("turn");
 		stop();
 		// After the run's own end handling: a prompt sent right as the run ends finds the agent idle.
 		if (pending.length > 0) setImmediate(flush);
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		inRun = false;
 		stop();
 		pending = [];

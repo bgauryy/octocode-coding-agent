@@ -16,12 +16,12 @@ import { requireBundle } from "./support.ts";
  * reviewed reason; the trace JSON in `.octocode/tmp/cache-trace/` shows the measured values.
  */
 const CEILING = {
-	/** Every tool declared at the top level; the MCP connect appends to that list. */
+	/** Every tool declared at the top level; an MCP server connecting mid-span is declared at the next span (compaction). */
 	none: {
 		/** Request 1: tool definitions, system prompt. */
 		toolsBytes: 42_200,
 		systemBytes: 31_600,
-		/** The mid-session MCP connect: the added tool definition and the message-borne `mcps` delta. */
+		/** The MCP server's tool definition, appended after the compaction, and the connect's message-borne `mcps` delta. */
 		mcpToolDeltaBytes: 250,
 		mcpMessageDeltaBytes: 5_300,
 		/** The date rollover: one `environment` section update, no head edit. */
@@ -111,24 +111,30 @@ describe("cache trace (scripted gateway, real bundle, Anthropic wire)", () => {
 				// The system prompt never changes within the session: section updates travel in messages.
 				expect(r.hash.system, `request ${r.index}: system hash`).toBe(cold.hash.system);
 				if (i === 0) continue;
-				if (i < connect) expect(r.hash.tools, `request ${r.index}: tools hash`).toBe(cold.hash.tools);
-				else if (i > connect) expect(r.hash.tools, `request ${r.index}: tools hash`).toBe(rows[connect].hash.tools);
+				if (i < compacted) expect(r.hash.tools, `request ${r.index}: tools hash`).toBe(cold.hash.tools);
+				else if (i > compacted) expect(r.hash.tools, `request ${r.index}: tools hash`).toBe(rows[compacted].hash.tools);
 				// Every change other than the compaction is an append: no earlier message is rewritten.
 				if (i !== compacted) expect(r.change.messages.kind, `request ${r.index}: messages`).toBe("append");
 			}
-			// Transport none: the MCP connect appends the server's tools to the top-level list (a full cache miss).
+			// Transport none: the MCP connect keeps the top-level tool list (the server's tools are callable, declared at
+			// the next span), so the connect request reads the whole previous prompt from cache.
 			const at = rows[connect];
 			const before = rows[connect - 1];
-			expect(at.change.tools).toMatchObject({ kind: "append", at: "mcp__docs__search" });
+			expect(at.change.tools.kind).toBe("same");
 			expect(at.change.system.kind).toBe("same");
 			expect(at.inlineTools.added).toEqual([]);
-			expect(at.cachedTokens).toBe(0);
+			expect(at.cachedTokens ?? 0).toBeGreaterThan(0);
+			expect(at.cachedTokens ?? 0).toBeGreaterThanOrEqual((before.promptTokens ?? 0) - 1);
 			expectRollover(rows, rollover);
-			expectCompaction(rows[compacted]);
+			// The compaction rewrites the messages anyway: the new span declares the server's tool there.
+			const post = rows[compacted];
+			expect(post.change.tools).toMatchObject({ kind: "append", at: "mcp__docs__search" });
+			expect(post.change.system.kind).toBe("same");
+			expect(post.change.messages.kind).toBe("edit");
 			expectCeilings("none", {
 				toolsBytes: cold.bytes.tools,
 				systemBytes: cold.bytes.system,
-				mcpToolDeltaBytes: at.bytes.tools - before.bytes.tools,
+				mcpToolDeltaBytes: post.bytes.tools - rows[compacted - 1].bytes.tools,
 				mcpMessageDeltaBytes: at.bytes.messages - before.bytes.messages,
 				dateDeltaBytes: dateDelta(rows, rollover),
 			});
@@ -332,9 +338,11 @@ async function scenario(transport: Transport, compat?: Record<string, unknown>):
 	expect(sent).toEqual([expect.stringContaining(`Date: ${day}`)]);
 	expect(sent[0]).toMatch(/section "environment(:date)?"/);
 	expect(sent[0]).not.toMatch(/<(tools|rules|mcps)>/);
-	// The connect sends the `mcps` update as a message either way.
+	// The connect sends the server's `mcps` member as a message either way: the family tag stays in the cached head,
+	// so the update names the member section and carries only that server's block.
 	const added = main[connect].messages.slice(main[connect - 1].messages.length).map((m) => textOf(m.content));
-	expect(added.some((t) => t.includes("<mcps>") && t.includes("docs"))).toBe(true);
+	expect(added.some((t) => t.includes('section "mcps:docs"') && t.includes('<mcp name="docs"'))).toBe(true);
+	expect(added.some((t) => t.includes("<mcps>"))).toBe(false);
 	return { main, rows, connect, compacted, rollover };
 }
 

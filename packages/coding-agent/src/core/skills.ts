@@ -1,4 +1,4 @@
-import { renderInstruction } from "./prompt-template.ts";
+import { renderPrompt } from "./prompt-template.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
@@ -58,18 +58,22 @@ export function loadSkillsFromDir(options: LoadSkillsFromDirOptions): LoadSkills
  *
  * Entries are grouped by {@link skillCategory} in `<core_skills>`, `<octocode_skills>`, `<workspace_skills>` and
  * `<global_skills>`, in that order; an empty group is left out. Every visible skill is listed with its name and its
- * full description, as written.
+ * full description, as written. `listed` narrows the bundled entries (core and Octocode collection) to those names for a role, and the rest of them are
+ * counted in one line; the user's own workspace and global skills are always listed.
  */
 export function formatSkillsForPrompt(
 	skills: Skill[],
 	fileReadTool: "bash" | "indirect" | "octocode" | "skill" = "bash",
+	listed?: readonly string[],
 ): string {
+	const invocable = skills.filter((s) => !s.disableModelInvocation);
 	const visibleSkills = sortByCategory(
-		skills.filter((s) => !s.disableModelInvocation),
+		listed ? invocable.filter((s) => listed.includes(s.name) || isUserSkill(s)) : invocable,
 		skillCategory,
 	);
+	const more = invocable.length - visibleSkills.length;
 
-	if (visibleSkills.length === 0) {
+	if (visibleSkills.length === 0 && more === 0) {
 		return "";
 	}
 
@@ -78,16 +82,17 @@ export function formatSkillsForPrompt(
 	const entries = visibleSkills.map((skill) => skillEntry(skill, fileReadTool !== "skill"));
 	// One intro line, the load instruction: each entry's description already says what its skill is for. The skill tool's
 	// description says how to resolve a loaded skill's relative paths, so only the other readers get that line.
-	const intro = renderInstruction("system/skills-intro.md", {
+	const intro = renderPrompt("system/skills-intro.md", {
 		skillTool: fileReadTool === "skill",
 		bash: fileReadTool === "bash",
 		indirect: fileReadTool === "indirect" || fileReadTool === "octocode",
 		// Loaded skills always have descriptions; skills an SDK caller supplies without any are listed by name, for tasks that name them.
 		named: visibleSkills.every((s) => !s.description),
+		more: more > 0 ? String(more) : "",
 	});
 	const lines = [
 		`\n\n${intro}`,
-		SKILL_LAYOUT,
+		...(fileReadTool === "skill" ? [] : [SKILL_LAYOUT]),
 		"",
 		"<available_skills>",
 		...groups.flatMap((category) => {
@@ -98,6 +103,12 @@ export function formatSkillsForPrompt(
 	];
 
 	return lines.join("\n");
+}
+
+/** A skill from the user's workspace or home folders, not one Octocode bundles. */
+function isUserSkill(skill: Skill): boolean {
+	const category = skillCategory(skill);
+	return category === "workspace" || category === "global";
 }
 
 function groupTag(category: SkillCategory): string {

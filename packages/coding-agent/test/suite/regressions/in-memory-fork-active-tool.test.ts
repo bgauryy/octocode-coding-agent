@@ -80,7 +80,7 @@ describe("in-memory fork during an active tool turn", () => {
 		await toolStarted;
 		const forkResult = await runtime.fork(firstUserEntryId);
 		await outgoingPrompt;
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 
 		expect(forkResult).toEqual({ cancelled: false, selectedText: "first prompt" });
 		expect(runtime.session.messages.map((message) => message.role)).toEqual(["system"]);

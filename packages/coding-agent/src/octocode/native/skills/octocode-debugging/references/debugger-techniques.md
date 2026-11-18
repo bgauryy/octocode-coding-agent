@@ -1,0 +1,17 @@
+Load when a failure surfaces far from its cause, or when a core, dump or recording exists.
+
+# Debugger techniques
+
+| Learn                                   | Feature                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Which invocation takes the wrong branch | Conditional breakpoint at the decision keyed to the failing item; inspect operands and caller before the line runs. Zero resolved locations is no evidence the branch ran                                                                                                                                  |
+| Who changed a value                     | **Data watchpoint** stops on the write: lldb `watchpoint set variable total`, gdb `watch total`; stop in the scope first (lldb needs a live process: `b main`, `run`), then read old/new values and the writer's stack. The stop can show the line after the write. Watch the pointee when contents change |
+| Where a swallowed error was raised      | Exception breakpoint before unwinding (node-break `--exceptions all`, lldb `breakpoint set -E c++`, pdb post-mortem); caught throws can be normal control flow                                                                                                                                             |
+| What could unblock this thread          | Inspect the waiter and the worker expected to release it: `thread apply all bt` (gdb), `thread backtrace all` (lldb), Delve `goroutines`. One blocked stack or an idle worker is not a deadlock                                                                                                            |
+| The symptom vanishes when paused        | Logpoint or conditional print of an ID and scalar while running. Keep expressions side-effect free: getters and formatting run application code, and frequent logging shifts timing                                                                                                                        |
+| Page change or request origin           | In a browser, DOM, event-listener and XHR/fetch breakpoints (via `octocode-chrome-devtools`)                                                                                                                                                                                                               |
+
+## What survived the failure
+
+- **Traceback or dump:** inspect before recreating. pdb post-mortem; native core needs the matching executable and symbols (`ulimit -c unlimited`, see [native](native.md#crash)); .NET `dotnet-dump analyze <dump>` then `clrstack`. Omitted locals and memory stay unknown.
+- **Recorded execution:** Linux `rr record ./app`, `rr replay` opens gdb; from the bad state set a watchpoint and `reverse-continue` to the previous write. The recording must cover the event; rr serializes threads (can hide races) and recordings can hold sensitive data. WinDbg Time Travel Debugging does the same on Windows.

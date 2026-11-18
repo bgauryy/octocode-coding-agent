@@ -18,6 +18,7 @@ import { enforces, isWithheld, knownReviews, resetGateRecords } from "../octocod
 import { renderReport } from "../octocode/guard/report.ts";
 import type { GuardOptions } from "../octocode/guard/store.ts";
 import type { Review } from "../octocode/guard/types.ts";
+import { NATIVE_FEATURES } from "../main/native-features.ts";
 import { loadHooks } from "../octocode/hooks/config.ts";
 import { belowSession, insideSessionShell, sessionShellRefusal } from "../octocode/trust/session-shell.ts";
 import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
@@ -63,6 +64,8 @@ async function collect(cwd: string, agentDir: string): Promise<{ reviews: Review
 		cwd,
 		agentDir,
 		settingsManager,
+		// The skills a session lists include the ones Octocode ships.
+		nativeFeatures: NATIVE_FEATURES,
 		noThemes: true,
 		noContextFiles: true,
 	}).loadSkillsOnly();

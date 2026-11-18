@@ -72,23 +72,15 @@ describe.runIf(posix)("the session API's socket", () => {
 		}
 	});
 
-	it("in a deep home goes in a folder named for its owner, removed by a clean exit", async () => {
-		const box = deepSandbox();
-		const started = await session(box);
-		const folder = path.dirname(socketOf(started));
-		expect(path.dirname(folder)).toBe(temp);
-		expect(path.basename(folder)).toMatch(new RegExp(`^octocode-\\d+-${started.instance.pid}-[A-Za-z0-9]{6}$`));
-		expect(fs.statSync(folder).mode & 0o777).toBe(0o700);
-		await close(started);
-		expect(fs.existsSync(folder)).toBe(false);
-	});
-
-	it("left by SIGKILL is swept by a later start in another home, and a live session's is not", async () => {
+	it("in a deep home goes in an owner-named folder removed by a clean exit; one left by SIGKILL is swept by a later start in another home, and a live session's is not", async () => {
 		// Each home is started once and never again, as with every test sandbox: no record will ever lead back to its folder.
 		const killed = await session(deepSandbox());
 		const killedFolder = path.dirname(socketOf(killed));
 		const live = await session(deepSandbox());
 		const liveFolder = path.dirname(socketOf(live));
+		expect(path.dirname(liveFolder)).toBe(temp);
+		expect(path.basename(liveFolder)).toMatch(new RegExp(`^octocode-\\d+-${live.instance.pid}-[A-Za-z0-9]{6}$`));
+		expect(fs.statSync(liveFolder).mode & 0o777).toBe(0o700);
 		killed.run.process.kill("SIGKILL");
 		await killed.run.exited;
 		expect(path.dirname(killedFolder)).toBe(temp);
@@ -96,12 +88,11 @@ describe.runIf(posix)("the session API's socket", () => {
 
 		const later = await session(deepSandbox());
 		await until(() => !fs.existsSync(killedFolder), "the sweep of the killed session's folder");
-		// Another start, and the session the sweeps spared still answers on the same socket.
-		const again = await session(deepSandbox());
+		// The session the sweep spared still answers on the same socket.
 		expect((await new ApiClient(live.instance).call<{ sessionId: string }>("status")).sessionId).toBe(live.sessionId);
 		expect(path.dirname(socketOf(live))).toBe(liveFolder);
 		expect(path.dirname(socketOf(later))).not.toBe(killedFolder);
-		await close(live, later, again);
+		await close(live, later);
 		expect(fs.existsSync(liveFolder)).toBe(false);
 	});
 });

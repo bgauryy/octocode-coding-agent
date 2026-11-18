@@ -1,5 +1,5 @@
 import { Box, Text } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 import { fencedBody } from "../../shared/fence.ts";
 import { formatClock } from "../../shared/format.ts";
 import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
@@ -17,8 +17,8 @@ function externalCallerLine(facts: Partial<ExternalFacts> | undefined): string {
 }
 
 /** `✉ external · says it is <client>`, the caller it claims, then its text: untrusted, so resultBlock sanitizes and previews it instead of Markdown. */
-export function registerExternalMessageRenderer(api: ExtensionAPI): void {
-	api.registerMessageRenderer(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
+export function registerExternalMessageRenderer(api: FeatureSetup): void {
+	api.renderers.message(EXTERNAL_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) => {
 		const details = message.details as { from?: unknown; at?: unknown; external?: Partial<ExternalFacts> } | undefined;
 		const from = clip(typeof details?.from === "string" ? details.from : "API client", 60);
 		const text = contentText(message.content);

@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { Backlog } from "../backlog/context.ts";
 import { heldNotice } from "../backlog/graph-notice.ts";
 import { cutText } from "@octocodeai/octocode-common/text";
@@ -119,6 +119,6 @@ export function handoffLines(
 	}
 	return {
 		reports,
-		text: lines.length ? renderInstruction("subagent/chain-handoff.md", { lines: lines.join("\n") }).trim() : "",
+		text: lines.length ? renderPrompt("subagent/chain-handoff.md", { lines: lines.join("\n") }).trim() : "",
 	};
 }

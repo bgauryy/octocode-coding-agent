@@ -28,8 +28,8 @@ import { successNotice } from "./provider-ui.ts";
 type TemplateHost = Pick<
 	ProviderManagerHost,
 	| "session"
-	| "showExtensionSelector"
-	| "showExtensionInput"
+	| "showSelectorDialog"
+	| "showInputDialog"
 	| "showApiKeyLoginDialog"
 	| "showStatus"
 	| "showError"
@@ -70,17 +70,17 @@ async function chooseModels(ui: TemplateHost, template: ProviderTemplate, offere
 	const pickOne = "Pick one model…";
 	const all = `All ${offered.length} known models`;
 	const choice = offered.length
-		? await ui.showExtensionSelector(`Models for ${template.name}`, [all, pickOne, typeIds])
+		? await ui.showSelectorDialog(`Models for ${template.name}`, [all, pickOne, typeIds])
 		: typeIds;
 	if (!choice) return undefined;
 	if (choice === all) return offered.map((model) => model.id);
 	if (choice === pickOne) {
 		const labels = offered.map((model) => `${model.id}${contextText(model)}`);
-		const picked = await ui.showExtensionSelector(`Model for ${template.name}`, labels);
+		const picked = await ui.showSelectorDialog(`Model for ${template.name}`, labels);
 		return picked ? [offered[labels.indexOf(picked)].id] : undefined;
 	}
 	const examples = offered.length ? offered.slice(0, 2).map((model) => model.id) : ["model-id"];
-	const typed = await ui.showExtensionInput(
+	const typed = await ui.showInputDialog(
 		`Model ids for ${template.name}, comma-separated (as the server names them)`,
 		examples.join(", "),
 	);
@@ -102,15 +102,15 @@ async function chooseKey(ui: TemplateHost, template: ProviderTemplate): Promise<
 	}
 	const named = "Read an environment variable you name…";
 	const labels = [...options.keys(), named];
-	const picked = await ui.showExtensionSelector(`Key for ${template.name}`, labels);
+	const picked = await ui.showSelectorDialog(`Key for ${template.name}`, labels);
 	if (picked !== named) return picked ? options.get(picked) : undefined;
-	const name = (await ui.showExtensionInput("Environment variable that holds the key", "GATEWAY_API_KEY"))?.trim();
+	const name = (await ui.showInputDialog("Environment variable that holds the key", "GATEWAY_API_KEY"))?.trim();
 	return name ? { kind: "env", name: name.replace(/^\$/, "") } : undefined;
 }
 
 async function chooseTokenLimit(ui: TemplateHost, title: string, maximum?: number): Promise<number | undefined> {
 	for (;;) {
-		const answer = await ui.showExtensionInput(title, "Tokens, for example 8192 or 8k");
+		const answer = await ui.showInputDialog(title, "Tokens, for example 8192 or 8k");
 		if (answer === undefined) return undefined;
 		const tokens = parseContextSize(answer);
 		if (tokens !== undefined && (maximum === undefined || tokens <= maximum)) return tokens;
@@ -146,7 +146,7 @@ export async function showProviderTemplates(
 ): Promise<boolean> {
 	const runtime = ui.session.modelRuntime;
 	const labels = PROVIDER_TEMPLATES.map(templateLabel);
-	const label = await ui.showExtensionSelector("Add a provider from a template", labels);
+	const label = await ui.showSelectorDialog("Add a provider from a template", labels);
 	const template = label ? PROVIDER_TEMPLATES[labels.indexOf(label)] : undefined;
 	const cancelled = (): false => {
 		ui.showStatus("Cancelled; nothing was written to models.json.");
@@ -156,7 +156,7 @@ export async function showProviderTemplates(
 	let serverHost: string | undefined;
 	if (!template.baseUrl) {
 		const hint = template.hostDefault ? `${template.hostHint} (Enter keeps it)` : template.hostHint;
-		serverHost = await ui.showExtensionInput(`${template.name}: API base URL`, hint);
+		serverHost = await ui.showInputDialog(`${template.name}: API base URL`, hint);
 		if (serverHost === undefined) return cancelled();
 		try {
 			templateBaseUrl(template, serverHost);

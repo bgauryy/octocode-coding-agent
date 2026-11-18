@@ -17,12 +17,12 @@ import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
  * here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` ask, and scratch (`.octocode/tmp/`) and report folders
  * (`.octocode/<topic>/`) run unasked.
  */
-const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents"].map((entry) => entry.toLowerCase());
+export const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents"].map((entry) => entry.toLowerCase());
 const OCTOCODE_FOLDER = OCTOCODE_DIR.toLowerCase();
 /** Octocode's scratch folder inside its workspace state: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
 const SCRATCH_AT_ROOT = `${WORKSPACE_STATE.split(path.sep).join("/")}/temp`;
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
-const RUNS_LATER_ANYWHERE = [
+export const RUNS_LATER_ANYWHERE = [
 	".git/hooks",
 	".git/config",
 	".gitmodules",

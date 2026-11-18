@@ -115,10 +115,14 @@ describe("ConfigDiscovery agrees with the resource loader", () => {
 		expect(deliberate.find((item) => item.loaded)?.provenance).toMatchObject({ scope: "global", origin: "octocode" });
 	});
 
-	it("reports user code as not loaded", () => {
-		const file = write(join(sandbox.agentDir, "extensions", "x.ts"), "export default () => {}");
-		const [item] = configDiscovery.discover("extension", input(false));
-		expect(item).toMatchObject({ name: "x.ts", loaded: false, provenance: { path: file, notLoaded: "ignored-code" } });
+	it("lists Pi hook code as not loaded, and nothing from an extensions folder", () => {
+		const hook = write(join(sandbox.piAgentDir, "hooks", "x.ts"), "export default () => {}");
+		const nested = write(join(sandbox.piAgentDir, "hooks", "group", "index.ts"), "export default () => {}");
+		write(join(sandbox.piAgentDir, "hooks", "group", "helper.ts"), "export {}");
+		write(join(sandbox.agentDir, "extensions", "y.ts"), "export default () => {}");
+		const items = configDiscovery.discover("hook", input(false)).filter((item) => item.provenance.vendor === "pi");
+		expect(items.map((item) => item.provenance.path).sort(byText)).toEqual([nested, hook].sort(byText));
+		expect(items.every((item) => !item.loaded && item.provenance.notLoaded === "ignored-code")).toBe(true);
 	});
 });
 

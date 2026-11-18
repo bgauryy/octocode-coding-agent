@@ -39,7 +39,7 @@ describe("manual compaction during an active response", () => {
 			tools: [createNoopTool()],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: `${event.reason} summary`,
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

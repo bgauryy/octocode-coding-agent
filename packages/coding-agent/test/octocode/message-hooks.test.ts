@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { approveFixtureHooks } from "./guard-helpers.ts";
 import { interpret } from "../../src/octocode/hooks/runner.ts";
@@ -9,7 +9,7 @@ import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -212,7 +212,7 @@ describe("message hooks", () => {
 		other.start(ctx);
 		team.join();
 		const receiver = other.join().id;
-		const gate = vi.fn(async (message: MessageEnvelope, context: ExtensionContext) => {
+		const gate = vi.fn(async (message: MessageEnvelope, context: FeatureContext) => {
 			const verdict = await hooks.messageSend(message, context);
 			if (verdict?.block) throw new Error(verdict.block);
 		});

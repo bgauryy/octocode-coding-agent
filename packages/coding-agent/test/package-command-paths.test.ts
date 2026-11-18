@@ -265,7 +265,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
-			await expect(main(["update", "--extensions"])).resolves.toBeUndefined();
+			await expect(main(["update", "--packages"])).resolves.toBeUndefined();
 
 			expect(existsSync(recordPath)).toBe(false);
 			expect(process.exitCode).toBeUndefined();
@@ -290,7 +290,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		try {
-			await expect(main(["update", "--extensions"])).resolves.toBeUndefined();
+			await expect(main(["update", "--packages"])).resolves.toBeUndefined();
 
 			expect(existsSync(recordPath)).toBe(true);
 			expect(process.exitCode).toBeUndefined();

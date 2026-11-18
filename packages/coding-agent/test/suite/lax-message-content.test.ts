@@ -11,8 +11,9 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { type SessionEntry, sessionEntryToContextMessages } from "../../src/core/session-manager.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { createHarness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 function messageEntry(message: Record<string, unknown>): SessionEntry {
 	return {
@@ -26,9 +27,9 @@ function messageEntry(message: Record<string, unknown>): SessionEntry {
 
 describe("lax message content handling", () => {
 	it("normalizes tool results from untyped tools that omit content", async () => {
-		const extensionFactories: ExtensionFactory[] = [
+		const factories: FeatureRegister[] = [
 			(api) => {
-				api.registerTool({
+				api.tools.register({
 					name: "web_search",
 					label: "Web Search",
 					description: "Custom tool that returns a result without content",
@@ -38,7 +39,7 @@ describe("lax message content handling", () => {
 				});
 			},
 		];
-		const harness = await createHarness({ extensionFactories });
+		const harness = await createHarness({ features: testFeatures(factories) });
 
 		try {
 			harness.setResponses([
@@ -59,16 +60,16 @@ describe("lax message content handling", () => {
 	});
 
 	it("normalizes null content in message_end extension replacements", async () => {
-		const extensionFactories: ExtensionFactory[] = [
+		const factories: FeatureRegister[] = [
 			(api) => {
-				api.on("message_end", async (event) => {
+				api.bus.on("message_end", async (event) => {
 					if (event.message.role !== "assistant") return undefined;
 					// Simulate an untyped JS extension replacing a message without content.
 					return { message: { ...event.message, content: null } as unknown as AgentMessage };
 				});
 			},
 		];
-		const harness = await createHarness({ extensionFactories });
+		const harness = await createHarness({ features: testFeatures(factories) });
 
 		try {
 			harness.setResponses([fauxAssistantMessage("hello")]);

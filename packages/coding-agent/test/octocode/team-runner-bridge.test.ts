@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it } from "vitest";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { PARENT_FENCE_NOTE } from "../../src/octocode/shared/fence.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -98,7 +100,9 @@ it("acknowledges only fetched mail and preserves signed parent/user provenance",
 		if ("error" in sent) throw new Error(sent.error);
 		expect(await c.call({ action: "inbox", ack: [sent.id] })).toMatchObject({ isError: true });
 		const before = await c.value({ action: "inbox" });
-		expect(before[0].text).toContain("your coordinator");
+		// The parent's message arrives fenced under its own note, not as the user's words.
+		expect(before[0].text).toContain(PARENT_FENCE_NOTE);
+		expect(before[0].text).toContain("parent steering");
 		expect((await c.value({ action: "inbox" }))[0].id).toBe(sent.id);
 		expect(f.store.pending("external-worker")).toHaveLength(1);
 		expect(await c.value({ action: "inbox", ack: [sent.id] })).toEqual([]);
@@ -106,9 +110,10 @@ it("acknowledges only fetched mail and preserves signed parent/user provenance",
 		await f.team.send("external-worker", "USER_VERIFIED", { from: "user" });
 		await f.other.send("external-worker", "USER_FORGED", { from: "user" });
 		const mail = await c.value({ action: "inbox" });
-		expect(mail[0].text).toContain("the user");
-		expect(mail[0].text).not.toContain("unverified");
-		expect(mail[1].text).toContain("cannot verify");
+		// The verified row reads as the user's own words; the forged one sits in a fence under the unverified-user label.
+		expect(mail[0].text).not.toContain("<<<untrusted-");
+		expect(mail[0].text).not.toContain(renderPrompt("notices/mail/unverified-user.md"));
+		expect(mail[1].text).toContain(renderPrompt("notices/mail/unverified-user.md"));
 		expect(mail[1].text).toContain("<<<untrusted-");
 	} finally {
 		await bridge.close();

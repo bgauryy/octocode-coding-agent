@@ -1,0 +1,1 @@
+[Resume] These subagents were running when this session last stopped. They ended with it; at most a `stopped` report of theirs arrives: {{children}}. To continue one, call `agent` type `task` with `resume` set to its id. {{> shared/resume-isolated.md}}

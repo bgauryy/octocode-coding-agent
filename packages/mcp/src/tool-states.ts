@@ -36,12 +36,12 @@ export interface McpServerToolStates {
 	server: string;
 	/** False while the server is not connected: its tools are then unknown. */
 	connected: boolean;
-	/** False for a server an extension registered: its configuration is not saved. */
+	/** False for a server a feature registered: its configuration is not saved. */
 	saved: boolean;
 	tools: McpToolState[];
 }
 
-/** What the reader needs of the extension state, so this module does not depend on it. */
+/** What the reader needs of the feature state, so this module does not depend on it. */
 interface McpToolStateSource {
 	servers: readonly McpServer[];
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure;
@@ -72,7 +72,7 @@ export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[]
 		return {
 			server: entry.name,
 			connected,
-			saved: entry.scope !== "extension",
+			saved: entry.scope !== "feature",
 			tools: (connected ? connection.tools : []).map((tool) => {
 				const state = toolExposureState(source.toolExposure(entry, tool.name));
 				const decidedBy = decisionOf(entry, tool.name, state, setting);

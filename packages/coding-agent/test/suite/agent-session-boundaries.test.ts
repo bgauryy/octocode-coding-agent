@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, getMessageText, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
 	let resolve = () => {};
@@ -21,14 +22,14 @@ describe("AgentSession actionable boundaries", () => {
 
 	it("rejects legacy extension compaction drafts without deleting context or continuing", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("turn_end", () => ({
+					api.bus.on("turn_end", () => ({
 						entries: [{ type: "compaction", summary: "injected", firstKeptEntryId: null }] as never,
 						continue: true,
 					}));
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("retained response")]);
@@ -45,16 +46,16 @@ describe("AgentSession actionable boundaries", () => {
 			let handled = false;
 			const requests: string[] = [];
 			const harness = await createHarness({
-				extensionFactories: [
+				features: testFeatures([
 					(api) => {
-						api.on("turn_end", () => {
+						api.bus.on("turn_end", () => {
 							if (handled) return;
 							handled = true;
 							if (queueKind === "steering" || queueKind === "both") {
-								api.sendUserMessage("queued steering", { deliverAs: "steer" });
+								api.session.sendUserMessage("queued steering", { deliverAs: "steer" });
 							}
 							if (queueKind === "follow-up" || queueKind === "both") {
-								api.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
+								api.session.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
 							}
 							return {
 								entries: [{ type: "custom_message", customType: "handoff", content: "exact handoff", display: false }],
@@ -62,7 +63,7 @@ describe("AgentSession actionable boundaries", () => {
 							};
 						});
 					},
-				],
+				]),
 			});
 			harnesses.push(harness);
 			harness.setResponses([
@@ -105,7 +106,7 @@ describe("AgentSession actionable boundaries", () => {
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("turn_end", (event, ctx) => {
+					api.bus.on("turn_end", (event, ctx) => {
 						if (handled) return;
 						handled = true;
 						const user = [...ctx.sessionManager.getBranch()]
@@ -121,7 +122,7 @@ describe("AgentSession actionable boundaries", () => {
 							continue: true,
 						};
 					});
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "older history summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -159,7 +160,7 @@ describe("AgentSession actionable boundaries", () => {
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("turn_end", () => {
+					api.bus.on("turn_end", () => {
 						if (handled) return;
 						handled = true;
 						return {
@@ -175,7 +176,7 @@ describe("AgentSession actionable boundaries", () => {
 							continue: true,
 						};
 					});
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "older history summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -205,9 +206,9 @@ describe("AgentSession actionable boundaries", () => {
 		let handled = false;
 		const snapshots: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("turn_end", () => {
+					api.bus.on("turn_end", () => {
 						if (handled) return;
 						handled = true;
 						return {
@@ -223,7 +224,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.session.subscribe((event) => {
@@ -241,9 +242,9 @@ describe("AgentSession actionable boundaries", () => {
 		let requested = false;
 		const requests: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", () => {
+					api.bus.on("agent_before_settle", () => {
 						if (requested) return;
 						requested = true;
 						return {
@@ -259,7 +260,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -285,17 +286,17 @@ describe("AgentSession actionable boundaries", () => {
 		let continued = false;
 		const requests: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_end", () => {
+					api.bus.on("agent_end", () => {
 						if (!firstRun) return;
 						firstRun = false;
-						api.sendMessage(
+						api.session.sendMessage(
 							{ customType: "agent-end-context", content: "queued after agent end", display: false },
 							{ triggerTurn: false },
 						);
 					});
-					api.on("agent_before_settle", (event) => {
+					api.bus.on("agent_before_settle", (event) => {
 						if (continued) return;
 						continued = true;
 						expect(JSON.stringify(event.context.pendingMessages)).toContain("queued after agent end");
@@ -303,7 +304,7 @@ describe("AgentSession actionable boundaries", () => {
 						return { continue: true };
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -326,12 +327,12 @@ describe("AgentSession actionable boundaries", () => {
 		let handled = false;
 		const requests: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", () => {
+					api.bus.on("agent_before_settle", () => {
 						if (handled) return;
 						handled = true;
-						api.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
+						api.session.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
 						return {
 							entries: [
 								{
@@ -345,7 +346,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -372,25 +373,25 @@ describe("AgentSession actionable boundaries", () => {
 		let triggered = false;
 		const lifecycle: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_start", () => {
+					api.bus.on("agent_start", () => {
 						lifecycle.push("start");
 					});
-					api.on("agent_settled", (_event, ctx) => {
+					api.bus.on("agent_settled", (_event, ctx) => {
 						lifecycle.push(`settled-first:${ctx.isIdle()}`);
 						if (triggered) return;
 						triggered = true;
-						api.sendMessage(
+						api.session.sendMessage(
 							{ customType: "settled-trigger", content: "start later", display: false },
 							{ triggerTurn: true },
 						);
 					});
-					api.on("agent_settled", (_event, ctx) => {
+					api.bus.on("agent_settled", (_event, ctx) => {
 						lifecycle.push(`settled-second:${ctx.isIdle()}`);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
@@ -417,9 +418,9 @@ describe("AgentSession actionable boundaries", () => {
 		};
 		const harness = await createHarness({
 			tools: [tool],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("turn_end", (event, ctx) => {
+					api.bus.on("turn_end", (event, ctx) => {
 						const user = [...ctx.sessionManager.getBranch()]
 							.reverse()
 							.find((entry) => entry.type === "message" && entry.message.role === "user");
@@ -434,7 +435,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -450,15 +451,15 @@ describe("AgentSession actionable boundaries", () => {
 	it("dispatches actionable turn_end for synthetic run failures", async () => {
 		let turnEnds = 0;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("turn_end", (event) => {
+					api.bus.on("turn_end", (event) => {
 						turnEnds++;
 						expect(event.outcome).toBe("error");
 						return { entries: [{ type: "custom", customType: "failure-boundary", data: true }] };
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.session.agent.prepareRequest = () => {
@@ -479,9 +480,9 @@ describe("AgentSession actionable boundaries", () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 10_000, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 300 },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_end", (event) => {
+					api.bus.on("message_end", (event) => {
 						if (event.message.role !== "assistant") return;
 						return {
 							message: {
@@ -490,7 +491,7 @@ describe("AgentSession actionable boundaries", () => {
 							},
 						};
 					});
-					api.on("turn_end", (event) => {
+					api.bus.on("turn_end", (event) => {
 						if (handled) return;
 						handled = true;
 						return {
@@ -498,7 +499,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("short response")]);
@@ -514,9 +515,9 @@ describe("AgentSession actionable boundaries", () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 5_000, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_end", (event) => {
+					api.bus.on("message_end", (event) => {
 						if (event.message.role !== "assistant") return;
 						return {
 							message: {
@@ -525,7 +526,7 @@ describe("AgentSession actionable boundaries", () => {
 							},
 						};
 					});
-					api.on("turn_end", (_event, ctx) => {
+					api.bus.on("turn_end", (_event, ctx) => {
 						if (handled) return;
 						handled = true;
 						const user = [...ctx.sessionManager.getBranch()]
@@ -535,7 +536,7 @@ describe("AgentSession actionable boundaries", () => {
 						return { entries: [{ type: "context_edit", targetId: user.id, replacement: null }] };
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("done")]);
@@ -601,19 +602,19 @@ describe("AgentSession actionable boundaries", () => {
 		let handled = false;
 		const requests: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", () => {
+					api.bus.on("agent_before_settle", () => {
 						if (handled) return;
 						handled = true;
-						api.sendMessage(
+						api.session.sendMessage(
 							{ customType: "pending-boundary", content: "persist before continue", display: false },
 							{ triggerTurn: false },
 						);
 						return { continue: true };
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -640,14 +641,14 @@ describe("AgentSession actionable boundaries", () => {
 		const requests: string[] = [];
 		const errors: unknown[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", async () => {
+					api.bus.on("agent_before_settle", async () => {
 						if (handled) return;
 						handled = true;
 						await new Promise((resolve) => setTimeout(resolve, 5));
 						const sends = ["report one", "report two", "report three"].map((content) =>
-							api.sendMessage(
+							api.session.sendMessage(
 								{ customType: "agent-report", content, display: true },
 								{ triggerTurn: true, deliverAs: "followUp", together: true },
 							),
@@ -656,7 +657,7 @@ describe("AgentSession actionable boundaries", () => {
 						return undefined;
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -682,20 +683,20 @@ describe("AgentSession actionable boundaries", () => {
 	it("writes a message that asks for no turn during agent_before_settle without continuing the run", async () => {
 		let handled = false;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", async () => {
+					api.bus.on("agent_before_settle", async () => {
 						if (handled) return;
 						handled = true;
 						await new Promise((resolve) => setTimeout(resolve, 5));
-						void api.sendMessage(
+						void api.session.sendMessage(
 							{ customType: "quiet-report", content: "nobody waits for this", display: true },
 							{ triggerTurn: false, deliverAs: "followUp", together: true },
 						);
 						return undefined;
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("a turn nobody asked for")]);
@@ -712,12 +713,12 @@ describe("AgentSession actionable boundaries", () => {
 	it("does not consume queued input when pre-settlement drafts leave system-only context", async () => {
 		let handled = false;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", (_event, ctx) => {
+					api.bus.on("agent_before_settle", (_event, ctx) => {
 						if (handled) return;
 						handled = true;
-						api.sendUserMessage("still queued", { deliverAs: "followUp" });
+						api.session.sendUserMessage("still queued", { deliverAs: "followUp" });
 						const targets = ctx.sessionManager
 							.getBranch()
 							.flatMap((entry) =>
@@ -738,7 +739,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("must not run")]);
@@ -753,9 +754,9 @@ describe("AgentSession actionable boundaries", () => {
 		const started = deferred();
 		const release = deferred();
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_before_settle", async () => {
+					api.bus.on("agent_before_settle", async () => {
 						started.resolve();
 						await release.promise;
 						return {
@@ -764,7 +765,7 @@ describe("AgentSession actionable boundaries", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("must not run")]);
@@ -844,7 +845,7 @@ describe("durable length recovery", () => {
 			tools: [tool],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "recovered input",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -888,17 +889,17 @@ describe("durable length recovery", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "recovered input",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
 							tokensBefore: event.preparation.tokensBefore,
 						},
 					}));
-					api.on("agent_end", (event) => {
+					api.bus.on("agent_end", (event) => {
 						if (queued || !event.messages.some((message) => getMessageText(message) === "first recovered")) return;
 						queued = true;
-						api.sendUserMessage("distinct follow-up", { deliverAs: "followUp" });
+						api.session.sendUserMessage("distinct follow-up", { deliverAs: "followUp" });
 					});
 				},
 			],
@@ -952,7 +953,7 @@ describe("durable length recovery", () => {
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", () => ({ cancel: true }));
+					api.bus.on("session_before_compact", () => ({ cancel: true }));
 				},
 			],
 		});
@@ -990,7 +991,7 @@ describe("durable length recovery", () => {
 			compactionPolicy: { enabled: true, keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("turn_end", (event) => {
+					api.bus.on("turn_end", (event) => {
 						if (replaced || event.outcome !== "error") return;
 						replaced = true;
 						overflowId = event.messageEntryId;
@@ -1004,7 +1005,7 @@ describe("durable length recovery", () => {
 							],
 						};
 					});
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "recovered overflow",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -1034,15 +1035,15 @@ describe("durable length recovery", () => {
 		const lifecycle: string[] = [];
 		const harness = await createHarness({
 			settings: { retry: { enabled: true, maxRetries: 2, baseDelayMs: 1 } },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("turn_end", (event) => {
+					api.bus.on("turn_end", (event) => {
 						if (queued || event.outcome !== "error") return;
 						queued = true;
-						api.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
+						api.session.sendUserMessage("queued follow-up", { deliverAs: "followUp" });
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.session.subscribe((event) => {

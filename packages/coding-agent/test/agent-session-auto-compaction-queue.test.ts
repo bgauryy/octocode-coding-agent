@@ -100,8 +100,8 @@ describe("AgentSession auto-compaction queue resume", () => {
 			session.subscribe((event) => {
 				if (event.type === "compaction_end") ends.push(event);
 			});
-			const emit = session.extensionRunner.emit.bind(session.extensionRunner);
-			vi.spyOn(session.extensionRunner, "emit").mockImplementation(async (event) => {
+			const emit = session.featureHost.emit.bind(session.featureHost);
+			vi.spyOn(session.featureHost, "emit").mockImplementation(async (event) => {
 				const result = await emit(event);
 				if (stop && event.type === "session_compact") void session.abort();
 				return result;

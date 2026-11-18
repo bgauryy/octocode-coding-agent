@@ -1,17 +1,15 @@
 import {
 	type Component,
 	Container,
-	fuzzyFilter,
-	getKeybindings,
-	Input,
+	ListView,
 	type SelectItem,
-	SelectList,
 	type SelectListLayoutOptions,
 	Spacer,
 	Text,
 } from "@octocodeai/octocode-tui";
-import { getSelectListTheme, theme } from "../../../theme/theme.ts";
-import { HintBar, keyText, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+import { theme } from "../../../theme/theme.ts";
+import { HintBar, keyText, moveHint, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+import { columnRow, labelColumn, listTheme, syncEmpty } from "./list-kit.ts";
 import { plainText } from "./styled-line.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
@@ -27,18 +25,13 @@ interface SelectSubmenuOptions {
 }
 
 /**
- * Single-step submenu that shows a titled select list.
- * With `searchable: true`, typing filters the list using fuzzy matching.
+ * A one-step picker: title, optional description, and its options on `ListView` (`›` cursor, ends that stop, page
+ * keys, `a–b/total` while it scrolls). With `searchable: true` a `⌕` line filters by label and description; Esc clears
+ * the query, then goes back. A click selects and a click on the selected option picks it.
  */
 export class SelectSubmenu extends Container {
-	private selectList: SelectList;
-	private listChildIndex: number;
-	private allOptions: SelectItem[];
-	private listLayout: SelectListLayoutOptions;
-	private searchInput: Input | undefined;
-	private onSelectCb: (value: string) => void;
-	private onCancelCb: () => void;
-	private onSelectionChangeCb?: (value: string) => void;
+	private readonly list: ListView<SelectItem>;
+	private readonly hints: HintBar;
 
 	constructor(
 		title: string,
@@ -51,12 +44,14 @@ export class SelectSubmenu extends Container {
 		submenuOptions?: SelectSubmenuOptions,
 	) {
 		super();
-
-		this.allOptions = options;
-		this.listLayout = submenuOptions?.layout ?? SUBMENU_SELECT_LIST_LAYOUT;
-		this.onSelectCb = onSelect;
-		this.onCancelCb = onCancel;
-		this.onSelectionChangeCb = onSelectionChange;
+		const layout = submenuOptions?.layout ?? SUBMENU_SELECT_LIST_LAYOUT;
+		// A label's leading spaces align it under a `✓ ` mark (theme, thinking level); `plainText` would trim them.
+		const indent = (label: string) => /^ */.exec(label)?.[0] ?? "";
+		const column = labelColumn(
+			options.map((option) => `${indent(option.label).replace(/ /g, "_")}${option.label.trim()}`),
+			layout.minPrimaryColumnWidth ?? 12,
+			layout.maxPrimaryColumnWidth ?? 32,
+		);
 
 		// Title and description: a step's title can name a model from a vendor list (per-model thinking).
 		this.addChild(new Text(theme.bold(theme.fg("accent", plainText(title))), 0, 0));
@@ -66,73 +61,53 @@ export class SelectSubmenu extends Container {
 			this.addChild(new Text(theme.fg("muted", plainText(description)), 0, 0));
 		}
 
-		if (submenuOptions?.searchable) {
-			this.addChild(new Spacer(1));
-			this.searchInput = new Input();
-			this.searchInput.onSubmit = () => {
-				this.selectList.handleInput("\r");
-			};
-			this.addChild(this.searchInput);
-		}
+		this.addChild(new Spacer(1));
+		this.list = new ListView<SelectItem>({
+			items: options,
+			maxRows: Math.max(1, Math.min(options.length, 10)),
+			theme: listTheme(),
+			...(submenuOptions?.searchable
+				? {
+						search: {
+							text: (item: SelectItem) => `${item.label} ${item.description ?? ""}`,
+							placeholder: "type to filter",
+						},
+					}
+				: {}),
+			row: (item, state) => {
+				const pad = indent(item.label);
+				const inner = { selected: state.selected, width: Math.max(1, state.width - pad.length) };
+				return pad + columnRow(item.label, item.description, inner, Math.max(1, column - pad.length));
+			},
+		});
+		const preselected = options.findIndex((option) => option.value === currentValue);
+		if (preselected !== -1) this.list.setSelectedIndex(preselected);
+		this.list.onSelect = (item) => onSelect(item.value);
+		this.list.onCancel = onCancel;
+		if (onSelectionChange) this.list.onSelectionChange = (item) => onSelectionChange(item.value);
+		syncEmpty(this.list, "options");
+		this.addChild(this.list);
 
 		this.addChild(new Spacer(1));
-
-		this.selectList = this.buildSelectList(options, currentValue);
-		this.listChildIndex = this.children.length;
-		this.addChild(this.selectList);
-
-		this.addChild(new Spacer(1));
-		const keys: RankedHint[] = [
-			[keyText("tui.select.confirm"), "select", 1],
-			[keyText("tui.select.cancel"), "back", 0],
-		];
-		if (submenuOptions?.searchable) keys.unshift(["type", "filter", 2]);
-		this.addChild(new HintBar(keys));
+		this.hints = new HintBar(this.hintKeys());
+		this.addChild(this.hints);
 	}
 
-	private buildSelectList(options: SelectItem[], preselect: string): SelectList {
-		const list = new SelectList(options, Math.min(options.length, 10), getSelectListTheme(), this.listLayout);
-
-		const idx = options.findIndex((o) => o.value === preselect);
-		if (idx !== -1) list.setSelectedIndex(idx);
-
-		list.onSelect = (item) => this.onSelectCb(item.value);
-		list.onCancel = this.onCancelCb;
-		if (this.onSelectionChangeCb) {
-			const cb = this.onSelectionChangeCb;
-			list.onSelectionChange = (item) => cb(item.value);
-		}
-
-		return list;
-	}
-
-	private applyFilter(query: string): void {
-		const filtered = query
-			? fuzzyFilter(this.allOptions, query, (item) => `${item.label} ${item.description ?? ""}`)
-			: this.allOptions;
-
-		const newList = this.buildSelectList(filtered, "");
-		this.children[this.listChildIndex] = newList;
-		this.selectList = newList;
+	/** Enter's verb first, Esc's last; with nothing shown only Esc remains (the empty line names `esc clears`). */
+	private hintKeys(): RankedHint[] {
+		const back: RankedHint = [keyText("tui.select.cancel"), "back", 0];
+		if (!this.list.getSelectedItem()) return [back];
+		return [[keyText("tui.select.confirm"), "select", 1], moveHint(), back];
 	}
 
 	handleInput(data: string): void {
-		if (this.searchInput) {
-			const kb = getKeybindings();
-			const isNav =
-				kb.matches(data, "tui.select.up") ||
-				kb.matches(data, "tui.select.down") ||
-				kb.matches(data, "tui.select.confirm") ||
-				kb.matches(data, "tui.select.cancel");
-			if (isNav) {
-				this.selectList.handleInput(data);
-			} else {
-				this.searchInput.handleInput(data);
-				this.applyFilter(this.searchInput.getValue());
-			}
-		} else {
-			this.selectList.handleInput(data);
-		}
+		const query = this.list.getQuery();
+		this.list.handleInput(data);
+		if (this.list.getQuery() === query) return;
+		// A new query highlights its best match.
+		this.list.setSelectedIndex(0);
+		syncEmpty(this.list, "options");
+		this.hints.setHints(this.hintKeys());
 	}
 }
 
@@ -176,7 +151,7 @@ export class SteppedSubmenu extends Container {
 	private readonly onComplete: (context: Record<string, string>) => void;
 	private readonly onCancel: () => void;
 	private readonly opts: SteppedSubmenuOptions;
-	private activeComponent: Component;
+	private activeComponent: Component = new Container();
 	private context: Record<string, string>;
 
 	constructor(
@@ -191,7 +166,14 @@ export class SteppedSubmenu extends Container {
 		this.onCancel = onCancel;
 		this.opts = opts;
 		this.context = { ...opts.initialContext };
-		this.activeComponent = this.buildStep(opts.startAtStep ?? 0);
+		this.show(this.buildStep(opts.startAtStep ?? 0));
+	}
+
+	/** The step on screen; it is this container's only child, so mouse events reach it. */
+	private show(step: Component): void {
+		this.activeComponent = step;
+		this.clear();
+		this.addChild(step);
 	}
 
 	private buildStep(stepIndex: number): Component {
@@ -213,14 +195,14 @@ export class SteppedSubmenu extends Container {
 				this.context[step.key] = value;
 
 				if (stepIndex < total - 1) {
-					this.activeComponent = this.buildStep(stepIndex + 1);
+					this.show(this.buildStep(stepIndex + 1));
 				} else {
 					// Final step \u2014 deliver result
 					this.onComplete({ ...this.context });
 
 					if (this.opts.loop) {
 						this.context = {};
-						this.activeComponent = this.buildStep(0);
+						this.show(this.buildStep(0));
 					} else {
 						this.onCancel();
 					}
@@ -229,7 +211,7 @@ export class SteppedSubmenu extends Container {
 			() => {
 				if (stepIndex > 0) {
 					delete this.context[step.key];
-					this.activeComponent = this.buildStep(stepIndex - 1);
+					this.show(this.buildStep(stepIndex - 1));
 				} else {
 					this.onCancel();
 				}

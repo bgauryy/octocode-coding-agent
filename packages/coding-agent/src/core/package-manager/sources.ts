@@ -5,7 +5,7 @@ import { CONFIG_DIR_NAME } from "../../config.ts";
 import { parseGitUrl } from "../../utils/git.ts";
 import { isLocalPath, resolvePath } from "@octocodeai/octocode-common/paths";
 import type { PackageSource } from "../settings-manager.ts";
-import { getExtensionTempFolder } from "./discovery.ts";
+import { getPackageTempFolder } from "./discovery.ts";
 import { getHomeDir, type PackageManagerHost, type ParsedSource, type SourceScope } from "./types.ts";
 
 function isExactNpmVersion(version: string | undefined): boolean {
@@ -198,7 +198,7 @@ export function assertProjectTrustedForScope(host: PackageManagerHost, scope: So
 }
 
 export function getTemporaryDir(host: PackageManagerHost, prefix: string, suffix?: string, ref?: string): string {
-	const root = resolveManagedPath(getExtensionTempFolder(host.agentDir), prefix);
+	const root = resolveManagedPath(getPackageTempFolder(host.agentDir), prefix);
 	const hash = createHash("sha256")
 		.update(`${prefix}-${suffix ?? ""}${ref ? `@${ref}` : ""}`)
 		.digest("hex")

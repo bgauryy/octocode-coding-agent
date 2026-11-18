@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { plural } from "@octocodeai/octocode-common/clip";
 import { privateDir } from "@octocodeai/octocode-common/file-mode";
 import { git, gitQuiet } from "../../utils/git-run.ts";
 import { sessionDir, sessionsRoot } from "../shared/home.ts";
@@ -13,8 +14,6 @@ export interface RemoveResult {
 	/** What happened or what blocks, ready to show. */
 	message: string;
 }
-
-const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /** What one session saved inside a worktree still owes: reports no session took yet, follow-up windows of finished children. */
 interface HeldState {

@@ -13,7 +13,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ExtensionFactory, ToolDefinition } from "../../src/core/features/index.ts";
+import type { FeatureRegister, ToolDefinition } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -22,6 +22,8 @@ import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
 import { trustFolder } from "./helpers.ts";
 import { nativeCall } from "./e2e-calls.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -134,8 +136,8 @@ async function startSession(
 		...(options.capable ? { api: "anthropic-messages" } : {}),
 		models: models.map(({ id, maxTokens }) => ({ id, contextWindow: 200_000, maxTokens })),
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -159,7 +161,8 @@ async function startSession(
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -180,7 +183,7 @@ async function startSession(
 			: {}),
 		...(options.tools ? { tools: options.tools } : {}),
 	});
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 	const run = async (prompt: string, replies: Array<(turn: Turn) => Reply>) => {
 		faux.setResponses(
@@ -226,10 +229,10 @@ function prefixChars(turn: Turn): { own: number; mcp: number } {
 }
 
 /**
- * Octocode's own first-request text on a transport that adds tools in place, where `web`, `archive` and `models` are on
- * demand: measured 37,024 (38,676 on a transport that cannot, where they are deferred). Slack about 1%.
+ * Octocode's own first-request text on a transport that adds tools in place, where `archive` and `models` are on demand
+ * and `web` is deferred: measured 37,046 (down 794 from 37,840 with the shorter `agent` task-field descriptions). Slack about 1%.
  */
-const ON_DEMAND_OWN_CEILING = 37_400;
+const ON_DEMAND_OWN_CEILING = 37_420;
 
 /** An mcp.json `octocode` entry that keeps the server off (a file entry wins over Octocode's registration). */
 const OCTOCODE_OFF = { octocode: { command: "false", enabled: false } };
@@ -313,10 +316,8 @@ describe("with Octocode MCP (default)", () => {
 			expect(turn.tools).toContain(`mcp__octocode__${name}`);
 		expect(turn.tools).not.toContain("tool_search");
 		// The server's MCP section and tool declarations are available before the first request.
-		// The head, then each server as its own part (`mcps:<server>`) under its own tag.
-		expect(turn.systemPrompt).toMatch(
-			/<mcps>\n(?:[^\n]*\n){2}<\/mcps>\n\n<mcps>\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/,
-		);
+		// One `<mcps>` tag: the head, then each server as its own part (`mcps:<server>`) inside it.
+		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
 		// description and its field names and types (nested ones too, without descriptions or bounds), and the full
@@ -359,7 +360,7 @@ describe("with Octocode MCP (default)", () => {
 				expect(turn.tools).not.toContain(`mcp__octocode__${name}`);
 				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
 			}
-			for (const name of ["web", "archive", "models"]) {
+			for (const name of ["archive", "models"]) {
 				expect(turn.tools).not.toContain(name);
 				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
 			}
@@ -374,7 +375,7 @@ describe("with Octocode MCP (default)", () => {
 	}, 60_000);
 
 	it("records passive team notices during streaming without an extra model request", async () => {
-		const mail = new Mail({ sendMessage: s.session.sendCustomMessage.bind(s.session) });
+		const mail = new Mail({ session: { sendMessage: s.session.sendCustomMessage.bind(s.session) } });
 		let requests = 0;
 		const unsubscribe = s.session.agent.subscribe((event) => {
 			if (event.type === "turn_start") requests++;
@@ -812,17 +813,22 @@ describe("compaction", () => {
 		);
 	}, 60_000);
 
-	it("reads the files worked on back into the context after compaction, so they can be changed without a fresh read", async () => {
+	it("reads the edited files back into the context after compaction; a file only read must be read again before a write", async () => {
 		const turns = await s.run("overwrite", [
 			calls(
 				nativeCall("file", {
-					reason: "Replace the notes",
-					queries: [{ reason: "replace", type: "write", path: "notes.txt", content: "x" }],
+					reason: "Replace the notes and start a plan",
+					queries: [
+						{ reason: "replace", type: "write", path: "notes.txt", content: "x" },
+						{ reason: "start", type: "write", path: "plan.txt", content: "p" },
+					],
 				}),
 			),
 			say("done"),
 		]);
-		expect(turns.at(-1)!.lastResults[0].text).toMatch(/OK write notes\.txt/);
+		const result = turns.at(-1)!.lastResults[0].text;
+		expect(result).toMatch(/FAILED write notes\.txt: notes\.txt: your earlier read of it is no longer in your context/);
+		expect(result).toMatch(/OK write plan\.txt/);
 		const restored = s.session.sessionManager
 			.getEntries()
 			.filter(
@@ -832,7 +838,7 @@ describe("compaction", () => {
 			) as Array<{ content: string; details: { files: string[] } }>;
 		expect(restored).toHaveLength(1);
 		expect(restored[0].content).toMatch(/<file path="todo\.txt">\nx\n<\/file>/);
-		expect(restored[0].content).toMatch(/<file path="notes\.txt">\nhello\n<\/file>/);
+		expect(restored[0].content).not.toContain('<file path="notes.txt">');
 	}, 60_000);
 
 	it("carries file lists forward through the next compaction, and puts the summary first in the next request", async () => {
@@ -840,7 +846,7 @@ describe("compaction", () => {
 		script("## Goal\nNext summary");
 		await s.session.compact();
 		expect(compactionEntries().at(-1)!.details!.modifiedFiles).toEqual(
-			expect.arrayContaining(["todo.txt", "notes.txt"]),
+			expect.arrayContaining(["todo.txt", "plan.txt"]),
 		);
 		const log: string[] = [];
 		s.faux.setResponses([

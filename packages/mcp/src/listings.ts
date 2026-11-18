@@ -4,15 +4,15 @@ import { deferralOf } from "./deferral.ts";
 import { loadedOnDemand } from "./on-demand.ts";
 import type { McpServerListing } from "./section.ts";
 import { isEnabled } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 /**
  * The servers the prompt describes: enabled servers this session's selection reaches. Each block's content is what
  * `McpPresentation.describe` fixed when the prompt first described the server's catalog, so a reconnect, a failure or
  * a dropped connection changes only the state, which `mcp_status` carries.
  */
-export function serverListings(state: McpExtensionState): McpServerListing[] {
-	const activeTools = state.api.getActiveTools();
+export function serverListings(state: McpFeatureState): McpServerListing[] {
+	const activeTools = state.api.tools.getActive();
 	const active = new Set(activeTools);
 	// Name order, so an `auto:<bytes>` budget fills the same way whichever server connected first.
 	const listed = state.servers

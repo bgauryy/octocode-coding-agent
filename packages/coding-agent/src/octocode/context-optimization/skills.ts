@@ -10,7 +10,7 @@
 
 import path from "node:path";
 import { getNativeSkillsDir } from "../../config.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import type { Skill } from "../../core/skills.ts";
 import { contextOptimizationDirs, inContextProject } from "../shared/home.ts";
 import { isWithin } from "@octocodeai/octocode-common/paths";
@@ -44,14 +44,14 @@ async function record(dir: string, sources: readonly SkillSource[]): Promise<Ski
 }
 
 export function registerSkillDescriptions(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: { isSubagent: boolean; agentDir?: () => string },
 ): void {
 	let frozen: { key: string; stores: SkillsStore[] } | undefined;
-	api.on("session_start", async () => {
+	api.bus.on("session_start", async () => {
 		frozen = undefined;
 	});
-	api.on("before_agent_start", async (event, ctx) => {
+	api.bus.on("before_agent_start", async (event, ctx) => {
 		const skills = event.systemPromptOptions.skills;
 		if (!skills?.length) return undefined;
 		const dirs = contextOptimizationDirs(ctx.cwd, options.agentDir?.());

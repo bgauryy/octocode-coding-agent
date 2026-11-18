@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import type { ApplicationPhase, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { describe, expect, it } from "vitest";
 import {
@@ -13,6 +13,7 @@ import {
 	settleToolStarts,
 	terminalEntries,
 } from "../src/app/live/model.ts";
+import { jobWords } from "../src/app/live/phase-words.ts";
 
 function event(id: number, type: string, text = "", extra: Partial<WorkspaceEvent> = {}): WorkspaceEvent {
 	return { id, at: id, type, text, ...extra };
@@ -184,6 +185,31 @@ describe("feed shaping", () => {
 		expect(runPhase({ ...application, awaiting })).toEqual({ kind: "waiting", awaiting });
 		// The host reports only dialogs that are open, so an idle session with one (a background subagent's) is waiting.
 		expect(runPhase({ ...idle, awaiting })).toEqual({ kind: "waiting", awaiting });
+	});
+
+	it("runPhase and sessionBadge keep a settled run's job going while the host reports a pending phase, and drop it when final", () => {
+		const idle = { ...application, streaming: false };
+		const waiting = { state: "waiting", agents: 2, queued: 0, bash: 1, external: 0 } as const;
+		expect(runPhase({ ...idle, phase: waiting })).toEqual({ kind: "job", phase: waiting });
+		expect(sessionBadge({ ...idle, phase: waiting })).toEqual({
+			state: "running",
+			label: "Waiting on 2 agents · 1 bash",
+			warn: false,
+		});
+		expect(runPhase({ ...idle, phase: { state: "resuming", label: "report from kid" } })).toEqual({
+			kind: "job",
+			phase: { state: "resuming", label: "report from kid" },
+		});
+		expect(jobWords({ state: "scheduled", timers: 1, id: "t1", dueAt: 61_000 }, 1_000)).toBe(
+			"Waiting for timer t1 · in 1m",
+		);
+		const final: ApplicationPhase[] = [{ state: "done" }, { state: "idle" }, { state: "stopped", open: ["B1"] }];
+		for (const phase of final) {
+			expect(runPhase({ ...idle, phase })).toEqual({ kind: "idle" });
+			expect(sessionBadge({ ...idle, phase })).toBeUndefined();
+		}
+		// A run that is active shows its own phase, whatever the host last said.
+		expect(runPhase({ ...application, phase: waiting })).toMatchObject({ kind: "thinking" });
 	});
 
 	it("sessionBadge maps the phase to the shared run state, and is absent while idle", () => {

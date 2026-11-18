@@ -1,6 +1,6 @@
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { clipText } from "../../shared/util.ts";
 import { auditLines, NO_REASON, transcriptPurpose } from "../effect.ts";
 import { permissionHeader } from "../header.ts";
@@ -52,13 +52,13 @@ const shownReasons = (why: string): string =>
 
 /** What `bypass` does with worktree merges (`worktrees/merge.ts`), for its summary, its start line and `/status`; empty in any other mode. */
 export const bypassMergeLine = (mode: PermissionMode): string =>
-	mode === "bypass" ? renderInstruction("notices/landing/bypass-merges.md") : "";
+	mode === "bypass" ? renderPrompt("notices/landing/bypass-merges.md") : "";
 
 /** What a mode means, in one sentence: the model note and `/permissions` say it. */
 export function modeSummary(mode: PermissionMode): string {
 	if (mode === "bypass")
 		return `nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves, reads of other tools' credential stores), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse. ${bypassMergeLine(mode)}`;
-	if (mode === "full") return renderInstruction("notices/permission-full.md");
+	if (mode === "full") return renderPrompt("notices/permission-full.md");
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits, credential-store reads and profile permissions also ask.`;
 }
 

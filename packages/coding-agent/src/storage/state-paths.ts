@@ -45,6 +45,15 @@ export function agentDbPath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
+ * The archive search index beside a coordination file: `archive-index.db` beside `workspaces.db`, else
+ * `<name>.archive-index.db`. A disposable cache, rebuilt from the archive files when missing.
+ */
+export function archiveIndexDbPath(agentDb: string): string {
+	const name = path.basename(agentDb, path.extname(agentDb));
+	return path.join(path.dirname(agentDb), name === "workspaces" ? "archive-index.db" : `${name}.archive-index.db`);
+}
+
+/**
  * The transcript mirror beside a coordination file: `transcripts.db` beside `workspaces.db`, else `<name>.transcripts.db`
  * beside `<name>.db` (an `OCTOCODE_AGENT_DB` file, a test's file), so two databases in one folder never share a mirror.
  */

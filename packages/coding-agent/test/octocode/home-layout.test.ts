@@ -168,7 +168,7 @@ describe("profiles, hooks and skills in .octocode", () => {
 		const names = async (projectTrusted: boolean) => {
 			const agentDir = tmp();
 			const settingsManager = SettingsManager.create(sub, agentDir, { projectTrusted });
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd: sub, agentDir, settingsManager });
+			const loader = new DefaultResourceLoader({ cwd: sub, agentDir, settingsManager });
 			await loader.reload();
 			return loader.getSkills().skills.map((skill) => skill.name);
 		};

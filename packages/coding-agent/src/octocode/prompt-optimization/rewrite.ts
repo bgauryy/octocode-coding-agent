@@ -1,9 +1,9 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
-/** The rewrite request (`instructions/workflows/optimize-prompt.md`). */
-const REWRITE_PROMPT = renderInstruction("workflows/optimize-prompt.md");
+/** The rewrite request (`native/prompts/workflows/optimize-prompt.md`). */
+const REWRITE_PROMPT = renderPrompt("workflows/optimize-prompt.md");
 
 const MIN_REPLY_TOKENS = 512;
 const MAX_REPLY_TOKENS = 4096;
@@ -20,7 +20,7 @@ function rewriteFromReply(reply: string): string {
  * Never rejects: a failed, cancelled or empty call gives `{ error }`.
  */
 export async function rewritePrompt(
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	prompt: string,
 	signal: AbortSignal,
 	complete?: CompleteSmall,

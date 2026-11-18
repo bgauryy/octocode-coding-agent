@@ -83,7 +83,6 @@ function runNpmCommandSync(host: PackageManagerHost, args: string[]): string {
 
 export function getNpmInstallArgs(host: PackageManagerHost, specs: string[], installRoot: string): string[] {
 	const packageManagerName = getPackageManagerName(host);
-	// Extension packages run inside Octocode and resolve Octocode APIs through loader aliases/virtual modules.
 	// Disable peer dependency resolution for managed installs (npm's --legacy-peer-deps, and
 	// equivalent bun/pnpm settings) so package managers do not install or solve host-provided
 	// @octocodeai/octocode-* peers. Stale auto-installed host peers can otherwise block updates.
@@ -141,7 +140,7 @@ export function ensureNpmProject(installRoot: string): void {
 	ensureGitIgnore(installRoot);
 	const packageJsonPath = join(installRoot, "package.json");
 	if (!existsSync(packageJsonPath)) {
-		const pkgJson = { name: "octocode-extensions", private: true };
+		const pkgJson = { name: "octocode-packages", private: true };
 		writeFileSync(packageJsonPath, JSON.stringify(pkgJson, null, 2), "utf-8");
 	}
 }

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import { openBacklog } from "../backlog/context.ts";
 
@@ -8,7 +8,7 @@ import { openBacklog } from "../backlog/context.ts";
  * be read never blocks recall.
  */
 export function activeItemGoal(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	options: { isSubagent: boolean; env?: NodeJS.ProcessEnv },
 ): string | undefined {
 	const env = options.env ?? process.env;

@@ -4,27 +4,17 @@
 
 import {
 	applyReplacements,
-	applyReplacementsPreservingUnchangedLines,
+	lineReplacementsPreservingUnchangedLines,
 	type MatchedEdit,
+	type TextReplacement,
 } from "./edit-diff/replacements.ts";
 import { mismatchHint } from "./edit-mismatch.ts";
 
 export { generateDiffString, generateUnifiedPatch } from "./edit-diff/display.ts";
-
-export function detectLineEnding(content: string): "\r\n" | "\n" {
-	const crlfIdx = content.indexOf("\r\n");
-	const lfIdx = content.indexOf("\n");
-	if (lfIdx === -1) return "\n";
-	if (crlfIdx === -1) return "\n";
-	return crlfIdx < lfIdx ? "\r\n" : "\n";
-}
+export { applyReplacementsToOriginal } from "./edit-diff/replacements.ts";
 
 export function normalizeToLF(text: string): string {
 	return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-export function restoreLineEndings(text: string, ending: "\r\n" | "\n"): string {
-	return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
 }
 
 /**
@@ -82,6 +72,11 @@ export interface Edit {
 export interface AppliedEditsResult {
 	baseContent: string;
 	newContent: string;
+	/**
+	 * What turns `baseContent` into `newContent`, at offsets of `baseContent`: `applyReplacementsToOriginal` writes them
+	 * into the file's own text, keeping the line endings of the lines they leave alone.
+	 */
+	replacements: TextReplacement[];
 }
 
 /**
@@ -275,13 +270,14 @@ export function applyEditsToNormalizedContent(
 	}
 
 	const baseContent = normalizedContent;
-	const newContent = usedFuzzyMatch
-		? applyReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits)
-		: applyReplacements(replacementBaseContent, matchedEdits);
+	const replacements = usedFuzzyMatch
+		? lineReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits)
+		: matchedEdits;
+	const newContent = applyReplacements(baseContent, replacements);
 
 	if (baseContent === newContent) {
 		throw getNoChangeError(path, normalizedEdits.length);
 	}
 
-	return { baseContent, newContent };
+	return { baseContent, newContent, replacements };
 }

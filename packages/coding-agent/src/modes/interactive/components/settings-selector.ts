@@ -1,7 +1,7 @@
-import { Container, getCapabilities, type SettingItem, SettingsList } from "@octocodeai/octocode-tui";
+import { Container, getCapabilities, type SettingItem } from "@octocodeai/octocode-tui";
+import { SettingsListView } from "./settings-list-view.ts";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import { CACHE_WARMING_MODES } from "../../../core/settings-manager.ts";
-import { getSettingsListTheme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { applySettingChange } from "./settings-selector/change-handler.ts";
@@ -21,7 +21,7 @@ export type { SettingsCallbacks, SettingsConfig } from "./settings-selector/type
  * Main settings selector component.
  */
 export class SettingsSelectorComponent extends Container {
-	private settingsList: SettingsList;
+	private settingsList: SettingsListView;
 
 	constructor(config: SettingsConfig, callbacks: SettingsCallbacks) {
 		super();
@@ -218,20 +218,19 @@ export class SettingsSelectorComponent extends Container {
 
 		this.addChild(new DynamicBorder());
 
-		this.settingsList = new SettingsList(
+		this.settingsList = new SettingsListView(
 			items,
 			10,
-			getSettingsListTheme(),
 			(id, newValue) => applySettingChange(callbacks, id, newValue),
 			callbacks.onCancel,
-			{ enableSearch: true },
+			{ search: true },
 		);
 
 		this.addChild(this.settingsList);
 		this.addChild(new DynamicBorder());
 	}
 
-	getSettingsList(): SettingsList {
+	getSettingsList(): SettingsListView {
 		return this.settingsList;
 	}
 }

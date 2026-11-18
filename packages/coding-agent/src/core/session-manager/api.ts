@@ -83,7 +83,7 @@ export interface SessionManagerApi {
 		usage?: Usage,
 	): string;
 
-	/** Append a custom entry (for extensions) as child of current leaf, then advance leaf. Returns entry id. */
+	/** Append a custom entry (for features) as child of current leaf, then advance leaf. Returns entry id. */
 	appendCustomEntry(customType: string, data?: unknown): string;
 
 	/** Append a session info entry (e.g., display name); `source` defaults to `user`. Returns entry id. */
@@ -96,11 +96,11 @@ export interface SessionManagerApi {
 	getSessionNameSource(): SessionNameSource | undefined;
 
 	/**
-	 * Append a custom message entry (for extensions) that participates in LLM context.
-	 * @param customType Extension identifier for filtering on reload
+	 * Append a custom message entry (for features) that participates in LLM context.
+	 * @param customType Feature identifier for filtering on reload
 	 * @param content Message content (string or TextContent/ImageContent array)
 	 * @param display Whether to show in TUI (true = styled display, false = hidden)
-	 * @param details Optional extension-specific metadata (not sent to LLM)
+	 * @param details Optional feature-specific metadata (not sent to LLM)
 	 * @param timestamp Creation time (ms) of a message that already exists in the live context; the entry keeps it so a
 	 * context rebuilt from the session file equals the live message. Defaults to now.
 	 * @returns Entry id

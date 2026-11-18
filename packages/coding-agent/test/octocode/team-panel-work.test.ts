@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TimerRow } from "../../../db/src/api.ts";
 import { RunningWork, type WorkRow, workCounts } from "../../src/octocode/shared/running-work.ts";
-import { AgentsView, widgetLines } from "../../src/octocode/team/panel.ts";
-import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
+import { liveAgentsStore } from "../../src/octocode/shared/team-spend.ts";
+import { AgentsView } from "../../src/octocode/team/panel.ts";
+import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { roster } from "../../src/octocode/team/panel/roster.ts";
 import { PanelMotion, type Moving } from "../../src/octocode/team/panel/motion.ts";
 import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel/work.ts";
@@ -306,7 +308,7 @@ describe("typed counts and the footer", () => {
 		expect(work.agents()).toBeUndefined();
 	});
 
-	it("clears the team status and leaves agents out of the running status while the panel shows, and publishes the totals", () => {
+	it("clears the team status and leaves agents out of the running status while the panel shows, and publishes its live agents for the one total", () => {
 		const stamp = () => ({ updatedAt: Date.now(), joinedAt: Date.now() });
 		const usage = { input: 10_000_000, cacheRead: 9_000_000, output: 200_000, cost: 1.5 };
 		const main = member("main-aaaaaa", { status: "idle", ...stamp(), ...usage });
@@ -338,17 +340,22 @@ describe("typed counts and the footer", () => {
 		expect(ctx.ui.statuses.get("octocode-running")).toBe("1 bash");
 		// The tab title still counts the agents.
 		expect(work.agents()).toBe(2);
-		expect(ctx.ui.statuses.get("octocode-team-totals")).toBe("Σ 3 agents · 30.6M tok · 90% cached · ≈$4.50");
+		// The footer's Σ adds the live descendants, never this session's own row (its ledger holds those replies).
+		const ids = () => liveAgentsStore.getState().live.map((agent) => agent.id);
+		expect(ids()).toEqual(["a-0001", "b-0002"]);
 		state.members = [main, child("a-0001")];
 		tick?.();
-		expect(ctx.ui.statuses.get("octocode-team-totals")).toBe("Σ 2 agents · 20.4M tok · 90% cached · ≈$3.00");
-		// Alone again, the session has no totals to show.
+		expect(ids()).toEqual(["a-0001"]);
 		state.members = [main];
 		work.set("bash", []);
 		tick?.();
-		expect(ctx.ui.statuses.get("octocode-team-totals")).toBeUndefined();
+		expect(ids()).toEqual([]);
+		// No status repeats a cost of its own.
+		expect([...ctx.ui.statuses.keys()].some((key) => key.includes("total"))).toBe(false);
+		state.members = [main, child("a-0001")];
+		tick?.();
 		view.stop(ctx);
-		expect(ctx.ui.statuses.get("octocode-team-totals")).toBeUndefined();
+		expect(ids()).toEqual([]);
 	});
 
 	it("repaints the widget when the work changes, and not when it is published unchanged", () => {

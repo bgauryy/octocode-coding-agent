@@ -38,7 +38,6 @@ export {
 	getLanguageFromPath,
 	getMarkdownTheme,
 	getSelectListTheme,
-	getSettingsListTheme,
 	highlightCode,
 } from "./theme-tui-helpers.ts";
 

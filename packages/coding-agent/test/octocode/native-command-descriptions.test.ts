@@ -6,6 +6,7 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -25,6 +26,7 @@ it("gives every native and bundled extension command a short description with it
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -39,7 +41,7 @@ it("gives every native and bundled extension command a short description with it
 		sessionManager: SessionManager.inMemory(cwd),
 	});
 	try {
-		const commands = session.extensionRunner.getRegisteredCommands();
+		const commands = session.featureHost.getRegisteredCommands();
 		expect(commands.map((command) => command.name)).toEqual(
 			expect.arrayContaining(["archive", "backlog", "plan", "mcp"]),
 		);
@@ -59,7 +61,7 @@ it("gives every native and bundled extension command a short description with it
 		expect(hints.get("trust")).toBe("[list|add|remove]");
 		expect(hints.get("modelsettings")).toBe("[check]");
 		expect(hints.get("backlog")).toContain("add <title>");
-		expect(session.extensionRunner.getCommand("resume")?.argumentHint).toBe("[all] [<query>|B<n>]");
+		expect(session.featureHost.getCommand("resume")?.argumentHint).toBe("[all] [<query>|B<n>]");
 	} finally {
 		await session.dispose();
 	}

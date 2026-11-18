@@ -10,6 +10,7 @@ import { createTestSession } from "../helpers/session.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
@@ -471,7 +472,8 @@ it("captures the current permission and persisted turn through direct AgentSessi
 		cwd: f.cwd,
 		agentDir: f.agentDir,
 		settingsManager,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		nativeFeatures: nativeFeatureSet(),
+		disabledFeatures: ["mcp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -487,7 +489,7 @@ it("captures the current permission and persisted turn through direct AgentSessi
 		tools: ["read"],
 	});
 	try {
-		await session.bindExtensions({
+		await session.bindFeatures({
 			mode: "json",
 			shutdownHandler: () => undefined,
 		} as never);

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
-import { registerFileTool } from "../src/octocode/files/tool.ts";
+import { registerFileTool } from "../src/octocode/native/tools/file/tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { Permission } from "../src/octocode/permission/ask.ts";
 import { createHarness, getMessageText, getToolResult } from "./suite/harness.ts";
@@ -12,6 +12,7 @@ import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
 import { FileGuard } from "../src/octocode/files/tool/guard.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
@@ -121,7 +122,7 @@ async function fixture(
 	const harness = await createHarness({
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				const permission = new Permission({
 					api,
@@ -129,15 +130,15 @@ async function fixture(
 					isSubagent: false,
 					stderr: () => {},
 				});
-				api.on("session_start", async (_event, ctx) => permission.start(ctx));
+				api.bus.on("session_start", async (_event, ctx) => permission.start(ctx));
 				registerFileTool(api, guard, permission);
 				const hooks = registerHooks(api, { env: {}, home });
-				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+				api.bus.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
 			},
-		],
+		]),
 	});
 	approveFixtureHooks(harness.tempDir, home);
-	await harness.session.bindExtensions({});
+	await harness.session.bindFeatures({});
 	return {
 		harness,
 		guard,

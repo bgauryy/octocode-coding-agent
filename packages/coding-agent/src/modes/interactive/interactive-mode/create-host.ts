@@ -10,7 +10,6 @@ import type { AgentSessionRuntime } from "../../../core/agent-session-runtime.ts
 import { FooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import { CustomEditor } from "../../../theme/custom-editor.ts";
-import { FooterComponent } from "../components/footer.ts";
 import { createMermaidMarkdownTransformer } from "../components/mermaid.ts";
 import { IdleStatus } from "../components/status-indicator.ts";
 import { SessionStatusReporter } from "../program-status-reporter.ts";
@@ -61,15 +60,13 @@ export function createInteractiveModeHost(
 		activeWorkingIndicatorEmbedded: false,
 		idleStatus: new IdleStatus(),
 		workingMessage: undefined,
-		workingVisible: true,
 		workingIndicatorOptions: undefined,
 		defaultWorkingMessage: "Working",
-		defaultHiddenThinkingLabel: "Thinking…",
-		hiddenThinkingLabel: "Thinking…",
 
 		lastSigintTime: 0,
 		lastEscapeTime: 0,
 		escapeQuietUntil: 0,
+		escapeAbortedRun: false,
 		changelogMarkdown: undefined,
 		startupNoticesShown: false,
 		anthropicSubscriptionWarningShown: false,
@@ -126,23 +123,23 @@ export function createInteractiveModeHost(
 		bugReportHintShown: false,
 		installChangeWarningShown: false,
 
-		// Extension UI state
-		extensionSelector: undefined,
-		extensionInput: undefined,
-		extensionEditor: undefined,
-		extensionTerminalInputSubscriptions: new Set(),
+		// Feature UI state
+		selectorDialog: undefined,
+		inputDialog: undefined,
+		editorDialog: undefined,
+		featureTerminalInputSubscriptions: new Set(),
 
-		// Extension widgets (components rendered above/below the editor)
-		extensionWidgetsAbove: new Map(),
-		extensionWidgetsBelow: new Map(),
+		// Feature widgets (components rendered above/below the editor)
+		featureWidgetsAbove: new Map(),
+		featureWidgetsBelow: new Map(),
 
-		// Custom footer from extension (undefined = use built-in footer)
+		// The footer a feature mounted (Octocode's, from session start); undefined leaves the slot empty.
 		customFooter: undefined,
 
 		// Built-in header (title + keybinding hints + changelog)
 		builtInHeader: undefined,
 
-		// Custom header from extension (undefined = use built-in header)
+		// Custom header from feature (undefined = use built-in header)
 		customHeader: undefined,
 
 		onRightClickPaste: (): void => {
@@ -167,7 +164,7 @@ export function createInteractiveModeHost(
 				held.push(...followUp.map((text) => ({ text, mode: "followUp" as const, carried: true as const })));
 			});
 		}
-		host.resetExtensionUI();
+		host.resetFeatureUI();
 	});
 	host.runtimeHost.setRebindSession(async () => {
 		await host.rebindCurrentSession({ renderBeforeBind: true });
@@ -202,7 +199,7 @@ export function createInteractiveModeHost(
 	host.statusContainer = new Container();
 	host.widgetContainerAbove = new Container();
 	host.widgetContainerBelow = new Container();
-	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
+	// Stored so the same manager can be injected into custom editors, selectors, and feature UI.
 	host.keybindings = KeybindingsManager.create();
 	setKeybindings(host.keybindings);
 	const editorPaddingX = host.settingsManager.getEditorPaddingX();
@@ -218,10 +215,7 @@ export function createInteractiveModeHost(
 	host.editorContainer = new Container();
 	host.editorContainer.addChild(host.editor);
 	host.footerDataProvider = new FooterDataProvider(host.sessionManager.getCwd());
-	host.footer = new FooterComponent(host.session, host.footerDataProvider);
-	host.footer.setAutoCompactEnabled(host.session.autoCompactionEnabled);
 	host.footerContainer = new Container();
-	host.footerContainer.addChild(host.footer);
 
 	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 	host.outputPad = host.settingsManager.getOutputPad();

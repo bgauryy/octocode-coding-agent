@@ -1,31 +1,18 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { hostPaths } from "../host.ts";
 import type { GeneratedMeta } from "./types.ts";
 
-/**
- * Folder for generated files under an agent directory: `context-optimization/mcp/`. The folder earlier releases used,
- * `mcp-generated/`, moves there the first time, so its stored overrides keep applying.
- */
+/** Folder for generated files under an agent directory: `context-optimization/mcp/`. */
 export function generatedDir(agentDir: string): string {
-	const dir = join(hostPaths().contextOptimizationDir(agentDir), "mcp");
-	const legacy = join(agentDir, "mcp-generated");
-	if (!existsSync(dir) && existsSync(legacy)) {
-		try {
-			mkdirSync(hostPaths().contextOptimizationDir(agentDir), { recursive: true });
-			renameSync(legacy, dir);
-		} catch {
-			// Another process moved it first, or the move is not allowed; the files are rendered again when missing.
-		}
-	}
-	return dir;
+	return join(hostPaths().contextOptimizationDir(agentDir), "mcp");
 }
 
 /**
  * The folder of one server's generated file: the project's (`contextOptimizationDirs`) for a server that the
  * workspace `mcp.json` of `cwd` defines, else the user's (`generatedDir`), so two projects that define a same-named
- * server keep separate files and overrides.
+ * server keep separate files.
  */
 export function serverGeneratedDir(agentDir: string, cwd: string, scope: string | undefined): string {
 	const project = scope === "project" ? hostPaths().contextOptimizationDirs(cwd, agentDir).project : undefined;
@@ -41,21 +28,15 @@ function readSnapshot(dir: string, server: string): (GeneratedMeta & { text?: st
 		const stem = join(dir, fileStem(server));
 		const meta = JSON.parse(readFileSync(`${stem}.json`, "utf8")) as GeneratedMeta & { text?: string };
 		if (typeof meta?.hash !== "string" || typeof meta.generatorVersion !== "number") return undefined;
+		// A file an earlier release stored with description overrides holds rewritten server text: never serve it.
+		if ("overrides" in meta || "authored" in meta) return undefined;
 		return meta;
 	} catch {
 		return undefined;
 	}
 }
 
-/** Metadata also survives older split caches, whose text cannot be trusted as a matching snapshot. */
-export function readGeneratedMeta(dir: string, server: string): GeneratedMeta | undefined {
-	const snapshot = readSnapshot(dir, server);
-	if (!snapshot) return undefined;
-	const { text: _text, ...meta } = snapshot;
-	return meta;
-}
-
-/** Read one atomic snapshot; the text mirror is for inspection only. Legacy metadata is carried during regeneration. */
+/** Read one atomic snapshot; the text mirror is for inspection only.  */
 export function readGenerated(dir: string, server: string): { text: string; meta: GeneratedMeta } | undefined {
 	const snapshot = readSnapshot(dir, server);
 	if (typeof snapshot?.text !== "string") return undefined;

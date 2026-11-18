@@ -23,7 +23,6 @@ export interface ResolvedResource {
 }
 
 export interface ResolvedPaths {
-	extensions: ResolvedResource[];
 	skills: ResolvedResource[];
 	prompts: ResolvedResource[];
 	themes: ResolvedResource[];
@@ -62,10 +61,7 @@ export interface PackageManager {
 	removeAndPersist(source: string, options?: { local?: boolean }): Promise<boolean>;
 	update(source?: string): Promise<void>;
 	listConfiguredPackages(): ConfiguredPackage[];
-	resolveExtensionSources(
-		sources: string[],
-		options?: { local?: boolean; temporary?: boolean },
-	): Promise<ResolvedPaths>;
+	resolveSources(sources: string[], options?: { local?: boolean; temporary?: boolean }): Promise<ResolvedPaths>;
 	addSourceToSettings(source: string, options?: { local?: boolean }): boolean;
 	removeSourceFromSettings(source: string, options?: { local?: boolean }): boolean;
 	setProgressCallback(callback: ProgressCallback | undefined): void;
@@ -76,8 +72,6 @@ export interface PackageManagerOptions {
 	cwd: string;
 	agentDir: string;
 	settingsManager: SettingsManager;
-	/** Names of built-in extensions, resolved as `builtin:<name>` extension resources. */
-	builtinExtensions?: string[];
 	/** The Octocode skill collection (`getOctocodeSkillsDir`), resolved as skills with source `builtin`. */
 	builtinSkillsDir?: string;
 }
@@ -116,7 +110,6 @@ export interface GitUpdateTarget extends ConfiguredUpdateSource {
 }
 
 export interface ResourceAccumulator {
-	extensions: Map<string, { metadata: PathMetadata; enabled: boolean }>;
 	skills: Map<string, { metadata: PathMetadata; enabled: boolean }>;
 	prompts: Map<string, { metadata: PathMetadata; enabled: boolean }>;
 	themes: Map<string, { metadata: PathMetadata; enabled: boolean }>;
@@ -124,7 +117,6 @@ export interface ResourceAccumulator {
 
 export interface PackageFilter {
 	autoload?: boolean;
-	extensions?: string[];
 	skills?: string[];
 	prompts?: string[];
 	themes?: string[];
@@ -154,7 +146,6 @@ export interface PackageManagerHost {
 	readonly cwd: string;
 	readonly agentDir: string;
 	readonly settingsManager: SettingsManager;
-	readonly builtinExtensions: string[];
 	readonly builtinSkillsDir: string | undefined;
 	withProgress(
 		action: ProgressEvent["action"],

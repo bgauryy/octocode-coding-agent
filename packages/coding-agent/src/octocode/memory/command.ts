@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
@@ -102,7 +102,7 @@ function textList(memories: readonly Memory[], title: string): string {
  */
 export function registerMemoryCommand(
 	commands: Subcommands,
-	deps: { store: (ctx: ExtensionCommandContext) => MemoryStore; autoEnv: () => boolean },
+	deps: { store: (ctx: CommandContext) => MemoryStore; autoEnv: () => boolean },
 ): void {
 	commands.add("memory", {
 		description: "Browse and edit durable memories",
@@ -128,12 +128,7 @@ export function registerMemoryCommand(
 	});
 }
 
-async function run(
-	args: string,
-	ctx: ExtensionCommandContext,
-	store: MemoryStore,
-	autoEnv: () => boolean,
-): Promise<void> {
+async function run(args: string, ctx: CommandContext, store: MemoryStore, autoEnv: () => boolean): Promise<void> {
 	const [verb = "", ...restWords] = args.trim().split(/\s+/);
 	const rest = restWords.join(" ").trim();
 	if (verb === "auto") {
@@ -169,7 +164,7 @@ async function run(
  * `/memory review [days]`: memories never injected, or not updated in `days` (default 30), oldest first. The TUI opens
  * them in the browser, whose Edit and Delete act on one; headless, each line says why it is listed.
  */
-async function review(ctx: ExtensionCommandContext, store: MemoryStore, rest: string): Promise<void> {
+async function review(ctx: CommandContext, store: MemoryStore, rest: string): Promise<void> {
 	const days = rest ? Number(rest) : REVIEW_DAYS;
 	if (!Number.isInteger(days) || days < 1) return say(ctx, "Usage: /memory review [days]", "warning");
 	const now = Date.now();
@@ -193,7 +188,7 @@ async function review(ctx: ExtensionCommandContext, store: MemoryStore, rest: st
 const autoStatus = (store: MemoryStore, autoEnv: () => boolean) =>
 	!autoEnv() ? "off (OCTOCODE_MEMORY_AUTO=0)" : store.autoSetting() ? "on" : "off";
 
-async function add(ctx: ExtensionCommandContext, store: MemoryStore, text: string): Promise<void> {
+async function add(ctx: CommandContext, store: MemoryStore, text: string): Promise<void> {
 	const sourceSession = ctx.sessionManager.getSessionId();
 	if (!ctx.hasUI) {
 		if (!text) return say(ctx, "Usage: /memory add <title> [— body]", "warning");
@@ -212,7 +207,7 @@ async function add(ctx: ExtensionCommandContext, store: MemoryStore, text: strin
 
 /** Reopens the editor with the user's own text and the reason when it does not validate, so an edit is never lost. */
 async function editUntilValid<T>(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	title: string,
 	initial: string,
 	save: (edited: string) => T,
@@ -235,12 +230,7 @@ async function editUntilValid<T>(
 	}
 }
 
-async function browse(
-	ctx: ExtensionCommandContext,
-	store: MemoryStore,
-	memories: Memory[],
-	title: string,
-): Promise<void> {
+async function browse(ctx: CommandContext, store: MemoryStore, memories: Memory[], title: string): Promise<void> {
 	if (!ctx.hasUI) return say(ctx, textList(memories, title), "info");
 	let list = grouped(memories);
 	let selected: string | undefined;
@@ -268,11 +258,7 @@ async function browse(
 }
 
 /** One memory's actions. Returns the updated memory, undefined when it was deleted, or 'closed' when dismissed. */
-async function act(
-	ctx: ExtensionCommandContext,
-	store: MemoryStore,
-	memory: Memory,
-): Promise<Memory | undefined | "closed"> {
+async function act(ctx: CommandContext, store: MemoryStore, memory: Memory): Promise<Memory | undefined | "closed"> {
 	const label = memoryLabel(memory.id);
 	const actions = [
 		"Edit",

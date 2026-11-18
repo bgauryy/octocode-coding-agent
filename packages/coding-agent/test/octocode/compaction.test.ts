@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeFileLists, formatFileOperations } from "../../src/core/compaction/utils.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { addFileToolOps, registerCompaction } from "../../src/octocode/compaction/register.ts";
+import { asSetup } from "./fake-host.ts";
 
 const call = (id: string, name: string, queries: unknown[]) => ({
 	role: "assistant",
@@ -165,13 +166,13 @@ describe("summaries", () => {
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
 		const notes: unknown[] = [];
 		registerCompaction(
-			{
+			asSetup({
 				on: (name: string, handler: never) => {
 					handlers.set(name, handler);
 					return undefined;
 				},
 				appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
-			} as never,
+			}) as never,
 			{ restore: () => undefined } as never,
 		);
 		expect(handlers.has("session_before_tree")).toBe(false);

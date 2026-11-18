@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { connectAcp } from "../../src/octocode/external/acp-host.ts";
 import { runnerTurn } from "../../src/octocode/external/runner-session.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";

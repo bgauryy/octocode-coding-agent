@@ -1,4 +1,4 @@
-import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
+import { BEGIN_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
 import { deleteChangedKittyImages, type KittyImageRows } from "./kitty-images.ts";
 import { appendChangedRows, appendClearedExtraLines } from "./render-output.ts";
 import type { BoundedTerminalWriter } from "./terminal-writer.ts";
@@ -27,7 +27,7 @@ function appendRowMove(output: BoundedTerminalWriter, delta: number): void {
 /**
  * Every changed row was deleted: move to the new last row and clear the rows below it. Returns the row the cursor
  * ends on, or why the transcript must replay instead (the end moved above the viewport, or more rows than the screen
- * holds were deleted).
+ * holds were deleted). The frame stays open: the caller appends the cursor and ends synchronized output.
  */
 export function writeDeletedRows(
 	output: BoundedTerminalWriter,
@@ -46,7 +46,6 @@ export function writeDeletedRows(
 	const extraLines = previousLines.length - newLines.length;
 	if (extraLines > height) return { replay: `extraLines > height (${extraLines} > ${height})` };
 	appendClearedExtraLines(output, extraLines, newLines.length);
-	output.append(END_SYNCHRONIZED_OUTPUT);
 	return { cursorRow: targetRow };
 }
 
@@ -66,7 +65,8 @@ export interface ChangedRowsWrite {
 
 /**
  * Write the rows from the first changed one to the last, scrolling first when the first one is below the viewport,
- * then clear rows the frame deleted. Returns where the cursor ended, or why the transcript must replay instead.
+ * then clear rows the frame deleted. Returns where the cursor ended, or why the transcript must replay instead. The
+ * frame stays open: the caller appends the cursor and ends synchronized output.
  */
 export function writeChangedRows(
 	output: BoundedTerminalWriter,
@@ -115,6 +115,5 @@ export function writeChangedRows(
 		// Move cursor back to end of new content
 		output.append(`\x1b[${extraLines}A`);
 	}
-	output.append(END_SYNCHRONIZED_OUTPUT);
 	return { cursorRow, viewportTop, hardwareCursorRow, lineDiff, renderEnd };
 }

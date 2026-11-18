@@ -1,44 +1,56 @@
 /**
- * A finished `!` command row says how it ended in words and a mark, not by band or frame tint alone (a 256-colour
- * terminal loses the tint), and the frame is neutral until the command has succeeded or failed.
+ * A `!` command row uses the tool-row grammar: `<mark> ! cmd · you · time`, then the outcome in words under the `⎿`
+ * gutter and the output hanging beneath it. A mark and words say how it ended; there is no frame to tint.
  */
 import { GLYPH, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { STOPPED_COLOR } from "../src/octocode/render/types.ts";
-import { STATE_COLOR } from "../src/theme/status.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
 
 const ui = { requestRender: () => {} } as unknown as TUI;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: strips SGR colours from rendered rows
-const plain = (rows: string[]): string => rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
+// Colours and links stripped: a terminal with hyperlinks draws the saved path as a link.
+const plain = (rows: string[]): string => rows.map((row) => stripAnsi(row).trimEnd()).join("\n");
 
 describe("BashExecutionComponent outcome", () => {
 	beforeAll(() => initTheme("dark"));
 
-	test("marks a command that succeeded with a check", () => {
+	test("marks a command that succeeded with a check, its time in the title and its outcome under the gutter", () => {
 		const row = new BashExecutionComponent("npm test", ui);
-		row.setComplete(0, false, undefined, undefined, "[exit 0 · 1.2s]");
-		const text = plain(row.render(60));
-		expect(text).toContain(`${GLYPH.done} $ npm test`);
-		expect(text).toContain("[exit 0 · 1.2s]");
+		row.setComplete(0, false, undefined, undefined, "[exit 0 · 1.2s · 4 lines · 40 B]");
+		expect(plain(row.render(60))).toBe(
+			`\n ${GLYPH.done} ! npm test · you · 1.2s\n   ${GLYPH.gutter}  exit 0 · 4 lines · 40 B`,
+		);
+	});
+
+	test("shows a run time only from 1s on, and names the saved output", () => {
+		const row = new BashExecutionComponent("seq 9", ui);
+		row.setComplete(
+			0,
+			false,
+			undefined,
+			undefined,
+			"[exit 0 · 0.3s · 9 lines · 18 B · trimmed: last 2 lines · full output: /tmp/o.log]",
+		);
+		expect(plain(row.render(120))).toBe(
+			`\n ${GLYPH.done} ! seq 9 · you\n   ${GLYPH.gutter}  exit 0 · 9 lines · 18 B · trimmed: last 2 lines · full output: /tmp/o.log`,
+		);
 	});
 
 	test("marks a failed command with a cross and its exit code, even without a result header", () => {
 		const row = new BashExecutionComponent("npm test", ui);
 		row.appendOutput("boom\n");
 		row.setComplete(1, false);
-		const text = plain(row.render(60));
-		expect(text).toContain(`${GLYPH.failed} $ npm test · exit 1`);
-		expect(text).toContain("boom");
+		expect(plain(row.render(60))).toBe(`\n ${GLYPH.failed} ! npm test · you\n   ${GLYPH.gutter}  exit 1\n      boom`);
+		expect(row.render(60).join("\n")).toContain(theme.fg("error", "exit 1"));
 	});
 
 	test("marks a cancelled command as stopped, not failed", () => {
 		const row = new BashExecutionComponent("sleep 9", ui);
 		row.setComplete(undefined, true);
-		const text = plain(row.render(60));
-		expect(text).toContain(`${GLYPH.stopped} $ sleep 9 · interrupted`);
-		expect(row.render(60).join("\n")).toContain(theme.fg(STOPPED_COLOR, " · interrupted"));
+		expect(plain(row.render(60))).toBe(`\n ${GLYPH.stopped} ! sleep 9 · you\n   ${GLYPH.gutter}  interrupted`);
+		expect(row.render(60).join("\n")).toContain(theme.fg(STOPPED_COLOR, "interrupted"));
 	});
 
 	test("paints failure output in text colour, a failure line in error and a quiet success in muted", () => {
@@ -55,22 +67,24 @@ describe("BashExecutionComponent outcome", () => {
 		expect(passed.render(60).join("\n")).toContain(theme.fg("muted", "ok y"));
 	});
 
-	test("frames the row neutral while it runs, then in its outcome colour", () => {
-		const frame = (rows: string[]) => rows.find((row) => row.includes("─")) ?? "";
+	test("draws no frame: no mark while it runs, the command in its neutral colour before and after", () => {
 		const row = new BashExecutionComponent("x", ui);
-		const running = frame(row.render(20));
-		expect(running).toContain(theme.fg("bashMode", "─".repeat(20)));
+		const running = row.render(20);
+		expect(running.some((line) => line.includes("─"))).toBe(false);
+		expect(plain(running).split("\n")[1]).toBe(" ! x · you");
+		expect(running.join("\n")).toContain(theme.fg("bashMode", theme.bold("! x")));
 		row.setComplete(0, false);
-		expect(frame(row.render(20))).toContain(theme.fg(STATE_COLOR.done, "─".repeat(20)));
-		const failed = new BashExecutionComponent("x", ui);
-		failed.setComplete(1, false);
-		expect(frame(failed.render(20))).toContain(theme.fg(STATE_COLOR.failed, "─".repeat(20)));
+		const done = row.render(20);
+		expect(done.some((line) => line.includes("─"))).toBe(false);
+		expect(done.join("\n")).toContain(theme.fg("bashMode", theme.bold("! x")));
+		row.dispose();
 	});
 
-	test("keeps a `!!` command's frame dim whatever the outcome", () => {
+	test("names a `!!` command as such and keeps it dim whatever the outcome", () => {
 		const row = new BashExecutionComponent("x", ui, true);
 		row.setComplete(0, false);
-		const line = row.render(20).find((entry) => entry.includes("─")) ?? "";
-		expect(line).toContain(theme.fg("dim", "─".repeat(20)));
+		const rows = row.render(20);
+		expect(plain(rows).split("\n")[1]).toBe(` ${GLYPH.done} !! x · you`);
+		expect(rows.join("\n")).toContain(theme.fg("dim", theme.bold("!! x")));
 	});
 });

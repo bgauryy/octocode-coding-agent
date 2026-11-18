@@ -6,7 +6,7 @@ import type { SlashCommandInfo } from "../../src/core/slash-commands.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkillsFromDir } from "../../src/core/skills.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
-import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
+import { registerSkillTool } from "../../src/octocode/native/tools/skill/tool.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { parseProfile, profileReach, profileTools } from "../../src/octocode/subagents/profiles.ts";
@@ -250,7 +250,7 @@ describe("per-task skills", () => {
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("work");
 
 		const skillHost = fakeHost();
-		(skillHost.api as unknown as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = () => ({
+		(skillHost.api.resources as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = () => ({
 			version: 1,
 			resources: [],
 			explicitSkills: [],

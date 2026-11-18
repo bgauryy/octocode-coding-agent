@@ -20,12 +20,12 @@ describe("FooterDataProvider as a state source", () => {
 		const data = provider();
 		const listener = vi.fn();
 		data.subscribe(listener);
-		data.setExtensionStatus("speed", "50 tok/s");
-		data.setExtensionStatus("speed", "50 tok/s");
-		data.setExtensionStatus("missing", undefined);
+		data.setFeatureStatus("speed", "50 tok/s");
+		data.setFeatureStatus("speed", "50 tok/s");
+		data.setFeatureStatus("missing", undefined);
 		data.setAvailableProviderCount(0);
-		data.clearExtensionStatuses();
-		data.clearExtensionStatuses();
+		data.clearFeatureStatuses();
+		data.clearFeatureStatuses();
 		data.setAvailableProviderCount(3);
 		expect(listener).toHaveBeenCalledTimes(3);
 		data.dispose();
@@ -33,10 +33,10 @@ describe("FooterDataProvider as a state source", () => {
 
 	it("keeps earlier snapshots unchanged and returns the same snapshot until a change", () => {
 		const data = provider();
-		data.setExtensionStatus("a", "1");
+		data.setFeatureStatus("a", "1");
 		const before = data.getState();
 		expect(data.getState()).toBe(before);
-		data.setExtensionStatus("b", "2");
+		data.setFeatureStatus("b", "2");
 		const after = data.getState();
 		expect(after).not.toBe(before);
 		expect([...before.statuses]).toEqual([["a", { text: "1" }]]);
@@ -51,12 +51,12 @@ describe("FooterDataProvider as a state source", () => {
 		const data = provider();
 		const listener = vi.fn();
 		data.subscribe(listener);
-		data.setExtensionStatus("jobs", "2 bash jobs", "accent");
+		data.setFeatureStatus("jobs", "2 bash jobs", "accent");
 		expect(data.getState().statuses.get("jobs")).toEqual({ text: "2 bash jobs", tone: "accent" });
-		expect(data.getExtensionStatuses().get("jobs")).toBe("2 bash jobs");
+		expect(data.getFeatureStatuses().get("jobs")).toBe("2 bash jobs");
 		// The same text in another tone is a change; the same text and tone is not.
-		data.setExtensionStatus("jobs", "2 bash jobs", "warning");
-		data.setExtensionStatus("jobs", "2 bash jobs", "warning");
+		data.setFeatureStatus("jobs", "2 bash jobs", "warning");
+		data.setFeatureStatus("jobs", "2 bash jobs", "warning");
 		expect(listener).toHaveBeenCalledTimes(2);
 		expect(data.getState().statuses.get("jobs")?.tone).toBe("warning");
 		data.dispose();
@@ -71,13 +71,13 @@ describe("FooterDataProvider as a state source", () => {
 			view: (speed) => [speed ?? ""],
 			requestRender,
 		});
-		data.setExtensionStatus("other", "x");
+		data.setFeatureStatus("other", "x");
 		expect(requestRender).not.toHaveBeenCalled();
-		data.setExtensionStatus("speed", "9 tok/s");
+		data.setFeatureStatus("speed", "9 tok/s");
 		expect(requestRender).toHaveBeenCalledTimes(1);
 		expect(view.render(20)).toEqual(["9 tok/s"]);
 		data.dispose();
-		data.setExtensionStatus("speed", "1 tok/s");
+		data.setFeatureStatus("speed", "1 tok/s");
 		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 });

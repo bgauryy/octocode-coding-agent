@@ -1,18 +1,14 @@
-import path from "node:path";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import {
-	type ExtensionAPI,
-	type ExtensionContext,
+	type FeatureSetup,
+	type FeatureContext,
 	readsMessagesOnly,
-	type SessionBeforeCompactEvent,
 	type SessionCompactEvent,
 } from "../../core/features/index.ts";
-import { appliedFileOutcomes, contextReads, seenFiles, type WorkedFile } from "../files/reads.ts";
+import { contextReads, seenFiles } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
 import { flushSessionRecords, scheduleSessionRecord } from "../history/archive/record.ts";
-import { resolveToolPath } from "../shared/home.ts";
-import { recordedLocalReads } from "../shared/local-reads.ts";
-import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { forkLineage, sessionRecordOf } from "./archive/session-record.ts";
 import { sessionLineage, setSessionLineage } from "../history/archive.ts";
 import { notify } from "../shared/commands.ts";
@@ -22,12 +18,17 @@ import { registerTurnBudget } from "./turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
 import { cacheCold, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { startEarlySummary } from "./early-summary.ts";
+import { registerPrewarmWatch } from "./prewarm-watch.ts";
+import { runningWorkOf } from "../shared/running-work.ts";
+import { type AwaitsAnswer, expectsWake } from "./warm-wait.ts";
 import { shellParserReady } from "../permission/shell/mutation.ts";
 import { clearStaleResults, prefixRewritten } from "./clearing.ts";
-import { COMPACT_TOOL, CompactRequests } from "./compact-tool.ts";
+import { COMPACT_TOOL, CompactRequests } from "../native/tools/compact/tool.ts";
 import { FallbackContinuity, latestCompaction } from "./continuity.ts";
-import { noticeContextUsage } from "./context-notice.ts";
-import { type ContextEntry, parts } from "./images.ts";
+import { contextBands, noticeContextUsage } from "../monitor/attention/context.ts";
+import type { ContextEntry } from "./images.ts";
+import { addFileToolOps } from "./file-tool-ops.ts";
+import { restoreCandidates as pickRestoreCandidates } from "./restore-picks.ts";
 import {
 	contextTokens,
 	fitsWindow,
@@ -45,7 +46,7 @@ import {
 	type PendingRestore,
 	RESTORE_SHARE,
 	RESTORE_TOTAL_CHARS,
-	recentFiles,
+	type RestoreCandidate,
 	settleRestoredFiles,
 } from "./restore.ts";
 import { liveStateLines } from "./live-state.ts";
@@ -76,39 +77,51 @@ function editedReadPaths(entries: ContextEntry[], edited: ReadonlySet<string>, c
 	return [...seenFiles(entries, cwd).values()].filter((seen) => edited.has(seen.id)).map((seen) => seen.file);
 }
 
-export { registerCompactTool } from "./compact-tool.ts";
+export { registerCompactTool } from "../native/tools/compact/tool.ts";
+export { addFileToolOps } from "./file-tool-ops.ts";
 
 /**
  * Returns the agent's compaction requests, for the `compact` tool (`registerCompactTool`). `parentId` is a subagent's
- * parent: a checkpoint keeps its mail to this agent word for word.
+ * parent: a checkpoint keeps its mail to this agent word for word. `awaitsAnswer` says whether the agent waits for an
+ * answer it asked for: while it does, an idle cache is kept warm for that answer.
  */
 export function registerCompaction(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	guard: FileGuard,
 	isSubagent = false,
 	parentId?: string,
+	awaitsAnswer: AwaitsAnswer = () => false,
 ): CompactRequests {
 	// One assistant message's tool results share a text budget; the overflow is saved to a file (`compaction/turn-budget.ts`).
 	registerTurnBudget(api);
+	registerPrewarmWatch(api);
 	const tooLarge = new TooLargeRecovery();
 	const lifetimes = new PromptCacheLifetimes();
 	const thrash = new ThrashBreaker();
 	const archive = new ArchiveCapture();
 	const continuity = new FallbackContinuity();
 	const requests = new CompactRequests(thrash);
-	const cacheEnv = (ctx: ExtensionContext): NodeJS.ProcessEnv => ({
+	const cacheEnv = (ctx: FeatureContext): NodeJS.ProcessEnv => ({
 		[CACHE_RETENTION_ENV]: ctx.model
-			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: api.getSettings() }]).options
-					.cacheRetention
+			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: api.settings.get() }])
+					.options.cacheRetention
 			: undefined,
 	});
 	/** The model a pending downshift compaction summarizes on (the one the context still fits). */
 	let downshiftFrom: Model<Api> | undefined;
 	let session: string | undefined;
-	api.on("cache_warming_decision", async (event, ctx) =>
-		warmingDecision(event, ctx, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), Date.now(), isSubagent),
+	const work = runningWorkOf(api);
+	api.bus.on("cache_warming_decision", async (event, ctx) =>
+		warmingDecision(
+			event,
+			ctx,
+			promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)),
+			Date.now(),
+			isSubagent,
+			event.continuationProbability < 1 && expectsWake(work, ctx, awaitsAnswer),
+		),
 	);
-	api.on("turn_end", async (event, ctx) => {
+	api.bus.on("turn_end", async (event, ctx) => {
 		lifetimes.observe(api, ctx, event.message, cacheEnv(ctx));
 		thrash.turnEnded();
 		noticeContextUsage(
@@ -116,9 +129,12 @@ export function registerCompaction(
 			ctx,
 			event.context.contextEntries.flatMap((entry) => entry.messages.map((message) => ({ message }))),
 			compactionThinking(api),
-			requests.toolRegistered && api.getActiveTools().includes(COMPACT_TOOL),
+			requests.toolRegistered && api.tools.getActive().includes(COMPACT_TOOL),
 			latestCompaction(ctx.sessionManager)?.id,
-		);
+			contextBands(api.settings.get()),
+		)?.catch((error: unknown) => {
+			if (ctx.hasUI) notify(ctx.ui, `The context usage notice failed (${errorMessage(error)}).`, "warning");
+		});
 		const current = ctx.sessionManager.getSessionId();
 		if (current !== session) {
 			session = current;
@@ -135,26 +151,26 @@ export function registerCompaction(
 			guard.forget(file);
 		return { entries: [...event.entries, ...recovery] };
 	});
-	api.on("agent_before_settle", async (event) =>
+	api.bus.on("agent_before_settle", async (event) =>
 		tooLarge.shouldRetry(event.outcome) ? { continue: true } : undefined,
 	);
-	api.on("agent_settled", async (event, ctx) => {
+	api.bus.on("agent_settled", async (event, ctx) => {
 		thrash.runSettled();
 		requests.settle(api, ctx, event.aborted);
 	});
 	// The files worked on in the summarized part, most recent first, come back after the compaction.
-	let restoreCandidates: WorkedFile[] = [];
+	let restoreCandidates: RestoreCandidate[] = [];
 	let restoreBudget = RESTORE_TOTAL_CHARS;
 	let pendingRestore: PendingRestore | undefined;
 	/** When this process started its session: background work started earlier ended with an earlier process. */
 	let workSince = Date.now();
 	// Near the threshold the summary is requested beside the run, inside the session's cached request (`early-summary.ts`).
-	api.on("session_compact_prewarm", async (event, ctx) => {
+	api.bus.on("session_compact_prewarm", async (event, ctx) => {
 		if (downshiftFrom || thrash.tripped()) return;
 		const ttl = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
 		startEarlySummary(api, event, ctx, cacheCold(ctx.sessionManager, ttl));
 	});
-	api.on("session_before_compact", async (event, ctx) => {
+	api.bus.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
 		continuity.discard();
 		if ((event.reason !== "manual" || requests.inFlight) && thrash.tripped()) {
@@ -168,7 +184,7 @@ export function registerCompaction(
 			return { cancel: true };
 		}
 		archive.capture(event);
-		restoreCandidates = recentFiles(event.preparation, ctx.cwd);
+		restoreCandidates = await pickRestoreCandidates(event.preparation, ctx.cwd);
 		// Sized for the window the context lands in (after a downshift, the smaller model's), with Octocode's reserve for it.
 		restoreBudget = windowBudget(
 			ctx.model?.contextWindow,
@@ -200,7 +216,7 @@ export function registerCompaction(
 		);
 	});
 
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		workSince = Date.now();
 		tooLarge.reset();
 		thrash.reset();
@@ -221,7 +237,7 @@ export function registerCompaction(
 	let recordWarned = false;
 	// The write runs in the background (the run's end does not wait for the disk), so the UI is taken now: the context
 	// may be retired by the time it fails.
-	api.on("agent_end", async (_event, ctx) => {
+	api.bus.on("agent_end", async (_event, ctx) => {
 		const ui = ctx.hasUI ? ctx.ui : undefined;
 		const warn = (error: unknown) => {
 			try {
@@ -239,12 +255,12 @@ export function registerCompaction(
 			warn(error);
 		}
 	});
-	api.on("session_shutdown", async () => flushSessionRecords());
+	api.bus.on("session_shutdown", async () => flushSessionRecords());
 	// File contents summarized away by compaction, or on another branch, are no longer in context: the guard keeps only
 	// the reads the context still shows, then the files worked on most recently are read back (and count as read).
 	// Switching to a model whose window the context does not fit compacts first, on the previous model: the next
 	// request on the new one would fail, and only the previous model can still read the whole history.
-	api.on("model_select", async (event, ctx) => {
+	api.bus.on("model_select", async (event, ctx) => {
 		const reserve = reserveTokensFor(event.model, compactionThinking(api));
 		if (
 			!needsDownshiftCompaction(event.previousModel, event.model, contextTokens(ctx, toolDefinitionChars(api)), reserve)
@@ -260,7 +276,7 @@ export function registerCompaction(
 			},
 		});
 	});
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("session_compact", async (event, ctx) => {
 		thrash.compacted(event.reason === "manual" && !requests.inFlight);
 		requests.compacted();
 		const segment = archiveCompaction(api, archive, event, ctx);
@@ -276,14 +292,14 @@ export function registerCompaction(
 		const contextHeld = recordContextFiles(guard, ctx.getSystemPromptOptions?.().contextFiles ?? []);
 		pendingRestore = deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api), contextHeld);
 	});
-	api.on("session_compact_failed", async () => {
+	api.bus.on("session_compact_failed", async () => {
 		archive.discard();
 		continuity.discard();
 	});
 	// The restored files count as read from the first model call that carries them (Octocode may hold the message until the
 	// running turn ends).
 	// Never edits a message: `requestView` returns copies of the ones it changes (`thinking.ts`, `clearing.ts`).
-	api.on(
+	api.bus.on(
 		"context",
 		readsMessagesOnly(async (event, ctx) => {
 			// Before every request, in a run or at its start: old results are cleared when this request rewrites the cache anyway
@@ -310,7 +326,7 @@ export function registerCompaction(
 			return messages === event.messages ? undefined : { messages };
 		}),
 	);
-	api.on("session_tree", async (_event, ctx) => {
+	api.bus.on("session_tree", async (_event, ctx) => {
 		tooLarge.reset();
 		restoreCandidates = [];
 		pendingRestore = undefined;
@@ -320,18 +336,16 @@ export function registerCompaction(
 	return requests;
 }
 
-type Preparation = SessionBeforeCompactEvent["preparation"];
-
 /**
  * Files the messages captured for the compaction that just succeeded (`ArchiveCapture`), labelled with what its summary
  * says, and returns the segment written. A summary Octocode did not write has no pointer to the archive in its Recovery
  * section, so the caller sends one. A failure is reported and recorded, never thrown: the compaction itself is done.
  */
 function archiveCompaction(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	archive: ArchiveCapture,
 	event: SessionCompactEvent,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 ): number | undefined {
 	if (!ctx.sessionManager.getSessionFile()) {
 		archive.discard();
@@ -344,7 +358,7 @@ function archiveCompaction(
 			entry,
 			ctx.sessionManager.getSessionId(),
 			summaryLabel(splitSummary(entry.summary).body),
-			summaryMethodOf(entry.details) ?? (entry.fromHook ? "extension" : "pi-default"),
+			summaryMethodOf(entry.details) ?? (entry.fromHook ? "feature" : "pi-default"),
 		);
 		return written?.n;
 	} catch (error) {
@@ -353,37 +367,4 @@ function archiveCompaction(
 		if (ctx.hasUI) notify(ctx.ui, reason, "warning");
 		return undefined;
 	}
-}
-
-/**
- * Adds every path the `file` tool changed in the summarized messages to Octocode's modified-file list (in place). A call's
- * result is found by `toolCallId`; a path counts only when its outcome is `ok`, read from the outcome itself
- * (`appliedFileOutcomes`), so a `patch` call counts as a `queries` call does, and a batch in which one query failed
- * (an error result) still counts the others (a call where every query failed has no details). Adds every file Octocode's local tools read (their verified `details.localReads`,
- * as `seenFiles` reads them; native sessions have no `read` tool) to the read-file list. Those paths are absolute, so one
- * that a call changed under a relative path leaves that list here: `computeFileLists` compares the spellings.
- */
-export function addFileToolOps(
-	preparation: Pick<Preparation, "fileOps" | "messagesToSummarize" | "turnPrefixMessages">,
-	cwd: string,
-): void {
-	const messages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages];
-	const results = new Map<string, Record<string, unknown>>();
-	for (const message of messages) {
-		if (!isRecord(message) || message.role !== "toolResult") continue;
-		if (typeof message.toolCallId === "string") results.set(message.toolCallId, message);
-		if (!message.isError)
-			for (const read of recordedLocalReads(message.details)) preparation.fileOps.read.add(read.file);
-	}
-	for (const message of messages) {
-		for (const part of parts(message)) {
-			if (!isRecord(part) || part.type !== "toolCall" || part.name !== "file") continue;
-			const result = typeof part.id === "string" ? results.get(part.id) : undefined;
-			if (!result) continue;
-			for (const outcome of appliedFileOutcomes(result.details)) preparation.fileOps.edited.add(outcome.path);
-		}
-	}
-	const { read, edited, written } = preparation.fileOps;
-	const changed = new Set([...edited, ...written].map((file) => resolveToolPath(cwd, file)));
-	for (const file of read) if (path.isAbsolute(file) && changed.has(file)) read.delete(file);
 }

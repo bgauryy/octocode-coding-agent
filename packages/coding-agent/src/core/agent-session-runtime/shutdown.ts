@@ -38,7 +38,7 @@ export async function shutdownSession(
 		errors.push(error);
 	}
 	try {
-		await emitSessionShutdownEvent(session.extensionRunner, event);
+		await emitSessionShutdownEvent(session.featureHost, event);
 	} catch (error) {
 		errors.push(error);
 	}

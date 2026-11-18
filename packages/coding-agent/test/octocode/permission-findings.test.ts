@@ -1,6 +1,6 @@
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext, ToolCallEvent, ToolInfo } from "../../src/core/features/index.ts";
+import type { CommandContext, ToolCallEvent, ToolInfo } from "../../src/core/features/index.ts";
 import { READ_ONLY_ENV, SUBAGENT_ENV, PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { toTool } from "../../../mcp/src/client/client/results.ts";
 import { registerMcpHookCaller } from "../../../mcp/src/hook-caller.ts";
@@ -183,7 +183,7 @@ describe("F5, F7, F8: the shell classifiers agree that `octocode` is a program t
 describe("F6: a hook's MCP call and the cloud metadata invariant", () => {
 	it("refuses opening a metadata address in full mode", async () => {
 		const fake = fakeHost();
-		fake.api.events = createEventBus();
+		Object.assign(fake.api, { channels: createEventBus() });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: "full" }, isSubagent: false });
 		permission.start(ctx);
@@ -197,12 +197,12 @@ describe("F6: a hook's MCP call and the cloud metadata invariant", () => {
 			localReads: new Map(),
 		} as unknown as ToolGatesOptions);
 		const reached: string[] = [];
-		registerMcpHookCaller(fake.api.events, async (request) => {
+		registerMcpHookCaller(fake.api.channels, async (request) => {
 			await request.authorize({ toolName: createMcpToolName(request.server, request.tool), input: request.input });
 			reached.push(request.tool);
 			return { content: [] };
 		});
-		const run = boundMcpHookCaller(fake.api.events, ctx)!;
+		const run = boundMcpHookCaller(fake.api.channels, ctx)!;
 		const goto = {
 			plan: { steps: [{ op: "goto", url: "http://169.254.169.254/latest" }] },
 			connection: { port: 9222 },
@@ -229,7 +229,7 @@ describe("F9: /octocode commands the user types", () => {
 			setStatus: vi.fn(),
 			onTerminalInput: () => () => undefined,
 		};
-		const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as ExtensionCommandContext;
+		const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as CommandContext;
 		await createOctocodeCommand(record).handler("--version", ctx);
 		expect(record).toHaveBeenCalledWith("/octocode --version", process.cwd());
 	});

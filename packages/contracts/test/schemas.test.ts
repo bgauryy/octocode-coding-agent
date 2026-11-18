@@ -146,6 +146,12 @@ describe("application schemas", () => {
 			{ type: "session.status", status: "compacting" },
 			{ type: "session.awaiting", awaiting: { kind: "approval", title: "Run bash?" } },
 			{ type: "session.awaiting" },
+			{
+				type: "session.phase",
+				phase: { state: "waiting", agents: 2, queued: 0, bash: 1, external: 0 },
+				jobStartedAt: 5,
+			},
+			{ type: "session.phase", phase: { state: "done" } },
 			{ type: "command.receipt", receipt: { id: "c1", status: "failed", message: "nope" } },
 		];
 		for (const event of events) expect(Value.Check(ApplicationEventSchema, event), event.type).toBe(true);
@@ -157,6 +163,10 @@ describe("application schemas", () => {
 			{ type: "session.status", status: "busy" },
 			{ type: "session.awaiting", awaiting: { kind: "dialog" } },
 			{ type: "session.awaiting", awaiting: { kind: "question", title: "x".repeat(201) } },
+			{ type: "session.phase" },
+			{ type: "session.phase", phase: { state: "sleeping" } },
+			{ type: "session.phase", phase: { state: "waiting", agents: -1, queued: 0, bash: 0, external: 0 } },
+			{ type: "session.phase", phase: { state: "failed" } },
 			{ type: "command.receipt", receipt: { id: "c1", status: "rejected" } },
 			{ type: "queue.changed", steering: "a", followUp: [] },
 			{ type: "tool.started", toolName: "bash" },

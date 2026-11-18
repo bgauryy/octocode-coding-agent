@@ -6,7 +6,7 @@
  * match the faulty runs one to one, and only when the rewritten line passes `interpreterRefusals` from a fresh parse, so
  * a misplaced flag can only leave the line refused. Python, Perl and Ruby have no such form and stay refused.
  */
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import type { ParsedShell } from "../shared/shell-commands.ts";
 import {
 	CONFINE_FLAGS,
@@ -110,15 +110,15 @@ const CONFINED_REPEAT =
  * summarizes the notes away, so it starts the full text over.
  */
 export function registerConfinedNote(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 ): (toolCallId: string | undefined, note?: string, repeat?: string) => void {
 	const rewritten = new Map<string, { note: string; repeat: string }>();
 	const shown = new Set<string>();
-	api.on("session_compact", async () => {
+	api.bus.on("session_compact", async () => {
 		shown.clear();
 		return undefined;
 	});
-	api.on("tool_result", async (event) => {
+	api.bus.on("tool_result", async (event) => {
 		const marked = rewritten.get(event.toolCallId);
 		if (marked === undefined) return undefined;
 		rewritten.delete(event.toolCallId);
@@ -130,7 +130,7 @@ export function registerConfinedNote(
 		};
 	});
 	// A call a later gate refuses never reaches `tool_result`; its result message ends it.
-	api.on("message_end", async (event) => {
+	api.bus.on("message_end", async (event) => {
 		if (event.message.role === "toolResult") rewritten.delete(event.message.toolCallId);
 	});
 	return (toolCallId, note = CONFINED_NOTE, repeat = CONFINED_REPEAT) => {

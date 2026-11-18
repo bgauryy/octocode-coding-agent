@@ -4,7 +4,7 @@ import lockfile from "proper-lockfile";
 import { describe, expect, it, vi } from "vitest";
 import { withFileMutationQueue } from "../../src/core/tools/index.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,7 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { liveStateLines } from "../../src/octocode/compaction/live-state.ts";
 import { writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
+import { asSetup } from "./fake-host.ts";
 
 const SESSION = "session-live";
 let dir: string;
@@ -68,7 +70,7 @@ describe("the live state a compaction summary carries", () => {
 
 	it("says none when the session holds nothing, so an id the summary invented is not confirmed", () => {
 		const [line] = liveStateLines(ctx(), [], 0);
-		expect(line).toContain("this session holds: none.");
+		expect(line).toContain(renderPrompt("notices/recovery/live-items.md"));
 	});
 
 	it("names background work started in this process that has not reported, not earlier or reported work", () => {
@@ -99,13 +101,13 @@ describe("the live state a compaction summary carries", () => {
 
 	it("is appended to the summary as Recovery bullets that splitSummary removes again", async () => {
 		const model = { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 10_000, contextWindow: 200_000 };
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			createUsageRecorder: () => () => {},
 			appendEntry: () => {},
-		} as never;
+		}) as never;
 		const sessionCtx = {
 			model,
 			modelRegistry: {
@@ -146,8 +148,7 @@ describe("the live state a compaction summary carries", () => {
 		);
 		const { summary } = out!.compaction!;
 		const recovery = summary.slice(summary.indexOf("## Recovery"));
-		expect(recovery).toContain("- Live state, read from the backlog when this summary was written.");
-		expect(recovery).toContain("Backlog items this session holds: none.");
+		expect(recovery).toContain(renderPrompt("notices/recovery/live-items.md"));
 		const split = splitSummary(summary);
 		expect(split.body).toBe("## Goal\nAdded B7 and B6");
 		expect(split.messages).toEqual(["go"]);

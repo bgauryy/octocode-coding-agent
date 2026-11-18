@@ -33,7 +33,37 @@ const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// Sign in with ChatGPT: the subscription's shared usage limit, which resets
 	// after hours rather than seconds.
 	"subscription_sharing_usage_limit_exceeded",
+	// Sign in with ChatGPT on a ChatGPT Business plan: a usage limit set by the
+	// workspace admin. Only the admin can raise it.
+	"subscription_sharing_workplace_individual_usage_limit_exceeded",
+
+	// Zhipu/Z.ai (open.bigmodel.cn) error code 1308: the plan's usage limit is
+	// reached, sent as HTTP 429. It resets after hours, not seconds.
+	'"code"\\s*:\\s*"?1308(?![0-9])',
 ]);
+
+/**
+ * Bare Node socket error codes, e.g. "read ECONNRESET", "write EPIPE" or "connect ETIMEDOUT 1.2.3.4:443", when a
+ * transport reports only the code; not part of a longer identifier such as a tool name.
+ */
+const SOCKET_ERROR_CODES = "(?<![A-Za-z0-9_])(?:ECONNRESET|ECONNABORTED|ECONNREFUSED|ETIMEDOUT|EPIPE)(?![A-Za-z0-9_])";
+
+/** Dropped connections and streams that gateways and proxies relay as text of their own. */
+const RELAYED_DROPS = [
+	// A mid-stream drop relayed as an Anthropic-style `api_error` event, e.g.
+	// {"type":"error","error":{"type":"api_error","message":"Connection closed."}}.
+	"connection.?closed",
+	"connection reset by peer",
+	// A proxy around the Codex CLI relaying its mid-stream disconnect, e.g.
+	// "stream disconnected before completion: stream closed before response.completed".
+	"stream disconnected before completion",
+	// A gateway relaying a dropped upstream Anthropic stream, e.g.
+	// "Claude Code's stream from Anthropic was cut short after the reply had begun".
+	"cut short after the reply had begun",
+	// The Codex 60-minute WebSocket lifetime limit, as the code `websocket_connection_limit_reached` or the text
+	// "Responses websocket connection limit reached". A retry opens a fresh connection.
+	"websocket.?connection.?limit.?reached",
+];
 
 /**
  * Whether provider error text names an account, subscription or billing limit that resets after hours rather than
@@ -120,7 +150,8 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"connection.?refused",
 	"connection.?lost",
 	"connection.?reset",
-	"ECONNRESET",
+	SOCKET_ERROR_CODES,
+	...RELAYED_DROPS,
 	"other side closed",
 	"fetch failed",
 	// node-fetch system errors, e.g. the Google ADC OAuth token refresh used by
@@ -193,7 +224,8 @@ const CAPACITY_OR_TRANSPORT_PATTERN = buildProviderErrorPattern([
 
 	// Connection resets, and sockets or websockets closed under the request.
 	"connection.?reset",
-	"ECONNRESET",
+	SOCKET_ERROR_CODES,
+	...RELAYED_DROPS,
 	"connection.?lost",
 	"reset before headers",
 	"other side closed",

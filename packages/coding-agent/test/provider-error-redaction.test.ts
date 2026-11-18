@@ -14,6 +14,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { clearSecretValues } from "@octocodeai/octocode-common/sanitize";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 /** Opaque on purpose: no pattern recognizes it, only the registry of resolved credentials does. */
 const OPAQUE_KEY = "synthetic0123456789abcdef0123456789";
@@ -73,7 +74,12 @@ describe("a provider error in a real session", () => {
 			agentDir: tempDir,
 			modelRuntime,
 			model,
-			resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true },
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
 		};
 		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 			const services = await createAgentSessionServices({ ...runtimeOptions, cwd });
@@ -88,7 +94,7 @@ describe("a provider error in a real session", () => {
 			agentDir: tempDir,
 			sessionManager: SessionManager.create(tempDir),
 		});
-		await host.session.bindExtensions({});
+		await host.session.bindFeatures({});
 		cleanups.push(async () => {
 			await host.dispose();
 			faux.unregister();

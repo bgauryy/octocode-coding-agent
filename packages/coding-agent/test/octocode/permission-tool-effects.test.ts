@@ -29,7 +29,7 @@ it("a tool that declares a write effect and its paths is a write to those paths 
 	const fake = fakeHost();
 	const api = withNativePermissionOwners(fake.api);
 	expect(isNativeTool(stamp.name)).toBe(false);
-	api.registerTool(stamp);
+	api.tools.register(stamp);
 	expect(fake.tools.has(stamp.name)).toBe(true);
 	expect(isNativeTool(stamp.name)).toBe(true);
 

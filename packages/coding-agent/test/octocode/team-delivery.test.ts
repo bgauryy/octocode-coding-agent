@@ -9,7 +9,7 @@ import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
 import { leaseAge, resolveTarget, sessionTree } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { Delivery as UiDelivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -177,7 +177,7 @@ describe("delivery acknowledgement", () => {
 		const handoff = new Promise<void>((_resolve, reject) => {
 			rejectHandoff = reject;
 		});
-		const hostSend = vi.spyOn(fake.api, "sendMessage").mockReturnValueOnce(handoff);
+		const hostSend = vi.spyOn(fake.api.session, "sendMessage").mockReturnValueOnce(handoff);
 		UiDelivery.install(fake.api);
 		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db });
 		registerCollab(fake.api, team);
@@ -208,7 +208,7 @@ describe("delivery acknowledgement", () => {
 		const receiver = agent(db, cwd);
 		sender.team.join();
 		receiver.team.join();
-		const send = vi.spyOn(receiver.api, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		const send = vi.spyOn(receiver.api.session, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
 		const { id } = (await sender.team.send(receiver.team.id, "please answer", { replyRequired: true })) as {
 			id: number;
 		};
@@ -232,8 +232,8 @@ describe("delivery acknowledgement", () => {
 		const deferred = new Promise<void>((_, fail) => {
 			reject = fail;
 		});
-		const original = receiver.api.sendMessage.bind(receiver.api);
-		const send = vi.spyOn(receiver.api, "sendMessage").mockImplementationOnce((message, options) => {
+		const original = receiver.api.session.sendMessage.bind(receiver.api);
+		const send = vi.spyOn(receiver.api.session, "sendMessage").mockImplementationOnce((message, options) => {
 			original(message, options);
 			return deferred;
 		});
@@ -471,7 +471,7 @@ describe("dead letters", () => {
 		recipient.team.join();
 		const store = open(cwd, db);
 		const { id } = (await sender.team.send(recipient.team.id, "unread")) as { id: number };
-		const send = vi.spyOn(sender.api, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
+		const send = vi.spyOn(sender.api.session, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
 		recipient.team.leave();
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1), { timeout: 8_000 });
 		expect(store.deadLetters(sender.team.id!).map((letter) => letter.id)).toEqual([id]);

@@ -40,7 +40,8 @@ export async function recordShellMutation(
 /**
  * How a `bash` call is ordered among the calls of one assistant message: a command the shell guard's parse shows as
  * changing something (a file anywhere, a ref, a database, or an effect it cannot read) runs alone, after every earlier
- * call and before every later one, so `git add` ends before the `git commit` beside it starts. A command the parse
+ * call and before every later one, so `git add` ends before the `git commit` beside it starts; so does one that may run a
+ * program it does not name (`PATH=/tmp/x cat f`). A command the parse
  * shows no change for runs alongside the others. Synchronous: before the parser has loaded, a command reads as
  * unparsed and runs alone, the order that cannot race.
  */
@@ -52,6 +53,7 @@ export function bashConcurrency(args: Record<string, unknown>): "shared" | "excl
 		effect.uncertain ||
 		effect.unparsed ||
 		effect.opaque.length > 0 ||
+		effect.programSwap !== undefined ||
 		effect.writes.length > 0 ||
 		effect.directories.length > 0 ||
 		effect.areas.length > 0 ||

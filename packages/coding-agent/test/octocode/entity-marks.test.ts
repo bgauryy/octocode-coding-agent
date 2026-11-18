@@ -70,7 +70,7 @@ describe("entity marks", () => {
 		expect(column(long, "off")).toBe(column(header, "API"));
 	});
 
-	it("roots the panel at the main agent and marks subagent rows from 120 columns, never on narrower rows", () => {
+	it("roots the panel at the main agent and never marks subagent rows: the tree says child", () => {
 		const team = [
 			member("main-aaaaaa", { role: "main", status: "idle" }),
 			member("busy-aaaa", { parentId: "main-aaaaaa" }),
@@ -78,8 +78,8 @@ describe("entity marks", () => {
 		const wide = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		expect(wide[0].startsWith(` ${ENTITY.main} main-aaaaaa`)).toBe(true);
 		expect(wide[0]).not.toMatch(/main-aaaaaa +main\b/);
-		expect(wide[1]).toContain(`${ENTITY.subagent} busy-aaaa`);
-		for (const width of [119, 80, 40]) {
+		expect(wide[1]).toMatch(/^ └ ⠋ busy-aaaa +· /);
+		for (const width of [200, 120, 119, 80, 40]) {
 			const lines = widgetLines(team, "main-aaaaaa", NOW, theme, width);
 			expect(lines[0]).toContain(ENTITY.main);
 			expect(lines.slice(1).join("\n")).not.toContain(ENTITY.subagent);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../src/core/agent-session.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -9,6 +9,8 @@ import { registerActivity } from "../../src/octocode/ui/activity.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 const sessions: AgentSession[] = [];
 afterEach(() => {
@@ -20,14 +22,15 @@ async function sessionWithActivity(onChange: (line: string | undefined) => void)
 	const cwd = tmp("octocode-dialog-dispose-");
 	const agentDir = tmp("octocode-dialog-dispose-agent-");
 	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
-	const factory: ExtensionFactory = (api) => {
+	const factory: FeatureRegister = (api) => {
 		registerActivity(api, { onChange, workingLine: true });
 	};
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "activity", factory }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "activity", factory }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -41,7 +44,7 @@ async function sessionWithActivity(onChange: (line: string | undefined) => void)
 		sessionManager: SessionManager.inMemory(cwd),
 	});
 	sessions.push(session);
-	await session.bindExtensions({
+	await session.bindFeatures({
 		uiContext: fakeCtx({ cwd }).ui,
 		mode: "tui",
 		shutdownHandler: () => undefined,

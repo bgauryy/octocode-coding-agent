@@ -7,6 +7,8 @@ import { randomUUID, createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import assert from "node:assert/strict";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 const USAGE = `Optional ACP reliability check for the current coding-agent source.
   yarn node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --fixture [--out DIR]
@@ -125,7 +127,7 @@ const report = {
 			"src/core/agent-session/create-session.ts",
 			"scripts/source-resolver.ts",
 			"src/octocode/index.ts",
-			"src/octocode/agent-tool.ts",
+			"src/octocode/native/tools/agent/tool.ts",
 			"../acp/src/client/client.ts",
 			"src/octocode/external/manager.ts",
 			"src/octocode/external/register.ts",
@@ -151,7 +153,7 @@ const interrupt = (signal) => {
 	report.interrupted = signal;
 	process.exitCode = 1;
 	if (session)
-		void session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }).catch((error) => {
+		void session.featureHost.emit({ type: "session_shutdown", reason: "quit" }).catch((error) => {
 			report.shutdownError = error.message;
 		});
 };
@@ -162,7 +164,7 @@ const faux = createFauxCore({
 	models: [{ id: "scripted", contextWindow: 200000, maxTokens: 4096 }],
 });
 const provider = (api) =>
-	api.registerProvider("reliability-controller", {
+	api.providers.register("reliability-controller", {
 		name: "Scripted controller",
 		api: faux.api,
 		baseUrl: "http://127.0.0.1:0",
@@ -380,7 +382,8 @@ try {
 		cwd: workspace,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "scripted-controller", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "scripted-controller", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -398,7 +401,7 @@ try {
 	session.subscribe((event) => {
 		if (event.type === "tool_execution_start" || event.type === "tool_execution_end") events.push(event);
 	});
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined });
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined });
 	await session.setModel(session.modelRuntime.getModel("reliability-controller", "scripted"));
 	instance = listInstances(apiDir())[0];
 	assert.ok(instance && fs.realpathSync(instance.cwd) === fs.realpathSync(workspace));
@@ -592,7 +595,7 @@ try {
 			await stopTree(record.proxyPid);
 	}
 	for (const child of cliChildren) child.kill("SIGTERM");
-	if (session) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+	if (session) await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 	session?.dispose();
 	for (const trial of report.trials)
 		if (trial.state === "submitted") {

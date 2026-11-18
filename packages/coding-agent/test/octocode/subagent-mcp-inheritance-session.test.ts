@@ -5,11 +5,13 @@ import type { AddressInfo } from "node:net";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type JsonObject } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -92,17 +94,18 @@ async function fixture(registered = false, configured = false) {
 		cwd,
 		agentDir,
 		settingsManager,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		nativeFeatures: nativeFeatureSet(),
+		disabledFeatures: ["mcp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
-		extensionFactories: [
-			{ name: "mcp", factory: createMcpExtension() },
+		features: testFeatures([
+			{ name: "mcp", factory: createMcpFeature() },
 			{
 				name: "parent-fixture",
 				factory: (api) => {
-					if (registered) api.registerMcpServer("extension-echo", { command: process.execPath, args: [echoServer] });
-					api.registerProvider("faux-parent", {
+					if (registered) api.mcpServers.register("extension-echo", { command: process.execPath, args: [echoServer] });
+					api.providers.register("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -112,7 +115,7 @@ async function fixture(registered = false, configured = false) {
 					} as never);
 				},
 			},
-		],
+		]),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
@@ -123,7 +126,7 @@ async function fixture(registered = false, configured = false) {
 		sessionManager: SessionManager.create(cwd, path.join(root, "parent-sessions")),
 	});
 	const confirmations: string[] = [];
-	await session.bindExtensions({
+	await session.bindFeatures({
 		mode: "json",
 		// The user confirms the `mcp` tool's add.
 		uiContext: {
@@ -164,7 +167,7 @@ async function fixture(registered = false, configured = false) {
 		delegate,
 		close: async () => {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+			await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 			server.closeAllConnections();
 			await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -1,6 +1,6 @@
 import { agentTaskDisplay } from "./display.ts";
 import type { RunDetails } from "./run-types.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { type Subcommand, notify } from "../shared/commands.ts";
 import { timedTool } from "../render/rows.ts";
@@ -38,7 +38,7 @@ import { registerAgentMessageRenderer, renderAgentCall, renderAgentResult } from
 import { registerIdleItems } from "./idle-items.ts";
 import { sendGraphNotice } from "../wake/senders.ts";
 import { startNotices } from "./start-notices.ts";
-import { agentToolSpec } from "./agent-tool.ts";
+import { agentToolSpec } from "../native/tools/agent/spec.ts";
 import type { Runners } from "./runner-port.ts";
 import { FORK_NOTE_TYPE, forkNote, resumedChildren } from "./children.ts";
 import { type MergeResult, mergeChild } from "./merge-child.ts";
@@ -48,7 +48,7 @@ import { startBackground } from "./run-execution.ts";
 import { spawnAgent, type SpawnEnv } from "./spawn.ts";
 import { recordRun, runDetails, tracker } from "./tracking.ts";
 
-/** What the rest of the extension may do with the subagents this session started. */
+/** What the rest of the feature may do with the subagents this session started. */
 export interface AgentControl {
 	/** Stops a background subagent this session started; the refusal text when there is none by that id. */
 	stop(id: string, by: string): string | undefined;
@@ -57,7 +57,7 @@ export interface AgentControl {
 	/** Resolves once the next background subagent has finished and sent its report (`session-lifecycle.ts` retries a failed run then). */
 	nextReport(): Promise<unknown>;
 	/** Lands an isolated child's saved ref in this tree (`coordinate merge`). */
-	merge(id: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<MergeResult>;
+	merge(id: string, ctx: FeatureContext, signal?: AbortSignal): Promise<MergeResult>;
 	/** The request budgets of the children running now (`coordinate` `grant` and `list`). */
 	budgets: RunningBudgets;
 	/** The children queued behind prerequisites, one row each: what they wait on, or why they are held. */
@@ -66,6 +66,8 @@ export interface AgentControl {
 	background(): number;
 	/** Names of the subagents running now, foreground and background (a narrowing permission change stops them). */
 	running(): string[];
+	/** The backlog item each running child works on, by child name (`done` waits for them). */
+	serving(): Map<string, string>;
 	/** Stop background agents and wait for their reports before shutdown. */
 	stopAll(reason?: string): Promise<void>;
 	/** Follow-up windows any session holds open for finished children (they live in session folders, not in memory). */
@@ -77,7 +79,7 @@ export interface AgentControl {
 /** `coordinate merge` for a registration that reaches the agent tool later (`index.ts` builds the team tools first). */
 export const mergeThrough =
 	(agents: () => AgentControl | undefined) =>
-	async (id: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<MergeResult> =>
+	async (id: string, ctx: FeatureContext, signal?: AbortSignal): Promise<MergeResult> =>
 		(await agents()?.merge(id, ctx, signal)) ?? { ok: false, text: "Agent controls are unavailable." };
 
 /** `coordinate` `grant` and `list` for a registration that reaches the agent tool later, like `mergeThrough`. */
@@ -100,24 +102,22 @@ interface AgentToolOptions {
 	permission: Permission;
 	/** Why each refused profile file was refused, by profile name, so an unknown profile's error names the cause. */
 	refused?: () => ReadonlyMap<string, string>;
-	/** Where the tool is declared (the `agent` tool's mode collector); `api.registerTool` by default. */
-	registerTool?: ExtensionAPI["registerTool"];
+	/** Where the tool is declared (the `agent` tool's mode collector); `api.tools.register` by default. */
+	registerTool?: FeatureSetup["tools"]["register"];
 	/** Vendor CLIs that run `agent` tasks over ACP. */
 	runners?: Runners;
 }
 
-export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions): AgentControl {
+export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions): AgentControl {
 	const { profiles: getProfiles, team, permission, refused: getRefused, runners } = options;
-	const registerTool = options.registerTool ?? ((tool) => api.registerTool(tool));
+	const registerTool = options.registerTool ?? ((tool) => api.tools.register(tool));
 	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
 	const panel = new AgentsView(team, runningWorkOf(api));
 	const budgets = new RunningBudgets();
-	// The current session, for graph wakes and the graph watch (`graph-wake.ts`, `graph-watch.ts`).
-	let current: ExtensionContext | undefined;
+	let current: FeatureContext | undefined; // The current session, for graph wakes and the graph watch.
 	let backlog: Backlog | undefined;
-	// The backlog item each child works on, by child id (`AgentRuns.items`).
-	const items = new Map<string, string>();
+	const items = new Map<string, string>(); // The backlog item each child works on, by child id (`AgentRuns.items`).
 	const runs: AgentRuns = {
 		api,
 		team,
@@ -156,15 +156,15 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 				return !item ? "missing" : item.state !== "done" ? "open" : item.closed ? "closed" : "done";
 			},
 			lifecycle: (listener) =>
-				api.events.on(AGENT_LIFECYCLE_CHANNEL, (value) => listener(value as AgentLifecycleNotice)),
+				api.channels.on(AGENT_LIFECYCLE_CHANNEL, (value) => listener(value as AgentLifecycleNotice)),
 			follow: (poke) => follower.subscribe(poke),
 		}),
-		(notice) => api.events.emit(AGENT_CHAIN_CHANNEL, notice),
+		(notice) => api.channels.emit(AGENT_CHAIN_CHANNEL, notice),
 	);
 	runs.chain.watch(() => panel.setQueued(runs.chain!.work(runs.items)));
 	// The coordinator's own backlog write completed an item: queued children waiting on it start now, and its result names
 	// no ready item they will start (`backlog/ended-signal.ts`).
-	api.events.on(BACKLOG_ENDED_CHANNEL, (value) => {
+	api.channels.on(BACKLOG_ENDED_CHANNEL, (value) => {
 		for (const ref of runs.chain?.items() ?? []) (value as BacklogEnded).queued.add(ref);
 		runs.chain?.gate.refresh();
 	});
@@ -176,19 +176,18 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		subscribe: (poke) => follower.subscribe(poke),
 	});
 	const { background } = runs;
-	api.on("tool_result", async (event, ctx) => {
+	api.bus.on("tool_result", async (event, ctx) => {
 		if (!event.isError && background.size > 0) runs.read.observe(event.toolName, event.input, ctx.cwd, event.details);
 		return undefined;
 	});
 	// When this session asked the user: an answer the parent gives right after one may be the user's.
 	const questions = new UserQuestions();
-	// Live agent and goal pairs the launch result already named (`team/overlap.ts`): each is named once.
-	const overlapWarned = new Set<string>();
-	api.on("tool_execution_start", async (event) => {
+	const overlapWarned = new Set<string>(); // Live agent and goal pairs the launch result named (`team/overlap.ts`): once each.
+	api.bus.on("tool_execution_start", async (event) => {
 		if (event.toolName === "askUser") questions.begin(event.toolCallId);
 		return undefined;
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		if (event.toolName === "askUser") questions.end(event.toolCallId);
 		return undefined;
 	});
@@ -269,9 +268,9 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		await stopRuns(reason === "reload" ? "the /reload" : "session shutdown");
 	};
 	/** What this session offers a child: its permission state, its UI when a person can be asked, and its team's signature for the user's messages. */
-	const relayHost = (ctx: Pick<ExtensionContext, "hasUI" | "ui">): RelayHost => ({
+	const relayHost = (ctx: Pick<FeatureContext, "hasUI" | "ui">): RelayHost => ({
 		permission,
-		exposure: (child, exposed) => api.events.emit(CHILD_EXPOSURE_EVENT, { child, exposed } satisfies ChildExposure),
+		exposure: (child, exposed) => api.channels.emit(CHILD_EXPOSURE_EVENT, { child, exposed } satisfies ChildExposure),
 		vouch: (id, secret) => team.vouch(id, secret),
 		awaitingApproval: (id, waiting) => team.awaitingApproval(id, waiting),
 		tell: (notice) => runs.graph?.tell(notice),
@@ -283,24 +282,24 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		cancelLaunches();
 		void stopRuns(PERMISSION_STOP);
 	});
-	api.on("turn_end", async (event) => {
+	api.bus.on("turn_end", async (event) => {
 		runs.groups.nextStep();
 		if (event.toolResults.length > 0) runs.reports.stepEnded();
 		return undefined;
 	});
 	registerIdleItems(api, team, runs, lingering);
-	api.on("before_agent_start", async () => {
+	api.bus.on("before_agent_start", async () => {
 		runs.graph?.turnStarted();
 		runs.groups.nextStep();
 		return undefined;
 	});
-	api.on("agent_settled", async () => {
+	api.bus.on("agent_settled", async () => {
 		runs.reports.retryExhausted();
 		// What the coordinator planned this turn: the items that wait, followed until an outside change ends a prerequisite.
 		watch.sync();
 		await late.take();
 	});
-	api.on("session_shutdown", async (event, ctx) => {
+	api.bus.on("session_shutdown", async (event, ctx) => {
 		cancelLaunches();
 		late.stop();
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
@@ -316,10 +315,10 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		panel.stop(ctx);
 	});
 	// Worktrees left by an Octocode process that died: their changes are saved to the agent's ref, then the worktree goes (kept when saving fails).
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
 		const tell = (content: string) =>
-			void api.sendMessage(
+			void api.session.sendMessage(
 				{ customType: FORK_NOTE_TYPE, content, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -393,6 +392,7 @@ export function registerAgentTool(api: ExtensionAPI, options: AgentToolOptions):
 		queued: () => runs.chain?.rows() ?? [],
 		background: () => background.size,
 		running: () => [...runs.foreground.keys(), ...background.keys()],
+		serving: () => new Map([...runs.items].filter(([id]) => runs.running.has(id))),
 		stopAll,
 		parked: Lingering.parkedChildren,
 		command: agentsCommand(team, background, runs.foreground, questions, (id) => budgets.usage(id)),

@@ -1,13 +1,19 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { cancelledText, notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sessionFolder } from "../shared/home.ts";
+import { confirmAction } from "../shared/page.ts";
 import { withDialog } from "../shared/locks.ts";
 import { plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";
+
+/** The named answers of the rewind prompts: the safe one first, never Yes/No. */
+const REWIND = "Rewind";
+const KEEP_FILES = "Keep current files";
+const RESTORE_FILES = "Restore files";
 
 /*
  * Checkpoints wired to the session (the store is checkpoint.ts): turns, `/rewind`, anchor labels, and the
@@ -24,7 +30,7 @@ const checkpointDir = (id: string): string => sessionFolder("checkpoints", id);
 /** The parent session file of a fork: the fork event's, else the session header's (`octocode --fork <file>` starts as 'startup'). */
 function parentSessionFile(
 	event: { reason?: string; previousSessionFile?: string } | undefined,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 ): string | undefined {
 	if (event?.reason === "fork" && event.previousSessionFile) return event.previousSessionFile;
 	return ctx.sessionManager.getHeader?.()?.parentSession || undefined;
@@ -48,7 +54,7 @@ function describe(result: RewindResult, cwd: string, turns: number): string {
 }
 
 /** The entry a tree navigation to `targetId` lands on: Octocode puts a user or custom message back in the editor and stops at its parent. */
-function treeLeaf(ctx: ExtensionContext, targetId: string): string | null {
+function treeLeaf(ctx: FeatureContext, targetId: string): string | null {
 	const target = ctx.sessionManager.getEntry(targetId);
 	if (!target) return targetId;
 	const editable = (target.type === "message" && target.message.role === "user") || target.type === "custom_message";
@@ -60,7 +66,7 @@ function treeLeaf(ctx: ExtensionContext, targetId: string): string | null {
  * offer before a fork or a tree navigation leaves turns that changed files.
  */
 export function registerCheckpoints(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	checkpoints: Checkpoints,
 	forget: (file: string) => void,
 	commands: Subcommands,
@@ -69,14 +75,14 @@ export function registerCheckpoints(
 	// The first run opens one even without a prompt event; a prompt typed mid-run (a steer or follow-up) opens its turn at
 	// the next run, so edits in flight settle in the turn they were captured in.
 	let [begun, pending] = [false, false];
-	let currentContext: ExtensionContext | undefined;
+	let currentContext: FeatureContext | undefined;
 	const begin = () => {
 		checkpoints.beginTurn();
 		begun = true;
 		pending = false;
 		return undefined;
 	};
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		currentContext = ctx;
 		[begun, pending] = [false, false];
 		const id = ctx.sessionManager.getSessionId();
@@ -98,22 +104,21 @@ export function registerCheckpoints(
 		}
 		checkpoints.open(dir);
 	});
-	const branchIds = (ctx: ExtensionContext, from?: string) =>
-		ctx.sessionManager.getBranch(from).map((entry) => entry.id);
-	api.on("input", async (event) => {
-		if (event.source !== "extension") {
+	const branchIds = (ctx: FeatureContext, from?: string) => ctx.sessionManager.getBranch(from).map((entry) => entry.id);
+	api.bus.on("input", async (event) => {
+		if (event.source !== "feature") {
 			if (event.streamingBehavior === undefined) begin();
 			else pending = true;
 		}
 		return undefined;
 	});
-	api.on("agent_start", async () => {
+	api.bus.on("agent_start", async () => {
 		if (!begun || pending) begin();
 		return undefined;
 	});
 
 	// /tree and /fork show which turns changed files: each anchor (the turn's user message) is labelled "✎ N files".
-	const relabel = (ctx: ExtensionContext, anchors: Iterable<string>) => {
+	const relabel = (ctx: FeatureContext, anchors: Iterable<string>) => {
 		const files = checkpoints.filesByAnchor();
 		for (const anchor of new Set(anchors)) {
 			if (!ctx.sessionManager.getEntry(anchor)) continue;
@@ -121,15 +126,17 @@ export function registerCheckpoints(
 			const want = count ? `${CHANGED_LABEL_MARK} ${plural(count, "file")}` : undefined;
 			const have = ctx.sessionManager.getLabel(anchor);
 			if (have === want || (have !== undefined && !CHANGED_LABEL.test(have))) continue;
-			api.setLabel(anchor, want);
+			api.session.setLabel(anchor, want);
 		}
 	};
 	// Anchors whose checkpoints were pruned since keep an Octocode label that no longer holds: relabel those too.
-	const labelled = (ctx: ExtensionContext) =>
+	const labelled = (ctx: FeatureContext) =>
 		branchIds(ctx).filter((id) => CHANGED_LABEL.test(ctx.sessionManager.getLabel(id) ?? ""));
-	api.on("agent_end", async (_event, ctx) => relabel(ctx, [...checkpoints.filesByAnchor().keys(), ...labelled(ctx)]));
+	api.bus.on("agent_end", async (_event, ctx) =>
+		relabel(ctx, [...checkpoints.filesByAnchor().keys(), ...labelled(ctx)]),
+	);
 
-	const apply = async (turns: number[], ctx: ExtensionContext): Promise<RewindResult> => {
+	const apply = async (turns: number[], ctx: FeatureContext): Promise<RewindResult> => {
 		const anchors = checkpoints
 			.list()
 			.filter((entry) => turns.includes(entry.turn) && entry.anchor !== undefined)
@@ -176,19 +183,20 @@ export function registerCheckpoints(
 			// Ask first when someone can answer.
 			if (
 				ctx.hasUI &&
-				!(await ctx.ui.confirm(
-					"Rewind file changes?",
-					`Restore the files the last ${turns.length === 1 ? "turn" : `${turns.length} turns`} on this branch changed to their earlier content. Files changed since are left alone. This cannot be undone.`,
+				!(await confirmAction(
+					(title, options) => ctx.ui.select(title, options),
+					`Rewind file changes?\nRestore the files the last ${turns.length === 1 ? "turn" : `${turns.length} turns`} on this branch changed to their earlier content. Files changed since are left alone. This cannot be undone.`,
+					[REWIND],
 				))
 			)
 				return say(ctx, cancelledText("rewound"));
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {
-				void api.sendMessage(
+				void api.session.sendMessage(
 					{
 						customType: "octocode-rewind",
-						content: renderInstruction("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),
+						content: renderPrompt("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),
 						display: false,
 					},
 					{ triggerTurn: false },
@@ -200,7 +208,7 @@ export function registerCheckpoints(
 	// The restore is asked before a fork or tree move but done only once the move happened: the move can still be
 	// cancelled (Esc during the branch summary, a fork Octocode refuses), and the files must then stay as they are.
 	let chosen: number[] | undefined;
-	const offer = async (turns: number[], ctx: ExtensionContext, signal?: AbortSignal): Promise<void> => {
+	const offer = async (turns: number[], ctx: FeatureContext, signal?: AbortSignal): Promise<void> => {
 		chosen = undefined;
 		if (turns.length === 0) return;
 		const files = new Set(
@@ -209,37 +217,36 @@ export function registerCheckpoints(
 				.filter((entry) => turns.includes(entry.turn))
 				.map((entry) => entry.path),
 		).size;
-		const yes = "Yes, restore files to that point";
 		const title = `The agent changed ${files} file${files === 1 ? "" : "s"} after this point. Restore them?`;
 		const choice = await withDialog(
-			() => ctx.ui.select(title, ["No, keep current files", yes], signal ? { signal } : undefined),
+			() => ctx.ui.select(title, [KEEP_FILES, RESTORE_FILES], signal ? { signal } : undefined),
 			signal,
 		);
-		if (choice === yes) chosen = turns;
+		if (choice === RESTORE_FILES) chosen = turns;
 	};
-	const restoreChosen = async (ctx: ExtensionContext) => {
+	const restoreChosen = async (ctx: FeatureContext) => {
 		const turns = chosen;
 		chosen = undefined;
 		if (turns) await apply(turns, ctx);
 	};
 
-	api.on("session_before_fork", async (event, ctx) => {
+	api.bus.on("session_before_fork", async (event, ctx) => {
 		if (ctx.hasUI) await offer(checkpoints.turnsFrom(branchIds(ctx), event.entryId), ctx);
 		return undefined;
 	});
 	// Octocode tears the parent session down only once the fork is certain; its checkpoints are still open here.
-	api.on("session_shutdown", async (event, ctx) => {
+	api.bus.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "fork") await restoreChosen(ctx);
 		else chosen = undefined;
 	});
 
 	// /tree moves the leaf in place: turns on the current branch that the new position does not include are abandoned.
-	api.on("session_before_tree", async (event, ctx) => {
+	api.bus.on("session_before_tree", async (event, ctx) => {
 		if (!ctx.hasUI) return undefined;
 		const leaf = treeLeaf(ctx, event.preparation.targetId);
 		const keep = new Set(leaf === null ? [] : branchIds(ctx, leaf));
 		await offer(checkpoints.turnsLeaving(branchIds(ctx), keep), ctx, event.signal);
 		return undefined;
 	});
-	api.on("session_tree", async (_event, ctx) => restoreChosen(ctx));
+	api.bus.on("session_tree", async (_event, ctx) => restoreChosen(ctx));
 }

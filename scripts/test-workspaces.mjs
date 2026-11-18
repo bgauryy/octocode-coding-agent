@@ -9,6 +9,9 @@ const repoRoot = process.cwd();
 const rootName = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).name;
 if (rootName !== "@octocodeai/octocode-monorepo") throw new Error("Run this script from the repository root");
 
+/** Agent-behavior suites run with `yarn test:agentic`, not with the code and UI tests. */
+const AGENTIC = new Set(["@octocodeai/octocode-agentic-testkit"]);
+
 const discovery = await runTestCommand(["workspaces", "list", "--json"], { captureOutput: true });
 if (discovery.code !== 0) {
 	if (discovery.signal) console.error("Cancelled:", discovery.signal);
@@ -19,7 +22,7 @@ const workspaces = discovery.output
 	.split("\n")
 	.map((line) => JSON.parse(line))
 	.filter(({ name, location }) => {
-		if (name === rootName) return false;
+		if (name === rootName || AGENTIC.has(name)) return false;
 		return Boolean(JSON.parse(readFileSync(join(repoRoot, location, "package.json"), "utf8")).scripts?.test);
 	});
 

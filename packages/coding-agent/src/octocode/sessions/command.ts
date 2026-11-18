@@ -1,7 +1,7 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
 import { liveProcess, sameProcessAsync } from "../shared/process.ts";
@@ -102,7 +102,7 @@ function details(row: ListedSession, current: string | undefined): string {
 }
 
 /** This session as Octocode would list it: it has no file before its first reply (or ever, with --no-session). */
-function currentInfo(ctx: ExtensionCommandContext): SessionInfo {
+function currentInfo(ctx: CommandContext): SessionInfo {
 	const manager = ctx.sessionManager;
 	const messages = manager.getEntries().filter((entry) => entry.type === "message");
 	const first = messages.find((entry) => entry.message.role === "user");
@@ -122,7 +122,7 @@ function currentInfo(ctx: ExtensionCommandContext): SessionInfo {
 
 /** Octocode's sessions, newest first, matching `query` (name, messages, id, branch), with their extras. */
 async function listSessions(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	index: SessionIndex | undefined,
 	all: boolean,
 	query: string,
@@ -213,8 +213,8 @@ function pickerExtrasOf(index: SessionIndex | undefined, ids: readonly string[])
 
 /** Open the host's session picker (interactive mode): Enter resumes, ctrl+r renames, Ctrl+X marks rows and Ctrl+D deletes the marked rows (or the selected one) after one confirmation, ctrl+o lists the details and forget actions. */
 async function pick(
-	pickSession: NonNullable<ExtensionCommandContext["ui"]["pickSession"]>,
-	ctx: ExtensionCommandContext,
+	pickSession: NonNullable<CommandContext["ui"]["pickSession"]>,
+	ctx: CommandContext,
 	index: SessionIndex | undefined,
 	start: { all: boolean; query: string; current: string | undefined; only?: ReadonlySet<string> },
 ): Promise<void> {
@@ -241,7 +241,7 @@ async function pick(
 
 /** `/resume [all|<query>]`: the session picker, or a text list without a UI. */
 export function registerSessionsCommand(
-	_api: ExtensionAPI,
+	_api: FeatureSetup,
 	commands: Subcommands,
 	options: SessionsCommandOptions,
 ): void {
@@ -297,7 +297,7 @@ export function registerSessionsCommand(
 	});
 }
 
-async function resume(ctx: ExtensionCommandContext, row: ListedSession, current: string | undefined): Promise<void> {
+async function resume(ctx: CommandContext, row: ListedSession, current: string | undefined): Promise<void> {
 	if (row.info.id === current) return notify(ctx.ui, "That is the current session.", "info");
 	if (
 		(await sameProcessAsync(row.extra?.pid, row.extra?.pid_started)) &&
@@ -333,7 +333,7 @@ function forgettableDirs(row: ListedSession, index: SessionIndex): string[] | un
  * database mirror stay, so the session still lists and can be resumed; `removeSessions` is the path that deletes a session.
  */
 async function forget(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	index: SessionIndex | undefined,
 	row: ListedSession,
 	current: string | undefined,

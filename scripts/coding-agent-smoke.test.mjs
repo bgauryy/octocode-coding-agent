@@ -75,14 +75,14 @@ export function main() {}
 			"dist/bundle/mcp-oauth.js": "export class McpOAuthProvider {}\n",
 			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
 			"dist/bundle/octocode-api.js": 'console.log("octocode-api list");\n',
-			"dist/octocode/native-skills/octocode-context-optimization/SKILL.md":
+			"dist/octocode/native/skills/octocode-context-optimization/SKILL.md":
 				"---\nname: octocode-context-optimization\ndescription: Test\n---\n",
-			"dist/octocode/native-skills/octocode-debugging/SKILL.md":
+			"dist/octocode/native/skills/octocode-debugging/SKILL.md":
 				"---\nname: octocode-debugging\ndescription: Test\n---\n",
-			"dist/octocode/native-skills/resume-external-harness/SKILL.md":
+			"dist/octocode/native/skills/resume-external-harness/SKILL.md":
 				"---\nname: resume-external-harness\ndescription: Test\n---\n",
-			"dist/octocode/instructions/roles/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
-			"dist/octocode/instructions/policy/work.md": "# Work and verification\n",
+			"dist/octocode/native/agents/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
+			"dist/octocode/native/prompts/policy/work.md": "# Work and verification\n",
 		},
 	);
 	const artifactSet = produceArtifactSet({ build: false, outDir: join(root, "artifacts"), repoRoot, source: null });
@@ -109,19 +109,19 @@ test("fails when the package root imports an undeclared package despite a workin
 
 test("rejects a package missing its bundled subagent profiles", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/instructions/roles"), { recursive: true });
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native/agents"), { recursive: true });
 	assert.throws(() => smokeTestCodingAgent(directory), /missing bundled subagent profiles/);
 });
 
 test("rejects a package missing the bundled prompt instructions", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/instructions/policy"), { recursive: true });
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native/prompts/policy"), { recursive: true });
 	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled prompt instructions/);
 });
 
 test("rejects a package missing the bundled octocode-context-optimization skill", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native-skills"), { recursive: true });
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native/skills"), { recursive: true });
 	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled octocode-context-optimization skill/);
 });
 

@@ -30,10 +30,11 @@ const sectionNames = (context: AgentContext): string[] => context.sections.map((
 it("shares complete native and research-tool declarations before role-specific tools", () => {
 	const main = named("main");
 	const child = named("general");
-	// `web` is on demand on the capture's transport (it adds tools after the cached prefix): listed, not declared.
+	// `web` is declared for every role (deferred until this folder uses it), so it is part of the shared prefix.
 	const shared = [
 		"bash",
 		"file",
+		"web",
 		"mcp",
 		"wait",
 		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
@@ -60,7 +61,7 @@ describe.each(AGENTS)("$name context", (agent) => {
 		expect(names, "text outside every section").not.toContain("(system text outside a section)");
 		if (agent.kind === "main") {
 			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "skills", "docs"]));
-			expect(names).not.toContain("coordinator");
+			expect(names).not.toContain("subagent");
 			expect(names).not.toContain("role");
 			return;
 		}
@@ -71,17 +72,15 @@ describe.each(AGENTS)("$name context", (agent) => {
 			expect(names).toContain("lean");
 			for (const policy of POLICY) expect(names, `the full policy ${policy} in a lean child`).not.toContain(policy);
 		} else if (["researcher", "reviewer", "browser"].includes(agent.role ?? "")) {
-			// A read-only child's compact core (`policy/readonly.md`) replaces the work, coordinator and safety sections.
+			// A read-only child's compact core (`policy/readonly.md`) replaces the work, subagent and safety sections.
 			const core = POLICY.filter((name) => name !== "delegation" && name !== "safety");
 			expect(names).toEqual(expect.arrayContaining(core));
 			expect(names).not.toContain("delegation");
-			expect(names).not.toContain("coordinator");
+			expect(names).not.toContain("subagent");
 			expect(names).not.toContain("safety");
 		} else {
-			// A child that may write: its subagent policy is `<coordinator>`; `<delegation>` is the main session's.
-			expect(names).toEqual(
-				expect.arrayContaining(POLICY.map((name) => (name === "delegation" ? "coordinator" : name))),
-			);
+			// A child that may write: its policy is `<subagent>`; `<delegation>` is the main session's.
+			expect(names).toEqual(expect.arrayContaining(POLICY.map((name) => (name === "delegation" ? "subagent" : name))));
 			expect(names).not.toContain("delegation");
 			expect(names).not.toContain("lean");
 		}
@@ -182,7 +181,29 @@ describe("the real assembled prefix of a main session", () => {
 	// and backlog-grooming rules, compressed to +547 bytes. Slack stays 86.
 	// 46_367 (measured 46,281: system 20,342, native tools 18,021, AGENTS.md 7,918): `web`, `archive` and `models` are on
 	// demand on the capture's transport, listed in `<tools>` and declared only once used. Slack stays 86.
-	const OWN_PREFIX_CEILING = 46_367;
+	// 46_589 (measured 46,503: system 20,564): one `<tools>` line says the undeclared on-demand tools are callable by
+	// name (+222); without it, a judged Haiku run never called undeclared `web`. Slack stays 86.
+	// 47_613 (measured 47,527: system 20,561, native tools 18,567, AGENTS.md 8,399): `web` leaves the on-demand tier and
+	// is declared deferred (+546), since a Haiku asked for live content without naming a tool used curl 3 of 3 times
+	// while undeclared and `web` 3 of 3 once declared; AGENTS.md gained the testkit row and package-graph link (+481).
+	// Slack stays 86.
+	// 46_819 (measured 46_733: system 20,561, native tools 17,773 (-794), AGENTS.md 8,399): the `agent` tool's task-field
+	// descriptions were shortened (-794), checked by a Sonnet judge over Haiku delegating one of two file jobs. Slack stays 86.
+	// 42_099 (measured 42_013: system 15,723 (-4,838), native tools 17,858 (+85), AGENTS.md 8,432 (+33)): the policy is
+	// built from shared chunks, situational rules load as skills (backlog, delegation, memory, output), one tag wraps each
+	// section family, and owned prose is reworded more concisely; the `wait` check field names the free command filter.
+	// Slack stays 86.
+	// 42_334 (measured 42_248: system 15,958 (+235)): the octocode-backlog description regains the grooming pass's
+	// checks, which folding octocode-backlog-grooming into it had cut (skill descriptions keep all their content), and
+	// the profiles line again says to match the child's output. Slack stays 86.
+	// 42_656 (measured 42_570: system 16,062 (+104), native tools 17,857, AGENTS.md 8,651 (+219)): AGENTS.md says that one
+	// full suite or `check` runs at a time under the host lock, after parallel full runs froze the machine. Slack stays 86.
+	// 43_900 (user-approved; measured 43_849: system 16,662 (+600), native tools 18,368 (+511), AGENTS.md 8,819 (+168)):
+	// the user's coding rules (modular code for parallel work, clean architecture and code, strict lint, condensing
+	// scripts, waves, closing and stopping) in the work policy and AGENTS.md, plus other tools' growth.
+	// 45_600 (user-approved; measured 45_487: system 18,013 (+1,351), native tools 18,655 (+287)): the user's testing rule,
+	// other sessions' policy and notice text, `wait`'s cron fields and `bash`'s `sandbox` parameter.
+	const OWN_PREFIX_CEILING = 45_600;
 
 	it("stays under its ceiling", () => {
 		const main = named("main");

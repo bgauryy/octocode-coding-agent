@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ask } from "../ask/ask.ts";
 import { confirmed } from "../ask/decode.ts";
@@ -32,7 +32,7 @@ export class Isolation {
 	 * its own git root: the child stays on this team.
 	 */
 	async start(
-		ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">,
+		ctx: Pick<FeatureContext, "cwd" | "hasUI" | "ui">,
 		identity: Identity,
 		workingCopy = false,
 		signal?: AbortSignal,

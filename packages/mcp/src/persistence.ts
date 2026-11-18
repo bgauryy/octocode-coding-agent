@@ -3,14 +3,14 @@
 import { applyMcpServerPatch, type McpServerConfigPatch } from "./config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 /**
  * Save a config change; returns an error message when the file could not be updated. Changes to
  * registered servers only apply to the current session. `inProject` adds a project override.
  */
 export function saveConfig(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	patch: McpServerConfigPatch,
 	inProject = false,
@@ -23,7 +23,7 @@ export function saveConfig(
 	const override = target && target !== existing.source ? target : existing.override;
 	const overrideScope = inProject || projectOverride ? ("project" as const) : ("global" as const);
 	const entry = override ? { ...existing, override, overrideScope } : existing;
-	if (entry.scope !== "extension") {
+	if (entry.scope !== "feature") {
 		try {
 			state.updateConfig(entry, patch);
 		} catch (error) {

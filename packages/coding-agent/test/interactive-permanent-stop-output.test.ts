@@ -6,8 +6,8 @@ import { ToolExecutionComponent } from "../src/modes/interactive/components/tool
 import { stop } from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { mountInteractiveTui } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { createInteractiveTui } from "../src/modes/interactive/tui-renderer.ts";
-import { startToolTimer, toolTimerText } from "../src/core/tools/render-utils.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { resultBlock, toolHeader } from "../src/octocode/render/tool.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
@@ -55,12 +55,10 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 			{},
 			{
 				renderCall: (_a: unknown, _t: unknown, ctx: any) => {
-					startToolTimer(ctx);
-					return { render: () => ["TIMED-CALL-HEADER"], invalidate() {} };
+					return toolHeader(theme, { ...ctx, toolCallId: undefined }, "TIMED-CALL-HEADER", "");
 				},
 				renderResult: (_r: unknown, o: { isPartial: boolean }, _t: unknown, ctx: any) => {
-					const text = toolTimerText(ctx, o.isPartial);
-					return { render: () => [`TIMED-RESULT ${text}`], invalidate() {} };
+					return resultBlock(theme, ctx, { summary: `TIMED-RESULT ${o.isPartial ? "running" : "done"}` });
 				},
 			} as any,
 			ui,
@@ -95,8 +93,8 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 			forEachAssistantMessage: vi.fn(),
 			disposeActiveSelector: vi.fn(),
 			clearStatusIndicator: vi.fn(),
-			clearExtensionTerminalInputListeners: vi.fn(),
-			rebindExtensionTerminalInputListeners: vi.fn(),
+			clearFeatureTerminalInputListeners: vi.fn(),
+			rebindFeatureTerminalInputListeners: vi.fn(),
 			footerDataProvider: { dispose: vi.fn() },
 			unsubscribe,
 			isInitialized: true,
@@ -119,7 +117,7 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 		// The final transcript is written, with the rows' last content, before the screen is left for good.
 		expect(stopOutput).toContain("LAST-BASH-OUTPUT");
 		expect(stopOutput).toContain("TIMED-CALL-HEADER");
-		expect(stopOutput).toContain("TIMED-RESULT Elapsed");
+		expect(stopOutput).toContain("TIMED-RESULT running");
 		expect(stopOutput).toContain(EXIT_ALT_SCREEN);
 		// The transcript goes to the regular screen, so it follows the alternate-screen exit.
 		expect(stopOutput.indexOf(EXIT_ALT_SCREEN)).toBeLessThan(stopOutput.indexOf("LAST-BASH-OUTPUT"));

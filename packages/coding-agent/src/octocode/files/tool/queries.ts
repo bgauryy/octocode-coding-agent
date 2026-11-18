@@ -1,10 +1,11 @@
 import { type Static, Type } from "typebox";
-import type { ExtensionToolContext } from "../../../core/features/index.ts";
+import type { ToolContext } from "../../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { reasonSchema } from "../../shared/reason.ts";
 import { elisionMarkers } from "../../shared/util.ts";
 import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 import type { QueryOutcome } from "../outcome.ts";
+import { fileShapeError } from "./shape.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 
@@ -88,6 +89,8 @@ function wrapSingleChange(args: Record<string, unknown>): Record<string, unknown
 export function renameReasoning(args: unknown): Static<typeof Params> {
 	if (!isRecord(args)) return args as Static<typeof Params>;
 	let renamed = aliased(wrapSingleChange(args));
+	const shapeError = fileShapeError(renamed);
+	if (shapeError) throw shapeError;
 	const sent: unknown = renamed.queries;
 	if (!Array.isArray(sent)) return renamed as Static<typeof Params>;
 	if (renamed.reason === undefined && sent.length > 0) {
@@ -114,7 +117,7 @@ export interface PreparedChange {
 
 export interface FileReplacementOwner {
 	enabled(input: Record<string, unknown>, cwd: string): boolean;
-	refresh(ctx: ExtensionToolContext): Promise<void>;
+	refresh(ctx: ToolContext): Promise<void>;
 	committed?(id: string, input: Record<string, unknown>, cwd: string): void;
 }
 

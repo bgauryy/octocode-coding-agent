@@ -33,6 +33,14 @@ describe("the cost of clearing old tool results", () => {
 		expect(expectedRemainingRequests(40, 220_000, 200_000)).toBe(0);
 	});
 
+	it("measures growth from the size the context started at, so a large fixed prefix or a summary does not count as growth", () => {
+		// 40 requests grew the context from 97k to 230k: 3,325 tokens each, so 41k of room lasts about 12 more.
+		expect(expectedRemainingRequests(40, 230_000, 271_000, 97_000)).toBeCloseTo(41_000 / 3_325, 1);
+		// No growth measured: the room is not the limit, the requests seen so far are.
+		expect(expectedRemainingRequests(40, 97_000, 271_000, 97_000)).toBe(40);
+		expect(expectedRemainingRequests(40, 90_000, 271_000, 97_000)).toBe(40);
+	});
+
 	it("pays when the re-send cost saved exceeds the one-time write: T_old × R × N > S_after × W", () => {
 		const prices = { read: 0.1, write: 2 };
 		const base = { oldTokens: 30_000, suffixTokensAfter: 15_000, prices, rewriteAnyway: false };

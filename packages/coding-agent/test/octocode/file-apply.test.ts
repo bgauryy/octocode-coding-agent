@@ -576,4 +576,55 @@ describe("edit tool CRLF handling", () => {
 		const content = readFileSync(testFile, "utf-8");
 		expect(content).toBe("\uFEFFfirst\r\nSECOND\r\nthird\r\nFOURTH\r\n");
 	});
+
+	it("keeps the line endings of untouched lines in a mixed CRLF/LF file, and gives new lines their line's ending", async () => {
+		const testFile = join(testDir, "mixed.txt");
+		writeFileSync(testFile, "crlf one\r\nlf two\nlf three\ncrlf four\r\ncrlf five\r\n");
+
+		await editTool.execute("test-mixed", {
+			path: testFile,
+			edits: [
+				{ oldText: "lf three", newText: "LF THREE\nadded" },
+				{ oldText: "crlf five", newText: "CRLF FIVE\nadded" },
+			],
+		});
+
+		expect(readFileSync(testFile, "utf-8")).toBe(
+			"crlf one\r\nlf two\nLF THREE\nadded\ncrlf four\r\nCRLF FIVE\r\nadded\r\n",
+		);
+	});
+
+	it("keeps a CR-only file's line endings", async () => {
+		const testFile = join(testDir, "cr-only.txt");
+		writeFileSync(testFile, "one\rtwo\rthree\r");
+
+		await editTool.execute("test-cr", { path: testFile, edits: [{ oldText: "two\n", newText: "TWO\nnew\n" }] });
+
+		expect(readFileSync(testFile, "utf-8")).toBe("one\rTWO\rnew\rthree\r");
+	});
+
+	it("keeps untouched line endings when a fuzzy match rewrites the touched lines", async () => {
+		const testFile = join(testDir, "mixed-fuzzy.txt");
+		writeFileSync(testFile, "keep \u201cquoted\u201d\r\nchange \u201cme\u201d\nlast\r\n");
+
+		await editTool.execute("test-mixed-fuzzy", {
+			path: testFile,
+			edits: [{ oldText: 'change "me"', newText: "changed" }],
+		});
+
+		expect(readFileSync(testFile, "utf-8")).toBe("keep \u201cquoted\u201d\r\nchanged\nlast\r\n");
+	});
+
+	it("replaces every occurrence in a large mixed file without rewriting other lines", async () => {
+		const testFile = join(testDir, "large.txt");
+		const lines = Array.from({ length: 20_000 }, (_, i) => `row ${i} token${i % 2 ? "\r\n" : "\n"}`);
+		writeFileSync(testFile, lines.join(""));
+
+		await editTool.execute("test-large", {
+			path: testFile,
+			edits: [{ oldText: "token", newText: "T", replaceAll: true }],
+		});
+
+		expect(readFileSync(testFile, "utf-8")).toBe(lines.map((line) => line.replace("token", "T")).join(""));
+	});
 });

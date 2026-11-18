@@ -3,6 +3,12 @@ import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { plainText } from "../styled-line.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
+/** Lines the picker may use when the host passes no viewport: the terminal's rows less one. */
+export const terminalRows = (): number => Math.max(1, (process.stdout.rows || 24) - 1);
+
+/** Ctrl+Backspace in a query: the last word and the spaces after it. */
+export const dropLastWord = (query: string): string => query.replace(/\S*\s*$/u, "");
+
 export function shortenPath(path: string): string {
 	return path && homeTilde(path);
 }

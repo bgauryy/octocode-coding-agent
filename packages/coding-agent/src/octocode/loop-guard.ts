@@ -1,6 +1,6 @@
-import { renderInstruction } from "../core/prompt-template.ts";
+import { renderPrompt } from "../core/prompt-template.ts";
 import { memoryMutation } from "./shared/archive-operation.ts";
-import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
@@ -40,9 +40,9 @@ const WAITING = /(?:^|[;&|]\s*)(?:sleep|wait|watch)\b|\btail\s+(?:-\S*\s+)*-\S*f
 
 /** The note for the `count`-th identical outcome in a row, or undefined when none is due. */
 export function loopNote(tool: string, count: number, failed: boolean): string | undefined {
-	if (count === LOOP_NOTE_AT) return renderInstruction("notices/loop-guard/note.md", { tool, count, failed });
+	if (count === LOOP_NOTE_AT) return renderPrompt("notices/loop-guard/note.md", { tool, count, failed });
 	if (count >= LOOP_STOP_AT && (count - LOOP_STOP_AT) % LOOP_REPEAT_EVERY === 0)
-		return renderInstruction("notices/loop-guard/stop.md", { tool, count });
+		return renderPrompt("notices/loop-guard/stop.md", { tool, count });
 	return undefined;
 }
 
@@ -74,18 +74,17 @@ function withoutReasons(value: unknown): unknown {
  * Counts results and adds the notes; returns the `loop` step's body, which refuses the next identical call past
  * `LOOP_HALT_AT` and ends the run. `tool-gates.ts` runs it first in the pipeline.
  */
-export function registerLoopGuard(api: ExtensionAPI): Gate {
+export function registerLoopGuard(api: FeatureSetup): Gate {
 	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
 	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
 	let lastCall: string | undefined;
 	let last: string | undefined;
 	let count = 0;
-	const refusal = (tool: string, previous: number) =>
-		renderInstruction("notices/loop-guard/refused.md", { tool, previous });
+	const refusal = (tool: string, previous: number) => renderPrompt("notices/loop-guard/refused.md", { tool, previous });
 	// A halted run gets no further turn, so nothing the refusal asks of the model happens. In a subagent this notice is what
 	// its report carries of the cause; a person sees why the run ended, a headless caller reads it on stderr, and the recorded
 	// failure is what its exit code says.
-	const halted = (ctx: ExtensionContext, tool: string, previous: number) => {
+	const halted = (ctx: FeatureContext, tool: string, previous: number) => {
 		say(ctx, `Loop guard ended this run: ${previous} identical ${tool} calls with the same outcome.`, "error");
 		ctx.failRun("Stopped by the loop guard.");
 	};
@@ -95,18 +94,18 @@ export function registerLoopGuard(api: ExtensionAPI): Gate {
 		last = undefined;
 		count = 0;
 	};
-	api.on("session_start", reset);
+	api.bus.on("session_start", reset);
 	// A new prompt is new information: what follows is not a retry of what came before it.
-	api.on("before_agent_start", reset);
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("before_agent_start", reset);
+	api.bus.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) calls.set(event.toolCallId, { key: loopCallKey(event.toolName, event.args) });
 	});
-	api.on("tool_result", async (event) => {
+	api.bus.on("tool_result", async (event) => {
 		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
 		if (call && !event.isError) call.outcome = sha256(plainText(event.content) ?? JSON.stringify(event.content));
 		return undefined;
 	});
-	api.on("message_end", async (event, ctx) => {
+	api.bus.on("message_end", async (event, ctx) => {
 		const message = event.message;
 		if (message.role !== "toolResult") return undefined;
 		const call = calls.get(message.toolCallId);

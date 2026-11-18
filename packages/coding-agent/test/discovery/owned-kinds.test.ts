@@ -1,3 +1,4 @@
+import "../mcp-host.ts";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadMcpConfig } from "../../../mcp/src/config.ts";

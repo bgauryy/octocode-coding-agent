@@ -47,3 +47,30 @@ export function involving(
 		.all(since, ...agentIds, ...agentIds) as Row[];
 	return withDeliveries(db, rows);
 }
+
+/** A point in the message order (`created_at`, then `id`), both newest first: the messages after it are the older ones. */
+export interface MessageCursor {
+	at: number;
+	id: number;
+}
+
+/**
+ * The messages of `team` older than `before` (all when it is absent) and created after `since`, newest first, at most
+ * `limit`, each with its deliveries' state. A page continues from the last one's cursor; nothing else caps the history.
+ */
+export function page(
+	db: DatabaseSync,
+	team: string,
+	limit: number,
+	before?: MessageCursor,
+	since = -Infinity,
+): Array<{ message: Row; deliveries: Row[] }> {
+	const rows = db
+		.prepare(
+			`SELECT * FROM messages WHERE team = ? AND created_at > ?
+			 AND (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
+			 ORDER BY created_at DESC, id DESC LIMIT ?`,
+		)
+		.all(team, since, before?.at ?? null, before?.at ?? 0, before?.at ?? 0, before?.id ?? 0, limit) as Row[];
+	return withDeliveries(db, rows);
+}

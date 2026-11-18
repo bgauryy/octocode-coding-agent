@@ -89,15 +89,19 @@ const FENCE_OPEN = /^(`{3,})[^`\s]*$/;
  * of a heading (a message's role, time and entry) and only the names of a `MESSAGE_LINES` line; any other line as it
  * is (text no `fence` holds, as an older or hand-made file may have).
  */
-export function rankedMessageText(lines: readonly string[]): string[] {
+export function rankedMessageText(lines: readonly string[], openers?: Array<string | undefined>): string[] {
 	let fence: string | undefined;
+	let opener: string | undefined;
 	return lines.map((line) => {
+		openers?.push(opener);
 		if (fence !== undefined) {
 			if (line !== fence) return line;
 			fence = undefined;
+			opener = undefined;
 			return "";
 		}
 		fence = FENCE_OPEN.exec(line)?.[1];
+		if (fence !== undefined) opener = line;
 		if (fence !== undefined || /^#{1,6} /.test(line)) return "";
 		for (const template of Object.values(MESSAGE_LINES)) {
 			const slots = slotsOf(line, template.parts);

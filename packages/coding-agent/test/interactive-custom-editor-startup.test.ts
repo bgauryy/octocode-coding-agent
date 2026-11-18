@@ -9,7 +9,7 @@ import {
 	handleStartupSubmit,
 	setupEditorSubmitHandler,
 } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
-import { setCustomEditorComponent } from "../src/modes/interactive/interactive-mode/extension-chrome.ts";
+import { setCustomEditorComponent } from "../src/modes/interactive/interactive-mode/feature-chrome.ts";
 import { setupKeyHandlers } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
 import { bindEditorState } from "../src/modes/interactive/state/bind-editor.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
@@ -32,6 +32,7 @@ function createStartupHost() {
 		shutdown: vi.fn(),
 		toggleToolOutputExpansion: vi.fn(),
 		flushPendingBashComponents: vi.fn(),
+		showWorkingStatusIndicator: vi.fn(),
 		pendingUserInputs: [] as string[],
 		session: { isStreaming: false, isBashRunning: false, isCompacting: false, getQueuedInputs: () => [] },
 		uiStore: createUiStore(),
@@ -42,11 +43,6 @@ function createStartupHost() {
 	defaultEditor.onEscape = () => cancelStartupSubmit(host);
 	setCustomEditorComponent(host, (tui, theme, keys) => new CustomEditor(tui, theme, keys));
 	return host;
-}
-
-/** Hand `text` to `editor.handleTextRun` until all of it is handled, as the TUI does while focus stays put. */
-function typeRun(editor: CustomEditor, text: string): void {
-	for (let rest = text; rest;) rest = rest.slice(editor.handleTextRun(rest));
 }
 
 beforeEach(() => initTheme("dark"));
@@ -250,37 +246,6 @@ describe("refused submits and typed runs in the app editor", () => {
 		await settle();
 		expect(host.editor.getText()).toBe("!cat <<'X' [paste #1 +25 lines]");
 		expect(host.editor.getExpandedText?.()).toBe(`!cat <<'X' ${big}`);
-	});
-
-	it("runs a printable extension shortcut in order inside a typed run", () => {
-		const host = ready();
-		const seen: string[] = [];
-		host.defaultEditor.onExtensionShortcut = (data) => {
-			if (data !== "%") return false;
-			seen.push(host.editor.getText());
-			return true;
-		};
-		host.defaultEditor.isExtensionShortcut = (data) => data === "%";
-		typeRun(host.editor, "ab%cd");
-		expect(seen).toEqual(["ab"]);
-		expect(host.editor.getText()).toBe("abcd");
-	});
-
-	it("types key by key while extension shortcuts have no check, or the check throws", () => {
-		const host = ready();
-		const calls: string[] = [];
-		host.defaultEditor.onExtensionShortcut = (data) => {
-			calls.push(data);
-			return false;
-		};
-		typeRun(host.editor, "xyz");
-		expect(calls).toEqual(["x", "y", "z"]);
-		host.defaultEditor.isExtensionShortcut = () => {
-			throw new Error("broken");
-		};
-		typeRun(host.editor, "w");
-		expect(calls).toEqual(["x", "y", "z", "w"]);
-		expect(host.editor.getText()).toBe("xyzw");
 	});
 
 	it("keeps pasted text when an extension installs its own editor", () => {

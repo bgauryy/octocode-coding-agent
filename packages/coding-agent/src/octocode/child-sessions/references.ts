@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { readChildReport, type SessionChild, sessionChildren } from "./session-children.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -102,7 +102,7 @@ function resolveMessage(ref: string, id: number, ctx: ReferenceContext): Resolve
 		return `${ref}: message exceeds the ${MAX_MESSAGE_CHARS}-character inline limit; cite a smaller message or ask its sender for a summary containing the required instructions`;
 	const who =
 		found.from === USER_SENDER
-			? renderInstruction("notices/mail/unverified-user.md")
+			? renderPrompt("notices/mail/unverified-user.md")
 			: found.from === EXTERNAL_SENDER
 				? apiClientLabel()
 				: `agent ${headerText(found.from, 64)}`;
@@ -207,7 +207,7 @@ export function referencedContentBlock(resolved: ResolvedReference[]): string {
 	if (resolved.length === 0) return "";
 	return [
 		"## Referenced content",
-		renderInstruction("notices/mail/referenced-content.md"),
+		renderPrompt("notices/mail/referenced-content.md"),
 		...resolved.map((reference) => reference.text),
 	].join("\n\n");
 }

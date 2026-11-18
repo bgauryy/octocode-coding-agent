@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type * as NativeConfig from "../../src/config.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
-import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
+import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -53,7 +53,7 @@ function setup(cwd = fs.realpathSync(tmp("octocode-paths-cwd-"))) {
 	const f = fakeHost({ subagents: { queuedStarts: true } });
 	// The fake host's event bus is inert; chains and the backlog tool talk over the real one's contract.
 	const listeners = new Map<string, Array<(data: unknown) => void>>();
-	Object.assign(f.api.events, {
+	Object.assign(f.api.channels, {
 		on: (channel: string, handler: (data: unknown) => void) => {
 			listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
 			return () => undefined;

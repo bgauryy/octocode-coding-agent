@@ -1,4 +1,4 @@
-/** The union of extension events and the results handlers may return. */
+/** The union of feature events and the results handlers may return. */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, JsonValue, TextContent, Usage } from "@octocodeai/octocode-ai";
@@ -10,6 +10,7 @@ import type {
 	AgentEndEvent,
 	AgentInterruptedEvent,
 	AgentSettledEvent,
+	AgentSettleEndEvent,
 	AgentStartEvent,
 	BeforeAgentStartEvent,
 	ContextEvent,
@@ -35,7 +36,7 @@ import type {
 import type { McpServersChangeEvent, ResourcesDiscoverEvent, SessionEvent } from "./session-events.ts";
 import type { ToolCallEvent, ToolResultEvent } from "./tool-events.ts";
 
-export type ExtensionEvent =
+export type FeatureEvent =
 	| ResourcesDiscoverEvent
 	| McpServersChangeEvent
 	| SessionEvent
@@ -47,6 +48,7 @@ export type ExtensionEvent =
 	| AgentBeforeSettleEvent
 	| AgentInterruptedEvent
 	| AgentSettledEvent
+	| AgentSettleEndEvent
 	| UIPromptStartEvent
 	| UIPromptEndEvent
 	| TurnStartEvent
@@ -102,7 +104,7 @@ export type UserBashEventResult =
 	  }
 	| {
 			operations?: never;
-			/** Full replacement: extension handled execution, use this result */
+			/** Full replacement: feature handled execution, use this result */
 			result: BashResult;
 	  };
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
-import { BUILTIN_FEATURES } from "../../src/core/resource-loader/builtins.ts";
+import { NATIVE_FEATURES } from "../../src/main/native-features.ts";
 import octocode from "../../src/octocode/index.ts";
 import { getNativeToolNames, takesCallReason } from "../../src/octocode/permission/native-tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -15,7 +15,7 @@ type Schema = {
 	anyOf?: Schema[];
 };
 
-/** Tools that declare their own `reason` with a tool-specific description (`archive/history-tool.ts`). */
+/** Tools that declare their own `reason` with a tool-specific description (`native/tools/archive/history.ts`). */
 const ownReason = new Set(["archive"]);
 
 /** The tools whose model-facing schema lacks a required string `reason`. */
@@ -65,12 +65,12 @@ afterEach(() => {
 describe("the required reason on every core tool", () => {
 	it("is required by every native tool a session registers, and every native tool is registered", async () => {
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const tools = fake.api.getAllTools() as Array<{ name: string; parameters: unknown }>;
+		const tools = fake.api.tools.getAll() as Array<{ name: string; parameters: unknown }>;
 		expect(tools.map(({ name }) => name).sort()).toEqual(expect.arrayContaining(getNativeToolNames().sort()));
 		const reasoned = tools.filter(({ name }) => takesCallReason(name));
 		expect(missingReason(reasoned)).toEqual([]);
@@ -88,14 +88,14 @@ describe("the required reason on every core tool", () => {
 
 	it("is required by the built-in MCP extension's `mcp` tool", () => {
 		const fake = fakeHost();
-		const mcp = BUILTIN_FEATURES.find((feature) => feature.id === "mcp");
+		const mcp = NATIVE_FEATURES.builtins.find((feature) => feature.id === "mcp");
 		// The fake host lacks the MCP extension's other host methods (renderers, commands, servers); they do nothing here.
 		const api = new Proxy(fake.api, {
 			get: (target, property, receiver) =>
 				property in target ? Reflect.get(target, property, receiver) : () => undefined,
 		});
 		mcp?.register(api);
-		const tool = (fake.api.getAllTools() as Array<{ name: string; parameters: unknown }>).find(
+		const tool = (fake.api.tools.getAll() as Array<{ name: string; parameters: unknown }>).find(
 			({ name }) => name === MCP_MANAGE_TOOL_NAME,
 		);
 		expect(tool).toBeDefined();

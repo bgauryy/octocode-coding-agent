@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RequestBudget, RunningBudgets } from "../../src/octocode/subagents/budget.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { grantRequests } from "../../src/octocode/team/tools/grant.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

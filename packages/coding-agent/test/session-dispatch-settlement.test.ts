@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import { hasSessionDispatch } from "../src/core/agent-session/dispatch.ts";
 import { createHarness, getAssistantTexts } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it.each(["custom", "user"] as const)(
 	"starts a %s follow-up after the previous dispatch was interrupted",
@@ -23,19 +24,22 @@ it.each(["custom", "user"] as const)(
 					},
 				},
 			],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_settled", (event) => {
+					api.bus.on("agent_settled", (event) => {
 						if (!event.aborted) return;
 						if (kind === "custom")
-							api.sendMessage({ customType: "redirect", content: "new task", display: false }, { triggerTurn: true });
-						else api.sendUserMessage("new task");
+							api.session.sendMessage(
+								{ customType: "redirect", content: "new task", display: false },
+								{ triggerTurn: true },
+							);
+						else api.session.sendUserMessage("new task");
 					});
 				},
-			],
+			]),
 		});
 		try {
-			await h.session.bindExtensions({});
+			await h.session.bindFeatures({});
 			h.setResponses([
 				fauxAssistantMessage([fauxToolCall("hold", {})], { stopReason: "toolUse" }),
 				(_context, options) => {

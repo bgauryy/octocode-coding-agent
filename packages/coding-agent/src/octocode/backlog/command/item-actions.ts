@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { say, type Subcommand } from "../../shared/commands.ts";
@@ -45,19 +45,19 @@ export function detail(backlog: Backlog, item: Item, notes = 10): string {
 export interface CommandDeps extends BacklogOptions {
 	items(): Item[];
 	/** Opens this session's own live board and resolves to its address; used when `web` has no command. */
-	openView(ctx: ExtensionCommandContext, backlog: Backlog): Promise<string>;
+	openView(ctx: CommandContext, backlog: Backlog): Promise<string>;
 	/** The `/web` command, when registered: `/backlog web` runs `/web backlogs`. */
 	web?(): Subcommand | undefined;
 	/** Opens a file in the default application; replaceable so a test opens nothing. */
 	open?: (file: string) => Promise<void>;
 	/** Repaint the footer counts after a change. */
-	changed(ctx: ExtensionCommandContext): void;
+	changed(ctx: CommandContext): void;
 }
 
 /** What the user does to backlog items from `/backlog`: add, edit, move, close, and hand one to the agent. */
-export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
+export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 	/** Runs one store change and repaints; returns the refusal text instead of throwing. */
-	const apply = (ctx: ExtensionCommandContext, change: () => void): string | undefined => {
+	const apply = (ctx: CommandContext, change: () => void): string | undefined => {
 		try {
 			change();
 			deps.changed(ctx);
@@ -67,7 +67,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		}
 	};
 	/** `apply`, telling the user the outcome (`done` on success, the refusal as a warning). */
-	const applyAndSay = (ctx: ExtensionCommandContext, change: () => void, done?: string): void => {
+	const applyAndSay = (ctx: CommandContext, change: () => void, done?: string): void => {
 		const refused = apply(ctx, change);
 		if (refused) say(ctx, refused, "warning");
 		else if (done) say(ctx, done);
@@ -80,7 +80,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	 * route to ongoing). Returns the fields to set, or the reason the user did not answer.
 	 */
 	const askWhyGoal = async (
-		ctx: ExtensionCommandContext,
+		ctx: CommandContext,
 		item: Item,
 	): Promise<{ fields: Pick<UpdateInput, "why" | "goal"> } | { refused: string }> => {
 		const fields: Pick<UpdateInput, "why" | "goal"> = {};
@@ -99,7 +99,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 
 	/** Mark `item` ongoing for this session and hand it to the agent, now or after the current run. */
 	const handOff = async (
-		ctx: ExtensionCommandContext,
+		ctx: CommandContext,
 		backlog: Backlog,
 		item: Item,
 		prompt: (item: Item, store: BacklogStore) => string,
@@ -117,7 +117,10 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 				userActor(backlog),
 				(next) => {
 					claimed = next;
-					api.sendUserMessage(prompt(next, backlog.store), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+					api.session.sendUserMessage(
+						prompt(next, backlog.store),
+						ctx.isIdle() ? undefined : { deliverAs: "followUp" },
+					);
 				},
 				asked.fields,
 			);
@@ -132,7 +135,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 
 	// The user's own move: may override another live session's hold (claiming it as ongoing is still refused).
 	const move = async (
-		ctx: ExtensionCommandContext,
+		ctx: CommandContext,
 		backlog: Backlog,
 		item: Item,
 		state: (typeof STATES)[number],
@@ -168,7 +171,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	};
 
 	/** Closes `item` (never deletes): asks the kind, the reason and for a duplicate its original; the item keeps its history. */
-	const closeItem = async (ctx: ExtensionCommandContext, backlog: Backlog, item: Item): Promise<void> => {
+	const closeItem = async (ctx: CommandContext, backlog: Backlog, item: Item): Promise<void> => {
 		const kind = await ctx.ui.select(`Close ${item.ref}: why is it not needed?`, [...CLOSE_KINDS]);
 		if (!kind || !CLOSE_KINDS.includes(kind as CloseKind)) return;
 		const of = kind === "duplicate" ? (await ctx.ui.input("Duplicate of which item?", "B12"))?.trim() : undefined;
@@ -183,7 +186,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		);
 	};
 
-	const add = async (ctx: ExtensionCommandContext, backlog: Backlog, given: string): Promise<void> => {
+	const add = async (ctx: CommandContext, backlog: Backlog, given: string): Promise<void> => {
 		const title = given || (ctx.hasUI ? ((await ctx.ui.input("New backlog item", "title"))?.trim() ?? "") : "");
 		if (!title) return say(ctx, "Usage: /backlog add <title>", given || !ctx.hasUI ? "warning" : "info");
 		let item: Item;
@@ -201,7 +204,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 		say(ctx, `Added ${itemLine(item, backlog.session)}`);
 	};
 
-	const edit = async (ctx: ExtensionCommandContext, backlog: Backlog, item: Item): Promise<void> => {
+	const edit = async (ctx: CommandContext, backlog: Backlog, item: Item): Promise<void> => {
 		const name = await ctx.ui.select(`Edit which field of ${item.ref}?`, Object.keys(EDITABLE));
 		const field = name === undefined ? undefined : EDITABLE[name];
 		if (!name || !field) return;
@@ -216,7 +219,7 @@ export function createItemActions(api: ExtensionAPI, deps: CommandDeps) {
 	};
 
 	/** The action menu for one item; returns true when the item went to the agent (the board then closes). */
-	const actions = async (ctx: ExtensionCommandContext, backlog: Backlog, ref: string): Promise<boolean> => {
+	const actions = async (ctx: CommandContext, backlog: Backlog, ref: string): Promise<boolean> => {
 		const item = backlog.store.get(ref);
 		if (!item) {
 			say(ctx, `No backlog item ${ref}.`, "warning");

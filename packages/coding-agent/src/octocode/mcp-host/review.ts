@@ -9,7 +9,7 @@ import { gate, scopeFor } from "../guard/store.ts";
 import type { ReviewItem } from "../guard/types.ts";
 
 /**
- * The extension guard for MCP: a configured server Octocode did not ship is off until the user approved its exact launch
+ * The feature guard for MCP: a configured server Octocode did not ship is off until the user approved its exact launch
  * (command, arguments, variable names, URL). Plugin servers are not asked here: the plugin install reviews them.
  */
 type ReviewEntries = Parameters<McpHostPorts["review"]["withheld"]>[0];

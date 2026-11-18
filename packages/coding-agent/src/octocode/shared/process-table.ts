@@ -67,7 +67,8 @@ export async function readProcessTable(): Promise<ProcessTable | undefined> {
 	if (text === undefined) return undefined;
 	const rows = new Map<number, ProcessRow>();
 	for (const line of text.split("\n")) {
-		const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
+		// A row ps printed without a start time stays listed (started undefined): dropping it would read as "gone".
+		const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
 		if (!match) continue;
 		const pid = Number(match[1]);
 		rows.set(pid, {
@@ -75,7 +76,7 @@ export async function readProcessTable(): Promise<ProcessTable | undefined> {
 			ppid: Number(match[2]),
 			pgid: Number(match[3]),
 			stat: match[4],
-			started: utcSeconds(match[5]),
+			started: match[5] === undefined ? undefined : utcSeconds(match[5]),
 		});
 	}
 	return { at, rows };

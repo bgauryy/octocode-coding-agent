@@ -52,6 +52,8 @@ export const AwaitingSchema = Type.Object({
 	 * fields above. Answer with the `answer` command's `replies`: one per question id, choosing options by their id.
 	 */
 	questions: Type.Optional(QuestionsSchema),
+	/** Seconds from the dialog's start until the host takes the recommended option (askUser's `timeout`); a client shows the countdown. */
+	timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 3600 })),
 	/** The option that opens a free-text step (a second `awaiting` that allows text) instead of answering at once. */
 	writeIn: Type.Optional(Type.String({ maxLength: 200 })),
 });

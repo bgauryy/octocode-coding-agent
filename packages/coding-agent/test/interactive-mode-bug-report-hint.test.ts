@@ -1,6 +1,6 @@
 import { type AssistantMessage, fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, test, vi } from "vitest";
-import { formatCrashExtensionHint } from "../src/modes/interactive/interactive-mode.ts";
+import { formatCrashFeatureHint } from "../src/modes/interactive/interactive-mode.ts";
 import * as crashReporting from "../src/modes/interactive/interactive-mode/crash-reporting.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
@@ -18,11 +18,14 @@ function errorMessage(errorMessage: string): AssistantMessage {
 }
 
 describe("InteractiveMode bug report hints", () => {
-	test("identifies extensions with frames in a crash stack", () => {
-		expect(formatCrashExtensionHint(["npm:pi-observational-memory"])).toBe(
-			"A stack frame came from loaded extension `npm:pi-observational-memory`, which may be involved. Try disabling it with `octocode config`, or run `octocode -ne` to confirm.",
+	test("identifies features with frames in a crash stack", () => {
+		expect(formatCrashFeatureHint(["npm:pi-observational-memory"])).toBe(
+			"A stack frame came from loaded feature `npm:pi-observational-memory`, which may be involved.",
 		);
-		expect(formatCrashExtensionHint(undefined)).toBeUndefined();
+		expect(formatCrashFeatureHint(["a", "b"])).toBe(
+			"A stack frame came from loaded features `a` and `b`, which may be involved.",
+		);
+		expect(formatCrashFeatureHint(undefined)).toBeUndefined();
 	});
 
 	test("does not suggest reports for retryable provider failures", () => {

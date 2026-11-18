@@ -1,6 +1,6 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getAgentDir } from "../../config.ts";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { notify, say, type Subcommands, wordCompletions } from "../shared/commands.ts";
 import { reviewPrompt } from "./review.ts";
@@ -16,11 +16,11 @@ const describe = (enabled: boolean): string =>
  * (`optimizePrompts`) is saved to the global settings; the running session keeps its own copy, which the command updates,
  * because settings written from here reach the session's settings only on the next load.
  */
-export function registerPromptOptimization(commands: Subcommands, api: ExtensionAPI): void {
+export function registerPromptOptimization(commands: Subcommands, api: FeatureSetup): void {
 	let enabled: boolean | undefined;
-	const isEnabled = (): boolean => (enabled ??= api.getSettings().optimizePrompts === true);
+	const isEnabled = (): boolean => (enabled ??= api.settings.get().optimizePrompts === true);
 
-	function save(on: boolean, ctx: ExtensionCommandContext): void {
+	function save(on: boolean, ctx: CommandContext): void {
 		try {
 			SettingsManager.create(ctx.cwd, getAgentDir(), { projectTrusted: ctx.isProjectTrusted() }).setOptimizePrompts(on);
 		} catch (error) {
@@ -52,7 +52,7 @@ export function registerPromptOptimization(commands: Subcommands, api: Extension
 		},
 	});
 
-	api.on("input", async (event, ctx) => {
+	api.bus.on("input", async (event, ctx) => {
 		const text = event.text.trim();
 		if (event.source !== "interactive" || !ctx.hasUI || !isEnabled()) return { action: "continue" };
 		if (!text || text.startsWith("/") || text.startsWith("!")) return { action: "continue" };

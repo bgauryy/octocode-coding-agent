@@ -1,12 +1,10 @@
 /** What the presentation keeps of each server: its latest catalog and what the prompt described of it. */
 
-import type { DescriptionOverrides } from "../compact/index.ts";
 import type { Tool as McpTool } from "../client/index.ts";
 
 export interface GeneratedServer {
 	callName: string;
 	text: string;
-	overrides: DescriptionOverrides | undefined;
 	instructions: string | undefined;
 	tools: ReadonlyMap<string, McpTool>;
 	/** Each tool's block of `text`, by the server's tool name; a tool the text lacks or does not render faithfully has none. */

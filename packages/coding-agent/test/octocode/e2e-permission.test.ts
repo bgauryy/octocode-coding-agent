@@ -9,7 +9,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -17,6 +17,8 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Permission modes through the real Octocode runtime with a scripted model, bound without a UI as a headless run is (print
@@ -27,7 +29,7 @@ const ENTRY =
 	process.env.OCTOCODE_E2E_ENTRY === "dist"
 		? path.join(HERE, "..", "..", "dist", "index.js")
 		: path.join(HERE, "..", "..", "src", "index.ts");
-const octocode = (await import(ENTRY)).default as ExtensionFactory;
+const octocode = (await import(ENTRY)).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<{ dispose(): void }> = [];
@@ -95,8 +97,8 @@ async function headless(env: Record<string, string>) {
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -110,10 +112,11 @@ async function headless(env: Record<string, string>) {
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "faux-provider", factory: provider },
 			{ name: "octocode", factory: octocode },
-		],
+		]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -128,7 +131,7 @@ async function headless(env: Record<string, string>) {
 	});
 	sessions.push(session);
 	// No uiContext: ctx.hasUI is false, as in print and JSON mode.
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 
 	const turns: Result[][] = [];

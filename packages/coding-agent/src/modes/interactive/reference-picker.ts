@@ -1,9 +1,9 @@
-import type { ExtensionUIContext } from "../../core/features/index.ts";
+import type { SessionUI } from "../../core/features/index.ts";
 import { SearchableSelectorComponent } from "./components/searchable-selector.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 
 export interface ReferencePickerHost {
-	showExtensionCustom: ExtensionUIContext["custom"];
+	showCustomDialog: SessionUI["custom"];
 }
 
 export function chooseReference(
@@ -11,7 +11,7 @@ export function chooseReference(
 	title: string,
 	labels: string[],
 ): Promise<string | undefined> {
-	return host.showExtensionCustom<string | undefined>(
+	return host.showCustomDialog<string | undefined>(
 		(_ui, _theme, _keys, done) =>
 			new SearchableSelectorComponent(
 				sanitizeTerminalText(title),

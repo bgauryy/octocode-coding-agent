@@ -51,7 +51,7 @@ function fixture(messages: AgentMessage[] = []) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
 		},
-		extensionRunner: { getMessageRenderer: () => undefined },
+		featureHost: { getMessageRenderer: () => undefined },
 	} as unknown as AgentSession;
 	sessions.push(session);
 	const host = createFakeHost({
@@ -72,7 +72,7 @@ function fixture(messages: AgentMessage[] = []) {
 		settingsManager: { getShowImages: () => true, getImageWidthCells: () => 20, getShowCacheMissNotices: () => false },
 		sessionManager: { getCwd: () => "/tmp", buildContextEntries: () => [] },
 		getRegisteredToolDefinition: (): ReturnType<InteractiveModeHost["getRegisteredToolDefinition"]> => undefined,
-		programStatus: { handleEvent() {} },
+		programStatus: { handleEvent() {}, setPhase() {} },
 		maybeShowThinkingDropNotice() {},
 		maybeShowCacheMissNotice() {},
 		maybeShowInstallChangeWarning() {},

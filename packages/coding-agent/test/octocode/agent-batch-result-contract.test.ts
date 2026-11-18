@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
-import { batchCallText } from "../../src/octocode/agent-batch.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
+import { batchCallText } from "../../src/octocode/native/tools/agent/batch.ts";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { spendOf } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

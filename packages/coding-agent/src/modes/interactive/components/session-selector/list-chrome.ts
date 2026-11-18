@@ -1,35 +1,29 @@
-import { type Input, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
-import { emptyState, noMatchMessage, keyText } from "../../../../theme/theme-tui-helpers.ts";
+import { noMatchMessage, keyText } from "../../../../theme/theme-tui-helpers.ts";
 import type { NameFilter } from "../session-selector-search.ts";
 import type { GroupMode } from "./groups.ts";
 import { folderColumn } from "./utils.ts";
 
-/** The search box: `input` inside a rounded border, three lines. */
-export function renderSearchBox(input: Input, width: number): string[] {
-	const inner = Math.max(1, width - 4);
-	const border = (text: string) => theme.fg("border", text);
-	const field = truncateToWidth(input.render(inner)[0] ?? "", inner, "");
-	const pad = " ".repeat(Math.max(0, inner - visibleWidth(field)));
-	return [
-		border(`╭${"─".repeat(inner + 2)}╮`),
-		`${border("│")} ${field}${pad} ${border("│")}`,
-		border(`╰${"─".repeat(inner + 2)}╯`),
-	].map((line) => truncateToWidth(line, width, ""));
-}
-
-/** What the list says when nothing is shown, with the one key that recovers. */
-export function emptyLine(nameFilter: NameFilter, allFolders: boolean, query: string, width: number): string {
+/**
+ * What the list says when nothing is shown, with the one key that recovers. A search names its query and leaves the
+ * recovery to the list, which says `esc clears`.
+ */
+export function emptyFor(
+	nameFilter: NameFilter,
+	allFolders: boolean,
+	query: string,
+): { message: string; recover?: readonly [key: string, verb: string] } {
 	const what = nameFilter === "named" ? "named sessions" : "sessions";
-	if (query.trim())
-		return emptyState(noMatchMessage(what, query), [keyText("tui.editor.deleteCharBackward"), "edits search"], width);
-	const toggleNamed: [string, string] = [keyText("app.session.toggleNamedFilter"), "shows all"];
-	const folders: [string, string] = [keyText("tui.input.tab"), "views all folders"];
+	if (query.trim()) return { message: noMatchMessage(what, query) };
 	if (nameFilter === "named")
-		return emptyState(`No named sessions${allFolders ? "" : " in this folder"}`, toggleNamed, width);
+		return {
+			message: `No named sessions${allFolders ? "" : " in this folder"}`,
+			recover: [keyText("app.session.toggleNamedFilter"), "shows all"],
+		};
 	return allFolders
-		? emptyState("No sessions found", undefined, width)
-		: emptyState("No sessions in this folder", folders, width);
+		? { message: "No sessions found" }
+		: { message: "No sessions in this folder", recover: [keyText("tui.input.tab"), "views all folders"] };
 }
 
 /** A group label line: a day bucket, or a folder (`key` is its path) with its checkout. */

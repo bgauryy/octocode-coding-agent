@@ -68,7 +68,7 @@ describe("incremental report receipts", () => {
 		vi.useFakeTimers();
 		const fake = fakeHost();
 		const send = vi.fn(() => Promise.reject(new Error("response lost")));
-		fake.api.sendMessage = send;
+		fake.api.session.sendMessage = send;
 		const entries: SessionEntry[] = [];
 		const file = path.join(tmp(), "session.jsonl");
 		fs.writeFileSync(file, "");
@@ -96,7 +96,7 @@ describe("incremental report receipts", () => {
 	it("skips a malformed transcript line that mentions a receipt and still reads the receipt after it", async () => {
 		vi.useFakeTimers();
 		const fake = fakeHost();
-		fake.api.sendMessage = vi.fn(() => Promise.reject(new Error("response lost")));
+		fake.api.session.sendMessage = vi.fn(() => Promise.reject(new Error("response lost")));
 		const file = path.join(tmp(), "session.jsonl");
 		fs.writeFileSync(file, `{"customType":"${AGENT_RESULT_TYPE}",\n`);
 		const queue = new ReportQueue(fake.api);

@@ -1,5 +1,5 @@
 import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 import { contentText } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor, hookCalls } from "../config/calls.ts";
@@ -10,12 +10,12 @@ import type { Dispatch, HookSession } from "./types.ts";
 
 /** PostToolUse: feedback from the hooks is appended to the tool result the model reads. */
 export function registerPostToolUseHook(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	dispatch: Dispatch,
 	session: HookSession,
 	patches: Map<string, string>,
 ): void {
-	api.on("tool_result", async (event, ctx) => {
+	api.bus.on("tool_result", async (event, ctx) => {
 		const outcomes =
 			event.toolName === "file" && isRecord(event.details) && Array.isArray(event.details.outcomes)
 				? event.details.outcomes

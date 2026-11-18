@@ -12,6 +12,7 @@ import type { ReviewItem } from "../../src/octocode/guard/types.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { hookReviewItems } from "../../src/octocode/hooks/review.ts";
 import { mcpReviewItems } from "../../src/octocode/mcp-host/review.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Fixture opt-in for the security review: approves items as the user does in /security, through the guard's own
@@ -83,6 +84,7 @@ export async function approveFixtureSkills(
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noThemes: true,
 		noContextFiles: true,
 	}).loadSkillsOnly();

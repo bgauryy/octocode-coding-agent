@@ -1,4 +1,4 @@
-import type { ExtensionUIDialogOptions } from "../../src/core/features/types.ts";
+import type { DialogOptions } from "../../src/core/features/types.ts";
 import type { OptionRole, Question, Reply } from "@octocodeai/octocode-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ask } from "../../src/octocode/ask/ask.ts";
@@ -370,7 +370,7 @@ describe("degrade", () => {
 		const seen: { title: string; options: string[]; opts: unknown }[] = [];
 		const ui = {
 			...fakeCtx({ cwd: ".", mode: "rpc" }).ui,
-			select: async (title: string, options: string[], opts?: ExtensionUIDialogOptions) => {
+			select: async (title: string, options: string[], opts?: DialogOptions) => {
 				seen.push({ title, options, opts });
 				return "1. Small";
 			},

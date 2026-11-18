@@ -33,14 +33,14 @@ export interface AcpClientHost {
 	childEnv(vendor: string): NodeJS.ProcessEnv;
 }
 
-/** A displayed message an extension, hook or subagent injected into the transcript. */
+/** A displayed message a feature, hook or subagent injected into the transcript. */
 interface AcpCustomMessage {
 	role: "custom";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
 	display: boolean;
 	timestamp: number;
-	/** What the extension recorded with it; an external message's facts are at `external`. */
+	/** What the feature recorded with it; an external message's facts are at `external`. */
 	details?: unknown;
 }
 
@@ -85,7 +85,7 @@ export type AcpWorkerEvent =
 			display?: ToolDisplay;
 	  };
 
-/** A dialog the worker's extensions raise that a client can answer; the host drops every other UI request. */
+/** A dialog the worker's features raise that a client can answer; the host drops every other UI request. */
 export type AcpUiRequest =
 	| {
 			id: string;
@@ -162,7 +162,7 @@ export interface AcpWorkerLaunch {
 	/** Arguments after the host's own executable prefix. */
 	args: string[];
 	env: Record<string, string>;
-	/** Called with the canonical session id the worker announces before its extensions start. */
+	/** Called with the canonical session id the worker announces before its features start. */
 	onSessionIdentity(id: string): void;
 }
 

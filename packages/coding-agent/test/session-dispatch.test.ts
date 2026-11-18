@@ -4,36 +4,37 @@ import { hasSessionDispatch } from "../src/core/agent-session/dispatch.ts";
 import type { RpcResponse } from "../src/modes/rpc/rpc-types.ts";
 import { handlePrompt } from "../src/modes/rpc/rpc-mode/prompt.ts";
 import { createHarness, getAssistantTexts } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it("correlates nested extension sends through asynchronous preflight while preserving handled disposition", async () => {
 	const entered = Promise.withResolvers<void>();
 	const release = Promise.withResolvers<void>();
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.registerCommand("outer", {
+				api.commands.register("outer", {
 					handler: async () => {
-						api.sendUserMessage("/inner", { expandPromptTemplates: true });
+						api.session.sendUserMessage("/inner", { expandPromptTemplates: true });
 					},
 				});
-				api.registerCommand("inner", {
+				api.commands.register("inner", {
 					handler: async () => {
-						api.sendUserMessage("generated");
+						api.session.sendUserMessage("generated");
 					},
 				});
-				api.on("input", async (event) => {
+				api.bus.on("input", async (event) => {
 					if (event.text === "generated") {
 						entered.resolve();
 						await release.promise;
 					}
 				});
 			},
-		],
+		]),
 	});
 	const responses: object[] = [];
 	const activity: unknown[] = [];
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		h.setResponses([fauxAssistantMessage("nested answer")]);
 		h.session.subscribe((event) => {
 			if (event.type === "session_dispatch") activity.push(event);
@@ -72,15 +73,15 @@ it("correlates nested extension sends through asynchronous preflight while prese
 
 it("completes a handled command without model work", async () => {
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.registerCommand("nothing", { handler: async () => {} });
+				api.commands.register("nothing", { handler: async () => {} });
 			},
-		],
+		]),
 	});
 	const responses: object[] = [];
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		handlePrompt(h.session, { type: "prompt", message: "/nothing", waitForCompletion: true }, (value) =>
 			responses.push(value),
 		);
@@ -100,27 +101,27 @@ it("keeps a dispatch active through a deferred agent_settled follow-up", async (
 	const release = Promise.withResolvers<void>();
 	let sent = false;
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("agent_settled", () => {
+				api.bus.on("agent_settled", () => {
 					if (!sent) {
 						sent = true;
-						api.sendUserMessage("follow-up");
+						api.session.sendUserMessage("follow-up");
 					}
 				});
-				api.on("input", async (event) => {
+				api.bus.on("input", async (event) => {
 					if (event.text === "follow-up") {
 						entered.resolve();
 						await release.promise;
 					}
 				});
 			},
-		],
+		]),
 	});
 	const responses: object[] = [];
 	const activity: unknown[] = [];
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		h.setResponses([fauxAssistantMessage("first answer"), fauxAssistantMessage("follow-up answer")]);
 		h.session.subscribe((event) => {
 			if (event.type === "session_dispatch") activity.push(event);
@@ -149,19 +150,19 @@ it("keeps a dispatch active through a deferred agent_settled follow-up", async (
 
 it("reports a nested send's preflight rejection even when the extension API consumes its promise", async () => {
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.registerCommand("send", {
+				api.commands.register("send", {
 					handler: async () => {
-						api.sendUserMessage("generated");
+						api.session.sendUserMessage("generated");
 					},
 				});
 			},
-		],
+		]),
 	});
 	const responses: object[] = [];
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		vi.spyOn(h.session.modelRuntime, "hasConfiguredAuth").mockReturnValue(false);
 		vi.spyOn(h.session.modelRuntime, "checkAuth").mockResolvedValue(undefined);
 		handlePrompt(h.session, { type: "prompt", message: "/send", waitForCompletion: true }, (value) =>
@@ -179,20 +180,20 @@ it("cancels pending preflight before it can start a model run and preserves the 
 	const entered = Promise.withResolvers<void>();
 	const release = Promise.withResolvers<void>();
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("input", async (event) => {
+				api.bus.on("input", async (event) => {
 					if (event.text === "hold") {
 						entered.resolve();
 						await release.promise;
 					}
 				});
 			},
-		],
+		]),
 	});
 	const responses: object[] = [];
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		handlePrompt(h.session, { type: "prompt", message: "hold", waitForCompletion: true }, (value) =>
 			responses.push(value),
 		);

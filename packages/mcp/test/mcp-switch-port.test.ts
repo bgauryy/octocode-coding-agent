@@ -1,11 +1,12 @@
 import { LATEST_PROTOCOL_VERSION } from "../src/client/index.ts";
 import { createInMemoryTransportPair } from "../src/client/testing/index.ts";
 import { expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
-import { createMcpExtension } from "../src/index.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
+import { createMcpFeature } from "../src/index.ts";
 import { getMcpSessionStatus } from "../src/status.ts";
 import { getMcpSwitch } from "../src/switch.ts";
 import { createHarness } from "../../coding-agent/test/suite/harness.ts";
+import { testFeatures } from "../../coding-agent/test/helpers/features.ts";
 
 it("switches a server through the session port: persists, closes and reconnects without a reload", async () => {
 	const servers: Array<ReturnType<typeof createInMemoryTransportPair>> = [];
@@ -28,11 +29,11 @@ it("switches a server through the session port: persists, closes and reconnects 
 		return pair.client;
 	};
 	const writes: unknown[] = [];
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const harness = await createHarness({
 		initialActiveToolNames: [],
-		extensionFactories: [
-			createMcpExtension({
+		features: testFeatures([
+			createMcpFeature({
 				loadConfig: () => ({
 					servers: [{ name: "fixture", config: { command: "unused" }, source: "/fixture/mcp.json" }],
 					errors: [],
@@ -44,17 +45,17 @@ it("switches a server through the session port: persists, closes and reconnects 
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
-		const switchServer = getMcpSwitch(api.events);
+		await harness.session.bindFeatures({});
+		const switchServer = getMcpSwitch(api.channels);
 		expect(switchServer).toBeDefined();
 
 		const off = await switchServer!({ name: "fixture", enabled: false, inProject: false });
 		expect(off).toMatchObject({ ok: true });
 		expect(off.message).toMatch(/^fixture: disabled · .*Saved to \/fixture\/mcp\.json\.$/);
-		expect(getMcpSessionStatus(api.events).find((server) => server.name === "fixture")).toMatchObject({
+		expect(getMcpSessionStatus(api.channels).find((server) => server.name === "fixture")).toMatchObject({
 			enabled: false,
 		});
 
@@ -66,7 +67,7 @@ it("switches a server through the session port: persists, closes and reconnects 
 		]);
 		// Switching back on connects without a reload.
 		await vi.waitFor(() =>
-			expect(getMcpSessionStatus(api.events).find((server) => server.name === "fixture")).toMatchObject({
+			expect(getMcpSessionStatus(api.channels).find((server) => server.name === "fixture")).toMatchObject({
 				enabled: true,
 				state: "connected",
 			}),

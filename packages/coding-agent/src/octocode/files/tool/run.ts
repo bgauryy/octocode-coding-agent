@@ -3,7 +3,7 @@ import path from "node:path";
 import { generateDiffString, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { splitBom } from "@octocodeai/octocode-common/text";
 import { FileLockReleaseError, withFileWriteLock } from "@octocodeai/octocode-common/file-write-lock";
-import type { ExtensionToolContext } from "../../../core/features/index.ts";
+import type { ToolContext } from "../../../core/features/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
@@ -38,7 +38,7 @@ const warnedCheckpoints = new WeakSet<Checkpoints>();
  * so it is noted in the outcome and notified once per session.
  */
 async function settleCheckpoint(
-	ctx: ExtensionToolContext,
+	ctx: ToolContext,
 	checkpoints: Checkpoints | undefined,
 	capture: Capture | undefined,
 	file: string,
@@ -169,7 +169,7 @@ export async function runQuery(
 	query: FileQuery,
 	id: string,
 	guard: FileGuard,
-	ctx: ExtensionToolContext,
+	ctx: ToolContext,
 	signal: AbortSignal | undefined,
 	permission: Permission,
 	checkpoints?: Checkpoints,
@@ -179,7 +179,7 @@ export async function runQuery(
 	const mode = prepared?.mode ?? query.type;
 	const base = { type: mode, path: query.path, reason: query.reason };
 	const file = resolveToolPath(ctx.cwd, query.path);
-	// Capture before any await: the live extension context may be retired during a committed write's cleanup.
+	// Capture before any await: the live feature context may be retired during a committed write's cleanup.
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? `standalone:${id}`;
 	let capture: Capture | undefined;
 	let operations: ReturnType<typeof guardedOperations> | undefined;
@@ -358,7 +358,7 @@ function recordChange(
 export async function workspaceRefusal(
 	file: string,
 	query: FileQuery,
-	ctx: ExtensionToolContext,
+	ctx: ToolContext,
 	signal: AbortSignal | undefined,
 	permission: Permission,
 	toolCallId: string,

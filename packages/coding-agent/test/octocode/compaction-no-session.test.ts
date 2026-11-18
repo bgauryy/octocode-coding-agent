@@ -10,6 +10,11 @@ import {
 	userMessagesSection,
 	writeSummary,
 } from "../../src/octocode/compaction/summary.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { asSetup } from "./fake-host.ts";
+
+/** What every "complete text saved at <file>" pointer starts with, taken from the notice itself. */
+const POINTER = renderPrompt("notices/compaction/text-saved.md", { file: "\u0000" }).split("\u0000")[0];
 
 const at = 1_700_000_000_000;
 const model = { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 10_000, contextWindow: 200_000 };
@@ -35,13 +40,13 @@ const result = {
 function setup(sessionManager: unknown) {
 	const requests: Array<{ messages: unknown[] }> = [];
 	const notes: unknown[] = [];
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
 		getSettings: () => ({}),
 		createUsageRecorder: () => () => {},
 		appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		modelRegistry: {
@@ -106,7 +111,7 @@ describe("compaction without a session file (--no-session)", () => {
 		expect(section).toContain("end of the request");
 		expect(section).toContain("<user-message>\nsecond\n</user-message>");
 		expect(section.length).toBeLessThan(USER_MESSAGE_CHARS + 500);
-		expect(section).not.toContain("Complete text saved at");
+		expect(section).not.toContain(POINTER);
 	});
 
 	it("drops the oldest user messages, and says how many, when the total budget is over", () => {

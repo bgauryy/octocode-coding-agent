@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { itemDetail } from "./format.ts";
 import { type BacklogStore, COMPLETION_GUIDANCE, type Item } from "./store.ts";
@@ -31,9 +31,9 @@ const brief = (item: Item, store: BacklogStore) => {
 
 const handoff = (item: Item, store: BacklogStore) => ({
 	ref: item.ref,
-	readFirst: renderInstruction("workflows/backlog/read-first.md", { ref: item.ref }),
+	readFirst: renderPrompt("workflows/backlog/read-first.md", { ref: item.ref }),
 	brief: brief(item, store),
-	completion: renderInstruction("workflows/backlog/completion.md", {
+	completion: renderPrompt("workflows/backlog/completion.md", {
 		ref: item.ref,
 		goal: Boolean(item.goal),
 		guidance: COMPLETION_GUIDANCE,
@@ -42,10 +42,10 @@ const handoff = (item: Item, store: BacklogStore) => ({
 
 /** The prompt that hands an item to the agent ("Do it now"). */
 export function doItPrompt(item: Item, store: BacklogStore): string {
-	return renderInstruction("workflows/backlog/do-it.md", handoff(item, store));
+	return renderPrompt("workflows/backlog/do-it.md", handoff(item, store));
 }
 
 /** The prompt that asks the agent to hand an item to a subagent. */
 export function delegatePrompt(item: Item, store: BacklogStore): string {
-	return renderInstruction("workflows/backlog/delegate.md", handoff(item, store));
+	return renderPrompt("workflows/backlog/delegate.md", handoff(item, store));
 }

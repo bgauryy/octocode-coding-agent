@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { Permission } from "./ask.ts";
 import { heldTo } from "./ask/cap.ts";
 import type { Asker } from "./ask/types.ts";
@@ -57,7 +57,7 @@ export async function admitExternalMessage(
 	const note = /^User's note: (.*)$/m.exec(verdict.message)?.[1];
 	// "Deny messages from <process> for this session", just given or remembered: asking again would not help.
 	if (verdict.via === "user" && verdict.lasts === "session")
-		throw new Error(renderInstruction("notices/mail/external-denied-session.md", { self: options.self, sender, note }));
+		throw new Error(renderPrompt("notices/mail/external-denied-session.md", { self: options.self, sender, note }));
 	if (verdict.via === "user")
 		throw new Error(
 			`The user of ${options.self} denied this message${note ? `, saying: ${note}` : ""}. Nothing reached its agent. Its user can allow it when asked again, ${held ? `or set sessionApiTurnPermission to "session" in the global settings` : "or set /permissions full there"}.`,

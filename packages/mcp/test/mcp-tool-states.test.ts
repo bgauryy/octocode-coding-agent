@@ -41,12 +41,12 @@ describe("mcpToolStates", () => {
 				name: "withheld",
 				config: { command: "never-launch" },
 				source: "fixture",
-				scope: "extension",
+				scope: "feature",
 				withheld: true,
 			},
 		});
-		host.api.getMcpServers = () => [
-			{ name: "pending", config: { command: "never-launch", enabled: false }, extensionPath: "fixture" },
+		host.api.mcpServers.list = () => [
+			{ name: "pending", config: { command: "never-launch", enabled: false }, source: "fixture" },
 		];
 		expect(currentMcpServerNames()).toEqual(["withheld", "pending"]);
 		expect(currentMcpToolStates()).toEqual([]);
@@ -92,7 +92,7 @@ describe("mcpToolStates", () => {
 		const off = server("off", { enabled: false }, ["a"]);
 		const starting = server("starting", {}, undefined);
 		const registered = { ...server("ext", {}, ["a"]) };
-		registered.entry = { ...registered.entry, scope: "extension" };
+		registered.entry = { ...registered.entry, scope: "feature" };
 		const states = mcpToolStates(source([hidden, off, starting, registered], "recent"));
 		expect(states.map((state) => state.server)).toEqual(["quiet", "starting", "ext"]);
 		expect(states[0].tools).toEqual([{ name: "a", state: "deferred", decidedBy: "server" }]);

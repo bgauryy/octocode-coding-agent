@@ -41,7 +41,9 @@ const NOTE = "Never run the migrations against production; use the staging copy"
 function harness() {
 	const session = SessionManager.inMemory(cwd);
 	const fake = fakeHost();
-	Object.assign(fake.api, { appendEntry: (type: string, data?: unknown) => session.appendCustomEntry(type, data) });
+	Object.assign(fake.api.session, {
+		appendEntry: (type: string, data?: unknown) => session.appendCustomEntry(type, data),
+	});
 	registerMemory(fake.api, {
 		commands: new Subcommands(),
 		isSubagent: false,
@@ -61,7 +63,7 @@ function harness() {
 		fake.sent.length = 0;
 		await fake.fire(
 			"session_compact",
-			{ reason: "overflow", willRetry, fromExtension: false, compactionEntry: session.getEntry(compactionId) },
+			{ reason: "overflow", willRetry, fromFeature: false, compactionEntry: session.getEntry(compactionId) },
 			ctx(),
 		);
 		return fake.sent.map((sent) => sent.message as { customType: string; content: string; details: unknown });

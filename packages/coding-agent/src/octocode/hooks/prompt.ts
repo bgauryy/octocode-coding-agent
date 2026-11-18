@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { HookEvent } from "./catalog.ts";
 import { type HookPrompt, type HookRun, HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
 import { parseJson } from "../shared/util.ts";
@@ -8,9 +8,9 @@ import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type PromptEvaluator = (request: { prompt: string; model?: string; signal: AbortSignal }) => Promise<string>;
 
-export const HOOK_EVALUATION_SYSTEM_PROMPT = renderInstruction("workflows/hook-evaluation.md");
+export const HOOK_EVALUATION_SYSTEM_PROMPT = renderPrompt("hooks/evaluation.md");
 
-export function createPromptEvaluator(ctx: Pick<ExtensionContext, "model" | "modelRegistry">): PromptEvaluator {
+export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "modelRegistry">): PromptEvaluator {
 	return async (request) => {
 		const candidates = request.model
 			? ctx.modelRegistry

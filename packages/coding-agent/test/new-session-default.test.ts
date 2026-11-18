@@ -6,6 +6,7 @@ import { parseArgs } from "../src/cli/args.ts";
 import { createAgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { createCliRuntimeFactory } from "../src/main/runtime-factory.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -61,6 +62,7 @@ async function open(flags: string[] = []) {
 		createCliRuntimeFactory({
 			parsed,
 			cwd,
+			nativeFeatures: nativeFeatureSet(),
 			folderTrust: () => ({ state: "trusted", root: cwd }),
 			requireTrust: true,
 			getAppMode: () => "interactive",

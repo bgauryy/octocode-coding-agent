@@ -32,6 +32,19 @@ describe("SelectList", () => {
 		assert.ok(rendered[1].startsWith("  beta"));
 	});
 
+	it("jumps to the first and the last item with home and end", () => {
+		const items = Array.from({ length: 20 }, (_, i) => ({ value: `v${i}`, label: `item ${i}` }));
+		const list = new SelectList(items, 5, testTheme);
+		const changes: string[] = [];
+		list.onSelectionChange = (item) => changes.push(item.value);
+		list.handleInput("\x1b[F");
+		assert.strictEqual(list.getSelectedItem()?.value, "v19");
+		assert.ok(list.render(40).some((line) => line.startsWith("› item 19")));
+		list.handleInput("\x1b[H");
+		assert.strictEqual(list.getSelectedItem()?.value, "v0");
+		assert.deepStrictEqual(changes, ["v19", "v0"]);
+	});
+
 	it("normalizes multiline descriptions to single line", () => {
 		const items = [
 			{

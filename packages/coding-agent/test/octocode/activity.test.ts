@@ -1,4 +1,4 @@
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkingStatusIndicator } from "../../src/modes/interactive/components/status-indicator.ts";
 import { initTheme } from "../../src/theme/theme.ts";
@@ -295,6 +295,26 @@ describe("Activity", () => {
 });
 
 describe("registerActivity", () => {
+	it("ticks the working line on the shared animation clock, not its own timer", async () => {
+		const unsubscribe = vi.fn();
+		const subscribe = vi.spyOn(animationClock, "subscribe").mockReturnValue(unsubscribe);
+		const interval = vi.spyOn(globalThis, "setInterval");
+		try {
+			const fake = fakeHost();
+			registerActivity(fake.api, { workingLine: true });
+			const ctx = fakeCtx({ cwd: "/x" });
+			await fake.emit("agent_start", {}, ctx);
+			expect(subscribe).toHaveBeenCalledWith(expect.any(Function), { everyMs: 1000, kind: "info" });
+			expect(interval).not.toHaveBeenCalled();
+			await fake.emit("agent_settled", { outcome: "completed" }, ctx);
+			expect(unsubscribe).toHaveBeenCalledTimes(1);
+			await fake.emit("session_shutdown", {}, ctx);
+		} finally {
+			subscribe.mockRestore();
+			interval.mockRestore();
+		}
+	});
+
 	it("clears activity on settlement, ignoring late streaming events", async () => {
 		vi.useFakeTimers();
 		try {

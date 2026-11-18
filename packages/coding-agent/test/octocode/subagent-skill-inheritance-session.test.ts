@@ -17,6 +17,8 @@ import { createTestSession } from "../helpers/session.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 afterEach(() => vi.unstubAllEnvs());
 async function fixture() {
 	const root = tmp("child-skill-inheritance-"),
@@ -175,16 +177,17 @@ async function fixture() {
 		cwd,
 		agentDir,
 		settingsManager,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		nativeFeatures: nativeFeatureSet(),
+		disabledFeatures: ["mcp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 		additionalSkillPaths: [path.join(modelOnlyAlias, "SKILL.md"), winner, loser, path.join(alias, "SKILL.md")],
-		extensionFactories: [
+		features: testFeatures([
 			{
 				name: "parent-fixture",
 				factory: (api) => {
-					api.registerProvider("faux-parent", {
+					api.providers.register("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -192,12 +195,12 @@ async function fixture() {
 						models: faux.models,
 						streamSimple: faux.streamSimple,
 					} as never);
-					api.on("session_start", () => {
-						commands = api.getCommands().map((c) => c.name);
+					api.bus.on("session_start", () => {
+						commands = api.resources.getCommands().map((c) => c.name);
 					});
 				},
 			},
-		],
+		]),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
@@ -207,7 +210,7 @@ async function fixture() {
 		resourceLoader,
 		sessionManager: SessionManager.create(cwd, path.join(root, "parent-sessions")),
 	});
-	await session.bindExtensions({
+	await session.bindFeatures({
 		mode: "json",
 		shutdownHandler: () => undefined,
 	} as never);
@@ -300,7 +303,7 @@ async function fixture() {
 		parentCatalog: () => parentCatalog,
 		close: async () => {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({
+			await session.featureHost.emit({
 				type: "session_shutdown",
 				reason: "quit",
 			});

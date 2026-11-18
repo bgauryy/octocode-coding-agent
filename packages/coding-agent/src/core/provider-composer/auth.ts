@@ -16,9 +16,9 @@ import {
 	resolveHeadersOrThrow,
 } from "../config-value.ts";
 import { registerAuthSecrets } from "../secret-redaction.ts";
-import type { ExtensionOAuthConfig, ProviderConfigInput } from "./types.ts";
+import type { FeatureOAuthConfig, ProviderConfigInput } from "./types.ts";
 
-function adaptOAuth(config: ExtensionOAuthConfig): OAuthAuth {
+function adaptOAuth(config: FeatureOAuthConfig): OAuthAuth {
 	return {
 		name: config.name,
 		isSubscription: config.isSubscription,
@@ -55,17 +55,17 @@ function withConfiguredAuth(
 
 export function configuredApiKey(
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): string | undefined {
-	return extension?.apiKey ?? config?.apiKey;
+	return feature?.apiKey ?? config?.apiKey;
 }
 
 export function configuredHeaders(
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): Record<string, string> | undefined {
-	if (!config?.headers && !extension?.headers) return undefined;
-	return { ...config?.headers, ...extension?.headers };
+	if (!config?.headers && !feature?.headers) return undefined;
+	return { ...config?.headers, ...feature?.headers };
 }
 
 async function configContextEnv(
@@ -86,15 +86,15 @@ export function composeApiKeyAuth(
 	providerId: string,
 	base: Provider | undefined,
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): ApiKeyAuth | undefined {
 	const inherited = base?.auth.apiKey;
-	const rawKey = configuredApiKey(config, extension);
-	const oauth = extension?.oauth ?? base?.auth.oauth;
+	const rawKey = configuredApiKey(config, feature);
+	const oauth = feature?.oauth ?? base?.auth.oauth;
 	// OAuth-only providers get no fabricated API-key login method.
 	if (!inherited && rawKey === undefined && oauth) return undefined;
-	const rawHeaders = configuredHeaders(config, extension);
-	const authHeader = extension?.authHeader ?? config?.authHeader ?? false;
+	const rawHeaders = configuredHeaders(config, feature);
+	const authHeader = feature?.authHeader ?? config?.authHeader ?? false;
 	return {
 		name: inherited?.name ?? "API key",
 		login:
@@ -155,12 +155,12 @@ export function composeOAuthAuth(
 	providerId: string,
 	base: Provider | undefined,
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): OAuthAuth | undefined {
-	const oauth = extension?.oauth ? adaptOAuth(extension.oauth) : base?.auth.oauth;
+	const oauth = feature?.oauth ? adaptOAuth(feature.oauth) : base?.auth.oauth;
 	if (!oauth) return undefined;
-	const rawHeaders = configuredHeaders(config, extension);
-	const authHeader = extension?.authHeader ?? config?.authHeader ?? false;
+	const rawHeaders = configuredHeaders(config, feature);
+	const authHeader = feature?.authHeader ?? config?.authHeader ?? false;
 	return {
 		...oauth,
 		toAuth: async (credential) => {

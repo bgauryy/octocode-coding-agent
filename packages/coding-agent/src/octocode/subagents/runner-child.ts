@@ -1,6 +1,6 @@
 import type { Usage } from "@octocodeai/octocode-ai";
-import type { ExtensionContext } from "../../core/features/index.ts";
-import { runnerTask } from "../instructions/task.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
+import { runnerTask } from "../native/prompts/task.ts";
 import { emptyUsage } from "../shared/util.ts";
 import type { ChildProgress } from "./events.ts";
 import type { Identity } from "./process/env.ts";
@@ -9,7 +9,7 @@ import { reportDir } from "./process/session.ts";
 import { ReportTracker } from "./report.ts";
 import type { RunnerBilling, RunnerReply, Runners } from "./runner-port.ts";
 import type { Team } from "../team/session.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 
 /** ACP stop reasons as a report reads them: a cut-off turn is incomplete, a refusal failed, a cancelled turn aborted. */
 const STOP_REASONS: Record<string, string> = {
@@ -48,7 +48,7 @@ export interface RunnerChildInput {
 	signal: AbortSignal | undefined;
 	onProgress: (progress: ChildProgress) => void;
 	onSpawn?: (pid: number) => void;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	team?: Team;
 }
 
@@ -95,7 +95,7 @@ export async function runRunnerChild(
 			cwd: input.cwd,
 			text:
 				runnerTask(input.task, input.cwd) +
-				(bridge ? `\n\n${renderInstruction("tools/agent/runner-mail.md", { id: identity.id })}` : ""),
+				(bridge ? `\n\n${renderPrompt("tools/agent/runner-mail.md", { id: identity.id })}` : ""),
 			...(bridge ? { communication: bridge.communication } : {}),
 			signal: input.signal ?? new AbortController().signal,
 			onActivity: (line) => progress({ activity: line }),

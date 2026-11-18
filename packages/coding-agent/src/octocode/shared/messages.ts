@@ -15,7 +15,7 @@ export interface MessageEnvelope {
 }
 export const INTERNAL_MESSAGE_TYPE = "octocode-agent-message";
 export const EXTERNAL_MESSAGE_TYPE = "octocode-external-message";
-/** The custom message a background bash job sends its session when it ends (`files/bash.ts`); subagent reports read it too. */
+/** The custom message a background bash job sends its session when it ends (`native/tools/bash/tool.ts`); subagent reports read it too. */
 export const JOB_TYPE = "octocode-bash-job";
 /** The custom message a timer sends its session when it fires (`timer/register.ts`). */
 export const TIMER_TYPE = "octocode-timer";

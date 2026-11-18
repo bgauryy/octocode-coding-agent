@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV, envFlag } from "@octocodeai/octocode-common/env";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
-import type { McpExtensionApi } from "./host/types.ts";
+import type { McpFeatureApi } from "./host/types.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 
@@ -109,7 +109,7 @@ function serverConfig(
  * worker or without the variable. A bad manifest or a namespace that is already registered registers nothing and is
  * reported through `ready.json`, which the broker reads before it exposes the session.
  */
-export function registerAcpClientMcpServers(api: McpExtensionApi, env: NodeJS.ProcessEnv = process.env): void {
+export function registerAcpClientMcpServers(api: McpFeatureApi, env: NodeJS.ProcessEnv = process.env): void {
 	const manifestPath = env[ACP_MCP_MANIFEST_ENV];
 	if (!manifestPath || !envFlag(env, ACP_WORKER_ENV)) return;
 	const directory = dirname(manifestPath);
@@ -118,7 +118,7 @@ export function registerAcpClientMcpServers(api: McpExtensionApi, env: NodeJS.Pr
 	try {
 		if (statSync(manifestPath).size > MAX_MANIFEST_BYTES) throw new Error("manifest too large");
 		const manifest = parseAcpMcpManifest(readFileSync(manifestPath, "utf8"));
-		const occupied = new Set(api.getMcpServers().map((server) => mcpNamespace(server.name)));
+		const occupied = new Set(api.mcpServers.list().map((server) => mcpNamespace(server.name)));
 		const configs: Array<[string, McpServerConfig]> = [];
 		for (const [index, server] of manifest.servers.entries()) {
 			if (occupied.has(mcpNamespace(server.namespace)))
@@ -128,8 +128,8 @@ export function registerAcpClientMcpServers(api: McpExtensionApi, env: NodeJS.Pr
 			if (typeof config === "string") throw new Error(config);
 			configs.push([server.namespace, config]);
 		}
-		for (const [name, config] of configs) api.registerMcpServer(name, config);
-		api.on("session_start", () => report({ ready: true }));
+		for (const [name, config] of configs) api.mcpServers.register(name, config);
+		api.bus.on("session_start", () => report({ ready: true }));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		process.stderr.write(`ACP client MCP servers unavailable: ${message}\n`);

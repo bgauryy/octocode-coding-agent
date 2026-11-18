@@ -37,7 +37,7 @@ import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./
 import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { armShutdownDeadline } from "./shutdown-deadline.ts";
-import { createExtensionUIContext, type PendingExtensionRequests } from "./rpc-mode/ui-context.ts";
+import { createSessionUI, type PendingUiRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -72,8 +72,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		else for (const piece of eventLines(toJsonEvent(event))) writeRawStdout(piece);
 	});
 
-	// Pending extension UI requests waiting for response
-	const pendingExtensionRequests: PendingExtensionRequests = new Map();
+	// Pending feature UI requests waiting for response
+	const pendingUiRequests: PendingUiRequests = new Map();
 
 	// Shutdown request flag
 	let shutdownRequested = false;
@@ -102,10 +102,10 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			}
 		});
 		unsubscribeBackpressure = session.agent.subscribe(waitForEventBackpressure);
-		await session.bindExtensions({
+		await session.bindFeatures({
 			uiContext: options.noDialogs
 				? undefined
-				: createExtensionUIContext(output, pendingExtensionRequests, { ask: options.rpcAsk === true }),
+				: createSessionUI(output, pendingUiRequests, { ask: options.rpcAsk === true }),
 			mode: "rpc",
 			commandContextActions: {
 				...headlessCommandActions(() => session),
@@ -115,7 +115,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 				shutdownRequested = true;
 			},
 			onError: (err) => {
-				output({ type: "extension_error", extensionPath: err.extensionPath, event: err.event, error: err.error });
+				output({ type: "extension_error", extensionPath: err.source, event: err.event, error: err.error });
 			},
 		});
 	};
@@ -144,9 +144,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 		// A hung dispose (git, an MCP close, a bash job drain) must not outlive a coordinator that is gone.
 		armShutdownDeadline(exitCode);
 		initialized.reject(new Error("RPC session closed during startup."));
-		for (const [id, request] of pendingExtensionRequests)
+		for (const [id, request] of pendingUiRequests)
 			request.resolve({ type: "extension_ui_response", id, cancelled: true });
-		pendingExtensionRequests.clear();
+		pendingUiRequests.clear();
 		// Keep signal cleanup active while disposal waits: a parent-gone signal or second signal must still reap children.
 		unsubscribe?.();
 		unsubscribeBackpressure?.();
@@ -186,9 +186,9 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 
 		if (typeof parsed === "object" && parsed !== null && "type" in parsed && parsed.type === "extension_ui_response") {
 			const response = parsed as RpcExtensionUIResponse;
-			const pending = pendingExtensionRequests.get(response.id);
+			const pending = pendingUiRequests.get(response.id);
 			if (pending) {
-				pendingExtensionRequests.delete(response.id);
+				pendingUiRequests.delete(response.id);
 				pending.resolve(response);
 			}
 			return;
@@ -201,7 +201,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			return;
 		}
 		const command = parsed as RpcCommand;
-		// Latch before yielding: abort may settle a run whose extension already requested exit.
+		// Latch before yielding: abort may settle a run whose feature already requested exit.
 		if (command.type === "abort" && command.holdShutdown) holdShutdown = true;
 		try {
 			if (!acpOwnsSession || command.type !== "abort") await initialized.promise;

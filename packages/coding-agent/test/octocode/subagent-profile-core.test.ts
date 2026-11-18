@@ -19,6 +19,7 @@ import {
 import { localResearchTools } from "../../src/octocode/subagents/core-tools.ts";
 import { useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 useResearchRoles();
 
@@ -217,7 +218,8 @@ describe("core tools of a subagent profile", () => {
 				cwd,
 				agentDir,
 				settingsManager,
-				disabledFeatures: ["llama.cpp"],
+				nativeFeatures: nativeFeatureSet(),
+				disabledFeatures: [],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,

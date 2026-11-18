@@ -9,9 +9,9 @@ import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import { configuredSubagentModels } from "../../src/octocode/subagents/configured-models.ts";
 import { type ModelRef, type Refused, routeModel } from "../../src/octocode/subagents/model.ts";
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
-import { meteredBilling } from "./fake-host.ts";
+import { meteredBilling, asSetup } from "./fake-host.ts";
 
 const model = (provider: string, id: string, input: number, output: number, extra: object = {}): ModelRef =>
 	({ provider, id, cost: { input, output }, contextWindow: 200_000, reasoning: true, ...extra }) as ModelRef;
@@ -140,7 +140,7 @@ describe("subagents.models: the global setting and its surfaces", () => {
 
 		let tool: ToolDefinition | undefined;
 		registerModelsTool(
-			{ registerTool: (definition: ToolDefinition) => void (tool = definition) } as never,
+			asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
 			() => new Map(),
 		);
 		const result = await tool!.execute("c", { routes: true }, undefined, undefined, {

@@ -20,7 +20,7 @@ function setup() {
 	const requestRender = vi.fn();
 	const ui = { requestRender } as unknown as TUI;
 	const chatContainer = new Container();
-	const footerDataProvider = { setExtensionStatus: vi.fn() };
+	const footerDataProvider = { setFeatureStatus: vi.fn() };
 	const fake = {
 		uiStore,
 		ui,
@@ -208,7 +208,7 @@ describe("interactive view store", () => {
 		expect(text).toContain("world");
 		// Back-to-back notices share the last status line: the latest replaces the earlier ones.
 		expect(text).not.toContain("hello");
-		expect(footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(footerDataProvider.setFeatureStatus).not.toHaveBeenCalled();
 	});
 
 	it("starts a new line once something else reached the messages list", () => {

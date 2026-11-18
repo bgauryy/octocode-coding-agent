@@ -1,9 +1,10 @@
-import type { ExtensionAPI } from "../core/features/index.ts";
+import type { FeatureSetup } from "../core/features/index.ts";
 import type { registerApi } from "./api/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
-import type { registerBashTool } from "./files/bash.ts";
+import type { registerBashTool } from "./native/tools/bash/tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import type { AgentControl } from "./subagents/tool.ts";
+import type { Subcommands } from "./shared/commands.ts";
 import type { Team } from "./team/session.ts";
 import { stopRowTimers } from "./render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
@@ -17,7 +18,7 @@ import { CHILD_JOB_HOLD_MS, holdForOwnJobs, JOB_HOLD_TYPE } from "./files/bash/c
 import type { BashJob } from "./files/bash-jobs/types.ts";
 
 export function registerNativeSessionLifecycle(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: {
 		isSubagent: boolean;
 		team: Team;
@@ -26,6 +27,8 @@ export function registerNativeSessionLifecycle(
 		agents?: AgentControl;
 		external?: ExternalAgents;
 		api?: ReturnType<typeof registerApi>;
+		/** The command line `/cron` and `/loop` register on; a session without one has neither. */
+		commands?: Subcommands;
 		/** How long a subagent's run holds after its answer for its own running jobs (`child-hold.ts`). */
 		jobHoldMs?: number;
 	},
@@ -39,17 +42,19 @@ export function registerNativeSessionLifecycle(
 		reservation: (absolute, display) => team.reservation(absolute, display),
 		agent: () => team.id,
 		small: { call: callSmallModel, label: smallModelLabel },
+		isSubagent,
+		...(options.commands ? { commands: options.commands } : {}),
 	});
 	/** Whether this run already held for a report after a failure (`held-failure.ts`). */
 	const held = { value: false };
-	api.on("before_agent_start", async () => {
+	api.bus.on("before_agent_start", async () => {
 		held.value = false;
 		return undefined;
 	});
 	// Headless runs (print, JSON, subagents) end with the agent's run, which would lose background work before it reports:
 	// hold the run until bash jobs and background subagents finish (their reports arrive as one more turn). An interactive
 	// session goes on, and an aborted run has no turn to hand the reports to; a failed one retries with the next report.
-	api.on("agent_before_settle", async (event, ctx) => {
+	api.bus.on("agent_before_settle", async (event, ctx) => {
 		if (interactive(ctx, isSubagent) || event.outcome === "aborted") return undefined;
 		// A session abort (a signal to this process, a shutdown) fires ctx.signal, so `session_shutdown` runs next and stops the
 		// children; an interrupt for this agent ends the wait too, and so does a question from its coordinator (`team.interrupted`):
@@ -71,12 +76,17 @@ export function registerNativeSessionLifecycle(
 			const holding = setInterval(() => undefined, MINUTE_MS);
 			try {
 				const notify = (text: string) =>
-					void api.sendMessage({ customType: JOB_HOLD_TYPE, content: text, display: true }, { triggerTurn: false });
+					void api.session.sendMessage(
+						{ customType: JOB_HOLD_TYPE, content: text, display: true },
+						{ triggerTurn: false },
+					);
 				// After the hold note, an answer that names no outcome is still waiting; a report ends the run.
 				const answer = event.context.contextMessages.findLast((message) => message.role === "assistant");
 				const reported = answer !== undefined && reportStatus(contentText(answer.content)) !== undefined;
 				const holdMs = options.jobHoldMs ?? CHILD_JOB_HOLD_MS;
 				if (await holdForOwnJobs(jobs, warnedJobs, notify, stop, holdMs, reported)) return { continue: true };
+				// The report ends the child's work: a wait it set would only wake it for a turn nobody reads.
+				if (reported) timers.endOwn();
 			} finally {
 				clearInterval(holding);
 			}
@@ -93,7 +103,7 @@ export function registerNativeSessionLifecycle(
 		return undefined;
 	});
 
-	api.on("session_shutdown", async (_event, ctx) => {
+	api.bus.on("session_shutdown", async (_event, ctx) => {
 		permission.shutdown(ctx);
 		// Rows of the old session that were still running would otherwise tick every second for the life of the process.
 		stopRowTimers();

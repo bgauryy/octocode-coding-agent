@@ -2,14 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AGENT_SCRATCH_ENV, PERMISSION_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { shellTargetAccess } from "../../src/octocode/permission/file-access.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { shellMutation, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { commandWriteTargets } from "../../src/octocode/permission/shell/write-targets.ts";
 import { getOctocodeHome } from "../../src/config.ts";
-import { fakePermission } from "./fake-host.ts";
+import { fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 beforeAll(async () => {
@@ -99,13 +99,13 @@ describe("file edits of an unread file", () => {
 	function setup() {
 		let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			new FileGuard(),
 			fakePermission(),
 		);

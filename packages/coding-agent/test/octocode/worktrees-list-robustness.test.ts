@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import { locateRepo } from "../../src/octocode/worktrees/repo.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
@@ -16,7 +16,7 @@ const contextAt = (cwd: string) =>
 		cwd,
 		hasUI: true,
 		ui: { notify: (text: string, level = "info") => void notices.push({ text, level }) },
-	}) as unknown as ExtensionCommandContext;
+	}) as unknown as CommandContext;
 const invocation = () => ({ command: "/bin/octocode", prefix: [] });
 const list = async (cwd: string) => {
 	notices = [];

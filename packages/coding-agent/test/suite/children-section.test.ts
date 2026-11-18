@@ -12,6 +12,7 @@ import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A real session on a scripted model: the rules for running children and using reports are absent from the first
@@ -49,7 +50,8 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 			cwd: root,
 			agentDir: join(root, ".octocode", "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -59,7 +61,7 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		harness = await createHarness({ resourceLoader: loader });
 		const fauxApi = getApiProvider(harness.faux.api);
 		if (!fauxApi) throw new Error("Missing faux API");
-		await harness.session.bindExtensions({ mode: "rpc", onError: (error) => errors.push(error.error) });
+		await harness.session.bindFeatures({ mode: "rpc", onError: (error) => errors.push(error.error) });
 		harness.session.setActiveToolsByName(["bash", "file", "agent"]);
 
 		harness.setResponses([
@@ -122,7 +124,7 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		expect(requests[4].prompt).toContain(HEADING);
 		expect(errors).toEqual([]);
 	} finally {
-		await harness?.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await harness?.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		harness?.cleanup();
 		vi.unstubAllEnvs();
 		rmSync(root, { recursive: true, force: true });

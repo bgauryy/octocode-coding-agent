@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { Type } from "typebox";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 

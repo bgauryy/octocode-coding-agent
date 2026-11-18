@@ -36,7 +36,7 @@ export type GateResult =
 	| { status: "met"; seq?: number }
 	| { status: "failed"; failed: Array<{ name: string; why: string }> };
 
-/** What the gate reads and listens to; the subagents tool supplies it (backlog, `api.events`, the database follower). */
+/** What the gate reads and listens to; the subagents tool supplies it (backlog, `api.channels`, the database follower). */
 export interface GateHost {
 	/** The item's standing now: read on every check, so a missed event never strands a wait. */
 	item(ref: string): ItemStanding;

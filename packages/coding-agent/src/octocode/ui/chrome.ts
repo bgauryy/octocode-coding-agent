@@ -2,7 +2,7 @@ import { registerToolDisplays } from "./tool-display.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
 import { stopRowTimers } from "../render/rows.ts";
@@ -10,8 +10,11 @@ import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
 import { registerAwaiting } from "./awaiting.ts";
+import { backlogOpenItems, registerPhaseFeed } from "./phase-feed.ts";
+import { registerPhaseLine } from "./phase-line.ts";
 import { registerTurnLine } from "./turn-line.ts";
 import { registerWakeRow } from "./wake-row.ts";
+import { registerBacklogLine } from "./backlog-line.ts";
 
 let version: { value: string | undefined } | undefined;
 
@@ -75,7 +78,7 @@ export function spinnerFrames(theme: Theme): string[] {
  * The banner as Octocode's header component. It is static: lines are computed once per width and kept until
  * `invalidate`, so the header never asks for a frame and never makes the renderer redraw the scrollback on its own.
  * `onInvalidate` runs when Octocode invalidates the header: a theme switch does, and Octocode has no theme event for
- * extensions.
+ * features.
  */
 export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
 	// Read from the theme again on invalidate: Octocode invalidates components when the theme changes.
@@ -104,34 +107,37 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
  * spinner, and the generation speed of the last run. Only time spent streaming assistant
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.
  */
-export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
+export function registerUi(api: FeatureSetup, isSubagent: boolean): void {
 	registerToolDisplays(api);
 	if (isSubagent) return;
 	registerFooter(api);
+	registerPhaseFeed(api, backlogOpenItems);
 	registerTurnLine(api);
+	registerPhaseLine(api);
 	registerWakeRow(api);
+	registerBacklogLine(api);
 	registerAwaiting(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(STATUS.speed, undefined);
 		if (ctx.mode === "tui") decorate(ctx);
 	});
-	api.on("agent_start", async () => {
+	api.bus.on("agent_start", async () => {
 		generated = { output: 0, ms: 0 };
 		messageStartedAt = undefined;
 	});
-	api.on("message_start", async (event) => {
+	api.bus.on("message_start", async (event) => {
 		if (event.message.role === "assistant") messageStartedAt = Date.now();
 	});
-	api.on("message_end", async (event) => {
+	api.bus.on("message_end", async (event) => {
 		if (event.message.role !== "assistant" || messageStartedAt === undefined) return;
 		generated.ms += Date.now() - messageStartedAt;
 		generated.output += event.message.usage.output;
 		messageStartedAt = undefined;
 	});
-	api.on("agent_end", async (_event, ctx) => {
+	api.bus.on("agent_end", async (_event, ctx) => {
 		// Every call of the run ended. Octocode drops rows it never gave a result here; their clocks must not tick on.
 		stopRowTimers();
 		if (!ctx.hasUI) return;
@@ -141,7 +147,7 @@ export function registerUi(api: ExtensionAPI, isSubagent: boolean): void {
 	});
 }
 
-function decorate(ctx: ExtensionContext): void {
+function decorate(ctx: FeatureContext): void {
 	// The spinner is a painted string: repaint it whenever a theme switch invalidates the header.
 	ctx.ui.setHeader((_tui, current) => bannerHeader(current, () => paintIndicators(ctx)));
 	paintIndicators(ctx);
@@ -150,14 +156,14 @@ function decorate(ctx: ExtensionContext): void {
 /** A running tool row animates its own spinner: the working line then keeps its first frame, so two never spin at once. */
 let rowsAnimate = false;
 
-function paintIndicators(ctx: ExtensionContext): void {
+function paintIndicators(ctx: FeatureContext): void {
 	const frames = spinnerFrames(ctx.ui.theme);
 	// Octocode's loader steps every 80 ms when no interval is given; one frame is a still mark with no shimmer.
 	ctx.ui.setWorkingIndicator({ frames: rowsAnimate ? frames.slice(0, 1) : frames });
 }
 
 /** Hold (`true`) or restore the working line's own spinner; a no-op when it is already so. */
-export function setRowsAnimate(ctx: ExtensionContext, animate: boolean): void {
+export function setRowsAnimate(ctx: FeatureContext, animate: boolean): void {
 	if (rowsAnimate === animate) return;
 	rowsAnimate = animate;
 	paintIndicators(ctx);

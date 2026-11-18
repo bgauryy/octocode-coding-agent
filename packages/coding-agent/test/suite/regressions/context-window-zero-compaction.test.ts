@@ -23,7 +23,7 @@ describe("automatic compaction with an unknown (zero) context window", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "summary",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

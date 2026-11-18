@@ -1,6 +1,7 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("message_end cost override", () => {
 	const harnesses: Harness[] = [];
@@ -13,9 +14,9 @@ describe("message_end cost override", () => {
 
 	it("allows extensions to replace finalized assistant usage cost", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_end", (event) => {
+					api.bus.on("message_end", (event) => {
 						if (event.message.role !== "assistant") return;
 
 						return {
@@ -32,7 +33,7 @@ describe("message_end cost override", () => {
 						};
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("hello")]);

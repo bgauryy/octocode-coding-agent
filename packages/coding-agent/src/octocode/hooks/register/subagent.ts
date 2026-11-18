@@ -1,9 +1,9 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor } from "../config/calls.ts";
 import type { HookVerdict } from "../contracts.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "@octocodeai/octocode-common/env";
 import { contentText } from "../../shared/util.ts";
@@ -23,7 +23,7 @@ import {
  * Code's loop guards: `stop_hook_active` while continuing, at most 8 continuations in a row unless a tool runs).
  */
 export function registerSubagentHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	dispatch: Dispatch,
 	env: NodeJS.ProcessEnv,
@@ -34,7 +34,7 @@ export function registerSubagentHooks(
 	const started = new Map<"claude" | "codex", string | undefined>();
 	let stopContinues = 0;
 	const agentType = metadata?.().agentType || "general";
-	const identity = (ctx: ExtensionContext, protocol: "claude" | "codex", stop: boolean): Record<string, unknown> => ({
+	const identity = (ctx: FeatureContext, protocol: "claude" | "codex", stop: boolean): Record<string, unknown> => ({
 		agent_id:
 			protocol === "codex"
 				? ctx.sessionManager.getSessionId()
@@ -53,7 +53,7 @@ export function registerSubagentHooks(
 				}
 			: {}),
 	});
-	const ready = (ctx: ExtensionContext, protocol: "claude" | "codex"): boolean => {
+	const ready = (ctx: FeatureContext, protocol: "claude" | "codex"): boolean => {
 		const valid =
 			!!metadata?.().permissionMode &&
 			!!ctx.model &&
@@ -69,12 +69,12 @@ export function registerSubagentHooks(
 		}
 		return valid;
 	};
-	api.on("session_start", async (event) => {
+	api.bus.on("session_start", async (event) => {
 		codexStart = event.reason === "startup" || event.reason === "fork";
 		started.clear();
 		stopContinues = 0;
 	});
-	api.on("before_agent_start", async (_event, ctx) => {
+	api.bus.on("before_agent_start", async (_event, ctx) => {
 		stopContinues = 0;
 		const contexts: string[] = [];
 		const contextKeys: string[] = [];
@@ -115,7 +115,7 @@ export function registerSubagentHooks(
 			if (!present) {
 				contexts.push(
 					capContext(
-						renderInstruction("notices/hooks/context.md", {
+						renderPrompt("hooks/context.md", {
 							source: `${protocol} SubagentStart`,
 							text,
 						}),
@@ -134,10 +134,10 @@ export function registerSubagentHooks(
 				},
 			};
 	});
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("tool_execution_start", async (event) => {
 		if (!event.parentToolCallId) stopContinues = 0;
 	});
-	api.on("agent_before_settle", async (event, ctx) => {
+	api.bus.on("agent_before_settle", async (event, ctx) => {
 		if (event.outcome !== "completed") return;
 		const last = [...event.context.llmMessages].reverse().find((message) => message.role === "assistant");
 		const verdicts: HookVerdict[] = [

@@ -1,13 +1,14 @@
 import os from "node:os";
 import { Connected, shallowEqual } from "@octocodeai/octocode-tui";
 import { createStore } from "zustand/vanilla";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { StatusEntry } from "../../core/footer-data-provider.ts";
 import { chipStore } from "../permission/chip-store.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
 import {
 	addReply,
 	emptyTotals,
+	entryMessage,
 	memoizedModelLookup,
 	modelLookup,
 	type ModelLookup,
@@ -16,6 +17,7 @@ import {
 	unpricedModel,
 } from "../shared/util.ts";
 import { SpendScan } from "../shared/spend.ts";
+import { liveAgentsStore, reportedAgent } from "../shared/team-spend.ts";
 import { registerFallbackNotice, registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
 import { githubTokenPresent } from "./footer/github.ts";
 import { type FooterState, footerLines } from "./footer/rows.ts";
@@ -26,17 +28,22 @@ const isCompaction = (entry: unknown): boolean =>
 	typeof entry === "object" && entry !== null && (entry as { type?: unknown }).type === "compaction";
 
 /**
- * Replaces Octocode's footer with `footerLines`. The state is sampled on events (session start, each finished message,
+ * Mounts the footer, `footerLines`, in the host's footer slot. The state is sampled on events (session start, each finished message,
  * model and thinking changes, compaction, tree moves), never inside render: context usage walks the whole session.
- * The state lives in a store and the footer is a `Connected` view of it, the permission chip, the git branch and the
- * statuses: Octocode repaints on every streamed token, and a frame whose selection is unchanged reuses its lines. It also
+ * The state lives in a store and the footer is a `Connected` view of it, the permission chip, the live agents the panel
+ * publishes (for `Σ`), the git branch and the statuses: a frame whose selection is unchanged reuses its lines. It also
  * warns once when a reply's model has no pricing, and when the model declares no reasoning that a built-in twin declares.
  */
-export function registerFooter(api: ExtensionAPI): void {
+export function registerFooter(api: FeatureSetup): void {
 	registerUnpricedNotice(api);
 	registerReasoningNotice(api);
 	registerFallbackNotice(api);
-	const store = createStore<FooterState>()(() => ({ usage: emptyTotals(), cwd: process.cwd(), home: os.homedir() }));
+	const store = createStore<FooterState>()(() => ({
+		usage: emptyTotals(),
+		reported: new Set<string>(),
+		cwd: process.cwd(),
+		home: os.homedir(),
+	}));
 	// Each event changes the state in one commit, so it asks for one frame however many fields it touched.
 	let pending: Partial<FooterState> = {};
 	const set = (patch: Partial<FooterState>) => {
@@ -54,12 +61,21 @@ export function registerFooter(api: ExtensionAPI): void {
 	const scan = new SpendScan();
 	/** Compaction entries among those the scan has read (`appended`), so counting them never reads the session again. */
 	let compactions = 0;
-	const addEntry = (entry: unknown, ctx: ExtensionContext, find?: ModelLookup) => add(scan.entry(entry), ctx, find);
+	const addEntry = (entry: unknown, ctx: FeatureContext, find?: ModelLookup) => {
+		noteReport(entryMessage(entry));
+		add(scan.entry(entry), ctx, find);
+	};
+	/** A subagent whose result or report the ledger now holds: `Σ` stops adding its live row (`totalSpend`). */
+	const noteReport = (message: unknown) => {
+		const id = reportedAgent(message);
+		const reported = pending.reported ?? store.getState().reported ?? new Set<string>();
+		if (id !== undefined && !reported.has(id)) set({ reported: new Set([...reported, id]) });
+	};
 	/**
 	 * Spend recorded outside a reply (a compaction summary, a cache refresh, a side question) since the last look, by the
 	 * rule of `SpendScan.recorded`: only `usage` entries, each once.
 	 */
-	const addRecorded = (ctx: ExtensionContext) => {
+	const addRecorded = (ctx: FeatureContext) => {
 		const { restart, entries } = scan.appended(ctx.sessionManager);
 		if (restart) compactions = 0;
 		for (const entry of entries) {
@@ -70,14 +86,24 @@ export function registerFooter(api: ExtensionAPI): void {
 	const countCompactions = () => {
 		set({ compactions });
 	};
-	const add = (spend: Spend | undefined, ctx: ExtensionContext, find?: ModelLookup) => {
+	const add = (spend: Spend | undefined, ctx: FeatureContext, find?: ModelLookup) => {
 		if (!spend) return;
 		// A new object: the store's subscribers compare totals by identity.
 		const usage = { ...(pending.usage ?? store.getState().usage) };
+		const before = usage.cost;
 		addReply(usage, spend.usage, unpricedModel(spend, find ?? modelLookup(ctx)) !== undefined);
 		set({ usage });
+		// Each reply's own provider decides whether a plan paid for it, not the model selected now: `Σ (sub)` needs all of them.
+		if (
+			spend.role === "assistant" &&
+			typeof spend.provider === "string" &&
+			ctx.modelRegistry.billedBySubscription(spend.provider)
+		) {
+			const plan = pending.planBilled ?? store.getState().planBilled ?? { replies: 0, cost: 0 };
+			set({ planBilled: { replies: plan.replies + 1, cost: plan.cost + usage.cost - before } });
+		}
 	};
-	const sample = (ctx: ExtensionContext) => {
+	const sample = (ctx: FeatureContext) => {
 		const model = ctx.model;
 		const usage = ctx.getContextUsage();
 		// Usage carries the effective window (including overrides and the latest physical route).
@@ -91,10 +117,8 @@ export function registerFooter(api: ExtensionAPI): void {
 				: usage?.contextWindow);
 		set({
 			model: model?.id,
-			provider: model?.provider,
-			subscription: model ? ctx.modelRegistry.billedBySubscription(model.provider) : false,
 			kind: model ? ctx.modelRegistry.getProviderKind(model.provider) : undefined,
-			thinking: model?.reasoning ? api.getThinkingLevel() : undefined,
+			thinking: model?.reasoning ? api.models.getThinkingLevel() : undefined,
 			context: limit
 				? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }
 				: undefined,
@@ -104,15 +128,15 @@ export function registerFooter(api: ExtensionAPI): void {
 		});
 	};
 	// The footer is a terminal component (setFooter does nothing over RPC), so its bookkeeping runs only in the TUI.
-	const refresh = async (_event: unknown, ctx: ExtensionContext) => {
+	const refresh = async (_event: unknown, ctx: FeatureContext) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		sample(ctx);
 		commit();
 	};
 
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		set({ running: false, usage: emptyTotals() });
+		set({ running: false, usage: emptyTotals(), planBilled: undefined, reported: new Set() });
 		scan.reset();
 		compactions = 0;
 		const find = memoizedModelLookup(modelLookup(ctx));
@@ -129,7 +153,7 @@ export function registerFooter(api: ExtensionAPI): void {
 			const statuses = (): ReadonlyMap<string, StatusEntry> => {
 				const state = data.getState?.();
 				if (state) return state.statuses;
-				const from = data.getExtensionStatuses();
+				const from = data.getFeatureStatuses();
 				if (wrapped?.from !== from)
 					wrapped = { from, entries: new Map([...from].map(([name, text]) => [name, { text }] as const)) };
 				return wrapped.entries;
@@ -138,9 +162,17 @@ export function registerFooter(api: ExtensionAPI): void {
 			let shown: { branch: string | null; statuses: ReadonlyMap<string, StatusEntry> } | undefined;
 			const view = new Connected({
 				source: {
-					getState: () => ({ ...store.getState(), chip: chipStore.getState().chip }),
+					getState: () => ({
+						...store.getState(),
+						chip: chipStore.getState().chip,
+						live: liveAgentsStore.getState().live,
+					}),
 					subscribe: (listener) => {
-						const stops = [store.subscribe(listener), chipStore.subscribe(listener)];
+						const stops = [
+							store.subscribe(listener),
+							chipStore.subscribe(listener),
+							liveAgentsStore.subscribe(listener),
+						];
 						return () => {
 							for (const stop of stops) stop();
 						};
@@ -168,8 +200,9 @@ export function registerFooter(api: ExtensionAPI): void {
 			};
 		});
 	});
-	api.on("message_end", async (event, ctx) => {
+	api.bus.on("message_end", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		noteReport(event.message);
 		add(spendOf(event.message), ctx);
 		// Context usage walks the session: only a reply changes it. A subagent's result or report only adds usage.
 		if (event.message.role === "assistant") {
@@ -178,28 +211,28 @@ export function registerFooter(api: ExtensionAPI): void {
 		}
 		commit();
 	});
-	api.on("session_tree", async (event, ctx) => {
+	api.bus.on("session_tree", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		addEntry(event.summaryEntry, ctx);
 		await refresh(event, ctx);
 	});
-	api.on("model_select", refresh);
-	api.on("thinking_level_select", refresh);
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("model_select", refresh);
+	api.bus.on("thinking_level_select", refresh);
+	api.bus.on("session_compact", async (event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		addEntry(event.compactionEntry, ctx);
 		addRecorded(ctx);
 		countCompactions();
 		await refresh(event, ctx);
 	});
-	api.on("agent_start", async (_event, ctx) => {
+	api.bus.on("agent_start", async (_event, ctx) => {
 		if (ctx.hasUI && ctx.mode === "tui") setRunning(true);
 	});
-	api.on("agent_settled", async () => setRunning(false));
-	api.on("session_shutdown", async () => setRunning(false));
-	api.on("agent_end", async (event, ctx) => {
+	api.bus.on("agent_settled", async () => setRunning(false));
+	api.bus.on("session_shutdown", async () => setRunning(false));
+	api.bus.on("agent_end", async (event, ctx) => {
 		if (ctx.hasUI && ctx.mode === "tui") addRecorded(ctx);
 		await refresh(event, ctx);
 	});
-	api.on("session_info_changed", refresh);
+	api.bus.on("session_info_changed", refresh);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { createOctocodeCommand } from "../../src/octocode/cli/command.ts";
 import { parseCliHelp } from "../../src/octocode/cli/help.ts";
 import { resolveOctocodeCli } from "../../src/octocode/cli/resolve.ts";
@@ -13,7 +13,7 @@ function headless() {
 	const custom = vi.fn(async () => undefined);
 	// As in RPC mode: no terminal input to listen to, a status the client may show.
 	const ui = { notify, custom, setStatus: vi.fn(), onTerminalInput: () => () => undefined };
-	const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as ExtensionCommandContext;
+	const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as CommandContext;
 	return { ctx, notify, custom };
 }
 

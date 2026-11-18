@@ -21,18 +21,29 @@ const SUMMARY = /^(Added )?(B\d+)( → | · )(backlog|todo|ongoing|done|closed)(
  * whole. Undefined for any other line. With the escape codes removed it is the plain summary on one line.
  */
 export function styleBacklogSummary(theme: StyleTheme, summary: string, links?: boolean): string | undefined {
+	const parts = styleBacklogHeadline(theme, summary, links);
+	if (!parts) return undefined;
+	return parts.title ? `${parts.change}${theme.fg("dim", " · ")}${parts.title}` : parts.change;
+}
+
+/** {@link styleBacklogSummary} in its two parts: the change (`B12 → done`) and the item's title, each styled. */
+export function styleBacklogHeadline(
+	theme: StyleTheme,
+	summary: string,
+	links?: boolean,
+): { change: string; title: string } | undefined {
 	const match = SUMMARY.exec(summary);
 	if (!match) return undefined;
-	const [, added, ref, arrow, state, dot, title] = match;
+	const [, added, ref, arrow, state, , title] = match;
 	const flat = sanitizeTerminalText(title).replace(/\s+/g, " ").trim();
 	const color = state === "closed" ? "dim" : STATE_COLOR[state as State];
-	return [
+	const change = [
 		added ? theme.fg("muted", added) : "",
 		linkItem(theme.bold(ref), ref, links),
 		theme.fg("dim", arrow),
 		theme.bold(theme.fg(color, state)),
-		flat ? `${theme.fg("dim", dot)}${theme.bold(theme.fg("text", flat))}` : "",
 	].join("");
+	return { change, title: flat ? theme.bold(theme.fg("text", flat)) : "" };
 }
 
 /** An item line's tail (`Title #tag ⊂B3 (blocked by B5) (you)`): tags and links dim, blockers warned, the holder accented. */

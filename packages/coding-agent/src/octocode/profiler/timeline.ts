@@ -1,6 +1,8 @@
 import type { ProfileEvent, ProfileMessage, ProfileTimeline } from "@octocodeai/octocode-contracts/profiler";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Traffic } from "@octocodeai/octocode-contracts/team";
+import type { EndpointDirectory } from "../team/endpoint.ts";
+import { profileMessages } from "./messages.ts";
 import { num, str, type Entry, type Prepared } from "./entries.ts";
 import { LaneWaits, requestPhases, stallEvent, toolTiming } from "./latency.ts";
 import { SUMMARY_METHOD_DETAILS, summaryMethodMs, summaryMethodOf } from "../shared/summary-method.ts";
@@ -9,7 +11,6 @@ import { SUMMARY_METHOD_DETAILS, summaryMethodMs, summaryMethodOf } from "../sha
 const IDLE_GAP_MS = 60_000;
 /** Events returned per call; `hasMore` says the rest follows with `since` set to `until`. */
 const MAX_EVENTS = 2000;
-const PREVIEW_CHARS = 120;
 /** The `label` of a `wait` span that is a permission ask waiting for the user. */
 export const PERMISSION_WAIT_LABEL = "permission";
 
@@ -181,34 +182,6 @@ function idleSpans(agentId: string, events: ProfileEvent[]): ProfileEvent[] {
 	return spans;
 }
 
-function preview(text: string): string {
-	const first = text.split("\n", 1)[0] ?? "";
-	return first.length > PREVIEW_CHARS ? `${first.slice(0, PREVIEW_CHARS - 1)}…` : first;
-}
-
-/** The team's messages as the profiler lists them; `answeredMs` is the time to the message that replied to it. */
-function profileMessages(traffic: readonly Traffic[]): ProfileMessage[] {
-	const reply = new Map<number, number>();
-	for (const message of traffic)
-		if (message.replyTo !== undefined && !reply.has(message.replyTo)) reply.set(message.replyTo, message.at);
-	return traffic.map((message) => {
-		const answered = reply.get(message.id);
-		return {
-			id: message.id,
-			from: message.from,
-			to: message.to,
-			at: message.at,
-			...(message.replyTo === undefined ? {} : { replyTo: message.replyTo }),
-			state: message.state,
-			preview: preview(message.text),
-			text: message.text,
-			...(message.deliveredAt === undefined ? {} : { deliveredMs: Math.max(0, message.deliveredAt - message.at) }),
-			...(answered === undefined ? {} : { answeredMs: Math.max(0, answered - message.at) }),
-			...(message.dropped === undefined ? {} : { dropped: message.dropped }),
-		};
-	});
-}
-
 /** Message events on both lanes (`sent` and `received`) and `wait` spans of a sender that waits for a reply. */
 function messageEvents(messages: readonly ProfileMessage[], lanes: ReadonlySet<string>, now: number): ProfileEvent[] {
 	const events: ProfileEvent[] = [];
@@ -261,13 +234,15 @@ export interface TimelineInput {
 	sessionId: string;
 	lanes: Lane[];
 	traffic: readonly Traffic[];
+	/** How message endpoints resolve (role, worktree, tmux pane); absent: messages carry none. */
+	endpoints?: EndpointDirectory;
 	now: number;
 }
 
 /** Everything on the timeline, oldest first: transcript events, lifecycle, messages, waits and idle gaps. */
 export function allEvents(input: TimelineInput): { events: ProfileEvent[]; messages: ProfileMessage[] } {
 	const ids = new Set(input.lanes.map((lane) => lane.id));
-	const messages = profileMessages(input.traffic);
+	const messages = profileMessages(input.traffic, { lanes: input.lanes, endpoints: input.endpoints });
 	const events: ProfileEvent[] = [];
 	for (const lane of input.lanes) {
 		const own = lane.prepared ? transcriptEvents(lane.id, lane.prepared) : [];
@@ -291,7 +266,13 @@ export function allEvents(input: TimelineInput): { events: ProfileEvent[]; messa
 			});
 		events.push(...own, ...idleSpans(lane.id, own));
 	}
-	events.push(...messageEvents(messages, ids, input.now));
+	events.push(
+		...messageEvents(
+			messages.filter((message) => !message.internal),
+			ids,
+			input.now,
+		),
+	);
 	return { events: events.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)), messages };
 }
 

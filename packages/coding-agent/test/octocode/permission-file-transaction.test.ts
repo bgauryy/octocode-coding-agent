@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ToolInvocation } from "../../src/core/features/types.ts";
 import { expect, it, vi } from "vitest";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { captureToolInvocation } from "../../src/core/tools/tool-invocation.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

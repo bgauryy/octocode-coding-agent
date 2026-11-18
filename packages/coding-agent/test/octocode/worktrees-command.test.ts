@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import type { TmuxRunner } from "../../src/octocode/terminal-launch/tmux.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
@@ -16,7 +16,7 @@ const contextAt = (cwd: string) =>
 		cwd,
 		hasUI: true,
 		ui: { notify: (text: string, level = "info") => void notices.push({ text, level }) },
-	}) as unknown as ExtensionCommandContext;
+	}) as unknown as CommandContext;
 const invocation = () => ({ command: "/bin/octocode", prefix: ["--flag"] });
 const text = () => notices.map((n) => n.text).join("\n");
 

@@ -91,8 +91,8 @@ describe("provided tool purpose metadata", () => {
 	it("does not deduplicate identical purposes belonging to different queries", () => {
 		const queries = [0, 1].map(() => ({ mainGoal: "Shared goal", reasoning: "Shared reason" }));
 		const shown = plain(reasonRow(MCP, { queries }, undefined, true), 80);
-		expect(shown).toContain("1 · Shared goal — Shared reason");
-		expect(shown).toContain("2 · Shared goal — Shared reason");
+		expect(shown).toContain("↳ 1 · Shared goal · Shared reason");
+		expect(shown).toContain("↳ 2 · Shared goal · Shared reason");
 	});
 
 	it("deduplicates an echoed purpose only for its corresponding query", () => {

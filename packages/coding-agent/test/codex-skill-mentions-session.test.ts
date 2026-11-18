@@ -7,9 +7,9 @@ import { expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createReadTool } from "./fixtures/read-tool.ts";
-import type { InlineExtension } from "../src/core/features/index.ts";
 import { createHarness } from "./suite/harness.ts";
 import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
+import { type TestFeatureInput, testFeatures } from "./helpers/features.ts";
 
 type Spec = {
 	name: string;
@@ -20,7 +20,7 @@ type Spec = {
 	symlink?: boolean;
 	claude?: boolean;
 };
-async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], extensions: InlineExtension[] = []) {
+async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], features: TestFeatureInput[] = []) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "skill-mentions-session-")),
 		cwd = path.join(root, "project"),
 		agentDir = path.join(root, "agent");
@@ -62,15 +62,14 @@ async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], ex
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 		additionalSkillPaths: files,
 		additionalPromptTemplatePaths: [template],
-		extensionFactories: extensions,
+		features: testFeatures(features),
 		settingsManager: SettingsManager.inMemory(),
 	});
 	await loader.reload();
@@ -79,7 +78,7 @@ async function fixture(specs: Spec[] = [{ name: "alpha" }, { name: "beta" }], ex
 		tools: [createReadTool(cwd)],
 		settings: { retry: { enabled: false } },
 	});
-	await harness.session.bindExtensions({});
+	await harness.session.bindFeatures({});
 	return {
 		root,
 		cwd,
@@ -250,7 +249,7 @@ it("runs input transformation on original text before selecting the transformed 
 	const seen: string[] = [];
 	const f = await fixture(undefined, [
 		(api) => {
-			api.on("input", (event) => {
+			api.bus.on("input", (event) => {
 				seen.push(event.text);
 				return {
 					action: "transform",
@@ -274,7 +273,7 @@ it("runs input transformation on original text before selecting the transformed 
 it("does not read a skill or request a provider after an input handler consumes the prompt", async () => {
 	const f = await fixture(undefined, [
 		(api) => {
-			api.on("input", () => ({ action: "handled" }));
+			api.bus.on("input", () => ({ action: "handled" }));
 		},
 	]);
 	const read = vi.spyOn(fs, "readFileSync");
@@ -393,7 +392,7 @@ it.each(["steer", "followUp"] as const)(
 			});
 		const f = await fixture(undefined, [
 			(api) => {
-				api.registerTool({
+				api.tools.register({
 					name: "wait",
 					label: "wait",
 					description: "Controlled fixture wait",
@@ -473,8 +472,7 @@ it.each(["disabled", "untrusted"])("cannot select a %s discovery resource by nam
 		const loader = new DefaultResourceLoader({
 			cwd: f.cwd,
 			agentDir,
-			nativeFeatures: false,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
@@ -543,8 +541,7 @@ it.each(["portable", "legacy"])("uses qualified plugin mention names and %s prom
 		const loader = new DefaultResourceLoader({
 			cwd: f.cwd,
 			agentDir: path.join(f.root, "agent"),
-			nativeFeatures: false,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,

@@ -69,7 +69,7 @@ async function session(model: Model<Api>, transcript: Message[] = []) {
 		exposure: "recent",
 		cwd: tmp(),
 	});
-	h.api.getActiveTools = () =>
+	h.api.tools.getActive = () =>
 		[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 	hosts.push(h);
 	const ctx = {

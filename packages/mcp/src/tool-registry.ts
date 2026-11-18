@@ -7,20 +7,20 @@ import type { McpServerConnection } from "./runtime.ts";
 import { declaredInFull } from "./redeclare.ts";
 import { isOnDemand, markOnDemandLoaded } from "./on-demand.ts";
 import { isEnabled } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import { createMcpToolDefinition } from "./tool-definition.ts";
 import { assignMcpToolNames, createMcpToolName } from "./tool-names.ts";
 
-type ToolDefinitions = Array<Parameters<McpExtensionState["definitions"]["set"]>[1]>;
+type ToolDefinitions = Array<Parameters<McpFeatureState["definitions"]["set"]>[1]>;
 
 /** One registry refresh for the whole batch; a host without `registerTools` gets one `registerTool` per definition. */
-function registerAll(api: McpExtensionState["api"], definitions: ToolDefinitions): void {
+function registerAll(api: McpFeatureState["api"], definitions: ToolDefinitions): void {
 	if (definitions.length === 0) return;
-	if (typeof api.registerTools === "function") api.registerTools(definitions);
-	else for (const definition of definitions) api.registerTool(definition);
+	if (typeof api.tools.registerAll === "function") api.tools.registerAll(definitions);
+	else for (const definition of definitions) api.tools.register(definition);
 }
 
-export function registerTools(state: McpExtensionState, connection: McpServerConnection): void {
+export function registerTools(state: McpFeatureState, connection: McpServerConnection): void {
 	const { api, toolOwners, serverTools, definitions, registeredMetadata, cachedDefinitions } = state;
 	const server = connection.entry.name;
 	const entry = state.findServer(server)?.entry ?? connection.entry;
@@ -82,7 +82,6 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 			defaultActive,
 			timeoutMs: connection.timeoutMs,
 			compact: thin ? presentation.signature(server, tool.name) : null,
-			summary: thin ? presentation.summary(server, tool.name) : null,
 			// `declared`: no generated file describes a deferred tool, so its declaration keeps the server's description.
 			whole: thin && declared,
 			deferred: thin && presentation.isDeferred(server, tool.name),
@@ -117,7 +116,6 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 				? {
 						compact: {
 							signature: () => presentation.signature(server, tool.name),
-							...(metadata.summary ? { summary: metadata.summary } : {}),
 							...(metadata.whole ? { whole: true } : {}),
 							...(metadata.deferred ? { deferred: true } : {}),
 						},
@@ -171,26 +169,26 @@ export function registerTools(state: McpExtensionState, connection: McpServerCon
 		}
 	}
 	registerAll(api, batch);
-	if (demoted.length > 0) api.setActiveTools(api.getActiveTools().filter((active) => !demoted.includes(active)));
+	if (demoted.length > 0) api.tools.setActive(api.tools.getActive().filter((active) => !demoted.includes(active)));
 }
 
 /**
  * The session needs an on-demand tool that is registered undeclared (its schema was read, or it was called): declare it
  * in full from the next request, after the cached prefix. A tool declared already (deferred, or loaded) is left alone.
  */
-export function loadOnDemand(state: McpExtensionState, server: string, tool: string): boolean {
+export function loadOnDemand(state: McpFeatureState, server: string, tool: string): boolean {
 	const name = [...state.toolOwners].find(([, owner]) => owner === `${server}\0${tool}`)?.[0];
 	if (name === undefined || state.definitions.get(name)?.onDemand !== true) return false;
 	if (!markOnDemandLoaded(state, server, tool)) return false;
 	const connection = state.findServer(server)?.connection;
 	if (connection?.state === "connected") registerTools(state, connection);
-	const active = state.api.getActiveTools();
-	if (!active.includes(name)) state.api.setActiveTools([...active, name]);
+	const active = state.api.tools.getActive();
+	if (!active.includes(name)) state.api.tools.setActive([...active, name]);
 	return true;
 }
 
 /** Make a disabled server's tools unreachable. */
-export function hideTools(state: McpExtensionState, server: string): void {
+export function hideTools(state: McpFeatureState, server: string): void {
 	state.presentation.forget(server);
 	const batch: ToolDefinitions = [];
 	for (const name of state.serverTools.get(server) ?? []) {

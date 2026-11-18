@@ -212,7 +212,7 @@ export class InteractiveThemeController {
 
 	/**
 	 * Re-apply the setting after the terminal's colors or appearance changed: regenerate the system theme,
-	 * or switch the theme of a pair. Themes set through extensions or previews are left alone.
+	 * or switch the theme of a pair. Themes set through features or previews are left alone.
 	 */
 	private reapplyForTerminal(): void {
 		if (this.activeThemeName === "<in-memory>") return;

@@ -16,8 +16,8 @@ type ResourcePathsHost = Pick<
 	InteractiveModeHost,
 	| "formatDisplayPath"
 	| "getCompactDisplayPathSegments"
-	| "getCompactExtensionLabel"
-	| "getCompactNonPackageExtensionLabel"
+	| "getCompactFeatureLabel"
+	| "getCompactNonPackageFeatureLabel"
 	| "getCompactPackageSourceLabel"
 	| "getCompactPathLabel"
 	| "getShortPath"
@@ -29,7 +29,7 @@ export function formatDisplayPath(p: string): string {
 	return homeTilde(p);
 }
 
-export function formatExtensionDisplayPath(host: ResourcePathsHost, path: string): string {
+export function formatFeatureDisplayPath(host: ResourcePathsHost, path: string): string {
 	let result = host.formatDisplayPath(path);
 	result = result.replace(/\/index\.ts$/, "").replace(/\/index\.js$/, "");
 	return result;
@@ -110,11 +110,7 @@ export function getCompactPackageSourceLabel(sourceInfo?: SourceInfo): string {
 	return source;
 }
 
-export function getCompactExtensionLabel(
-	host: ResourcePathsHost,
-	resourcePath: string,
-	sourceInfo?: SourceInfo,
-): string {
+export function getCompactFeatureLabel(host: ResourcePathsHost, resourcePath: string, sourceInfo?: SourceInfo): string {
 	if (!host.isPackageSource(sourceInfo)) {
 		return host.getCompactPathLabel(resourcePath, sourceInfo);
 	}
@@ -143,7 +139,7 @@ export function getCompactDisplayPathSegments(host: ResourcePathsHost, resourceP
 		.filter((segment) => segment.length > 0 && segment !== "~");
 }
 
-export function getCompactNonPackageExtensionLabel(
+export function getCompactNonPackageFeatureLabel(
 	host: ResourcePathsHost,
 	resourcePath: string,
 	index: number,
@@ -171,32 +167,32 @@ export function getCompactNonPackageExtensionLabel(
 	return segments.join("/");
 }
 
-export function getCompactExtensionLabels(host: ResourcePathsHost, extensions: SourcedPath[]): string[] {
-	const nonPackageExtensions = extensions
-		.map((extension) => {
-			const segments = host.getCompactDisplayPathSegments(extension.path);
+export function getCompactFeatureLabels(host: ResourcePathsHost, features: SourcedPath[]): string[] {
+	const nonPackageFeatures = features
+		.map((feature) => {
+			const segments = host.getCompactDisplayPathSegments(feature.path);
 			const lastSegment = segments[segments.length - 1];
 			if (segments.length > 1 && (lastSegment === "index.ts" || lastSegment === "index.js")) {
 				segments.pop();
 			}
 			return {
-				path: extension.path,
-				sourceInfo: extension.sourceInfo,
+				path: feature.path,
+				sourceInfo: feature.sourceInfo,
 				segments,
 			};
 		})
-		.filter((extension) => !host.isPackageSource(extension.sourceInfo));
+		.filter((feature) => !host.isPackageSource(feature.sourceInfo));
 
-	return extensions.map((extension) => {
-		if (host.isPackageSource(extension.sourceInfo)) {
-			return host.getCompactExtensionLabel(extension.path, extension.sourceInfo);
+	return features.map((feature) => {
+		if (host.isPackageSource(feature.sourceInfo)) {
+			return host.getCompactFeatureLabel(feature.path, feature.sourceInfo);
 		}
 
-		const nonPackageIndex = nonPackageExtensions.findIndex((item) => item.path === extension.path);
+		const nonPackageIndex = nonPackageFeatures.findIndex((item) => item.path === feature.path);
 		if (nonPackageIndex === -1) {
-			return host.getCompactPathLabel(extension.path, extension.sourceInfo);
+			return host.getCompactPathLabel(feature.path, feature.sourceInfo);
 		}
 
-		return host.getCompactNonPackageExtensionLabel(extension.path, nonPackageIndex, nonPackageExtensions);
+		return host.getCompactNonPackageFeatureLabel(feature.path, nonPackageIndex, nonPackageFeatures);
 	});
 }

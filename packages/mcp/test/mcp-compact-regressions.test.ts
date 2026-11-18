@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
@@ -6,7 +6,6 @@ import {
 	catalogHash,
 	checkFidelity,
 	COMPACT_GENERATOR_VERSION,
-	generatedDir,
 	readGenerated,
 	renderServer,
 	resolveServerFile,
@@ -62,7 +61,7 @@ it("loads metadata and text from the same snapshot when another writer replaces 
 	expect(readGenerated(dir, "s")).toEqual({ text, meta });
 });
 
-it("regenerates legacy split caches while preserving their authored overrides", () => {
+it("regenerates legacy split caches and drops the wording they stored", () => {
 	const dir = tmp();
 	const input = { server: "s", tools: [tool({ type: "string" })] };
 	const overrides = { tools: { a: "Keep the authored wording." } };
@@ -73,35 +72,9 @@ it("regenerates legacy split caches while preserving their authored overrides", 
 	);
 	writeFileSync(join(dir, "s.txt"), "A stale or mixed legacy text file.");
 	const result = resolveServerFile(dir, "s", input);
-	expect(result.rendered).toBe(true);
-	expect(result.meta.overrides).toEqual(overrides);
-	expect(result.meta.optimizedBy).toEqual(optimizedBy);
-	expect(result.text).toContain("Keep the authored wording.");
+	expect(result.meta).not.toHaveProperty("overrides");
+	expect(result.text).not.toContain("Keep the authored wording.");
 	expect(readGenerated(dir, "s")?.text).toBe(result.text);
-});
-
-it("loads external compact overrides only at a loadout rebuild, including their trigger", () => {
-	const agentDir = tmp();
-	const current = tool({ type: "string" });
-	const input = { server: "s", tools: [current] };
-	const presentation = new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" });
-	presentation.sync("s", "s", undefined, [current]);
-	const describe = () => presentation.describe("s", ["a"], undefined, true).file;
-	const before = describe();
-	const overrides = { tools: { a: "Applied wording." }, triggers: { a: "Use the applied trigger." } };
-	writeGenerated(generatedDir(agentDir), "s", renderServer(input, overrides), {
-		hash: catalogHash(input),
-		generatorVersion: COMPACT_GENERATOR_VERSION,
-		overrides,
-		generatedAt: "fixture",
-	});
-	presentation.sync("s", "s", undefined, [current]);
-	expect(describe()).toBe(before);
-	presentation.rebuild();
-	presentation.sync("s", "s", undefined, [current]);
-	expect(describe()).toContain("Applied wording.");
-	expect(presentation.summary("s", "a")).toBe("Use the applied trigger.");
-	expect(readFileSync(join(generatedDir(agentDir), "s.txt"), "utf8")).toContain("Applied wording.");
 });
 
 describe("compact schema fidelity", () => {

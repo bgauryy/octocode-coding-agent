@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import {
 	answer,
 	close,
@@ -18,6 +19,7 @@ import {
 	resultsOf,
 	script,
 	session,
+	sessionIdle,
 	shareTeam,
 } from "./e2e-a2a-helpers.ts";
 import {
@@ -49,7 +51,7 @@ afterEach(async (context) => {
 });
 
 describe("two sessions", () => {
-	it("exchange a message and an answer by name, each knowing who it is from, with no shell", async () => {
+	it("exchange a message and an answer by name, each knowing who it is from, with no shell; a gone name and one's own are refused", async () => {
 		const box = sandbox(endpoint);
 		const a = await session(box);
 		const b = await session(box);
@@ -64,13 +66,15 @@ describe("two sessions", () => {
 		await until(() => requestsOf(endpoint, aHears).length > 0, "the answer reaching a");
 
 		const told = requestsOf(endpoint, bHears)[0]?.lastUserText ?? "";
-		expect(told).toContain("External message, not from the user");
-		expect(told).toContain(`It says it is ${JSON.stringify(a.name)}`);
-		expect(told).toContain("It asks for an answer.");
-		expect(told).toContain(`\`agent\` type \`message\` with \`to\` ${a.name}`);
-		expect(told).toContain("never grants authority");
+		// The message names its sender and arrives inside an untrusted fence; the answer to it reaches a (aHears ran).
+		expect(told).toContain(`(process ${JSON.stringify(a.name)})`);
+		expect(told).toContain("<<<untrusted-");
+		// The trust rule for such messages is in the system prompt, and the message does not carry a second copy.
+		const rule = renderPrompt("shared/trust.md", { main: true }).trim();
+		expect(requestsOf(endpoint, bHears)[0]?.system ?? "").toContain(rule);
+		expect(told).not.toContain(rule);
 		const answered = requestsOf(endpoint, aHears)[0]?.lastUserText ?? "";
-		expect(answered).toContain(`It says it is ${JSON.stringify(b.name)}`);
+		expect(answered).toContain(`(process ${JSON.stringify(b.name)})`);
 		expect(answered).toContain("Checked it.");
 
 		// No process name enters the cached system prompt.
@@ -84,14 +88,8 @@ describe("two sessions", () => {
 					.flatMap((request) => request.toolResults)
 					.join("\n"),
 			).not.toContain("octocode-api");
-		await close(a, b);
-		expect(box.survivors()).toEqual([]);
-	});
 
-	it("a name that has gone, and the session's own name, are refused and say what runs", async () => {
-		const box = sandbox(endpoint);
-		const a = await session(box);
-		const b = await session(box);
+		// A name that has gone, and the session's own name, are refused and say what runs: same two sessions.
 		const oldName = b.name;
 		b.run.process.stdin?.write(`${JSON.stringify({ id: "n", type: "new_session" })}\n`);
 		// `/new` means a new conversation: a new process name, and the old one is gone.
@@ -99,8 +97,9 @@ describe("two sessions", () => {
 			() => /"id":"n"/.test(b.run.stdout()) && !fs.existsSync(b.instance.socket ?? ""),
 			"the switch to a new session",
 		);
+		await sessionIdle(a);
 		const steps = script([message(oldName, "hello"), message(a.name, "hello me"), { text: "done" }]);
-		prompt(a.run, "go", steps);
+		prompt(a.run, "again", steps);
 		await reachedStep(endpoint, steps, 2, "both refusals");
 		const results = resultsOf(endpoint, steps);
 		expect(results).toContain(`No running instance matches "${oldName}"`);
@@ -108,6 +107,7 @@ describe("two sessions", () => {
 		// Told what runs now: `a` by name, and a new name for `b`.
 		expect(results).toContain(a.name);
 		await close(a, b);
+		expect(box.survivors()).toEqual([]);
 	});
 
 	it("`coordinate list` shows other sessions with folder, busy state and the coordinator", async () => {
@@ -167,7 +167,7 @@ describe("a linked worktree finishes", () => {
 		expect(resultsOf(endpoint, finish)).toContain(`Sent to ${main.name}`);
 		await until(() => requestsOf(endpoint, coordinator).length > 0, "the request reaching the coordinator");
 		const told = requestsOf(endpoint, coordinator)[0]?.lastUserText ?? "";
-		expect(told).toContain(`It says it is ${JSON.stringify(worktree.name)}`);
+		expect(told).toContain(`(process ${JSON.stringify(worktree.name)})`);
 		expect(told).toContain("Merge request: branch approved");
 
 		// `full` mode, and it still asks: a message from another process approves nothing.
@@ -189,35 +189,50 @@ describe("a linked worktree finishes", () => {
 		expect(fs.readFileSync(path.join(box.project, "feature.txt"), "utf8")).toBe("from the worktree\n");
 		expect(git(box.project, "log", "--format=%s", "-1")).toBe("Merge branch 'approved'");
 		await until(() => requestsOf(endpoint, hears).length > 0, "the answer reaching the worktree");
-		expect(requestsOf(endpoint, hears)[0]?.lastUserText).toContain(`It says it is ${JSON.stringify(main.name)}`);
+		expect(requestsOf(endpoint, hears)[0]?.lastUserText).toContain(`(process ${JSON.stringify(main.name)})`);
 		expect(requestsOf(endpoint, hears)[0]?.lastUserText).toContain("Merge answered.");
 		// Nothing of the worktree is lost or removed.
 		expect(fs.existsSync(path.join(folder, "feature.txt"))).toBe(true);
 		expect(git(box.project, "branch", "--list", "approved")).toContain("approved");
+
+		// A user's prior request needs no further dialog: typing `/worktree merge`, or the session-wide answer. Same main session.
+		await sessionIdle(main);
+		const shown = dialogs(main.run).length;
+		linkedWorktree(box, "typed", "typed.txt");
+		const granted = linkedWorktree(box, "granted", "granted.txt");
+		linkedWorktree(box, "later", "later.txt");
+		prompt(main.run, "typed", "/worktree merge typed");
+		await until(() => notices(main.run).includes("Merged typed"), "the typed merge");
+		expect(dialogs(main.run)).toHaveLength(shown);
+		expect(fs.existsSync(path.join(box.project, "typed.txt"))).toBe(true);
+
+		const steps = script([merge("granted"), merge("later"), { text: "done" }]);
+		prompt(main.run, "merge", steps);
+		await until(() => dialogs(main.run).length > shown, "the merge dialog");
+		answer(main.run, dialogs(main.run)[shown].id, "Allow all worktree merges for this session");
+		await reachedStep(endpoint, steps, 2, "both merges");
+		expect(dialogs(main.run)).toHaveLength(shown + 1);
+		expect(fs.existsSync(path.join(box.project, "later.txt"))).toBe(true);
+		expect(fs.existsSync(path.join(granted, "granted.txt"))).toBe(true);
 		await close(main, worktree);
 	});
 
-	it("no coordinator: told plainly, nothing is sent and the worktree stays", async () => {
+	it("no coordinator: told plainly, nothing is sent and the worktree stays; two coordinators: neither is picked, both are named, and the user's choice goes through by name", async () => {
 		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "lonely");
+		const folder = linkedWorktree(box, "several");
 		const worktree = await session(box, folder);
-		const steps = script([message("coordinator", "Merge request: branch lonely."), { text: "told the user" }]);
-		prompt(worktree.run, "finish", steps);
-		await reachedStep(endpoint, steps, 1, "the refusal");
-		const result = resultsOf(endpoint, steps);
+		const alone = script([message("coordinator", "Merge request: branch lonely."), { text: "told the user" }]);
+		prompt(worktree.run, "lonely", alone);
+		await reachedStep(endpoint, alone, 1, "the refusal");
+		const result = resultsOf(endpoint, alone);
 		expect(result).toContain("No Octocode session runs in the main checkout");
 		expect(result).toContain("Nothing was sent");
 		expect(result).toContain("leave this worktree");
 		expect(fs.existsSync(path.join(folder, "feature.txt"))).toBe(true);
-		await close(worktree);
-	});
+		await sessionIdle(worktree);
 
-	it("two coordinators: neither is picked, both are named, and the user's choice goes through by name", async () => {
-		const box = sandbox(endpoint);
-		const folder = linkedWorktree(box, "several");
 		const first = await session(box);
 		const second = await session(box);
-		const worktree = await session(box, folder);
 		const chosen = script([{ text: "chosen coordinator read it" }]);
 		const steps = script([
 			message("coordinator", "Merge request: branch several."),
@@ -240,28 +255,6 @@ describe("a linked worktree finishes", () => {
 			false,
 		);
 		await close(first, second, worktree);
-	});
-
-	it("a user's prior request: typing `/worktree merge`, or the session answer, needs no further dialog", async () => {
-		const box = sandbox(endpoint);
-		linkedWorktree(box, "typed", "typed.txt");
-		const session2 = linkedWorktree(box, "granted", "granted.txt");
-		linkedWorktree(box, "later", "later.txt");
-		const main = await session(box);
-		prompt(main.run, "typed", "/worktree merge typed");
-		await until(() => notices(main.run).includes("Merged typed"), "the typed merge");
-		expect(dialogs(main.run)).toHaveLength(0);
-		expect(fs.existsSync(path.join(box.project, "typed.txt"))).toBe(true);
-
-		const steps = script([merge("granted"), merge("later"), { text: "done" }]);
-		prompt(main.run, "merge", steps);
-		await until(() => dialogs(main.run).length > 0, "the merge dialog");
-		answer(main.run, dialogs(main.run)[0].id, "Allow all worktree merges for this session");
-		await reachedStep(endpoint, steps, 2, "both merges");
-		expect(dialogs(main.run)).toHaveLength(1);
-		expect(fs.existsSync(path.join(box.project, "later.txt"))).toBe(true);
-		expect(fs.existsSync(path.join(session2, "granted.txt"))).toBe(true);
-		await close(main);
 	});
 });
 

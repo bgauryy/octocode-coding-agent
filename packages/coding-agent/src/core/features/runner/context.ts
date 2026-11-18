@@ -1,16 +1,11 @@
-/** The contexts handed to extension handlers, tools and commands, and the UI context used without a UI. */
+/** The contexts handed to feature handlers, tools and commands, and the UI context used without a UI. */
 
-import { type Theme, theme } from "../../../theme/theme.ts";
-import type {
-	ExecuteToolOptions,
-	ExtensionCommandContext,
-	ExtensionContext,
-	ExtensionToolContext,
-	ExtensionUIContext,
-} from "../types.ts";
+import type { Theme } from "../../../theme/theme-class.ts";
+import { theme } from "../../../theme/theme-global.ts";
+import type { ExecuteToolOptions, CommandContext, FeatureContext, ToolContext, SessionUI } from "../types.ts";
 import type { RunnerHost } from "./types.ts";
 
-export const noOpUIContext: ExtensionUIContext = {
+export const noOpUIContext: SessionUI = {
 	select: async () => undefined,
 	confirm: async () => false,
 	input: async () => undefined,
@@ -18,17 +13,13 @@ export const noOpUIContext: ExtensionUIContext = {
 	onTerminalInput: () => () => {},
 	setStatus: () => {},
 	setWorkingMessage: () => {},
-	setWorkingVisible: () => {},
 	setWorkingIndicator: () => {},
-	setHiddenThinkingLabel: () => {},
 	setWidget: () => {},
 	setFooter: () => {},
 	setHeader: () => {},
 	setTitle: () => {},
 	custom: async () => undefined,
-	pasteToEditor: () => {},
 	setEditorText: () => {},
-	getEditorText: () => "",
 	editor: async () => undefined,
 	addAutocompleteProvider: () => {},
 	onEditorChange: () => () => {},
@@ -38,18 +29,15 @@ export const noOpUIContext: ExtensionUIContext = {
 	get theme() {
 		return theme;
 	},
-	getAllThemes: () => [],
 	getTheme: () => undefined,
 	setTheme: (_theme: string | Theme) => ({ success: false, error: "UI not available" }),
-	getToolsExpanded: () => false,
-	setToolsExpanded: () => {},
 };
 
 /**
- * Create an ExtensionContext for use in event handlers and tool execution.
+ * Create an FeatureContext for use in event handlers and tool execution.
  * Context values are resolved at call time, so changes via bindCore/bindUI are reflected.
  */
-export function createExtensionContext(host: RunnerHost): ExtensionContext {
+export function createFeatureContext(host: RunnerHost): FeatureContext {
 	const getModel = host.bindings.getModel;
 	const getScopedModels = host.bindings.getScopedModels;
 	return {
@@ -153,16 +141,12 @@ export function createExtensionContext(host: RunnerHost): ExtensionContext {
 }
 
 /**
- * Create the context for executing the tool call `toolCallId`: the extension context plus
+ * Create the context for executing the tool call `toolCallId`: the feature context plus
  * `tools` and `executeTool()`. `signal` is the default signal of nested calls.
  */
-export function createExtensionToolContext(
-	host: RunnerHost,
-	toolCallId: string,
-	signal: AbortSignal | undefined,
-): ExtensionToolContext {
+export function createToolContext(host: RunnerHost, toolCallId: string, signal: AbortSignal | undefined): ToolContext {
 	// createContext() returns a fresh object, so adding properties does not affect other contexts.
-	return Object.defineProperties(host.createContext() as ExtensionToolContext, {
+	return Object.defineProperties(host.createContext() as ToolContext, {
 		tools: {
 			get() {
 				host.assertActive();
@@ -188,14 +172,11 @@ export function createExtensionToolContext(
 	});
 }
 
-export function createExtensionCommandContext(host: RunnerHost): ExtensionCommandContext {
+export function createCommandContext(host: RunnerHost): CommandContext {
 	// Use property descriptors instead of object spread so the guarded getters from
 	// createContext() stay lazy. A spread would eagerly read them once and freeze the
 	// old values into the returned object, bypassing stale-instance checks.
-	const context = Object.defineProperties(
-		{},
-		Object.getOwnPropertyDescriptors(host.createContext()),
-	) as ExtensionCommandContext;
+	const context = Object.defineProperties({}, Object.getOwnPropertyDescriptors(host.createContext())) as CommandContext;
 	context.waitForIdle = () => {
 		host.assertActive();
 		return host.bindings.waitForIdleFn();

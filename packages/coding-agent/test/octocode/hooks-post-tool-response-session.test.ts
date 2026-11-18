@@ -7,12 +7,13 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { expect, it } from "vitest";
 import { renderConfigSchemas } from "../../scripts/generate-schemas.ts";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import type { HooksView } from "../../src/octocode/hooks/register/types.ts";
 import { createHarness } from "../suite/harness.ts";
 import { HOOK_SETTINGS } from "./helpers.ts";
 import "../../src/octocode/mcp-host/core-install.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 it("sends Claude PostToolUse the structured result, keeps its text, and test-runs a hook on a sample event", async () => {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "post-tool-response-"));
@@ -43,21 +44,21 @@ it("sends Claude PostToolUse the structured result, keeps its text, and test-run
 		execute: async (_id, args) => ({ content: [{ type: "text", text: args.value }], details: {} }),
 	};
 	let view: HooksView | undefined;
-	let context: ExtensionContext | undefined;
+	let context: FeatureContext | undefined;
 	const harness = await createHarness({
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [tool],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				view = registerHooks(api, { env: {}, home });
-				api.on("session_start", async (_event, ctx) => {
+				api.bus.on("session_start", async (_event, ctx) => {
 					context = ctx;
 				});
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("observe", { value: "hello" })], { stopReason: "toolUse" }),
 			fauxAssistantMessage("done"),

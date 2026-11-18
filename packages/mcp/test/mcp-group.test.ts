@@ -7,7 +7,7 @@ describe("MCP server groups", () => {
 		expect(mcpServerGroup({ scope: "project" })).toBe("workspace");
 		expect(mcpServerGroup({ scope: "global" })).toBe("global");
 		// A plugin's or a session's server is the user's, not the repository's.
-		expect(mcpServerGroup({ scope: "extension" })).toBe("global");
+		expect(mcpServerGroup({ scope: "feature" })).toBe("global");
 		expect(mcpServerGroup({})).toBe("global");
 		expect(["core", "workspace", "global"].map((group) => mcpGroupLabel(group as "core"))).toEqual([
 			"Core",
@@ -19,7 +19,7 @@ describe("MCP server groups", () => {
 	it("says built in for a preset, plugin <path> for a registered server, else the shortened file", () => {
 		const short = (file: string) => file.replace("/home/me", "~");
 		expect(mcpServerSource({ scope: "default", source: "built-in browser" }, short)).toBe("built in");
-		expect(mcpServerSource({ scope: "extension", source: "/home/me/plugins/kit" }, short)).toBe("plugin ~/plugins/kit");
+		expect(mcpServerSource({ scope: "feature", source: "/home/me/plugins/kit" }, short)).toBe("plugin ~/plugins/kit");
 		expect(mcpServerSource({ scope: "global", source: "/home/me/.octocode/mcp.json" }, short)).toBe(
 			"~/.octocode/mcp.json",
 		);

@@ -5,7 +5,8 @@
 		"declaration": false,
 		"sourceMap": false,
 		"inlineSources": false,
-		"rewriteRelativeImportExtensions": false
+		"rewriteRelativeImportExtensions": false,
+		"paths": { "@octocodeai/octocode-agentic-testkit": ["./src/index.ts"] }
 	},
-	"include": ["src", "test", "vitest.config.ts"]
+	"include": ["src", "test", "examples/**/*.ts", "vitest.config.ts"]
 }

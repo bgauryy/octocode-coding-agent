@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth } from "@octocodeai/octocode-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
 import { keyHint, keyText, moveHint, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import { plainText } from "../styled-line.ts";
@@ -7,7 +7,7 @@ import type { SessionScope } from "./types.ts";
 
 export type { SessionScope };
 
-/** Where the selection stands: its position among the rows shown, how many are shown, how many sessions there are. */
+/** Where the selection stands: its position among the rows shown, how many are shown, how many sessions there are. The list's foot shows the position; the header shows only the marks. */
 export interface SessionCounts {
 	position: number;
 	shown: number;
@@ -79,7 +79,7 @@ export class SessionSelectorHeader implements Component {
 		this.previewOpen = open;
 	}
 
-	/** Where the title gets `(n of N)` from. */
+	/** Where the header reads how many rows are marked. */
 	setCounts(counts: () => SessionCounts): void {
 		this.counts = counts;
 	}
@@ -109,29 +109,27 @@ export class SessionSelectorHeader implements Component {
 
 	invalidate(): void {}
 
-	/** `Resume session (3 of 97) · ◉ This folder ○ All · Sort: Recent`, one line. */
+	/**
+	 * ` Resume session      this folder · threaded`: the title, then the scope, load, filter, marks and sort as one muted
+	 * fact at the right edge. A narrow width cuts the fact first, then the title.
+	 */
 	render(width: number): string[] {
-		const { position, shown, total, marked = 0 } = this.counts();
-		const of = shown < total ? `${position} of ${shown} · ${total} total` : `${position} of ${total}`;
-		const count = total > 0 ? theme.fg("muted", ` (${of})`) : "";
-		const left = theme.bold("Resume session") + count;
-
-		let scopeText: string;
+		const { marked = 0 } = this.counts();
+		const title = ` ${theme.fg("accent", theme.bold("Resume session"))}`;
+		const parts = [theme.fg("muted", this.scope === "all" ? "all folders" : "this folder")];
 		if (this.loading) {
-			const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
-			const loadingScope = this.scope === "all" ? "○ This folder ◉ All" : "◉ This folder ○ All";
-			scopeText = `${theme.fg("muted", loadingScope)}${sep()}${theme.fg("accent", `Loading ${progressText}`)}`;
-		} else if (this.scope === "current") {
-			scopeText = `${theme.fg("accent", "◉ This folder")}${theme.fg("muted", " ○ All")}`;
-		} else {
-			scopeText = `${theme.fg("muted", "○ This folder ")}${theme.fg("accent", "◉ All")}`;
+			const progress = this.loadProgress ? ` ${this.loadProgress.loaded}/${this.loadProgress.total}` : "…";
+			parts.push(theme.fg("muted", `loading${progress}`));
 		}
-		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
-		const parts = [scopeText];
+		if (this.nameFilter === "named") parts.push(theme.fg("muted", "named only"));
 		if (marked > 0) parts.push(theme.fg("error", `${marked} marked`));
-		if (this.nameFilter === "named") parts.push(theme.fg("accent", "Named only"));
-		parts.push(theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel));
-		return [truncateToWidth(`${left}${sep()}${parts.join(sep())}`, width, "…")];
+		parts.push(theme.fg("muted", this.sortMode === "relevance" ? "fuzzy" : this.sortMode));
+		const fact = parts.join(sep());
+		// Two columns between the title and the fact, one after the fact.
+		const room = width - visibleWidth(title) - 3;
+		if (room < 4) return [truncateToWidth(title, width, "…")];
+		const shown = visibleWidth(fact) <= room ? fact : truncateToWidth(fact, room, theme.fg("muted", "…"));
+		return [`${title}${" ".repeat(width - 1 - visibleWidth(title) - visibleWidth(shown))}${shown} `];
 	}
 
 	/** One line: the hints that fit, most useful first; a delete confirmation or status message replaces them. */
@@ -162,7 +160,7 @@ export class SessionSelectorHeader implements Component {
 					[keyText("tui.select.cancel"), "close", 1],
 				],
 				width,
-				0,
+				1,
 			),
 		];
 	}

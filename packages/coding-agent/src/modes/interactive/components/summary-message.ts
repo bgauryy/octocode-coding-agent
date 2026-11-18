@@ -1,4 +1,5 @@
 import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
+import { MessageHead } from "./message-head.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../theme/theme.ts";
 import { CollapsibleMessageComponent } from "./collapsible-message.ts";
@@ -36,10 +37,9 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 		const head =
 			theme.fg("customMessageLabel", theme.bold(`[${label}]`)) +
 			` ${theme.fg("customMessageText", sanitizeTerminalText(title))}`;
-		content.addChild(new Text(head, 0, 0));
+		// The hint joins the title when the row fits it, else takes a row of its own.
+		content.addChild(new MessageHead(head, hint));
 		for (const line of meta) content.addChild(new Text(dim(line), 0, 0));
-		// On its own row: appended to a title or path it would wrap mid-phrase on a narrow screen.
-		if (hint) content.addChild(new Text(theme.fg("dim", hint), 0, 0));
 		if (!expanded) return;
 		if (summary.trim() !== "") {
 			content.addChild(new Spacer(1));

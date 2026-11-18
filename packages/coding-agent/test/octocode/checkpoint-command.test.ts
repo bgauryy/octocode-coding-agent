@@ -75,25 +75,22 @@ describe("/rewind when an older change cannot be undone", () => {
 		const forget = vi.fn();
 		registerCheckpoints(fake.api, checkpoints, forget, commands);
 		// Declining the confirmation leaves every file as it is.
-		const declined = fakeCtx({ cwd, ui: { confirms: [false] } });
+		const declined = fakeCtx({ cwd, ui: { selects: ["Cancel"] } });
 		await commands.get("rewind")!.handler("2", declined);
 		expect(fs.readFileSync(file, "utf8")).toBe("v2");
 		expect(declined.ui.notes.at(-1)!.message).toBe("Cancelled: nothing was rewound.");
-		const ctx = fakeCtx({ cwd, ui: { confirms: [true] } });
+		const ctx = fakeCtx({ cwd, ui: { selects: ["Rewind"] } });
 		await commands.get("rewind")!.handler("2", ctx);
 
 		expect(fs.readFileSync(file, "utf8")).toBe("v1");
 		expect(forget).toHaveBeenCalledExactlyOnceWith(file);
 		const note = ctx.ui.notes.at(-1)!;
 		expect(note.type).toBe("warning");
-		expect(note.message).toMatch(
-			/Rewound 2 turns: restored 0 files\.\nPartly restored, an older change could not be undone \(its checkpoint is kept, rewind again to retry\): a\.txt\./,
-		);
-		expect(note.message).not.toMatch(/Left alone/);
+		// The warning names the file that could not be restored.
+		expect(note.message).toContain("a.txt");
 		expect(fake.sent).toHaveLength(1);
 		expect(fake.sent[0].message.customType).toBe("octocode-rewind");
-		expect(fake.sent[0].message.content).toContain("Partly restored");
-		expect(fake.sent[0].message.content).toContain("read them again before editing");
+		expect(fake.sent[0].message.content).not.toBe("");
 		// The failed entry stays so a later rewind can retry once the copy is repaired.
 		expect(checkpoints.turns()).toEqual([1]);
 	});

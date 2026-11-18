@@ -9,6 +9,7 @@ import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 function fixture(event: string, continueOnBlock = false) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "prompt-hook-session-"));
@@ -53,19 +54,19 @@ it.each([false, true])(
 					execute,
 				},
 			],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					const hooks = registerHooks(api, { env: {}, home });
-					api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
-					api.on("turn_end", async (event) => {
+					api.bus.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+					api.bus.on("turn_end", async (event) => {
 						outcomes.push(event.outcome);
 					});
 				},
-			],
+			]),
 		});
 		try {
 			approveFixtureHooks(harness.tempDir, home);
-			await harness.session.bindExtensions({});
+			await harness.session.bindFeatures({});
 			harness.setResponses([
 				fauxAssistantMessage([fauxToolCall("work", {})], {
 					stopReason: "toolUse",
@@ -92,15 +93,15 @@ it("continues a rejected Stop evaluation once and finishes after an allowing eva
 	const harness = await createHarness({
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				registerHooks(api, { env: {}, home });
 			},
-		],
+		]),
 	});
 	try {
 		approveFixtureHooks(harness.tempDir, home);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage("initial completion"),
 			fauxAssistantMessage('{"ok":false,"reason":"finish the remaining check"}'),

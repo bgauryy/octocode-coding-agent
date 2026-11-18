@@ -1,6 +1,6 @@
 import type { Db } from "../../../../db/src/api.ts";
 import { processSamples } from "../../../../db/src/api.ts";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { cancelledText, type Subcommand, say } from "../shared/commands.ts";
 import { plural } from "../shared/text.ts";
 import { type Orphan, type ProcessReport, classifyProcesses } from "./classify.ts";
@@ -37,7 +37,7 @@ export function processesCommand(options: ProcessesCommandOptions): Subcommand {
 		return classifyProcesses({ table, samples, now: now(), selfPid: process.pid, apiIds });
 	};
 
-	const stop = async (ctx: ExtensionCommandContext, orphans: readonly Orphan[]): Promise<void> => {
+	const stop = async (ctx: CommandContext, orphans: readonly Orphan[]): Promise<void> => {
 		if (orphans.length === 0) return say(ctx, "No orphans to stop.");
 		// Signalling processes needs a person at a prompt: print, JSON and subagent runs have none.
 		if (!ctx.hasUI || ctx.mode === "print" || ctx.mode === "json")

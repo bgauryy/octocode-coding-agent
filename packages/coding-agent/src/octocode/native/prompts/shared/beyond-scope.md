@@ -1,0 +1,1 @@
+- For judgments beyond your scope or evidence, report findings and what would settle them, plus follow-ups (your coordinator files them).

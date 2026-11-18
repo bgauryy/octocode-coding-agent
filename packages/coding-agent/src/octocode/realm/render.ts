@@ -1,4 +1,5 @@
 import path from "node:path";
+import { plural } from "@octocodeai/octocode-common/clip";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { type BadgeState, badge, legend } from "../../theme/page-kit.ts";
 import { shortDuration } from "../sessions/brief.ts";
@@ -6,8 +7,6 @@ import { shownLine } from "../sessions/store.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
 import { MAIN_CHECKOUT } from "../worktrees/switch.ts";
 import type { Realm, RealmFolder, RealmKind, RealmSession, RealmView } from "./model.ts";
-
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 const KIND: Record<RealmKind, string> = {
 	checkout: "this repository's main checkout",

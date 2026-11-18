@@ -2,7 +2,7 @@ import type { ImageContent } from "@octocodeai/octocode-ai";
 import type { RpcEvent } from "./types.ts";
 import type { RpcConnection } from "./connection.ts";
 
-/** The response owns completion; intermediate agent_settled events may precede extension follow-up work. */
+/** The response owns completion; intermediate agent_settled events may precede feature follow-up work. */
 export async function promptAndCollect(
 	connection: Pick<RpcConnection, "onEvent" | "send">,
 	message: string,

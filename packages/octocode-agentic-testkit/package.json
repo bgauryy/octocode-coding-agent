@@ -1,82 +1,152 @@
 {
 	"name": "@octocodeai/octocode-agentic-testkit",
-	"version": "0.1.0",
-	"private": true,
+	"version": "0.2.0",
 	"type": "module",
 	"description": "Vitest-native behavior tests for any agent: model gateway, MCP mocks, run and prompt caches, traces, statistical trials and matchers",
+	"keywords": [
+		"agent",
+		"ai",
+		"llm",
+		"testing",
+		"vitest",
+		"mcp",
+		"evals",
+		"claude-code",
+		"codex",
+		"langchain",
+		"ai-sdk"
+	],
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bgauryy/octocodecode.git",
+		"directory": "packages/octocode-agentic-testkit"
+	},
+	"homepage": "https://github.com/bgauryy/octocodecode/tree/main/packages/octocode-agentic-testkit#readme",
+	"bugs": {
+		"url": "https://github.com/bgauryy/octocodecode/issues"
+	},
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": {
 			"source": "./src/index.ts",
 			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
 		},
 		"./setup": {
 			"source": "./src/setup.ts",
 			"types": "./dist/setup.d.ts",
-			"import": "./dist/setup.js"
+			"import": "./dist/setup.js",
+			"default": "./dist/setup.js"
+		},
+		"./config": {
+			"source": "./src/config.ts",
+			"types": "./dist/config.d.ts",
+			"import": "./dist/config.js",
+			"default": "./dist/config.js"
 		},
 		"./cache-report": {
 			"source": "./src/cache-report.ts",
 			"types": "./dist/cache-report.d.ts",
-			"import": "./dist/cache-report.js"
+			"import": "./dist/cache-report.js",
+			"default": "./dist/cache-report.js"
+		},
+		"./reporter": {
+			"source": "./src/reporter.ts",
+			"types": "./dist/reporter.d.ts",
+			"import": "./dist/reporter.js",
+			"default": "./dist/reporter.js"
 		},
 		"./tiers": {
 			"source": "./src/tiers.ts",
 			"types": "./dist/tiers.d.ts",
-			"import": "./dist/tiers.js"
+			"import": "./dist/tiers.js",
+			"default": "./dist/tiers.js"
 		},
 		"./adapters/reference": {
 			"source": "./src/adapters/reference/index.ts",
 			"types": "./dist/adapters/reference/index.d.ts",
-			"import": "./dist/adapters/reference/index.js"
+			"import": "./dist/adapters/reference/index.js",
+			"default": "./dist/adapters/reference/index.js"
 		},
 		"./adapters/claude-code": {
 			"source": "./src/adapters/claude-code/index.ts",
 			"types": "./dist/adapters/claude-code/index.d.ts",
-			"import": "./dist/adapters/claude-code/index.js"
+			"import": "./dist/adapters/claude-code/index.js",
+			"default": "./dist/adapters/claude-code/index.js"
 		},
 		"./adapters/codex": {
 			"source": "./src/adapters/codex/index.ts",
 			"types": "./dist/adapters/codex/index.d.ts",
-			"import": "./dist/adapters/codex/index.js"
+			"import": "./dist/adapters/codex/index.js",
+			"default": "./dist/adapters/codex/index.js"
 		},
 		"./adapters/octocodecode": {
 			"source": "./src/adapters/octocodecode/index.ts",
 			"types": "./dist/adapters/octocodecode/index.d.ts",
-			"import": "./dist/adapters/octocodecode/index.js"
+			"import": "./dist/adapters/octocodecode/index.js",
+			"default": "./dist/adapters/octocodecode/index.js"
 		}
 	},
 	"files": [
 		"dist",
+		"src",
+		"examples",
 		"README.md",
 		"GUIDE.md",
+		"REFERENCE.md",
+		"MCP-AND-SKILLS.md",
 		"CHANGELOG.md",
 		"LICENSE"
 	],
 	"sideEffects": [
+		"./dist/matchers.js",
 		"./dist/setup.js",
+		"./src/matchers.ts",
 		"./src/setup.ts"
 	],
 	"engines": {
 		"node": ">=24.15"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
-		"build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+		"build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node scripts/fix-dts.mjs",
 		"clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
 		"test": "vitest run",
+		"test:live": "OCTOCODE_LIVE_TESTS=1 vitest run .live.test.",
 		"typecheck": "tsc -p tsconfig.json",
 		"test:guards": "vitest run test/guards",
-		"test:triggers": "TESTKIT_OLLAMA=1 vitest run test/triggers",
-		"tier": "node scripts/run-tier.mjs"
+		"measure": "TESTKIT_MEASURE=1 vitest run test/measure",
+		"test:triggers": "OCTOCODE_LIVE_TESTS=1 TESTKIT_TIER=local vitest run test/triggers",
+		"tier": "node scripts/run-tier.mjs",
+		"results": "node scripts/results.mjs",
+		"check:consumer": "node scripts/check-consumer.mjs",
+		"prepack": "yarn build && yarn check:consumer"
+	},
+	"dependencies": {
+		"@anthropic-ai/sandbox-runtime": "0.0.83"
 	},
 	"peerDependencies": {
-		"vitest": ">=5.1.0 <6"
+		"vitest": ">=5.1.0 <6",
+		"@types/node": ">=24"
+	},
+	"peerDependenciesMeta": {
+		"@types/node": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
+		"@ai-sdk/anthropic": "4.0.105",
+		"@ai-sdk/openai": "4.0.118",
+		"@langchain/core": "1.4.1",
+		"@langchain/openai": "1.8.4",
 		"@types/node": "24.19.2",
+		"ai": "7.0.173",
+		"langchain": "1.6.6",
 		"typescript": "7.0.2",
 		"vitest": "5.1.0"
 	}

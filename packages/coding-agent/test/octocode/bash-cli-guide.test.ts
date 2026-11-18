@@ -48,14 +48,14 @@ describe("probeCliHost", () => {
 		expect(host.present).toEqual(["rg"]);
 	});
 
-	it("lists `octocode` only when the research CLI's shim is installed, never from PATH alone", () => {
+	it("lists `octocode-cli` only when the research CLI's shim is installed, never from PATH alone", () => {
 		const bin = tempDir();
-		executable(bin, "octocode");
+		executable(bin, "octocode-cli");
 		const home = tempDir();
 		const withoutShim = probeCliHost({ PATH: bin }, "linux", "x64", home, false);
 		expect(withoutShim.present).toEqual([]);
-		expect(withoutShim.missing).not.toContain("octocode");
-		expect(probeCliHost({ PATH: tempDir() }, "linux", "x64", home, true).present).toEqual(["octocode"]);
+		expect(withoutShim.missing).not.toContain("octocode-cli");
+		expect(probeCliHost({ PATH: tempDir() }, "linux", "x64", home, true).present).toEqual(["octocode-cli"]);
 	});
 });
 

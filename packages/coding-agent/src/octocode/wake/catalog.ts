@@ -26,8 +26,18 @@ interface EventPayloads {
 	};
 	"item.state": { ref: string; state: string };
 	"item.ready": { ref: string; prerequisites: string[] };
-	"item.idle": { refs: string[] };
+	/** A change to a watched item, epic or path (`wait on item.changed`): `change` is a `ChangeKind`, `by` its actor. */
+	"item.changed": { ref: string; change: string; by: string };
+	/** A peer's work on `ref` landed: `how` names which of its signals held (done, closed, released, reservation, gone). */
+	"peer.landed": { ref: string; how: string };
+	/** A peer's change to an item related to one this session holds or waits on (`backlog/peer-notify.ts`); `id` is its audit row. */
+	"item.peer": { ref: string; change: string; by: string; relation: string; id: number };
 	"path.unlocked": { path: string };
+	/**
+	 * A monitor rule that tripped for this session (`monitor/attention/rules.ts`): a machine threshold its processes tripped,
+	 * a stuck job, an idle child (`idle-agent`, whose `subject` is the child), or held items nothing works on (`idle-items`, whose `subject` is the refs joined by `,`).
+	 */
+	"monitor.alert": { rule: string; value: number; threshold: number; at: number; subject?: string };
 	"check.result": {
 		timerId: number;
 		command?: string;
@@ -64,6 +74,9 @@ interface Entry<K extends AgentEventKind> {
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/** The refs of an `idle-items` alert, from its `subject`. */
+const idleRefs = (subject: string | undefined): string[] => (subject ? subject.split(",") : []);
 
 export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"agent.report": {
@@ -103,17 +116,43 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 			p.prerequisites.length > 0 ? `${p.ref} ready: ${p.prerequisites.join(", ")} done` : `${p.ref} ready`,
 		key: (p) => `ready:${p.ref}`,
 	},
-	"item.idle": {
+	"item.changed": {
+		listener: "explicit",
+		wakes: "yes",
+		label: (p) => `${p.ref} ${p.change} by ${clip(p.by, 24)}`,
+		key: (p) => `changed:${p.ref}:${p.change}:${p.by}`,
+	},
+	"peer.landed": {
+		listener: "explicit",
+		wakes: "yes",
+		label: (p) => `${p.ref} landed: ${p.how}`,
+		key: (p) => `landed:${p.ref}:${p.how}`,
+	},
+	"item.peer": {
 		listener: "implicit",
 		wakes: "yes",
-		label: (p) => `${p.refs.join(", ")} idle: you hold it, nothing works on it`,
-		key: (p) => `idle:${[...p.refs].sort().join(",")}`,
+		label: (p) => `${p.ref} ${p.change} by ${clip(p.by, 24)} (${p.relation})`,
+		key: (p) => `peer:${p.ref}:${p.id}`,
 	},
 	"path.unlocked": {
 		listener: "explicit",
 		wakes: "yes",
 		label: (p) => `${p.path} unlocked`,
 		key: (p) => `unlocked:${p.path}`,
+	},
+	"monitor.alert": {
+		listener: "implicit",
+		wakes: "yes",
+		label: (p) =>
+			p.rule === "idle-items"
+				? `${idleRefs(p.subject).join(", ")} idle: you hold it, nothing works on it`
+				: p.rule === "idle-agent"
+					? `${clip(p.subject ?? "agent", 24)} no progress for ${p.value} min`
+					: `monitor: ${p.subject ? `${clip(p.subject, 24)} ` : ""}${p.rule} ${p.value} (threshold ${p.threshold})`,
+		key: (p) =>
+			p.rule === "idle-items"
+				? `idle:${idleRefs(p.subject).sort().join(",")}`
+				: `monitor:${p.rule}:${p.subject ?? ""}:${p.at}`,
 	},
 	"check.result": {
 		listener: "explicit",

@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { askReview, describeChange } from "../../src/octocode/files/review.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
-import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
+import { fakeCtx, fakePermission, fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
@@ -207,13 +207,13 @@ describe("file change review", () => {
 		const guard = new FileGuard();
 		guard.record(path.join(cwd, "a.ts"));
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (definition: never) => {
 					tool = definition;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			permission,
 		);

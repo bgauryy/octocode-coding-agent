@@ -556,7 +556,7 @@ describe("TreeSelectorComponent", () => {
 			selector.handleInput(CTRL_LEFT); // fold user-1
 			expect(list.getSelectedNode()?.entry.id).toBe("user-1");
 
-			selector.handleInput(DOWN); // wrap (only visible node)
+			selector.handleInput(DOWN); // stays (only visible node)
 			expect(list.getSelectedNode()?.entry.id).toBe("user-1");
 
 			selector.handleInput(CTRL_RIGHT); // unfold user-1
@@ -669,7 +669,7 @@ describe("TreeSelectorComponent", () => {
 			selector.handleInput(CTRL_LEFT); // fold user-1
 			expect(list.getSelectedNode()?.entry.id).toBe("user-1");
 
-			selector.handleInput(DOWN); // wrap (only visible node)
+			selector.handleInput(DOWN); // stays (only visible node)
 			expect(list.getSelectedNode()?.entry.id).toBe("user-1");
 		});
 
@@ -693,7 +693,8 @@ describe("TreeSelectorComponent", () => {
 			selector.handleInput("b"); // search resets folds
 			selector.handleInput("\x1b"); // clear search
 
-			// Navigate to user-3a to verify fold was reset
+			// Walk down from the top to user-3a to verify fold was reset (the cursor stops at the ends).
+			selector.handleInput("\x1b[H");
 			let currentId = "";
 			for (let i = 0; i < 20; i++) {
 				selector.handleInput(DOWN);
@@ -723,7 +724,8 @@ describe("TreeSelectorComponent", () => {
 			selector.handleInput("\x15"); // ctrl+u: user-only filter resets folds
 			selector.handleInput("\x04"); // ctrl+d: back to default
 
-			// Navigate to user-3a to verify fold was reset
+			// Walk down from the top to user-3a to verify fold was reset (the cursor stops at the ends).
+			selector.handleInput("\x1b[H");
 			let currentId = "";
 			for (let i = 0; i < 20; i++) {
 				selector.handleInput(DOWN);
@@ -752,7 +754,7 @@ test("keeps an initially empty tree navigable when hidden entries are revealed",
 	for (const key of ["\x1b[A", "\x1b[B", "\x1b[B", "\x1b[6~"]) selector.handleInput(key);
 	selector.handleInput("\x01");
 	expect(list.getSelectedNode()?.entry.id).toBe("one");
-	expect(selector.render(80).join("\n")).toContain("(1/1)");
+	expect(selector.render(80).map(stripVTControlCharacters)).toContain("› [model: claude-sonnet-4]");
 	selector.handleInput("\r");
 	expect(selected).toEqual(["one"]);
 });
@@ -772,5 +774,6 @@ test.each(["😀", "👩‍💻", "e\u0301"])("erases the whole %s grapheme from
 	expect(selector.getTreeList().getSelectedNode()?.entry.id).toBe("unicode");
 	selector.handleInput("\x7f");
 	expect(selector.getTreeList().getSearchQuery()).toBe("hello");
-	expect(selector.render(80).join("\n")).toContain("(2/2)");
+	const rows = selector.render(80).map(stripVTControlCharacters);
+	expect(rows.filter((line) => line.includes("hello") && !line.includes("⌕"))).toHaveLength(2);
 });

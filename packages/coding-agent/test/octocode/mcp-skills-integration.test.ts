@@ -13,12 +13,12 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { publishToolRoles, resolveToolRoles } from "../../../mcp/src/roles.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { researchServerLaunch } from "./research-server-launch.ts";
@@ -26,6 +26,8 @@ import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts"
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
 import { approveFixtureSkillFiles } from "./guard-helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -97,8 +99,8 @@ describe("installed MCP and skills through the native SDK", () => {
 				provider: "faux",
 				models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 			});
-			const provider: ExtensionFactory = (api) => {
-				api.registerProvider("faux", {
+			const provider: FeatureRegister = (api) => {
+				api.providers.register("faux", {
 					name: "Faux",
 					api: faux.api,
 					baseUrl: "http://127.0.0.1:0",
@@ -106,7 +108,7 @@ describe("installed MCP and skills through the native SDK", () => {
 					models: faux.models,
 					streamSimple: faux.streamSimple,
 				} as never);
-				api.on("resources_discover", () => ({ skillPaths: [discoveredSkill] }));
+				api.bus.on("resources_discover", () => ({ skillPaths: [discoveredSkill] }));
 			};
 			const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
 			approveFixtureSkillFiles(
@@ -120,15 +122,16 @@ describe("installed MCP and skills through the native SDK", () => {
 				cwd,
 				agentDir,
 				settingsManager,
-				extensionFactories: [
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
 					{ name: "faux", factory: provider },
 					...(owner === "configured-default"
 						? []
 						: [
 								{
 									name: "builtin:mcp",
-									factory: (api: Parameters<ExtensionFactory>[0]) =>
-										createMcpExtension({
+									factory: (api: Parameters<FeatureRegister>[0]) =>
+										createMcpFeature({
 											// The default entry as runtime registers it (`default.ts`): its `roles` make localFetch the
 											// reader whose reads the file guard credits, and a same-named user entry inherits them.
 											presets: recommendedPresets(),
@@ -136,10 +139,10 @@ describe("installed MCP and skills through the native SDK", () => {
 										})(api),
 								},
 							]),
-				],
+				]),
 				additionalSkillPaths: [externalSkill],
 				// The configured default keeps the built-in MCP host on; the other owners supply their own.
-				disabledFeatures: owner === "configured-default" ? ["llama.cpp"] : ["mcp", "llama.cpp"],
+				disabledFeatures: owner === "configured-default" ? [] : ["mcp"],
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,
@@ -172,7 +175,7 @@ describe("installed MCP and skills through the native SDK", () => {
 			});
 			const turns: TranscriptContext[] = [];
 			try {
-				await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+				await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 				await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 				const research = resourceLoader.getSkills().skills.find((skill) => skill.name === "integration-skill")!;
 				expect(research).toBeDefined();
@@ -293,7 +296,7 @@ describe("installed MCP and skills through the native SDK", () => {
 				expect(expanded).toContain("Use the companion");
 				expect(expanded).toContain("Use this skill explicitly.");
 			} finally {
-				await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+				await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 				session.dispose();
 			}
 		},

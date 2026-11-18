@@ -119,7 +119,7 @@ describe("SessionStatusReporter", () => {
 	it("reports the most recent open dialog and the underlying state once all close", () => {
 		const { reporter, send, last } = setup();
 		send({ type: "agent_start" });
-		reporter.setBlocked("extension-selector", { kind: "permission", message: "Allow bash?" });
+		reporter.setBlocked("feature-dialog", { kind: "permission", message: "Allow bash?" });
 		reporter.setBlocked("login", { kind: "auth", message: "Log in to Anthropic" });
 		expect(last()).toEqual({ state: "blocked", kind: "auth", message: "Log in to Anthropic" });
 
@@ -129,9 +129,9 @@ describe("SessionStatusReporter", () => {
 		expect(last()).toEqual({ state: "blocked", kind: "permission", message: "Allow bash?" });
 
 		// Reopening a source replaces its dialog instead of stacking a second one.
-		reporter.setBlocked("extension-selector", { kind: "question", message: "Pick one" });
+		reporter.setBlocked("feature-dialog", { kind: "question", message: "Pick one" });
 		expect(last()).toEqual({ state: "blocked", kind: "question", message: "Pick one" });
-		reporter.setBlocked("extension-selector", undefined);
+		reporter.setBlocked("feature-dialog", undefined);
 		expect(last()).toEqual({ state: "done" });
 	});
 

@@ -25,6 +25,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { offerForkOfTornSession } from "./session-navigation.ts";
 import { renderInitialSessionState } from "./resume-notice.ts";
 import { cancelStartupSubmit, dispatchStartupSubmit } from "./command-dispatch.ts";
+import { submitPrompt } from "./refused-input.ts";
 import { withStartupCleanup } from "./startup-cleanup.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
@@ -34,6 +35,7 @@ type StartupHost = Pick<
 	| "changelogMarkdown"
 	| "checkForPackageUpdates"
 	| "checkTmuxKeyboardSetup"
+	| "clearStatusIndicator"
 	| "defaultEditor"
 	| "documentContainer"
 	| "editor"
@@ -46,6 +48,7 @@ type StartupHost = Pick<
 	| "getChangelogForDisplay"
 	| "getStartupExpansionState"
 	| "getUserInput"
+	| "escapeAbortedRun"
 	| "handleCtrlC"
 	| "handleCtrlD"
 	| "handleResumeSession"
@@ -74,7 +77,7 @@ type StartupHost = Pick<
 	| "shouldShowStartupDetails"
 	| "shouldShowStartupHeader"
 	| "showError"
-	| "showExtensionConfirm"
+	| "showConfirmDialog"
 	| "showManagedToolStatus"
 	| "showNewVersionNotification"
 	| "showPackageUpdateNotification"
@@ -85,6 +88,7 @@ type StartupHost = Pick<
 	| "themeController"
 	| "transcriptScrollView"
 	| "ui"
+	| "uiStore"
 	| "unregisterSignalHandlers"
 	| "updateAvailableProviderCount"
 	| "updateEditorBorderColor"
@@ -134,6 +138,7 @@ export async function init(host: StartupHost): Promise<void> {
 		});
 		host.transcriptScrollView = viewport.transcript;
 		host.fullscreenLayoutRoot = viewport.root;
+		host.renderer = await (await import("../../ink/dev-renderer.ts")).inkRenderer(host.renderer, host.uiStore);
 		host.mountInteractiveTui(host.renderer, [
 			host.documentContainer,
 			host.pendingMessagesContainer,
@@ -152,7 +157,7 @@ export async function init(host: StartupHost): Promise<void> {
 		host.defaultEditor.onEscape = () => cancelStartupSubmit(host);
 		host.ui.setFocus(host.editor);
 
-		// Start the UI before initializing extensions so session_start handlers can use interactive dialogs
+		// Start the UI before initializing features so session_start handlers can use interactive dialogs
 		host.ui.start();
 		host.isInitialized = true;
 		host.programStatus.report();
@@ -228,7 +233,7 @@ export async function init(host: StartupHost): Promise<void> {
 		}
 		host.ui.requestRender();
 
-		// Ensure fd and rg after mounting the TUI (downloads if missing, adds to PATH via getBinDir). Extension startup is
+		// Ensure fd and rg after mounting the TUI (downloads if missing, adds to PATH via getBinDir). Feature startup is
 		// independent, so run it concurrently rather than adding its latency to a slow first download.
 		const managedTools = Promise.all([
 			ensureTool("fd", (status) => host.showManagedToolStatus(status)),
@@ -305,7 +310,7 @@ export async function run(host: StartupHost): Promise<void> {
 		})
 		.finally(() => {
 			// On Windows, npm can overwrite the shared console title while checking
-			// extension package versions. Restore Octocode's title after the startup check.
+			// feature package versions. Restore Octocode's title after the startup check.
 			if (process.platform === "win32" && host.isInitialized) {
 				host.updateTerminalTitle();
 			}
@@ -366,12 +371,16 @@ export async function run(host: StartupHost): Promise<void> {
 		}
 	}
 
+	const { session, clearStatusIndicator } = host;
 	while (true) {
 		const userInput = await host.getUserInput();
 		try {
-			await getApplicationPort(host.session).invoke("prompt", userInput, { attachImagePaths: true });
+			await submitPrompt(host, userInput);
 		} catch (error: unknown) {
 			host.showError(errorMessage(error));
+		} finally {
+			// Submit shows the working indicator; a prompt refused or consumed before a run started never settles.
+			if (!session.isStreaming) clearStatusIndicator.call(host, "working");
 		}
 	}
 }

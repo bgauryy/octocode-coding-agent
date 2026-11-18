@@ -3,6 +3,7 @@ import { sendMessage } from "../../src/octocode/api/bridge/send.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { ERR } from "../../src/octocode/api/protocol.ts";
 import { SendReceipts } from "../../src/octocode/api/receipts.ts";
+import { asSetup } from "./fake-host.ts";
 
 function setup() {
 	let sessionId = "s1";
@@ -21,7 +22,7 @@ function setup() {
 		hasPendingMessages: () => false,
 	};
 	const host = {
-		api: { sendMessage: send },
+		api: asSetup({ sendMessage: send }),
 		agents: { list: () => [], deliverable: (text: string) => text },
 		operations: {},
 		receipts,

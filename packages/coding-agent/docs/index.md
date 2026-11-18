@@ -33,7 +33,7 @@ flowchart LR
 | [Models](models.md)                                       | Pick, route, discover and add models                                            |
 | [Models configuration reference](models-configuration.md) | Look up every `models.json` field                                               |
 | [Permissions](permissions.md)                             | Choose a permission mode and write rules                                        |
-| [Instructions](instructions.md)                           | Change what agents are told                                                     |
+| [Prompts](prompts.md)                                     | Change what agents are told                                                     |
 | [What an agent reads](agent-context.md)                   | See each context source, its switch and how to measure it                       |
 | [Prompt caching](prompt-caching.md)                       | Keep requests cheap and find cache misses                                       |
 | [Request flows](harness-flows.md)                         | Follow how a request is built and what keeps it small and cached                |
@@ -52,15 +52,15 @@ flowchart LR
 
 ## Other interfaces
 
-| Page                                   | Read it to                                          |
-| -------------------------------------- | --------------------------------------------------- |
-| [Web workspace](web-workspace.md)      | Use `/web`: activity, backlog board, profiler, docs |
-| [Remote access](remote.md)             | Reach a session from another device with `/remote`  |
-| [Terminal UI](tui.md), [tmux](tmux.md) | Use the terminal interface and tmux panes           |
-| [External agents](external-agents.md)  | Delegate through the CLI, JSON Lines or RPC         |
-| [RPC mode](rpc.md)                     | Drive a headless session over stdin and stdout      |
-| [ACP](acp.md)                          | Connect Octocode to editors and other agents        |
-| [Session API](session-api.md)          | Send messages to running agents                     |
+| Page                                                                  | Read it to                                                                        |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [Web workspace](web-workspace.md)                                     | Use `/web`: activity, backlog board, profiler, docs                               |
+| [Remote access](remote.md)                                            | Reach a session from another device with `/remote`                                |
+| [Terminal UI](tui.md), [design rules](tui-design.md), [tmux](tmux.md) | Use the terminal interface; learn its marks, colors and cut rules; use tmux panes |
+| [External agents](external-agents.md)                                 | Delegate through the CLI, JSON Lines or RPC                                       |
+| [RPC mode](rpc.md)                                                    | Drive a headless session over stdin and stdout                                    |
+| [ACP](acp.md)                                                         | Connect Octocode to editors and other agents                                      |
+| [Session API](session-api.md)                                         | Send messages to running agents                                                   |
 
 ## How it works
 
@@ -75,4 +75,4 @@ flowchart LR
 
 ## Working on Octocode
 
-[DEVELOPMENT.md](../../../DEVELOPMENT.md) covers setup and checks. Library references: [agent](../../agent/README.md), [ai](../../ai/README.md), [tui](../../tui/README.md), [webview](../../webview/README.md), [contracts](../../contracts/README.md), [MCP client](../../mcp/README.md), [telemetry](../../telemetry/README.md), [agent eval](../../../scripts/agent-eval/README.md).
+[DEVELOPMENT.md](../../../DEVELOPMENT.md) covers setup, checks and the [package map](../../../DEVELOPMENT.md#packages). Library references: [agent](../../agent/README.md), [ai](../../ai/README.md), [tui](../../tui/README.md), [webview](../../webview/README.md), [contracts](../../contracts/README.md), [common](../../common/README.md), [telemetry](../../telemetry/README.md), [MCP client](../../mcp/README.md), [ACP](../../acp/README.md), [database](../../db/README.md), [shell completion](../../terminal/README.md), [agentic testkit](../../octocode-agentic-testkit/README.md), [agent eval](../../../scripts/agent-eval/README.md).

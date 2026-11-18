@@ -1,4 +1,4 @@
-import type { BeforeAgentStartEvent, ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { BeforeAgentStartEvent, FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { notify, type Subcommands } from "../shared/commands.ts";
 import { envFlag, MEMORY_AUTO_ENV } from "@octocodeai/octocode-common/env";
@@ -9,7 +9,7 @@ import { memoryLabel } from "./query.ts";
 import { noteOnlyInjection, sessionNoteLead } from "./session-notes-inject.ts";
 import { sessionNotes } from "./session-notes.ts";
 import { memoryStore } from "./store.ts";
-import { createMemoryTool } from "./tool.ts";
+import { createMemoryTool } from "../native/tools/memory/tool.ts";
 
 /** BM25 hits injected per prompt beside the pinned memories: fewer in a subagent, whose task is narrow. */
 const TOP_K = 5;
@@ -35,7 +35,7 @@ function agentStartQuery(event: BeforeAgentStartEvent, goal: string | undefined)
  * goal (`OCTOCODE_AGENT_GOAL`), its recall query.
  */
 export function registerMemory(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: {
 		commands: Subcommands;
 		isSubagent: boolean;
@@ -45,7 +45,7 @@ export function registerMemory(
 	},
 ) {
 	const env = options.env ?? process.env;
-	const storeFor = (ctx: Pick<ExtensionContext, "cwd">) => memoryStore(ctx.cwd, env);
+	const storeFor = (ctx: Pick<FeatureContext, "cwd">) => memoryStore(ctx.cwd, env);
 	const autoEnv = () => envFlag(env, MEMORY_AUTO_ENV, true);
 	const goal = options.isSubagent ? options.goal?.trim() || undefined : undefined;
 	let failedSession: string | undefined;
@@ -71,7 +71,7 @@ export function registerMemory(
 	 * What to send before a request: the session notes the model cannot see, then (with recall on) pinned and relevant memories
 	 * for `query`. A broken store never blocks a request; notify once until retrieval recovers.
 	 */
-	const injectionFor = (ctx: ExtensionContext, query: string, withActiveGoal = false) => {
+	const injectionFor = (ctx: FeatureContext, query: string, withActiveGoal = false) => {
 		// Session notes belong to the session, not to the memory store or its automatic recall: a note the model cannot see
 		// is sent whatever those settings say, and a broken store does not hide it.
 		const contextWindow = ctx.model?.contextWindow;
@@ -117,7 +117,7 @@ export function registerMemory(
 		}
 	};
 
-	api.on("before_agent_start", async (event, ctx) =>
+	api.bus.on("before_agent_start", async (event, ctx) =>
 		injectionFor(ctx, agentStartQuery(event, goal), event.messageType !== "custom"),
 	);
 
@@ -125,18 +125,18 @@ export function registerMemory(
 	// memories the summary replaced would stay out of the retry's request. They are sent again here, before it, only
 	// when the compaction left them out of context (`seen` and the notes' context check already say so, so the retry adds
 	// no bytes when a kept message still shows them).
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("session_compact", async (event, ctx) => {
 		if (!event.willRetry) return;
 		const injection = injectionFor(ctx, "");
 		if (!injection) return;
 		try {
-			void api.sendMessage(injection.message, { triggerTurn: false, deliverAs: "followUp" });
+			void api.session.sendMessage(injection.message, { triggerTurn: false, deliverAs: "followUp" });
 		} catch {
 			// The session was replaced.
 		}
 	});
 
-	api.on("message_end", async (event, ctx) => {
+	api.bus.on("message_end", async (event, ctx) => {
 		const { message } = event;
 		if (message.role !== "custom" || message.customType !== MEMORY_MESSAGE_TYPE) return;
 		const ids = (message.details as { ids?: unknown } | undefined)?.ids;
@@ -153,11 +153,11 @@ export function registerMemory(
 	});
 
 	if (!options.isSubagent) registerMemoryCommand(options.commands, { store: storeFor, autoEnv });
-	api.registerTool(
+	api.tools.register(
 		createMemoryTool(storeFor, {
 			isSubagent: options.isSubagent,
 			permission: options.permission,
-			appendEntry: (type, data) => api.appendEntry(type, data),
+			appendEntry: (type, data) => api.session.appendEntry(type, data),
 		}),
 	);
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";

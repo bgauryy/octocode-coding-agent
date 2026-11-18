@@ -1,4 +1,4 @@
-import type { Box, TuiMouseEvent } from "@octocodeai/octocode-tui";
+import type { Container, TuiMouseEvent } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BranchSummaryMessageComponent } from "../src/modes/interactive/components/branch-summary-message.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
@@ -8,11 +8,11 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 
 const WIDTH = 80;
 
-function renderText(component: Box): string {
+function renderText(component: Container): string {
 	return stripAnsi(component.render(WIDTH).join("\n"));
 }
 
-function clickRow(component: Box, marker: string): void {
+function clickRow(component: Container, marker: string): void {
 	const lines = component.render(WIDTH);
 	const row = lines.findIndex((line) => stripAnsi(line).includes(marker));
 	expect(row).toBeGreaterThanOrEqual(0);

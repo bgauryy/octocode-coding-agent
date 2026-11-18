@@ -99,10 +99,18 @@ it("reports a superseded copy instead of silently dropping it", async () => {
 	const selection = new AltScreenSelection(copyHost(screen, copied, messages));
 	selection.selectionAnchor = { row: 0, col: 0 };
 	selection.selectionFocus = { row: screen.length - 1, col: 1000 };
-	const first = selection.copySelectionToClipboard();
-	const second = selection.copySelectionToClipboard();
-	assert.equal(await first, false);
-	assert.equal(await second, true);
+	// Extraction yields only after a time slice; a clock that moves 1 ms a reading makes it yield on any machine.
+	const realNow = performance.now.bind(performance);
+	let clock = realNow();
+	performance.now = () => (clock += 1);
+	try {
+		const first = selection.copySelectionToClipboard();
+		const second = selection.copySelectionToClipboard();
+		assert.equal(await first, false);
+		assert.equal(await second, true);
+	} finally {
+		performance.now = realNow;
+	}
 	assert.match(messages[0], /Copy cancelled/);
 	assert.equal(copied.length, 1);
 });

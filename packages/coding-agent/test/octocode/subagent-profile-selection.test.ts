@@ -22,6 +22,7 @@ import {
 } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 useResearchRoles();
 
@@ -87,7 +88,8 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			cwd,
 			agentDir,
 			settingsManager,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,

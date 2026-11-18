@@ -13,7 +13,7 @@ type ImportCommandContext = {
 	runtimeHost: { importFromJsonl: (inputPath: string, cwdOverride?: string) => Promise<{ cancelled: boolean }> };
 	showError: (message: string) => void;
 	showStatus: (message: string) => void;
-	showExtensionConfirm: (title: string, message: string) => Promise<boolean>;
+	showConfirmDialog: (title: string, message: string) => Promise<boolean>;
 	handleRuntimeSessionChange: () => Promise<void>;
 	renderCurrentSessionState: () => void;
 	handleFatalRuntimeError: (prefix: string, error: unknown) => Promise<never>;
@@ -41,7 +41,7 @@ describe("InteractiveMode /import parsing", () => {
 
 	it("passes unquoted path to runtimeHost.importFromJsonl", async () => {
 		const importFromJsonl = vi.fn(async () => ({ cancelled: false }));
-		const showExtensionConfirm = vi.fn(async () => true);
+		const showConfirmDialog = vi.fn(async () => true);
 		const showStatus = vi.fn();
 		const showError = vi.fn();
 
@@ -50,7 +50,7 @@ describe("InteractiveMode /import parsing", () => {
 			runtimeHost: { importFromJsonl },
 			showError,
 			showStatus,
-			showExtensionConfirm,
+			showConfirmDialog,
 			handleRuntimeSessionChange: vi.fn(async () => {}),
 			renderCurrentSessionState: vi.fn(),
 			handleFatalRuntimeError: vi.fn(async () => {
@@ -62,7 +62,7 @@ describe("InteractiveMode /import parsing", () => {
 
 		await handleImportCommand(createFakeHost(context), '/import "path/to/session.jsonl"');
 
-		expect(showExtensionConfirm).toHaveBeenCalledWith(
+		expect(showConfirmDialog).toHaveBeenCalledWith(
 			"Import session",
 			"Replace current session with path/to/session.jsonl?",
 		);
@@ -73,7 +73,7 @@ describe("InteractiveMode /import parsing", () => {
 
 	it("passes unquoted apostrophe path to runtimeHost.importFromJsonl unchanged", async () => {
 		const importFromJsonl = vi.fn(async () => ({ cancelled: false }));
-		const showExtensionConfirm = vi.fn(async () => true);
+		const showConfirmDialog = vi.fn(async () => true);
 		const showStatus = vi.fn();
 		const showError = vi.fn();
 
@@ -82,7 +82,7 @@ describe("InteractiveMode /import parsing", () => {
 			runtimeHost: { importFromJsonl },
 			showError,
 			showStatus,
-			showExtensionConfirm,
+			showConfirmDialog,
 			handleRuntimeSessionChange: vi.fn(async () => {}),
 			renderCurrentSessionState: vi.fn(),
 			handleFatalRuntimeError: vi.fn(async () => {
@@ -103,7 +103,7 @@ describe("InteractiveMode /import parsing", () => {
 		const importFromJsonl = vi.fn(async () => {
 			throw new SessionImportFileNotFoundError("/tmp/missing-session.jsonl");
 		});
-		const showExtensionConfirm = vi.fn(async () => true);
+		const showConfirmDialog = vi.fn(async () => true);
 		const showStatus = vi.fn();
 		const showError = vi.fn();
 		const handleFatalRuntimeError = vi.fn(async () => {
@@ -115,7 +115,7 @@ describe("InteractiveMode /import parsing", () => {
 			runtimeHost: { importFromJsonl },
 			showError,
 			showStatus,
-			showExtensionConfirm,
+			showConfirmDialog,
 			handleRuntimeSessionChange: vi.fn(async () => {}),
 			renderCurrentSessionState: vi.fn(),
 			handleFatalRuntimeError,

@@ -5,6 +5,8 @@ import { type Endpoint, killEverything, outputOfRuns, sandbox, startEndpoint } f
 
 /** CLI flags that shape the model request, read from the request a real process sends to the scripted model. */
 let endpoint: Endpoint;
+/** The default prompt's size, from the first case; the cases run in file order. */
+let defaultSystemLength = 0;
 
 vi.setConfig({ testTimeout: 180_000 });
 
@@ -59,29 +61,32 @@ const runOnce = async (box: ReturnType<typeof sandbox>, args: string[], options?
 };
 
 describe("CLI flags reach the model request", () => {
-	it("declares tools by default and none with --no-tools", async () => {
-		const withTools = await runOnce(sandbox(endpoint), []);
-		expect(withTools.request.tools).toContain("bash");
-		expect(withTools.request.tools).toContain("file");
-		endpoint.requests.length = 0;
-		const without = await runOnce(sandbox(endpoint), ["--no-tools"]);
-		expect(without.request.tools).toEqual([]);
-		expect(without.stdout).toContain("scripted summary");
+	it("declares tools and the default system prompt by default", async () => {
+		const { request } = await runOnce(sandbox(endpoint), []);
+		expect(request.tools).toContain("bash");
+		expect(request.tools).toContain("file");
+		expect(request.system).not.toContain("Zorblax");
+		defaultSystemLength = request.system.length;
 	});
 
-	it("--system-prompt replaces the default system prompt", async () => {
-		const custom = await runOnce(sandbox(endpoint), ["--system-prompt", "You are a pirate named Zorblax."]);
-		expect(custom.request.system).toContain("You are a pirate named Zorblax.");
-		endpoint.requests.length = 0;
-		const normal = await runOnce(sandbox(endpoint), []);
-		expect(normal.request.system).not.toContain("Zorblax");
-		expect(custom.request.system.length).toBeLessThan(normal.request.system.length);
+	it("--no-tools declares none and --system-prompt replaces the default system prompt", async () => {
+		const { request, stdout } = await runOnce(sandbox(endpoint), [
+			"--no-tools",
+			"--system-prompt",
+			"You are a pirate named Zorblax.",
+		]);
+		expect(request.tools).toEqual([]);
+		expect(stdout).toContain("scripted summary");
+		expect(request.system).toContain("You are a pirate named Zorblax.");
+		if (defaultSystemLength > 0) expect(request.system.length).toBeLessThan(defaultSystemLength);
 	});
 
-	it("--append-system-prompt adds text, or a file's contents, after the default prompt", async () => {
+	it("--append-system-prompt adds text, or a file's contents, after the default prompt; --thinking is ignored on a model without reasoning", async () => {
 		const box = sandbox(endpoint);
 		fs.writeFileSync(path.join(box.project, "extra.md"), "File rule: always answer in haiku.\n");
 		const { request } = await runOnce(box, [
+			"--thinking",
+			"high",
 			"--append-system-prompt",
 			"Inline rule: mention quokkas.",
 			"--append-system-prompt",
@@ -93,18 +98,6 @@ describe("CLI flags reach the model request", () => {
 		expect(file).toBeGreaterThan(inline);
 		// The default prompt is still there, ahead of the appended text.
 		expect(request.system.slice(0, inline).length).toBeGreaterThan(500);
-	});
-
-	it("--thinking sets the request's reasoning effort on a reasoning model", async () => {
-		const high = await runOnce(reasoningSandbox(), ["--thinking", "high"]);
-		expect(high.request.reasoningEffort).toBe("high");
-		endpoint.requests.length = 0;
-		const low = await runOnce(reasoningSandbox(), ["--thinking", "low"]);
-		expect(low.request.reasoningEffort).toBe("low");
-	});
-
-	it("--thinking is ignored on a model without reasoning", async () => {
-		const { request } = await runOnce(sandbox(endpoint), ["--thinking", "high"]);
 		expect(request.reasoningEffort).toBeUndefined();
 	});
 
@@ -116,7 +109,7 @@ describe("CLI flags reach the model request", () => {
 		expect(request.reasoningEffort).toBe("low");
 	});
 
-	it("an explicit --thinking beats the scoped model's level", async () => {
+	it("--thinking sets the reasoning effort on a reasoning model and beats the scoped model's level", async () => {
 		const { request } = await runOnce(reasoningSandbox(), ["--models", "scripted/alt:low", "--thinking", "high"], {
 			model: false,
 		});

@@ -1,9 +1,10 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getAssistantTexts, getUserTexts, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("queued slash-command follow-up", () => {
 	const harnesses: Harness[] = [];
@@ -15,7 +16,7 @@ describe("queued slash-command follow-up", () => {
 	});
 
 	it("treats extension-origin queued slash-command follow-ups as raw user text instead of dispatching the command", async () => {
-		let extensionApi: ExtensionAPI | undefined;
+		let featureApi: FeatureSetup | undefined;
 		const commandRuns: string[] = [];
 		let releaseToolExecution: (() => void) | undefined;
 		const toolRelease = new Promise<void>((resolve) => {
@@ -36,17 +37,17 @@ describe("queued slash-command follow-up", () => {
 		};
 		const harness = await createHarness({
 			tools: [waitTool],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					extensionApi = api;
-					api.registerCommand("testcmd", {
+					featureApi = api;
+					api.commands.register("testcmd", {
 						description: "Test command",
 						handler: async (args) => {
 							commandRuns.push(args);
 						},
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
@@ -69,7 +70,7 @@ describe("queued slash-command follow-up", () => {
 		await sawToolStart;
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		extensionApi?.sendUserMessage("/testcmd queued", { deliverAs: "followUp" });
+		featureApi?.session.sendUserMessage("/testcmd queued", { deliverAs: "followUp" });
 		releaseToolExecution?.();
 		await promptPromise;
 

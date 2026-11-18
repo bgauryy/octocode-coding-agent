@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
+import { REPORT_MAX_BYTES } from "../../src/octocode/native/prompts/report.ts";
 import { newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 import { savedNotices, StderrTail } from "../../src/octocode/subagents/process/stderr.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";

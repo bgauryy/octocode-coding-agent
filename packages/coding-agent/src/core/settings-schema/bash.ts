@@ -58,7 +58,7 @@ export const BashSettingsProperties = {
 	bashOutputMaxBytes: Type.Optional(
 		Type.Number({
 			description:
-				"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens, or raise it up to 50,000 bytes. Output of the user's own `!` commands follows the same limit.",
+				"Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens but never raise it. Output of the user's own `!` commands follows the same limit.",
 			minimum: 1024,
 			default: SETTINGS_DEFAULTS.bashOutputMaxBytes,
 		}),

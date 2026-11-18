@@ -3,6 +3,7 @@ import { getApplicationPort } from "../src/core/application/index.ts";
 import { handleContextSize, parseContextSize } from "../src/modes/interactive/interactive-mode/context-controls.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { createHarness, type Harness, type HarnessOptions } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const harnesses: Harness[] = [];
 async function harness(options: HarnessOptions = {}) {
@@ -71,13 +72,13 @@ describe("session context controls", () => {
 		async (method) => {
 			const selectedCapacities: number[] = [];
 			const { session, getModel } = await harness({
-				extensionFactories: [
-					(extension) => {
-						extension.on("model_select", (event) => {
+				features: testFeatures([
+					(feature) => {
+						feature.bus.on("model_select", (event) => {
 							selectedCapacities.push(event.model.contextWindow);
 						});
 					},
-				],
+				]),
 			});
 			session.setContextWindow(32_000);
 			await session.setModel(getModel("small")!);
@@ -110,7 +111,7 @@ describe("session context controls", () => {
 		const status = vi.fn();
 		const host = createFakeHost({
 			session,
-			showExtensionSelector: select,
+			showSelectorDialog: select,
 			showStatus: status,
 			ui: { requestRender: vi.fn() },
 		});
@@ -142,7 +143,7 @@ describe("session context controls", () => {
 		const status = vi.fn();
 		const host = createFakeHost({
 			session,
-			showExtensionSelector: async () => {
+			showSelectorDialog: async () => {
 				if (change === "model") await session.setModel(getModel("small")!);
 				else if (change === "session") session.sessionManager.newSession();
 				else host.session = replacement!.session;

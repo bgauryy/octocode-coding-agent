@@ -8,7 +8,7 @@ import type { ConfigAdapter, ConfigContext, ConfigEntry } from "../types.ts";
 
 /**
  * Tools that exist without a session: the native tools (declared in `octocode/permission/native-tools.ts`) and the `mcp`
- * tool. Tools an extension or MCP server adds exist only in a running session: the ones that session reports
+ * tool. Tools a feature or MCP server adds exist only in a running session: the ones that session reports
  * (`live.toolNames`) and the ones named in settings are listed too.
  */
 function knownTools(

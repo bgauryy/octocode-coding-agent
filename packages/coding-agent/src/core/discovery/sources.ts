@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
+import ignore from "ignore";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { parseConfigDocument } from "../../utils/config-document.ts";
-import { collectSkillEntries } from "../package-manager/discovery.ts";
-import { discoverExtensionsInDir } from "../package-manager/extension-discovery.ts";
+import { addIgnoreRules } from "../../utils/ignore.ts";
+import { collectSkillEntries, isIgnored, readDirectoryEntries } from "../package-manager/discovery.ts";
 import { type ConfigRoot, configRoots, makeItem, skillName } from "./roots.ts";
 import type { ConfigItem, ConfigKind, DiscoverInput, Product } from "./types.ts";
 
@@ -63,16 +64,34 @@ export function directoryItems(
 	);
 }
 
-/** User code Octocode does not run, found in `<root>/<subdir>`. */
-export function ignoredCodeItems(
-	kind: "extension" | "hook",
-	subdir: string,
-	roots: readonly ConfigRoot[],
-	input: DiscoverInput,
-): ConfigItem[] {
+/**
+ * Entry points of Pi's TypeScript hooks in `dir`: its top-level `*.ts` and `*.js` files and the `index.ts` or `index.js`
+ * of each subfolder. Dot entries, `node_modules` and ignored paths are skipped.
+ */
+function piHookFiles(dir: string): string[] {
+	if (!existsSync(dir)) return [];
+	const ig = ignore();
+	addIgnoreRules(ig, dir, dir);
+	let entries: ReturnType<typeof readDirectoryEntries>;
+	try {
+		entries = readDirectoryEntries(dir, dir);
+	} catch {
+		// A folder that cannot be read lists nothing.
+		return [];
+	}
+	return entries.flatMap((entry) => {
+		if (isIgnored(ig, entry)) return [];
+		if (entry.isFile) return /\.(ts|js)$/.test(entry.name) ? [entry.fullPath] : [];
+		const index = ["index.ts", "index.js"].map((name) => join(entry.fullPath, name)).find((path) => existsSync(path));
+		return index ? [index] : [];
+	});
+}
+
+/** Pi's hook files in `<root>/<subdir>`: listed as not loaded, because Octocode does not run Pi's TypeScript hooks. */
+export function piHookItems(subdir: string, roots: readonly ConfigRoot[], input: DiscoverInput): ConfigItem[] {
 	return roots.flatMap((root) =>
-		discoverExtensionsInDir(join(root.dir, subdir)).map((file) =>
-			makeItem(kind, basename(file), root, file, input, { baseDir: root.dir, notLoaded: "ignored-code" }),
+		piHookFiles(join(root.dir, subdir)).map((file) =>
+			makeItem("hook", basename(file), root, file, input, { baseDir: root.dir, notLoaded: "ignored-code" }),
 		),
 	);
 }

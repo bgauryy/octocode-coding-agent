@@ -23,6 +23,7 @@ export * as edits from "./queries/edits.ts";
 export * as backlog from "./queries/backlog.ts";
 export * as tasks from "./queries/tasks.ts";
 export * as memories from "./queries/memories.ts";
+export * as archiveIndex from "./queries/archive-index.ts";
 export * as transcripts from "./queries/transcripts.ts";
 export * as forks from "./queries/forks.ts";
 export * as sessions from "./queries/sessions.ts";
@@ -34,6 +35,7 @@ export * as history from "./queries/history.ts";
 export * as trust from "./queries/trust.ts";
 export * as guard from "./queries/guard.ts";
 export * as processSamples from "./queries/process-samples.ts";
+export * as machineSamples from "./queries/machine-samples.ts";
 export * as purge from "./queries/purge.ts";
 export * as maintenance from "./queries/maintenance.ts";
 export * as expire from "./queries/expire.ts";
@@ -45,6 +47,8 @@ export {
 	dbStamp,
 	type MirrorDb,
 	openDatabase,
+	openArchiveIndex,
+	type ArchiveIndexDb,
 	prepareSharedDatabase,
 	sharedDatabase,
 } from "./db.ts";
@@ -87,6 +91,7 @@ export type { MemoryFilter, MemoryScope, ScopeFilter } from "./queries/memories.
 export type { SessionLinks } from "./queries/session-links.ts";
 export type { CatalogEntry, CatalogRow, EraseCounts, SessionExtra } from "./queries/sessions.ts";
 export type { OwnedChild, ProcessSample } from "./queries/process-samples.ts";
+export type { MachineProcess, MachineSample, SamplerLease } from "./queries/machine-samples.ts";
 export type { PurgeCounts } from "./queries/purge.ts";
 export type { MaintenanceResult } from "./queries/maintenance.ts";
 export type { ExpireCounts } from "./queries/expire.ts";

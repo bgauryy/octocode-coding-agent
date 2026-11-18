@@ -12,7 +12,6 @@
  * - `hooks.json`: `core/discovery/vendors/octocode.ts` (hook commands), and `hooks/` for the scripts it points at;
  * - `skills`, `prompts`, `themes`: `core/discovery/vendors/octocode.ts`, `core/skills.ts`, `core/prompt-templates.ts`,
  *   `core/resource-loader/themes.ts`;
- * - `extensions`: found and ignored with a warning today (`ignoredCodeItems`); listed because it is code;
  * - `agents`: subagent profiles, `octocode/shared/home.ts` (`projectAgentDirs`) and `octocode/discovery/agents.ts`;
  * - `system.md`, `append_system.md`: the system prompt, `core/discovery/vendors/octocode.ts`;
  * - `agents.md`, `agents.override.md`: instruction files a session loads from the folder it starts in
@@ -30,7 +29,6 @@ export const LOADED_BY_LATER_SESSIONS: ReadonlySet<string> = new Set(
 		"agents",
 		"prompts",
 		"themes",
-		"extensions",
 		"plugins",
 		"npm",
 		"git",

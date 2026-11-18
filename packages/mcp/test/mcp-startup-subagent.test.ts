@@ -51,7 +51,7 @@ function snapshotHost() {
 		},
 	});
 	hosts.push(host);
-	host.api.getSkillDirectories = () => [...skills];
+	host.api.resources.getSkillDirectories = () => [...skills];
 	return { host, launches, skills };
 }
 

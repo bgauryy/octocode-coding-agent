@@ -1,62 +1,54 @@
 import { withSessionStorage } from "../../storage/runtime-paths.ts";
 import type { Provider } from "@octocodeai/octocode-ai";
-import type { KeyId } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { ExecOptions } from "../exec.ts";
-import { execCommand } from "../exec.ts";
-import { onlyReadsMessages, readsMessagesOnly } from "./runner/clone-messages.ts";
+import { subscribe } from "./bus/session-bus.ts";
 import { validateMcpServerConfig } from "../../../../mcp/src/api.ts";
 import { type McpServerChange, type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
-import type { SessionNameSource } from "../session-manager.ts";
-import type { ModelRouteRequest, VirtualModelDefinition } from "../virtual-models.ts";
 import type {
-	EntryRenderer,
-	Extension,
-	ExtensionAPI,
-	ExtensionContext,
-	ExtensionRuntime,
-	ExtensionVirtualModel,
-	MarkdownTransformer,
-	MessageRenderer,
+	BusSubscriber,
+	FeatureRecord,
+	FeatureRuntime,
+	FeatureSetup,
 	ProviderConfig,
 	RegisteredCommand,
 	ToolDefinition,
-	ToolRendererResolver,
 } from "./types.ts";
 
-type HandlerFn = (...args: unknown[]) => unknown;
-
 /**
- * Create the ExtensionAPI for an extension.
- * Registration methods write to the extension object.
- * Action methods delegate to the shared runtime.
+ * Create the setup a feature registers through. Registrations write into the feature's record; services delegate to
+ * the shared runtime. Provider and MCP server registrations are staged until `commit()`, and `discard()` drops a failed
+ * feature's staged changes and channel subscriptions, so a partly registered feature never reaches the session.
  */
-export function createExtensionAPI(
-	extension: Extension,
-	runtime: ExtensionRuntime,
-	cwd: string,
+export function createFeatureSetup(
+	feature: FeatureRecord,
+	runtime: FeatureRuntime,
 	eventBus: EventBus,
-): { api: ExtensionAPI; commit: () => void; discard: () => void } {
+): { setup: FeatureSetup; commit: () => void; discard: () => void } {
 	const pendingRuntimeChanges: Array<() => void> = [];
 	const pendingMcpChanges: McpServerChange[] = [];
 	const loadingUnsubscribers: Array<() => void> = [];
 	let state: "loading" | "active" | "failed" = "loading";
 	const assertActive = () => {
 		if (state === "failed") {
-			throw new Error(`Extension "${extension.path}" failed to load and its API is no longer active.`);
+			throw new Error(`Feature "${feature.path}" failed to register and its setup is no longer active.`);
 		}
 		runtime.assertActive();
 	};
+	/** `fn` behind the active check. */
+	const active =
+		<A extends unknown[], R>(fn: (...args: A) => R) =>
+		(...args: A): R => {
+			assertActive();
+			return fn(...args);
+		};
 	const assertToolShape = (tool: ToolDefinition) => {
 		if (typeof tool.parameters !== "object" || tool.parameters === null || Array.isArray(tool.parameters)) {
-			throw new Error(
-				`Tool "${tool.name}" registered by extension "${extension.path}" must define an object parameter schema.`,
-			);
+			throw new Error(`Tool "${tool.name}" registered by "${feature.path}" must define an object parameter schema.`);
 		}
 	};
 	const storeTool = (tool: ToolDefinition) => {
 		assertToolShape(tool);
-		extension.tools.set(tool.name, { definition: tool, sourceInfo: extension.sourceInfo });
+		feature.tools.set(tool.name, { definition: tool, sourceInfo: feature.sourceInfo });
 	};
 	const applyRuntimeChange = (change: () => void) => {
 		if (state === "loading") pendingRuntimeChanges.push(change);
@@ -74,285 +66,133 @@ export function createExtensionAPI(
 		loadingUnsubscribers.length = 0;
 	};
 
-	const api = {
-		// Registration methods - write to extension
-		on(event: string, handler: HandlerFn): () => void {
-			assertActive();
-			const registeredHandler: HandlerFn = (event, context) =>
-				withSessionStorage((context as ExtensionContext | undefined)?.sessionManager, () => handler(event, context));
-			if (onlyReadsMessages(handler)) readsMessagesOnly(registeredHandler);
-			const list = extension.handlers.get(event) ?? [];
-			list.push(registeredHandler);
-			extension.handlers.set(event, list);
+	const bus: BusSubscriber = {
+		on: active((event: string, handler: (...args: unknown[]) => unknown) => subscribe(feature, event, handler)),
+	} as BusSubscriber;
 
-			return () => {
-				const handlers = extension.handlers.get(event);
-				if (!handlers) return;
-				const handlerIndex = handlers.indexOf(registeredHandler);
-				if (handlerIndex === -1) return;
-				handlers.splice(handlerIndex, 1);
-				if (handlers.length === 0) extension.handlers.delete(event);
-			};
+	const setup: FeatureSetup = {
+		bus,
+		tools: {
+			register: active((tool: ToolDefinition) => {
+				storeTool(tool);
+				runtime.refreshTools();
+			}) as FeatureSetup["tools"]["register"],
+			registerAll: active((tools: readonly ToolDefinition[]) => {
+				// Validate all before storing any, so one bad definition leaves the registry as it was.
+				for (const tool of tools) assertToolShape(tool);
+				if (tools.length === 0) return;
+				for (const tool of tools) storeTool(tool);
+				runtime.refreshTools();
+			}) as FeatureSetup["tools"]["registerAll"],
+			getActive: active(() => runtime.getActiveTools()),
+			getHiddenDeclarations: active(() => runtime.getHiddenDeclarations()),
+			getAll: active(() => runtime.getAllTools()),
+			setActive: active((toolNames: string[]) =>
+				runtime.setActiveTools(toolNames, { boundary: feature.owner !== "native" }),
+			),
+			selects: active((prefix: string, activeByDefault: boolean) => runtime.selectsTools(prefix, activeByDefault)),
+			// Not on the `ToolRegistrar` type; see `NativeFeatureSetup` in src/octocode/shared/host-api.ts.
+			setPolicy: active((allows: (name: string) => boolean) => {
+				if (feature.owner !== "native") throw new Error("Tool permission policy is owned by native features");
+				runtime.setToolPolicy?.(allows);
+			}),
+		} as FeatureSetup["tools"],
+		commands: {
+			register: active((name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">) => {
+				if (typeof name !== "string" || name.length === 0) {
+					throw new Error(
+						`Command registered by "${feature.path}" must have a non-empty string name. Use commands.register("name", { description, handler }).`,
+					);
+				}
+				if (typeof options?.handler !== "function") {
+					throw new Error(`Command "/${name}" registered by "${feature.path}" must define handler().`);
+				}
+				if ("aliases" in options) {
+					throw new Error(
+						`Command "/${name}" registered by "${feature.path}" passes aliases, which are no longer supported. Register each command under one name.`,
+					);
+				}
+				feature.commands.set(name, {
+					name,
+					sourceInfo: feature.sourceInfo,
+					...options,
+					handler: (args, ctx) => withSessionStorage(ctx.sessionManager, () => options.handler(args, ctx)),
+				});
+			}),
 		},
-
-		registerTool(tool: ToolDefinition): void {
-			assertActive();
-			storeTool(tool);
-			runtime.refreshTools();
+		renderers: {
+			message: active((customType, renderer) => {
+				feature.messageRenderers.set(customType, renderer as never);
+			}),
+			entry: active((customType, renderer) => {
+				feature.entryRenderers ??= new Map();
+				feature.entryRenderers.set(customType, renderer as never);
+			}),
+			tool: active((resolver) => {
+				feature.toolRenderers ??= [];
+				feature.toolRenderers.push(resolver);
+			}),
 		},
-
-		registerTools(tools: readonly ToolDefinition[]): void {
-			assertActive();
-			// Validate all before storing any, so one bad definition leaves the registry as it was.
-			for (const tool of tools) assertToolShape(tool);
-			if (tools.length === 0) return;
-			for (const tool of tools) storeTool(tool);
-			runtime.refreshTools();
+		providers: {
+			register: active((providerOrName: Provider | string, config?: ProviderConfig) => {
+				if (typeof providerOrName === "string") {
+					if (!config) throw new Error("Provider config is required when registering by name");
+					applyRuntimeChange(() => runtime.registerProvider(providerOrName, config, feature.path));
+					return;
+				}
+				applyRuntimeChange(() => runtime.registerNativeProvider(providerOrName, feature.path));
+			}),
 		},
-
-		registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void {
-			assertActive();
-			if (typeof name !== "string" || name.length === 0) {
-				throw new Error(
-					`Command registered by extension "${extension.path}" must have a non-empty string name. Use api.registerCommand("name", { description, handler }).`,
-				);
-			}
-			if (typeof options?.handler !== "function") {
-				throw new Error(`Command "/${name}" registered by extension "${extension.path}" must define handler().`);
-			}
-			if ("aliases" in options) {
-				throw new Error(
-					`Command "/${name}" registered by extension "${extension.path}" passes aliases, which are no longer supported. Register each command under one name.`,
-				);
-			}
-			extension.commands.set(name, {
-				name,
-				sourceInfo: extension.sourceInfo,
-				...options,
-				handler: (args, ctx) => withSessionStorage(ctx.sessionManager, () => options.handler(args, ctx)),
-			});
+		mcpServers: {
+			register: active((name: string, config: McpServerConfig, options?: { inherited?: boolean }) => {
+				const validated = validateMcpServerConfig(name, config);
+				if (typeof validated === "string") {
+					throw new Error(`Invalid MCP server registered by "${feature.path}": ${validated}`);
+				}
+				const server = {
+					name,
+					config: structuredClone(validated),
+					source: feature.path,
+					...(options?.inherited ? { inherited: true as const } : {}),
+				};
+				applyMcpChange({ type: "register", server });
+			}),
+			list: active(() => runtime.mcpServers.list()),
 		},
-
-		registerShortcut(
-			shortcut: KeyId,
-			options: {
-				description?: string;
-				handler: (ctx: ExtensionContext) => Promise<void> | void;
-			},
-		): void {
-			assertActive();
-			extension.shortcuts.set(shortcut, { shortcut, extensionPath: extension.path, ...options });
+		session: {
+			sendMessage: active((message, options) => runtime.sendMessage(message, options)),
+			sendUserMessage: active((content, options) => runtime.sendUserMessage(content, options)),
+			appendEntry: active((customType: string, data?: unknown) => runtime.appendEntry(customType, data)),
+			setName: active((name, source) => runtime.setSessionName(name, source)),
+			getName: active(() => runtime.getSessionName()),
+			setLabel: active((entryId: string, label: string | undefined) => runtime.setLabel(entryId, label)),
 		},
-
-		registerMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {
-			assertActive();
-			extension.messageRenderers.set(customType, renderer as MessageRenderer);
+		usage: {
+			createRecorder: active((kind: string) => runtime.createUsageRecorder(kind)),
+			record: active((kind, provider, model, usage) => runtime.recordUsage(kind, provider, model, usage)),
 		},
-
-		registerMarkdownTransformer(transformer: MarkdownTransformer): void {
-			assertActive();
-			extension.markdownTransformer = transformer;
+		models: {
+			setModel: active((model) => runtime.setModel(model)),
+			getThinkingLevel: active(() => runtime.getThinkingLevel()),
 		},
-
-		registerEntryRenderer<T>(customType: string, renderer: EntryRenderer<T>): void {
-			assertActive();
-			extension.entryRenderers ??= new Map();
-			extension.entryRenderers.set(customType, renderer as EntryRenderer);
+		settings: { get: active(() => runtime.getSettings()) },
+		resources: {
+			getCommands: active(() => runtime.getCommands()),
+			getSkillDirectories: active(() => runtime.getSkillDirectories()),
+			getSkillResourceSnapshot: active((names?: readonly string[]) => runtime.getSkillResourceSnapshot(names)),
 		},
-
-		registerToolRenderer(resolver: ToolRendererResolver): void {
-			assertActive();
-			extension.toolRenderers ??= [];
-			extension.toolRenderers.push(resolver);
-		},
-
-		// Action methods - delegate to shared runtime
-		sendMessage(message, options): void | Promise<void> {
-			assertActive();
-			return runtime.sendMessage(message, options);
-		},
-
-		sendUserMessage(content, options): void {
-			assertActive();
-			runtime.sendUserMessage(content, options);
-		},
-
-		createUsageRecorder(kind) {
-			assertActive();
-			return runtime.createUsageRecorder(kind);
-		},
-
-		recordUsage(kind, provider, model, usage) {
-			assertActive();
-			runtime.recordUsage(kind, provider, model, usage);
-		},
-
-		appendEntry(customType: string, data?: unknown): void {
-			assertActive();
-			runtime.appendEntry(customType, data);
-		},
-
-		setSessionName(name: string, source?: SessionNameSource): void {
-			assertActive();
-			runtime.setSessionName(name, source);
-		},
-
-		getSessionName(): string | undefined {
-			assertActive();
-			return runtime.getSessionName();
-		},
-
-		setLabel(entryId: string, label: string | undefined): void {
-			assertActive();
-			runtime.setLabel(entryId, label);
-		},
-
-		exec(command: string, args: string[], options?: ExecOptions) {
-			assertActive();
-			return execCommand(command, args, options?.cwd ?? cwd, options);
-		},
-
-		getActiveTools(): string[] {
-			assertActive();
-			return runtime.getActiveTools();
-		},
-
-		getHiddenDeclarations(): string[] {
-			assertActive();
-			return runtime.getHiddenDeclarations();
-		},
-
-		getAllTools() {
-			assertActive();
-			return runtime.getAllTools();
-		},
-
-		getSettings() {
-			assertActive();
-			return runtime.getSettings();
-		},
-
-		setActiveTools(toolNames: string[]): void {
-			assertActive();
-			runtime.setActiveTools(toolNames);
-		},
-
-		selectsTools(prefix: string, activeByDefault: boolean): boolean {
-			assertActive();
-			return runtime.selectsTools(prefix, activeByDefault);
-		},
-
-		// Not on the public ExtensionAPI type; see `NativeExtensionAPI` in src/octocode/shared/host-api.ts.
-		setToolPolicy(allows: (name: string) => boolean) {
-			assertActive();
-			if (extension.owner !== "native") throw new Error("Tool permission policy is owned by native features");
-			runtime.setToolPolicy?.(allows);
-		},
-
-		getCommands() {
-			assertActive();
-			return runtime.getCommands();
-		},
-
-		getSkillResourceSnapshot(names) {
-			assertActive();
-			return runtime.getSkillResourceSnapshot(names);
-		},
-
-		getSkillDirectories() {
-			assertActive();
-			return runtime.getSkillDirectories();
-		},
-
-		setModel(model) {
-			assertActive();
-			return runtime.setModel(model);
-		},
-
-		getThinkingLevel() {
-			assertActive();
-			return runtime.getThinkingLevel();
-		},
-
-		// oxlint-disable-next-line typescript/no-deprecated -- implements the deprecated API member, kept until it is removed from the interface
-		setThinkingLevel(level) {
-			assertActive();
-			runtime.setThinkingLevel(level);
-		},
-
-		registerProvider(providerOrName: Provider | string, config?: ProviderConfig) {
-			assertActive();
-			if (typeof providerOrName === "string") {
-				if (!config) throw new Error("Provider config is required when registering by name");
-				applyRuntimeChange(() => runtime.registerProvider(providerOrName, config, extension.path));
-				return;
-			}
-			applyRuntimeChange(() => runtime.registerNativeProvider(providerOrName, extension.path));
-		},
-
-		unregisterProvider(name: string) {
-			assertActive();
-			applyRuntimeChange(() => runtime.unregisterProvider(name, extension.path));
-		},
-
-		registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }) {
-			assertActive();
-			const validated = validateMcpServerConfig(name, config);
-			if (typeof validated === "string") {
-				throw new Error(`Invalid MCP server registered by extension "${extension.path}": ${validated}`);
-			}
-			const server = {
-				name,
-				config: structuredClone(validated),
-				extensionPath: extension.path,
-				...(options?.inherited ? { inherited: true as const } : {}),
-			};
-			applyMcpChange({ type: "register", server });
-		},
-
-		unregisterMcpServer(name: string) {
-			assertActive();
-			applyMcpChange({ type: "unregister", name, extensionPath: extension.path });
-		},
-
-		getMcpServers() {
-			assertActive();
-			return runtime.mcpServers.list();
-		},
-
-		registerVirtualModel<TState>(model: ExtensionVirtualModel<TState>) {
-			assertActive();
-			// Routing runs after the runner binds, so the context is created per request. The state
-			// comes from the session branch that this router wrote.
-			const definition: VirtualModelDefinition = {
-				...model,
-				route: (request) => model.route(request as ModelRouteRequest<TState>, runtime.createContext()),
-			};
-			applyRuntimeChange(() => runtime.registerVirtualModel(definition, extension.path));
-		},
-
-		// oxlint-disable-next-line typescript/no-deprecated -- implements the deprecated API member, kept until it is removed from the interface
-		unregisterVirtualModel(provider: string, id: string) {
-			assertActive();
-			applyRuntimeChange(() => runtime.unregisterVirtualModel(provider, id));
-		},
-
-		events: {
-			emit(channel, data) {
-				assertActive();
-				eventBus.emit(channel, data);
-			},
-			on(channel, handler) {
-				assertActive();
+		channels: {
+			emit: active((channel: string, data: unknown) => eventBus.emit(channel, data)),
+			on: active((channel: string, handler: (data: unknown) => void) => {
 				const unsubscribe = runtime.trackEventBusSubscription(eventBus.on(channel, handler));
 				if (state === "loading") loadingUnsubscribers.push(unsubscribe);
 				return unsubscribe;
-			},
+			}),
 		},
-	} as ExtensionAPI;
+	};
 
 	return {
-		api,
+		setup,
 		commit: () => {
 			if (state !== "loading") return;
 			runtime.assertActive();

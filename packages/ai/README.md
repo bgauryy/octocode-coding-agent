@@ -94,6 +94,10 @@ console.log(message.usage.cost.total); // estimated USD
 
 Events: [Tools](docs/tools.md#complete-event-reference). Failures arrive as an `error` event and a final message with `stopReason: "error"`: [Errors](docs/errors-and-observability.md).
 
+## Tests
+
+`yarn test` makes no provider request. The tests that do (`*.live.test.ts`, paid) run only with `yarn test:live`, and each skips unless its provider's API key or login is available.
+
 ## Cost
 
 `usage.cost` estimates inference charges from the provider's catalog rates and reported tokens, including long-context tiers, cache-write lifetimes, served OpenAI service tiers and billable reasoning tokens. A time-limited price carries `cost.until` (last UTC day, inclusive) and `cost.after` (the rates from the next day); `calculateCost(model, usage, now?)` picks the period by the clock, which tests can inject. Subscription allowances, account credits, regional premiums and time-based cache-storage fees are not represented.

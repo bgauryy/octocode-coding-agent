@@ -1,7 +1,7 @@
 import type { AutocompleteProvider } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextCommandSuggester, type ShellCompletionService } from "../../../terminal/src/index.ts";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { GhostController, type GhostSources } from "../../src/octocode/terminal/ghost.ts";
 import { askSmallModel, suggestionPrompt } from "../../src/octocode/terminal/model.ts";
 import { ShellAwareProvider, shellPrefix } from "../../src/octocode/terminal/provider.ts";
@@ -166,7 +166,7 @@ describe("the model suggestion", () => {
 		const usage = { input: 1, output: 2 };
 		small.mockResolvedValue({ text: "git status", model: "p/m", provider: "p", modelId: "m", usage });
 		const recordUsage = vi.fn();
-		const text = await askSmallModel({ recordUsage }, {} as ExtensionContext, request, signal());
+		const text = await askSmallModel({ usage: { record: recordUsage } }, {} as FeatureContext, request, signal());
 		expect(text).toBe("git status");
 		expect(recordUsage).toHaveBeenCalledWith("shell_suggestion", "p", "m", usage);
 		expect(small.mock.calls[0][1]).toMatchObject({ maxTokens: 128 });
@@ -176,7 +176,9 @@ describe("the model suggestion", () => {
 	it("gives nothing when no cheaper model is available", async () => {
 		small.mockResolvedValue({ error: "no cheaper model is available" });
 		const recordUsage = vi.fn();
-		expect(await askSmallModel({ recordUsage }, {} as ExtensionContext, request, signal())).toBeUndefined();
+		expect(
+			await askSmallModel({ usage: { record: recordUsage } }, {} as FeatureContext, request, signal()),
+		).toBeUndefined();
 		expect(recordUsage).not.toHaveBeenCalled();
 	});
 });

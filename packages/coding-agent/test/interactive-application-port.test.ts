@@ -62,6 +62,7 @@ describe("terminal application port", () => {
 			uiStore: heldStore(),
 			pendingMessagesContainer: { clear() {}, addChild() {} },
 			getAppKeyDisplay: () => "alt+up",
+			programStatus: { setPhase() {} },
 		};
 		subscribeToAgent(createFakeHost(terminal));
 		const progress = {
@@ -97,6 +98,7 @@ describe("terminal application port", () => {
 			uiStore: heldStore(),
 			pendingMessagesContainer: { clear() {}, addChild() {} },
 			getAppKeyDisplay: () => "alt+up",
+			programStatus: { setPhase() {} },
 		};
 		subscribeToAgent(createFakeHost(terminal));
 		terminal.session = next.session;

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.ts";
 
 /**
@@ -6,10 +6,10 @@ import { BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.
  * channel (handlers run at once) and reads back the items a queued child will start by itself. Nothing listens in a
  * subagent or without queued children, and the answer is empty.
  */
-export function endedSignal(api: Pick<ExtensionAPI, "events">): (ref: string) => ReadonlySet<string> {
+export function endedSignal(api: Pick<FeatureSetup, "channels">): (ref: string) => ReadonlySet<string> {
 	return (ref) => {
 		const ended: BacklogEnded = { ref, queued: new Set() };
-		api.events.emit(BACKLOG_ENDED_CHANNEL, ended);
+		api.channels.emit(BACKLOG_ENDED_CHANNEL, ended);
 		return ended.queued;
 	};
 }

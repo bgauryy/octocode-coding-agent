@@ -5,7 +5,7 @@
 
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { supportsNativeToolLoading } from "@octocodeai/octocode-ai/utils/tool-loading";
-import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
+import type { SetupPick, ToolDefinition } from "../../core/features/index.ts";
 
 /** Both declarations of a deferrable tool, and which one is registered. */
 export interface Forms {
@@ -21,7 +21,7 @@ export interface Forms {
 	onDemand?: OnDemandApi;
 }
 
-export type OnDemandApi = Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">;
+export type OnDemandApi = SetupPick<"tools", "getActive" | "setActive">;
 
 /** The full form registered on demand: `active` after a load in an earlier turn (resume), else inactive until used. */
 export const onDemandForm = (forms: Forms, active: boolean): ToolDefinition => ({
@@ -32,7 +32,7 @@ export const onDemandForm = (forms: Forms, active: boolean): ToolDefinition => (
 
 /** An on-demand tool not yet declared: registered, inactive. */
 export const undeclared = (name: string, forms: Forms): boolean =>
-	forms.onDemand !== undefined && !forms.onDemand.getActiveTools().includes(name);
+	forms.onDemand !== undefined && !forms.onDemand.tools.getActive().includes(name);
 
 /** Whether the model's transport declares a tool after the cached prefix (tool loading mode other than `none`). */
 export function addsInPlace(model: unknown): boolean {

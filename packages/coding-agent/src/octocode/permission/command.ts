@@ -1,6 +1,6 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import type { registerPlanning } from "../plan/register.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { shortcutText } from "../shared/keys.ts";
@@ -53,7 +53,7 @@ function logLine(entry: AuditEntry): string {
 	return sanitizeTerminalText(redactSecrets(line));
 }
 
-function logLines(ctx: ExtensionContext, permission: Permission): string {
+function logLines(ctx: FeatureContext, permission: Permission): string {
 	permission.flushAudit();
 	const all = ctx.sessionManager
 		.getEntries()
@@ -84,7 +84,7 @@ export function registerPermissionCommand(
 	provenanceSize: () => number,
 	planning?: ReturnType<typeof registerPlanning>,
 ): void {
-	const select = async (mode: PermissionMode, ctx: ExtensionContext): Promise<void> => {
+	const select = async (mode: PermissionMode, ctx: FeatureContext): Promise<void> => {
 		if (!(await permission.chooseMode(mode, ctx))) return say(ctx, `Permission mode stays ${permission.mode}.`);
 		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode}. ${modeSummary(mode)}`);
 	};

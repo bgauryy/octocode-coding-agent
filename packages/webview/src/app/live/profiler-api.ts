@@ -1,9 +1,12 @@
 import {
+	type FeedCursor,
 	PROFILER_PATHS,
 	type ProfileAgents,
 	type ProfileInsights,
+	type ProfileMessages,
 	type ProfileRequests,
 	type ProfileTimeline,
+	type ProfileTranscript,
 	type ProfileUpdate,
 	WORKSPACE_ROUTES,
 } from "@octocodeai/octocode-contracts";
@@ -15,6 +18,8 @@ import {
 	isProfileFinding,
 	isProfileMessage,
 	isProfileRequest,
+	isFeedCursor,
+	isProfileTranscriptEntry,
 } from "../../profiler-guards.ts";
 import { requestBlob, requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
@@ -74,6 +79,42 @@ export function createProfilerApi(access: string) {
 			)
 				throw new Error("Invalid timeline response");
 			return value as unknown as ProfileTimeline;
+		},
+		/** The newest `limit` messages of the session whatever their age, with the internal notices. */
+		profilerMessages: async (limit: number, before?: FeedCursor, signal?: AbortSignal): Promise<ProfileMessages> => {
+			const query = new URLSearchParams({ limit: String(limit) });
+			if (before) {
+				query.set("beforeAt", String(before.at));
+				query.set("beforeKey", before.key);
+			}
+			const value = await read(`${PROFILER_PATHS.messages}?${query}`, signal, "Could not load older messages");
+			if (
+				!isRecord(value) ||
+				!Array.isArray(value.messages) ||
+				!value.messages.every(isProfileMessage) ||
+				(value.next !== undefined && !isFeedCursor(value.next))
+			)
+				throw new Error("Invalid messages response");
+			return { messages: value.messages, ...(value.next ? { next: value.next } : {}) };
+		},
+		/** The entries around one transcript entry of an agent: the sender's thinking and output near a message. */
+		profilerTranscript: async (
+			agentId: string,
+			entry: number,
+			sessionId?: string,
+			signal?: AbortSignal,
+		): Promise<ProfileTranscript> => {
+			const query = new URLSearchParams({ agent: agentId, entry: String(entry) });
+			if (sessionId) query.set("session", sessionId);
+			const value = await read(`${PROFILER_PATHS.transcript}?${query}`, signal, "Could not load the transcript");
+			if (
+				!isRecord(value) ||
+				value.agentId !== agentId ||
+				!Array.isArray(value.entries) ||
+				!value.entries.every(isProfileTranscriptEntry)
+			)
+				throw new Error("Invalid transcript response");
+			return { agentId, entry, entries: value.entries };
 		},
 		/** The trace export as a file: the host refuses it without the token, so a plain link cannot fetch it. */
 		profilerTrace: (signal?: AbortSignal): Promise<Blob> =>

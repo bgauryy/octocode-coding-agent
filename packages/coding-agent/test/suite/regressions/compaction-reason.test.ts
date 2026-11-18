@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 type SessionWithCompactionInternals = {
@@ -13,9 +13,9 @@ interface RecordedCompactionEvent {
 	willRetry: boolean;
 }
 
-function recordingExtension(recorded: RecordedCompactionEvent[]): ExtensionFactory {
+function recordingFeature(recorded: RecordedCompactionEvent[]): FeatureRegister {
 	return (api) => {
-		api.on("session_before_compact", async (event) => {
+		api.bus.on("session_before_compact", async (event) => {
 			recorded.push({ type: event.type, reason: event.reason, willRetry: event.willRetry });
 			return {
 				compaction: {
@@ -26,7 +26,7 @@ function recordingExtension(recorded: RecordedCompactionEvent[]): ExtensionFacto
 				},
 			};
 		});
-		api.on("session_compact", async (event) => {
+		api.bus.on("session_compact", async (event) => {
 			recorded.push({ type: event.type, reason: event.reason, willRetry: event.willRetry });
 		});
 	};
@@ -35,7 +35,7 @@ function recordingExtension(recorded: RecordedCompactionEvent[]): ExtensionFacto
 async function createCompactionHarness(recorded: RecordedCompactionEvent[]): Promise<Harness> {
 	const harness = await createHarness({
 		compactionPolicy: { keepRecentTokens: 1 },
-		builtinCompactionFactories: [recordingExtension(recorded)],
+		builtinCompactionFactories: [recordingFeature(recorded)],
 	});
 	harness.setResponses([fauxAssistantMessage("one"), fauxAssistantMessage("two")]);
 	await harness.session.prompt("first");

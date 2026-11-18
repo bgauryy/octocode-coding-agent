@@ -4,6 +4,7 @@ import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { cutText } from "@octocodeai/octocode-common/text";
 import { formatAgo, formatClock, memberStats } from "../shared/format.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
+import { plural } from "../shared/text.ts";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";
@@ -93,7 +94,16 @@ export function describeMembers(
 				const you = member.id === selfId ? " (you)" : "";
 				const parent = member.parentId ? ` · parent ${member.parentId}` : "";
 				const model = member.model ? ` · ${member.model}` : "";
-				const doing = member.status === "working" ? (member.activity ?? "working") : "idle";
+				// A parent that ended its turn while its children work is waiting, not idle.
+				const children = members.filter((child) => child.parentId === member.id && child.status === "working").length;
+				const doing =
+					member.status === "working"
+						? (member.activity ?? "working")
+						: children > 0
+							? `waiting on ${plural(children, "agent")}`
+							: "idle";
+				// The header shows the same fact as the detail line; the stored status stays `idle`.
+				const shown = member.status === "idle" && children > 0 ? "waiting" : member.status;
 				const asked = asksLabel(asks?.get(member.id));
 				const waiting = (asks?.get(member.id) ?? []).filter((ask) => !ask.answer);
 				// `lastOutputAt` is the child's last model or tool event (or a heartbeat inside a declared long call), never a stdout byte.
@@ -107,7 +117,7 @@ export function describeMembers(
 				const budget = standing?.(member.id);
 				const requests = budget ? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}` : "";
 				return [
-					`${member.id}${you} · ${member.role} · ${member.status}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
+					`${member.id}${you} · ${member.role} · ${shown}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
 					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
 					// The viewer's own checkout is the common case and the Worktrees section names it: only a different place is worth a line.

@@ -4,6 +4,7 @@ import {
 	Text,
 	type TUI,
 	type Container,
+	type OutputTelemetry,
 	type TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
@@ -18,6 +19,20 @@ interface DiagnosticHost {
 		"getTerminalCapabilityOverrides" | "isReduceMotionActive" | "getFullscreenCopyOnSelect"
 	>;
 	outputPad: number;
+}
+
+/**
+ * Whether the terminal stopped taking output (queued bytes waited 5 s or more), as opposed to Octocode being busy, which
+ * shows as event-loop delay instead.
+ */
+export function describeTerminalStalls(stalls: OutputTelemetry["stalls"]): string {
+	if (!stalls) return "Terminal stalls: none (queued output never waited 5 s)";
+	const latest = stalls.recent.at(-1);
+	const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+	const detail = latest
+		? `; latest ${latest.ongoing ? "ongoing for" : "lasted"} ${seconds(latest.durationMs)} from ${new Date(latest.startedAt).toLocaleTimeString()}, queue peak ${latest.peakQueuedBytes} bytes, dropped frames ${latest.droppedFrameBytes} bytes, kept ${latest.essentialBytes} bytes`
+		: "";
+	return `Terminal stalls: ${stalls.episodes} (${seconds(stalls.totalMs)} total; the terminal stopped reading output)${detail}`;
 }
 
 /** Aggregate counters only: no transcript, credentials, process enumeration or terminal-specific API. */
@@ -39,14 +54,13 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 		`Motion: ${host.settingsManager.isReduceMotionActive() ? "reduced" : "animated"}; copy on select: ${host.settingsManager.getFullscreenCopyOnSelect() ? "on" : "off"}`,
 		"Clipboard: platform helpers with OSC 52 fallback for remote/headless sessions; OSC 52 delivery is unacknowledged.",
 		`Node output queue: ${terminal.pendingOutputBytes ?? "unavailable"} bytes; peak observed: ${stats.maxPendingOutputBytes} bytes`,
+		...(terminal.getOutputTelemetry ? [describeTerminalStalls(terminal.getOutputTelemetry().stalls)] : []),
 		`Frames submitted: ${stats.paintedFrames}; deferred: ${stats.deferredFrames}`,
 		`Frame generation/write: last ${stats.lastFrameCostMs.toFixed(2)} ms; peak ${stats.maxFrameCostMs.toFixed(2)} ms`,
 		`Peak input-to-submission: ${stats.maxInputToPaintMs.toFixed(2)} ms; timer lag: ${stats.maxTimerLagMs.toFixed(2)} ms`,
-		...(stats.output
-			? [
-					`Output written: ${stats.output.writtenBytes} bytes in ${stats.output.writeCalls} writes; dropped frames: ${stats.output.droppedFrameBytes} bytes`,
-				]
-			: []),
+		stats.output
+			? `Output written: ${stats.output.writtenBytes} bytes in ${stats.output.writeCalls} writes; dropped frames: ${stats.output.droppedFrameBytes} bytes`
+			: "Output written: unavailable (this terminal reports no output telemetry; not the same as zero)",
 		...(runtime
 			? [
 					`Octocode CPU: ${runtime.cpuPercent.toFixed(1)}% of one core over ${(runtime.elapsedMs / 1000).toFixed(1)} s; heap: ${mib(runtime.heapUsedBytes)} MiB; RSS: ${mib(runtime.rssBytes)} MiB`,

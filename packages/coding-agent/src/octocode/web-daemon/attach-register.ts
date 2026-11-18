@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { serialQueue } from "@octocodeai/octocode-common/serial-queue";
 import { openBacklog } from "../backlog/context.ts";
 import type { WorkspaceRuntime } from "../workspace/runtime.ts";
@@ -8,7 +8,7 @@ import type { NativeToolsLive } from "./tool-exposure.ts";
 
 export interface SessionAttach {
 	/** Starts this session's attach endpoint when it is not running; undefined for a subagent or a host without a workspace. */
-	ensure(ctx: ExtensionContext): Promise<AttachEndpoint | undefined>;
+	ensure(ctx: FeatureContext): Promise<AttachEndpoint | undefined>;
 }
 
 /**
@@ -18,13 +18,13 @@ export interface SessionAttach {
  * changed the board.
  */
 export function registerSessionAttach(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: {
 		isSubagent: boolean;
 		workspace?: WorkspaceRuntime;
 		env?: NodeJS.ProcessEnv;
 		nativeTools?: () => NativeToolsLive;
-		boardChanged?: (ctx: ExtensionContext) => void;
+		boardChanged?: (ctx: FeatureContext) => void;
 	},
 ): SessionAttach {
 	const env = options.env ?? process.env;
@@ -36,7 +36,7 @@ export function registerSessionAttach(
 			endpoint = undefined;
 			await previous?.close();
 		});
-	const start = (ctx: ExtensionContext) =>
+	const start = (ctx: FeatureContext) =>
 		enqueue(async () => {
 			const { workspace, nativeTools, boardChanged } = options;
 			if (options.isSubagent || !workspace) return undefined;
@@ -61,8 +61,8 @@ export function registerSessionAttach(
 		});
 	if (!options.isSubagent && options.workspace) {
 		// A session that cannot attach (an unreadable database, no free port) still works; `/web` tries again and says why.
-		api.on("session_start", (_event, ctx) => void start(ctx).catch(() => undefined));
-		api.on("session_shutdown", () => stop());
+		api.bus.on("session_start", (_event, ctx) => void start(ctx).catch(() => undefined));
+		api.bus.on("session_shutdown", () => stop());
 	}
 	return { ensure: start };
 }

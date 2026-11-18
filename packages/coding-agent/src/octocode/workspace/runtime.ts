@@ -8,10 +8,13 @@ import { workingContextTokens } from "../../core/agent-session/model-control.ts"
 import { sharedAgentDb } from "../../storage/database.ts";
 import type { RevisedWorkspace } from "./revision.ts";
 import { WorkspaceCommands } from "./commands.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { doItPrompt, delegatePrompt } from "../backlog/actions.ts";
 import type { Backlog } from "../backlog/context.ts";
 import type { Team } from "../team/session.ts";
+import { involvedHistory, readHistory } from "./team-history.ts";
+import { teamScope } from "../team/store/workspace.ts";
+import { departedLookup } from "../team/feed-read.ts";
 import { HEARTBEAT_MS } from "../team/session/activity.ts";
 import { memberWorktree } from "../worktree-paths/member-worktree.ts";
 import { descendants } from "../team/panel/roster.ts";
@@ -21,16 +24,18 @@ import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { contentText } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
-import { agentBase, createProfiler, endedRuns, memberTranscript } from "../profiler/index.ts";
+import { agentBase, createProfiler, endedRuns, memberTranscript, sessionTranscript } from "../profiler/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface Operations {
-	application?: (ctx: ExtensionContext) => ApplicationService | undefined;
+	application?: (ctx: FeatureContext) => ApplicationService | undefined;
 	database?: () => AgentDb;
 	members(): Member[];
 	/** The coordinator's own team row (the session's agent, which `members()` leaves out). */
 	self?(): Member | undefined;
 	traffic(): Traffic[];
+	/** Whether a message involves this session or its agents; the team's history is shared by every session. */
+	involves?(): (message: Traffic) => boolean;
 	tell(to: string, text: string, signal?: AbortSignal): Promise<unknown>;
 	stop(to: string): string | undefined;
 	/**
@@ -45,7 +50,15 @@ interface Operations {
  * The team database is shared by every session in the workspace, so, like the terminal panel, the web view lists only
  * this session's descendants (`descendants`) and the messages that involve this session or them.
  */
-export function teamView(team: Team, withSelf = false): Pick<Operations, "members" | "traffic" | "expiry" | "self"> {
+export function teamView(
+	team: Team,
+	withSelf = false,
+): Pick<Operations, "members" | "traffic" | "involves" | "expiry" | "self"> {
+	const involves = () => {
+		const mine = new Set(descendants(team.snapshot().members, team.id).map((member) => member.id));
+		if (team.id) mine.add(team.id);
+		return (message: Traffic) => mine.has(message.from) || message.to.some((id) => mine.has(id));
+	};
 	return {
 		...(withSelf ? { self: () => team.members().find((member) => member.id === team.id) } : {}),
 		members: () => {
@@ -57,11 +70,10 @@ export function teamView(team: Team, withSelf = false): Pick<Operations, "member
 			});
 		},
 		traffic: () => {
-			const { members, traffic } = team.snapshot();
-			const mine = new Set(descendants(members, team.id).map((member) => member.id));
-			if (team.id) mine.add(team.id);
-			return traffic.filter((message) => mine.has(message.from) || message.to.some((id) => mine.has(id)));
+			const { traffic } = team.snapshot();
+			return traffic.filter(involves());
 		},
+		involves,
 		expiry: () => String(Math.trunc(Date.now() / HEARTBEAT_MS)),
 	};
 }
@@ -78,15 +90,15 @@ export class WorkspaceRuntime {
 	/** Counts changes to the event list; one of the inputs of a snapshot's `revision`. */
 	private eventsVersion = 0;
 
-	private readonly api: ExtensionAPI;
+	private readonly api: FeatureSetup;
 	private readonly operations: Operations;
-	constructor(api: ExtensionAPI, operations: Operations) {
+	constructor(api: FeatureSetup, operations: Operations) {
 		this.api = api;
 		this.operations = operations;
 		this.state.subscribe((state, previous) => {
 			if (state.events !== previous.events) this.eventsVersion++;
 		});
-		api.on("session_start", (_event, ctx) => {
+		api.bus.on("session_start", (_event, ctx) => {
 			const sessionId = ctx.sessionManager.getSessionId();
 			if (this.sessionId !== sessionId || this.sessionController.signal.aborted) {
 				this.sessionController.abort(new Error("Session changed before delivery finished."));
@@ -96,21 +108,21 @@ export class WorkspaceRuntime {
 			this.state.setState({ sessionId, events: [] });
 			this.publish("session", "Session started");
 		});
-		api.on("agent_start", () => this.publish("agent.start", "Agent working"));
-		api.on("agent_settled", (event) =>
+		api.bus.on("agent_start", () => this.publish("agent.start", "Agent working"));
+		api.bus.on("agent_settled", (event) =>
 			this.publish("agent.settled", event.aborted ? "Agent stopped" : "Agent settled"),
 		);
-		api.on("tool_execution_start", (event, ctx) => {
+		api.bus.on("tool_execution_start", (event, ctx) => {
 			if (this.application(ctx)) return;
 			const hint = toolHint(event.args);
 			this.publish("tool.start", event.toolName, { id: event.toolCallId, ...(hint ? { hint } : {}) });
 		});
-		api.on("tool_execution_update", (event, ctx) => {
+		api.bus.on("tool_execution_update", (event, ctx) => {
 			if (this.application(ctx)) return;
 			if (event.toolName === "agent")
 				this.publish("agent.progress", contentText(event.partialResult.content), event.partialResult.details);
 		});
-		api.on("tool_execution_end", (event, ctx) => {
+		api.bus.on("tool_execution_end", (event, ctx) => {
 			if (this.application(ctx)) return;
 			const result = asRecord(event.result);
 			this.publish(
@@ -120,7 +132,7 @@ export class WorkspaceRuntime {
 				event.isError ? "failed" : "succeeded",
 			);
 		});
-		api.on("message_end", (event, ctx) => {
+		api.bus.on("message_end", (event, ctx) => {
 			if (event.message.role === "assistant" && this.application(ctx)) return;
 			if (event.message.role === "assistant" || event.message.role === "custom") {
 				const message = event.message;
@@ -136,7 +148,7 @@ export class WorkspaceRuntime {
 				} else this.publish("message", contentText(message.content), details);
 			}
 		});
-		api.on("session_shutdown", () => {
+		api.bus.on("session_shutdown", () => {
 			this.sessionController.abort(new Error("Session closed before delivery finished."));
 			for (const unsubscribe of this.subscriptions) unsubscribe();
 			this.subscriptions.clear();
@@ -144,7 +156,7 @@ export class WorkspaceRuntime {
 		});
 	}
 
-	private application(ctx: ExtensionContext): ApplicationService | undefined {
+	private application(ctx: FeatureContext): ApplicationService | undefined {
 		const application = this.operations.application?.(ctx);
 		if (application && !this.projectedApplications.has(application)) {
 			application.setToolOutputProjector((toolName, result) => {
@@ -201,7 +213,7 @@ export class WorkspaceRuntime {
 		});
 	}
 
-	bind(ctx: ExtensionContext, backlog: Backlog): RevisedWorkspace {
+	bind(ctx: FeatureContext, backlog: Backlog): RevisedWorkspace {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const application = this.application(ctx);
 		application?.setReceiptStore(
@@ -228,6 +240,7 @@ export class WorkspaceRuntime {
 		const database = () => (this.operations.database ?? sharedAgentDb)();
 		// Agents that finished leave the team but stay in the profiler, read from their stored runs.
 		const ended = endedRuns(database, sessionId);
+		let departed: ReturnType<typeof departedLookup> | undefined;
 		const profiler = createProfiler({
 			sessionId,
 			self: () => {
@@ -243,6 +256,22 @@ export class WorkspaceRuntime {
 				return [...live.map(agentBase), ...ended.members(skip)];
 			},
 			traffic: () => this.operations.traffic(),
+			sessionTranscript: (id) => sessionTranscript(database().db, id),
+			history: (limit, before) => {
+				const involves = this.operations.involves?.();
+				if (!involves) throw new Error("This session cannot tell which messages involve it.");
+				return involvedHistory(readHistory(database().db, teamScope(ctx.cwd, process.env)), involves, limit, before);
+			},
+			// Message ends resolve against this session's agents, then the row an agent left when it ended.
+			endpoints: () => {
+				const self = this.operations.self?.();
+				departed ??= departedLookup(database().db);
+				return {
+					members: [...(self ? [self] : []), ...this.operations.members()],
+					departed,
+					...(self?.checkout ? { root: self.checkout } : {}),
+				};
+			},
 			transcript: (id) => {
 				const member = this.operations.members().find((each) => each.id === id);
 				return member ? memberTranscript(database().db, member) : ended.transcript(id);
@@ -327,7 +356,7 @@ export class WorkspaceRuntime {
 									sessionId,
 									signal,
 								);
-							else this.api.sendUserMessage(prompt, { deliverAs: "followUp" });
+							else this.api.session.sendUserMessage(prompt, { deliverAs: "followUp" });
 						});
 						message =
 							command.action === "delegate"

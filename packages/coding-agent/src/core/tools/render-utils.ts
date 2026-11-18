@@ -1,18 +1,10 @@
-import { animationClock, getCapabilities, getImageDimensions, imageFallback, MOTION } from "@octocodeai/octocode-tui";
+import { getCapabilities, getImageDimensions, imageFallback } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { clipText } from "@octocodeai/octocode-common/clip";
 import { colorJson } from "@octocodeai/octocode-common/json-color";
 import type { Theme } from "../../theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { sanitizeBinaryOutput } from "../../utils/shell.ts";
-import { formatDuration } from "../../utils/duration.ts";
-import type { ToolRenderContext } from "../features/types.ts";
-
-export function str(value: unknown): string | null {
-	if (typeof value === "string") return value;
-	if (value == null) return "";
-	return null;
-}
 
 export function replaceTabs(text: string): string {
 	return text.replace(/\t/g, "   ");
@@ -94,48 +86,4 @@ export function formatToolCallWithArgs(title: string, args: unknown, theme: Them
 		break;
 	}
 	return `${header} ${pieces.join(" ")}`;
-}
-
-/** Renderer state of {@link startToolTimer} and {@link toolTimerText}, kept in `ToolRenderContext.state`. */
-interface ToolTimerState {
-	startedAt?: number;
-	endedAt?: number;
-	/** Stops the row's repaint subscription on the animation clock. */
-	unsubscribe?: () => void;
-}
-
-/** Start the row's clock once execution starts. Call from `renderCall`. */
-export function startToolTimer(context: ToolRenderContext<ToolTimerState>): void {
-	const state = context.state;
-	if (context.executionStarted && state.startedAt === undefined) {
-		state.startedAt = Date.now();
-		state.endedAt = undefined;
-	}
-}
-
-/**
- * The row's timing line, from `renderResult`: `Elapsed 4.2s` while the result is partial, redrawn
- * every second, and `Took 4.2s` once it is final. Undefined when the row has no start time and no
- * recorded duration.
- */
-export function toolTimerText(context: ToolRenderContext<ToolTimerState>, isPartial: boolean): string | undefined {
-	const state = context.state;
-	if (state.startedAt !== undefined && isPartial && !state.unsubscribe) {
-		state.unsubscribe = animationClock.subscribe(() => context.invalidate(), { everyMs: MOTION.tickMs, kind: "info" });
-	}
-	if (!isPartial || context.isError) {
-		state.endedAt ??= Date.now();
-		state.unsubscribe?.();
-		state.unsubscribe = undefined;
-	}
-	// A final result's recorded duration wins: it is monotonic and survives reloads. The renderer's own clock is the
-	// fallback for live progress and for results stored without one.
-	if (!isPartial && context.durationMs !== undefined) return `Took ${formatDuration(context.durationMs, true)}`;
-	if (state.startedAt === undefined) return undefined;
-	const endTime = state.endedAt ?? Date.now();
-	return `${isPartial ? "Elapsed" : "Took"} ${formatDuration(endTime - state.startedAt, true)}`;
-}
-
-export function invalidArgText(theme: Theme): string {
-	return theme.fg("error", "[invalid arg]");
 }

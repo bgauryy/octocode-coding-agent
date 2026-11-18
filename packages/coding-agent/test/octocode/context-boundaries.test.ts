@@ -86,7 +86,7 @@ describe("agent context boundaries", () => {
 			isSubagent: false,
 			profiles: () => new Map([["reviewer", { name: "reviewer", description, prompt: "" }]]),
 		});
-		(fake.api as unknown as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
+		(fake.api.resources as { getCommands: () => unknown[] }).getCommands = () => [{ name: "mcp" }];
 		const prompt = async (selectedTools: string[]) => {
 			const event = {
 				systemPromptOptions: {

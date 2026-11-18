@@ -54,6 +54,14 @@ const titled = (question: Question) =>
 		...(option.description ? { description: option.description } : {}),
 	}));
 
+/** What a timed-out question takes and when, appended to its description: the form has no field for a deadline. */
+const deadline = (question: Question): string => {
+	const taken = (question.options ?? []).filter((option) => option.recommended).map((option) => option.label);
+	return question.timeoutSeconds && taken.length > 0
+		? `\n(auto: ${(question.type === "multi" ? taken : taken.slice(0, 1)).join(", ")} in ${question.timeoutSeconds}s)`
+		: "";
+};
+
 const caption = (question: Question): string => (question.header ?? question.question).split("\n")[0].slice(0, 120);
 
 /** One form for `questions`: a flat object of string, enum and array-of-enum properties, one per question (plus a text property for a write-in). */
@@ -62,7 +70,7 @@ function elicitationSchema(questions: readonly Question[]) {
 	const properties: Record<string, unknown> = {};
 	const required: string[] = [];
 	for (const question of questions) {
-		const base = { title: caption(question), description: question.question };
+		const base = { title: caption(question), description: `${question.question}${deadline(question)}` };
 		const writeIn = question.writeIn && !ids.has(textKey(question.id)) ? question.writeIn : undefined;
 		if (question.type === "text") {
 			properties[question.id] = { type: "string", ...base };

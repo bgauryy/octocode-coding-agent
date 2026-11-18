@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, it } from "vitest";
-import type { ExtensionToolContext } from "../../src/core/features/index.ts";
+import type { ToolContext } from "../../src/core/features/index.ts";
 import { currentMutationRevision } from "../../src/octocode/files/feedback/revisions.ts";
 import type { MutationReceipt } from "../../src/octocode/files/outcome.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -13,7 +13,7 @@ it("gives each committed query of a batch its own receipt revision and reports o
 	const cwd = fs.realpathSync(tmp());
 	const file = path.join(cwd, "source.ts");
 	fs.writeFileSync(file, "const x = 1;\n");
-	const ctx = fakeCtx({ cwd }) as unknown as ExtensionToolContext;
+	const ctx = fakeCtx({ cwd }) as unknown as ToolContext;
 	const guard = new FileGuard();
 	guard.record(file);
 	const fake = fakeHost();

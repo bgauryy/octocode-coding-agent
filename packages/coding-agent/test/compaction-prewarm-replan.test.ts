@@ -84,7 +84,7 @@ describe("the session's prewarm", () => {
 			compactionPolicy: { reserveTokens: 1_000, keepRecentTokens: 500 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_compact_prewarm", async (event) => void plans.push(event));
+					api.bus.on("session_compact_prewarm", async (event) => void plans.push(event));
 				},
 			],
 		});

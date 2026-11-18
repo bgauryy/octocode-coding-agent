@@ -14,7 +14,7 @@ import { hookToggleIds } from "../../src/octocode/hooks/config/toggles.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { getMcpSwitch, type McpSwitchRequest, registerMcpSwitch } from "../../../mcp/src/switch.ts";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import type { HooksView } from "../../src/octocode/hooks/register/types.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -165,24 +165,24 @@ describe("switchItem", () => {
 		expect(() => switchItem(hookItem({ gate: true }), false, "global", trusted, { ...f, force: true })).not.toThrow();
 	});
 
-	it("switches extensions through the patterns octocode config writes", async () => {
+	it("switches skills through the patterns octocode config writes", async () => {
 		const f = fixture();
 		const manager = SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true });
-		const file = path.join(f.agentDir, "extensions", "record.ts");
+		const file = path.join(f.agentDir, "skills", "record.md");
 		switchItem(
 			hookItem({
-				id: "extension:record",
-				kind: "extension",
-				host: "octocode",
+				id: "skill:record",
+				kind: "skill",
+				host: "skills",
 				parents: undefined,
 				resource: {
 					path: file,
 					enabled: true,
 					metadata: { source: "local", scope: "user", origin: "top-level", baseDir: f.agentDir },
-					resourceType: "extensions",
-					displayName: "record.ts",
+					resourceType: "skills",
+					displayName: "record.md",
 					groupKey: "user",
-					subgroupKey: "extensions",
+					subgroupKey: "skills",
 				},
 			}),
 			false,
@@ -191,7 +191,7 @@ describe("switchItem", () => {
 			f,
 		);
 		await manager.flush();
-		expect(manager.getGlobalSettings().extensions).toEqual(["-extensions/record.ts"]);
+		expect(manager.getGlobalSettings().skills).toEqual(["-skills/record.md"]);
 	});
 });
 
@@ -208,7 +208,7 @@ function catalogFor(f: ReturnType<typeof fixture>, live?: ConfigLiveHooks) {
 }
 
 /** `/harness` as the session registers it, with a hooks view that only reports. */
-function harness(api: ExtensionAPI) {
+function harness(api: FeatureSetup) {
 	const commands = new Subcommands();
 	registerHarnessCommand(commands, { report: () => "Hooks: on" } as unknown as HooksView, api);
 	return commands.get("harness")!;
@@ -227,7 +227,7 @@ describe("/harness", () => {
 		expect(listing).toContain("[ ] Hooks from Claude Code");
 		const on = { toggles: { "harness:claude": true } };
 		fs.writeFileSync(path.join(f.agentDir, "settings.json"), JSON.stringify(on));
-		Object.assign(api, { getSettings: () => on });
+		Object.assign(api.settings, { get: () => on });
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("[x] Hooks from Claude Code");
 		const catalog = catalogFor(f);
@@ -279,7 +279,7 @@ describe("/harness", () => {
 		const f = fixture();
 		const { api } = fakeHost();
 		const events = createEventBus();
-		Object.assign(api, { events });
+		Object.assign(api, { channels: events });
 		const requests: McpSwitchRequest[] = [];
 		setMcpSessionStatus(events, [
 			{ name: "docs", enabled: true, state: "connected", source: path.join(f.agentDir, "mcp.json"), tools: [] },
@@ -340,7 +340,7 @@ describe("/harness", () => {
 
 	it("answers the retired /plugins, /hooks and /config over RPC with the /harness line to run", async () => {
 		const { api, fire } = fakeHost();
-		Object.assign(api, { getCommands: () => [{ name: "harness" }] });
+		Object.assign(api.resources, { getCommands: () => [{ name: "harness" }] });
 		const commands = new Subcommands();
 		registerHarnessCommand(commands, { report: () => "" } as unknown as HooksView, api);
 		commands.register(api);
@@ -382,19 +382,20 @@ describe("/harness terminal list", () => {
 		initTheme("dark", false);
 		const reload = vi.fn(async () => {});
 		const { api } = fakeHost();
-		Object.assign(api, { getSettings: () => on });
+		Object.assign(api.settings, { get: () => on });
 		const ctx = Object.assign(fakeCtx({ cwd: f.cwd, mode: "tui", ui: { custom, selects: ["Reload"] } }), { reload });
 		const run = harness(api).handler("", ctx);
 		await vi.waitFor(() => expect(component).toBeDefined());
 		const press = (...keys: string[]) => keys.forEach((key) => component!.handleInput(key));
 		const screen = () => component!.render(200).join("\n");
 		await vi.waitFor(() => expect(screen()).toMatch(/Skills \(\d+\)/));
-		press("\x1b[1;5D", "\x1b[1;5D");
+		press("\x1b[1;5D");
 		expect(screen()).toContain("Switch scope: global");
-		expect(screen()).toMatch(/Harnesses\n> +\[-\] Octocode/);
+		expect(stripAnsi(screen())).toMatch(/\n Harnesses\n› \[-\] Octocode  default on\n/);
+		expect(stripAnsi(screen())).toMatch(/^ ⌕ \S*type to filter/m);
 		expect(screen()).toMatch(/\[x\] Claude Code  default off\n +\[ \] Claude Code auto memory  default off/);
 		press("\x1b[1;5D");
-		expect(screen()).toMatch(/Claude Code\n> +\[x\] Hooks from Claude Code/);
+		expect(stripAnsi(screen())).toMatch(/\n Claude Code\n› \[x\] Hooks from Claude Code  15 hooks in 3 files\n/);
 		// Hook files start collapsed: one row per file, not per hook.
 		expect(screen()).toContain("▸ [x] ~/.claude/settings.json");
 		expect(screen()).not.toContain("PreToolUse [*]");
@@ -402,7 +403,7 @@ describe("/harness terminal list", () => {
 		// Space switches the selected row; the confirmation names the scope.
 		press(" ");
 		expect(screen()).toContain("Hooks from Claude Code switched off globally.");
-		expect(screen()).toMatch(/> +\[ \] Hooks from Claude Code/);
+		expect(stripAnsi(screen())).toMatch(/\n› \[ \] Hooks from Claude Code  15 hooks in 3 files\n/);
 
 		// Project scope cannot reach a user hook file, and says what to do instead.
 		press("tui.select.down", "tui.input.tab", " ");
@@ -411,7 +412,8 @@ describe("/harness terminal list", () => {
 		press("tui.input.tab");
 
 		// → opens the native user file; a gate hook needs a second press; Enter works like Space.
-		const selected = () => component!.render(200).find((line) => line.startsWith(">") && /\[[x -]\]/.test(line));
+		const selected = () =>
+			component!.render(200).find((line) => stripAnsi(line).startsWith("›") && /\[[x -]\]/.test(line));
 		const moveTo = (text: string) => {
 			for (let step = 0; step < 60 && !selected()?.includes(text); step++) press("tui.select.down");
 		};
@@ -419,7 +421,7 @@ describe("/harness terminal list", () => {
 		press("\x1b[C");
 		expect(screen()).toContain("▾ [x] ~/.octocode/octocodecode/hooks.json");
 		moveTo("guard");
-		expect(screen()).toMatch(/> +\[x\] PreToolUse \[\*\] guard  gate/);
+		expect(stripAnsi(screen())).toMatch(/\n› +\[x\] PreToolUse \[\*\] guard  gate/);
 		press("tui.select.confirm");
 		expect(screen()).toContain("Press again to switch it off.");
 		press("tui.select.confirm");
@@ -560,7 +562,7 @@ describe("plugin rows", () => {
 				server("browser", "default", "built-in browser"),
 				server("tracker", "project", path.join(f.cwd, ".mcp.json")),
 				server("search", "global", path.join(f.home, ".octocode/mcp.json")),
-				server("kit", "extension", path.join(f.home, "plugins/kit")),
+				server("kit", "feature", path.join(f.home, "plugins/kit")),
 			],
 		});
 		const detail = (name: string) => inventory.items.find((item) => item.id === `mcp:${name}`)?.detail;

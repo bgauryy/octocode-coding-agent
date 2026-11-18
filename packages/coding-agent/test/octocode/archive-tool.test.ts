@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { archivePointer } from "../../src/octocode/compaction/archive.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { forkLineage, sessionRecordOf } from "../../src/octocode/compaction/archive/session-record.ts";

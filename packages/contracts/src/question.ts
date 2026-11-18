@@ -50,6 +50,7 @@ export const QUESTION_LIMITS = {
 	action: 64,
 	tool: 128,
 	text: 20_000,
+	timeoutSeconds: 3600,
 } as const;
 const L = QUESTION_LIMITS;
 
@@ -108,6 +109,11 @@ export const QuestionSchema = Type.Object({
 			Type.Literal(false),
 		]),
 	),
+	/**
+	 * Seconds the person has before the host takes the options marked `recommended` (askUser's `timeout`). Only a
+	 * choice or multi question with a recommended option carries it; a host that cannot count down may ignore it.
+	 */
+	timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: L.timeoutSeconds })),
 	/** Only the harness builds this; the action the person is asked to allow. */
 	approval: Type.Optional(
 		Type.Object({
@@ -128,6 +134,8 @@ export const ReplySchema = Type.Union([
 		picks: Type.Array(Type.String({ maxLength: L.optionId }), { maxItems: L.options }),
 		/** A write-in's text, or the answer to a `text` question. */
 		text: Type.Optional(Type.String({ maxLength: L.text })),
+		/** The host took the picks when the question's `timeoutSeconds` ran out; the person did not answer. */
+		auto: Type.Optional(Type.Boolean()),
 	}),
 	Type.Object({
 		id: Type.String({ minLength: 1, maxLength: L.id }),

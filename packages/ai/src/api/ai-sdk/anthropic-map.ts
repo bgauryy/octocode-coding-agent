@@ -1,3 +1,4 @@
+import type { JSONSchema7Definition } from "@ai-sdk/provider";
 import { jsonSchema, tool, type ToolSet } from "ai";
 import type { Tool } from "../../types.ts";
 import {
@@ -47,8 +48,11 @@ export function anthropicToolSchema(declared: Tool, supportsStrictTools: boolean
 			? undefined
 			: resolveJsonSchemaStrictSampling(definition, supportsStrictTools, unsupportedKeyword);
 	const parameters = getJsonSchemaToolParameters(definition, strict) as Record<string, unknown> & {
-		properties?: Record<string, unknown>;
+		properties?: Record<string, JSONSchema7Definition>;
 		required?: string[];
+		additionalProperties?: JSONSchema7Definition;
+		$defs?: Record<string, JSONSchema7Definition>;
+		definitions?: Record<string, JSONSchema7Definition>;
 	};
 	const schema = {
 		...(strict === true ? parameters : {}),

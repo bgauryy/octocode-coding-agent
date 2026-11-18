@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { Item } from "./store.ts";
 import { plural } from "../shared/text.ts";
 
@@ -41,11 +41,11 @@ export function backlogPrompt(subagent: boolean): {
 	promptGuidelines: string[];
 } {
 	return {
-		promptSnippet: renderInstruction("tools/backlog/snippet.md"),
+		promptSnippet: renderPrompt("tools/backlog/snippet.md"),
 		description:
 			"Work states: backlog proposed, todo accepted, ongoing claimed, done complete. Other live claims: notes only unless delegated. No deletion.",
 		ops: "get: read, follow Next; claim: start; note: progress; step: finish step with result/check note; done: finish item; close: end unneeded item",
-		promptGuidelines: renderInstruction("tools/backlog/guidelines.md", { subagent }).split("\n"),
+		promptGuidelines: renderPrompt("tools/backlog/guidelines.md", { subagent }).split("\n"),
 	};
 }
 
@@ -58,13 +58,11 @@ export function backlogPlanPrompt(): {
 	promptSnippet: string;
 	description: string;
 	ops: string;
-	promptGuidelines: string[];
 } {
 	return {
-		promptSnippet: renderInstruction("tools/backlog-plan/snippet.md"),
+		promptSnippet: renderPrompt("tools/backlog-plan/snippet.md"),
 		description:
 			"Plan work. add/edit write items: [{title, goal, why}] or [{id, priority}]. list filters by other fields. Work one item with backlog.",
 		ops: "add: propose items; edit: change their fields; list: follow Next",
-		promptGuidelines: renderInstruction("tools/backlog-plan/guidelines.md").split("\n"),
 	};
 }

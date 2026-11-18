@@ -13,10 +13,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 describe("Esc aborts a running turn", () => {
 	it("interrupts the stream, leaves the editor usable and records the abort", async () => {
 		t = await startUi();
-		t.script(hang());
+		const reply = hang();
+		t.script(reply);
 		await t.type("work");
 		t.press(KEY.enter);
 		await t.until(() => t!.host.session.isStreaming, "turn to start");
+		// Abort the stream itself: the run spends a moment preparing before it calls the model.
+		await t.until(() => reply.started(), "the model call");
 		await t.until(async () => /interrupt/i.test(await t!.text()), "interrupt hint on screen");
 		t.press(KEY.esc);
 		await t.until(() => !t!.host.session.isStreaming, "turn to stop");
@@ -30,6 +33,33 @@ describe("Esc aborts a running turn", () => {
 		await t.type("again");
 		t.press(KEY.enter);
 		await t.until(async () => (await t!.text()).includes("second answer"), "next turn answer on screen");
+	});
+});
+
+describe("Esc before the run reaches the model", () => {
+	it("puts the prompt back in the editor and says it was not sent", async () => {
+		t = await startUi();
+		const reply = hang();
+		t.script(reply);
+		// A slow before_agent_start handler: the run is still preparing when Esc arrives.
+		const runner = t.host.session.featureHost;
+		const emit = runner.emitBeforeAgentStart.bind(runner);
+		let entered = false;
+		runner.emitBeforeAgentStart = async (...args) => {
+			entered = true;
+			await sleep(600);
+			return emit(...args);
+		};
+		await t.type("keep me");
+		t.press(KEY.enter);
+		await t.until(() => entered, "before_agent_start to begin");
+		t.press(KEY.esc);
+		await t.until(() => !t!.host.session.isStreaming, "turn to stop");
+		await t.until(async () => /back in the editor/.test(await t!.text()), "cancelled notice");
+		expect(t.host.editor.getText()).toBe("keep me");
+		const messages = t.host.session.messages as Array<{ role: string }>;
+		expect(messages.some((m) => m.role === "user")).toBe(false);
+		expect(reply.started()).toBe(false);
 	});
 });
 

@@ -1,3 +1,4 @@
+import type { SandboxMode } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
 
 /** Session storage, shell and external commands, startup, telemetry and installation identity. */
@@ -20,6 +21,9 @@ export interface EnvironmentSettingsApi {
 	getBashOutputMaxBytes(): number;
 	/** Whether bash commands keep provider API keys in their environment; off unless set. */
 	getBashInheritProviderKeys(): boolean;
+	/** Whether agent shell commands run in the operating-system sandbox (`sandbox.mode`); off unless set. */
+	getSandboxMode(): SandboxMode;
+	getSandboxAllowUnsandboxed(): boolean;
 	/** Most bytes the saved full output of a foreground bash command holds; 0 lifts the cap. */
 	getBashSpillMaxBytes(): number;
 	/** Long-command thresholds and extra long-command regexes of the bash wrapper (`bash.longCommandAfterSeconds`, `bash.deliberateMaxSeconds`, `bash.longCommandPatterns`). */

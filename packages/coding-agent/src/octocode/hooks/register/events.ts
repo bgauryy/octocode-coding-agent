@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { commandsFor, hookCalls } from "../config/calls.ts";
@@ -8,8 +8,8 @@ import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookHostMetadata, type HookSession } from "./types.ts";
 
 /** Native PreCompact remains observational; source-profile vetoes cancel through the core owner. */
-export function registerPreCompactHook(api: ExtensionAPI, dispatch: Dispatch): void {
-	api.on("session_before_compact", async (event, ctx) => {
+export function registerPreCompactHook(api: FeatureSetup, dispatch: Dispatch): void {
+	api.bus.on("session_before_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
 		const verdict = await dispatch(
 			ctx,
@@ -26,12 +26,12 @@ export function registerPreCompactHook(api: ExtensionAPI, dispatch: Dispatch): v
 }
 
 export function registerSessionEndHook(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	dispatch: Dispatch,
 	env: NodeJS.ProcessEnv,
 ): void {
-	api.on("session_shutdown", async (event, ctx) => {
+	api.bus.on("session_shutdown", async (event, ctx) => {
 		if (event.reason === "reload") return;
 		// Native and Claude-format hooks (from settings, hook files and plugins) share one budget: 1.5 s, raised to the
 		// longest hook timeout up to 60 s. Codex keeps its own 3 s.
@@ -68,8 +68,8 @@ export function registerSessionEndHook(
 	});
 }
 
-export function registerPostCompactHook(api: ExtensionAPI, dispatch: Dispatch): void {
-	api.on("session_compact", async (event, ctx) => {
+export function registerPostCompactHook(api: FeatureSetup, dispatch: Dispatch): void {
+	api.bus.on("session_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
 		const verdict = await dispatch(ctx, "PostCompact", [trigger], () => ({
 			trigger,
@@ -77,12 +77,10 @@ export function registerPostCompactHook(api: ExtensionAPI, dispatch: Dispatch): 
 		}));
 		if (verdict.stop) ctx.abort("internal");
 		if (verdict.context && !verdict.stop && !ctx.signal?.aborted) {
-			await api.sendMessage(
+			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(
-						renderInstruction("notices/hooks/context.md", { source: "PostCompact", text: verdict.context }),
-					),
+					content: capContext(renderPrompt("hooks/context.md", { source: "PostCompact", text: verdict.context })),
 					display: false,
 				},
 				{ triggerTurn: false },
@@ -91,8 +89,8 @@ export function registerPostCompactHook(api: ExtensionAPI, dispatch: Dispatch): 
 	});
 }
 
-export function registerPostToolBatchHook(api: ExtensionAPI, dispatch: Dispatch): void {
-	api.on("turn_end", async (event, ctx) => {
+export function registerPostToolBatchHook(api: FeatureSetup, dispatch: Dispatch): void {
+	api.bus.on("turn_end", async (event, ctx) => {
 		if (ctx.signal?.aborted || event.toolResults.length === 0 || event.message.role !== "assistant") return;
 		const calls = event.message.content.filter((content) => content.type === "toolCall");
 		const verdict = await dispatch(
@@ -131,22 +129,18 @@ export function registerPostToolBatchHook(api: ExtensionAPI, dispatch: Dispatch)
 	});
 }
 
-export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void {
-	api.on("user_input", async (event, ctx) => {
+export function registerPromptHook(api: FeatureSetup, dispatch: Dispatch): void {
+	api.bus.on("user_input", async (event, ctx) => {
 		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, "codex");
 		if (verdict.block && ctx.hasUI) notify(ctx.ui, `Blocked by a UserPromptSubmit hook: ${verdict.block}`, "warning");
 		return {
 			block: !!verdict.block,
 			additionalContext: verdict.context
-				? [
-						capContext(
-							renderInstruction("notices/hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }),
-						),
-					]
+				? [capContext(renderPrompt("hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }))]
 				: [],
 		};
 	});
-	api.on("input", async (event, ctx) => {
+	api.bus.on("input", async (event, ctx) => {
 		const verdict = await dispatch(ctx, "UserPromptSubmit", [], () => ({ prompt: event.text }), ctx.signal, [
 			"octocode",
 			"claude",
@@ -157,12 +151,10 @@ export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void 
 			return { action: "handled" };
 		}
 		if (verdict.context) {
-			await api.sendMessage(
+			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(
-						renderInstruction("notices/hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }),
-					),
+					content: capContext(renderPrompt("hooks/context.md", { source: "UserPromptSubmit", text: verdict.context })),
 					display: false,
 				},
 				{ triggerTurn: false },
@@ -173,12 +165,12 @@ export function registerPromptHook(api: ExtensionAPI, dispatch: Dispatch): void 
 }
 
 export function registerInterruptHook(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	dispatch: Dispatch,
 	metadata: (() => HookHostMetadata) | undefined,
 ): void {
-	api.on("agent_interrupted", async (event, ctx) => {
+	api.bus.on("agent_interrupted", async (event, ctx) => {
 		if (!commandsFor(session.config, "Interrupt", []).length) return;
 		if (!event.model || !metadata?.().permissionMode) {
 			const diagnostic = "Skipping Codex Interrupt hook: live model or permission metadata is unavailable";

@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -192,7 +192,7 @@ export function savedResultsBlock(files: readonly string[]): string {
 	const spilled =
 		list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, SAVED_RESULTS_LIST_LABEL) : undefined;
 	if (spilled === undefined)
-		return `\n\n${OPEN}\n${renderInstruction("notices/recovery/saved-results.md", { listed: "" })}\n${list}\n${CLOSE}`;
-	const listed = renderInstruction("notices/recovery/file-list.md", { count: files.length, file: shortPath(spilled) });
-	return `\n\n<saved-results count="${files.length}">\n${renderInstruction("notices/recovery/saved-results.md", { listed })}\n${CLOSE}`;
+		return `\n\n${OPEN}\n${renderPrompt("notices/recovery/saved-results.md", { listed: "" })}\n${list}\n${CLOSE}`;
+	const listed = renderPrompt("notices/recovery/file-list.md", { count: files.length, file: shortPath(spilled) });
+	return `\n\n<saved-results count="${files.length}">\n${renderPrompt("notices/recovery/saved-results.md", { listed })}\n${CLOSE}`;
 }

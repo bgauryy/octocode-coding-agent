@@ -1,9 +1,15 @@
 import "./bundle.ts";
 import { describe, expect, it } from "vitest";
-import { octocodecodeAvailable, runOctocodecode, type OctocodecodeRun } from "../src/adapters/octocodecode/index.ts";
+import {
+	octocodecodeAvailable,
+	parseSkillListing,
+	runOctocodecode,
+	type OctocodecodeRun,
+} from "../src/adapters/octocodecode/index.ts";
 import { cacheReadRatio, duplicateBlocks, prefixBreaks } from "../src/context.ts";
 import { script, type StepSource } from "../src/gateway.ts";
 import { gateway, mcp, searchTool } from "./helpers.ts";
+import { PROMPTS } from "./triggers/matrix.ts";
 
 const SKIP = "octocodecode bundle missing: run `yarn run build:offline` first";
 
@@ -61,13 +67,23 @@ describe("octocodecode via gateway", () => {
 	it("detects a skill load through the skill tool", async (ctx) => {
 		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
 		const { gw, run } = await drive(
-			[{ toolCalls: [{ name: "skill", args: { name: "octocode-research", reason: "testkit" } }] }, { text: "loaded" }],
+			[
+				{ toolCalls: [{ name: "skill", args: { name: "octocode-local-research", reason: "testkit" } }] },
+				{ text: "loaded" },
+			],
 			"use a skill",
 		);
 		report("skill", gw, run);
-		expect(gw.trace).toHaveLoadedSkill("octocode-research");
+		expect(gw.trace).toHaveLoadedSkill("octocode-local-research");
 		expect(gw.trace).not.toHaveLoadedSkill("octocode-pr-review");
-		expect(JSON.stringify(gw.trace.requests[1].messages)).toContain("References are relative to");
+	});
+
+	it("the trigger matrix has a fire and a near-miss prompt for every skill the bundle lists", async (ctx) => {
+		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		const { gw } = await drive([{ text: "ok" }], "hi");
+		const listed = parseSkillListing(String(gw.trace.requests[0].messages[0].content)).map((s) => s.name);
+		expect(listed.length).toBeGreaterThan(0);
+		expect(listed.filter((name) => !PROMPTS[name])).toEqual([]);
 	});
 
 	it("an unknown tool call gets an error result and the run still finishes", async (ctx) => {

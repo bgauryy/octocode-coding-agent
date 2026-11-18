@@ -36,7 +36,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		);
 		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
@@ -69,7 +69,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		);
 		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
@@ -109,7 +109,7 @@ describe("the composed extension and a PreToolUse hook that fails", () => {
 		);
 		approveFixtureHooks(cwd);
 		const fake = fakeHost(HOOK_SETTINGS);
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);

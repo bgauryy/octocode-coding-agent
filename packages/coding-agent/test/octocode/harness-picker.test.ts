@@ -1,5 +1,5 @@
 import { beforeAll, expect, it, vi } from "vitest";
-import type { ExtensionUIContext } from "../../src/core/features/index.ts";
+import type { SessionUI } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import * as inventory from "../../src/octocode/harness/inventory.ts";
@@ -56,13 +56,7 @@ it("opens on the Overview with on/off counts and what waits for /security", () =
 	expect(out).toMatch(/Skills\s+2 on · 1 off · 1 waiting for \/security/);
 	expect(out).toMatch(/MCPs\s+1 on · 0 off/);
 	expect(out).toMatch(/Hooks\s+none yet/);
-	expect(overviewRows(items).map((entry) => entry.section)).toEqual([
-		"skills",
-		"mcp",
-		"hooks",
-		"sources",
-		"extensions",
-	]);
+	expect(overviewRows(items).map((entry) => entry.section)).toEqual(["skills", "mcp", "hooks", "sources"]);
 });
 
 it("opens the selected section with Enter and never switches an item from the Overview", () => {
@@ -83,7 +77,7 @@ it("switches sections with plain arrows while the filter is empty, and keeps Ctr
 	picker.handleInput("\x1b[D");
 	expect(text(picker)).toMatch(/Skills\s+2 on/);
 	picker.handleInput("\x1b[1;5D");
-	expect(text(picker)).toContain("No extensions found");
+	expect(text(picker)).toContain("No harness or plugin sources found");
 });
 
 it("leaves arrows to the filter once text is typed", () => {
@@ -113,7 +107,7 @@ async function run(args: string, mode: "tui" | "print") {
 	const opened: string[] = [];
 	if (mode === "tui")
 		Object.assign(ctx.ui, {
-			custom: async (factory: Parameters<ExtensionUIContext["custom"]>[0]) => {
+			custom: async (factory: Parameters<SessionUI["custom"]>[0]) => {
 				const view = await factory({ requestRender() {} } as never, theme, new KeybindingsManager(), () => {});
 				if (!(view instanceof HarnessPicker)) throw new Error("Expected harness picker");
 				await vi.waitFor(() => expect(text(view)).not.toContain("Loading"));
@@ -139,7 +133,5 @@ it("/harness <section> prints that section outside the terminal and completes se
 	const printed = ctx.ui.notes.map((note) => note.message).join("\n");
 	expect(printed).toContain("mcp:one");
 	expect(printed).not.toContain("skill:a");
-	expect(command.argumentWords).toEqual(
-		expect.arrayContaining(["overview", "skills", "mcp", "hooks", "sources", "extensions"]),
-	);
+	expect(command.argumentWords).toEqual(expect.arrayContaining(["overview", "skills", "mcp", "hooks", "sources"]));
 });

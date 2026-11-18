@@ -1,5 +1,5 @@
 import type { Usage } from "@octocodeai/octocode-ai";
-import type { ReportStatus } from "../../instructions/report.ts";
+import type { ReportStatus } from "../../native/prompts/report.ts";
 import type { WatchdogLimits } from "../events.ts";
 import type { StructuredResultV1 } from "../result-schema.ts";
 import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";

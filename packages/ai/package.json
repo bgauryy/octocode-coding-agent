@@ -48,10 +48,6 @@
 			"types": "./dist/api/constrained-sampling.d.ts",
 			"import": "./dist/api/constrained-sampling.js"
 		},
-		"./api/llama-cpp-classify.lazy": {
-			"types": "./dist/api/llama-cpp-classify.lazy.d.ts",
-			"import": "./dist/api/llama-cpp-classify.lazy.js"
-		},
 		"./api/openai-completions/tool-schema-flavor": {
 			"types": "./dist/api/openai-completions/tool-schema-flavor.d.ts",
 			"import": "./dist/api/openai-completions/tool-schema-flavor.js"
@@ -217,6 +213,7 @@
 		"check:model-data": "node scripts/check-model-data.ts",
 		"build": "node scripts/check-model-data.ts && shx rm -rf dist && tsc -p tsconfig.build.json && shx cp -r src/providers/data dist/providers/data",
 		"test": "vitest --run",
+		"test:live": "OCTOCODE_LIVE_TESTS=1 vitest --run .live.test.",
 		"prepublishOnly": "yarn run clean && yarn run build"
 	},
 	"dependencies": {

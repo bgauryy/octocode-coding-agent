@@ -1,4 +1,5 @@
 import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
+import { plural } from "@octocodeai/octocode-common/clip";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { type BadgeState, badge } from "../../../theme/page-kit.ts";
 import type { PageRow } from "../../../theme/manage-page.ts";
@@ -17,8 +18,6 @@ const BADGE_OF: Record<ProviderEntry["state"], BadgeState> = {
 /** The page-kit badge state of a provider. */
 export const providerBadge = (entry: ProviderEntry) => badge(BADGE_OF[entry.state]);
 
-const plural = (count: number) => `${count} ${count === 1 ? "model" : "models"}`;
-
 /** One row: the snapshot's sentence, its next step, where it is defined and how many models it offers. */
 function providerRow(entry: ProviderEntry): PageRow {
 	const shown = providerBadge(entry);
@@ -26,7 +25,7 @@ function providerRow(entry: ProviderEntry): PageRow {
 	if (entry.nextStep && entry.state !== "disabled") parts.push(entry.nextStep.label);
 	if (entry.definitionFile) parts.push(`defined in ${homeTilde(entry.definitionFile)}`);
 	else if (entry.state === "ready") parts.push("defined in built-in");
-	if (entry.defined && entry.state !== "needs-key") parts.push(plural(entry.models));
+	if (entry.defined && entry.state !== "needs-key") parts.push(plural(entry.models, "model"));
 	return {
 		id: `provider:${entry.id}`,
 		name: entry.name,

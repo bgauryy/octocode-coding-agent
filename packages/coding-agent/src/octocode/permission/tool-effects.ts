@@ -32,7 +32,7 @@ export function declareToolEffect<T extends Pick<ToolDefinition, "name" | "effec
 	return tool;
 }
 
-/** The effect the registered tool `name` declared, or undefined (an MCP tool, an extension tool or an undeclared one). */
+/** The effect the registered tool `name` declared, or undefined (an MCP tool, a feature tool or an undeclared one). */
 export const toolEffect = (name: string): ToolEffect | undefined => declared.get(name);
 
 /** Whether the tool `name` declared an effect, which is the review a native registration needs. */

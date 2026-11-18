@@ -1,8 +1,8 @@
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { type AgentDb, backlog as backlogQueries } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { clip } from "../shared/text.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { taskLine } from "./task-source.ts";
@@ -15,8 +15,8 @@ const PAGE = 200;
 /** Foreign changes the task line names; the rest are counted. */
 const MAX_CHANGED = 5;
 const TITLE_CHARS = 48;
-const eventsNotice = (events: string) => renderInstruction("notices/backlog-events.md", { events, resync: false });
-const RESYNC_NOTICE = () => renderInstruction("notices/backlog-events.md", { events: "", resync: true });
+const eventsNotice = (events: string) => renderPrompt("notices/backlog-events.md", { events, resync: false });
+const RESYNC_NOTICE = () => renderPrompt("notices/backlog-events.md", { events: "", resync: true });
 
 type AuditRow = Extract<ReturnType<typeof backlogQueries.auditAfter>, { resync: false }>["rows"][number];
 
@@ -58,10 +58,10 @@ class TaskEvents {
 	 */
 	private opened: { key: string; agent: AgentDb; backlog: Backlog } | undefined;
 
-	private readonly api: ExtensionAPI;
+	private readonly api: FeatureSetup;
 	private readonly options: BacklogOptions;
 
-	constructor(api: ExtensionAPI, options: BacklogOptions) {
+	constructor(api: FeatureSetup, options: BacklogOptions) {
 		this.api = api;
 		this.options = options;
 	}
@@ -71,7 +71,7 @@ class TaskEvents {
 	}
 
 	/** A new span: the snapshot's cursor and task line become the baseline; nothing before them is reported. */
-	start(ctx: ExtensionContext): void {
+	start(ctx: FeatureContext): void {
 		this.cursor = undefined;
 		this.resync = false;
 		this.pending.clear();
@@ -87,18 +87,21 @@ class TaskEvents {
 	}
 
 	/** After a tool result (or a database change during a run): sends the urgent events, once. */
-	urgent(ctx: ExtensionContext): void {
+	urgent(ctx: FeatureContext): void {
 		const b = this.read(ctx);
 		if (!b) return;
 		const urgent = [...this.pending].filter(([, change]) => isUrgent(change, b));
 		if (urgent.length === 0) return;
 		for (const [ref] of urgent) this.pending.delete(ref);
 		const content = eventsNotice(urgent.map(([ref, change]) => describe(ref, change, b)).join("; "));
-		void this.api.sendMessage({ customType: BACKLOG_EVENTS_TYPE, content, display: false }, { deliverAs: "steer" });
+		void this.api.session.sendMessage(
+			{ customType: BACKLOG_EVENTS_TYPE, content, display: false },
+			{ deliverAs: "steer" },
+		);
 	}
 
 	/** A user turn: one message with the pending events, a resync note and the task line when it changed. */
-	turn(ctx: ExtensionContext): string | undefined {
+	turn(ctx: FeatureContext): string | undefined {
 		const b = this.read(ctx);
 		if (!b) return undefined;
 		const lines: string[] = [];
@@ -118,7 +121,7 @@ class TaskEvents {
 		return lines.length > 0 ? lines.join("\n") : undefined;
 	}
 
-	private open(ctx: ExtensionContext): Backlog | undefined {
+	private open(ctx: FeatureContext): Backlog | undefined {
 		const env = this.options.env ?? process.env;
 		try {
 			const agent = sharedAgentDb(env);
@@ -140,7 +143,7 @@ class TaskEvents {
 	}
 
 	/** Reads the rows after the cursor when the database file moved since the last read. */
-	private read(ctx: ExtensionContext): Backlog | undefined {
+	private read(ctx: FeatureContext): Backlog | undefined {
 		if (this.cursor === undefined) return undefined;
 		const b = this.open(ctx);
 		if (!b) return undefined;
@@ -204,20 +207,22 @@ function describe(ref: string, change: Change, b: Backlog): string {
  * turn's other handlers follow.
  */
 export function registerTaskEvents(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: BacklogOptions,
-): { poke: (ctx: ExtensionContext) => void } {
+	/** More lines for the turn's message (the related-agent FYIs). */
+	extra?: () => string | undefined,
+): { poke: (ctx: FeatureContext) => void } {
 	const events = new TaskEvents(api, options);
-	const active = () => api.getActiveTools().includes("backlog");
-	api.on("session_start", (_event, ctx) => events.start(ctx));
-	api.on("tool_result", (_event, ctx) => {
+	const active = () => api.tools.getActive().includes("backlog");
+	api.bus.on("session_start", (_event, ctx) => events.start(ctx));
+	api.bus.on("tool_result", (_event, ctx) => {
 		if (active()) events.urgent(ctx);
 		return undefined;
 	});
-	api.on("before_agent_start", (event, ctx) => {
+	api.bus.on("before_agent_start", (event, ctx) => {
 		// A turn the agent starts itself (a custom message) keeps the events for the next user turn.
 		if (!active() || event.messageType === "custom") return undefined;
-		const content = events.turn(ctx);
+		const content = [events.turn(ctx), extra?.()].filter(Boolean).join("\n");
 		return content ? { message: { customType: BACKLOG_EVENTS_TYPE, content, display: false } } : undefined;
 	});
 	return {

@@ -42,7 +42,6 @@ describe("chrome", () => {
 		);
 		chat.addChild(message);
 		const setHidden = vi.spyOn(message, "setHideThinkingBlock");
-		const setMouseHint = vi.spyOn(message, "setMouseHint");
 		const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[] })(
 			{ children: [chat], requestRender: vi.fn(), mode: "fullscreen" },
 			theme,
@@ -50,7 +49,6 @@ describe("chrome", () => {
 		expect(header.render(80)).toHaveLength(3);
 		// The user's hideThinkingBlock setting, owned by the host, stays in force.
 		expect(setHidden).not.toHaveBeenCalled();
-		expect(setMouseHint).not.toHaveBeenCalled();
 		expect(message.render(80).join("\n")).not.toContain("Hidden thought.");
 	});
 
@@ -75,8 +73,6 @@ describe("chrome", () => {
 		expect(typeof ctx.ui.header).toBe("function");
 		expect(ctx.ui.footer).toBeDefined();
 		expect((ctx.ui as never as { indicator: { frames: string[] } }).indicator.frames).toHaveLength(10);
-		// The hidden reasoning stub is one line the message itself draws; no extension label adds a second.
-		expect((ctx.ui as never as { thinkingLabel?: string }).thinkingLabel).toBeUndefined();
 		const requestRender = vi.fn();
 		const header = (ctx.ui.header as (tui: unknown, theme: unknown) => { render(width: number): string[] })(
 			{ requestRender, children: [] },

@@ -12,6 +12,7 @@ import { ModelConfig } from "../src/core/model-config.ts";
 import { runModelDiscoveryCommand } from "../src/main/model-discovery.ts";
 import { unsupportedPiSignIn } from "../src/modes/interactive/interactive-mode/provider-pi.ts";
 import { providerSourceGate } from "../src/core/provider-sources/index.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 let home: string;
 let agentDir: string;
@@ -199,7 +200,7 @@ describe("models.json load-time warnings", () => {
 		expect(config.getProviderIds()).toEqual(["gateway"]);
 		expect(config.getWarnings()).toEqual([
 			`${path}: providers.gateway.apikey is not a models.json field and is ignored. Did you mean "apiKey"?`,
-			`${path}: providers.gateway.api "anthropic-message" is not a built-in API; requests fail unless an extension provides it. Did you mean "anthropic-messages"?`,
+			`${path}: providers.gateway.api "anthropic-message" is not a built-in API; requests fail unless a feature provides it. Did you mean "anthropic-messages"?`,
 			`${path}: providers.gateway.models[m].contextwindow is not a models.json field and is ignored. Did you mean "contextWindow"?`,
 		]);
 	});
@@ -255,7 +256,11 @@ describe("models.json warnings at startup", () => {
 				gw: { baseUrl: "http://localhost:1/v1", api: "anthropic-message", apikey: "x", models: [{ id: "m" }] },
 			},
 		});
-		const services = await createAgentSessionServices({ cwd, agentDir });
+		const services = await createAgentSessionServices({
+			cwd,
+			agentDir,
+			resourceLoaderOptions: { nativeFeatures: nativeFeatureSet() },
+		});
 		const warnings = services.diagnostics.filter((entry) => entry.type === "warning").map((entry) => entry.message);
 		expect(
 			warnings.some(

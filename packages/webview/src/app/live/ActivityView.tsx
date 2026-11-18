@@ -131,7 +131,12 @@ function LiveRun() {
 	);
 	const phase = runPhase(application);
 	return (
-		<RunIndicator key={run ? "run" : phase.kind} phase={phase} startedAt={run?.startedAt} stale={tone !== "live"} />
+		<RunIndicator
+			key={run ? "run" : phase.kind}
+			phase={phase}
+			startedAt={phase.kind === "job" ? application?.jobStartedAt : run?.startedAt}
+			stale={tone !== "live"}
+		/>
 	);
 }
 

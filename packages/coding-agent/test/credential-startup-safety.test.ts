@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAgentSessionServices } from "../src/core/agent-session-services.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 const roots: string[] = [];
 const resourceLoaderOptions = {
-	disabledFeatures: ["mcp", "llama.cpp"],
+	nativeFeatures: nativeFeatureSet(),
+	disabledFeatures: ["mcp"],
 	noSkills: true,
 	noPromptTemplates: true,
 	noThemes: true,

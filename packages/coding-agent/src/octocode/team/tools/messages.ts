@@ -1,7 +1,7 @@
 import { textResultDisplay } from "../../render/display.ts";
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../render/tool.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
@@ -10,11 +10,15 @@ import { PARENT_WAITS_ENV } from "../store/env.ts";
 import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
 import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { liveEndpoints, type LiveTeam } from "../endpoint-live.ts";
 import { mailRows, sendOutcome, sendPreview, sendSummary } from "./message-rows.ts";
 
 /** Shows team mail in the conversation: a header per message, its body previewed while collapsed. */
-export function registerMessageRenderer(api: ExtensionAPI): void {
-	api.registerMessageRenderer(INTERNAL_MESSAGE_TYPE, (message, options, theme) => mailRows(message, options, theme));
+export function registerMessageRenderer(api: FeatureSetup, team?: LiveTeam): void {
+	const endpoints = team ? liveEndpoints(team) : undefined;
+	api.renderers.message(INTERNAL_MESSAGE_TYPE, (message, options, theme) =>
+		mailRows(message, { ...options, ...(endpoints ? { endpoints } : {}) }, theme),
+	);
 }
 
 /** The result of `forward`: stored message #N delivered to more agents, or a finished subagent resumed with it. */
@@ -55,7 +59,7 @@ export interface PeerRoute {
 		to: string,
 		text: string,
 		options: { replyRequired?: boolean },
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal?: AbortSignal,
 	): Promise<{ text: string; details: Record<string, unknown> }>;
 	/** The other sessions, for `coordinate list`. */
@@ -76,7 +80,7 @@ async function sendToPeer(
 		interrupt?: boolean;
 		replyRequired?: boolean;
 	},
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	signal?: AbortSignal,
 ) {
 	if (params.forward !== undefined || params.interrupt)
@@ -96,9 +100,9 @@ async function sendToPeer(
 }
 
 export function registerSendMessageTool(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	team: Team,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	registerTool: FeatureSetup["tools"]["register"] = (tool) => api.tools.register(tool),
 	peers?: PeerRoute,
 ): void {
 	registerTool(
@@ -107,7 +111,7 @@ export function registerSendMessageTool(
 			label: "Send message",
 			description:
 				"Queue steering, questions or evidence to teammates; unread departures are reported. Messages resume only reachable non-isolated background children (yours, or siblings via your coordinator).",
-			promptGuidelines: renderInstruction("tools/send-message/guidelines.md").split("\n"),
+			promptGuidelines: renderPrompt("tools/send-message/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				to: Type.Optional(
 					Type.String({
@@ -179,7 +183,7 @@ export function registerSendMessageTool(
 				// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
 				const waits =
 					process.env[PARENT_WAITS_ENV] === "1" && team.parentId !== undefined && result.sent.includes(team.parentId)
-						? ` ${renderInstruction("shared/parent-waits.md")}`
+						? ` ${renderPrompt("shared/parent-waits.md")}`
 						: "";
 				if (result.relayed)
 					return textResult(

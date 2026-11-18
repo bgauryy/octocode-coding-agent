@@ -8,7 +8,7 @@ import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { ArchiveCapture, archivePointer } from "../../src/octocode/compaction/archive.ts";
 import { liveStateLines } from "../../src/octocode/compaction/live-state.ts";
@@ -22,7 +22,7 @@ import { RESTORED_FILES_TYPE } from "../../src/octocode/files/reads.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { archiveFolder, readSegments, segmentPath } from "../../src/octocode/history/archive.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, asSetup } from "./fake-host.ts";
 
 /**
  * What survives a compaction, seen from the model's side: the state it is told is live, what it can search for later,
@@ -97,13 +97,13 @@ describe("live state after a compaction", () => {
 			timestamp: 1,
 		};
 		const out = await writeSummary(
-			{
+			asSetup({
 				getThinkingLevel: () => "off",
 				getActiveTools: () => [],
 				getSettings: () => ({}),
 				createUsageRecorder: () => () => {},
 				appendEntry: () => {},
-			} as never,
+			}) as never,
 			{
 				preparation: {
 					firstKeptEntryId: "k",
@@ -322,13 +322,13 @@ describe("files after a compaction", () => {
 		// The file changes after the model read it (a peer, a formatter, a bash write) and before the compaction lands.
 		fs.writeFileSync(file, "export const v = 'LATEST-ON-DISK';\n");
 		const sent: Array<{ content: string; details: { id: string } }> = [];
-		const api = {
+		const api = asSetup({
 			sendMessage: (message: never) => {
 				sent.push(message);
 			},
-		};
+		});
 		const pending = deliverRestoredFiles(
-			api as never,
+			api,
 			worked,
 			{ cwd: cwd(), sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } } as never,
 			RESTORE_TOTAL_CHARS,
@@ -350,7 +350,7 @@ describe("files after a compaction", () => {
 		fs.writeFileSync(file, "one\n");
 		const sent: Array<{ details: { id: string } }> = [];
 		const pending = deliverRestoredFiles(
-			{ sendMessage: (message: never) => void sent.push(message) } as never,
+			asSetup({ sendMessage: (message: never) => void sent.push(message) }) as never,
 			[{ file, workedAt: 1, line: 1 }],
 			{ cwd: cwd(), sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } } as never,
 			RESTORE_TOTAL_CHARS,

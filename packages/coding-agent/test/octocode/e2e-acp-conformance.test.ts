@@ -27,13 +27,13 @@ vi.setConfig({ testTimeout: 180_000 });
 beforeAll(async () => {
 	endpoint = await startEndpoint();
 });
-afterAll(async () => {
-	await endpoint?.close();
-});
 afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	await killEverything();
 	endpoint.requests.length = 0;
+});
+afterAll(async () => {
+	await killEverything();
+	await endpoint?.close();
 });
 
 async function trusted(env: Record<string, string> = {}): Promise<Sandbox> {
@@ -55,14 +55,37 @@ function expectOnlyProtocol(lines: readonly string[]): void {
 	}
 }
 
+const MCP_SERVER = `const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+	const message = JSON.parse(line);
+	const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
+	if (message.method === "initialize")
+		reply({ protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } });
+	else if (message.method === "tools/list")
+		reply({ tools: [{ name: "probe", description: "Returns a marker", inputSchema: { type: "object", properties: {} } }] });
+	else if (message.method === "tools/call")
+		reply({ content: [{ type: "text", text: "probe-result-from-client-server " + process.env.CLIENT_VALUE }] });
+	else if (message.id !== undefined) reply({});
+});
+`;
+
 const newSession = async (acp: ReturnType<typeof acpClient>, cwd: string) =>
 	(await acp.request<{ sessionId: string }>("session/new", { cwd, mcpServers: [] })).sessionId;
 
-describe("initialization and malformed input", () => {
-	it("negotiates the version it supports and answers every malformed message without leaving the protocol", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
+/**
+ * One broker serves the cases that need no special environment, one after another: a boot costs more than any case, and
+ * a session's state does not leak into another's. The permission case boots its own broker, in manual mode.
+ */
+describe("a broker with default permissions", () => {
+	let box: Sandbox;
+	let run: ReturnType<typeof broker>["run"];
+	let acp: ReturnType<typeof acpClient>;
+	beforeAll(async () => {
+		box = await trusted();
+		({ run, acp } = broker(box));
+	});
 
+	it("negotiates the version it supports and answers every malformed message without leaving the protocol", async () => {
 		// Before initialize: a request other than initialize gets -32600.
 		const early = await acp.raw("session/list", {});
 		expect(early.error?.code).toBe(-32600);
@@ -121,25 +144,17 @@ describe("initialization and malformed input", () => {
 		const sessionId = await newSession(acp, box.project);
 		expect((await acp.prompt(sessionId, script([{ text: "still here" }]))).stopReason).toBe("end_turn");
 		expect(acp.said()).toContain("still here");
-
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-		expect(box.survivors()).toEqual([]);
 	});
-});
 
-describe("a prompt turn", () => {
 	it("streams a tool call in order and answers after its updates", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
 		const sessionId = await newSession(acp, box.project);
+		const firstUpdate = acp.updates.length;
+		const firstMessage = acp.received.length;
 		const steps = script([{ tool: "bash", args: { command: "echo acp-tool" } }, { text: "the reply" }]);
 		const done = await acp.prompt(sessionId, steps);
 		expect(done.stopReason).toBe("end_turn");
 
-		const updates = acp.updates.map(({ update }) => update);
+		const updates = acp.updates.slice(firstUpdate).map(({ update }) => update);
 		const started = updates.findIndex((update) => update.sessionUpdate === "tool_call");
 		const finished = updates.findIndex(
 			(update) => update.sessionUpdate === "tool_call_update" && update.status === "completed",
@@ -156,20 +171,78 @@ describe("a prompt turn", () => {
 		expect(JSON.stringify(updates[finished]?.content)).toContain("acp-tool");
 
 		// Every update of the turn precedes its response.
-		const responseAt = acp.received.findIndex(
+		const turnMessages = acp.received.slice(firstMessage);
+		const responseAt = turnMessages.findIndex(
 			(message) => message.result?.stopReason !== undefined && message.method === undefined,
 		);
-		const lastUpdateAt = acp.received.findLastIndex(
+		const lastUpdateAt = turnMessages.findLastIndex(
 			(message) =>
 				message.method === "session/update" &&
 				(message.params?.update as { sessionUpdate?: string } | undefined)?.sessionUpdate !==
 					"available_commands_update",
 		);
 		expect(lastUpdateAt).toBeLessThan(responseAt);
+	});
 
+	it("session/cancel during a running tool stops the command and ends the turn cancelled", async () => {
+		const sessionId = await newSession(acp, box.project);
+		const marker = path.join(box.root, "tool.pid");
+		const turn = acp.prompt(
+			sessionId,
+			script([{ tool: "bash", args: { command: box.holdCommand(marker) } }, { text: "never" }]),
+		);
+		await until(() => fs.existsSync(marker), "the command to start");
+		acp.notify("session/cancel", { sessionId });
+		expect((await turn).stopReason).toBe("cancelled");
+		await until(() => !alive(pidFrom(marker)), "the command to stop");
+	});
+
+	it("$/cancel_request on a prompt also ends the turn cancelled", async () => {
+		const sessionId = await newSession(acp, box.project);
+		const hanging = script([{ hang: true }]);
+		const source = hanging.slice("B64SCRIPT:".length);
+		const requestId = acp.nextId();
+		const turn = acp.raw("session/prompt", { sessionId, prompt: [{ type: "text", text: hanging }] });
+		await until(() => endpoint.requests.some((request) => request.script === source), "the model request");
+		acp.notify("$/cancel_request", { requestId });
+		const answered = await turn;
+		expect(answered.result?.stopReason ?? answered.error?.code).toBe("cancelled");
+	});
+
+	it("a client-supplied stdio server's tool reaches the model and its result comes back", async () => {
+		const server = path.join(box.root, "mcp-server.cjs");
+		fs.writeFileSync(server, MCP_SERVER);
+		const { sessionId } = await acp.request<{ sessionId: string }>("session/new", {
+			cwd: box.project,
+			mcpServers: [
+				{
+					name: "fixture",
+					command: process.execPath,
+					args: [server],
+					env: [{ name: "CLIENT_VALUE", value: "supplied" }],
+				},
+			],
+		});
+		await acp.prompt(sessionId, script([{ text: "first" }]));
+		const declared = endpoint.requests.at(-1)?.tools ?? [];
+		const tool = declared.find((name) => name.startsWith("acp_") || name.includes("probe"));
+		expect(tool, `declared: ${declared.join(", ")}`).toBeDefined();
+		await acp.prompt(sessionId, script([{ tool: tool!, args: {} }, { text: "used it" }]));
+		expect(endpoint.requests.at(-1)?.toolResults.join("\n")).toContain("probe-result-from-client-server supplied");
+
+		// A relative command is refused before anything starts.
+		const relative = await acp.raw("session/new", {
+			cwd: box.project,
+			mcpServers: [{ name: "bad", command: "node", args: [], env: [] }],
+		});
+		expect(relative.error?.code).toBe(-32602);
+	});
+
+	it("leaves when the client does, with nothing but protocol on stdout and no process behind", async () => {
 		run.process.stdin?.end();
 		expect((await run.exited).code).toBe(0);
 		expectOnlyProtocol(acp.lines);
+		expect(box.survivors()).toEqual([]);
 	});
 });
 
@@ -209,97 +282,5 @@ describe("permission requests", () => {
 		run.process.stdin?.end();
 		expect((await run.exited).code).toBe(0);
 		expectOnlyProtocol(acp.lines);
-	});
-});
-
-describe("cancellation", () => {
-	it("session/cancel during a running tool stops the command and ends the turn cancelled", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		const sessionId = await newSession(acp, box.project);
-		const marker = path.join(box.root, "tool.pid");
-		const turn = acp.prompt(
-			sessionId,
-			script([{ tool: "bash", args: { command: box.holdCommand(marker) } }, { text: "never" }]),
-		);
-		await until(() => fs.existsSync(marker), "the command to start");
-		acp.notify("session/cancel", { sessionId });
-		expect((await turn).stopReason).toBe("cancelled");
-		await until(() => !alive(pidFrom(marker)), "the command to stop");
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-		expect(box.survivors()).toEqual([]);
-	});
-
-	it("$/cancel_request on a prompt also ends the turn cancelled", async () => {
-		const box = await trusted();
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		const sessionId = await newSession(acp, box.project);
-		const hanging = script([{ hang: true }]);
-		const source = hanging.slice("B64SCRIPT:".length);
-		const turn = acp.raw("session/prompt", { sessionId, prompt: [{ type: "text", text: hanging }] });
-		await until(() => endpoint.requests.some((request) => request.script === source), "the model request");
-		// initialize was 1, session/new 2, this prompt 3.
-		acp.notify("$/cancel_request", { requestId: 3 });
-		const answered = await turn;
-		expect(answered.result?.stopReason ?? answered.error?.code).toBe("cancelled");
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-	});
-});
-
-describe("client MCP servers", () => {
-	it("a client-supplied stdio server's tool reaches the model and its result comes back", async () => {
-		const box = await trusted();
-		const server = path.join(box.root, "mcp-server.cjs");
-		fs.writeFileSync(
-			server,
-			`const rl = require("node:readline").createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-	const message = JSON.parse(line);
-	const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
-	if (message.method === "initialize")
-		reply({ protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } });
-	else if (message.method === "tools/list")
-		reply({ tools: [{ name: "probe", description: "Returns a marker", inputSchema: { type: "object", properties: {} } }] });
-	else if (message.method === "tools/call")
-		reply({ content: [{ type: "text", text: "probe-result-from-client-server " + process.env.CLIENT_VALUE }] });
-	else if (message.id !== undefined) reply({});
-});
-`,
-		);
-		const { run, acp } = broker(box);
-		await acp.request("initialize", initialize);
-		const { sessionId } = await acp.request<{ sessionId: string }>("session/new", {
-			cwd: box.project,
-			mcpServers: [
-				{
-					name: "fixture",
-					command: process.execPath,
-					args: [server],
-					env: [{ name: "CLIENT_VALUE", value: "supplied" }],
-				},
-			],
-		});
-		await acp.prompt(sessionId, script([{ text: "first" }]));
-		const declared = endpoint.requests.at(-1)?.tools ?? [];
-		const tool = declared.find((name) => name.startsWith("acp_") || name.includes("probe"));
-		expect(tool, `declared: ${declared.join(", ")}`).toBeDefined();
-		await acp.prompt(sessionId, script([{ tool: tool!, args: {} }, { text: "used it" }]));
-		expect(endpoint.requests.at(-1)?.toolResults.join("\n")).toContain("probe-result-from-client-server supplied");
-
-		// A relative command is refused before anything starts.
-		const relative = await acp.raw("session/new", {
-			cwd: box.project,
-			mcpServers: [{ name: "bad", command: "node", args: [], env: [] }],
-		});
-		expect(relative.error?.code).toBe(-32602);
-		run.process.stdin?.end();
-		expect((await run.exited).code).toBe(0);
-		expectOnlyProtocol(acp.lines);
-		expect(box.survivors()).toEqual([]);
 	});
 });

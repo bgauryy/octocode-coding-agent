@@ -1,15 +1,20 @@
-import { Box, Container, MouseRegion } from "@octocodeai/octocode-tui";
+import { Box, Container, MouseRegion, Spacer } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 
 /**
  * A message on the custom-message background that toggles between collapsed and expanded on a left click or
- * `setExpanded`. Subclasses fill the content and call `updateDisplay()` once their own fields are set.
+ * `setExpanded`. One blank row goes above the block and none below, so stacked blocks keep one blank row between them.
+ * Subclasses fill the content and call `updateDisplay()` once their own fields are set.
  */
-export abstract class CollapsibleMessageComponent extends Box {
+export abstract class CollapsibleMessageComponent extends Container {
 	protected expanded = false;
+	private readonly box: Box;
 
 	constructor(outputPad: number) {
-		super(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+		super();
+		this.box = new Box(outputPad, 0, (t) => theme.bg("customMessageBg", t));
+		this.addChild(new Spacer(1));
+		this.addChild(this.box);
 	}
 
 	setExpanded(expanded: boolean): void {
@@ -18,7 +23,7 @@ export abstract class CollapsibleMessageComponent extends Box {
 	}
 
 	setOutputPad(outputPad: number): void {
-		this.setPaddingX(outputPad);
+		this.box.setPaddingX(outputPad);
 	}
 
 	override invalidate(): void {
@@ -30,10 +35,10 @@ export abstract class CollapsibleMessageComponent extends Box {
 	protected abstract renderContent(content: Container, expanded: boolean): void;
 
 	protected updateDisplay(): void {
-		this.clear();
+		this.box.clear();
 		const content = new Container();
 		this.renderContent(content, this.expanded);
-		this.addChild(
+		this.box.addChild(
 			new MouseRegion(content, (event) => {
 				if (event.type !== "click" || event.button !== "left") return undefined;
 				this.setExpanded(!this.expanded);

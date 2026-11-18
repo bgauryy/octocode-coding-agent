@@ -1,17 +1,15 @@
 import { basename, dirname } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../package-manager.ts";
-import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
-export type ResourceType = "extensions" | "skills" | "prompts" | "themes";
+export type ResourceType = "skills" | "prompts" | "themes";
 export type SettingsScope = "user" | "project";
 export type ProjectOverrideState = "inherit" | "load" | "unload";
 
-export const RESOURCE_TYPES = ["extensions", "skills", "prompts", "themes"] as const satisfies readonly ResourceType[];
+export const RESOURCE_TYPES = ["skills", "prompts", "themes"] as const satisfies readonly ResourceType[];
 
 const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
-	extensions: "Extensions",
 	skills: "Skills",
 	prompts: "Prompts",
 	themes: "Themes",
@@ -102,11 +100,7 @@ export function buildGroups(resolved: ResolvedPaths, agentDir: string): Resource
 			const fileName = basename(path);
 			const parentFolder = basename(dirname(path));
 			let displayName: string;
-			if (path.startsWith(BUILTIN_PATH_PREFIX)) {
-				displayName = path.slice(BUILTIN_PATH_PREFIX.length);
-			} else if (resourceType === "extensions" && parentFolder !== "extensions") {
-				displayName = `${parentFolder}/${fileName}`;
-			} else if (resourceType === "skills" && fileName === "SKILL.md") {
+			if (resourceType === "skills" && fileName === "SKILL.md") {
 				displayName = parentFolder;
 			} else {
 				displayName = fileName;
@@ -123,7 +117,6 @@ export function buildGroups(resolved: ResolvedPaths, agentDir: string): Resource
 		}
 	};
 
-	addToGroup(resolved.extensions, "extensions");
 	addToGroup(resolved.skills, "skills");
 	addToGroup(resolved.prompts, "prompts");
 	addToGroup(resolved.themes, "themes");
@@ -141,7 +134,7 @@ export function buildGroups(resolved: ResolvedPaths, agentDir: string): Resource
 	});
 
 	// Sort subgroups within each group by type order, and items by name
-	const typeOrder: Record<ResourceType, number> = { extensions: 0, skills: 1, prompts: 2, themes: 3 };
+	const typeOrder: Record<ResourceType, number> = { skills: 0, prompts: 1, themes: 2 };
 	for (const group of groups) {
 		group.subgroups.sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
 		for (const subgroup of group.subgroups) {

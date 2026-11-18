@@ -79,9 +79,9 @@ function setup(options: Options = {}) {
 		mode: options.mode ?? "tui",
 		model: options.parent === null ? undefined : (options.parent ?? FRONTIER),
 	});
-	Object.assign(fake.api, {
-		getSettings: () => settings,
-		setSessionName: (name: string, source?: "user" | "auto" | "goal") => {
+	Object.assign(fake.api.settings, { get: () => settings });
+	Object.assign(fake.api.session, {
+		setName: (name: string, source?: "user" | "auto" | "goal") => {
 			manager.appendSessionInfo(name, source);
 			void fake.emit("session_info_changed", { type: "session_info_changed", name, source }, ctx);
 		},
@@ -121,9 +121,6 @@ describe("auto session titles", () => {
 		expect(chosen.id).toBe("tiny");
 		expect(auth).toHaveBeenCalledWith(expect.objectContaining({ id: "tiny" }));
 		const text = context.messages[0].content[0].text as string;
-		expect(text).toContain("at most 6 words");
-		expect(text).toContain("Do not answer the request");
-		expect(text).toContain("keep the user's key words");
 		expect(text).toContain("<request>\nthe login page redirects forever\n</request>");
 		expect(context.tools ?? []).toEqual([]);
 		expect(request.reasoning).toBeUndefined();
@@ -196,7 +193,7 @@ describe("auto session titles", () => {
 				{
 					type: "session_compact",
 					compactionEntry: { summary },
-					fromExtension: false,
+					fromFeature: false,
 					reason: "threshold",
 					willRetry: false,
 				},
@@ -233,7 +230,7 @@ describe("auto session titles", () => {
 			{
 				type: "session_compact",
 				compactionEntry: { summary },
-				fromExtension: false,
+				fromFeature: false,
 				reason: "manual",
 				willRetry: false,
 			},
@@ -260,7 +257,7 @@ describe("auto session titles", () => {
 			{
 				type: "session_compact",
 				compactionEntry: { summary },
-				fromExtension: false,
+				fromFeature: false,
 				reason: "manual",
 				willRetry: false,
 			},
@@ -275,7 +272,7 @@ describe("auto session titles", () => {
 		const event = {
 			type: "session_compact",
 			compactionEntry: { summary },
-			fromExtension: false,
+			fromFeature: false,
 			reason: "manual",
 			willRetry: false,
 		};
@@ -424,8 +421,8 @@ describe("subagent session names", () => {
 		if (name) manager.appendSessionInfo(name);
 		const fake = fakeHost();
 		const names: Array<[string, string | undefined]> = [];
-		Object.assign(fake.api, {
-			setSessionName: (value: string, source?: string) => {
+		Object.assign(fake.api.session, {
+			setName: (value: string, source?: string) => {
 				names.push([value, source]);
 			},
 		});

@@ -6,7 +6,7 @@ import { enforces, recordGate } from "./registry.ts";
 import { gate, scopeFor } from "./store.ts";
 
 /**
- * Installs the extension guard's skill reviewer into core (imported for its effect at the CLI entry). A workspace or
+ * Installs the feature guard's skill reviewer into core (imported for its effect at the CLI entry). A workspace or
  * global skill stays off until the user approved every file of its folder.
  */
 installSkillReviewer((skills, cwd, shipped) => {

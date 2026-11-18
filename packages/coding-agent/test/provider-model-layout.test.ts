@@ -80,7 +80,7 @@ describe("provider and model layout regressions", () => {
 			for (const line of page.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 	});
 
-	it("scrolls full facts without activating a row hidden outside the viewport", () => {
+	it("scrolls long facts with the page keys while the selected row stays in view", () => {
 		const select = vi.fn();
 		const page = new ManagePageComponent({
 			title: "Plan",
@@ -90,15 +90,19 @@ describe("provider and model layout regressions", () => {
 			onSelect: select,
 			onCancel: vi.fn(),
 		});
+		expect(text(page)).toContain("Fact 0");
+		expect(text(page)).not.toContain("Fact 19");
+		expect(text(page)).toContain("› Remove credential");
+		page.handleInput("\x1b[6~");
 		page.render(40);
+		page.handleInput("\x1b[6~");
+		expect(text(page)).toContain("Fact 19");
+		expect(text(page)).not.toContain("Fact 0 ");
+		expect(text(page)).toContain("› Remove credential");
 		page.handleInput("\x1b[5~");
 		page.render(40);
 		page.handleInput("\x1b[5~");
 		expect(text(page)).toContain("Fact 0");
-		page.handleInput("\r");
-		expect(select).not.toHaveBeenCalled();
-		page.handleInput("\x1b[B");
-		expect(text(page)).toContain("› Remove credential");
 		page.handleInput("\r");
 		expect(select).toHaveBeenCalledWith("remove");
 		expect(page.render(40).length).toBeLessThanOrEqual(24);
@@ -138,7 +142,7 @@ describe("provider and model layout regressions", () => {
 			expect(text(picker, width)).not.toContain("cache read $0.3");
 		}
 		expect(text(picker, 80)).toContain("Startup default (project)");
-		picker.handleInput("\x04");
+		picker.handleInput("\x1bi");
 		const pages: string[] = [];
 		for (let page = 0; page < 8; page++) {
 			pages.push(text(picker, 120));

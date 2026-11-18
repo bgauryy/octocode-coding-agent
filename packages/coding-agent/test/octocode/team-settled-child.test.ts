@@ -10,7 +10,7 @@ import {
 	PARENT_PID_ENV,
 } from "../../src/octocode/team/store/env.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

@@ -11,12 +11,14 @@ import {
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import type { ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { createTestSession } from "../../helpers/session.ts";
 import { baseEnv, fixture, withEnv } from "../agent-context/capture.ts";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 type Reply = ReturnType<typeof fauxAssistantMessage>;
 
@@ -66,10 +68,10 @@ export async function withMcpSession<T>(
 				}),
 			};
 			const providerOf =
-				(key: keyof typeof cores): ExtensionFactory =>
+				(key: keyof typeof cores): FeatureRegister =>
 				(api) => {
 					const core = cores[key];
-					api.registerProvider(core.models[0].provider, {
+					api.providers.register(core.models[0].provider, {
 						name: core.models[0].provider,
 						api: core.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -90,10 +92,13 @@ export async function withMcpSession<T>(
 				cwd: fx.cwd,
 				agentDir: fx.agentDir,
 				settingsManager,
-				extensionFactories: (["plain", "plain-2", "native"] as const).map((key) => ({
-					name: `faux-${key}`,
-					factory: providerOf(key),
-				})),
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures(
+					(["plain", "plain-2", "native"] as const).map((key) => ({
+						name: `faux-${key}`,
+						factory: providerOf(key),
+					})),
+				),
 				noPromptTemplates: true,
 				noThemes: true,
 			});
@@ -106,7 +111,7 @@ export async function withMcpSession<T>(
 				sessionManager: SessionManager.inMemory(fx.cwd),
 			});
 			try {
-				await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+				await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 				const use = async (key: keyof typeof cores) => {
 					const model = cores[key].models[0];
 					await session.setModel(session.modelRuntime.getModel(model.provider, model.id)!);

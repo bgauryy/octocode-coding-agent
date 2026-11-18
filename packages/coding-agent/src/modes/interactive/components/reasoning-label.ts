@@ -1,4 +1,5 @@
 import { animationClock, type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
+import { expandHint } from "../../../octocode/shared/text.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
 import { liveShimmer, stateMark } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -61,12 +62,9 @@ function thoughtDuration(ms: number | undefined): string {
 	return ms === undefined ? "" : ` for ${formatDuration(ms)}`;
 }
 
-/** The affordance of a hidden block: the bound key, and a click only where the terminal reports the mouse. */
-export function revealHint(mouse: boolean): string {
-	const key = keyText("app.thinking.toggle");
-	if (key && mouse) return `(${key} or click)`;
-	if (key) return `(${key})`;
-	return mouse ? "(click to expand)" : "";
+/** The affordance of a hidden block: the shared expand hint with the thinking key. */
+export function revealHint(): string {
+	return expandHint("expand", keyText("app.thinking.toggle"));
 }
 
 const ABORT_WORDING =

@@ -108,28 +108,6 @@ describe("checkFidelity", () => {
 			["t: loses the alternative requiring a", "t: loses the alternative requiring b"],
 		);
 	});
-
-	it("rejects field overrides for paths the schema lacks and ones that call a required field optional", () => {
-		const catalog = server([
-			{
-				name: "t",
-				inputSchema: {
-					type: "object",
-					properties: { id: { type: "string" }, items: { type: "array", items: { properties: { n: {} } } } },
-					required: ["id"],
-				},
-				outputSchema: { type: "object", properties: { total: { type: "number" } } },
-			},
-		]);
-		const good = { fields: { t: { id: "Record id.", "items.n": "Count.", "output.total": "Sum." } } };
-		expect(checkFidelity(catalog, renderServer(catalog, good), good).problems).toEqual([]);
-		const bad = { fields: { t: { id: "Optional id.", ghost: "Nope.", "output.missing": "Nope." } } };
-		expect(checkFidelity(catalog, renderServer(catalog, bad), bad).problems).toEqual([
-			"t.id: calls a required field optional",
-			"t.ghost: no such field",
-			"t.output.missing: no such field",
-		]);
-	});
 });
 
 describe("presentation describes a tool in plain form when its block is not faithful", () => {

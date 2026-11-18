@@ -10,8 +10,9 @@ import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { SessionBus } from "../../src/core/features/bus/session-bus.ts";
 import { dispatchContext } from "../../src/core/features/runner/emit-transforms.ts";
-import type { Extension } from "../../src/core/features/types.ts";
+import type { FeatureRecord } from "../../src/core/features/types.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { requestMessages } from "../../src/octocode/compaction/thinking.ts";
 
@@ -81,9 +82,10 @@ function withContextHandler(window?: (messages: AgentMessage[]) => AgentMessage[
 	const handler = async (event: { messages: AgentMessage[] }) => ({
 		messages: (window ?? ((messages) => messages))(requestMessages(event.messages, model, new Map())),
 	});
-	const extension = { path: "octocode", handlers: new Map([["context", [handler]]]) } as unknown as Extension;
+	const feature = { path: "octocode", handlers: new Map([["context", [handler]]]) } as unknown as FeatureRecord;
 	return {
-		extensions: [extension],
+		extensions: [feature],
+		bus: new SessionBus([feature]),
 		createContext: () => ({}),
 		emitError: (error: unknown) => {
 			throw error;

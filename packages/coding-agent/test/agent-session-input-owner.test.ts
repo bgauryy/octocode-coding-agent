@@ -20,7 +20,7 @@ it("rejects a conflicting input owner before accessing session resources", () =>
 		},
 	} as unknown as AgentSessionConfig;
 	expect(() => new AgentSession(config)).toThrow(
-		"AgentSession owns Agent.prepareInput; use a user_input extension instead",
+		"AgentSession owns Agent.prepareInput; use a user_input feature handler instead",
 	);
 	expect(resources).not.toHaveBeenCalled();
 	expect(prepareInput).not.toHaveBeenCalled();

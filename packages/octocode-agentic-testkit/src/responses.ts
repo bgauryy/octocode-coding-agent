@@ -52,9 +52,20 @@ export function responsesToChatBody(body: Record<string, unknown>): Record<strin
 		description?: string;
 		parameters?: unknown;
 	}[];
+	const choice = body.tool_choice as string | { type?: string; name?: string } | undefined;
+	const toolChoice =
+		typeof choice === "string"
+			? choice
+			: choice?.type === "function" && choice.name
+				? { type: "function", function: { name: choice.name } }
+				: undefined;
 	return {
 		model: body.model,
 		messages: responsesMessages(body),
+		...(typeof body.max_output_tokens === "number" ? { max_tokens: body.max_output_tokens } : {}),
+		...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
+		...(typeof body.top_p === "number" ? { top_p: body.top_p } : {}),
+		...(toolChoice ? { tool_choice: toolChoice } : {}),
 		...(tools.some((t) => t.type === "function")
 			? {
 					tools: tools
@@ -68,14 +79,21 @@ export function responsesToChatBody(body: Record<string, unknown>): Record<strin
 	};
 }
 
-/** SSE answer: `response.created`, one `response.output_item.done` per output item, `response.completed` with usage. */
-export function sendResponsesSse(res: ServerResponse, model: string, r: Reply): void {
-	res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-	const ev = (type: string, data: Record<string, unknown>): void => {
-		res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
-	};
-	const output: unknown[] = r.toolCalls.length
-		? r.toolCalls.map((c, i) => ({
+function responseOf(model: string, r: Reply): { resp: Record<string, unknown>; output: unknown[] } {
+	// A forwarded Responses reply replays the upstream's own output items (reasoning included).
+	const replay = r.raw?.wire === "responses";
+	const output: unknown[] = replay ? [...(r.raw?.content ?? [])] : [];
+	if (!replay && (r.text || !r.toolCalls.length))
+		output.push({
+			type: "message",
+			id: `msg_testkit_${r.id ?? "0"}`,
+			role: "assistant",
+			status: "completed",
+			content: [{ type: "output_text", text: r.text, annotations: [] }],
+		});
+	if (!replay)
+		r.toolCalls.forEach((c, i) =>
+			output.push({
 				type: "function_call",
 				id: `fc_testkit_${i}`,
 				call_id: c.id,
@@ -83,20 +101,15 @@ export function sendResponsesSse(res: ServerResponse, model: string, r: Reply): 
 				...(c.name.includes(".") ? { namespace: c.name.split(".")[0] } : {}),
 				arguments: c.arguments,
 				status: "completed",
-			}))
-		: [
-				{
-					type: "message",
-					id: "msg_testkit",
-					role: "assistant",
-					status: "completed",
-					content: [{ type: "output_text", text: r.text, annotations: [] }],
-				},
-			];
+			}),
+		);
+	const incomplete =
+		r.stop === "max_tokens" ? "max_output_tokens" : r.stop === "refusal" ? "content_filter" : undefined;
 	const resp = {
-		id: "resp_testkit",
+		id: `resp_testkit_${r.id ?? "0"}`,
 		object: "response",
-		status: "completed",
+		status: incomplete ? "incomplete" : "completed",
+		...(incomplete ? { incomplete_details: { reason: incomplete } } : {}),
 		model,
 		output,
 		usage: {
@@ -107,8 +120,24 @@ export function sendResponsesSse(res: ServerResponse, model: string, r: Reply): 
 			output_tokens_details: { reasoning_tokens: 0 },
 		},
 	};
+	return { resp, output };
+}
+
+/** SSE answer: `response.created`, one `response.output_item.done` per output item, then `response.completed` (or `response.incomplete`) with usage. */
+export function sendResponsesSse(res: ServerResponse, model: string, r: Reply): void {
+	res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+	const ev = (type: string, data: Record<string, unknown>): void => {
+		res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+	};
+	const { resp, output } = responseOf(model, r);
 	ev("response.created", { response: { ...resp, status: "in_progress", output: [] } });
 	output.forEach((item, i) => ev("response.output_item.done", { output_index: i, item }));
-	ev("response.completed", { response: resp });
+	ev(resp.status === "incomplete" ? "response.incomplete" : "response.completed", { response: resp });
 	res.end();
+}
+
+/** A non-streaming Responses answer: the response object as one JSON body. */
+export function sendResponsesJson(res: ServerResponse, model: string, r: Reply): void {
+	res.writeHead(200, { "content-type": "application/json" });
+	res.end(JSON.stringify(responseOf(model, r).resp));
 }

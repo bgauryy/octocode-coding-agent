@@ -23,10 +23,10 @@ async function registrants(event: string): Promise<string[]> {
 	const cwd = tmp();
 	fs.mkdirSync(path.join(cwd, ".git"));
 	const fake = fakeHost();
-	Object.assign(fake.api, { getSessionName: () => undefined });
+	Object.assign(fake.api.session, { getName: () => undefined });
 	const files: string[] = [];
-	const on = fake.api.on.bind(fake.api) as (name: string, handler: never) => void;
-	(fake.api as unknown as { on: typeof on }).on = (name, handler) => {
+	const on = fake.api.bus.on.bind(fake.api) as (name: string, handler: never) => void;
+	(fake.api.bus as { on: typeof on }).on = (name, handler) => {
 		if (name === event) {
 			const frames = (new Error("registration site").stack ?? "")
 				.split("\n")

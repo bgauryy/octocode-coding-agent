@@ -1,6 +1,7 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { expect, it, vi } from "vitest";
 import { createHarness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it("cancels during before_agent_start without entering the provider and permits the next turn", async () => {
 	const entered = Promise.withResolvers<void>();
@@ -8,23 +9,23 @@ it("cancels during before_agent_start without entering the provider and permits 
 	let first = true;
 	const h = await createHarness({
 		settings: { retry: { enabled: false } },
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("before_agent_start", async () => {
+				api.bus.on("before_agent_start", async () => {
 					if (!first) return;
 					first = false;
 					entered.resolve();
 					await release.promise;
 				});
 			},
-		],
+		]),
 	});
 	const settled: boolean[] = [];
 	h.session.subscribe((event) => {
 		if (event.type === "agent_settled") settled.push(event.aborted);
 	});
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		h.setResponses([fauxAssistantMessage("response")]);
 		const provider = vi.spyOn(h.session.agent, "prompt");
 		const prompt = h.session.prompt("cancel before provider");

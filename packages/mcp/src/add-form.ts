@@ -1,23 +1,28 @@
 import type { McpAddCommand } from "@octocodeai/octocode-contracts/config";
 import { hostPaths } from "./host.ts";
 import { McpAddError, saveMcpDefinition, type McpAddOptions } from "./add.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import type { McpUi } from "./ui.ts";
 
 export type AddScope = "global" | "workspace";
 
 /** Where saves land and which names are taken, for the session now. */
-export function addOptions(state: McpExtensionState): McpAddOptions {
+export function addOptions(state: McpFeatureState): McpAddOptions {
 	return {
 		agentDir: hostPaths().agentDir(),
 		cwd: state.sessionCwd,
 		projectTrusted: state.projectTrusted,
-		existingNames: state.servers.map((server) => server.entry.name),
+		existingNames: [
+			...new Set([
+				...state.servers.map((server) => server.entry.name),
+				...state.api.mcpServers.list().map((server) => server.name),
+			]),
+		],
 	};
 }
 
 /** The workspace choice appears only when the workspace is trusted. */
-export async function chooseAddScope(state: McpExtensionState, ui: McpUi): Promise<AddScope | undefined> {
+export async function chooseAddScope(state: McpFeatureState, ui: McpUi): Promise<AddScope | undefined> {
 	const choice = await ui.menu(() => ({
 		title: "Add MCP — save to",
 		items: [
@@ -34,7 +39,7 @@ export async function chooseAddScope(state: McpExtensionState, ui: McpUi): Promi
 }
 
 /** The field-by-field form: scope, transport, then fields. A draft stays in the view until save or cancellation. */
-export async function addMcpByFields(state: McpExtensionState, ui: McpUi): Promise<void> {
+export async function addMcpByFields(state: McpFeatureState, ui: McpUi): Promise<void> {
 	if (!ui.input) return;
 	const scope = await chooseAddScope(state, ui);
 	if (!scope) return;

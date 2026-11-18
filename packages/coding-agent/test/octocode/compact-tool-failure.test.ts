@@ -3,7 +3,7 @@ import {
 	COMPACT_RESUME_TEXT,
 	COMPACT_RESUME_TYPE,
 	CompactRequests,
-} from "../../src/octocode/compaction/compact-tool.ts";
+} from "../../src/octocode/native/tools/compact/tool.ts";
 import { ThrashBreaker } from "../../src/octocode/compaction/pacing.ts";
 
 /** One requested compaction that settles, with `compact` ending as `outcome`; returns what the session was sent. */
@@ -14,7 +14,7 @@ function settle(hasUI: boolean, outcome: "complete" | "fail") {
 	const compact = vi.fn((options: { onComplete: () => void; onError: (error: Error) => void }) =>
 		outcome === "complete" ? options.onComplete() : options.onError(new Error("Nothing to compact")),
 	);
-	requests.settle({ sendMessage }, { compact, hasUI }, false);
+	requests.settle({ session: { sendMessage } }, { compact, hasUI }, false);
 	return { requests, sendMessage, compact };
 }
 

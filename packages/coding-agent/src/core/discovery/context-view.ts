@@ -92,7 +92,6 @@ const GROUPS: ReadonlyArray<{ id: string; title: string; noun: readonly [string,
 	{ id: "theme", title: "Themes", noun: ["theme", "themes"], kinds: ["theme"] },
 	{ id: "keybinding", title: "Keybindings", noun: ["keybindings file", "keybindings files"], kinds: ["keybinding"] },
 	{ id: "setting", title: "Settings", noun: ["settings file", "settings files"], kinds: ["setting"] },
-	{ id: "extension", title: "Extensions", noun: ["extension", "extensions"], kinds: ["extension"] },
 ];
 
 /** What a user does with Pi code Octocode does not run. */
@@ -120,9 +119,9 @@ export function sourceInfoLabel(info: { source: string; scope: string; path?: st
 	const category = info.path ? skillCategory({ filePath: info.path, sourceInfo: info }) : undefined;
 	if (category === "core") return "core";
 	if (info.source.startsWith("npm:") || info.source.startsWith("git:")) return `package ${info.source}`;
-	// Built-in extensions share the `builtin` source with the Octocode skill collection.
+	// Built-in features share the `builtin` source with the Octocode skill collection.
 	if (info.source === "builtin") return category === "octocode" ? "octocode" : "builtin";
-	// The native extension adds the other hosts' user skill folders as extra paths too.
+	// The native feature adds the other hosts' user skill folders as extra paths too.
 	if (info.path && isUnderPath(info.path, join(claudeConfigDir(), "skills"))) return "claude global";
 	if (info.path && isUnderPath(info.path, join(codexConfigDir(), "skills"))) return "codex global";
 	// Project skill folders of the other agents, reached through extra skill paths rather than settings.
@@ -159,8 +158,7 @@ function notLoadedNote(item: ConfigItem): string {
 	const { notLoaded, product } = item.provenance;
 	if (notLoaded === "untrusted") return UNTRUSTED_NOTE;
 	if (switchedOff(item.provenance)) return SWITCHED_OFF_NOTE;
-	if (notLoaded === "ignored-code")
-		return `${product === "pi" ? "Pi " : ""}${item.kind === "hook" ? "hook" : "extension"}, not loaded`;
+	if (notLoaded === "ignored-code") return `${product === "pi" ? "Pi " : ""}hook, not loaded`;
 	return item.provenance.shadowedBy ? `duplicate of ${sourceLabel(item.provenance.shadowedBy)}` : "";
 }
 
@@ -238,7 +236,7 @@ function kindEntries(
 
 function mcpLabel(server: McpEntry, piRoots: readonly string[]): { source: string; product?: Product } {
 	if (server.scope === "default" || server.source.startsWith("built-in")) return { source: "builtin" };
-	if (server.scope === "extension") return { source: "plugin" };
+	if (server.scope === "feature") return { source: "plugin" };
 	const scope = server.scope ?? "global";
 	const vendor = mcpVendorLabel(server.source);
 	if (vendor === ".agents" || vendor === "root .mcp.json") return { source: vendor };

@@ -22,7 +22,6 @@ const RULES: Record<ConfigKind, KindRule> = {
 	model: "layered",
 	setting: "layered",
 	keybinding: "additive",
-	extension: "additive",
 	hook: "additive",
 	plugin: "additive",
 	memory: "additive",

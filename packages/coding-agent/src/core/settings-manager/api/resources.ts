@@ -1,13 +1,10 @@
 import type { PackageSource, Settings } from "../../settings-schema.ts";
 
-/** Packages and resource paths (extensions, skills, prompt templates, themes). Project setters write project settings. */
+/** Packages and resource paths (skills, prompt templates, themes). Project setters write project settings. */
 export interface ResourceSettingsApi {
 	getPackages(): PackageSource[];
 	setPackages(packages: PackageSource[]): void;
 	setProjectPackages(packages: PackageSource[]): void;
-	getExtensionPaths(): string[];
-	setExtensionPaths(paths: string[]): void;
-	setProjectExtensionPaths(paths: string[]): void;
 	getSkillPaths(): string[];
 	setSkillPaths(paths: string[]): void;
 	setProjectSkillPaths(paths: string[]): void;

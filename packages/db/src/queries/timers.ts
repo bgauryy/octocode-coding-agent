@@ -48,6 +48,8 @@ export interface NewTimer {
 	condition?: { kind: TimerConditionKind; value: string; cwd?: string; baseline?: string };
 	maxRuns?: number;
 	deadlineAt?: number;
+	/** The row's `baseline` when it has no condition: a cron timer keeps its schedule here (`timer/cron.ts`). */
+	baseline?: string;
 	at: number;
 }
 
@@ -76,7 +78,7 @@ export function insert(db: DatabaseSync, timer: NewTimer): TimerRow {
 				timer.deadlineAt ?? null,
 				timer.at,
 				timer.at,
-				timer.condition?.baseline ?? null,
+				timer.baseline ?? timer.condition?.baseline ?? null,
 			),
 	)!;
 }
@@ -132,6 +134,45 @@ export function claim(db: DatabaseSync, id: number, sessionId: string, now: numb
 				 WHERE id = ?2 AND session_id = ?3 AND status = 'active' AND due_at <= ?1 RETURNING *`,
 			)
 			.get(now, id, sessionId),
+	);
+}
+
+/**
+ * Claims one fire of a due cron timer in one guarded statement and sets its next due time to `nextDue`, which the caller
+ * computed from the schedule: a cron mark is not an interval multiple, so `claim`'s arithmetic does not apply.
+ */
+export function claimCron(
+	db: DatabaseSync,
+	id: number,
+	sessionId: string,
+	now: number,
+	nextDue: number,
+): TimerRow | undefined {
+	return row(
+		db
+			.prepare(
+				`UPDATE timers SET runs = runs + 1, last_fired_at = ?1, updated_at = ?1, due_at = ?4
+				 WHERE id = ?2 AND session_id = ?3 AND status = 'active' AND due_at <= ?1 RETURNING *`,
+			)
+			.get(now, id, sessionId, nextDue),
+	);
+}
+
+/** Moves a due cron timer to `nextDue` without a run: a fire it missed for too long is not made up. */
+export function skipCron(
+	db: DatabaseSync,
+	id: number,
+	sessionId: string,
+	now: number,
+	nextDue: number,
+): TimerRow | undefined {
+	return row(
+		db
+			.prepare(
+				`UPDATE timers SET updated_at = ?1, due_at = ?4
+				 WHERE id = ?2 AND session_id = ?3 AND status = 'active' AND due_at <= ?1 RETURNING *`,
+			)
+			.get(now, id, sessionId, nextDue),
 	);
 }
 

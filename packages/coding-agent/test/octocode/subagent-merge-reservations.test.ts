@@ -7,7 +7,7 @@ import { agentsCommand } from "../../src/octocode/subagents/command.ts";
 import { mergeChild } from "../../src/octocode/subagents/merge-child.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

@@ -71,6 +71,7 @@ describe("application receipt persistence failures", () => {
 			uiStore: createUiStore(),
 			pendingMessagesContainer: new Container(),
 			ui: { requestRender: () => {} },
+			programStatus: { setPhase() {} },
 		});
 		subscribeToAgent(host);
 		const service = getApplicationPort(agentSession);

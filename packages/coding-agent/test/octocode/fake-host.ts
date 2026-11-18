@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureSetup, CommandContext, FeatureContext } from "../../src/core/features/index.ts";
 import type { ModelRegistry } from "../../src/core/model-registry.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
 
-type EditorFactory = ReturnType<ExtensionContext["ui"]["getEditorComponent"]>;
+type EditorFactory = ReturnType<FeatureContext["ui"]["getEditorComponent"]>;
 
 export const fakeCachePolicy: ModelRegistry["getCachePolicy"] = (model, settings, options) =>
 	resolveConfiguredCache(model, undefined, options, settings);
@@ -37,13 +37,99 @@ export function rendered(component: { render(width: number): string[] }, width =
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
+/** Where each flat host member lives on the grouped setup, for fakes written as one flat object. */
+const SETUP_MEMBERS = {
+	on: "bus.on",
+	registerTool: "tools.register",
+	registerTools: "tools.registerAll",
+	registerCommand: "commands.register",
+	registerMessageRenderer: "renderers.message",
+	registerEntryRenderer: "renderers.entry",
+	registerToolRenderer: "renderers.tool",
+	sendMessage: "session.sendMessage",
+	sendUserMessage: "session.sendUserMessage",
+	appendEntry: "session.appendEntry",
+	setSessionName: "session.setName",
+	getSessionName: "session.getName",
+	setLabel: "session.setLabel",
+	createUsageRecorder: "usage.createRecorder",
+	recordUsage: "usage.record",
+	getActiveTools: "tools.getActive",
+	getHiddenDeclarations: "tools.getHiddenDeclarations",
+	getAllTools: "tools.getAll",
+	setActiveTools: "tools.setActive",
+	selectsTools: "tools.selects",
+	setToolPolicy: "tools.setPolicy",
+	getSettings: "settings.get",
+	getCommands: "resources.getCommands",
+	getSkillDirectories: "resources.getSkillDirectories",
+	getSkillResourceSnapshot: "resources.getSkillResourceSnapshot",
+	setModel: "models.setModel",
+	getThinkingLevel: "models.getThinkingLevel",
+	registerProvider: "providers.register",
+	registerMcpServer: "mcpServers.register",
+	getMcpServers: "mcpServers.list",
+	events: "channels",
+} as const satisfies Record<string, string>;
+
+/**
+ * A setup over a flat fake: each slice method calls the flat member of the same old name at call time, so the
+ * flat object stays the one recorder. A slice method may be replaced on the setup itself.
+ */
+export function groupSetup(flat: Record<string, unknown>): FeatureSetup {
+	const setup: Record<string, unknown> = {};
+	for (const [name, place] of Object.entries(SETUP_MEMBERS)) {
+		const [slice, member] = place.split(".");
+		if (!member) {
+			Object.defineProperty(setup, slice, {
+				get: () => flat[name],
+				set: (value) => {
+					flat[name] = value;
+				},
+				enumerable: true,
+			});
+			continue;
+		}
+		const group = (setup[slice] ??= {}) as Record<string, unknown>;
+		// A member the flat fake lacks stays absent, as an optional host member is.
+		if (typeof flat[name] !== "function") continue;
+		group[member] = (...args: unknown[]) => (flat[name] as (...args: unknown[]) => unknown)(...args);
+	}
+	return setup as unknown as FeatureSetup;
+}
+
+/**
+ * Add the setup slices to a flat fake in place: each slice method calls the flat member of the old name at call time,
+ * so the test keeps asserting on and replacing the flat members. Slices the fake already has gain only missing members.
+ */
+export function asSetup<T extends object>(flat: T): T & FeatureSetup {
+	const record = flat as Record<string, unknown>;
+	for (const [name, place] of Object.entries(SETUP_MEMBERS)) {
+		const [slice, member] = place.split(".");
+		if (!member) {
+			if (!(slice in record) && name in record) {
+				Object.defineProperty(record, slice, {
+					get: () => record[name],
+					set: (value) => {
+						record[name] = value;
+					},
+				});
+			}
+			continue;
+		}
+		if (typeof record[name] !== "function") continue;
+		const group = (record[slice] ??= {}) as Record<string, unknown>;
+		group[member] ??= (...args: unknown[]) => (record[name] as (...args: unknown[]) => unknown)(...args);
+	}
+	return flat as T & FeatureSetup;
+}
+
 /** Records every registration an Octocode extension makes and lets a test fire its events. */
 export function fakeHost(settings: Record<string, unknown> = {}) {
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, Handler[]>();
 	const renderers = new Map<string, any>();
-	const shortcuts = new Map<string, { description?: string; handler: (ctx: unknown) => unknown }>();
 	const sent: Array<{ message: any; options: any }> = [];
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	let activeTools: string[] | undefined;
@@ -62,8 +148,6 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 		registerEntryRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		// The tool display resolver (octocode/ui/tool-display.ts) registers here; the fake draws nothing.
 		registerToolRenderer: () => {},
-		registerShortcut: (key: string, options: { description?: string; handler: (ctx: unknown) => unknown }) =>
-			shortcuts.set(key, options),
 		on: (event: string, handler: Handler) => {
 			const list = handlers.get(event) ?? [];
 			list.push(handler);
@@ -96,7 +180,7 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 		}),
 		events: { on: () => () => undefined, emit: () => undefined },
 		// Names only: a method renamed on the host fails here instead of quietly going unused in every test.
-	} satisfies Partial<Record<keyof ExtensionAPI | "registerToolBatches", unknown>>;
+	} satisfies Partial<Record<keyof typeof SETUP_MEMBERS | "registerToolBatches", unknown>>;
 	const emit = async (event: string, payload: unknown, ctx: unknown) => {
 		const results: unknown[] = [];
 		for (const handler of handlers.get(event) ?? []) results.push(await handler(payload, ctx));
@@ -105,12 +189,13 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 	/** Runs every handler for `event` in order and returns the last one's result, as Octocode does for most events. */
 	const fire = async (event: string, payload: unknown, ctx: unknown) => (await emit(event, payload, ctx)).at(-1);
 	return {
-		api: api as unknown as ExtensionAPI,
+		api: groupSetup(api),
+		/** The flat recorder behind `api`. */
+		flat: api as Record<string, unknown>,
 		tools,
 		commands,
 		handlers,
 		renderers,
-		shortcuts,
 		sent,
 		entries,
 		emit,
@@ -142,7 +227,7 @@ export function fakeCtx(options: {
 	idle?: boolean;
 	ui?: Partial<FakeUi>;
 	model?: unknown;
-}): ExtensionCommandContext & { ui: FakeUi & ExtensionContext["ui"] } {
+}): CommandContext & { ui: FakeUi & FeatureContext["ui"] } {
 	const state: FakeUi = {
 		notes: [],
 		statuses: new Map(),
@@ -189,10 +274,6 @@ export function fakeCtx(options: {
 		setWorkingIndicator: (indicator: unknown) => {
 			(ui as FakeUi & { indicator?: unknown }).indicator = indicator;
 			return (ui as FakeUi & { indicator?: unknown }).indicator;
-		},
-		setHiddenThinkingLabel: (label?: string) => {
-			(ui as FakeUi & { thinkingLabel?: string }).thinkingLabel = label;
-			return (ui as FakeUi & { thinkingLabel?: string }).thinkingLabel;
 		},
 		select: async () => state.selects.shift(),
 		input: async () => state.inputs.shift(),
@@ -261,7 +342,7 @@ export function fakeCtx(options: {
 /** A started permission state in `mode` (default workspace: in-repo work runs, anything else asks). */
 export function fakePermission(
 	mode: PermissionMode = "workspace",
-	options: { api?: ExtensionAPI; isSubagent?: boolean; stderr?: (text: string) => void; snapshotMs?: number } = {},
+	options: { api?: FeatureSetup; isSubagent?: boolean; stderr?: (text: string) => void; snapshotMs?: number } = {},
 ): Permission {
 	const permission = new Permission({
 		api: options.api ?? fakeHost().api,

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
-import { agentModes, agentOperation } from "../../src/octocode/agent-tool.ts";
+import { agentModes, agentOperation } from "../../src/octocode/native/tools/agent/tool.ts";
 import { shellScript } from "../../src/octocode/files/bash-jobs/shell.ts";
 import octocode from "../../src/octocode/index.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

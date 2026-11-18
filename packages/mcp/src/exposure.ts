@@ -1,4 +1,4 @@
-import type { McpExtensionApi } from "./host/types.ts";
+import type { McpFeatureApi } from "./host/types.ts";
 import { DEFAULT_MCP_EXPOSURE } from "./servers.ts";
 import { type McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
@@ -19,7 +19,7 @@ export const declaredExposure = (exposure: McpExposure): "direct" | "hidden" =>
 
 /**
  * Whether the server's tools are in an agent's default tool selection: `defaultActive` (default true), or a server the
- * task of this child named (`McpExtensionState.taskNamed`), which the task chose for it. A server only the child's own
+ * task of this child named (`McpFeatureState.taskNamed`), which the task chose for it. A server only the child's own
  * tools name keeps its default: an exact `+mcp__x__tool` entry activates that one tool.
  */
 export function isDefaultActive(entry: McpServerEntry, taskNamed?: ReadonlySet<string>): boolean {
@@ -33,12 +33,12 @@ const serverToolPrefix = (server: string): string => `${mcpNamespace(server)}__`
  * server the child's task named counts as default-active, so no `--tools` entry has to name it (an exclusion still wins).
  */
 export function isSelected(
-	api: Pick<McpExtensionApi, "selectsTools">,
+	api: { tools: Pick<McpFeatureApi["tools"], "selects"> },
 	entry: McpServerEntry,
 	taskNamed?: ReadonlySet<string>,
 ): boolean {
 	return (
-		typeof api.selectsTools !== "function" ||
-		api.selectsTools(serverToolPrefix(entry.name), isDefaultActive(entry, taskNamed))
+		typeof api.tools.selects !== "function" ||
+		api.tools.selects(serverToolPrefix(entry.name), isDefaultActive(entry, taskNamed))
 	);
 }

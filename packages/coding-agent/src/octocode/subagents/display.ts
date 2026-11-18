@@ -82,7 +82,7 @@ export function agentTaskDisplay(input: ToolDisplayInput<AgentArgs, RunDetails |
 	const stats = finishedStats(details, details);
 	return {
 		...marked,
-		outcome: { text: doneSummary(details, undefined, true), ...(state === "failed" ? { tone: "error" as const } : {}) },
+		outcome: { text: doneSummary(details, true), ...(state === "failed" ? { tone: "error" as const } : {}) },
 		blocks: [
 			...(body.trim() ? [{ type: "markdown" as const, text: body }] : []),
 			...(stats ? [{ type: "text" as const, text: stats, tone: "muted" as const }] : []),

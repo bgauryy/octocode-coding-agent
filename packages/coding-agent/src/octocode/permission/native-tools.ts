@@ -1,7 +1,7 @@
 import type { TSchema } from "typebox";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
-import type { ExtensionAPI, ToolDefinition } from "../../core/features/index.ts";
+import type { FeatureSetup, ToolDefinition } from "../../core/features/index.ts";
 import { declaresReason, settleReason, withoutReason, withReason } from "../shared/reason.ts";
 import { declareToolEffect, declaresEffect } from "./tool-effects.ts";
 import {
@@ -15,7 +15,7 @@ export { nativeToolsPort } from "./native-deferral.ts";
 
 /**
  * Every native registration declares its permission owner here. Adding a tool requires an explicit review of its
- * effects; a read-only hint alone cannot bypass that review. Extensions outside Octocode retain their own contract.
+ * effects; a read-only hint alone cannot bypass that review. Features outside Octocode retain their own contract.
  */
 const NATIVE_PERMISSION_OWNERS = new Map([
 	["bash", "gate/classify: shell and destructive commands"],
@@ -44,13 +44,13 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 
 /**
  * Whether `name` is a native tool: one with a reviewed permission owner above, or one that declared its effect on its
- * definition (`ToolDefinition.effect`) when it registered (MCP and extension tools are not).
+ * definition (`ToolDefinition.effect`) when it registered (MCP and feature tools are not).
  */
 export const isNativeTool = (name: string): boolean => NATIVE_PERMISSION_OWNERS.has(name) || declaresEffect(name);
 
 export const getNativeToolNames = (): string[] => [...NATIVE_PERMISSION_OWNERS.keys()];
 
-/** Core tools registered outside the native extension that still take the native `reason`: the built-in MCP extension's `mcp`. */
+/** Core tools registered outside the native feature that still take the native `reason`: the built-in MCP feature's `mcp`. */
 const CORE_REASON_TOOLS = new Set([MCP_MANAGE_TOOL_NAME]);
 
 /** Whether calls to `name` carry the required native `reason`: every native tool and the core tools above. */
@@ -92,33 +92,29 @@ function withReasonArgument<P extends TSchema, D, S>(tool: ToolDefinition<P, D, 
  * Fail before an unreviewed native tool enters the registry, including late registrations. The deferrable tools'
  * declarations are settled first thing at `session_start` (`settleNativeDeferral`), before any request declares them.
  */
-export function withNativePermissionOwners(api: ExtensionAPI): ExtensionAPI {
-	api.on("session_start", (_event, ctx) => settleNativeDeferral(api, ctx));
-	api.on("tool_execution_end", (_event, ctx) => redeclareLoadedNatives(api, ctx));
-	api.on("model_select", (_event, ctx) => reconsiderNativeOnDemand(api, ctx));
-	const registerTool: ExtensionAPI["registerTool"] = (tool) => {
+export function withNativePermissionOwners(api: FeatureSetup): FeatureSetup {
+	api.bus.on("session_start", (_event, ctx) => settleNativeDeferral(api, ctx));
+	api.bus.on("tool_execution_end", (_event, ctx) => redeclareLoadedNatives(api, ctx));
+	api.bus.on("model_select", (_event, ctx) => reconsiderNativeOnDemand(api, ctx));
+	const registerTool: FeatureSetup["tools"]["register"] = (tool) => {
 		// Declaring an effect is the review: the permission layer reads it, so the tool needs no entry above.
 		if (!isNativeTool(tool.name) && !tool.effect) {
 			throw new Error(
 				`Native tool ${tool.name} has no permission owner; declare its effect on the definition or register its gate or internal check first.`,
 			);
 		}
-		api.registerTool(withNativeDeferral(api, withReasonArgument(declareToolEffect(tool))));
+		api.tools.register(withNativeDeferral(api, withReasonArgument(declareToolEffect(tool))));
 	};
 	return withRegisterTool(api, registerTool);
 }
 
-/** The API of a built-in extension that registers a core tool (`mcp`): that tool takes the required `reason` too. */
-export function withCoreToolReason(api: ExtensionAPI): ExtensionAPI {
+/** The API of a built-in feature that registers a core tool (`mcp`): that tool takes the required `reason` too. */
+export function withCoreToolReason(api: FeatureSetup): FeatureSetup {
 	return withRegisterTool(api, (tool) =>
-		api.registerTool(CORE_REASON_TOOLS.has(tool.name) ? withReasonArgument(tool) : tool),
+		api.tools.register(CORE_REASON_TOOLS.has(tool.name) ? withReasonArgument(tool) : tool),
 	);
 }
 
-function withRegisterTool(api: ExtensionAPI, registerTool: ExtensionAPI["registerTool"]): ExtensionAPI {
-	return new Proxy(api, {
-		get(target, property, receiver) {
-			return property === "registerTool" ? registerTool : Reflect.get(target, property, receiver);
-		},
-	});
+function withRegisterTool(api: FeatureSetup, register: FeatureSetup["tools"]["register"]): FeatureSetup {
+	return { ...api, tools: { ...api.tools, register } };
 }

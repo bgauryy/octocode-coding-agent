@@ -1,5 +1,5 @@
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
-import type { ExtensionUIRemoteAnswer } from "../../../core/features/types.ts";
+import type { RemoteAnswer } from "../../../core/features/types.ts";
 import type { AskView } from "../../shared/ask-view.ts";
 import { viewOf } from "../question.ts";
 import { TYPE_OWN } from "./answers.ts";
@@ -21,7 +21,10 @@ export function questionView(q: Question): AskView {
  * wins and closes the terminal card). A batch or a multi-select stays terminal-only: one answer cannot fill its tabs. A
  * choice that names no option of the question is not an answer.
  */
-export function remoteAnswer(questions: readonly Question[]): { remote: ExtensionUIRemoteAnswer<Reply[]> } | undefined {
+export function remoteAnswer(
+	questions: readonly Question[],
+	hold?: () => void,
+): { remote: RemoteAnswer<Reply[]> } | undefined {
 	const [q] = questions;
 	if (!q || questions.length !== 1 || (q.type !== "text" && q.type !== "choice")) return undefined;
 	const options = q.options ?? [];
@@ -31,6 +34,7 @@ export function remoteAnswer(questions: readonly Question[]): { remote: Extensio
 			title: q.question,
 			options: options.map((option) => option.label),
 			allowsText: true,
+			...(hold ? { hold } : {}),
 			ask: { ...view, options: view.options.slice(0, options.length), writeIn: false as const },
 			answer: (answer: { choice: string } | { text: string }): Reply[] | undefined => {
 				if ("text" in answer) {

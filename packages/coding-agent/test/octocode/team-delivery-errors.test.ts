@@ -9,7 +9,7 @@ import { ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
 
 describe("Mail.inject onAccepted", () => {
 	it("does not count a synchronous delivery as failed when onAccepted throws", () => {
-		const mail = new Mail({ sendMessage: () => undefined });
+		const mail = new Mail({ session: { sendMessage: () => undefined } });
 		let result: boolean | undefined;
 		expect(() => {
 			result = mail.notice("hello", undefined, () => {

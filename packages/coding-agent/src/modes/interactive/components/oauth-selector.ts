@@ -1,18 +1,10 @@
 import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@octocodeai/octocode-ai";
-import {
-	Container,
-	type Focusable,
-	fuzzyFilter,
-	getKeybindings,
-	GLYPH,
-	Input,
-	Spacer,
-	TruncatedText,
-} from "@octocodeai/octocode-tui";
-import { windowList } from "../../../theme/page-kit.ts";
-import { emptyState, HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
+import { Container, type Focusable, ListView, Spacer, TruncatedText, truncateToWidth } from "@octocodeai/octocode-tui";
+import { HintBar, keyText, moveHint, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
+import { listRows, listTheme, syncEmpty, typeKeepingSelection } from "./list-kit.ts";
+import { plainText } from "./styled-line.ts";
 
 export type AuthSelectorProvider = {
 	detail?: string;
@@ -53,29 +45,23 @@ function formatAuthSelectorProviderStatus(provider: AuthSelectorProvider): strin
 }
 
 /**
- * Component that renders an auth provider selector
+ * The provider picker of /login and /logout: a `⌕` search over providers, each row with how it is configured. Enter
+ * signs in (or removes the saved credential); a click only selects on /logout, which removes.
  */
 export class OAuthSelectorComponent extends Container implements Focusable {
-	private searchInput: Input;
+	private readonly hints = new HintBar([]);
+	private confirmHint: RankedHint = ["enter", "select"];
+	private cancelHint: RankedHint = ["esc", "cancel"];
+	private readonly list: ListView<AuthSelectorProvider>;
+	private readonly mode: "sign-in" | "logout";
+	private readonly hasProviders: boolean;
 
-	// Focusable implementation - propagate to search input for IME cursor positioning
-	private _focused = false;
 	get focused(): boolean {
-		return this._focused;
+		return this.list.focused;
 	}
 	set focused(value: boolean) {
-		this._focused = value;
-		this.searchInput.focused = value;
+		this.list.focused = value;
 	}
-
-	private listContainer: Container;
-	private allProviders: AuthSelectorProvider[];
-	private filteredProviders: AuthSelectorProvider[];
-	private selectedIndex: number = 0;
-	private mode: "sign-in" | "logout";
-	private onSelectCallback: (providerId: string, authType: AuthSelectorProvider["authType"]) => void;
-	private onCancelCallback: () => void;
-	private showAuthTypeLabels: boolean;
 
 	constructor(
 		mode: "sign-in" | "logout",
@@ -83,151 +69,77 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		onSelect: (providerId: string, authType: AuthSelectorProvider["authType"]) => void,
 		onCancel: () => void,
 		initialSearchInput?: string,
+		rows?: number,
 	) {
 		super();
-
 		this.mode = mode;
-		this.allProviders = providers;
-		this.filteredProviders = providers;
-		this.showAuthTypeLabels = new Set(providers.map((provider) => provider.authType)).size > 1;
-		this.onSelectCallback = onSelect;
-		this.onCancelCallback = onCancel;
+		this.hasProviders = providers.length > 0;
+		const showAuthTypeLabels = mode !== "sign-in" && new Set(providers.map((provider) => provider.authType)).size > 1;
+
+		this.list = new ListView<AuthSelectorProvider>({
+			items: providers,
+			maxRows: listRows(rows, 12, 8),
+			theme: listTheme(),
+			clickConfirms: mode === "sign-in",
+			search: {
+				text: (provider) =>
+					`${provider.name} ${provider.id} ${provider.authType} ${provider.method?.name ?? ""} ${provider.detail ?? ""}`,
+				placeholder: mode === "sign-in" ? "type to search (chatgpt, copilot)" : "type to search",
+			},
+			row: (provider, { selected, width }) => {
+				const name = plainText(provider.name);
+				const status = provider.detail
+					? theme.fg("muted", ` · ${plainText(provider.detail)}`)
+					: formatAuthSelectorProviderStatus(provider);
+				const type = showAuthTypeLabels
+					? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
+					: "";
+				const label = selected ? theme.fg("accent", theme.bold(name)) : theme.fg("text", name);
+				return truncateToWidth(`${label}${type}${status}`, width, "…");
+			},
+		});
+		this.list.onSelect = (provider) => onSelect(provider.id, provider.authType);
+		this.list.onCancel = onCancel;
+		if (initialSearchInput) this.list.setQuery(initialSearchInput);
+		this.syncEmpty();
 
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-
-		const title = mode === "sign-in" ? "Sign in — choose a provider" : "Remove a saved AI provider credential:";
+		const title = mode === "sign-in" ? "Sign in — choose a provider" : "Remove a saved AI provider credential";
 		this.addChild(new TruncatedText(theme.fg("accent", theme.bold(title)), 1, 0));
 		if (mode === "sign-in") {
 			this.addChild(
-				new TruncatedText(
-					theme.fg(
-						"muted",
-						"Subscription, account or API key. Type to search (chatgpt, copilot). Then /model picks a model.",
-					),
-					1,
-					0,
-				),
+				new TruncatedText(theme.fg("muted", "Subscription, account or API key. Then /model picks a model."), 1, 0),
 			);
 		}
 		this.addChild(new Spacer(1));
-
-		this.searchInput = new Input();
-		if (initialSearchInput) {
-			this.searchInput.setValue(initialSearchInput);
-		}
-		this.searchInput.onSubmit = () => {
-			const selectedProvider = this.filteredProviders[this.selectedIndex];
-			if (selectedProvider) {
-				this.onSelectCallback(selectedProvider.id, selectedProvider.authType);
-			}
-		};
-		this.addChild(this.searchInput);
+		this.addChild(this.list);
 		this.addChild(new Spacer(1));
-
-		this.listContainer = new Container();
-		this.addChild(this.listContainer);
-
-		this.addChild(new Spacer(1));
-		this.addChild(
-			new HintBar([
-				moveHint(2),
-				[keyText("tui.select.confirm"), mode === "logout" ? "remove" : "select", 1],
-				[keyText("tui.select.cancel"), "cancel", 0],
-			]),
-		);
-
+		this.confirmHint = [keyText("tui.select.confirm"), mode === "logout" ? "remove" : "sign in", 1];
+		this.cancelHint = [keyText("tui.select.cancel"), "cancel", 0];
+		this.addChild(this.hints);
+		this.syncHints();
 		this.addChild(new DynamicBorder());
-
-		this.filterProviders(initialSearchInput ?? "");
 	}
 
-	private filterProviders(query: string): void {
-		this.filteredProviders = query
-			? fuzzyFilter(
-					this.allProviders,
-					query,
-					(provider) =>
-						`${provider.name} ${provider.id} ${provider.authType} ${provider.method?.name ?? ""} ${provider.detail ?? ""}`,
-				)
-			: this.allProviders;
-		this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, Math.max(0, this.filteredProviders.length - 1)));
-		this.updateList();
-	}
-
-	private updateList(): void {
-		this.listContainer.clear();
-
-		// One row fewer than before the key-hint line, so the dialog keeps its height.
-		const maxVisible = 7;
-		const { start: startIndex, end: endIndex } = windowList(
-			this.filteredProviders.length,
-			this.selectedIndex,
-			maxVisible,
-		);
-
-		for (let i = startIndex; i < endIndex; i++) {
-			const provider = this.filteredProviders[i];
-			if (!provider) continue;
-
-			const isSelected = i === this.selectedIndex;
-
-			const statusIndicator = provider.detail
-				? theme.fg("muted", ` · ${provider.detail}`)
-				: formatAuthSelectorProviderStatus(provider);
-			const authTypeLabel =
-				this.showAuthTypeLabels && this.mode !== "sign-in"
-					? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
-					: "";
-			let line = "";
-			if (isSelected) {
-				const prefix = theme.fg("accent", `${GLYPH.cursor} `);
-				const text = theme.fg("accent", provider.name);
-				line = prefix + text + authTypeLabel + statusIndicator;
-			} else {
-				const text = `  ${theme.fg("text", provider.name)}`;
-				line = text + authTypeLabel + statusIndicator;
-			}
-
-			this.listContainer.addChild(new TruncatedText(line, 1, 0));
-		}
-
-		if (startIndex > 0 || endIndex < this.filteredProviders.length) {
-			const scrollInfo = theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredProviders.length})`);
-			this.listContainer.addChild(new TruncatedText(scrollInfo, 1, 0));
-		}
-
-		if (this.filteredProviders.length === 0) {
-			const message =
-				this.allProviders.length === 0
-					? this.mode === "sign-in"
-						? "No providers available"
-						: "No providers logged in. Use /providers first."
-					: "No matching providers";
-			this.listContainer.addChild(new TruncatedText(emptyState(message), 0, 0));
-		}
+	/** `No providers match "q"`, or what to do when there is none at all. */
+	private syncEmpty(): void {
+		if (this.hasProviders) return syncEmpty(this.list, "providers");
+		this.list.setEmpty({
+			message: this.mode === "sign-in" ? "No providers available" : "No providers logged in. Use /providers first.",
+		});
 	}
 
 	handleInput(keyData: string): void {
-		const kb = getKeybindings();
-		if (kb.matches(keyData, "tui.select.up")) {
-			if (this.filteredProviders.length === 0) return;
-			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-			this.updateList();
-		} else if (kb.matches(keyData, "tui.select.down")) {
-			if (this.filteredProviders.length === 0) return;
-			this.selectedIndex = Math.min(this.filteredProviders.length - 1, this.selectedIndex + 1);
-			this.updateList();
-		} else if (kb.matches(keyData, "tui.select.confirm")) {
-			const selectedProvider = this.filteredProviders[this.selectedIndex];
-			if (selectedProvider) {
-				this.onSelectCallback(selectedProvider.id, selectedProvider.authType);
-			}
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
-			this.onCancelCallback();
-		} else {
-			this.searchInput.handleInput(keyData);
-			this.filterProviders(this.searchInput.getValue());
-		}
+		typeKeepingSelection(this.list, keyData);
+		this.syncEmpty();
+		this.syncHints();
+	}
+
+	/** While the list is empty, Enter does nothing: only Esc (and the empty line's recovery key) remain. */
+	private syncHints(): void {
+		this.hints.setHints(
+			this.list.getItems().length ? [moveHint(1), this.confirmHint, this.cancelHint] : [this.cancelHint],
+		);
 	}
 }

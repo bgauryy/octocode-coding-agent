@@ -7,6 +7,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -25,6 +26,7 @@ it("loads one native command per canonical name through the real SDK", async () 
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -39,7 +41,7 @@ it("loads one native command per canonical name through the real SDK", async () 
 		sessionManager: SessionManager.inMemory(cwd),
 	});
 	try {
-		const runner = session.extensionRunner;
+		const runner = session.featureHost;
 		const commands = runner.getRegisteredCommands();
 		const inventory = new Set([...BUILTIN_SLASH_COMMANDS, ...commands].map((command) => command.name));
 		const guide = fs.readFileSync(path.join(import.meta.dirname, "../../docs/commands.md"), "utf8");
@@ -86,7 +88,6 @@ it("loads one native command per canonical name through the real SDK", async () 
 		await session.controlPlan({ action: "leave" });
 
 		expect(commands.filter((command) => command.name === "mcp")).toHaveLength(1);
-		expect(commands.filter((command) => command.name === "llama")).toHaveLength(1);
 	} finally {
 		await session.dispose();
 	}

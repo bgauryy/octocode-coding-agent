@@ -6,7 +6,7 @@ import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 import { lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { getAgentDir, VERSION } from "../config.ts";
-import type { Extension } from "./features/types.ts";
+import type { FeatureRecord } from "./features/types.ts";
 import { isSyntheticPath } from "./source-info.ts";
 
 export interface CrashRecord {
@@ -88,7 +88,7 @@ function updateCrashLog(path: string, update: (records: CrashRecord[]) => CrashR
 	}
 }
 
-type ExtensionStackMetadata = Pick<Extension, "path" | "sourceInfo">;
+type FeatureStackMetadata = Pick<FeatureRecord, "path" | "sourceInfo">;
 
 function normalizeStackPath(value: string): string {
 	return value.replace(/\\/g, "/").replace(/\/+$/u, "");
@@ -111,10 +111,10 @@ function stackContainsPath(stack: string, targetPath: string, includeDescendants
 	return false;
 }
 
-/** Find loaded extensions with source files in a stack trace. */
-export function findExtensionStackMatches(
+/** Find loaded features with source files in a stack trace. */
+export function findFeatureStackMatches(
 	stack: string | undefined,
-	extensions: readonly ExtensionStackMetadata[],
+	features: readonly FeatureStackMetadata[],
 ): string[] {
 	if (!stack) return [];
 	const normalizedStack = stack
@@ -133,15 +133,15 @@ export function findExtensionStackMatches(
 	const matches: string[] = [];
 	const seen = new Set<string>();
 
-	for (const extension of extensions) {
-		const resolvedPath = normalizeStackPath(extension.path);
+	for (const feature of features) {
+		const resolvedPath = normalizeStackPath(feature.path);
 		const singleFilePackage =
-			extension.sourceInfo.origin === "package" &&
-			!/^(?:npm:|git:|https?:\/\/|ssh:\/\/)/u.test(extension.sourceInfo.source) &&
-			/\.[cm]?[jt]s$/u.test(extension.sourceInfo.source);
+			feature.sourceInfo.origin === "package" &&
+			!/^(?:npm:|git:|https?:\/\/|ssh:\/\/)/u.test(feature.sourceInfo.source) &&
+			/\.[cm]?[jt]s$/u.test(feature.sourceInfo.source);
 		const packageRoot =
-			extension.sourceInfo.origin === "package" && !singleFilePackage && extension.sourceInfo.baseDir
-				? extension.sourceInfo.baseDir
+			feature.sourceInfo.origin === "package" && !singleFilePackage && feature.sourceInfo.baseDir
+				? feature.sourceInfo.baseDir
 				: undefined;
 		const slashIndex = resolvedPath.lastIndexOf("/");
 		const directoryEntry = /\/index\.[cm]?[jt]s$/u.test(resolvedPath);
@@ -153,9 +153,7 @@ export function findExtensionStackMatches(
 		if (!matched) continue;
 
 		const label =
-			extension.sourceInfo.origin === "package" && extension.sourceInfo.source
-				? extension.sourceInfo.source
-				: extension.path;
+			feature.sourceInfo.origin === "package" && feature.sourceInfo.source ? feature.sourceInfo.source : feature.path;
 		if (!seen.has(label)) {
 			seen.add(label);
 			matches.push(label);

@@ -77,7 +77,7 @@ export function currentToolRoles(): ResolvedRoles {
 	return current;
 }
 
-/** Replaces the snapshot; the MCP registry calls it (`McpExtensionState.emitChange`). */
+/** Replaces the snapshot; the MCP registry calls it (`McpFeatureState.emitChange`). */
 export function publishToolRoles(roles: ResolvedRoles): void {
 	current = roles;
 }

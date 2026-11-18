@@ -55,6 +55,13 @@ export function followingBareCd(command: string, env: NodeJS.ProcessEnv = proces
 	return command.replace(/(^|&&|;|\n|\()(\s*)cd\s+(?=[A-Za-z0-9_])/g, "$1$2cd ./");
 }
 
+/**
+ * The command with each `cd <plain word>` that ends in `;` or a newline joined to what follows by `&&` instead, so a
+ * failed `cd` stops the command. The rewrite is a suggestion for a refusal: the caller checks it before offering it.
+ */
+export const joiningCd = (command: string): string =>
+	command.replace(/(^|&&|;|\n|\()(\s*cd\s+[^\s;&|()<>$`'"\\]+)[ \t]*(?:;|\n)[ \t]*/g, "$1$2 && ");
+
 /** A word spelled from the home directory by the variable (`$HOME/x`, `"${HOME}/x"`), as the `~` path a check expands; undefined for anything else. */
 const homeVariable = (text: string): string | undefined => {
 	const match = /^\$(?:HOME|\{HOME\})(\/[^$`*?[\\'{}]*)?$/.exec(text.replaceAll('"', ""));

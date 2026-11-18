@@ -71,22 +71,22 @@ describe("SettingsManager - External Edit Preservation", () => {
 		expect(savedSettings.theme).toBe("light");
 	});
 
-	it("should preserve file changes to extensions array when changing unrelated setting", async () => {
+	it("should preserve file changes to skills array when changing unrelated setting", async () => {
 		const settingsPath = join(agentDir, "settings.json");
 
 		writeFileSync(
 			settingsPath,
 			JSON.stringify({
 				theme: "dark",
-				extensions: ["/old/extension.ts"],
+				skills: ["/old/extension.ts"],
 			}),
 		);
 
 		const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 
-		// User externally updates extensions
+		// User externally updates skills
 		const currentSettings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		currentSettings.extensions = ["/new/extension.ts"];
+		currentSettings.skills = ["/new/extension.ts"];
 		writeFileSync(settingsPath, JSON.stringify(currentSettings, null, 2));
 
 		// Change unrelated setting
@@ -95,8 +95,8 @@ describe("SettingsManager - External Edit Preservation", () => {
 
 		const savedSettings = JSON.parse(readFileSync(settingsPath, "utf-8"));
 
-		// With the fix, extensions should be preserved (not reverted to startup value)
-		expect(savedSettings.extensions).toEqual(["/new/extension.ts"]);
+		// With the fix, skills should be preserved (not reverted to startup value)
+		expect(savedSettings.skills).toEqual(["/new/extension.ts"]);
 	});
 
 	it("should preserve external project settings changes when updating unrelated project field", async () => {
@@ -104,7 +104,7 @@ describe("SettingsManager - External Edit Preservation", () => {
 		writeFileSync(
 			projectSettingsPath,
 			JSON.stringify({
-				extensions: ["./old-extension.ts"],
+				skills: ["./old-extension.ts"],
 				prompts: ["./old-prompt.md"],
 			}),
 		);
@@ -115,12 +115,12 @@ describe("SettingsManager - External Edit Preservation", () => {
 		currentProjectSettings.prompts = ["./new-prompt.md"];
 		writeFileSync(projectSettingsPath, JSON.stringify(currentProjectSettings, null, 2));
 
-		manager.setProjectExtensionPaths(["./updated-extension.ts"]);
+		manager.setProjectSkillPaths(["./updated-extension.ts"]);
 		await manager.flush();
 
 		const savedProjectSettings = JSON.parse(readFileSync(projectSettingsPath, "utf-8"));
 		expect(savedProjectSettings.prompts).toEqual(["./new-prompt.md"]);
-		expect(savedProjectSettings.extensions).toEqual(["./updated-extension.ts"]);
+		expect(savedProjectSettings.skills).toEqual(["./updated-extension.ts"]);
 	});
 
 	it("should let in-memory project changes override external changes for the same project field", async () => {
@@ -128,20 +128,20 @@ describe("SettingsManager - External Edit Preservation", () => {
 		writeFileSync(
 			projectSettingsPath,
 			JSON.stringify({
-				extensions: ["./initial-extension.ts"],
+				skills: ["./initial-extension.ts"],
 			}),
 		);
 
 		const manager = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
 
 		const currentProjectSettings = JSON.parse(readFileSync(projectSettingsPath, "utf-8"));
-		currentProjectSettings.extensions = ["./external-extension.ts"];
+		currentProjectSettings.skills = ["./external-extension.ts"];
 		writeFileSync(projectSettingsPath, JSON.stringify(currentProjectSettings, null, 2));
 
-		manager.setProjectExtensionPaths(["./in-memory-extension.ts"]);
+		manager.setProjectSkillPaths(["./in-memory-extension.ts"]);
 		await manager.flush();
 
 		const savedProjectSettings = JSON.parse(readFileSync(projectSettingsPath, "utf-8"));
-		expect(savedProjectSettings.extensions).toEqual(["./in-memory-extension.ts"]);
+		expect(savedProjectSettings.skills).toEqual(["./in-memory-extension.ts"]);
 	});
 });

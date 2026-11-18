@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { saveCompaction } from "../../src/octocode/archive/summaries.ts";
 import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";

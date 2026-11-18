@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { AcpBackend, AcpConnectInput, AcpPermission, AcpTurnUpdate } from "../../../../acp/src/client/client.ts";
@@ -33,7 +33,7 @@ export interface RunnerTurnInput {
 	signal: AbortSignal;
 	onActivity(line: string): void;
 	onStart?(pid: number): void;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 }
 
 type SessionUpdate = Parameters<AcpTurnUpdate>[0];
@@ -87,7 +87,7 @@ function reportedCost(update: SessionUpdate): number | undefined {
 export interface RunnerTurnDeps {
 	launch: (runner: string, signal: AbortSignal) => RunnerLaunch | Promise<RunnerLaunch>;
 	connect: (input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal) => Promise<AcpBackend>;
-	permission: (ctx: ExtensionContext) => AcpPermission;
+	permission: (ctx: FeatureContext) => AcpPermission;
 }
 
 /**
@@ -175,7 +175,7 @@ export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 }
 
 /** Check only the selected runner on use; retry unknown or signed-out checks, reuse valid positive metadata. */
-export const runnerTurnDeps = (permission: (ctx: ExtensionContext) => AcpPermission): RunnerTurnDeps => ({
+export const runnerTurnDeps = (permission: (ctx: FeatureContext) => AcpPermission): RunnerTurnDeps => ({
 	launch: async (runner, signal) => {
 		signal.throwIfAborted();
 		const known = listRunners().find((state) => state.id === runner);

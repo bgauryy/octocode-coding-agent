@@ -35,10 +35,13 @@ type OutputPaddedComponent = Component & { setOutputPad(outputPad: number): void
 
 /** Text lines without ANSI codes or trailing fill. Blank lines and full-width borders are skipped. */
 function renderLines(component: Component): string[] {
-	return component
-		.render(60)
-		.map((line) => stripAnsi(line).trimEnd())
-		.filter((line) => /[\w$(]/.test(line));
+	return (
+		component
+			// Wide enough that every row fits at both pads: a message head moves its hint to its own row when it does not.
+			.render(80)
+			.map((line) => stripAnsi(line).trimEnd())
+			.filter((line) => /[\w$(]/.test(line))
+	);
 }
 
 function createTool(definition: ToolDefinition | undefined, outputPad: number): ToolExecutionComponent {
@@ -98,8 +101,11 @@ describe("outputPad", () => {
 	test.each(components)("$name renders at outputPad 0 and 1", ({ create }) => {
 		const component = create(0);
 		const lines = renderLines(component);
-		// The `⎿` result gutter is part of a row's own layout; nothing else is indented at pad 0.
-		expect(lines.filter((line) => line.startsWith(" ") && !line.startsWith(`  ${GLYPH.gutter}  `))).toEqual([]);
+		// The `⎿` result gutter and the body hanging under it (5 columns) are part of a row's own layout; nothing else is
+		// indented at pad 0.
+		expect(
+			lines.filter((line) => line.startsWith(" ") && !line.startsWith(`  ${GLYPH.gutter}  `) && !/^ {5}\S/.test(line)),
+		).toEqual([]);
 		component.setOutputPad(1);
 		expect(renderLines(component)).toEqual(lines.map((line) => ` ${line}`));
 	});

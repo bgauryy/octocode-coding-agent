@@ -5,8 +5,8 @@ import type { SkillPrecedence } from "../skills.ts";
 
 export interface SkillPrecedenceContext {
 	metadataByPath: Map<string, PathMetadata> | undefined;
-	/** Paths an extension supplied (the host folders of other agents). */
-	extensionPaths: ReadonlySet<string>;
+	/** Paths a feature supplied (the host folders of other agents). */
+	featurePaths: ReadonlySet<string>;
 	agentDir: string;
 }
 
@@ -32,10 +32,10 @@ export function skillPathPrecedence(path: string, context: SkillPrecedenceContex
 			return "replaceable";
 		return undefined;
 	}
-	return context.extensionPaths.has(resolved) && isUnderHostSkillDir(resolved) ? "replaceable" : undefined;
+	return context.featurePaths.has(resolved) && isUnderHostSkillDir(resolved) ? "replaceable" : undefined;
 }
 
-/** The user-level `skills` folders of Claude Code and Codex, which the native extension adds. */
+/** The user-level `skills` folders of Claude Code and Codex, which the native feature adds. */
 function isUnderHostSkillDir(path: string): boolean {
 	const roots: string[] = [join(claudeConfigDir(), "skills")];
 	try {

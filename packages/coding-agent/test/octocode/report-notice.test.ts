@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { noticeText, NOTICE_TYPE, ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
@@ -12,6 +12,7 @@ import { createHarness, getMessageText } from "../suite/harness.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import type { Report } from "../../src/octocode/subagents/handoff/pending.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const report = (id: string, extra: Partial<Report> = {}): Report => ({
 	content: `Background subagent ${id} reported done`,
@@ -19,6 +20,10 @@ const report = (id: string, extra: Partial<Report> = {}): Report => ({
 	wake: true,
 	...extra,
 });
+
+/** A child that did not finish cleanly: the parent reads of it mid-turn. */
+const blockedReport = (id: string, extra: Partial<Report> = {}): Report =>
+	report(id, { details: { id, status: "done", outcome: "blocked", summary: "needs input" }, ...extra });
 
 /** Follow ordinary strong fields only: weak maps and callback closures cannot own this newly created report. */
 function retains(root: unknown, target: object, seen = new Set<object>()): boolean {
@@ -83,18 +88,17 @@ describe("the mid-turn notice of a background report (B11)", () => {
 
 	it("is a short steering message with the agent, outcome and report path, and never the child's words", () => {
 		const text = noticeText(
-			report("w1", {
+			blockedReport("w1", {
 				content:
 					"Background subagent w1 reported done\n\nFull report: .octocode/code/temp/agents/w1/report.md (read only the parts you need).",
 				details: {
-					...report("w1").details,
+					...blockedReport("w1").details,
 					reportArtifact: { sha256: "a".repeat(64), path: ".octocode/code/temp/agents/w1/report.md" },
 				},
 			}),
 		);
-		expect(text).toContain("w1 done");
+		expect(text).toContain("w1 blocked");
 		expect(text).toContain(".octocode/code/temp/agents/w1/report.md");
-		expect(text).toContain("when this turn ends");
 		// A pointer the child wrote itself, anywhere but a scratch folder, is not repeated.
 		const forged = noticeText(report("w2", { content: "Full report: /etc/passwd (read only the parts you need)." }));
 		expect(forged).not.toContain("/etc/passwd");
@@ -105,9 +109,9 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		let idle = false;
 		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => idle);
-		queue.add(report("a"));
+		queue.add(blockedReport("a"));
 		queue.flush();
-		queue.add({ ...report("quiet"), wake: false });
+		queue.add({ ...blockedReport("quiet"), wake: false });
 		queue.flush();
 		expect(f.sent.filter(({ message }) => message.customType === NOTICE_TYPE)).toHaveLength(0);
 		queue.stepEnded();
@@ -122,23 +126,45 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		idle = true;
 	});
 
+	it("sends nothing for a clean finish: the report that follows the turn says all of it", () => {
+		const f = fakeHost();
+		const queue = new ReportQueue(f.api);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => [] }, () => false);
+		try {
+			queue.add(report("clean"));
+			queue.add(report("also-clean", { details: { id: "also-clean", status: "done", summary: "Done" } }));
+			queue.flush();
+			queue.stepEnded();
+			expect(f.sent.filter(({ message }) => message.customType === NOTICE_TYPE)).toHaveLength(0);
+			expect(f.sent.filter(({ message }) => message.customType === AGENT_RESULT_TYPE)).toHaveLength(2);
+		} finally {
+			queue.persist();
+		}
+	});
+
+	it("names the agent and outcome of a failed child without announcing that a report follows", () => {
+		const text = noticeText(report("f1", { details: { id: "f1", status: "failed", summary: "crashed" } }));
+		expect(text).toContain("f1 failed");
+		expect(text).not.toContain("follows");
+	});
+
 	it("spends no request when the report arrives during the parent's last reply", async () => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
-					api.on("turn_end", async (event) => {
+					api.bus.on("turn_end", async (event) => {
 						if (event.toolResults.length > 0) queue.stepEnded();
 						return undefined;
 					});
 				},
-			],
+			]),
 		});
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		const queue = new ReportQueue(host);
 		queue.start(manager, () => !harness.session.isStreaming);
 		const requests: string[][] = [];
@@ -178,7 +204,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 	});
 
 	it("reaches the model at its next step of a running turn, before the turn ends", async () => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const finishInTurn: AgentTool = {
@@ -187,7 +213,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 			description: "A subagent finishes while this tool runs",
 			parameters: Type.Object({}),
 			execute: async () => {
-				queue.add(report("worker"));
+				queue.add(blockedReport("worker"));
 				queue.flush();
 				return { content: [{ type: "text", text: "tool done" }], details: {} };
 			},
@@ -195,17 +221,17 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		const harness = await createHarness({
 			sessionManager: manager,
 			tools: [finishInTurn],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
-					api.on("turn_end", async (event) => {
+					api.bus.on("turn_end", async (event) => {
 						if (event.toolResults.length > 0) queue.stepEnded();
 						return undefined;
 					});
 				},
-			],
+			]),
 		});
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		const queue = new ReportQueue(host);
 		queue.start(manager, () => !harness.session.isStreaming);
 		queue.pendingDir = path.join(root, "reports");
@@ -221,7 +247,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		try {
 			await harness.session.prompt("go");
 			// The step right after the tool already carried the notice, before the follow-up report was read.
-			expect(secondRequest.some((text) => text.includes("[Octocode notice] Background subagent worker done"))).toBe(
+			expect(secondRequest.some((text) => text.includes("[Octocode notice] Background subagent worker blocked"))).toBe(
 				true,
 			);
 			expect(secondRequest.some((text) => text.includes("Background subagent worker reported done"))).toBe(false);

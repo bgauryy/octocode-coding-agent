@@ -26,10 +26,13 @@ import type { ChromeTrace } from "../profiler/trace.ts";
 import type {
 	ProfileAgents,
 	ProfileInsights,
+	ProfileMessages,
 	ProfileRequests,
 	ProfileTimeline,
+	ProfileTranscript,
 	ProfileUpdate,
 } from "@octocodeai/octocode-contracts/profiler";
+import type { FeedCursor } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceCommand, WorkspaceReceipt, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { LineReader } from "@octocodeai/octocode-common/line-splitter";
 
@@ -337,6 +340,14 @@ export class AttachClient {
 			this.request<ProfileTimeline>("profiler.timeline", since === undefined ? {} : { since }),
 		insights: () => this.request<ProfileInsights>("profiler.insights"),
 		trace: () => this.request<ChromeTrace>("profiler.trace"),
+		messages: (limit: number, before?: FeedCursor) =>
+			this.request<ProfileMessages>("profiler.messages", { limit, ...(before ? { before } : {}) }),
+		transcript: (agentId: string, entry: number, sessionId?: string) =>
+			this.request<ProfileTranscript | null>("profiler.transcript", {
+				agentId,
+				entry,
+				...(sessionId ? { sessionId } : {}),
+			}).then((found) => found ?? undefined),
 		subscribe: () => this.request("profiler.subscribe"),
 		/** Stops the session's frames and its transcript poll; the daemon asks once the last tab of the session is gone. */
 		unsubscribe: () => this.request("profiler.unsubscribe"),

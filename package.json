@@ -13,7 +13,7 @@
 		"build:native:darwin": "yarn workspace @octocodeai/octocode-tui run build:native:darwin",
 		"build:native:linux": "yarn workspace @octocodeai/octocode-tui run build:native:linux",
 		"build:native:win32": "yarn workspace @octocodeai/octocode-tui run build:native:win32",
-		"check": "node scripts/run-checks.mjs typecheck lint format:check check:browser-smoke check:subpaths check:workspace check:favicon check:boundaries check:db-boundary check:mcp-boundary check:references check:unused",
+		"check": "node scripts/run-checks.mjs typecheck lint format:check check:browser-smoke check:subpaths check:workspace check:favicon check:boundaries check:db-boundary check:mcp-boundary check:live-tests check:references check:unused",
 		"typecheck": "tsc --noEmit",
 		"lint": "oxlint packages scripts",
 		"lint:fix": "oxlint packages scripts --fix",
@@ -31,7 +31,8 @@
 		"profile:rpc": "node scripts/profile-coding-agent-node.mjs --mode rpc",
 		"test": "node scripts/test-workspaces.mjs",
 		"test:changed": "yarn workspace @octocodeai/octocodecode run vitest --run --config vitest.octocode.config.ts --changed",
-		"test:scripts": "node --test --test-global-setup=node-test.global.ts \"scripts/*.test.mjs\" \"scripts/*.test.ts\" \"scripts/agent-eval/test/*.test.mjs\" \"scripts/agent-capture/test/*.test.mjs\"",
+		"test:scripts": "node --test --test-global-setup=node-test.global.ts \"scripts/*.test.mjs\" \"scripts/*.test.ts\" \"scripts/agent-capture/test/*.test.mjs\"",
+		"test:agentic": "yarn workspace @octocodeai/octocode-agentic-testkit run test && node --test --test-global-setup=node-test.global.ts \"scripts/agent-eval/test/*.test.mjs\"",
 		"test:tmux": "yarn workspace @octocodeai/octocode-tui run test:tmux && yarn workspace @octocodeai/octocodecode run test:tmux",
 		"test:mcp-conformance": "node packages/mcp/test/conformance/run.ts",
 		"version:patch": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo version patch --immediate && node scripts/sync-versions.js && yarn install --mode=update-lockfile",
@@ -42,6 +43,7 @@
 		"publish": "yarn run prepublishOnly && node scripts/publish.mjs",
 		"publish:dry": "yarn run prepublishOnly && node scripts/publish.mjs --dry-run",
 		"release:local": "node scripts/local-release.mjs",
+		"measure:unfocused-cpu": "node scripts/measure-unfocused-cpu.mjs",
 		"pack:packages": "node scripts/pack-packages.mjs",
 		"install-lock:coding-agent": "node scripts/generate-coding-agent-install-lock.mjs",
 		"release:patch": "node scripts/release.mjs patch",
@@ -56,6 +58,7 @@
 		"check:boundaries": "node scripts/check-package-boundaries.mjs && node scripts/sdk-reachability.mjs && yarn workspace @octocodeai/octocodecode run test:architecture",
 		"check:db-boundary": "node scripts/check-db-boundary.mjs",
 		"check:mcp-boundary": "node scripts/check-mcp-boundary.mjs",
+		"check:live-tests": "node scripts/check-live-tests.mjs",
 		"check:references": "node --import ./packages/coding-agent/scripts/source-resolver.ts packages/coding-agent/scripts/reference-pages/check.ts",
 		"check:unused": "knip --no-progress"
 	},
@@ -80,6 +83,7 @@
 	"version": "0.0.3",
 	"packageManager": "yarn@4.18.1",
 	"resolutions": {
+		"@anthropic-ai/sandbox-runtime@npm:0.0.83": "patch:@anthropic-ai/sandbox-runtime@npm%3A0.0.83#~/.yarn/patches/@anthropic-ai-sandbox-runtime-npm-0.0.83-14eacdffab.patch",
 		"protobufjs": "7.6.6"
 	}
 }

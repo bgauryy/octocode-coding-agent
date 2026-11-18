@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { externalAgentsEnabled } from "../../src/octocode/external/enabled.ts";
 import { connectedRunners } from "../../src/octocode/external/connected.ts";
 
@@ -46,7 +46,7 @@ it("refuses a direct turn for a runner absent from the captured selection before
 			text: "inspect",
 			signal: new AbortController().signal,
 			onActivity: () => undefined,
-			ctx: { cwd: "/fixture" } as ExtensionContext,
+			ctx: { cwd: "/fixture" } as FeatureContext,
 		}),
 	).rejects.toThrow(/not enabled/);
 	expect(turn).not.toHaveBeenCalled();

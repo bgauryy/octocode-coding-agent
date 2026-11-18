@@ -1,6 +1,6 @@
 /**
- * Slash-command autocomplete: built-in, prompt-template, extension and skill commands with their argument completions,
- * and the provider chain extensions can wrap.
+ * Slash-command autocomplete: built-in, prompt-template, feature and skill commands with their argument completions,
+ * and the provider chain features can wrap.
  */
 
 import {
@@ -9,7 +9,7 @@ import {
 	type SlashCommand,
 	CombinedAutocompleteProvider,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionRunner } from "../../../core/features/index.ts";
+import type { FeatureHost } from "../../../core/features/index.ts";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../../core/slash-commands.ts";
 import { getSkillCommands } from "../../../core/skill-commands.ts";
@@ -45,7 +45,7 @@ type AutocompleteHost = Pick<
 >;
 
 function getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
-	// What the host supplies (built-in and Octocode's own commands, and skills from its inline extension) is untagged,
+	// What the host supplies (built-in and Octocode's own commands, and skills from its inline feature) is untagged,
 	// like built-in commands: a tag only tells a user where their own or a project's addition came from.
 	if (
 		!sourceInfo ||
@@ -85,17 +85,17 @@ function prefixAutocompleteDescription(description: string | undefined, sourceIn
 	return description ? `[${sourceTag}] ${description}` : `[${sourceTag}]`;
 }
 
-export function getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[] {
+export function getBuiltInCommandConflictDiagnostics(featureHost: FeatureHost): ResourceDiagnostic[] {
 	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
-	return extensionRunner
+	return featureHost
 		.getRegisteredCommands()
 		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.owner !== "native")
 		.map((command) => ({
 			type: "warning" as const,
 			message:
 				command.invocationName === command.name
-					? `Extension command '/${command.name}' conflicts with built-in interactive command. Skipping in autocomplete.`
-					: `Extension command '/${command.name}' conflicts with built-in interactive command. Available as '/${command.invocationName}'.`,
+					? `Feature command '/${command.name}' conflicts with built-in interactive command. Skipping in autocomplete.`
+					: `Feature command '/${command.name}' conflicts with built-in interactive command. Available as '/${command.invocationName}'.`,
 			path: command.sourceInfo.path,
 		}));
 }
@@ -190,14 +190,14 @@ export function getSlashCommands(
 	for (const name of ["resume", "agents", "permissions", "plan"]) {
 		const command = slashCommands.find((command) => command.name === name);
 		if (command)
-			command.getArgumentCompletions = host.session.extensionRunner
+			command.getArgumentCompletions = host.session.featureHost
 				.getRegisteredCommands()
 				.find((entry) => entry.name === name)?.getArgumentCompletions;
 	}
 
 	const templateCommands: SlashCommand[] = getPromptCommands(
 		host.session.promptTemplates,
-		host.session.extensionRunner.getRegisteredCommands(),
+		host.session.featureHost.getRegisteredCommands(),
 	).map(({ name, template }) => ({
 		name,
 		description: prefixAutocompleteDescription(template.description, template.sourceInfo),
@@ -205,7 +205,7 @@ export function getSlashCommands(
 	}));
 
 	const builtinCommandNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
-	const extensionCommands: SlashCommand[] = host.session.extensionRunner
+	const featureCommands: SlashCommand[] = host.session.featureHost
 		.getRegisteredCommands()
 		.filter((cmd) => !builtinCommandNames.has(cmd.invocationName))
 		.map((cmd) => ({
@@ -219,7 +219,7 @@ export function getSlashCommands(
 	const skillCommandList: SlashCommand[] = [];
 	if (includeSkills) {
 		for (const { name, skill } of getSkillCommands(host.session.resourceLoader.getSkills().skills, [
-			...host.session.extensionRunner.getRegisteredCommands(),
+			...host.session.featureHost.getRegisteredCommands(),
 			...host.session.promptTemplates,
 		])) {
 			host.skillCommands.set(name, skill.filePath);
@@ -230,7 +230,7 @@ export function getSlashCommands(
 			});
 		}
 	}
-	const allCommands = [...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList];
+	const allCommands = [...slashCommands, ...templateCommands, ...featureCommands, ...skillCommandList];
 	const helpCommand = slashCommands.find((command) => command.name === "help");
 	if (helpCommand)
 		helpCommand.getArgumentCompletions = (prefix) =>

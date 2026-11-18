@@ -8,6 +8,7 @@ import { createHarness } from "../../../coding-agent/test/suite/harness.ts";
 import { MCP_MANAGE_TOOL_NAME } from "../../../common/src/mcp-names.ts";
 import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { prepareAcpMcpServers } from "../../src/server/mcp.ts";
+import { nativeFeatureSet } from "../../../coding-agent/test/helpers/native-features.ts";
 
 type Schema = { required?: string[]; properties?: Record<string, { type?: string }> };
 
@@ -41,11 +42,12 @@ describe("the mcp tool of an ACP worker session", () => {
 				const loader = new DefaultResourceLoader({
 					cwd: root,
 					agentDir: join(root, "agent"),
+					nativeFeatures: nativeFeatureSet(),
 				});
 				await loader.reload();
 				const harness = await createHarness({ resourceLoader: loader });
 				try {
-					await harness.session.bindExtensions({});
+					await harness.session.bindFeatures({});
 					const tool = harness.session.getToolDefinition(MCP_MANAGE_TOOL_NAME);
 					expect(tool).toBeDefined();
 					const schema = tool!.parameters as Schema;

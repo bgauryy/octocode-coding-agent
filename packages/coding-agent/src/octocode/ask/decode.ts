@@ -35,9 +35,20 @@ function askUserAnswer(question: Question, reply: Answered): AskAnswer | undefin
 	if (question.type === "text") return typed ? answerOf(question.question, [], typed) : undefined;
 	const options = picked(question, reply);
 	// A single choice takes one option.
-	const picks = (question.type === "multi" ? options : options.slice(0, 1)).map((option) => option.label);
+	const taken = question.type === "multi" ? options : options.slice(0, 1);
+	const picks = taken.map((option) => option.label);
 	if (picks.length === 0 && !typed) return undefined;
-	return answerOf(question.question, picks, typed);
+	const answer = answerOf(question.question, picks, typed);
+	// The host took the recommended options when the time ran out: say so, with the reason the model gave for them.
+	if (reply.auto && question.timeoutSeconds)
+		answer.auto = {
+			seconds: question.timeoutSeconds,
+			reason: taken
+				.map((option) => option.description ?? "")
+				.filter(Boolean)
+				.join(" / "),
+		};
+	return answer;
 }
 
 /**

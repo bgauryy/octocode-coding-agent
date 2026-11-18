@@ -61,7 +61,7 @@ const startsOver = (run: Run, t: InteractiveHarness) => {
 };
 
 /** Commands that replace or end the session run last, in this order. */
-const LAST = ["resume", "tree", "fork", "clone", "import", "new", "clear", "reset", "reload", "quit"];
+const LAST = ["cron", "resume", "tree", "fork", "clone", "import", "new", "clear", "reset", "reload", "quit"];
 /** The session file's entries (not the header) without ids and timestamps, which a copy renews. */
 function entriesOf(file: string | undefined): unknown[] {
 	if (!file || !fs.existsSync(file)) return [];
@@ -81,6 +81,8 @@ const CASES: Record<string, Case> = {
 	security: { check: asks(/Security[\s\S]*Not checked[\s\S]*Approved[\s\S]*Denied/) },
 	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run.
 	agents: { check: says(/\(you\) · main[\s\S]*Recent runs/) },
+	// The page opens on the team feed (empty here) with internal notices hidden and the toggle key shown.
+	messages: { check: asks(/Messages[\s\S]*no messages yet[\s\S]*Internal notices hidden · i shows them/) },
 	plan: {
 		check: async (run, t) => {
 			expect(run.text).toMatch(/Planning active; revision 0/);
@@ -93,7 +95,6 @@ const CASES: Record<string, Case> = {
 	context: { check: says(/Total context: 0 of [\d,]+ tokens/) },
 	diff: { check: says(/Repository diff[\s\S]*No staged changes/) },
 	status: { check: says(/Session Info[\s\S]*File:/) },
-	llama: { check: says(/Configure llama\.cpp with \/providers llama\.cpp/) },
 	// The dialog lists each configured server with its source and state: the Octocode server is connected with its tools.
 	mcp: {
 		check: asks(
@@ -120,6 +121,11 @@ const CASES: Record<string, Case> = {
 	worktree: { check: says(/worktree/i) },
 	// An unknown name lists the realms by name; the main checkout is always one.
 	realm: { args: "zz-none", check: says(/No realm named zz-none\. Realms: main/) },
+	// `/loop` sets a cron wait through the same path as the tool, and `/cron` then lists the session's scheduled tasks.
+	loop: { args: "10m run the tests", check: says(/Every 10m: Scheduled task \d+/) },
+	cron: { check: says(/cron \*\/10 \* \* \* \* · next in/) },
+	// Lists every monitor rule of the session's ledger: a page in the terminal, with all rules ok before any alert.
+	monitor: { check: asks(/Monitor[\s\S]*Rules\s+\d+[\s\S]*Tripped\s+0[\s\S]*load[\s\S]*idle-items/) },
 	// `/remote` grants control, so it asks first; the sweep dismisses the question and nothing is published (the
 	// accepted path, which publishes an ssh link, is covered in remote-command.test.ts).
 	remote: {
@@ -150,7 +156,7 @@ const CASES: Record<string, Case> = {
 	help: { check: asks(/\/btw\s+Ask a side question without tools/) },
 	configuration: { check: asks(/Interface and session/) },
 	model: { check: asks(/Choose a model for this chat/) },
-	effort: { check: asks(/Thinking Level/) },
+	effort: { check: asks(/Thinking level/) },
 	modelsettings: { check: asks(/Model settings/) },
 	// The one /trust: a menu in the terminal, and `list` prints where this folder stands and the stored decisions.
 	trust: {
@@ -216,7 +222,7 @@ const CASES: Record<string, Case> = {
 	new: { check: startsOver },
 	clear: { check: startsOver },
 	reset: { check: startsOver },
-	reload: { check: says(/Reloaded keybindings, extensions, skills/) },
+	reload: { check: says(/Reloaded keybindings, features, skills/) },
 	// Process exit is the boundary: the terminal asks the host to shut down once and nothing else runs.
 	quit: { check: () => expect(shutdown).toHaveBeenCalledTimes(1) },
 };
@@ -245,7 +251,7 @@ async function run(name: string, args = ""): Promise<Run> {
 describe("every slash command through the terminal editor", () => {
 	it("reads built-in, native, extension and skill commands from the live registry, each with a case", () => {
 		for (const command of BUILTIN_SLASH_COMMANDS) expect(names).toContain(command.name);
-		for (const command of t.host.session.extensionRunner.getRegisteredCommands())
+		for (const command of t.host.session.featureHost.getRegisteredCommands())
 			expect(names).toContain(command.invocationName ?? command.name);
 		expect(new Set(names).size).toBe(names.length);
 		expect(skills.size).toBeGreaterThan(0);

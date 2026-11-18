@@ -39,6 +39,7 @@ const skillSchema = Type.Object(
 		baseDir: text,
 		sourceInfo: source,
 		disableModelInvocation: Type.Boolean(),
+		audience: Type.Optional(Type.Literal("coordinator")),
 		userInvocable: Type.Optional(Type.Boolean()),
 		argumentStyle: Type.Optional(Type.Literal("claude")),
 		claudePluginRoot: Type.Optional(text),

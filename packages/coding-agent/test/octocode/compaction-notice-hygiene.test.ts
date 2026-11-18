@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
 import { requestView } from "../../src/octocode/compaction/request-view.ts";
-import { CONTEXT_NOTICE_TYPE } from "../../src/octocode/compaction/context-notice.ts";
+import { CONTEXT_NOTICE_TYPE } from "../../src/octocode/shared/context-notices.ts";
 import { RUNNING_WORK_TYPE } from "../../src/octocode/sessions/register.ts";
 
 const model = { provider: "fixture", id: "fixture", contextWindow: 200_000 };

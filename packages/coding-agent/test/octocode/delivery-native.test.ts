@@ -3,7 +3,7 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureSetup, FeatureRegister } from "../../src/core/features/index.ts";
 import { emitSessionShutdownEvent } from "../../src/core/features/runner.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
@@ -13,6 +13,8 @@ import { getApplicationPort } from "../../src/core/application/index.ts";
 import { Delivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 const REPORT = "Unique background report: delivery-native";
 
@@ -30,7 +32,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				provider: "faux",
 				models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 			});
-			let host!: ExtensionAPI;
+			let host!: FeatureSetup;
 			let delivery!: Delivery;
 			let release!: () => void;
 			let entered!: () => void;
@@ -40,10 +42,10 @@ describe("Delivery with the native Octocode session queue", () => {
 			const started = new Promise<void>((resolve) => {
 				entered = resolve;
 			});
-			const factory: ExtensionFactory = (api) => {
+			const factory: FeatureRegister = (api) => {
 				host = api;
 				delivery = Delivery.install(api);
-				api.registerProvider("faux", {
+				api.providers.register("faux", {
 					name: "Faux",
 					api: faux.api,
 					baseUrl: "http://127.0.0.1:0",
@@ -51,7 +53,7 @@ describe("Delivery with the native Octocode session queue", () => {
 					models: faux.models,
 					streamSimple: faux.streamSimple,
 				} as never);
-				api.registerTool({
+				api.tools.register({
 					name: "hold",
 					label: "Hold",
 					description: "Wait for this test to release the call",
@@ -77,8 +79,9 @@ describe("Delivery with the native Octocode session queue", () => {
 				cwd,
 				agentDir,
 				settingsManager,
-				extensionFactories: [{ name: "delivery-test", factory }],
-				disabledFeatures: ["mcp", "llama.cpp"],
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([{ name: "delivery-test", factory }]),
+				disabledFeatures: ["mcp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -109,7 +112,7 @@ describe("Delivery with the native Octocode session queue", () => {
 					.filter((entry) => entry.type === "custom_message" && entry.customType === "delivery-native");
 			let running: Promise<void> | undefined;
 			try {
-				await session.bindExtensions({ mode: "tui", uiContext: ui, shutdownHandler: () => undefined });
+				await session.bindFeatures({ mode: "tui", uiContext: ui, shutdownHandler: () => undefined });
 				await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 				faux.setResponses([
 					(context) => {
@@ -133,7 +136,7 @@ describe("Delivery with the native Octocode session queue", () => {
 					display: true,
 					details: { id: "report-1" },
 				};
-				host.sendMessage(report, { deliverAs: "followUp", triggerTurn: true });
+				host.session.sendMessage(report, { deliverAs: "followUp", triggerTurn: true });
 				expect(delivery.pending).toBe(1);
 				expect(reports()).toHaveLength(0);
 				if (action === "dequeue" || action === "escape") {
@@ -177,7 +180,7 @@ describe("Delivery with the native Octocode session queue", () => {
 				release();
 				await session.abort();
 				await running;
-				await emitSessionShutdownEvent(session.extensionRunner, { type: "session_shutdown", reason: "quit" });
+				await emitSessionShutdownEvent(session.featureHost, { type: "session_shutdown", reason: "quit" });
 				session.dispose();
 			}
 		},

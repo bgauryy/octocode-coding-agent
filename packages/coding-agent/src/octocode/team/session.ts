@@ -1,9 +1,9 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { storedText } from "@octocodeai/octocode-common/sanitize";
-import { renderInstruction } from "../../core/prompt-template.ts";
 import type { Ask } from "./asks.ts";
 import type { EditLog } from "./edits.ts";
 import { agentName, LINE_MAX } from "./identity.ts";
+import type { LeaseKind } from "./lease-key.ts";
 import type { Lease, OpenQuestion, SendOptions } from "./model.ts";
 import { type EndReason, settleReason } from "./session/end-reason.ts";
 import { claimName, joinAtStart } from "./session/membership.ts";
@@ -51,7 +51,7 @@ export class Team extends TeamState {
 	}
 
 	/** Bind to the session and join the team: a subagent under the id its parent chose, a main session under the name a resumed session recorded or a new one. */
-	start(ctx: ExtensionContext, resumeAs?: string): void {
+	start(ctx: FeatureContext, resumeAs?: string): void {
 		try {
 			this.stop();
 		} catch {
@@ -101,6 +101,7 @@ export class Team extends TeamState {
 			this.me = claimName(this.env, db, ctx, goal, (lost) => this.newName(lost), this.name);
 			db.edits.adoptUnjoined(this.me.id);
 			this.activity.joined(this.me);
+			this.shownName.set(this.me.id);
 			this.mail.followPeers(this.database.peers(() => this.me?.id));
 			this.ticker.sync();
 		} else if (goal !== undefined) {
@@ -114,6 +115,7 @@ export class Team extends TeamState {
 	leave(reason?: EndReason, settled = false): void {
 		const me = this.me;
 		this.me = undefined;
+		this.shownName.set(undefined);
 		this.ticker.sync();
 		this.held.clear();
 		const db = this.database.current;
@@ -138,6 +140,7 @@ export class Team extends TeamState {
 			this.runnerTasks.clear();
 			this.vouches.clear();
 			this.approvals.clear();
+			this.idle.reset();
 			this.ctx = undefined;
 		}
 	}
@@ -233,9 +236,9 @@ export class Team extends TeamState {
 		return unlockPaths(this.reservationHost(), paths);
 	}
 
-	/** Whether any agent in the team or agents-communication, this one included, holds a live reservation covering the file. */
-	reserved(absolute: string): boolean {
-		return isReserved(this.reservationHost(), absolute);
+	/** Whether any agent in the team or agents-communication, this one included, holds a live reservation covering the file (with `tree`, or inside it). */
+	reserved(absolute: string, kind?: LeaseKind): boolean {
+		return isReserved(this.reservationHost(), absolute, kind);
 	}
 
 	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */
@@ -274,34 +277,17 @@ export class Team extends TeamState {
 	/** Hands waiting mail to Octocode: every second from the ticker, and at the end of a turn that ran tools (`tools.ts`, `stepEnded`). */
 	deliverMail(stepEnded = false): void {
 		this.delivery.deliver(this.database.current, stepEnded);
-		this.watchSilence();
+		// The idle-agent rule (`session/idle.ts`) rides this beat and reads its timestamps once a minute.
+		this.idle.check();
 	}
 
-	/** Tells this agent about a working child with no progress for `subagents.silenceMinutes`; reads the database only when one is due. */
-	private watchSilence(now = Date.now()): void {
-		const children = [...(this.running?.keys() ?? [])].map((id) => ({
-			id,
-			lastOutputAt: this.approvals.lastOutput(id),
-		}));
-		if (children.length === 0) return this.silence.reset();
-		const thresholdMs = this.silenceMs();
-		const due = this.silence.due(children, thresholdMs, now);
-		if (due.length === 0) return;
-		const members = new Map(this.database.read().members.map((member) => [member.id, member]));
-		for (const id of due) {
-			const member = members.get(id);
-			if (!member || member.status !== "working" || this.approvals.waitsOnUser(id)) {
-				this.silence.excused(id, now);
-				continue;
-			}
-			const minutes = Math.round((now - this.approvals.lastOutput(id)!) / 60_000);
-			const text = renderInstruction("notices/subagents/child-silent.md", { id, minutes, activity: member.activity });
-			const wake = this.wakePace.allows();
-			if (!this.mail.alert(text, wake)) continue;
-			if (wake) this.wakePace.record();
-			this.silence.told(id);
-		}
+	/** A team notice this agent reads at its next step; never starts a turn. False when the session cannot take it. */
+	notice(text: string): boolean {
+		return this.mail.notice(text);
 	}
+
+	/** This session's model or tool event: the progress the idle-agent rule measures for a main session. */
+	readonly onProgress = (): void => this.idle.progressed();
 
 	/** Octocode is about to call the model with `messages`: team mail among them is now delivered. */
 	onContext(messages: ReadonlyArray<{ role?: string; customType?: string; details?: unknown }>): void {

@@ -1,12 +1,13 @@
 import { LATEST_PROTOCOL_VERSION } from "../src/client/index.ts";
 import { createInMemoryTransportPair } from "../src/client/testing/index.ts";
 import { expect, it } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import { getMcpHookCaller } from "../src/hook-caller.ts";
-import { createMcpExtension } from "../src/index.ts";
+import { createMcpFeature } from "../src/index.ts";
 import { createMcpToolDefinition } from "../src/tool-definition.ts";
 import { convertMcpResult } from "../src/tools.ts";
 import { createHarness } from "../../coding-agent/test/suite/harness.ts";
+import { testFeatures } from "../../coding-agent/test/helpers/features.ts";
 
 it("runs a hook call through the preset's prepare and review, and a refusal rejects it", async () => {
 	const pair = createInMemoryTransportPair();
@@ -27,11 +28,11 @@ it("runs a hook call through the preset's prepare and review, and a refusal reje
 		void pair.server.send({ jsonrpc: "2.0", id: message.id, result });
 	});
 	await pair.server.start();
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const harness = await createHarness({
 		initialActiveToolNames: [],
-		extensionFactories: [
-			createMcpExtension({
+		features: testFeatures([
+			createMcpFeature({
 				loadConfig: () => ({
 					servers: [{ name: "guarded", config: { command: "unused" }, source: "fixture" }],
 					errors: [],
@@ -64,11 +65,11 @@ it("runs a hook call through the preset's prepare and review, and a refusal reje
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
-		const call = getMcpHookCaller(api.events)!;
+		await harness.session.bindFeatures({});
+		const call = getMcpHookCaller(api.channels)!;
 		const base = { server: "guarded", tool: "open", signal: new AbortController().signal, waitForConnection: true };
 		const authorize = async () => {};
 		const result = await call({ ...base, input: { url: "x" }, authorize });

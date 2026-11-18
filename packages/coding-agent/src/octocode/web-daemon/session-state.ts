@@ -1,7 +1,14 @@
-import type { ApplicationConnection, ApplicationFrame, ApplicationPort } from "@octocodeai/octocode-contracts";
+import {
+	type ApplicationConnection,
+	type ApplicationFrame,
+	type ApplicationPhase,
+	type ApplicationPort,
+	isPendingApplicationPhase,
+} from "@octocodeai/octocode-contracts";
 
-/** What a session list needs to know about a run: whether one is going, and the dialog it is blocked on. */
+/** What a session list needs to know about a session: whether it is working, and the dialog it is blocked on. */
 export interface SessionState {
+	/** A run is going, or the job waits on its background agents, jobs, a wake or a timer: the session is not done. */
 	busy: boolean;
 	/** The title of the open dialog, when the session waits for the user (a run, or a background subagent, is blocked on it). */
 	needsYou?: string;
@@ -12,7 +19,7 @@ const TITLE_MAX = 300;
 
 /**
  * Follows one attached session's application stream for the two facts the daemon's session list and `remote list` show:
- * `busy` (a run is in progress) and `needsYou` (the session is blocked on a dialog). One stream per attached session; a
+ * `busy` (a run is in progress, or the session's phase still waits on background work) and `needsYou` (the session is blocked on a dialog). One stream per attached session; a
  * resync or a dropped stream reconnects after a short wait while the session stays attached. `state` is undefined until
  * the first snapshot arrived, so a list never claims a session is idle before it heard from it.
  */
@@ -24,6 +31,9 @@ export class SessionWatch {
 	private readonly port: ApplicationPort;
 	private readonly sessionId: string;
 	private readonly changed: () => void;
+	/** The two facts `busy` combines: a run is going, and the phase waits on work that continues the job. */
+	private running = false;
+	private waiting = false;
 
 	constructor(port: ApplicationPort, sessionId: string, changed: () => void) {
 		this.port = port;
@@ -71,15 +81,21 @@ export class SessionWatch {
 		// An open dialog with a title is a wait whether or not a run is going: a background subagent asks after its parent's
 		// turn ended. A run's start or end leaves the dialog as it is; `session.awaiting` opens and closes it.
 		const needs = (title: string | undefined) => (title ? { needsYou: title.slice(0, TITLE_MAX) } : {});
+		const pending = (phase: ApplicationPhase | undefined) => phase !== undefined && isPendingApplicationPhase(phase);
 		if (frame.type === "snapshot") {
-			this.state = { busy: frame.snapshot.streaming, ...needs(frame.snapshot.awaiting?.title) };
+			this.running = frame.snapshot.streaming;
+			this.waiting = pending(frame.snapshot.phase);
+			this.state = { busy: this.running || this.waiting, ...needs(frame.snapshot.awaiting?.title) };
 		} else if (frame.type === "event") {
+			if (!previous) return;
 			const event = frame.event;
-			const kept = previous?.needsYou === undefined ? {} : { needsYou: previous.needsYou };
-			if (event.type === "run.started") this.state = { busy: true, ...kept };
-			else if (event.type === "run.settled") this.state = { busy: false, ...kept };
-			else if (event.type === "session.awaiting" && previous)
-				this.state = { busy: previous.busy, ...needs(event.awaiting?.title) };
+			let needsYou = previous.needsYou;
+			if (event.type === "run.started") this.running = true;
+			else if (event.type === "run.settled") this.running = false;
+			else if (event.type === "session.phase") this.waiting = pending(event.phase);
+			else if (event.type === "session.awaiting") needsYou = needs(event.awaiting?.title).needsYou;
+			else return;
+			this.state = { busy: this.running || this.waiting, ...(needsYou === undefined ? {} : { needsYou }) };
 		} else return;
 		if (previous?.busy !== this.state?.busy || previous?.needsYou !== this.state?.needsYou) this.changed();
 	}

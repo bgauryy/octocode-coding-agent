@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { totals } from "../../src/octocode/sessions/session-scan.ts";
 import { SpendScan } from "../../src/octocode/shared/spend.ts";
 import { memoizedModelLookup, type ModelLookup, unpricedModel } from "../../src/octocode/shared/util.ts";
@@ -73,10 +73,10 @@ describe("history model lookup lifetime", () => {
 		ctx.sessionManager.getEntries = () => entries as never;
 		await fake.emit("session_start", {}, ctx);
 		expect(find).toHaveBeenCalledTimes(3);
-		const factory = ctx.ui.footer as NonNullable<Parameters<ExtensionContext["ui"]["setFooter"]>[0]>;
+		const factory = ctx.ui.footer as NonNullable<Parameters<FeatureContext["ui"]["setFooter"]>[0]>;
 		const component = factory({ requestRender: vi.fn() } as never, theme, {
 			getGitBranch: () => null,
-			getExtensionStatuses: () => new Map(),
+			getFeatureStatuses: () => new Map(),
 		} as never);
 		try {
 			cost = free;

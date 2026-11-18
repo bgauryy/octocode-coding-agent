@@ -65,7 +65,6 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
-	private mouseHint = false;
 	/** The frame subscription of a streaming reasoning label; held only while one is on screen. */
 	private readonly frames: ReasoningFrames;
 	private liveLabel: LiveThinkingLabel | undefined;
@@ -108,20 +107,6 @@ export class AssistantMessageComponent extends Container {
 	setHideThinkingBlock(hide: boolean): void {
 		this.hideThinkingBlock = hide;
 		this.thinkingVisibilityOverrides.clear();
-		if (this.lastMessage) {
-			this.updateMessage(this.lastMessage);
-		}
-	}
-
-	/** Whether the terminal reports the mouse, so a hidden reasoning stub may say it can be clicked. */
-	setMouseHint(mouse: boolean): void {
-		if (this.mouseHint === mouse) return;
-		this.mouseHint = mouse;
-		if (this.lastMessage) this.updateMessage(this.lastMessage);
-	}
-
-	setHiddenThinkingLabel(label: string): void {
-		this.hiddenThinkingLabel = label;
 		if (this.lastMessage) {
 			this.updateMessage(this.lastMessage);
 		}
@@ -261,7 +246,6 @@ export class AssistantMessageComponent extends Container {
 				const response = new LongResponse(
 					this.markdownBlock(content.id, text),
 					this.responseOverrides.get(content.id) ?? this.expanded,
-					this.mouseHint,
 					(expanded) => this.responseOverrides.set(content.id, expanded),
 					isStreaming,
 				);
@@ -307,7 +291,7 @@ export class AssistantMessageComponent extends Container {
 				const elapsed = thinkingMs(spanIds);
 				// One label for a finished block, folded or open: only the fold glyph differs.
 				const label = finishedLabel(interrupted, elapsed);
-				const hint = hidden ? revealHint(this.mouseHint) : "";
+				const hint = hidden ? revealHint() : "";
 				const thinkingComponent = new Container();
 				if (active) {
 					this.liveLabel = new LiveThinkingLabel(hint, this.outputPad);

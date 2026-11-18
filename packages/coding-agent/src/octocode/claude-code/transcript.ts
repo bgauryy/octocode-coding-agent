@@ -6,7 +6,7 @@ import {
 	type ToolResultMessage,
 } from "@octocodeai/octocode-ai";
 import type { CallToolResult, ServedTool } from "../../../../mcp/src/api.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { sectionFamilyText } from "../../core/system-prompt-spec.ts";
 import { CLAUDE_CODE_PROVIDER } from "./models.ts";
 
@@ -85,13 +85,13 @@ export function promptText(messages: readonly Message[]): string {
 		.map((message) => userText(message as Extract<Message, { role: "user" }>))
 		.join("\n\n");
 	const history = messages.slice(0, start).map(line).filter(Boolean).join("\n\n");
-	return history ? renderInstruction("system/claude-code-history.md", { history, request }) : request;
+	return history ? renderPrompt("system/claude-code-history.md", { history, request }) : request;
 }
 
 /** What Octocode appends to Claude Code's own system prompt: one instruction and the project's context files. */
 export function appendedPrompt(messages: readonly Message[]): string {
 	const projectContext = sectionFamilyText(getCurrentSystemMessage(messages)?.sections ?? {}, "project_context");
-	return renderInstruction("system/claude-code.md", { projectContext });
+	return renderPrompt("system/claude-code.md", { projectContext });
 }
 
 /** The session's declared tools as MCP tools: name, description and JSON Schema, nothing Octocode-internal. */

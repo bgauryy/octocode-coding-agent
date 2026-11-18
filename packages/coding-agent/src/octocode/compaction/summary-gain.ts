@@ -1,7 +1,7 @@
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import type { CompactionPreparation } from "../../core/compaction/index.ts";
 import { estimateTokens } from "../../core/compaction/tokens.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 
 /**
  * Whether a compaction frees context. After it, the context holds the new summary and the kept messages; before it,
@@ -19,7 +19,5 @@ export function noGainReason(
 	);
 	const replaced = summarized + Math.ceil((preparation.previousSummary?.length ?? 0) / CHARS_PER_TOKEN);
 	const written = Math.ceil(summary.length / CHARS_PER_TOKEN);
-	return written < replaced
-		? undefined
-		: renderInstruction("notices/compaction/no-gain.md", { summary: written, replaced });
+	return written < replaced ? undefined : renderPrompt("notices/compaction/no-gain.md", { summary: written, replaced });
 }

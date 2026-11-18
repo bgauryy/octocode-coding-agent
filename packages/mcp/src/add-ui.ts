@@ -9,7 +9,7 @@ import {
 	pastedAddCommand,
 	type PastedServer,
 } from "./add-parse.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import type { McpUi } from "./ui.ts";
 
 export interface AddMcpUiOptions {
@@ -51,7 +51,7 @@ async function problem(ui: McpUi, title: string, lines: string[], details?: stri
 }
 
 /** Ask the name of a bare server object until it is valid; undefined cancels. */
-async function askName(state: McpExtensionState, ui: McpUi): Promise<string | undefined> {
+async function askName(state: McpFeatureState, ui: McpUi): Promise<string | undefined> {
 	let hint = "Letters, digits, underscores or hyphens; no ambiguous double separators.";
 	let draft = "";
 	for (;;) {
@@ -66,7 +66,7 @@ async function askName(state: McpExtensionState, ui: McpUi): Promise<string | un
 
 /** The host's static scan of each pasted server, or undefined when the host installed none: nothing runs, nothing is looked up. */
 function scanned(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	scope: "global" | "workspace",
 	servers: ReadonlyArray<{ name: string; definition: PastedServer["definition"] }>,
 ): Array<{ name: string; result: McpReviewRating }> | undefined {
@@ -119,7 +119,7 @@ async function confirmScan(
 }
 
 /** After a valid paste: name, literal-value warning, scope, collision preflight, scan, save every server, report each. */
-async function reviewAndSave(state: McpExtensionState, ui: McpUi, pasted: PastedServer[]): Promise<"edit" | "done"> {
+async function reviewAndSave(state: McpFeatureState, ui: McpUi, pasted: PastedServer[]): Promise<"edit" | "done"> {
 	const servers: Array<{ name: string; definition: PastedServer["definition"] }> = [];
 	for (const { name, definition } of pasted) {
 		const chosen = name ?? (await askName(state, ui));
@@ -183,7 +183,7 @@ async function reviewAndSave(state: McpExtensionState, ui: McpUi, pasted: Pasted
 }
 
 /** Paste a JSON definition (or fall back to the field form), choose where to save, save disabled and unassigned. */
-export async function addMcpWithUi(state: McpExtensionState, ui: McpUi, options: AddMcpUiOptions = {}): Promise<void> {
+export async function addMcpWithUi(state: McpFeatureState, ui: McpUi, options: AddMcpUiOptions = {}): Promise<void> {
 	if (!ui.input) return;
 	let draft = "";
 	for (;;) {

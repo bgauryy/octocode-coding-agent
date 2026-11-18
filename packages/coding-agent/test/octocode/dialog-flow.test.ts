@@ -3,8 +3,8 @@ import type { AgentSession } from "../../src/core/agent-session.ts";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
 import type { Question } from "@octocodeai/octocode-contracts";
-import type { ExtensionContext, ExtensionUIContext } from "../../src/core/features/types.ts";
-import { createExtensionUIContext, type PendingExtensionRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
+import type { FeatureContext, SessionUI } from "../../src/core/features/types.ts";
+import { createSessionUI, type PendingUiRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
 import { degrade } from "../../src/octocode/ask/degrade.ts";
 import { externalPermissionDialog } from "../../src/octocode/external/permission-dialog.ts";
 import { selectAnswer } from "../../src/octocode/permission/ask/text.ts";
@@ -24,10 +24,10 @@ type Started = { type: "ui_prompt_start" | "ui_prompt_end"; [key: string]: unkno
 
 /** An RPC host's UI behind the broker, as the runner wires it: what the host sees and what extensions are told. */
 function rpcSide(onEvent: (event: Started) => void = () => undefined) {
-	const pending: PendingExtensionRequests = new Map();
+	const pending: PendingUiRequests = new Map();
 	const output: Array<Record<string, unknown>> = [];
 	const tracker = new UIPromptTracker(async (event) => onEvent(event as unknown as Started));
-	const ui = tracker.wrap(createExtensionUIContext((value) => output.push(value as Record<string, unknown>), pending));
+	const ui = tracker.wrap(createSessionUI((value) => output.push(value as Record<string, unknown>), pending));
 	const events: Started[] = [];
 	const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 	return { pending, output, tracker, ui, events, flush };
@@ -48,7 +48,7 @@ describe("permission prompts are approvals", () => {
 		const ui = tracker.wrap({
 			...plain,
 			ask: (questions: Question[], opts?: object) => degrade(plain, questions, opts),
-		} as unknown as ExtensionUIContext);
+		} as unknown as SessionUI);
 		const ctx = { hasUI: true, ui } as unknown as Parameters<typeof selectAnswer>[0];
 		const answered = selectAnswer(
 			ctx,
@@ -85,8 +85,8 @@ describe("permission prompts are approvals", () => {
 					questions,
 					opts,
 				),
-		} as unknown as ExtensionUIContext;
-		const ctx = { hasUI: true, mode: "tui", ui: tracker.wrap(ui) } as unknown as ExtensionContext;
+		} as unknown as SessionUI;
+		const ctx = { hasUI: true, mode: "tui", ui: tracker.wrap(ui) } as unknown as FeatureContext;
 		const controller = new AbortController();
 		void externalPermissionDialog(ctx)(
 			{
@@ -164,7 +164,7 @@ describe("dialogs relayed from a subagent", () => {
 				}),
 			input: async () => undefined,
 			confirm: async () => false,
-		} as unknown as ExtensionUIContext;
+		} as unknown as SessionUI;
 		const ui = {
 			select: (_title: string, _options: string[], opts?: { signal?: AbortSignal }) =>
 				new Promise<string | undefined>((resolve) => {
@@ -174,7 +174,7 @@ describe("dialogs relayed from a subagent", () => {
 			input: async () => undefined,
 			notify: () => undefined,
 			ask: (questions: Question[], opts?: object) => degrade(plainUi, questions, opts),
-		} as unknown as ExtensionUIContext;
+		} as unknown as SessionUI;
 		const tracker = new UIPromptTracker(async (event) => {
 			await fake.emit(event.type, event, idle);
 		});

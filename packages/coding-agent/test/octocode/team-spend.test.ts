@@ -4,8 +4,9 @@ import type { Usage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { formatCost, formatTokenUsage } from "../../src/octocode/shared/format.ts";
+import { row as panelRow } from "../../src/octocode/team/panel/cells.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { registerFooter } from "../../src/octocode/ui/footer.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -58,7 +59,7 @@ describe("an agent's row counts what the footer counts", () => {
 		await fake.emit("session_start", {}, ctx);
 		const component = ctx.ui.footer({ requestRender: () => undefined }, theme, {
 			getGitBranch: () => null,
-			getExtensionStatuses: () => new Map(),
+			getFeatureStatuses: () => new Map(),
 			onBranchChange: () => () => undefined,
 		});
 		const me = team.join("spend");
@@ -71,7 +72,7 @@ describe("an agent's row counts what the footer counts", () => {
 		const kept = sm.appendMessage({ role: "user", content: "next", timestamp: 3 });
 		const compactionId = sm.appendCompaction("summary", kept, 10_000);
 		const compactionEntry = sm.getEntries().find((entry) => entry.id === compactionId);
-		await fake.emit("session_compact", { compactionEntry, fromExtension: false }, ctx);
+		await fake.emit("session_compact", { compactionEntry, fromFeature: false }, ctx);
 
 		sm.appendUsage("cache_warm", "anthropic", "claude-sonnet-4-5", usage(0, 10_000, 0, 1, 0.02));
 		const second = reply(usage(500, 19_000, 500, 200, 0.2));
@@ -84,8 +85,16 @@ describe("an agent's row counts what the footer counts", () => {
 		expect(footer).toContain("≈$0.62");
 		const row = formatTokenUsage(me);
 		expect(row).toBe("↑12k +38k cached ↓801");
-		expect(footer).toContain(`(${row})`);
+		// The footer counts the same new prompt tokens and output; the 38k cache reads show only as the share (38k of 50k).
+		expect(footer).toContain("12.8k tok (↑12k ↓801) · 76% cached");
+		expect(footer.match(/Σ/g)).toHaveLength(1);
 		expect(formatCost(me)).toBe("≈$0.62");
+		// The agents panel draws the same figures in the agent's row.
+		expect(panelRow({ member: me, depth: 1 }, "child", Date.now(), theme)).toMatchObject({
+			tokens: "12.8k tok",
+			cached: "76% cached",
+			cost: "≈$0.62",
+		});
 		team.stop();
 	});
 });

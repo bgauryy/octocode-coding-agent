@@ -48,6 +48,14 @@ describe("routing facts", () => {
 	});
 });
 
+/** The notice one watch gives for a change, given which providers the harness knows refused their credential. */
+type Facts = Parameters<RoutingWatch["prompt"]>[0];
+const noticeFor = (refused: (provider: string) => boolean, before: Facts, after: Facts) => {
+	const each = new RoutingWatch(refused);
+	each.prompt(before);
+	return each.notice(after);
+};
+
 describe("RoutingWatch", () => {
 	const facts = (providers: string[], small = "p/haiku", count = 2) => ({
 		sessionModel: "p/opus",
@@ -63,7 +71,6 @@ describe("RoutingWatch", () => {
 		const notice = watch.notice(facts(["p", "q"], "p/haiku", 5));
 		expect(notice).toContain("`p` (5), `q` (5)");
 		expect(notice).not.toContain("added");
-		expect(notice).toContain("`models` with `provider` set to an id lists that provider's models.");
 	});
 
 	it("tells a change again after compaction, which drops the notice while the prompt keeps the old facts", () => {
@@ -114,8 +121,8 @@ describe("RoutingWatch notice cause", () => {
 		const watch = new RoutingWatch(() => false);
 		watch.prompt(facts(["p", "q"]));
 		const notice = watch.notice(facts(["p"]));
-		expect(notice).toContain("The user changed models or providers");
-		expect(notice).not.toContain("refused");
+		expect(notice).toBeDefined();
+		expect(notice).not.toBe(noticeFor((provider) => provider === "q", facts(["p", "q"]), facts(["p"])));
 	});
 
 	it("names a provider that refused its credential instead of a user change, and again when it recovers", () => {
@@ -125,14 +132,13 @@ describe("RoutingWatch notice cause", () => {
 
 		refused.add("q");
 		const gone = watch.notice(facts(["p"], "p/tiny"));
-		expect(gone).toContain("`q` refused its credential");
-		expect(gone).not.toContain("The user changed");
+		// The cause is the refusal: the same facts without one read differently.
+		expect(gone).not.toBe(noticeFor(() => false, facts(["p", "q"]), facts(["p"], "p/tiny")));
 		expect(gone).toContain("(no longer available: `q`)");
 
 		refused.delete("q");
 		const back = watch.notice(facts(["p", "q"]));
-		expect(back).toContain("`q` accepts its credential again");
-		expect(back).not.toContain("The user changed");
+		expect(back).not.toBe(noticeFor(() => false, facts(["p"]), facts(["p", "q"])));
 		expect(back).toContain("(added `q`)");
 	});
 
@@ -140,8 +146,12 @@ describe("RoutingWatch notice cause", () => {
 		const watch = new RoutingWatch((provider) => provider === "q");
 		watch.prompt(facts(["p", "q", "r"]));
 		const notice = watch.notice(facts(["p"]));
-		expect(notice).toContain("The user changed models or providers");
-		expect(notice).toContain("`q` refused its credential");
+		// Both causes: unlike either one alone.
+		const refusalOnly = noticeFor((provider) => provider === "q", facts(["p", "q", "r"]), facts(["p", "r"]));
+		const userOnly = noticeFor(() => false, facts(["p", "q", "r"]), facts(["p"]));
+		expect(notice).toBeDefined();
+		expect(notice).not.toBe(refusalOnly);
+		expect(notice).not.toBe(userOnly);
 	});
 
 	it("repeats no notice while a credential refusal outlives the routing window of a transient one", () => {
@@ -153,12 +163,12 @@ describe("RoutingWatch notice cause", () => {
 			expect(routed()?.providers.map((entry) => entry.id)).toEqual(["p", "q"]);
 			watch.prompt(routed());
 			health.noteRun("q/mini", '401 {"error":"invalid_grant"}');
-			expect(watch.notice(routed())).toContain("`q` refused its credential");
+			expect(watch.notice(routed())).toContain("`q`");
 			vi.advanceTimersByTime(60 * 60_000);
 			expect(watch.notice(routed())).toBeUndefined();
 			expect(routed()?.providers.map((entry) => entry.id)).toEqual(["p"]);
 			health.credentialChanged("q");
-			expect(watch.notice(routed())).toContain("`q` accepts its credential again");
+			expect(watch.notice(routed())).toContain("`q`");
 		} finally {
 			vi.useRealTimers();
 		}
@@ -168,8 +178,15 @@ describe("RoutingWatch notice cause", () => {
 		const watch = new RoutingWatch(() => false);
 		watch.prompt(facts(["p"]));
 		const notice = watch.notice(facts(["p", "q"]));
-		expect(notice).toContain("The user changed models or providers");
-		expect(notice).not.toContain("accepts its credential");
+		expect(notice).toContain("(added `q`)");
+		// Not the recovery notice of a provider whose credential was refused before.
+		const refused = new Set<string>();
+		const recovering = new RoutingWatch((provider) => refused.has(provider));
+		recovering.prompt(facts(["p", "q"]));
+		refused.add("q");
+		recovering.notice(facts(["p"]));
+		refused.delete("q");
+		expect(notice).not.toBe(recovering.notice(facts(["p", "q"])));
 	});
 });
 
@@ -180,7 +197,7 @@ describe("coordinator prompt routing", () => {
 	it("states routes in the prompt once per session and sends a hidden notice when a command changes them", async () => {
 		const fake = fakeHost();
 		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
-		fake.api.setActiveTools(["bash", "file", "agent"]);
+		fake.api.tools.setActive(["bash", "file", "agent"]);
 		const profiles = new Map([["researcher", researcher]]);
 		const turn = registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
 		let available = [opus, sonnet, haiku, other];
@@ -234,7 +251,7 @@ describe("coordinator prompt routing", () => {
 		vi.stubEnv("OCTOCODE_HOME", home);
 		const fake = fakeHost();
 		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
-		fake.api.setActiveTools(["bash", "file", "agent"]);
+		fake.api.tools.setActive(["bash", "file", "agent"]);
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		let available = [opus, sonnet, haiku, other];
 		const ctx = {

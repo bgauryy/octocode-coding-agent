@@ -14,7 +14,6 @@ import {
 	directoryItems,
 	externalSkillsEnabled,
 	hookFileItems,
-	ignoredCodeItems,
 	listsProject,
 	namedFileItems,
 	productRoots,
@@ -109,7 +108,6 @@ export const octocodeVendor: Vendor = {
 			kind: "theme",
 			discover: (input) => directoryItems("theme", "themes", collectAutoThemeEntries, themeName, roots(input), input),
 		},
-		{ kind: "extension", discover: (input) => ignoredCodeItems("extension", "extensions", roots(input), input) },
 		{ kind: "context", discover: (input) => contextItems(roots(input), input) },
 		{
 			kind: "systemPrompt",

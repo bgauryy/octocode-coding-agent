@@ -4,10 +4,14 @@ import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { theme } from "../../../theme/theme.ts";
 import { AuthUrlComponent } from "./auth-url.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { hintLine, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyText, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+
+const SUBMIT: RankedHint = [keyText("tui.select.confirm"), "submit", 1];
+const cancelHint = (verb = "cancel"): RankedHint => [keyText("tui.select.cancel"), verb, 0];
 
 /**
- * Login dialog component - replaces editor during OAuth login flow
+ * The sign-in dialog that replaces the editor during a login: rule, title, the step's content (URL, code, prompt and
+ * field), then one hint line that is cut, never wrapped, with Enter's verb first and Esc's last.
  */
 export class LoginDialogComponent extends Container implements Focusable {
 	private contentContainer: Container;
@@ -46,7 +50,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 		const title = titleOverride ?? `Login to ${providerName}`;
 
 		this.addChild(new DynamicBorder());
-
+		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 
 		// Dynamic content area
@@ -56,7 +60,14 @@ export class LoginDialogComponent extends Container implements Focusable {
 		// Input (always present, used when needed)
 		this.input = this.createInput();
 
+		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
+	}
+
+	/** The step's hint line, one blank line under its content. */
+	private addHints(hints: readonly RankedHint[]): void {
+		this.contentContainer.addChild(new Spacer(1));
+		this.contentContainer.addChild(new HintBar(hints));
 	}
 
 	private createInput(secret = false): Input {
@@ -146,7 +157,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 		this.contentContainer.addChild(new Spacer(1));
 		this.contentContainer.addChild(new Text(theme.fg("dim", prompt), 1, 0));
 		this.contentContainer.addChild(this.input);
-		this.contentContainer.addChild(new Text(hintLine([[keyText("tui.select.cancel"), "cancel"]]), 1, 0));
+		this.addHints([SUBMIT, cancelHint()]);
 		this.tui.requestRender();
 
 		return new Promise((resolve, reject) => {
@@ -167,16 +178,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 			this.contentContainer.addChild(new Text(theme.fg("dim", `e.g., ${placeholder}`), 1, 0));
 		}
 		this.contentContainer.addChild(this.input);
-		this.contentContainer.addChild(
-			new Text(
-				hintLine([
-					[keyText("tui.select.cancel"), "cancel"],
-					[keyText("tui.select.confirm"), "submit"],
-				]),
-				1,
-				0,
-			),
-		);
+		this.addHints([SUBMIT, cancelHint()]);
 
 		this.input.setValue("");
 		this.tui.requestRender();
@@ -215,10 +217,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 			const hyperlink = `\x1b]8;;${link.url}\x07${text}\x1b]8;;\x07`;
 			this.contentContainer.addChild(new Text(theme.fg("accent", hyperlink), 1, 0));
 		}
-		if (showCloseHint) {
-			this.contentContainer.addChild(new Spacer(1));
-			this.contentContainer.addChild(new Text(hintLine([[keyText("tui.select.cancel"), "close"]]), 1, 0));
-		}
+		if (showCloseHint) this.addHints([cancelHint("close")]);
 		this.tui.requestRender();
 	}
 
@@ -228,7 +227,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 	showWaiting(message: string): void {
 		this.contentContainer.addChild(new Spacer(1));
 		this.contentContainer.addChild(new Text(theme.fg("dim", message), 1, 0));
-		this.contentContainer.addChild(new Text(hintLine([[keyText("tui.select.cancel"), "cancel"]]), 1, 0));
+		this.addHints([cancelHint()]);
 		this.tui.requestRender();
 	}
 

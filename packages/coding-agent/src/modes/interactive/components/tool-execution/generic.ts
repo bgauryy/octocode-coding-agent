@@ -1,9 +1,12 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { queryTarget } from "@octocodeai/octocode-common/clip";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ToolRenderers } from "../../../../core/features/types.ts";
+import type { Component } from "@octocodeai/octocode-tui";
+import type { ToolRenderContext, ToolRenderers } from "../../../../core/features/types.ts";
 import { resultBlock, resultText, toolHeader } from "../../../../octocode/render/tool.ts";
+import { shortToolName } from "../../../../octocode/ui/activity-model.ts";
 import { outputLanguage } from "../../../../theme/output-style.ts";
+import type { Theme } from "../../../../theme/theme.ts";
 import { toolArgsForDisplay } from "../../../../octocode/ui/reason-row.ts";
 
 /** Arguments that state why the call is made: the reason rows show them, the header does not repeat them. */
@@ -40,6 +43,26 @@ function argsSummary(toolName: string, args: unknown): string {
 }
 
 /**
+ * The header of a tool without a call renderer: its title is a word, so `mcp__octocode__localSearch` draws
+ * `localSearch(…) · octocode`, as the team panel names it. Nothing wraps such a tool in `timed`, so no run start is
+ * recorded for its call id: the row times itself from its first drawn frame.
+ */
+export function genericCall(
+	toolName: string,
+	args: unknown,
+	theme: Theme,
+	context: ToolRenderContext,
+	lines: string[] = [],
+): Component {
+	const title = shortToolName(toolName);
+	const server = title === toolName ? "" : toolName.slice("mcp__".length, toolName.length - title.length - 2);
+	return toolHeader(theme, { ...context, toolCallId: undefined }, title, argsSummary(toolName, args), {
+		...(server ? { meta: sanitizeTerminalText(server) } : {}),
+		...(lines.length ? { lines } : {}),
+	});
+}
+
+/**
  * `renderers` when it draws the call or its result; else the native `Name(summary)` header and `⎿` result block, so a
  * tool without a renderer (every external MCP tool) looks like every other row.
  */
@@ -47,9 +70,7 @@ export function withGenericRenderers(renderers: ToolRenderers | undefined, toolN
 	if (renderers?.renderCall ?? renderers?.renderResult) return renderers;
 	return {
 		...renderers,
-		// Nothing wraps this tool in `timed`, so no run start is recorded for its call id: the row times itself from its first drawn frame.
-		renderCall: (args, theme, context) =>
-			toolHeader(theme, { ...context, toolCallId: undefined }, toolName, argsSummary(toolName, args)),
+		renderCall: (args, theme, context) => genericCall(toolName, args, theme, context),
 		renderResult: (result, options, theme, context) => {
 			const body = resultText(result);
 			const language = context.isError ? undefined : outputLanguage(body);

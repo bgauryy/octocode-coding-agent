@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
-import { meteredBilling } from "./fake-host.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
+import { meteredBilling, asSetup } from "./fake-host.ts";
 
 // The native `models` tool, formerly `agent` type `models`; the file keeps its old name.
 
@@ -19,8 +19,8 @@ const zen = m("opencode", "qwen-coder", 0.5, 2);
 
 function mode(profiles = new Map()) {
 	let tool: ToolDefinition | undefined;
-	const api = { registerTool: (definition: ToolDefinition) => void (tool = definition) };
-	registerModelsTool(api as never, () => profiles);
+	const api = asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) });
+	registerModelsTool(api, () => profiles);
 	if (!tool) throw new Error("not registered");
 	const streamSimple = vi.fn((model: ModelRef) => ({
 		result: async () =>

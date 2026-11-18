@@ -97,7 +97,6 @@ describe("skills in /harness", () => {
 		// The session reads the core folder through `resources_discover`; the same pattern drops the skill there.
 		const loader = new DefaultResourceLoader({
 			settingsManager: SettingsManager.create(f.cwd, f.agentDir, { projectTrusted: true }),
-			nativeFeatures: false,
 			cwd: f.cwd,
 			agentDir: f.agentDir,
 		});

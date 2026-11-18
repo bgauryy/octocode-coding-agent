@@ -227,7 +227,7 @@ export class ModelAvailability {
 		}
 		const configured = configuredRequestAuthStatus(
 			layers.config.getProvider(providerId),
-			layers.extensionProviders.get(providerId),
+			layers.featureProviders.get(providerId),
 		);
 		if (configured) return configured;
 		const check = this.snapshot.auth.get(providerId);

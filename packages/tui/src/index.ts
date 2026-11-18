@@ -39,7 +39,7 @@ export {
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
 export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
-export { breathe, ELLIPSIS, GLYPH, MOTION, SEPARATOR, SPINNER, settle, type UiState } from "./tokens/design.ts";
+export { breathe, ELLIPSIS, GLYPH, MOTION, SEPARATOR, SPINNER, settle, TONE, type UiState } from "./tokens/design.ts";
 // State binding: views follow a selection of a state source
 export {
 	Connected,
@@ -88,7 +88,14 @@ export {
 	type SelectListTruncatePrimaryContext,
 } from "./components/select-list.ts";
 export { type SettingItem, SettingsList, type SettingsListTheme } from "./components/settings-list.ts";
-export { fitRows, type RowColumn, type RowFit, type RowFitOptions } from "./components/row-fit.ts";
+export {
+	ListView,
+	type ListViewOptions,
+	type ListViewTheme,
+	positionLabel,
+	SEARCH_GLYPH,
+} from "./components/list-view.ts";
+export { fitRows, type RowColumn, type RowFit, type RowFitOptions, WRAP_MARK } from "./components/row-fit.ts";
 export { Spacer } from "./components/spacer.ts";
 export { Text } from "./components/text.ts";
 export { TruncatedText } from "./components/truncated-text.ts";
@@ -167,6 +174,7 @@ export {
 	getPngDimensions,
 	getWebpDimensions,
 } from "./terminal-image/dimensions.ts";
+export { pointerClicksActive, setPointerClicksActive } from "./tui/pointer-clicks.ts";
 export {
 	detectCapabilities,
 	getCapabilities,
@@ -205,6 +213,7 @@ export {
 	isRenderStable,
 	isViewportTUI,
 	linkRenderChild,
+	recordUntrackedRenders,
 	type OverlayAnchor,
 	type OverlayBounds,
 	type OverlayHandle,
@@ -239,9 +248,10 @@ export { TuiMainScreen } from "./tui-main-screen.ts";
 // Utilities
 export { wrapTextWithAnsi } from "./utils/wrap.ts";
 export { visibleWidth } from "./utils/width.ts";
-export { truncateToWidth } from "./utils/truncate.ts";
+export { padToWidth, truncateToWidth } from "./utils/truncate.ts";
 export { closeOpenStyles } from "./utils/ansi-tracker.ts";
 export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
+export { linkPath } from "./utils/link-path.ts";
 export { stripTerminalSequences } from "./utils.ts";
 export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";
 export { incompleteAnsiStart } from "./utils/ansi-codes.ts";

@@ -1,3 +1,5 @@
+// The session runs without the native feature set, which would install the MCP host ports its prompt reads.
+import "./mcp-host.ts";
 import { syncBuiltinESMExports } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +13,7 @@ import { createReadTool } from "./fixtures/read-tool.ts";
 import { registerHooks } from "../src/octocode/hooks/register.ts";
 import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 type Capture = {
@@ -63,8 +66,7 @@ async function fixture() {
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -72,23 +74,23 @@ async function fixture() {
 		additionalSkillPaths: [skill],
 		additionalPromptTemplatePaths: [template],
 		settingsManager: SettingsManager.inMemory({ ...HOOK_SETTINGS }),
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("session_start", (_event, ctx) => {
+				api.bus.on("session_start", (_event, ctx) => {
 					currentId = () => ctx.getTurnId();
 				});
-				api.on("agent_settled", (_event, ctx) => {
+				api.bus.on("agent_settled", (_event, ctx) => {
 					settledIds.push(ctx.getTurnId());
 				});
-				api.on("input", (event) =>
+				api.bus.on("input", (event) =>
 					event.text === "TRANSFORM" ? { action: "transform", text: "Use $alpha" } : { action: "continue" },
 				);
-				api.on("before_agent_start", (event) => {
+				api.bus.on("before_agent_start", (event) => {
 					if (event.messageType === "user") beforePrompts.push(event.prompt);
 				});
 				const hooks = registerHooks(api, { env: {}, home: root });
-				api.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
-				api.registerTool({
+				api.bus.on("tool_call", (event, ctx) => hooks.preToolUse(event, ctx));
+				api.tools.register({
 					name: "wait",
 					label: "wait",
 					description: "Controlled wait",
@@ -103,7 +105,7 @@ async function fixture() {
 					},
 				});
 			},
-		],
+		]),
 	});
 	await loader.reload();
 	const harness = await createHarness({
@@ -111,7 +113,7 @@ async function fixture() {
 		tools: [createReadTool(cwd)],
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 	});
-	await harness.session.bindExtensions({});
+	await harness.session.bindFeatures({});
 	const records = (): Capture[] =>
 		fs.existsSync(capture)
 			? fs

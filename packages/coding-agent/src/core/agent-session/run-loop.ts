@@ -50,7 +50,7 @@ export interface RunLoopHost extends Pick<
 	waitForIdle(): Promise<void>;
 }
 
-/** The message a run is about to append, as far as the pre-prompt compaction check can size it before extensions edit it. */
+/** The message a run is about to append, as far as the pre-prompt compaction check can size it before features edit it. */
 function incomingMessages(trigger: BeforeAgentStartTrigger): AgentMessage[] {
 	if (trigger.messageType === "custom") return [trigger.message];
 	return [{ role: "user", content: [{ type: "text", text: trigger.prompt }, ...(trigger.images ?? [])], timestamp: 0 }];
@@ -88,7 +88,7 @@ export class SessionRunLoop {
 			throw new Error("A run is already active in this session. Queue the message with steer or followUp.");
 		if (
 			planConstraintActive(session.sessionManager) &&
-			!session.extensionRunner
+			!session.featureHost
 				.getRegisteredCommands()
 				.some((command) => command.name === "plan" && command.sourceInfo.owner === "native")
 		)
@@ -101,7 +101,7 @@ export class SessionRunLoop {
 		run.inputTerminated = false;
 		run.active = true;
 		run.agentRunAbortRequested = false;
-		run.extensionRunAbortRequested = false;
+		run.featureRunAbortRequested = false;
 		let messages: AgentMessage[];
 		try {
 			messages = await this.host.prepareRun(trigger, input);
@@ -206,7 +206,7 @@ export class SessionRunLoop {
 		}
 
 		const selectedToolsBefore = tools.baseSystemPromptOptions.selectedTools;
-		const result = await session.extensionRunner.emitBeforeAgentStart(trigger, tools.baseSystemPromptOptions);
+		const result = await session.featureHost.emitBeforeAgentStart(trigger, tools.baseSystemPromptOptions);
 		// Handlers may edit event.systemPromptOptions.selectedTools or call setActiveTools(),
 		// which updates the live loadout instead. An explicit edit wins; otherwise the live
 		// loadout is authoritative, so a setActiveTools() call is not undone here.
@@ -219,7 +219,7 @@ export class SessionRunLoop {
 		if (trigger.messageType === "custom") {
 			messages.push(trigger.message);
 		} else {
-			// Normalize images after before_agent_start so extension-driven model selection
+			// Normalize images after before_agent_start so feature-driven model selection
 			// determines the resize profile used for the request and history.
 			assertImageInputSupported(session.model, trigger.images ?? []);
 			const normalized = await normalizePromptImages(
@@ -241,7 +241,7 @@ export class SessionRunLoop {
 			messages.push({
 				role: "custom",
 				customType: msg.customType,
-				// Untyped extensions can pass null/missing content; normalize at ingestion.
+				// Untyped features can pass null/missing content; normalize at ingestion.
 				content: msg.content ?? [],
 				display: msg.display,
 				details: msg.details,
@@ -297,22 +297,21 @@ export class SessionRunLoop {
 			const aborted = run.agentRunAbortRequested;
 			const outcome = settledRunOutcome(run.outcome, aborted);
 			run.outcome = outcome;
-			await session.extensionRunner.emit({ type: "agent_settled", aborted, outcome });
+			await session.featureHost.emit({ type: "agent_settled", aborted, outcome });
 			this.host.emit({ type: "agent_settled", aborted, outcome });
 		} finally {
 			run.isEmittingAgentSettled = false;
 		}
 
+		// Sends made by agent_settled handlers run now; agent_settle_end tells features they have, so a wake whose send
+		// started no run stops counting without a timer.
 		const deferred = run.deferredSettledActions.splice(0);
-		if (deferred.length > 0) {
-			try {
-				for (const action of deferred) await action();
-			} finally {
-				this.host.resolveIdleWaitIfIdle();
-			}
-			return;
+		try {
+			for (const action of deferred) await action();
+		} finally {
+			await session.featureHost.emit({ type: "agent_settle_end" });
+			this.host.resolveIdleWaitIfIdle();
 		}
-		this.host.resolveIdleWaitIfIdle();
 	}
 
 	recordAbortReason(reason: AbortReason): void {
@@ -338,7 +337,7 @@ export class SessionRunLoop {
 		if (event) {
 			const callback = { active: true };
 			try {
-				await this._interruptionCallback.run(callback, () => this.host.session.extensionRunner.emit(event));
+				await this._interruptionCallback.run(callback, () => this.host.session.featureHost.emit(event));
 			} finally {
 				callback.active = false;
 			}

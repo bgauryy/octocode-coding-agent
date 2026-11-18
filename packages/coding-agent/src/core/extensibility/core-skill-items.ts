@@ -7,7 +7,7 @@ import type { SettingsManager } from "../settings-manager.ts";
 import { loadSkillsFromDir } from "../skills.ts";
 import type { InventoryItem } from "./inventory-types.ts";
 
-/** The `source` of a core skill's resource: the skills shipped in `native-skills/`, which no package resolver lists. */
+/** The `source` of a core skill's resource: the skills shipped in `native/skills/`, which no package resolver lists. */
 export const CORE_SKILL_SOURCE = "core";
 
 /** The detail of a skill row from the Octocode collection (source `builtin`): its folder inside the collection. */
@@ -37,7 +37,7 @@ export function coreSkillItems(manager: SettingsManager, dir = getNativeSkillsDi
 			label: skill.name,
 			on: enabled,
 			// The installed path says little; the folder inside the package names the skill's files.
-			detail: `Octocode (core) · native-skills/${path.relative(dir, skill.filePath)}`,
+			detail: `Octocode (core) · native/skills/${path.relative(dir, skill.filePath)}`,
 			resource: {
 				path: skill.filePath,
 				enabled,

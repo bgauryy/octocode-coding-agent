@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { HOOK_EVENTS, type HookEvent } from "../catalog.ts";
 import { commandsFor, hookCalls } from "../config/calls.ts";
@@ -15,7 +15,7 @@ export const TEST_USAGE =
 export async function testRunHooks(
 	dispatch: Dispatch,
 	session: HookSession,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	words: readonly string[],
 ): Promise<string> {
 	const [name, target, ...rest] = words;

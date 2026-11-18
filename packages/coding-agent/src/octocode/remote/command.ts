@@ -8,7 +8,7 @@ import {
 	type RemoteStatus,
 } from "@octocodeai/octocode-contracts/daemon";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { RemoteSettings } from "../../core/settings-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cancelledText, say, type Subcommand, wordCompletions } from "../shared/commands.ts";
@@ -17,7 +17,7 @@ import { describeLink, describeStatus } from "./links.ts";
 
 export interface RemoteHost {
 	/** The daemon with this session attached, started when none runs; rejects when it cannot start or be reached. */
-	daemon(ctx: ExtensionContext): Promise<Pick<LaunchedDaemon, "origin" | "token">>;
+	daemon(ctx: FeatureContext): Promise<Pick<LaunchedDaemon, "origin" | "token">>;
 	settings(): RemoteSettings;
 }
 
@@ -42,7 +42,7 @@ const isLinkAnswer = (value: unknown): value is { link: RemoteLink } =>
 const isStatus = (value: unknown): value is RemoteStatus => Value.Check(RemoteStatusSchema, value);
 
 /** Publishes one link with the configured transport. */
-async function publishLink(host: RemoteHost, ctx: ExtensionContext, access: RemoteAccess): Promise<RemoteLink> {
+async function publishLink(host: RemoteHost, ctx: FeatureContext, access: RemoteAccess): Promise<RemoteLink> {
 	const daemon = await host.daemon(ctx);
 	const settings = host.settings();
 	const request: RemotePublish = {
@@ -115,8 +115,8 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 }
 
 /** `remote.autoStart`: publish a link when a session starts, and say where it is. Never for a subagent. */
-export function registerRemoteAutoStart(api: ExtensionAPI, host: RemoteHost): void {
-	api.on("session_start", async (_event, ctx) => {
+export function registerRemoteAutoStart(api: FeatureSetup, host: RemoteHost): void {
+	api.bus.on("session_start", async (_event, ctx) => {
 		const access = host.settings().autoStart ?? "off";
 		if (access === "off") return;
 		try {

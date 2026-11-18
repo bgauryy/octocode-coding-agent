@@ -60,8 +60,8 @@ describe("removed extension flags", () => {
 	}, 90_000);
 });
 
-describe("the settings extensions list", () => {
-	it("reports each code entry as ignored, loads none of it and still answers", async () => {
+describe("a leftover settings extensions key", () => {
+	it("warns that the key is ignored, loads none of it and still answers", async () => {
 		await scripted("still answering");
 		const code = join(sandbox.directory, "ext.mjs");
 		const ran = join(sandbox.directory, "ran.txt");
@@ -72,17 +72,16 @@ describe("the settings extensions list", () => {
 		writeSettings(sandbox, { extensions: [code] });
 		const result = await runCli(sandbox, PRINT);
 		expect(result.code).toBe(0);
-		expect(result.stderr).toContain(`${code}: Ignored extension. User code extensions are not supported`);
+		expect(result.stderr).toContain('Setting "extensions" is ignored');
 		expect(result.stdout).toContain("still answering");
 		expect(existsSync(ran)).toBe(false);
 	}, 90_000);
 
-	it("keeps a builtin:<id> entry as a switch, with no diagnostic", async () => {
+	it("does not let a builtin:<id> entry switch MCP off", async () => {
 		await scripted("mcp off");
 		writeSettings(sandbox, { extensions: ["-builtin:mcp"] });
 		const result = await runCli(sandbox, PRINT);
 		expect(result.code).toBe(0);
-		expect(result.stderr).not.toContain("Ignored extension");
 		expect(result.stdout).toContain("mcp off");
 	}, 90_000);
 });

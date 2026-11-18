@@ -1,14 +1,18 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { claimSuffix } from "../shared/claims.ts";
 import { onSecond } from "../shared/clock.ts";
 import { rewriteClaim } from "./handoff/claim-file.ts";
 import { CLAIM_MARKER, claims, type Report, savePendingReport } from "./handoff/pending.ts";
 import { type ReceiptSession, ReportReceipts } from "./handoff/receipts.ts";
-import { shortPath } from "../../utils/display-path.ts";
+import { sessionPhaseOf } from "../shared/session-phase.ts";
+import { noticeText, noticeWanted } from "./handoff/notice.ts";
+import { PendingReports, publishWaking } from "./handoff/waking.ts";
 import { sendAgentReport } from "./handoff/wake.ts";
+
+export { noticeText };
 
 /**
  * Handoff between a subagent and the session that started it: the scratch folder it leaves files in, and the delivery
@@ -40,7 +44,7 @@ const SLOW_RETRY_MS = 30_000;
 export class ReportQueue {
 	private queued: Report[] = [];
 	private timer: NodeJS.Timeout | undefined;
-	private readonly pending = new Map<string, Report>();
+	private readonly pending = new PendingReports(() => this.publishWaking());
 	private readonly retries = new Map<string, { attempts: number; timer?: NodeJS.Timeout; told?: boolean }>();
 	/** Says something to the person watching, when one is. */
 	private warn: (text: string) => void = () => undefined;
@@ -60,7 +64,7 @@ export class ReportQueue {
 	/** The pending folder of the Octocode session this queue serves: where a report that could not be sent is saved. */
 	pendingDir: string | undefined;
 
-	private readonly api: ExtensionAPI;
+	private readonly api: FeatureSetup;
 	private readonly hold: Hold | undefined;
 	/** The backlog item of each child by id: what a report wakes the parent about. */
 	private readonly items: ReadonlyMap<string, string> | undefined;
@@ -68,10 +72,17 @@ export class ReportQueue {
 	 * `hold`: the children (of the queued reports' child ids) whose reports wait for a sibling's report
 	 * (`report-groups.ts`). Without it, or when it throws, every report goes out at the end of its tick.
 	 */
-	constructor(api: ExtensionAPI, hold?: Hold, items?: ReadonlyMap<string, string>) {
+	constructor(api: FeatureSetup, hold?: Hold, items?: ReadonlyMap<string, string>) {
 		this.api = api;
 		this.hold = hold;
 		this.items = items;
+		// A report the session recorded while the run settles is not a wake: catch up before the phase is derived.
+		sessionPhaseOf(api).onRefresh("reports", () => this.recorded());
+	}
+
+	/** Tells the session's phase which reports will wake it: from `add` until the session records them. */
+	private publishWaking(): void {
+		publishWaking(this.api, this.pending, this.retries, FAST_RETRIES + SLOW_RETRIES);
 	}
 
 	/** The queued reports that go now: those whose sibling's report is not about to join them (`hold`). Unknown state holds none. */
@@ -226,9 +237,9 @@ export class ReportQueue {
 	}
 
 	/**
-	 * A parent in the middle of a turn reads a short notice (agent, outcome, report path) at its next step; the whole report
-	 * still arrives as a follow-up when the turn ends. Only the parent's own facts go in it: the child's words stay in the
-	 * fenced report. Silent for a stop someone asked for, a report already read, and an idle parent (the report wakes it).
+	 * A parent in the middle of a turn reads a short notice (agent, outcome, report path) at its next step when the child did
+	 * not finish cleanly; the whole report still follows when the turn ends. Only the parent's own facts go in it. Silent
+	 * for a clean finish, a stop someone asked for, a report already read, and an idle parent (the report wakes it).
 	 * It waits for `stepEnded`: sent while the parent streams its last reply, it would start a request of its own only to say
 	 * that the report follows.
 	 */
@@ -236,7 +247,7 @@ export class ReportQueue {
 		if (this.parentIdle()) return;
 		for (const report of batch) {
 			const id = report.reportId;
-			if (!id || !report.wake || this.noticed.has(id)) continue;
+			if (!id || !report.wake || this.noticed.has(id) || !noticeWanted(report)) continue;
 			this.noticed.add(id);
 			this.noticesWaiting.add(id);
 		}
@@ -251,7 +262,7 @@ export class ReportQueue {
 		for (const report of this.pending.values()) {
 			if (report.details.id !== id || report.superseded) continue;
 			report.superseded = true;
-			report.content = `${report.content}\n\n${renderInstruction("notices/subagents/superseded.md", { id })}`;
+			report.content = `${report.content}\n\n${renderPrompt("notices/subagents/superseded.md", { id })}`;
 			rewriteClaim(report);
 			const details = this.sent.get(report);
 			try {
@@ -272,7 +283,7 @@ export class ReportQueue {
 			if (!report || report.superseded) continue;
 			try {
 				void Promise.resolve(
-					this.api.sendMessage(
+					this.api.session.sendMessage(
 						{ customType: NOTICE_TYPE, content: noticeText(report), display: false, details: { reportId: id } },
 						{ triggerTurn: false, deliverAs: "steer" },
 					),
@@ -293,6 +304,7 @@ export class ReportQueue {
 		if (retry.attempts >= FAST_RETRIES + SLOW_RETRIES) {
 			// The report stays claimed: `retryExhausted` sends it again after the next settled turn, and shutdown saves it.
 			this.retries.set(id, retry);
+			this.publishWaking();
 			if (!retry.told) {
 				retry.told = true;
 				this.warn(`The report of ${report.details.id} could not be delivered; it is retried after the next turn.`);
@@ -385,15 +397,4 @@ export class ReportQueue {
 			}
 		} else if (this.pendingDir) savePendingReport(this.pendingDir, report.details.id, report);
 	}
-}
-
-/** The notice for a parent mid-turn. The path is the saved full report when the report was long enough to be saved. */
-export function noticeText(report: Report): string {
-	const { id, outcome, status } = report.details;
-	const result = outcome ?? (status === "done" ? "finished" : status);
-	// The pointer is the last such line, after anything the child wrote; only a scratch path is ever repeated.
-	// The host's own report file: the report text is the child's, and may imitate a pointer line.
-	const saved = report.details.reportArtifact?.path;
-	const file = saved ? shortPath(saved) : undefined;
-	return renderInstruction("notices/subagents/report-waiting.md", { id, result, file });
 }

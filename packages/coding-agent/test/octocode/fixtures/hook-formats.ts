@@ -91,14 +91,14 @@ export function writeSkills(home: string, cwd: string): string[] {
 	return Object.keys(folders);
 }
 
-const RECORDING_EXTENSION = (log: string, tag: string) =>
+const RECORDING_FEATURE = (log: string, tag: string) =>
 	`import { appendFileSync } from "node:fs";\nexport default function (octocode) {\n\tconst record = (event, detail) => appendFileSync(${JSON.stringify(log)}, "${tag}\\t" + event + "\\t" + detail + "\\n");\n\toctocode.on("tool_call", (event) => record("tool_call", event.toolName));\n\toctocode.on("session_start", () => record("mcp_servers", octocode.getMcpServers().map((server) => server.name).join(",")));\n}\n`;
 
 /** A native extension in the agent directory and a local Octocode package that declares one. */
-export function writeExtensions(agentDir: string, root: string, log: string): { packageDir: string } {
-	write(path.join(agentDir, "extensions/record.ts"), RECORDING_EXTENSION(log, "extension-dir"));
+export function writeFeatures(agentDir: string, root: string, log: string): { packageDir: string } {
+	write(path.join(agentDir, "extensions/record.ts"), RECORDING_FEATURE(log, "extension-dir"));
 	const packageDir = path.join(root, "record-package");
 	write(path.join(packageDir, "package.json"), { name: "record-package", octocode: { extensions: ["./ext.ts"] } });
-	write(path.join(packageDir, "ext.ts"), RECORDING_EXTENSION(log, "package"));
+	write(path.join(packageDir, "ext.ts"), RECORDING_FEATURE(log, "package"));
 	return { packageDir };
 }

@@ -1,10 +1,10 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { rewriteClaudeBash } from "../../tool-input/claude-bash.ts";
 import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
 import { validateFileInput } from "../../tool-input/file-input.ts";
 import { rewriteCodexCommand } from "../rewrite.ts";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 import { rewriteFileQuery } from "../../tool-input/claude-file.ts";
 import { say } from "../../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -32,7 +32,7 @@ const codexFailsClosed = (session: HookSession): boolean =>
 
 export const preToolUseGate =
 	(
-		api: ExtensionAPI,
+		api: FeatureSetup,
 		dispatch: Dispatch,
 		session: HookSession,
 		patches: Map<string, string>,
@@ -126,7 +126,7 @@ export const preToolUseGate =
 					block: true,
 					reason: "Input rewrite requires an unavailable reverse adapter for this tool; call not executed",
 				};
-			const definition = api.getAllTools().find((tool) => tool.name === event.toolName);
+			const definition = api.tools.getAll().find((tool) => tool.name === event.toolName);
 			if (!definition) return { block: true, reason: "Cannot validate rewritten input for an unknown tool" };
 			try {
 				let replacement: Record<string, unknown> = rewrite.updatedInput;
@@ -182,10 +182,10 @@ export const preToolUseGate =
 			.filter(Boolean)
 			.join("\n\n");
 		if (context && !ctx.signal?.aborted) {
-			await api.sendMessage(
+			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(renderInstruction("notices/hooks/context.md", { source: "PreToolUse", text: context })),
+					content: capContext(renderPrompt("hooks/context.md", { source: "PreToolUse", text: context })),
 					display: false,
 				},
 				{ triggerTurn: false },

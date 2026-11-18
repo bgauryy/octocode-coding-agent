@@ -14,7 +14,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 
-export interface ExtensionOAuthConfig {
+export interface FeatureOAuthConfig {
 	name: string;
 	/** Whether access through this auth method is backed by a provider subscription. */
 	isSubscription?: boolean;
@@ -62,7 +62,7 @@ interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
 
 export type ProviderModelConfig = ProviderChatModelConfig | ProviderImageModelConfig | ProviderClassifierModelConfig;
 
-/** Input type for the extension registerProvider API. */
+/** Input type for the feature registerProvider API. */
 export interface ProviderConfigInput {
 	name?: string;
 	baseUrl?: string;
@@ -77,7 +77,7 @@ export interface ProviderConfigInput {
 	classifiers?: Partial<Record<ClassifierApi, ProviderClassifier>>;
 	headers?: Record<string, string>;
 	authHeader?: boolean;
-	oauth?: ExtensionOAuthConfig;
+	oauth?: FeatureOAuthConfig;
 	models?: ProviderModelConfig[];
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
 }

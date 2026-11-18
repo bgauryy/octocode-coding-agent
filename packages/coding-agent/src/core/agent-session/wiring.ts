@@ -1,14 +1,14 @@
 /**
  * Wiring of `AgentSession`'s collaborators: each gets the shared session internals plus the
  * collaborators and session seams it calls. Creating them has no side effects; the session
- * installs the Agent hooks and builds the extension runtime afterwards, in its constructor.
+ * installs the Agent hooks and builds the feature runtime afterwards, in its constructor.
  */
 
 import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Model, RetryCallbacks } from "@octocodeai/octocode-ai/compat";
 import type { BashResult } from "../bash-executor.ts";
 import type { CacheWarmer } from "../cache-warmer.ts";
-import type { ExtensionRunner } from "../features/index.ts";
+import type { FeatureHost } from "../features/index.ts";
 import type { BeforeAgentStartTrigger } from "../features/runner.ts";
 import type { CompactionHost } from "../session-compaction.ts";
 import type { AgentEventsHost } from "./agent-events.ts";
@@ -23,8 +23,8 @@ import { SessionBash } from "./bash.ts";
 import { SessionBoundaries } from "./boundaries.ts";
 import type { CompactionCheckHost } from "./compaction-check.ts";
 import { SessionCompaction } from "./compaction-control.ts";
-import { SessionExtensionBindings } from "./extension-bindings.ts";
-import type { ExtensionRuntimeHost } from "./extension-runtime.ts";
+import { ModeBindings } from "./mode-bindings.ts";
+import type { FeatureRuntimeHost } from "./feature-host.ts";
 import type { SessionInternals } from "./host.ts";
 import { SessionInputQueue } from "./input-queue.ts";
 import { SessionModelControl } from "./model-control.ts";
@@ -64,9 +64,9 @@ export interface SessionSeams {
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
 	): Promise<boolean>;
-	emitExtensionEvent: AgentEventsHost["emitExtensionEvent"];
+	emitFeatureEvent: AgentEventsHost["emitFeatureEvent"];
 	waitForIdle(): Promise<void>;
-	setExtensionRunner(runner: ExtensionRunner): void;
+	setFeatureHost(runner: FeatureHost): void;
 }
 
 export interface SessionCollaborators {
@@ -80,8 +80,8 @@ export interface SessionCollaborators {
 	readonly compaction: SessionCompaction;
 	readonly tree: SessionTreeNavigation;
 	readonly runLoop: SessionRunLoop;
-	readonly bindings: SessionExtensionBindings;
-	readonly runtime: ExtensionRuntimeHost;
+	readonly bindings: ModeBindings;
+	readonly runtime: FeatureRuntimeHost;
 	readonly prompting: PromptingHost;
 	readonly hooks: AgentHooksHost;
 	readonly agentEvents: AgentEventsHost;
@@ -123,6 +123,8 @@ export function createSessionCollaborators(
 				name,
 			),
 		pendingToolNames: tools.pendingMcpToolNames,
+		heldToolNames: () => tools.held.off,
+		heldToolRefusal: (name) => tools.held.refusal(name, base.session.getActiveToolNames()),
 	});
 	const bash = new SessionBash({ ...base, recordBashResult: seams.recordBashResult });
 	// The prompting host is built below, from this compaction: input held for a manual compaction is released through it.
@@ -136,8 +138,8 @@ export function createSessionCollaborators(
 		releaseHeldInput: () => {
 			if (!held.prompting) return;
 			releaseHeldInput(held.prompting).catch((error: unknown) => {
-				base.session.extensionRunner.emitError({
-					extensionPath: "<compaction>",
+				base.session.featureHost.emitError({
+					source: "<compaction>",
 					event: "compaction_end",
 					error: error instanceof Error ? error.message : String(error),
 				});
@@ -164,7 +166,7 @@ export function createSessionCollaborators(
 		waitForIdle: seams.waitForIdle,
 	});
 	const defaultToolModifiers = config.defaultToolModifiers ?? [];
-	const bindings = new SessionExtensionBindings({
+	const bindings = new ModeBindings({
 		...base,
 		tools,
 		models,
@@ -173,15 +175,15 @@ export function createSessionCollaborators(
 		recordAbortReason: (reason) => runLoop.recordAbortReason(reason),
 		executeNestedToolCall: (...args) => toolCalls.executeNested(...args),
 	});
-	const runtime: ExtensionRuntimeHost = {
+	const runtime: FeatureRuntimeHost = {
 		...base,
 		tools,
 		bindings,
 		baseToolsOverride: config.baseToolsOverride,
-		extensionRunnerRef: config.extensionRunnerRef,
+		featureHostRef: config.featureHostRef,
 		usesDefaultTools: config.usesDefaultTools ?? false,
 		defaultToolModifiers,
-		setExtensionRunner: seams.setExtensionRunner,
+		setFeatureHost: seams.setFeatureHost,
 		syncQueueModesFromSettings: () => {
 			session.agent.steeringMode = session.settingsManager.getSteeringMode();
 			session.agent.followUpMode = session.settingsManager.getFollowUpMode();
@@ -217,7 +219,7 @@ export function createSessionCollaborators(
 			retry,
 			boundaries,
 			toolCalls,
-			emitExtensionEvent: seams.emitExtensionEvent,
+			emitFeatureEvent: seams.emitFeatureEvent,
 			observeContextCapacity: (message) => models.observeContextCapacity(message),
 		},
 		compactionCheck: {

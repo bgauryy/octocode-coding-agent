@@ -4,6 +4,7 @@ import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
 import { loadSkillsFromDir } from "../src/core/skills.ts";
+import { renderPrompt } from "../src/core/prompt-template.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 import { createHarness, getMessageText, type Harness } from "./suite/harness.ts";
 
@@ -44,7 +45,7 @@ it("expands the captured skill and canonical reference root after its discovery 
 	const text = await prompt();
 	expect(text).toContain("BODY_original");
 	expect(text).not.toContain("BODY_replacement");
-	expect(text).toContain(`References are relative to ${path.join(root, "original")}.`);
+	expect(text).toContain(renderPrompt("system/skill-references.md", { dir: path.join(root, "original") }).trim());
 });
 
 it("does not expand a captured canonical file replaced by a symlink", async () => {

@@ -293,46 +293,6 @@ function restructure(node: Node): Node {
 	};
 }
 
-/** The property a dotted field path (`queries.symbolName`, as `fieldDocs` addresses it) names; array items add no segment. */
-function fieldAt(schema: unknown, path: readonly string[]): Node | undefined {
-	let node = schema;
-	for (const segment of path) {
-		while (isNode(node) && isNode(node.items)) node = node.items;
-		node = isNode(node) && isNode(node.properties) ? node.properties[segment] : undefined;
-	}
-	return isNode(node) ? node : undefined;
-}
-
-const NOTE = new RegExp(`(?:^|\\s)(?:${NOTE_KINDS}) [\\w$-]+: [\\w$-]+(?:, [\\w$-]+)*\\.`, "g");
-
-/**
- * A rule the server's own text leaves out, stated in a field override's words: `lspSearch` says `symbolName` is "required
- * except with" three operations, and also refuses it on them, which only an override can say. The note goes onto the
- * field's description in a copy of the schema, where `structureApplicability` reads it, and off the doc the model reads.
- * Notes the description already holds stay as they are.
- */
-export function withOverrideNotes(
-	schema: JsonSchema,
-	fieldDocs: Record<string, string> | undefined,
-): { schema: JsonSchema; fieldDocs: Record<string, string> | undefined } {
-	if (!fieldDocs) return { schema, fieldDocs };
-	let copy: JsonSchema | undefined;
-	const docs = { ...fieldDocs };
-	for (const [path, text] of Object.entries(fieldDocs)) {
-		const segments = path.split(".");
-		const upstream = fieldAt(schema, segments)?.description;
-		const added = [...text.matchAll(NOTE)]
-			.map(([note]) => note.trim())
-			.filter((note) => !(typeof upstream === "string" && upstream.includes(note)));
-		if (!added.length || !fieldAt(schema, segments)) continue;
-		copy ??= structuredClone(schema);
-		const field = fieldAt(copy, segments) as Node;
-		field.description = [upstream, ...added].filter((part) => typeof part === "string").join(" ");
-		docs[path] = added.reduce((rest, note) => rest.replace(note, ""), text).trim();
-	}
-	return { schema: copy ?? schema, fieldDocs: docs };
-}
-
 const cache = new WeakMap<object, JsonSchema>();
 
 /** `schema` with every flat object whose fields carry readable applicability notes rebuilt as shared fields plus variants. */

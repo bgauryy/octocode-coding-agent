@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../helpers/features.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../../../src/core/features/index.ts";
+import { createFeatureRuntime, loadFeatureFromFactory } from "../../helpers/features.ts";
+import type { FeatureSetup, FeatureRegister } from "../../../src/core/features/index.ts";
 import type { ResourceLoader } from "../../../src/core/resource-loader/types.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
@@ -16,23 +16,23 @@ describe("extension event-bus lifecycle", () => {
 
 	it("removes extension-owned event-bus listeners on reload and dispose", async () => {
 		const eventBus = createEventBus();
-		let extensionCalls = 0;
+		let featureCalls = 0;
 		let hostCalls = 0;
-		let firstApi: ExtensionAPI | undefined;
-		const factory: ExtensionFactory = (api) => {
+		let firstApi: FeatureSetup | undefined;
+		const factory: FeatureRegister = (api) => {
 			firstApi ??= api;
-			api.events.on("reload:test", () => extensionCalls++);
+			api.channels.on("reload:test", () => featureCalls++);
 		};
 		eventBus.on("reload:test", () => hostCalls++);
 
-		const loadExtensions = async () => {
-			const runtime = createExtensionRuntime();
-			const extension = await loadExtensionFromFactory(factory, process.cwd(), eventBus, runtime);
-			return { extensions: [extension], errors: [], runtime };
+		const loadFeatures = async () => {
+			const runtime = createFeatureRuntime();
+			const feature = await loadFeatureFromFactory(factory, process.cwd(), eventBus, runtime);
+			return { features: [feature], errors: [], runtime };
 		};
-		let extensionsResult = await loadExtensions();
+		let featuresResult = await loadFeatures();
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => extensionsResult,
+			getFeatures: () => featuresResult,
 			getSkills: () => ({ skills: [], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -43,25 +43,25 @@ describe("extension event-bus lifecycle", () => {
 			getAppendSystemPromptSources: () => [],
 			extendResources: () => {},
 			reload: async () => {
-				extensionsResult = await loadExtensions();
+				featuresResult = await loadFeatures();
 			},
 		};
 		const harness = await createHarness({ resourceLoader });
 		harnesses.push(harness);
-		await harness.session.bindExtensions({ shutdownHandler: () => {} });
+		await harness.session.bindFeatures({ shutdownHandler: () => {} });
 
 		const emit = async () => {
-			const extensionBefore = extensionCalls;
+			const featureBefore = featureCalls;
 			const hostBefore = hostCalls;
 			eventBus.emit("reload:test", undefined);
 			await new Promise((resolve) => setImmediate(resolve));
-			return { extension: extensionCalls - extensionBefore, host: hostCalls - hostBefore };
+			return { extension: featureCalls - featureBefore, host: hostCalls - hostBefore };
 		};
 
 		expect(await emit()).toEqual({ extension: 1, host: 1 });
 		await harness.session.reload();
-		expect(() => firstApi?.getCommands()).toThrow("stale after session replacement or reload");
-		expect(() => firstApi?.getSkillDirectories()).toThrow("stale after session replacement or reload");
+		expect(() => firstApi?.resources.getCommands()).toThrow("stale after session replacement or reload");
+		expect(() => firstApi?.resources.getSkillDirectories()).toThrow("stale after session replacement or reload");
 		expect(await emit()).toEqual({ extension: 1, host: 1 });
 		await harness.session.reload();
 		expect(await emit()).toEqual({ extension: 1, host: 1 });

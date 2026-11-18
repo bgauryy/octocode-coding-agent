@@ -1,6 +1,6 @@
 import type { ProviderPlan } from "@octocodeai/octocode-ai";
 import type { ExternalUsage } from "@octocodeai/octocode-contracts/external";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 
 /** Who pays for a runner's turns: its own plan (a subscription it signed in with) or a metered key. */
 export type RunnerBilling = ProviderPlan["billing"];
@@ -26,7 +26,7 @@ interface RunnerTurn {
 	/** The runner's process, once it runs: an isolated child's worktree records it like a native child's. */
 	onStart?(pid: number): void;
 	/** Where the runner's permission requests go: the session's dialog, or its full-mode policy. */
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	communication?: RunnerCommunication;
 }
 

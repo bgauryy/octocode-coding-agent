@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { bashReads } from "../../src/octocode/files/bash-reads.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
-import { fakeCtx, fakePermission } from "./fake-host.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
+import { fakeCtx, fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { BASH_READER, FileGuard, mcpReader } from "../../src/octocode/files/tool/guard.ts";
 
@@ -127,10 +127,10 @@ describe("the file tool and plain bash prints", () => {
 		};
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => (tool = t),
 				on: (name: string, handler: never) => handlers.set(name, handler),
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);

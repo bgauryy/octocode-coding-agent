@@ -26,6 +26,11 @@ function excludesThisHost(metadata: unknown): boolean {
 	return typeof hosts === "string" && hosts.split(/\s+/).includes(SKILL_HOST_ID);
 }
 
+/** `metadata.audience: coordinator` lists a skill only for the coordinator: its work (delegation, filing items) needs tools subagents lack. */
+function coordinatorOnly(metadata: unknown): boolean {
+	return !!metadata && typeof metadata === "object" && (metadata as Record<string, unknown>).audience === "coordinator";
+}
+
 /**
  * Validate skill name per Agent Skills spec.
  * Returns array of validation error messages (empty if valid).
@@ -363,6 +368,7 @@ export function loadSkillFromFile(
 			baseDir: skillDir,
 			sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
 			disableModelInvocation: boolean(frontmatter["disable-model-invocation"]) === true || codexImplicitDisabled,
+			...(coordinatorOnly(frontmatter.metadata) ? { audience: "coordinator" as const } : {}),
 			...(boolean(frontmatter["user-invocable"]) === false ? { userInvocable: false } : {}),
 			...(protocol === "claude" ? ({ argumentStyle: "claude", argumentNames } as const) : {}),
 		},

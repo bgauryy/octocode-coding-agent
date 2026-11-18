@@ -1,5 +1,5 @@
 /**
- * Turn and settle boundaries: the `turn_end` and `agent_before_settle` extension boundaries with
+ * Turn and settle boundaries: the `turn_end` and `agent_before_settle` feature boundaries with
  * their draft entries and continuation checks, and the map from projected messages to the session
  * entries they come from.
  */
@@ -145,11 +145,11 @@ export class SessionBoundaries {
 					? "error"
 					: "completed";
 		const messageEntryId = this.findPersistedMessageEntryId(message);
-		const runner = session.extensionRunner;
+		const runner = session.featureHost;
 		if (!runner.hasHandlers("turn_end")) return false;
 		if (!messageEntryId) {
 			runner.emitError({
-				extensionPath: "<boundary>",
+				source: "<boundary>",
 				event: "turn_end",
 				error: "turn_end could not resolve the persisted assistant entry ID",
 			});
@@ -188,12 +188,12 @@ export class SessionBoundaries {
 		const previousFinishTurn = session.agent.finishTurn;
 		session.agent.finishTurn = async (turn, signal) => {
 			this._boundaryDispatchedMessages.add(turn.message);
-			const extensionContinue = await this.dispatchTurnEnd(turn.message, turn.toolResults);
+			const featureContinue = await this.dispatchTurnEnd(turn.message, turn.toolResults);
 			const previousDecision = await previousFinishTurn?.(turn, signal);
-			if (run.extensionRunAbortRequested) return { action: "end" };
+			if (run.featureRunAbortRequested) return { action: "end" };
 			if (previousDecision?.action === "end") return previousDecision;
 			if (previousDecision?.action === "continue") return previousDecision;
-			if (extensionContinue) return { action: "continue" };
+			if (featureContinue) return { action: "continue" };
 			if (signal?.aborted || run.agentRunAbortRequested) return undefined;
 			run.truncatedToolTurns = nextTruncatedToolTurns(turn.message, run.truncatedToolTurns);
 			if (run.truncatedToolTurns >= MAX_TRUNCATED_TOOL_TURNS) {
@@ -311,8 +311,8 @@ export class SessionBoundaries {
 	}
 
 	private _reportInvalidBoundaryContinuation(event: "turn_end" | "agent_before_settle"): void {
-		this.host.session.extensionRunner.emitError({
-			extensionPath: "<boundary>",
+		this.host.session.featureHost.emitError({
+			source: "<boundary>",
 			event,
 			error: `${event} requested continuation without runnable model context`,
 		});
@@ -320,7 +320,7 @@ export class SessionBoundaries {
 
 	async runBeforeSettle(): Promise<boolean> {
 		const { session, run } = this.host;
-		const runner = session.extensionRunner;
+		const runner = session.featureHost;
 		if (!runner.hasHandlers("agent_before_settle")) return session.agent.hasQueuedMessages();
 		run.isBeforeSettle = true;
 		run.beforeSettleAbort = new AbortController();

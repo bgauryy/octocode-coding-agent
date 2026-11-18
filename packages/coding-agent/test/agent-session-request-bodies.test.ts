@@ -14,12 +14,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stream as streamAnthropic } from "../../ai/src/api/anthropic-messages.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { readsMessagesOnly } from "../src/core/features/runner/clone-messages.ts";
-import type { ExtensionFactory } from "../src/core/features/types.ts";
+import type { FeatureRegister } from "../src/core/features/types.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager, type SessionMessageEntry } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createTestSession } from "./helpers/session.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 /**
  * What a provider receives must not depend on how Octocode got there: handing read-only `context` handlers the
@@ -102,28 +104,29 @@ describe("request bodies with read-only context handlers", () => {
 			credentials: authStorage,
 			modelsPath: join(agentDir, "models.json"),
 		});
-		const handlers: ExtensionFactory = (api) => {
-			api.registerProvider(recordingProvider(model, bodies));
+		const handlers: FeatureRegister = (api) => {
+			api.providers.register(recordingProvider(model, bodies));
 			// The built-in kind: reads, and returns a shorter list on some requests.
-			api.on(
+			api.bus.on(
 				"context",
 				readsMessagesOnly(async (event) => {
 					const kept = event.messages.filter((message) => !(message.role === "user" && message.timestamp === -1));
 					return kept.length === event.messages.length ? { messages: [...kept] } : { messages: kept };
 				}),
 			);
-			api.on(
+			api.bus.on(
 				"context",
 				readsMessagesOnly(async () => undefined),
 			);
 			// A handler that may edit: the transcript is copied before it, as every handler's was before.
-			if (copying) api.on("context", async () => undefined);
+			if (copying) api.bus.on("context", async () => undefined);
 		};
 		const resourceLoader = new DefaultResourceLoader({
 			cwd: dir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [handlers],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([handlers]),
 		});
 		await resourceLoader.reload();
 		const sessionManager = SessionManager.inMemory();

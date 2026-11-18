@@ -1,25 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionUIContext, ExtensionUIDialogOptions } from "../src/core/features/types.ts";
+import type { SessionUI, DialogOptions } from "../src/core/features/types.ts";
 import { UIPromptTracker } from "../src/core/features/runner/ui-prompt.ts";
 
 /** A mode whose dialogs resolve when the test says, and close (resolve undefined/false) when their signal aborts. */
 function fakeUi() {
-	const open: Array<{ kind: string; resolve: (value: unknown) => void; opts?: ExtensionUIDialogOptions }> = [];
-	const dialog = <T>(kind: string, opts: ExtensionUIDialogOptions | undefined, closed: T) =>
+	const open: Array<{ kind: string; resolve: (value: unknown) => void; opts?: DialogOptions }> = [];
+	const dialog = <T>(kind: string, opts: DialogOptions | undefined, closed: T) =>
 		new Promise<T>((resolve) => {
 			opts?.signal?.addEventListener("abort", () => resolve(closed), { once: true });
 			open.push({ kind, resolve: resolve as (value: unknown) => void, opts });
 		});
 	const ui = {
-		select: (_title: string, _options: string[], opts?: ExtensionUIDialogOptions) =>
+		select: (_title: string, _options: string[], opts?: DialogOptions) =>
 			dialog<string | undefined>("select", opts, undefined),
-		confirm: (_title: string, _message: string, opts?: ExtensionUIDialogOptions) =>
-			dialog<boolean>("confirm", opts, false),
-		input: (_title: string, _placeholder?: string, opts?: ExtensionUIDialogOptions) =>
+		confirm: (_title: string, _message: string, opts?: DialogOptions) => dialog<boolean>("confirm", opts, false),
+		input: (_title: string, _placeholder?: string, opts?: DialogOptions) =>
 			dialog<string | undefined>("input", opts, undefined),
 		editor: () => dialog<string | undefined>("editor", undefined, undefined),
 		custom: () => dialog<unknown>("custom", undefined, undefined),
-	} as unknown as ExtensionUIContext;
+	} as unknown as SessionUI;
 	return { ui, open };
 }
 

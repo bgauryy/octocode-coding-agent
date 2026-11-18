@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AssistantMessage, ToolResultMessage } from "@octocodeai/octocode-ai";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -13,6 +13,8 @@ import { attachBackend } from "../../src/octocode/claude-code/register.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Claude Code as the model of a real headless Octocode session, played by a scripted ACP peer that calls back into the
@@ -20,7 +22,7 @@ import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
  */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PEER = path.join(HERE, "fixtures", "claude-code-peer.mjs");
-const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as ExtensionFactory;
+const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<{ dispose(): void }> = [];
@@ -64,16 +66,17 @@ async function claudeCodeSession(env: Record<string, string>, prompts: Step[][])
 		args: [PEER, journal, JSON.stringify({ prompts })],
 		cli: path.join(root, "bin", "claude"),
 	});
-	const provider: ExtensionFactory = (api) => attachBackend(api, backend);
+	const provider: FeatureRegister = (api) => attachBackend(api, backend);
 	const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
 	const resourceLoader = new DefaultResourceLoader({
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "claude-code-provider", factory: provider },
 			{ name: "octocode", factory: octocode },
-		],
+		]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -87,7 +90,7 @@ async function claudeCodeSession(env: Record<string, string>, prompts: Step[][])
 		sessionManager: SessionManager.inMemory(cwd),
 	});
 	sessions.push({ dispose: () => void backend.close().finally(() => session.dispose()) });
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("claude-code", "opus")!);
 	const entries = (): Entry[] =>
 		fs.existsSync(journal)

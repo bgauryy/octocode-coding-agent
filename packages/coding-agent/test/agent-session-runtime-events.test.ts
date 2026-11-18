@@ -13,12 +13,14 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import type {
-	ExtensionFactory,
+	FeatureRegister,
 	SessionBeforeForkEvent,
 	SessionBeforeSwitchEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
 } from "../src/core/features/index.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 type RecordedSessionEvent =
 	| SessionBeforeSwitchEvent
@@ -35,7 +37,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		}
 	});
 
-	async function createRuntimeHost(extensionFactory: ExtensionFactory) {
+	async function createRuntimeHost(featureFactory: FeatureRegister) {
 		const tempDir = join(tmpdir(), `octocode-runtime-events-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 
@@ -72,7 +74,8 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 			modelRuntime,
 			model: faux.getModel(),
 			resourceLoaderOptions: {
-				extensionFactories: [extensionFactory],
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([featureFactory]),
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -99,7 +102,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 			agentDir: tempDir,
 			sessionManager: SessionManager.create(tempDir),
 		});
-		await runtimeHost.session.bindExtensions({});
+		await runtimeHost.session.bindFeatures({});
 
 		cleanups.push(async () => {
 			await runtimeHost.dispose();
@@ -115,13 +118,13 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 	it("emits session_before_switch and session_start for new and resume flows", async () => {
 		const events: RecordedSessionEvent[] = [];
 		const { runtimeHost } = await createRuntimeHost((api) => {
-			api.on("session_before_switch", (event) => {
+			api.bus.on("session_before_switch", (event) => {
 				events.push(event);
 			});
-			api.on("session_shutdown", (event) => {
+			api.bus.on("session_shutdown", (event) => {
 				events.push(event);
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -135,7 +138,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 
 		const newSessionResult = await runtimeHost.newSession();
 		expect(newSessionResult.cancelled).toBe(false);
-		await runtimeHost.session.bindExtensions({});
+		await runtimeHost.session.bindFeatures({});
 		const secondSessionFile = runtimeHost.session.sessionFile;
 		expect(events).toEqual([
 			{ type: "session_before_switch", reason: "new", targetSessionFile: undefined },
@@ -148,7 +151,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 
 		const switchResult = await runtimeHost.switchSession(originalSessionFile!);
 		expect(switchResult.cancelled).toBe(false);
-		await runtimeHost.session.bindExtensions({});
+		await runtimeHost.session.bindFeatures({});
 		expect(events).toEqual([
 			{ type: "session_before_switch", reason: "resume", targetSessionFile: originalSessionFile },
 			{ type: "session_shutdown", reason: "resume", targetSessionFile: originalSessionFile },
@@ -159,7 +162,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 	it("names the previous session only after a successful fresh-session transition", async () => {
 		let cancel = true;
 		const { runtimeHost: runtime } = await createRuntimeHost((api) => {
-			api.on("session_before_switch", async () => (cancel ? { cancel: true } : undefined));
+			api.bus.on("session_before_switch", async () => (cancel ? { cancel: true } : undefined));
 		});
 		await runtime.session.prompt("persist previous session");
 		const previous = runtime.session.sessionFile!;
@@ -177,11 +180,11 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 	it("honors session_before_switch cancellation", async () => {
 		const events: RecordedSessionEvent[] = [];
 		const { runtimeHost } = await createRuntimeHost((api) => {
-			api.on("session_before_switch", (event) => {
+			api.bus.on("session_before_switch", (event) => {
 				events.push(event);
 				return { cancel: true };
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -201,14 +204,14 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 	it("runs beforeSessionInvalidate after session_shutdown and before rebindSession", async () => {
 		const phases: string[] = [];
 		const { runtimeHost } = await createRuntimeHost((api) => {
-			api.on("session_shutdown", () => {
+			api.bus.on("session_shutdown", () => {
 				phases.push("session_shutdown");
 			});
 		});
 		const oldSession = runtimeHost.session;
 		runtimeHost.setBeforeSessionInvalidate(() => {
 			phases.push("beforeSessionInvalidate");
-			expect(oldSession.extensionRunner.createContext().cwd).toBe(oldSession.sessionManager.getCwd());
+			expect(oldSession.featureHost.createContext().cwd).toBe(oldSession.sessionManager.getCwd());
 		});
 		runtimeHost.setRebindSession(async () => {
 			phases.push("rebindSession");
@@ -217,8 +220,8 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		await runtimeHost.newSession();
 
 		expect(phases).toEqual(["session_shutdown", "beforeSessionInvalidate", "rebindSession"]);
-		expect(() => oldSession.extensionRunner.createContext().cwd).toThrow(
-			"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
+		expect(() => oldSession.featureHost.createContext().cwd).toThrow(
+			"This feature ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		runtimeHost.setBeforeSessionInvalidate(undefined);
 		runtimeHost.setRebindSession(undefined);
@@ -228,17 +231,17 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		const events: RecordedSessionEvent[] = [];
 		let cancelNextFork = false;
 		const { runtimeHost } = await createRuntimeHost((api) => {
-			api.on("session_before_fork", (event) => {
+			api.bus.on("session_before_fork", (event) => {
 				events.push(event);
 				if (cancelNextFork) {
 					cancelNextFork = false;
 					return { cancel: true };
 				}
 			});
-			api.on("session_shutdown", (event) => {
+			api.bus.on("session_shutdown", (event) => {
 				events.push(event);
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -253,7 +256,7 @@ describe("AgentSessionRuntime session lifecycle events", () => {
 		const successResult = await runtimeHost.fork(userMessage.entryId);
 		expect(successResult.cancelled).toBe(false);
 		expect(successResult.selectedText).toBe("hello");
-		await runtimeHost.session.bindExtensions({});
+		await runtimeHost.session.bindFeatures({});
 		expect(events).toEqual([
 			{ type: "session_before_fork", entryId: userMessage.entryId, position: "before" },
 			{ type: "session_shutdown", reason: "fork", targetSessionFile: runtimeHost.session.sessionFile },

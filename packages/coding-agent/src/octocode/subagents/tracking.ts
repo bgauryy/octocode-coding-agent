@@ -1,8 +1,8 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Usage } from "@octocodeai/octocode-ai";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { existingLibrary } from "../history/archive.ts";
@@ -92,7 +92,7 @@ export const runFooter = (details: RunDetails, failed: boolean): string[] => [
 	compactionNote(details),
 	archiveNote(details),
 	asksNote(details.asks),
-	details.editedAfterVerify ? renderInstruction("notices/subagents/verify-stale.md") : "",
+	details.editedAfterVerify ? renderPrompt("notices/subagents/verify-stale.md") : "",
 	failed || details.session?.file ? sessionNote(details) : "",
 ];
 
@@ -112,7 +112,7 @@ export function tracker(
 	identity: Identity,
 	details: RunDetails,
 	find: ModelLookup,
-	ctx?: Pick<ExtensionContext, "hasUI" | "ui">,
+	ctx?: Pick<FeatureContext, "hasUI" | "ui">,
 ) {
 	const dir = shotsDir();
 	let shots = 0;

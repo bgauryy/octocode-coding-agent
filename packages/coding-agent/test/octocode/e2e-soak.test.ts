@@ -34,7 +34,12 @@ import { nativeCall } from "./e2e-calls.ts";
  * compared as they arrive and dropped, because keeping them would hold hundreds of megabytes of transcript.
  */
 
-const TURNS = 320;
+/**
+ * The default run is half the length with every trouble at half the turn, so it still compacts on both sides of the
+ * resume; `OCTOCODE_E2E_SOAK=1` runs the full-length session (about 255 turns is the median real session).
+ */
+const FULL = process.env.OCTOCODE_E2E_SOAK === "1";
+const TURNS = FULL ? 320 : 160;
 /**
  * About 3,000 tokens a turn: the 200,000-token window fills every 50 or so turns, as a busy real session does. It rides in
  * the prompts because a long scripted reply is streamed in thousands of deltas, which would be most of the suite's time.
@@ -50,7 +55,9 @@ const PAST_THE_WAIT_MS = 4_000;
 const FILE_EVERY_TURNS = 5;
 const BASH_EVERY_TURNS = 7;
 /** Each on a turn that is a plain prompt and a plain reply, so the trouble meets exactly the writes named here. */
-const TURN = { outage: 41, shortLock: 71, longLock: 89, databaseLock: 109, resume: 170 };
+const TURN = FULL
+	? { outage: 41, shortLock: 71, longLock: 89, databaseLock: 109, resume: 170 }
+	: { outage: 21, shortLock: 36, longLock: 45, databaseLock: 55, resume: 75 };
 const CHECKPOINT = "## Goal\nScripted checkpoint.\n\n## TL;DR\nThe soak continues.";
 const LOCKED_REPLY = { short: "SHORT-LOCK-REPLY", long: "LONG-LOCK-REPLY", database: "DATABASE-LOCK-REPLY" };
 
@@ -421,7 +428,7 @@ describe("a long session under trouble (scripted model)", () => {
 	});
 
 	it("carries the assignment exactly once in every request after a compaction, and not the old task", () => {
-		expect(seen.requestsAfterCompaction).toBeGreaterThan(100);
+		expect(seen.requestsAfterCompaction).toBeGreaterThan(FULL ? 100 : 50);
 		expect(seen.identityGaps).toEqual([]);
 		expect(seen.taskAfterCompaction).toBe(0);
 		// The record of the assignment is not repeated by compaction or by the resume.

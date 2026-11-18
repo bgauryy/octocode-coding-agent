@@ -1,4 +1,5 @@
 import { hasTmuxSession } from "./multiplexer.ts";
+import { HIDE_CURSOR, SHOW_CURSOR } from "./terminal/cursor.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "./terminal/sequences.ts";
 import { isImageLine } from "./terminal-image.ts";
 import { renderRowFrame } from "./tui/container-walk.ts";
@@ -35,6 +36,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private hardwareCursorRow = 0;
 	private maxLinesRendered = 0;
 	private previousViewportTop = 0;
+	/** A frame hid the cursor. Other writers only hide it while running, so a repeat hide is redundant until stop. */
+	private cursorHidden = false;
 	/** The last frame's layout: start rows of its components. */
 	private componentLayout: LayoutRecorder | undefined;
 	private readonly scrollback = new ScrollbackPolicy();
@@ -102,10 +105,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.hardwareCursorRow = 0;
 		this.maxLinesRendered = 0;
 		this.previousViewportTop = 0;
+		this.cursorHidden = false;
 		this.scrollback.reset();
 	}
 
 	protected override beforeTerminalStop(options: TuiStopOptions): void {
+		this.cursorHidden = false; // stop shows the cursor for the shell
 		if (options.preserveScreen || this.previousLines.length === 0) return;
 		this.terminal.write(" ");
 		const targetRow = this.previousLines.length;
@@ -169,14 +174,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				height,
 				hasTmuxSession(),
 			);
-			output.append(END_SYNCHRONIZED_OUTPUT);
-			this.flush(output);
 			this.cursorRow = Math.max(0, newLines.length - 1);
 			this.hardwareCursorRow = this.cursorRow;
 			// Reset max lines when clearing, otherwise track growth
 			this.maxLinesRendered = clear ? newLines.length : Math.max(this.maxLinesRendered, newLines.length);
 			const bufferLength = Math.max(height, newLines.length);
-			this.commitFrame({ ...commit, viewportTop: Math.max(0, bufferLength - height) });
+			this.commitFrame({ ...commit, viewportTop: Math.max(0, bufferLength - height) }, output);
 		};
 
 		const redrawLogDirectory = process.env.OCTOCODE_TUI_DEBUG_REDRAW === "1" ? this.logDirectory : undefined;
@@ -264,7 +267,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 				// Row for row the same strings: keeping the new array lets the next frame start where this one changed.
 				this.previousLines = newLines;
 			}
-			this.positionHardwareCursor(cursorPos, newLines.length);
+			this.writeCursorAlone(cursorPos, newLines.length);
 			this.previousViewportTop = viewportTop;
 			this.previousHeight = height;
 			return;
@@ -283,15 +286,15 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 		// All changes are in deleted lines (nothing to render, just clear)
 		if (firstChanged >= newLines.length) {
+			let output: BoundedTerminalWriter | undefined;
 			if (this.previousLines.length > newLines.length) {
-				const output = this.createWriter();
+				output = this.createWriter();
 				const written = writeDeletedRows(output, change);
 				if ("replay" in written) return replay(written.replay);
-				this.flush(output);
 				this.cursorRow = written.cursorRow;
 				this.hardwareCursorRow = written.cursorRow;
 			}
-			this.commitFrame({ ...commit, viewportTop });
+			this.commitFrame({ ...commit, viewportTop }, output);
 			return;
 		}
 
@@ -323,7 +326,6 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			});
 		}
 
-		this.flush(output);
 		if (deferred) this.ledger.counters.deferredAboveViewport += 1;
 
 		// cursorRow tracks end of content (for viewport calculation)
@@ -332,7 +334,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.hardwareCursorRow = written.cursorRow;
 		// Track terminal's working area (grows but doesn't shrink unless cleared)
 		this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
-		this.commitFrame({ ...commit, viewportTop: Math.max(written.viewportTop, written.cursorRow - height + 1) });
+		this.commitFrame({ ...commit, viewportTop: Math.max(written.viewportTop, written.cursorRow - height + 1) }, output);
 	}
 
 	private createWriter(): BoundedTerminalWriter {
@@ -344,16 +346,28 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.ledger.counters.written += 1;
 	}
 
-	/** Place the hardware cursor and remember what the terminal now shows, for the next frame's compare. */
-	private commitFrame(frame: {
-		newLines: string[];
-		imageRows: KittyImageRows;
-		width: number;
-		height: number;
-		cursorPos: { row: number; col: number } | null;
-		viewportTop: number;
-	}): void {
-		this.positionHardwareCursor(frame.cursorPos, frame.newLines.length);
+	/**
+	 * Place the hardware cursor and remember what the terminal now shows, for the next frame's compare. A frame's
+	 * `output` (open since its `?2026h`) takes the cursor sequence and the `?2026l` and goes out as one write.
+	 */
+	private commitFrame(
+		frame: {
+			newLines: string[];
+			imageRows: KittyImageRows;
+			width: number;
+			height: number;
+			cursorPos: { row: number; col: number } | null;
+			viewportTop: number;
+		},
+		output?: BoundedTerminalWriter,
+	): void {
+		if (output) {
+			output.append(this.cursorSequence(frame.cursorPos, frame.newLines.length));
+			output.append(END_SYNCHRONIZED_OUTPUT);
+			this.flush(output);
+		} else {
+			this.writeCursorAlone(frame.cursorPos, frame.newLines.length);
+		}
 		this.previousLines = frame.newLines;
 		this.previousKittyImageIds = collectKittyImageIds(frame.newLines, frame.imageRows);
 		this.previousWidth = frame.width;
@@ -361,17 +375,23 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.previousViewportTop = frame.viewportTop;
 	}
 
-	/** Move the hardware cursor to the IME position, or hide it when there is none. */
-	private positionHardwareCursor(cursorPos: { row: number; col: number } | null, totalLines: number): void {
+	/** A frame that wrote no rows: place the cursor, or write nothing when it stays hidden. */
+	private writeCursorAlone(cursorPos: { row: number; col: number } | null, totalLines: number): void {
+		const wasHidden = this.cursorHidden;
+		const cursor = this.cursorSequence(cursorPos, totalLines);
+		if (!(wasHidden && cursor === HIDE_CURSOR)) this.terminal.write(cursor);
+	}
+
+	/** The move to the IME position and the cursor's visibility, or the hide when there is none; tracks row and visibility. */
+	private cursorSequence(cursorPos: { row: number; col: number } | null, totalLines: number): string {
 		if (!cursorPos || totalLines <= 0) {
-			this.terminal.hideCursor();
-			return;
+			this.cursorHidden = true;
+			return HIDE_CURSOR;
 		}
 		const targetRow = Math.max(0, Math.min(cursorPos.row, totalLines - 1));
-		const buffer = cursorMoveSequence(targetRow - this.hardwareCursorRow, Math.max(0, cursorPos.col));
-		if (buffer) this.terminal.write(buffer);
+		const move = cursorMoveSequence(targetRow - this.hardwareCursorRow, Math.max(0, cursorPos.col));
 		this.hardwareCursorRow = targetRow;
-		if (this.getShowHardwareCursor()) this.terminal.showCursor();
-		else this.terminal.hideCursor();
+		this.cursorHidden = !this.getShowHardwareCursor();
+		return move + (this.cursorHidden ? HIDE_CURSOR : SHOW_CURSOR);
 	}
 }

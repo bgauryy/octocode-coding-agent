@@ -155,6 +155,26 @@ export const HOOK_CATALOG = {
 			"Octocode only: observes an agent this process retired from the team, within a separate 1.5 s deadline; the matcher is the end reason (completed, failed, stopped-user, stopped-parent, parent-gone, crashed, left). Cannot block or delay the exit.",
 		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
 	},
+	TaskCreated: {
+		behavior: "Octocode only: observes a backlog item this process added. Cannot block or add context.",
+		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
+	},
+	TaskCompleted: {
+		behavior:
+			"Octocode only: gates the `backlog` tool's `done` and `close` of an item in this process, before it is written; exit 2 (or `decision: \"block\"`) refuses it with the reason. A hook that fails or times out lets the write go ahead. Writes from the web board, `/backlog` or another process are not gated. The matcher is `done` or `closed`. Before any hook runs, Octocode's own check refuses `done` while this session still runs children, bash jobs or timers for the item (or for items derived from it), reserves its paths or keeps worktrees made for it, and names what to release; `close` as obsolete, duplicate or wont_do is never blocked. That check is not a hook and cannot be turned off.",
+		gate: true,
+		profiles: { octocode: native },
+	},
+	BacklogChange: {
+		behavior:
+			"Octocode only: observes every audited change to a backlog item, whichever process or surface wrote it, once per session that follows the backlog; the matcher is the change kind. Cannot block or add context.",
+		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
+	},
+	MonitorAlert: {
+		behavior:
+			"Octocode only: observes each alert the monitor raised, once per alert; the matcher is the monitor rule id. A machine rule runs the hook in the one process holding the sampler lease; the other rules run it in the session they belong to. Cannot block or add context.",
+		profiles: { octocode: { handlers: [], input: [], timeout: 1.5, maxTimeout: 60 } },
+	},
 	UserPromptSubmit: {
 		behavior: "Gates normal prompts, steering and follow-ups; Claude runs at admission, Codex when input is consumed.",
 		gate: true,
@@ -211,8 +231,6 @@ export const UPSTREAM_ONLY_EVENTS: Record<Exclude<HookProtocol, "octocode">, rea
 		"UserPromptExpansion",
 		"PermissionDenied",
 		"MessageDisplay",
-		"TaskCreated",
-		"TaskCompleted",
 		"TeammateIdle",
 		"InstructionsLoaded",
 		"ConfigChange",

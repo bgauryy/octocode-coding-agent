@@ -1,7 +1,7 @@
 import { deriveAgentRoute } from "@octocodeai/octocode-contracts/config";
 import type { ProviderKind } from "../../core/model-runtime/catalog.ts";
 import { credentialSourceLabel } from "../../core/provider-composer/types.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { Catalog } from "./catalog.ts";
 import { canRunTask, type ModelRef } from "./model.ts";
 import { modelLine, modelCost, priceRank, priceText } from "./models-command.ts";
@@ -25,7 +25,7 @@ export function compactModels(available: readonly ModelRef[], catalog: Catalog |
 	].join("\n");
 }
 
-type Registry = Pick<ExtensionContext, "modelRegistry">["modelRegistry"];
+type Registry = Pick<FeatureContext, "modelRegistry">["modelRegistry"];
 
 /** Each listed provider's kind (`ModelRegistry.getProviderKind`); a registry that cannot say leaves the map empty. */
 export function providerKinds(registry: Registry, available: readonly ModelRef[]): ReadonlyMap<string, ProviderKind> {

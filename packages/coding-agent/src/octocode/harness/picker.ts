@@ -4,6 +4,7 @@ import {
 	Input,
 	type KeybindingsManager,
 	matchesKey,
+	SEARCH_GLYPH,
 	truncateToWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
@@ -19,8 +20,6 @@ import { ruleLine } from "../../theme/dynamic-border.ts";
 import { HARNESS_SECTIONS, type HarnessSection } from "./sections.ts";
 import { overviewLine } from "./overview.ts";
 import { itemDetailLines, itemRowLine, pickerRows, type Row, sectionNav } from "./picker-rows.ts";
-import type { McpToolsSource } from "./mcp-tools.ts";
-import { McpToolsView } from "./mcp-tools-view.ts";
 import { SwitchOnPreview } from "./picker-preview.ts";
 
 type LoadState = "loading" | "ready" | "error";
@@ -36,15 +35,20 @@ export interface PickerOptions {
 	retry?: () => void;
 	/** The scanned items a harness row would bring when switched on; shown with Enter to confirm before any write. */
 	preview?: (item: InventoryItem) => string[] | undefined;
-	/** Opens an MCP server's tool rows on Enter or →; absent: Enter switches the server as before. */
-	mcpTools?: McpToolsSource;
+	/**
+	 * Opens an MCP server's tools page in `/mcp` on Enter or → (the picker closes first, with `done`); absent: Enter
+	 * switches the server as before.
+	 */
+	openTools?: (server: string, scope: SwitchScope) => void;
+	/** Row to select first (an item id), such as the server whose tools page just closed. */
+	initialId?: string;
 	done: (changed: boolean) => void;
 	requestRender: () => void;
 }
 
 /** Peer resource sections share filtering, scope switches and explicit full-detail navigation. */
 export class HarnessPicker implements Component, Focusable {
-	private readonly search = new Input({ placeholder: "type to filter" });
+	private readonly search = new Input({ prompt: ` ${SEARCH_GLYPH} `, placeholder: "type to filter" });
 	private rows: Row[] = [];
 	private selected = 0;
 	private scope: SwitchScope = "global";
@@ -56,7 +60,6 @@ export class HarnessPicker implements Component, Focusable {
 	private armedGate: string | undefined;
 	private _focused = false;
 	private details = false;
-	private tools: McpToolsView | undefined;
 	private confirming: { item: InventoryItem; view: SwitchOnPreview } | undefined;
 	private detailOffset = 0;
 	private detailLength = 0;
@@ -73,7 +76,7 @@ export class HarnessPicker implements Component, Focusable {
 		this.section = options.section ?? "overview";
 		this.state = options.state ?? "ready";
 		this.failure = options.error;
-		this.filter();
+		this.filter(options.initialId);
 	}
 	get focused(): boolean {
 		return this._focused;
@@ -129,14 +132,7 @@ export class HarnessPicker implements Component, Focusable {
 					);
 	}
 	private openTools(item: InventoryItem): void {
-		const source = this.options.mcpTools;
-		if (!source) return;
-		try {
-			this.tools = new McpToolsView(item.name ?? item.label, source, this.scope, this.theme, this.keys);
-			this.flash = undefined;
-		} catch (error) {
-			this.flash = { text: errorMessage(error), level: "warning" };
-		}
+		this.options.openTools?.(item.name ?? item.label, this.scope);
 	}
 	private openSection(target: HarnessSection): void {
 		if (this.current) this.selections.set(this.section, this.current.id);
@@ -204,8 +200,8 @@ export class HarnessPicker implements Component, Focusable {
 	}
 	handleInput(data: string): void {
 		const cancel = this.keys.matches(data, "tui.select.cancel");
-		if (matchesKey(data, "ctrl+c") || (cancel && !this.details && !this.tools && !this.confirming)) {
-			this.options.done(this.changed || this.tools?.changed === true);
+		if (matchesKey(data, "ctrl+c") || (cancel && !this.details && !this.confirming)) {
+			this.options.done(this.changed);
 			return;
 		}
 		if (this.confirming) {
@@ -217,20 +213,12 @@ export class HarnessPicker implements Component, Focusable {
 			this.options.requestRender();
 			return;
 		}
-		if (this.tools) {
-			if (this.tools.handleInput(data) === "back") {
-				this.changed ||= this.tools.changed;
-				this.tools = undefined;
-			}
-			this.options.requestRender();
-			return;
-		}
 		const ready = this.state === "ready" && !this.details;
 		const confirm = this.keys.matches(data, "tui.select.confirm");
 		const opensTools =
 			ready &&
 			this.current?.kind === "mcp" &&
-			!!this.options.mcpTools &&
+			!!this.options.openTools &&
 			(confirm || (matchesKey(data, "right") && !this.search.getValue()));
 		const toggle = ready && !opensTools && (confirm || (data === " " && !this.search.getValue()));
 		if (!toggle) this.armedGate = undefined;
@@ -291,7 +279,7 @@ export class HarnessPicker implements Component, Focusable {
 					this.scope,
 					this.options.paths[this.scope],
 					width,
-					!!this.options.mcpTools && item.kind === "mcp",
+					!!this.options.openTools && item.kind === "mcp",
 				)
 			: [];
 	}
@@ -303,7 +291,7 @@ export class HarnessPicker implements Component, Focusable {
 			push = (line: string) => lines.push(truncateToWidth(line, w, "…"));
 		const rule = ruleLine(w, (text) => t.fg("border", text));
 		push(rule);
-		const open = this.confirming?.view ?? this.tools;
+		const open = this.confirming?.view;
 		if (open) return [...lines, ...open.render(w, height - 2), rule];
 		push(
 			` ${t.fg("accent", t.bold(this.details ? `Harness › ${HARNESS_SECTIONS[this.section].title} › Details` : "Harness"))}${this.details ? "" : t.fg("muted", " · skills, MCPs, hooks and sources")}`,
@@ -337,7 +325,7 @@ export class HarnessPicker implements Component, Focusable {
 				push(renderHintLine(errorHints(this.keys, this.state === "error" && !!this.options.retry), w));
 			} else {
 				const overview = this.section === "overview";
-				const mcpTools = this.section === "mcp" && !!this.options.mcpTools;
+				const mcpTools = this.section === "mcp" && !!this.options.openTools;
 				if (height >= 16 && !overview)
 					push(t.fg("muted", `Switch scope: ${this.scope} · writes ${this.options.paths[this.scope]}`));
 				if (!overview) lines.push(...this.search.render(w));

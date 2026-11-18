@@ -101,7 +101,7 @@ export async function prepareInitialMessage(
 		return buildInitialMessage({ parsed, stdinContent });
 	}
 
-	// AgentSession resizes these after extension hooks select the request model.
+	// AgentSession resizes these after feature hooks select the request model.
 	const { text, images } = await processFileArguments(parsed.fileArgs, { autoResizeImages: false });
 	return buildInitialMessage({
 		parsed,

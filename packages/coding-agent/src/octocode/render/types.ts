@@ -38,6 +38,8 @@ export interface RenderContext {
 	expanded?: boolean;
 	/** Octocode's recorded execution time, including when a completed row is restored. */
 	durationMs?: number | undefined;
+	/** The working directory relative paths in the row resolve against (links). */
+	cwd?: string;
 	/** The call's arguments (Octocode passes them to both renderers). */
 	args?: unknown;
 	/** The tool call the row draws; its run start is what `timed` recorded under it. */

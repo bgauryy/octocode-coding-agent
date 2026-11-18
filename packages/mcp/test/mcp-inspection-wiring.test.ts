@@ -4,7 +4,7 @@ import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { mcpNamespace } from "../../common/src/mcp-names.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import type { McpServer } from "../src/server.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 
 const schema = { type: "object" as const, properties: { path: { type: "string" } }, required: ["path"] };
@@ -14,8 +14,8 @@ const outputSchema = { type: "object" as const, properties: { content: { type: "
 function setup() {
 	const fake = fakeHost();
 	const events = createEventBus();
-	Object.assign(fake.api, { events });
-	const state = new McpExtensionState(fake.api, {});
+	Object.assign(fake.api, { channels: events });
+	const state = new McpFeatureState(fake.api, {});
 	registerMcpManageTool(state);
 	const tool = fake.tools.get("mcp");
 	const ctx = fakeCtx({ cwd: "/workspace", hasUI: false });
@@ -25,7 +25,7 @@ function setup() {
 	return { fake, events, state, inspect, confirm };
 }
 
-function configured(state: McpExtensionState, connected = true) {
+function configured(state: McpFeatureState, connected = true) {
 	const start = vi.fn();
 	const stop = vi.fn();
 	const connection = {
@@ -45,7 +45,7 @@ function configured(state: McpExtensionState, connected = true) {
 function automatic(f: ReturnType<typeof setup>, connected = true) {
 	const execute = vi.fn();
 	const namespace = mcpNamespace("octocode");
-	f.fake.api.registerTool({
+	f.fake.api.tools.register({
 		name: `${namespace}__localFetch`,
 		label: "Read",
 		description,

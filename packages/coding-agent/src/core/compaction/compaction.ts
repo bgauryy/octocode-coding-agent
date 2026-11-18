@@ -101,7 +101,7 @@ export function shouldCompact(contextTokens: number, contextWindow: number, sett
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 
-// Compaction Preparation (for extensions)
+// Compaction Preparation (for features)
 // ============================================================================
 
 export interface CompactionPreparation {

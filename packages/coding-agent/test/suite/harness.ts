@@ -20,18 +20,16 @@ import type {
 import { registerFauxProvider, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
-import type { ExtensionRunner, ExtensionUIContext, InlineExtension } from "../../src/core/features/index.ts";
+import type { FeatureHost, SessionUI } from "../../src/core/features/index.ts";
+import type { Feature } from "../../src/core/features/types.ts";
+import type { TestFeatureInput } from "../helpers/features.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { DEFAULT_TOOL_NAMES, SettingsManager } from "../../src/core/settings-manager.ts";
 import type { ResourceLoader } from "../../src/core/resource-loader/types.ts";
 import { theme } from "../../src/theme/theme.ts";
-import {
-	type CreateTestExtensionsResultInput,
-	createTestExtensionsResult,
-	createTestResourceLoader,
-} from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 
 type MessageTextPart = { type: "text"; text: string };
 
@@ -74,7 +72,7 @@ export function getToolResult(harness: Harness, toolName: string): ToolResultMes
 }
 
 /** An extension UI context that does nothing, with `overrides` applied. */
-export function createTestUiContext(overrides: Partial<ExtensionUIContext> = {}): ExtensionUIContext {
+export function createTestUiContext(overrides: Partial<SessionUI> = {}): SessionUI {
 	return {
 		select: async () => undefined,
 		confirm: async () => false,
@@ -83,17 +81,13 @@ export function createTestUiContext(overrides: Partial<ExtensionUIContext> = {})
 		onTerminalInput: () => () => {},
 		setStatus: () => {},
 		setWorkingMessage: () => {},
-		setWorkingVisible: () => {},
 		setWorkingIndicator: () => {},
-		setHiddenThinkingLabel: () => {},
 		setWidget: () => {},
 		setFooter: () => {},
 		setHeader: () => {},
 		setTitle: () => {},
 		custom: async () => undefined,
-		pasteToEditor: () => {},
 		setEditorText: () => {},
-		getEditorText: () => "",
 		editor: async () => undefined,
 		addAutocompleteProvider: () => {},
 		onEditorChange: () => () => {},
@@ -103,11 +97,8 @@ export function createTestUiContext(overrides: Partial<ExtensionUIContext> = {})
 		get theme() {
 			return theme;
 		},
-		getAllThemes: () => [],
 		getTheme: () => undefined,
 		setTheme: () => ({ success: false, error: "Theme switching not available in tests" }),
-		getToolsExpanded: () => false,
-		setToolsExpanded: () => {},
 		...overrides,
 	};
 }
@@ -122,8 +113,9 @@ export interface HarnessOptions {
 	allowedToolNames?: string[];
 	excludedToolNames?: string[];
 	resourceLoader?: ResourceLoader;
-	extensionFactories?: Array<InlineExtension | CreateTestExtensionsResultInput>;
-	builtinCompactionFactories?: Array<InlineExtension | CreateTestExtensionsResultInput>;
+	features?: Feature[];
+	/** Features composed as the native set (owner `native`), in place of `features`. */
+	builtinCompactionFactories?: TestFeatureInput[];
 	withConfiguredAuth?: boolean;
 	modelsJson?: Record<string, unknown>;
 	/** Session to continue, for example to test a resume. Default: a new in-memory session. */
@@ -167,7 +159,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 	const tools = options.tools ?? (options.builtinCompactionFactories ? [createBashTool(tempDir)] : undefined);
 	const toolMap = tools ? Object.fromEntries(tools.map((tool) => [tool.name, tool])) : undefined;
 	const withConfiguredAuth = options.withConfiguredAuth ?? true;
-	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const featureHostRef: { current?: FeatureHost } = {};
 
 	const sessionManager = options.sessionManager ?? SessionManager.inMemory();
 	// Characterization runs against each model's whole window; tests of the default working context pass
@@ -218,21 +210,21 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		},
 		convertToLlm,
 		transformContext: async (messages: AgentMessage[]) => {
-			const runner = extensionRunnerRef.current;
+			const runner = featureHostRef.current;
 			if (!runner) return messages;
 			return runner.emitContext(messages);
 		},
 	});
-	const factories = options.builtinCompactionFactories ?? options.extensionFactories;
-	const extensionsResult = factories ? await createTestExtensionsResult(factories, tempDir) : undefined;
-	if (options.builtinCompactionFactories && extensionsResult) {
-		for (const extension of extensionsResult.extensions) {
-			extension.owner = "native";
-			extension.sourceInfo.owner = "native";
+	const factories = options.builtinCompactionFactories ?? options.features;
+	const featuresResult = factories ? await createTestFeaturesResult(factories, tempDir) : undefined;
+	if (options.builtinCompactionFactories && featuresResult) {
+		for (const feature of featuresResult.features) {
+			feature.owner = "native";
+			feature.sourceInfo.owner = "native";
 		}
 	}
 	const resourceLoader =
-		options.resourceLoader ?? createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);
+		options.resourceLoader ?? createTestResourceLoader(featuresResult ? { featuresResult } : undefined);
 
 	const session = new AgentSession({
 		agent,
@@ -248,7 +240,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		usesDefaultTools: options.initialActiveToolNames === undefined && !options.builtinCompactionFactories,
 		allowedToolNames: options.allowedToolNames,
 		excludedToolNames: options.excludedToolNames,
-		extensionRunnerRef,
+		featureHostRef,
 	});
 
 	const events: AgentSessionEvent[] = [];

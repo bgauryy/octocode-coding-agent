@@ -1,6 +1,6 @@
 import path from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { edits, workspaces } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
@@ -19,6 +19,12 @@ import { parts } from "./images.ts";
  */
 
 type Ledger = Pick<SessionBeforeCompactEvent["preparation"], "fileOps" | "messagesToSummarize" | "turnPrefixMessages">;
+
+/**
+ * The paths of one subagent's changes the recovery line names: every path is in `<modified-files>` already, so the line
+ * says whose they are without repeating a long list in every later summary.
+ */
+const PATHS_PER_AGENT = 3;
 
 /** A subagent's changes in the summarized span: its name and the absolute paths it changed. */
 interface AgentEdits {
@@ -141,8 +147,13 @@ export async function addLedgerEdits(
 		if (files.length > 0) agents.push({ agent, files });
 	}
 	if (edited.size + written.size === 0) return [];
-	const shown = agents.map(({ agent, files }) => `${agent}: ${files.map((file) => relativeTo(cwd, file)).join(", ")}`);
-	return [renderInstruction("notices/recovery/modified-files.md", { agents: shown.join("; ") })];
+	const shown = agents.map(({ agent, files }) => {
+		const named = files.slice(0, PATHS_PER_AGENT).map((file) => relativeTo(cwd, file));
+		return files.length > PATHS_PER_AGENT
+			? `${agent}: ${files.length} files, ${named.join(", ")}, …`
+			: `${agent}: ${named.join(", ")}`;
+	});
+	return [renderPrompt("notices/recovery/modified-files.md", { agents: shown.join("; ") })];
 }
 
 /** `file` relative to `cwd` when it is inside it, else absolute. */

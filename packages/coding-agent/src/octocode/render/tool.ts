@@ -8,7 +8,7 @@ import { contentText } from "../shared/util.ts";
 import { highlightCode, TOOL_PREVIEW_LINES } from "../../theme/theme-tui-helpers.ts";
 import { rowMark, uiStateOf } from "./motion.ts";
 import { phaseOf, rowState, runStart, track } from "./rows.ts";
-import { bodyLines, clip, expandHint, GUTTER, INDENT, plural } from "../shared/text.ts";
+import { bodyLines, clip, expandHint, GUTTER, INDENT, linkPath, plural } from "../shared/text.ts";
 import type { UiState } from "../../theme/status.ts";
 import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "./types.ts";
 
@@ -31,6 +31,8 @@ export const SHOW_ALL_LINES = 12;
 /** Header summary budget in characters, before the width clip. */
 const SUMMARY_CHARS = 120;
 const SUMMARY_CHARS_EXPANDED = 200;
+/** A finished row names its duration from this long: a fast call's `21ms` is noise. A running row keeps its live clock. */
+const SHOW_DURATION_MS = 1000;
 
 /**
  * Summaries of an interrupted call: Esc (`aborted`, including an MCP call's `MCP request aborted` and the platform's
@@ -54,7 +56,7 @@ function joinHint(text: string): string {
 const COLLAPSED_SUB_LINES = 3;
 
 /**
- * `<glyph> Name(summary) · 1.2s`, clipped to the width with the time kept. `lines` are extra sub-lines (one per
+ * `<glyph> Name(summary) · meta · 1.2s` (a finished row's time from 1s on), clipped to the width with the time kept. `lines` are extra sub-lines (one per
  * query of a batched call), clipped to the width; collapsed, the first 3 show and `… +N more` counts the rest. Callers
  * sanitize them (they may be styled). Octocode owns completed execution timing; while running, the newest row shows the time
  * since its run began (`timed` records it, so the tool must be wrapped by `timed`), and a row still waiting for its
@@ -65,7 +67,16 @@ export function toolHeader(
 	context: RenderContext,
 	name: string,
 	summary: string,
-	options: { durationMs?: number; meta?: string; lines?: string[]; state?: UiState } = {},
+	options: {
+		durationMs?: number;
+		meta?: string;
+		lines?: string[];
+		state?: UiState;
+		/** The summary already styled (the caller sanitized it), drawn in the parentheses, and styled text after them. */
+		styled?: { summary: string; meta?: string };
+		/** A file path inside `summary`: linked to the file where the terminal supports it. */
+		link?: string;
+	} = {},
 ): Component {
 	const base = phaseOf(context);
 	const state = track(context, base);
@@ -77,15 +88,15 @@ export function toolHeader(
 	const finished = phase === "done" || phase === "error" || phase === "stopped";
 	const time = waiting
 		? "waiting"
-		: duration !== undefined && phase !== "pending"
+		: duration !== undefined && phase !== "pending" && (!finished || duration >= SHOW_DURATION_MS)
 			? formatDuration(duration, true)
 			: "";
 	const times = [time, finished ? (state.waits ?? "") : ""].filter(Boolean);
-	const text = clip(summary, context.expanded ? SUMMARY_CHARS_EXPANDED : SUMMARY_CHARS);
+	const text = options.styled ? "" : clip(summary, context.expanded ? SUMMARY_CHARS_EXPANDED : SUMMARY_CHARS);
 	const mark = rowMark(theme, context, state, options.state ?? (waiting ? "waiting" : uiStateOf(phase)));
 	const left = `${mark} ${theme.fg("toolTitle", theme.bold(clip(name, 60)))}`;
 	const right = times.length > 0 ? theme.fg("dim", ` · ${times.join(" · ")}`) : "";
-	const meta = options.meta ? theme.fg("dim", ` · ${clip(options.meta, 60)}`) : "";
+	const meta = `${options.styled?.meta ? `${theme.fg("dim", " · ")}${options.styled.meta}` : ""}${options.meta ? theme.fg("dim", ` · ${clip(options.meta, 60)}`) : ""}`;
 	const sub = options.lines ?? [];
 	// Folding one line would cost the line it saves.
 	const folded = !context.expanded && sub.length > COLLAPSED_SUB_LINES + 1;
@@ -97,18 +108,30 @@ export function toolHeader(
 	return lines(context).set(
 		{
 			left,
-			summary: text ? theme.fg("muted", text) : "",
+			summary: options.styled?.summary ?? (text ? theme.fg("muted", linkIn(text, options.link, context.cwd)) : ""),
 			right,
 			meta,
-			...(text ? { parens: [theme.fg("muted", "("), theme.fg("muted", ")")] as const } : {}),
+			...(options.styled || text ? { parens: [theme.fg("muted", "("), theme.fg("muted", ")")] as const } : {}),
 		},
 		rows,
 	);
 }
 
+/** `text` with the first occurrence of `path` linked to the file; unchanged when the path was clipped away. */
+function linkIn(text: string, path: string | undefined, cwd: string | undefined): string {
+	const at = path ? text.indexOf(path) : -1;
+	if (!path || at < 0) return text;
+	return `${text.slice(0, at)}${linkPath(path, path, cwd)}${text.slice(at + path.length)}`;
+}
+
 interface ResultBlockOptions {
 	/** The `⎿` line. Sanitized; only its first line is shown. */
 	summary: string;
+	/**
+	 * Parts after the summary on its row, joined with ` · ` (`general-0001`, `14 tool calls`). Where the row is too narrow
+	 * the last parts drop whole, as a header's meta does, instead of the row being cut mid-word.
+	 */
+	summaryMeta?: readonly string[];
 	/** The `⎿` line already styled (the caller sanitized its text), drawn instead of `summary` unless the row failed or stopped. */
 	styledSummary?: string;
 	summaryColor?: ColorToken;
@@ -156,6 +179,7 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 			queueMicrotask(() => invalidate());
 		}
 	}
+	const meta = (options.summaryMeta ?? []).filter(Boolean);
 	const summary = clip(options.summary, 400);
 	const failed = options.error ?? context.isError === true;
 	const stopped = options.stopped ?? (failed && STOPPED.test(summary));
@@ -173,20 +197,24 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	const rows: Row[] = [];
 	if (summary && options.styledSummary && !error && !stopped)
 		rows.push({ lead: theme.fg("dim", GUTTER), text: options.styledSummary });
-	else if (summary)
+	else if (summary) {
+		// An error or stop explains what to do next: wrap it whole instead of clipping it to one row.
+		const wrap = error || stopped;
+		const text = wrap ? [summary, ...meta].join(" · ") : summary;
 		rows.push({
 			lead: theme.fg("dim", GUTTER),
 			text: theme.fg(
 				summaryColor,
-				error && !/^(error|failed)\b|\bfailed\b/i.test(summary)
-					? `Error: ${summary}`
+				error && !/^(error|failed)\b|\bfailed\b/i.test(text)
+					? `Error: ${text}`
 					: stopped
-						? summary.replace(/^error:\s*/i, "")
-						: summary,
+						? text.replace(/^error:\s*/i, "")
+						: text,
 			),
-			// An error or stop explains what to do next: wrap it whole instead of clipping it to one row.
-			...(error || stopped ? { wrap: true, indent: INDENT } : {}),
+			...(wrap ? { wrap: true, indent: INDENT } : {}),
+			...(!wrap && meta.length > 0 ? { meta: meta.map((part) => theme.fg(summaryColor, ` · ${part}`)) } : {}),
 		});
+	}
 	// Raw body lines are coloured only where shown: a collapsed preview colours its few lines, not the whole output.
 	const rawLines = options.lines ? undefined : options.body ? bodyLines(options.body) : [];
 	const styled = options.shell && rawLines ? styleShellLines(theme, rawLines, color) : undefined;
@@ -208,7 +236,10 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		for (const line of body) rows.push(hang(paint(line)));
 		if (options.spill)
 			rows.push({
-				text: theme.fg("dim", `${options.spillLabel ?? "saved"}: ${clip(shortPath(options.spill), 300)}`),
+				text: theme.fg(
+					"dim",
+					`${options.spillLabel ?? "saved"}: ${linkPath(clip(shortPath(options.spill), 300), options.spill, context.cwd)}`,
+				),
 				// A path is only useful whole: wrap it under the label instead of cutting it at the row's width.
 				lead: INDENT,
 				wrap: true,
@@ -227,11 +258,12 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 		const more = preface.length > 0 ? ` · ${options.prefaceLabel ?? "more"}` : "";
 		const folded = hidden > 0 || more !== "";
 		// Summary-only tools (`⎿  Read 51 lines (ctrl+o to expand)`), or a saved path that only the expanded view shows.
-		if (summary && (max === 0 ? folded || options.spill : !folded && options.spill))
-			rows[0] = {
-				...rows[0],
-				text: `${rows[0].text}${theme.fg("dim", joinHint(max === 0 ? more : ""))}`,
-			};
+		if (summary && (max === 0 ? folded || options.spill : !folded && options.spill)) {
+			const hint = theme.fg("dim", joinHint(max === 0 ? more : ""));
+			// The hint ends the row: after the meta parts, and dropped with them first.
+			const first = rows[0];
+			rows[0] = first.meta ? { ...first, meta: [...first.meta, hint] } : { ...first, text: `${first.text}${hint}` };
+		}
 		if (max === 0 && summary) return lines(context).set(undefined, rows);
 		// A tail preview hides the lines before it: say so, so the hint does not read as more output below.
 		const hiddenText = options.tail

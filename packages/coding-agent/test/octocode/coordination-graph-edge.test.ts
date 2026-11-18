@@ -16,10 +16,10 @@ import { timerFields } from "../../src/octocode/timer/model.ts";
 import type { ConditionDeps } from "../../src/octocode/timer/conditions/types.ts";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
 
 /**
- * The mechanisms under the coordinator's planning graph (`instructions/policy/delegation.md`): one item per part with an
+ * The mechanisms under the coordinator's planning graph (`native/prompts/policy/delegation.md`): one item per part with an
  * owner, real `dependsOn` links, a graph checked before it starts and run in waves. Each case asks whether the backlog,
  * the `agent` tool and the `timer` support what that policy tells the main session to do.
  */

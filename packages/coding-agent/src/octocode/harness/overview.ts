@@ -1,4 +1,5 @@
 import type { Theme } from "../../theme/theme.ts";
+import { cursorMark } from "../../theme/theme-tui-helpers.ts";
 import type { InventoryItem } from "./inventory.ts";
 import { HARNESS_SECTIONS, ITEM_SECTIONS, type ItemSection, sectionItems } from "./sections.ts";
 
@@ -35,5 +36,5 @@ function overviewText(row: OverviewRow): string {
 
 export function overviewLine(row: OverviewRow, selected: boolean, theme: Theme): string {
 	const title = row.title.padEnd(11);
-	return `${selected ? theme.fg("accent", "> ") : "  "}${selected ? theme.bold(title) : title}${theme.fg("dim", overviewText(row))}`;
+	return `${cursorMark(selected)}${selected ? theme.bold(title) : title}${theme.fg("dim", overviewText(row))}`;
 }

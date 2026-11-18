@@ -11,8 +11,9 @@ import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import type { Extension, ExtensionFactory, InlineExtension, LoadExtensionsResult } from "../src/core/features/index.ts";
-import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
+import type { FeatureRecord, LoadedFeatures } from "../src/core/features/index.ts";
+import { registerFeature } from "../src/core/features/register.ts";
+import { createFeatureRuntime, type TestFeatureInput, testFeatures } from "./helpers/features.ts";
 import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -90,54 +91,30 @@ export interface TestSessionContext {
 	cleanup: () => void;
 }
 
-export interface CreateTestExtensionsResultInput {
-	factory: ExtensionFactory;
-	path?: string;
-	/** `native` marks the feature the host treats as the Octocode feature set; default `builtin`. */
-	owner?: "native" | "builtin";
-}
-
-type TestExtensionInput = InlineExtension | CreateTestExtensionsResultInput;
-
-export async function createTestExtensionsResult(
-	inputs: TestExtensionInput[],
-	cwd = process.cwd(),
+export async function createTestFeaturesResult(
+	inputs: readonly TestFeatureInput[],
+	_cwd = process.cwd(),
 	eventBus: EventBus = createEventBus(),
-): Promise<LoadExtensionsResult> {
-	const runtime = createExtensionRuntime();
-	const extensions: Extension[] = [];
-
-	for (const [index, input] of inputs.entries()) {
-		const isObject = typeof input !== "function";
-		const hasName = isObject && "name" in input;
-		const hasPath = isObject && "path" in input && typeof input.path === "string" && input.path !== "";
-		const factory = isObject ? input.factory : input;
-		const extensionPath = hasName ? `<inline:${input.name}>` : hasPath ? input.path : `<inline:${index + 1}>`;
-
-		const owner = isObject && "owner" in input ? input.owner : undefined;
-		extensions.push(await loadExtensionFromFactory(factory, cwd, eventBus, runtime, extensionPath, owner));
-	}
-
-	return {
-		extensions,
-		errors: [],
-		runtime,
-	};
+): Promise<LoadedFeatures> {
+	const runtime = createFeatureRuntime();
+	const features: FeatureRecord[] = [];
+	for (const feature of testFeatures(inputs)) features.push(await registerFeature(feature, eventBus, runtime));
+	return { features, errors: [], runtime };
 }
 
 export interface CreateTestResourceLoaderOptions {
-	extensionsResult?: LoadExtensionsResult;
+	featuresResult?: LoadedFeatures;
 }
 
 export function createTestResourceLoader(options: CreateTestResourceLoaderOptions = {}): ResourceLoader {
-	const extensionsResult = options.extensionsResult ?? {
-		extensions: [],
+	const featuresResult = options.featuresResult ?? {
+		features: [],
 		errors: [],
-		runtime: createExtensionRuntime(),
+		runtime: createFeatureRuntime(),
 	};
 
 	return {
-		getExtensions: () => extensionsResult,
+		getFeatures: () => featuresResult,
 		getSkills: () => ({ skills: [], diagnostics: [] }),
 		getPrompts: () => ({ prompts: [], diagnostics: [] }),
 		getThemes: () => ({ themes: [], diagnostics: [] }),

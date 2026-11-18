@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 
 /**
@@ -6,7 +6,7 @@ import { notify } from "../shared/commands.ts";
  * Without a UI only problems reach stderr (a print-mode run stays quiet on success). The context may have been replaced
  * by the time the sweep finishes, which drops the notice rather than raising.
  */
-export function reportSweep(ctx: Pick<ExtensionContext, "hasUI" | "ui">, line: string): void {
+export function reportSweep(ctx: Pick<FeatureContext, "hasUI" | "ui">, line: string): void {
 	const problem = /\b(failed|skipped)\b/.test(line);
 	try {
 		if (ctx.hasUI) notify(ctx.ui, line, problem ? "warning" : "info");

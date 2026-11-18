@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { newMember } from "./identity.ts";
 import { parentProofValid, userProofValid } from "./proof.ts";
@@ -27,7 +27,7 @@ export class RunnerMember {
 	readonly member: Member;
 	private readonly db: TeamStore;
 	private readonly parent: Member;
-	private readonly context: ExtensionContext;
+	private readonly context: FeatureContext;
 	private readonly heartbeat: NodeJS.Timeout;
 	private readonly signal: AbortSignal | undefined;
 	private readonly secret = randomBytes(32).toString("base64url");

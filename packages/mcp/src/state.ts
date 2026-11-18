@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
 import { mcpServerGroup } from "./group.ts";
 import { hostPaths } from "./host.ts";
-import type { McpExtensionApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
+import type { McpFeatureApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import {
@@ -45,7 +45,7 @@ import { publishToolRoles, resolveToolRoles } from "./roles.ts";
 import { serverGeneratedDir } from "./compact/store.ts";
 import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } from "./presentation/index.ts";
 
-export interface McpExtensionOptions {
+export interface McpFeatureOptions {
 	presets?: readonly McpServerPreset[];
 	/** Defaults to reading `mcp.json` from the agent directory and the trusted project. */
 	loadConfig?: (ctx: McpContext, defaults: readonly McpServerEntry[]) => LoadedMcpConfig;
@@ -96,12 +96,12 @@ function recentToolsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> | undef
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
 
 /**
- * State of one MCP extension instance, shared by its tool registration, connection lifecycle,
+ * State of one MCP feature instance, shared by its tool registration, connection lifecycle,
  * configuration persistence, `/mcp` command and `mcp` tool.
  */
-export class McpExtensionState {
-	readonly api: McpExtensionApi;
-	readonly options: McpExtensionOptions;
+export class McpFeatureState {
+	readonly api: McpFeatureApi;
+	readonly options: McpFeatureOptions;
 	servers: McpServer[] = [];
 	/** Servers from `mcp.json`, which take precedence over registered servers of the same name. */
 	configuredEntries: McpServerEntry[] = [];
@@ -181,7 +181,7 @@ export class McpExtensionState {
 	readonly tokensAtSignIn = new Map<McpServerConnection, string>();
 	readonly preparedLaunches = new WeakMap<McpServerConnection, McpServerEntry>();
 
-	constructor(api: McpExtensionApi, options: McpExtensionOptions) {
+	constructor(api: McpFeatureApi, options: McpFeatureOptions) {
 		this.api = api;
 		this.options = options;
 		this.startupWaitMs = options.startupWaitMs ?? DEFAULT_STARTUP_WAIT_MS;
@@ -191,7 +191,7 @@ export class McpExtensionState {
 			dir: (name) => serverGeneratedDir(hostPaths().agentDir(), this.sessionCwd, this.findServer(name)?.entry.scope),
 			mode: () =>
 				options.presentation ??
-				(typeof api.getSettings === "function" ? api.getSettings().mcpPresentation : undefined) ??
+				(typeof api.settings.get === "function" ? api.settings.get().mcpPresentation : undefined) ??
 				DEFAULT_MCP_PRESENTATION,
 		});
 		// Every sign-in shows the URL (a message, or the manager's sign-in screen with a copy key), so a browser that
@@ -218,7 +218,7 @@ export class McpExtensionState {
 
 	readonly emitChange = (): void => {
 		setMcpSessionStatus(
-			this.api.events,
+			this.api.channels,
 			this.servers.map((server) => ({
 				name: server.entry.name,
 				// The switch; a server the security review withholds is switched on but shows state "not checked".
@@ -330,7 +330,7 @@ export class McpExtensionState {
 	exposureSetting(): unknown {
 		return (
 			this.options.exposure ??
-			(typeof this.api.getSettings === "function" ? this.api.getSettings() : {})?.mcpExposure ??
+			(typeof this.api.settings.get === "function" ? this.api.settings.get() : {})?.mcpExposure ??
 			DEFAULT_MCP_EXPOSURE_SETTING
 		);
 	}
@@ -338,7 +338,8 @@ export class McpExtensionState {
 	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {
 		const prepared = this.preset(entry)?.prepareLaunch?.(entry, cwd, this.projectTrusted) ?? entry;
 		const launched = this.options.prepareLaunch?.(prepared, cwd) ?? prepared;
-		const skillDirectories = typeof this.api.getSkillDirectories === "function" ? this.api.getSkillDirectories() : [];
+		const skillDirectories =
+			typeof this.api.resources.getSkillDirectories === "function" ? this.api.resources.getSkillDirectories() : [];
 		return expandLaunchTemplates(launched, { cwd, projectTrusted: this.projectTrusted, skillDirectories });
 	};
 
@@ -350,20 +351,20 @@ export class McpExtensionState {
 		return this.servers.find((server) => server.entry.name === name);
 	}
 
-	/** Servers extensions registered, except names `mcp.json` defines, which take precedence. */
+	/** Servers features registered, except names `mcp.json` defines, which take precedence. */
 	registeredServers(): { servers: McpServer[]; overridden: string[] } {
 		const registered: McpServer[] = [];
 		const overriddenNames: string[] = [];
-		for (const { name, config, extensionPath } of this.api.getMcpServers()) {
+		for (const { name, config, source } of this.api.mcpServers.list()) {
 			const configured = this.configuredEntries.find((entry) => mcpNamespace(entry.name) === mcpNamespace(name));
 			if (configured && (configured.scope !== "default" || configured.override)) {
 				overriddenNames.push(
-					`"${name}" registered by ${extensionPath} is overridden by "${configured.name}" in ${configured.source}`,
+					`"${name}" registered by ${source} is overridden by "${configured.name}" in ${configured.source}`,
 				);
 				continue;
 			}
 			registered.push({
-				entry: { name, config, source: extensionPath, scope: "extension" },
+				entry: { name, config, source, scope: "feature" },
 				registeredConfig: JSON.stringify(config),
 			});
 		}

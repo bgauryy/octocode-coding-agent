@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { envInt } from "@octocodeai/octocode-common/env";
 import type { AgentProfile } from "./profiles.ts";
 import { type ResultContract, unavailableResult } from "./result-schema.ts";
@@ -52,7 +52,7 @@ export const steerMessage = (
 	hard: number = hardLimit(soft),
 	options: { continued?: boolean; ask?: boolean } = {},
 ): string =>
-	renderInstruction("notices/subagents/budget-steer.md", {
+	renderPrompt("notices/subagents/budget-steer.md", {
 		used,
 		soft,
 		hard,
@@ -62,7 +62,7 @@ export const steerMessage = (
 	});
 
 /** What the parent tells a child at the hard limit: its next request has no tools, so it answers. */
-export const finalMessage = (hard: number): string => renderInstruction("notices/subagents/budget-final.md", { hard });
+export const finalMessage = (hard: number): string => renderPrompt("notices/subagents/budget-final.md", { hard });
 
 /**
  * Applies the budget to a child's replies: one steer at the soft limit, one stop at the hard limit. Both only while the
@@ -219,7 +219,7 @@ export class RunningBudgets {
 
 /** The first line of a report from a run the budget stopped. */
 export const budgetHeading = (requests: number, soft: number, hard: number = hardLimit(soft)): string =>
-	renderInstruction("notices/subagents/budget-stop.md", {
+	renderPrompt("notices/subagents/budget-stop.md", {
 		outcome: "partial",
 		requests,
 		soft,
@@ -246,7 +246,7 @@ export function budgetOutcome(
 	usage: Usage,
 ): SubagentOutcome {
 	const progress = lastProgress.trim();
-	const next = renderInstruction("notices/subagents/budget-continue.md", {
+	const next = renderPrompt("notices/subagents/budget-continue.md", {
 		id: child.id,
 		isolated: child.isolation !== undefined,
 		allowance: limits.allowance,

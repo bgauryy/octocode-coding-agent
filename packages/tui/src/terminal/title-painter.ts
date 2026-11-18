@@ -1,5 +1,7 @@
-/** What the session is doing, as the terminal tab shows it. */
-export type TitleState = "idle" | "thinking" | "running" | "waiting" | "done" | "failed";
+import { stdoutAcceptsDecoration } from "./stall-watch.ts";
+
+/** What the session is doing, as the terminal tab shows it; `background`: its run ended, its children, jobs or wakes still run. */
+export type TitleState = "idle" | "thinking" | "running" | "background" | "waiting" | "done" | "failed";
 
 /** How often a busy title moves to its next frame: slow, so a terminal that reads slowly never falls behind on titles. */
 export const TITLE_FRAME_MS = 1000;
@@ -31,7 +33,8 @@ export interface TitleSource {
 
 /**
  * Writes the terminal title only when its text changes. A busy title animates one frame per `TITLE_FRAME_MS` and stops
- * when the session settles; busy-to-busy swaps are coalesced. Timers never keep the process alive.
+ * when the session settles; busy-to-busy swaps are coalesced. While the terminal is not reading, titles wait and only
+ * the latest is written once it reads again (a forced repaint is written at once). Timers never keep the process alive.
  */
 export class TitlePainter {
 	private readonly source: TitleSource;
@@ -41,10 +44,13 @@ export class TitlePainter {
 	private frame = 0;
 
 	private readonly format: TitleFormat;
+	private readonly acceptsOutput: () => boolean;
 
-	constructor(source: TitleSource, format: TitleFormat) {
+	/** @param acceptsOutput Whether a title may be written now; by default, whether stdout is not backed up. */
+	constructor(source: TitleSource, format: TitleFormat, acceptsOutput: () => boolean = stdoutAcceptsDecoration) {
 		this.source = source;
 		this.format = format;
+		this.acceptsOutput = acceptsOutput;
 	}
 
 	/** Repaint; `force` rewrites the title after another writer (the host, a session switch) may have replaced it. */
@@ -87,6 +93,14 @@ export class TitlePainter {
 		const agents = state === "idle" ? 0 : this.source.agents();
 		const text = this.format.full(state, this.source.description(), target.cwd, agents, this.frame);
 		if (!force && this.shown?.text === text) return;
+		if (!force && !this.acceptsOutput()) {
+			// A busy title retries on its next frame; any other waits for this retry.
+			if (!this.animation) {
+				this.coalesce = setTimeout(() => this.write(false), TITLE_FRAME_MS);
+				this.coalesce.unref?.();
+			}
+			return;
+		}
 		this.shown = { state, text };
 		target.setTitle(text);
 	}

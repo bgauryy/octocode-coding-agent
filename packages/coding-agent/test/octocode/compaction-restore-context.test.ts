@@ -5,6 +5,7 @@ import { deliverRestoredFiles, RESTORE_TOTAL_CHARS } from "../../src/octocode/co
 import { recordContextFiles } from "../../src/octocode/compaction/restore-context.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 function setup() {
 	const dir = tmp();
@@ -14,7 +15,7 @@ function setup() {
 	fs.writeFileSync(context, text);
 	fs.writeFileSync(other, `# Notes\n${"other text\n".repeat(400)}`);
 	const sent: Array<{ content: string }> = [];
-	const api = { sendMessage: (message: { content: string }) => void sent.push(message) };
+	const api = asSetup({ sendMessage: (message: { content: string }) => void sent.push(message) });
 	const ctx = {
 		cwd: dir,
 		sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
@@ -23,7 +24,7 @@ function setup() {
 		const guard = new FileGuard();
 		const held = recordContextFiles(guard, contextFiles);
 		const pending = deliverRestoredFiles(
-			api as never,
+			api,
 			[{ file: context }, { file: other }],
 			ctx as never,
 			RESTORE_TOTAL_CHARS,

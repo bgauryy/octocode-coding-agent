@@ -10,7 +10,7 @@ import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmingStatus } from "../cache-warmer.ts";
 import type {
 	ContextUsage,
-	ExtensionRunner,
+	FeatureHost,
 	SessionStartEvent,
 	ToolDefinition,
 	ToolInfo,
@@ -38,8 +38,8 @@ export abstract class AgentSessionState {
 	protected readonly _listeners = new SessionListeners();
 	protected readonly _run = createRunState();
 
-	// Extension system
-	protected _extensionRunner!: ExtensionRunner;
+	// Feature system
+	protected _featureHost!: FeatureHost;
 	protected readonly _resourceLoader: ResourceLoader;
 	protected readonly _sessionStartEvent: SessionStartEvent;
 	protected readonly _modelRuntime: ModelRuntime;
@@ -50,7 +50,7 @@ export abstract class AgentSessionState {
 
 	constructor(config: AgentSessionConfig) {
 		if (config.agent.prepareInput)
-			throw new Error("AgentSession owns Agent.prepareInput; use a user_input extension instead");
+			throw new Error("AgentSession owns Agent.prepareInput; use a user_input feature handler instead");
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settingsManager = config.settingsManager;
@@ -156,7 +156,7 @@ export abstract class AgentSessionState {
 		return this._c.tools.getToolDefinition(name);
 	}
 	getToolRenderers(name: string): ToolRenderers | undefined {
-		return this._extensionRunner.resolveToolRenderers(name, () => this.getToolDefinition(name));
+		return this._featureHost.resolveToolRenderers(name, () => this.getToolDefinition(name));
 	}
 	setActiveToolsByName(toolNames: string[]): void {
 		this._c.tools.setActiveToolsByName(toolNames);

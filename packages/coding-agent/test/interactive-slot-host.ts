@@ -7,7 +7,7 @@ import { vi } from "vitest";
 import { Container, type TUI } from "../../tui/src/tui.ts";
 import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
-import type { ExtensionUIContext } from "../src/core/features/types.ts";
+import type { SessionUI } from "../src/core/features/types.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
 import { getEditorTheme } from "../src/theme/theme.ts";
@@ -38,32 +38,31 @@ export function createSlotHost() {
 		keybindings,
 		programStatus: { setBlocked: vi.fn<(...args: never[]) => void>() },
 		settingsManager: { getExternalEditorCommand: () => undefined },
-		extensionSelector: undefined,
-		extensionInput: undefined,
-		extensionEditor: undefined,
+		selectorDialog: undefined,
+		inputDialog: undefined,
+		editorDialog: undefined,
 		uiStore: createUiStore(),
 		activeSelectorDispose: undefined,
 		toggleToolOutputExpansion: vi.fn<(...args: never[]) => void>(),
-		// What `resetExtensionUI` touches besides the editor slot.
+		// What `resetFeatureUI` touches besides the editor slot.
 		editorComponentFactory: undefined,
 		activeStatusIndicator: undefined,
 		defaultWorkingMessage: "Working",
-		extensionWidgetsAbove: new Map(),
-		extensionWidgetsBelow: new Map(),
+		featureWidgetsAbove: new Map(),
+		featureWidgetsBelow: new Map(),
 		autocompleteProviderWrappers: [],
-		footerDataProvider: { clearExtensionStatuses: vi.fn<(...args: never[]) => void>() },
-		clearExtensionTerminalInputListeners: vi.fn<(...args: never[]) => void>(),
-		setExtensionFooter: vi.fn<(...args: never[]) => void>(),
-		setExtensionHeader: vi.fn<(...args: never[]) => void>(),
+		footerDataProvider: { clearFeatureStatuses: vi.fn<(...args: never[]) => void>() },
+		clearFeatureTerminalInputListeners: vi.fn<(...args: never[]) => void>(),
+		setFeatureFooter: vi.fn<(...args: never[]) => void>(),
+		setFeatureHeader: vi.fn<(...args: never[]) => void>(),
 		renderWidgets: vi.fn<(...args: never[]) => void>(),
 		setupAutocompleteProvider: vi.fn<(...args: never[]) => void>(),
 		updateTerminalTitle: vi.fn<(...args: never[]) => void>(),
 		setWorkingIndicator: vi.fn<(...args: never[]) => void>(),
-		setHiddenThinkingLabel: vi.fn<(...args: never[]) => void>(),
 	});
 	ui.start();
 	/** `ctx.ui.custom` as interactive mode provides it. */
-	const custom: ExtensionUIContext["custom"] = (factory, options) => host.showExtensionCustom(factory, options);
+	const custom: SessionUI["custom"] = (factory, options) => host.showCustomDialog(factory, options);
 	const screen = async (): Promise<string> => {
 		await terminal.waitForRender();
 		return terminal.getViewport().join("\n");

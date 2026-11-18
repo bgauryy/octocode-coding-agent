@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cacheEvents, formatSummary, resetCacheEvents, summarize } from "../src/cache-report.ts";
 import type { CassetteMode, Fingerprint } from "../src/cassette.ts";
@@ -258,6 +258,33 @@ describe("replay is identical", () => {
 		const rep = await gw(up, f, "replay");
 		await expect(agent(rep, "another prompt")).rejects.toThrow(/cassette miss/);
 		expect(rep.errors[0]).toMatch(/cassette miss/);
+	});
+});
+
+describe("committed cassette directory", () => {
+	const saved = { dir: process.env.TESTKIT_CASSETTE_DIR, mode: process.env.TESTKIT_CASSETTE };
+	afterEach(() => {
+		for (const [k, v] of [
+			["TESTKIT_CASSETTE_DIR", saved.dir],
+			["TESTKIT_CASSETTE", saved.mode],
+		] as const)
+			if (v === undefined) delete process.env[k];
+			else process.env[k] = v;
+	});
+
+	it("CI flow: record into TESTKIT_CASSETTE_DIR, then TESTKIT_CASSETTE=replay answers every request from it", async () => {
+		const up = await upstream();
+		const dir = dirname(cassetteFile());
+		process.env.TESTKIT_CASSETTE_DIR = dir;
+		const forward = { baseUrl: up.base, model: "m1", api: "anthropic", key: "sk-test-not-real" } as const;
+		await agent(await gateway({ forward }));
+		expect(readdirSync(dir).filter((f) => f.endsWith(".json"))).toHaveLength(1);
+		const calls = up.calls;
+		process.env.TESTKIT_CASSETTE = "replay";
+		resetCacheEvents();
+		expect((await agent(await gateway({ forward }))).answer).toBe("found it");
+		expect(up.calls).toBe(calls);
+		expect(summarize(cacheEvents())).toMatchObject({ hits: 3, misses: 0 });
 	});
 });
 

@@ -125,7 +125,7 @@ describe("settings file transactions", () => {
 			writeFileSync(settingsPath, "");
 
 			if (scope === "global") manager.setTheme("light");
-			else manager.setProjectExtensionPaths(["./extension.ts"]);
+			else manager.setProjectSkillPaths(["./extension.ts"]);
 			await manager.flush();
 
 			expect(readFileSync(settingsPath, "utf8")).toBe("");

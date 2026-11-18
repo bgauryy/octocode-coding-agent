@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
@@ -6,9 +6,11 @@ import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-com
 import { formatTokens } from "../shared/format.ts";
 import { sessionFolder, sessionOutputDir } from "../shared/home.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { stringList } from "../shared/util.ts";
 import { RECORD_FILE } from "./archive/record.ts";
-import { MESSAGES_HEADING, headerField, oneLine, readHeader } from "./archive/text.ts";
+import { MESSAGES_HEADING, oneLine } from "./archive/text.ts";
+import { LABELS, SEGMENT_NAME, type Segment, segmentFiles, segmentsIn } from "./archive/segments.ts";
+
+export { isSegmentFile, type Segment, segmentFiles, segmentsIn } from "./archive/segments.ts";
 import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /**
@@ -25,41 +27,14 @@ import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 export const LIBRARY_FILE = "LIBRARY.md";
 
-/** One archived compaction: what the header of its file says. */
-export interface Segment {
-	/** 1 for the first compaction of the session. */
-	n: number;
-	session: string;
-	/** The id of the compaction entry in Octocode's session file. */
-	entry: string;
-	/** ISO times of the oldest and newest archived message. */
-	from?: string;
-	to?: string;
-	tokensBefore: number;
-	/** How the summary was written: `cache-shared`, `standalone` or `pi-default`. */
-	method: string;
-	/** A one-line label of the segment: the summary's own TL;DR or a fallback (the file has the whole text). */
-	tldr: string;
-	topics: string[];
-	readFiles: string[];
-	modifiedFiles: string[];
-	/** Messages in the file. */
-	messages: number;
-	/** The session entry that was the branch's leaf when the compaction began: segments of different `/tree` branches differ here. */
-	leaf?: string;
-}
-
 /**
  * The one wording of how to search the archive, for every text that tells a model to (the summary's pointer, a child's
  * task, a subagent report), each of which names the folder: the `archive` tool, which knows every archive the session may
  * read, and `rg` with context for a session without it (`--tools` left it out), since results span many lines.
  */
 export function archiveSearch(): string {
-	return renderInstruction("notices/recovery/archive-search.md");
+	return renderPrompt("notices/recovery/archive-search.md");
 }
-
-/** The label of a segment file whose header cannot be read. */
-const UNREADABLE_HEADER = "unreadable header";
 
 /** The archive folder of `id` (the current session without it); nothing is created. */
 export function archiveFolder(id?: string, env: NodeJS.ProcessEnv = process.env, cwd?: string): string {
@@ -96,6 +71,10 @@ export function ownArchives(env: NodeJS.ProcessEnv = process.env): string[] {
 	return folders;
 }
 
+/** The segments of `id`'s archive (the current session's without it), oldest first, read from their file headers. */
+export const readSegments = (id?: string, env: NodeJS.ProcessEnv = process.env): Segment[] =>
+	segmentsIn(archiveFolder(id, env));
+
 /** The library file of `id`'s archive (the current session without it); nothing is created. */
 export const libraryPath = (id?: string, env: NodeJS.ProcessEnv = process.env): string =>
 	path.join(archiveFolder(id, env), LIBRARY_FILE);
@@ -104,26 +83,6 @@ export const libraryPath = (id?: string, env: NodeJS.ProcessEnv = process.env): 
 export function existingLibrary(id?: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
 	const file = libraryPath(id, env);
 	return fs.existsSync(file) ? file : undefined;
-}
-
-const SEGMENT_NAME = /^(\d+)-.+\.md$/;
-
-/** Whether file name `name` is a segment's. */
-export const isSegmentFile = (name: string): boolean => SEGMENT_NAME.test(name);
-
-/** The segment files in `folder` by number, ascending; an unreadable or missing folder has none. */
-export function segmentFiles(folder: string): Array<{ n: number; name: string }> {
-	try {
-		return fs
-			.readdirSync(folder)
-			.flatMap((name) => {
-				const n = SEGMENT_NAME.exec(name)?.[1];
-				return n === undefined ? [] : [{ n: Number(n), name }];
-			})
-			.sort((a, b) => a.n - b.n);
-	} catch {
-		return [];
-	}
 }
 
 /** A number taken by `claimNumber`, whether or not its segment file exists. */
@@ -162,20 +121,6 @@ export const segmentFile = (n: number, entry: string): string => `${n}-${entry.r
 /** A list of file names as the JSON array of a header line, controls visible. */
 const jsonList = (items: readonly string[]): string => JSON.stringify(items.map(visibleControls));
 
-/** A segment header's field labels, as `renderHeader` writes them and `parseHeader` reads them. */
-const LABELS = {
-	segment: "Segment",
-	entry: "Compaction entry",
-	leaf: "Branch leaf",
-	range: "Time range",
-	tokensBefore: "Tokens before",
-	method: "Summary method",
-	tldr: "TL;DR",
-	topics: "Topics",
-	readFiles: "Files read",
-	modifiedFiles: "Files modified",
-	messages: "Messages",
-} as const;
 /** The fields a ranked search counts (`archive/ranked.ts`): what the stretch was about and the files it touched, not its numbers, times, ids or summary method. */
 export const SEGMENT_RANKED_LABELS: ReadonlySet<string> = new Set([
 	LABELS.tldr,
@@ -205,61 +150,6 @@ function renderHeader(segment: Segment): string {
 		"",
 	].join("\n");
 }
-
-function parseHeader(header: string, n: number): Segment | undefined {
-	const field = (label: string): string | undefined => headerField(header, label);
-	const list = (label: string): string[] => {
-		try {
-			return stringList(JSON.parse(field(label) ?? "[]")) ?? [];
-		} catch {
-			return [];
-		}
-	};
-	const entry = field(LABELS.entry);
-	const session = /^# Archived history of session (.*), segment \d+$/m.exec(header)?.[1];
-	if (entry === undefined || session === undefined) return undefined;
-	const [from, to] = (field(LABELS.range) ?? "").split(" → ");
-	const topics = (field(LABELS.topics) ?? "").split(", ").filter(Boolean);
-	const leaf = field(LABELS.leaf);
-	return {
-		n,
-		session,
-		entry,
-		...(leaf ? { leaf } : {}),
-		...(from && from !== "?" ? { from } : {}),
-		...(to && to !== "?" ? { to } : {}),
-		tokensBefore: Number(field(LABELS.tokensBefore)) || 0,
-		method: field(LABELS.method) ?? "unknown",
-		tldr: field(LABELS.tldr) ?? "",
-		topics,
-		readFiles: list(LABELS.readFiles),
-		modifiedFiles: list(LABELS.modifiedFiles),
-		messages: Number(field(LABELS.messages)) || 0,
-	};
-}
-
-/** The segments of `id`'s archive (the current session's without it), oldest first, read from their file headers. */
-export function readSegments(id?: string, env: NodeJS.ProcessEnv = process.env): Segment[] {
-	const folder = archiveFolder(id, env);
-	return segmentFiles(folder).map(({ n, name }) => {
-		const header = readHeader(path.join(folder, name));
-		return (header === undefined ? undefined : parseHeader(header, n)) ?? unreadable(n, name);
-	});
-}
-
-/** The row of a segment file whose header cannot be read: it keeps its number and its file name, and says what is wrong. */
-const unreadable = (n: number, name: string): Segment => ({
-	n,
-	session: "?",
-	entry: name.replace(/^\d+-/, "").replace(/\.md$/, ""),
-	tokensBefore: 0,
-	method: "unknown",
-	tldr: UNREADABLE_HEADER,
-	topics: [],
-	readFiles: [],
-	modifiedFiles: [],
-	messages: 0,
-});
 
 const cell = (text: string): string => oneLine(text).replace(/\|/g, "\\|");
 
@@ -370,5 +260,14 @@ export function writeSegment(
 		mode: PRIVATE_FILE_MODE,
 	});
 	refreshLibrary(folder, env);
+	for (const listener of segmentListeners) listener(file);
 	return { n, file };
+}
+
+const segmentListeners = new Set<(file: string) => void>();
+
+/** Calls `listener` with each segment file this process writes (the archive index indexes it); returns the undo. */
+export function onSegmentWritten(listener: (file: string) => void): () => void {
+	segmentListeners.add(listener);
+	return () => segmentListeners.delete(listener);
 }

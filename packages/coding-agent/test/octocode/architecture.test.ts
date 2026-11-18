@@ -18,9 +18,18 @@ const walk = (dir: string): string[] =>
 					: [],
 		);
 const files = walk(sourceRoot).sort();
+/** The native harness folder: each of its folders is a domain of its own, and so is each tool under `native/tools/`. */
+const NATIVE = "native";
+const NATIVE_TOOLS = "tools";
+
+/** The domain of a source file: its top folder, `native/<folder>` in the native harness folder, `native/tools/<tool>` for a tool. */
 const domainOf = (file: string): string => {
-	const [first] = path.relative(sourceRoot, file).split(path.sep);
-	return first.endsWith(".ts") ? "(root)" : first;
+	const [first, second, third] = path.relative(sourceRoot, file).split(path.sep);
+	if (first.endsWith(".ts")) return "(root)";
+	if (first !== NATIVE) return first;
+	return second === NATIVE_TOOLS && third && !third.endsWith(".ts")
+		? `${NATIVE}/${NATIVE_TOOLS}/${third}`
+		: `${NATIVE}/${second}`;
 };
 
 function importsOf(file: string): string[] {
@@ -55,7 +64,6 @@ const ALLOWED: Record<string, string[]> = {
 	// Where worktree sessions live: the member and own worktree roots and the prompt root a worktree session rebases to.
 	"worktree-paths": ["shared"],
 	"mcp-host": ["shared", "skill", "trust", "web", "render", "guard"],
-	llama: ["shared"],
 	api: ["shared", "render"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
 	external: ["shared", "api", "worktrees", "ask", "child-sessions"],
@@ -64,28 +72,42 @@ const ALLOWED: Record<string, string[]> = {
 	ask: ["shared", "render"],
 	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
 	files: ["shared", "permission", "cli", "ask", "render", "tool-input", "wake"],
-	team: ["shared", "render", "tool-input", "worktree-paths", "wake"],
+	// `monitor`: the check-in and child-silence rules are told through the monitor's `attend`.
+	team: ["shared", "render", "tool-input", "worktree-paths", "wake", "monitor"],
 	discovery: ["shared"],
 	// `permission`: a Claude hook's `if` is one permission rule, judged by the source-policy parser and matcher.
 	// `guard`: session start withholds a handler the user has not approved (the extension guard).
-	hooks: ["shared", "discovery", "render", "tool-input", "permission", "guard", "wake"],
+	// `monitor`: the MonitorAlert hook observes the monitor ledger.
+	hooks: ["shared", "discovery", "render", "tool-input", "permission", "guard", "wake", "monitor"],
 	plugins: ["shared", "hooks", "discovery"],
 	// `/harness` folds in what plugins, hooks and discovery used to expose as their own commands.
 	// `guard`: every external row shows its review state, and Enter opens its check.
 	harness: ["shared", "plugins", "hooks", "discovery", "skill", "guard"],
 	web: ["shared", "permission", "render"],
 	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`);
-	// `timer`: it names the active timers as their rows say (`timer/work.ts`).
-	compaction: ["shared", "files", "permission", "archive", "sessions", "history", "render", "timer"],
+	// `timer`: it names the active timers as their rows say (`timer/work.ts`). `monitor`: the context band rule.
+	compaction: [
+		"shared",
+		"files",
+		"permission",
+		"archive",
+		"sessions",
+		"history",
+		"render",
+		"timer",
+		"native/tools/compact",
+		"monitor",
+	],
 	// The archive tool's profile source reads a stored session through the profiler.
 	archive: ["shared", "permission", "profiler", "history", "render"],
-	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake"],
+	// The phase feed reads the ongoing items this session holds, as a settled run leaves them open.
+	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake", "backlog"],
 	subagents: [
 		"shared",
 		"discovery",
 		"team",
 		"permission",
-		"instructions",
+		"native/prompts",
 		"backlog",
 		"trust",
 		"worktrees",
@@ -95,10 +117,31 @@ const ALLOWED: Record<string, string[]> = {
 		"child-sessions",
 		"worktree-paths",
 		"wake",
+		"native/tools/agent",
+		// The idle-items rule.
+		"monitor",
 	],
-	instructions: ["shared", "history", "worktree-paths"],
+	"native/prompts": ["shared", "history", "worktree-paths"],
+	"native/agents": [],
+	"native/hooks": [],
+	// Each native tool's module: its schema, description and execute; the domain it serves does the work. A domain that
+	// registers its own tool (backlog, compaction, memory, subagents, timer) imports that tool's folder only.
+	"native/tools/agent": ["shared", "render", "child-sessions", "subagents", "team"],
+	"native/tools/archive": ["shared", "render", "archive", "history"],
+	"native/tools/ask-user": ["shared", "render", "ask"],
+	"native/tools/backlog": ["shared", "render", "backlog"],
+	"native/tools/backlog-plan": ["shared", "render", "backlog"],
+	"native/tools/bash": ["shared", "render", "files", "wake"],
+	"native/tools/compact": ["shared", "render", "compaction"],
+	"native/tools/coordinate": ["shared", "render", "team", "permission"],
+	"native/tools/file": ["shared", "render", "files", "permission", "tool-input"],
+	"native/tools/memory": ["shared", "render", "memory", "permission"],
+	"native/tools/models": ["shared", "subagents"],
+	"native/tools/skill": ["shared", "render", "skill"],
+	"native/tools/wait": ["shared", "render", "timer"],
+	"native/tools/web": ["shared", "render", "permission", "web"],
 	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
-	backlog: ["shared", "render", "browser"],
+	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan"],
 	trust: ["shared"],
 	// The extension guard: review items, the scanner and the review records. A leaf: loaders hand it plain data.
 	// `trust`: the commands that record a decision refuse inside a session's shell.
@@ -110,11 +153,11 @@ const ALLOWED: Record<string, string[]> = {
 	remote: ["shared", "web-daemon", "workspace"],
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
 	// `backlog`: start recall also searches the active item's goal (`memory/active-goal.ts`).
-	memory: ["shared", "permission", "render", "history", "backlog"],
+	memory: ["shared", "permission", "render", "history", "backlog", "native/tools/memory"],
 	plan: ["shared"],
 	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
 	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths"],
-	skill: ["shared", "render"],
+	skill: ["shared", "render", "child-sessions", "compaction"],
 	"context-optimization": ["shared"],
 	// `/optimize`: its helper call is the small-tier route `subagents/` owns.
 	"prompt-optimization": ["shared", "subagents"],
@@ -122,13 +165,17 @@ const ALLOWED: Record<string, string[]> = {
 	terminal: ["subagents"],
 	// `/processes`, process titles and memory samples: process helpers from `shared`, agent-id variables from `team`.
 	processes: ["shared", "team"],
-	"native-skills": [],
+	// The machine monitor: process titles from `processes` name the owner of a cause; alerts wake through the gate.
+	monitor: ["shared", "processes", "wake"],
+	// `/monitor`: lists the rules of the monitor ledger; it reads them and owns none.
+	"monitor-room": ["shared", "monitor"],
+	"native/skills": [],
 	"terminal-launch": [],
 	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths"],
 	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
 	realm: ["shared", "worktrees", "worktree-paths", "sessions"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
-	timer: ["shared", "files", "permission", "plan", "render", "wake"],
+	timer: ["shared", "files", "permission", "plan", "render", "wake", "native/tools/wait"],
 	// The wake gate: what each run was woken about, the `woke` row, the hold window; every wake source sends through it.
 	wake: ["shared"],
 	// `/octocode` and the agent-shell shim for the research CLI.
@@ -137,10 +184,22 @@ const ALLOWED: Record<string, string[]> = {
 
 describe("source layout", () => {
 	it("requires an explicit dependency policy for every source domain", () => {
-		const folders = fs
-			.readdirSync(sourceRoot, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name)
+		const dirs = (root: string): string[] =>
+			fs
+				.readdirSync(root, { withFileTypes: true })
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => entry.name);
+		const folders = dirs(sourceRoot)
+			.flatMap((name) =>
+				name === NATIVE
+					? dirs(path.join(sourceRoot, NATIVE)).flatMap((sub) =>
+							// A tool folder holding only Markdown (its snippet, guidelines) is no domain.
+							sub === NATIVE_TOOLS
+								? [...new Set(files.map(domainOf))].filter((domain) => domain.startsWith(`${NATIVE}/${NATIVE_TOOLS}/`))
+								: [`${NATIVE}/${sub}`],
+						)
+					: [name],
+			)
 			.sort();
 		const unclassified = folders.filter((folder) => !Object.hasOwn(ALLOWED, folder));
 		expect(unclassified, "Declare each new domain and its permitted dependencies in ALLOWED.").toEqual([]);
@@ -269,28 +328,29 @@ describe("source layout", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	// Ratchets on two known debts. Each limit is the count measured on 2026-11-04 plus a small margin for work landing the
-	// same day. When a count falls, lower its limit with it; raising one needs a reason in the commit. Nothing here asks for
-	// a refactor: `core` depending on `octocode` shrinks through ports, as `packages/acp` and `packages/mcp` show, and the
-	// interactive mode's shared host through narrow per-collaborator hosts, as `core/agent-session` shows.
-	it("does not grow the imports from core into octocode (measured 6)", () => {
+	// `core` reaches `octocode` only through what the entry points pass in (the native feature set) or install as ports.
+	it("keeps core free of imports from octocode", () => {
 		const srcRoot = path.join(packageRoot, "src");
-		const edges = walk(path.join(srcRoot, "core")).flatMap((file) =>
+		const imports = walk(path.join(srcRoot, "core")).flatMap((file) =>
 			[
 				...fs
 					.readFileSync(file, "utf8")
 					.matchAll(/(?:from\s+|import\s*\(\s*|import\s+|require\(\s*)(['"])(\.{1,2}\/[^'"]+)\1/g),
-			]
-				.map((match) => path.resolve(path.dirname(file), match[2]))
-				.filter((target) => target.startsWith(sourceRoot + path.sep)),
+			].map((match) => ({ file, target: path.resolve(path.dirname(file), match[2]) })),
 		);
-		expect(edges.length).toBeGreaterThan(0);
-		expect(
-			edges.length,
-			"src/core gained an import from src/octocode; pass the dependency through a port",
-		).toBeLessThanOrEqual(6);
+		// The scan must see core's own relative imports, or an empty result below would prove nothing.
+		expect(imports.length).toBeGreaterThan(100);
+		const edges = imports
+			.filter(({ target }) => target.startsWith(sourceRoot + path.sep))
+			.map(({ file, target }) => `${path.relative(srcRoot, file)} -> ${path.relative(srcRoot, target)}`);
+		expect(edges, "src/core gained an import from src/octocode; pass the dependency in from an entry point").toEqual(
+			[],
+		);
 	});
 
+	// A ratchet on a known debt: the limit is the count measured on 2026-11-04 plus a small margin for work landing the same
+	// day. When the count falls, lower the limit with it; raising it needs a reason in the commit. The shared host shrinks
+	// through narrow per-collaborator hosts, as `core/agent-session` shows.
 	it("does not grow the uses of the interactive mode's shared host (measured 2,178)", () => {
 		const uses = walk(path.join(packageRoot, "src", "modes", "interactive", "interactive-mode")).reduce(
 			(count, file) => count + (fs.readFileSync(file, "utf8").match(/\bhost\./g)?.length ?? 0),

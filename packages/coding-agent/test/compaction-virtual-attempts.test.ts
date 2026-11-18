@@ -20,23 +20,23 @@ async function routedSession(virtual: boolean) {
 		compactionPolicy: { reserveTokens: 1_000, keepRecentTokens: 500 },
 		builtinCompactionFactories: [
 			(api) => {
-				if (virtual) {
-					api.registerVirtualModel({
-						provider: "router",
-						id: "auto",
-						name: "Auto",
-						thinkingLevels: ["low"],
-						contextWindow: 1000,
-						route: (_request, ctx) => ({ model: ctx.modelRegistry.find("faux", "large")!, thinkingLevel: "low" }),
-					});
-				}
-				api.on("session_before_compact", async (event) => {
+				api.bus.on("session_before_compact", async (event) => {
 					attempts.push(event.reason);
 					return { cancel: true, failure: "no gain" };
 				});
 			},
 		],
 	});
+	if (virtual) {
+		harness.session.modelRuntime.registerVirtualModel({
+			provider: "router",
+			id: "auto",
+			name: "Auto",
+			thinkingLevels: ["low"],
+			contextWindow: 1000,
+			route: () => ({ model: harness!.session.modelRuntime.getModel("faux", "large")!, thinkingLevel: "low" }),
+		});
+	}
 	if (virtual) await harness.session.setModel(harness.session.modelRuntime.getModel("router", "auto")!);
 	for (let i = 0; i < 5; i++) {
 		harness.sessionManager.appendMessage({ role: "user", content: filler(9_800, `turn ${i}`), timestamp: 0 });

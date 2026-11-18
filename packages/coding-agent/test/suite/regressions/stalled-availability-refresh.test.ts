@@ -78,7 +78,11 @@ describe("stalled availability refresh", () => {
 		}
 		await harness.authStorage.modify("stale-provider", async () => ({ type: "api_key", key: "stale-key" }));
 		await runtime.refresh({ allowNetwork: false });
-		expect(runtime.getProviderAuthStatus("stale-provider")).toEqual({ configured: true, source: "stored" });
+		expect(runtime.getProviderAuthStatus("stale-provider")).toEqual({
+			configured: true,
+			source: "stored",
+			label: "auth.json",
+		});
 
 		stalledList = stallNextCredentialList(harness);
 		const staleRefresh = runtime.getAvailable();
@@ -88,12 +92,20 @@ describe("stalled availability refresh", () => {
 		await harness.authStorage.modify("current-provider", async () => ({ type: "api_key", key: "current-key" }));
 		await waitForRecoveryRefresh(stalledList, harness);
 		expect(runtime.getProviderAuthStatus("stale-provider")).toEqual({ configured: false });
-		expect(runtime.getProviderAuthStatus("current-provider")).toEqual({ configured: true, source: "stored" });
+		expect(runtime.getProviderAuthStatus("current-provider")).toEqual({
+			configured: true,
+			source: "stored",
+			label: "auth.json",
+		});
 
 		stalledList.release();
 		await staleRefresh;
 		expect(runtime.getProviderAuthStatus("stale-provider")).toEqual({ configured: false });
-		expect(runtime.getProviderAuthStatus("current-provider")).toEqual({ configured: true, source: "stored" });
+		expect(runtime.getProviderAuthStatus("current-provider")).toEqual({
+			configured: true,
+			source: "stored",
+			label: "auth.json",
+		});
 	});
 
 	it("does not let a stale failure overwrite newer availability error state", async () => {

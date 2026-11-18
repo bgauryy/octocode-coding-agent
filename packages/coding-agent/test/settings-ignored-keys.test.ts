@@ -45,6 +45,16 @@ describe("settings keys Octocode ignores", () => {
 		expect(manager.getCompactionReserveTokens()).not.toBe(40000);
 	});
 
+	it("loads a file that still has the removed extensions key and warns once", () => {
+		writeFileSync(globalPath, JSON.stringify({ theme: "dark", extensions: ["-builtin:mcp", "./ext.ts"] }));
+
+		const manager = SettingsManager.createForStartup(cwd, agentDir);
+		const messages = collectSettingsDiagnostics(manager).map((d) => d.message);
+
+		expect(messages.filter((message) => message.includes('Setting "extensions" is ignored'))).toHaveLength(1);
+		expect(manager.getTheme()).toBe("dark");
+	});
+
 	it("names a misspelled key without claiming a replacement", () => {
 		writeFileSync(globalPath, JSON.stringify({ defaultModle: "x", theme: "dark" }));
 

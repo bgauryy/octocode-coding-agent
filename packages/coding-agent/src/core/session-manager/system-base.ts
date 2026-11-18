@@ -27,7 +27,8 @@ function sameState(left: SystemMessage, right: SystemMessage): boolean {
 }
 
 type Delta = SystemMessage | null | undefined;
-const deltas = new WeakMap<SystemMessage, Map<SystemMessage, { delta: Delta }>>();
+// Weak on both sides: the base lives as long as the session, and each request folds a new message.
+const deltas = new WeakMap<SystemMessage, WeakMap<SystemMessage, { delta: Delta }>>();
 
 /**
  * The system-update message that turns `base` into `folded` when replayed after it.
@@ -38,7 +39,7 @@ export function getSystemBaseDelta(base: SystemMessage, folded: SystemMessage): 
 	const cached = deltas.get(base)?.get(folded);
 	if (cached) return cached.delta;
 	const delta = computeDelta(base, folded);
-	const byFolded = deltas.get(base) ?? new Map<SystemMessage, { delta: Delta }>();
+	const byFolded = deltas.get(base) ?? new WeakMap<SystemMessage, { delta: Delta }>();
 	byFolded.set(folded, { delta });
 	deltas.set(base, byFolded);
 	return delta;

@@ -27,9 +27,10 @@ describe("file result preview", () => {
 		expect(total).toBeGreaterThan(400);
 		const collapsed = rows(1, false);
 		const expanded = rows(1, true);
-		// The outcome row and six diff rows, then the count of everything not shown.
-		expect(collapsed.slice(0, 7)).toEqual(expanded.slice(0, 7));
-		expect(collapsed.join("\n")).toContain(`+${total + 1 - 7} lines`);
+		// The outcome row and five diff rows (a collapsed result shows 5 lines), then one fold hint counting the rest.
+		expect(collapsed.slice(0, 6)).toEqual(expanded.slice(0, 6));
+		expect(collapsed).toHaveLength(7);
+		expect(collapsed[6]).toBe(`     … +${total - 5} lines (ctrl+o to expand)`);
 	});
 
 	it("colours only the start of a long diff while collapsed, and none of it for several changes", () => {

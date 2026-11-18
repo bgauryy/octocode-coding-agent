@@ -3,7 +3,7 @@ import { renderMcpsSection } from "../../../mcp/src/section.ts";
 import { getCurrentSystemPrompt, getSystemMessageText, type SystemMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { buildSystemPromptSections, diffSystemPromptSections } from "../../src/core/system-prompt.ts";
-import { octocodePrompt, octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
+import { octocodePrompt, octocodePromptSections } from "../../src/octocode/native/prompts/policy.ts";
 import { FAKE_RESEARCH } from "./fake-research.ts";
 
 describe("native prompt section updates", () => {

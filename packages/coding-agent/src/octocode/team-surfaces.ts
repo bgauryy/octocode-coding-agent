@@ -1,5 +1,5 @@
 // Wiring that hands the team to its other surfaces: the sessions registry, the collaboration tools' shell checks and the external API.
-import type { ExtensionAPI } from "../core/features/index.ts";
+import type { FeatureSetup } from "../core/features/index.ts";
 import { AGENT_GOAL_ENV } from "./team/store/env.ts";
 import type { Checkpoints } from "./files/checkpoint.ts";
 import { registerApi } from "./api/register.ts";
@@ -21,7 +21,7 @@ import { onParentGone } from "./team/session/parent.ts";
 import { saveParentGoneReport } from "./subagents/handoff/parent-gone.ts";
 
 export function registerTeamSessions(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	team: Team,
 	checkpoints: Checkpoints,
 	options: { commands: Subcommands; isSubagent: boolean },
@@ -61,7 +61,7 @@ export function collaborationPorts() {
 
 /** The external API of a top-level session: the team's agents, message hooks, turn cap and external calls. */
 export function registerExternalApi(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	commands: Subcommands,
 	parts: {
 		team: Team;

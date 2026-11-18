@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { Static } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { withIdentity } from "../instructions/task.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { withIdentity } from "../native/prompts/task.ts";
 import type { Permission } from "../permission/ask.ts";
 import { assignmentText, parentArchive } from "./identity-reminder.ts";
 import { modelLookup, textResult } from "../shared/util.ts";
@@ -23,7 +23,7 @@ import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, 
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import { REF_PREFIX } from "./worktree-base.ts";
 import { worktreeName } from "../worktree-paths/member-worktree.ts";
-import type { agentToolSpec } from "./agent-tool.ts";
+import type { agentToolSpec } from "../native/tools/agent/spec.ts";
 import { resumeChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
@@ -47,7 +47,7 @@ import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking
 
 /** What starting a subagent reads of the `agent` tool's registration (`tool.ts`). */
 export interface SpawnEnv {
-	api: ExtensionAPI;
+	api: FeatureSetup;
 	runs: AgentRuns;
 	permission: Permission;
 	getProfiles: () => Map<string, AgentProfile>;
@@ -59,7 +59,7 @@ export interface SpawnEnv {
 	withLaunch: (signal?: AbortSignal) => AbortSignal;
 	/** Runs `work` and, once it ends, records the run's session file and its questions to this session's agent. */
 	record: <T>(run: Run, details: RunDetails, session: ChildSession, work: Promise<T>) => Promise<T>;
-	relayHost: (ctx: Pick<ExtensionContext, "hasUI" | "ui">) => RelayHost;
+	relayHost: (ctx: Pick<FeatureContext, "hasUI" | "ui">) => RelayHost;
 	/** Connected runners: a task with `runner` runs its turns there instead of in an Octocode child (`runner-child.ts`). */
 	runners?: Runners;
 }
@@ -77,7 +77,7 @@ export async function spawnAgent(
 	params: AgentParams,
 	signal: AbortSignal | undefined,
 	onUpdate: AgentUpdate | undefined,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 ): Promise<AgentToolResult<RunDetails>> {
 	const { api, runs, permission, lingering } = env;
 	const { team } = runs;
@@ -91,19 +91,19 @@ export async function spawnAgent(
 	const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 	const startedHeld = params.resume ? startHeld(runs, params.resume) : undefined;
 	if (startedHeld) return startedHeld;
-	// A continued child is one this session recorded, on its own transcript and profile (`children.ts`).
+	// A continued child is one this session recorded (`children.ts`); it keeps its goal unless the call names a new one.
 	const resumed = params.resume ? resumeChild(ctx, params.resume, runs) : undefined;
-	// A continued child keeps its recorded goal unless the call names a new one.
 	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
 	const refuseOverSpend = () => {
-		const refusal = spawnRefusal(api.getSettings().subagents, ctx.sessionManager.getEntries(), runs, resumed?.child.id);
+		const { subagents } = api.settings.get();
+		const refusal = spawnRefusal(subagents, ctx.sessionManager.getEntries(), runs, resumed?.child.id);
 		if (refusal) throw new Error(refusal);
 	};
 	refuseOverSpend();
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
-	const { linked, after } = chainPlan(runs, api.getSettings(), params, ctx, resumed !== undefined);
+	const { linked, after } = chainPlan(runs, api.settings.get(), params, ctx, resumed !== undefined);
 	const chained = after.length > 0;
 	// One child per item (`second-child.ts`); the call that resumes a child passes for it.
 	const refuseSecondChild = (self?: string) => refuseSecond(runs, lingering, linked, [resumed?.child.id, self]);
@@ -121,15 +121,15 @@ export async function spawnAgent(
 	const taskServers =
 		params.mcp === undefined
 			? undefined
-			: resolveTaskServers(api.events, params.mcp, plan.profile, resumed !== undefined);
+			: resolveTaskServers(api.channels, params.mcp, plan.profile, resumed !== undefined);
 	let reserving = planReservation(team, plan.profile, params);
 	const replan = () => planReservation(team, plan.profile, params);
 	const waitingRow = (waiting: ReservationPlan) => {
 		const row = waitingUpdate(params.profile, goal, 0);
 		onUpdate?.({ ...row, content: [{ type: "text", text: waitingText(waiting) }] });
 	};
-	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.getCommands());
-	const skillResources = api.getSkillResourceSnapshot(skillPlan.names);
+	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands());
+	const skillResources = api.resources.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
 	let referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
 	const slot = { held: false };
@@ -148,7 +148,7 @@ export async function spawnAgent(
 	let grants: Awaited<ReturnType<typeof askSpawn>>;
 	let approvedVia: string | undefined;
 	try {
-		grants = await askSpawn(permission, ctx, plan.profile, params.task, launchSignal, api.getSettings().defaultTools, {
+		grants = await askSpawn(permission, ctx, plan.profile, params.task, launchSignal, api.settings.get().defaultTools, {
 			toolCallId: id,
 			goal,
 			answered: (via) => (approvedVia = via),
@@ -350,7 +350,7 @@ export async function spawnAgent(
 					run,
 					{ goal, item: linked?.ref, after, details },
 					() =>
-						spawnStillAllowed(permission, ctx, plan.profile, params.task, api.getSettings().defaultTools, approvedVia),
+						spawnStillAllowed(permission, ctx, plan.profile, params.task, api.settings.get().defaultTools, approvedVia),
 					() => {
 						reserving = replan();
 						refuseOverSpend();

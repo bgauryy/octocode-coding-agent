@@ -1,5 +1,5 @@
 import { getAgentDir } from "../../../config.ts";
-import { renderInstruction } from "../../prompt-template.ts";
+import { renderPrompt } from "../../prompt-template.ts";
 import type { SettingsManager } from "../../settings-manager.ts";
 import { discoveryInput } from "../service.ts";
 import type { ConfigKind } from "../types.ts";
@@ -43,14 +43,14 @@ export function foundSummary(status: HarnessStatus): string {
 
 /**
  * The main session's one line on every harness Octocode reads, on or off, so it knows what exists and that the user
- * decides (`instructions/system/harnesses.md`, one `system/harness.md` part per harness). A harness that is off names
+ * decides (`native/prompts/system/harnesses.md`, one `system/harness.md` part per harness). A harness that is off names
  * what it holds; one that is on needs no count, its items are in the prompt and tools, unless a switchable one found
  * nothing at all (a root `.mcp.json` that does not exist): "on" alone would claim it supplies something.
  */
 export function formatHarnessesForPrompt(statuses: readonly HarnessStatus[]): string {
 	if (statuses.length === 0) return "";
 	const parts = statuses.map((status) =>
-		renderInstruction("system/harness.md", {
+		renderPrompt("system/harness.md", {
 			label: status.label,
 			on: status.on,
 			projectOnly: status.projectOnly === true,
@@ -58,5 +58,5 @@ export function formatHarnessesForPrompt(statuses: readonly HarnessStatus[]): st
 			found: status.on ? "" : foundSummary(status),
 		}),
 	);
-	return renderInstruction("system/harnesses.md", { harnesses: parts.join(" \u00b7 ") });
+	return renderPrompt("system/harnesses.md", { harnesses: parts.join(" \u00b7 ") });
 }

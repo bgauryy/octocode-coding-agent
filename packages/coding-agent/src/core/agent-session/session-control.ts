@@ -58,7 +58,7 @@ export abstract class AgentSessionControl extends AgentSessionState {
 			expandPromptTemplates: options?.expandPromptTemplates ?? false,
 			streamingBehavior: options?.deliverAs,
 			images,
-			source: "extension",
+			source: "feature",
 		});
 	}
 	clearQueue(): { steering: string[]; followUp: string[] } {

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import { type WakeGate, wakeGateOf } from "./gate.ts";
@@ -29,24 +29,27 @@ export function wakeHoldMs(setting: unknown): number {
  * before a woken run's first request, and holds an idle session's wake for `subagents.wakeHoldSeconds` when that is set.
  * Wake sources send through `wakeGateOf(api)`.
  */
-export function registerWake(api: ExtensionAPI): WakeGate {
+export function registerWake(api: FeatureSetup): WakeGate {
 	const gate = wakeGateOf(api);
 	gate.setHold(() =>
-		wakeHoldMs(api.getSettings().subagents?.wakeHoldSeconds ?? SETTINGS_DEFAULTS.subagents.wakeHoldSeconds),
+		wakeHoldMs(api.settings.get().subagents?.wakeHoldSeconds ?? SETTINGS_DEFAULTS.subagents.wakeHoldSeconds),
 	);
-	api.on("agent_start", async (_event, ctx) => {
+	api.bus.on("agent_start", async (_event, ctx) => {
 		gate.segmentStarted(ctx.hasUI);
 	});
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("tool_execution_start", async (event) => {
 		gate.toolStarted(event.toolCallId, writtenRefs(event.toolName, event.args));
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		gate.toolEnded(event.toolCallId, event.isError);
 	});
-	api.on("agent_settled", async (event, ctx) => {
+	api.bus.on("agent_settled", async (event, ctx) => {
 		gate.settled(ctx.hasPendingMessages() && !event.aborted);
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("agent_settle_end", async () => {
+		gate.settleEnded();
+	});
+	api.bus.on("session_shutdown", async () => {
 		gate.dispose();
 	});
 	return gate;

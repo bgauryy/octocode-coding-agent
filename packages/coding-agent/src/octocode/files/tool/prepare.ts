@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tools/edit-diff.ts";
 import { splitBom } from "@octocodeai/octocode-common/text";
-import type { ExtensionToolContext } from "../../../core/features/index.ts";
+import type { ToolContext } from "../../../core/features/index.ts";
 import type { Permission } from "../../permission/ask.ts";
 import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
@@ -20,7 +20,7 @@ export async function preparePatch(
 	patch: ParsedPatch,
 	reason: string,
 	guard: FileGuard,
-	ctx: ExtensionToolContext,
+	ctx: ToolContext,
 	signal: AbortSignal | undefined,
 	permission: Permission,
 	id: string,
@@ -132,7 +132,7 @@ export async function preparePatch(
 export async function inspectQueryBatch(
 	queries: FileQuery[],
 	guard: FileGuard,
-	ctx: ExtensionToolContext,
+	ctx: ToolContext,
 	signal?: AbortSignal,
 	rejectOverlap = false,
 ) {

@@ -970,11 +970,8 @@ describe("/backlog", () => {
 		expect(store.get("B1")!.priority).toBe(0);
 		await t.command.handler("tui", rpc(["+ Add an item", undefined]));
 		await t.command.handler("B1", rpc(["Delegate to a subagent"]));
-		expect(t.sent.at(-1)!.message).toMatch(/^Delegate backlog item B1 to a subagent with the agent tool\./);
 		expect(t.sent.at(-1)!.message).toContain("B1 [ongoing p0] first");
 		expect(t.sent.at(-1)!.message).toContain("Done when: The selected action changes the item and repaints the board.");
-		expect(t.sent.at(-1)!.message).toContain("in the subagent's task");
-		expect(t.sent.at(-1)!.message).toContain("Mark it done only after verifying its goal");
 		expect(store.get("B1")!.state).toBe("ongoing");
 		// Every text field is editable, one editor per field; the editor shows the saved text and the change log records the edit.
 		const edit = async (

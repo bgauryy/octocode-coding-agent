@@ -1,7 +1,7 @@
-import { type ExtensionAPI, type ExtensionContext, readsMessagesOnly } from "../../core/features/index.ts";
+import { type FeatureSetup, type FeatureContext, readsMessagesOnly } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { type ChildIdentity, identityBlock } from "../instructions/task.ts";
+import { type ChildIdentity, identityBlock } from "../native/prompts/task.ts";
 import { existingLibrary } from "../history/archive.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { AGENT_ID_ENV } from "../team/store/env.ts";
@@ -10,7 +10,7 @@ import type { ResultContract } from "./result-schema.ts";
 import { browserModeLine, resultContractBlock } from "./task-text.ts";
 
 /**
- * A child's identity after compaction. The parent appends the child's identity (`instructions/task.ts` `identityBlock`:
+ * A child's identity after compaction. The parent appends the child's identity (`native/prompts/task.ts` `identityBlock`:
  * its id, goal, item, scratch folder, worktree, run mode and report contract) to each task it sends, at the spawn and at
  * every task resume, and passes that assignment in `SUBAGENT_ASSIGNMENT_ENV` (`assignmentText`: the identity plus the
  * task's browser mode, skill pointers and result contract, each from its owning renderer). The child records it as a hidden
@@ -77,20 +77,20 @@ function latestIdentity(branch: readonly SessionEntry[], id: string): IdentityRe
 }
 
 /** Registers the child's identity record and its reminder; a session that is not a subagent run records nothing. */
-export function registerIdentityReminder(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
+export function registerIdentityReminder(api: FeatureSetup, env: NodeJS.ProcessEnv = process.env): void {
 	const id = env[AGENT_ID_ENV];
 	const assigned = env[SUBAGENT_ASSIGNMENT_ENV];
 	if (!id) return;
-	const record = (ctx: Pick<ExtensionContext, "sessionManager">) => {
+	const record = (ctx: Pick<FeatureContext, "sessionManager">) => {
 		if (!assigned || latestIdentity(ctx.sessionManager.getBranch(), id)?.text === assigned) return;
-		api.appendEntry(IDENTITY_ENTRY, { version: 1, id, text: assigned } satisfies IdentityRecord);
+		api.session.appendEntry(IDENTITY_ENTRY, { version: 1, id, text: assigned } satisfies IdentityRecord);
 	};
-	api.on("session_start", async (_event, ctx) => record(ctx));
-	api.on("session_compact", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => record(ctx));
+	api.bus.on("session_compact", async (_event, ctx) => {
 		const latest = latestIdentity(ctx.sessionManager.getBranch(), id);
 		if (!latest) return;
 		try {
-			void api.sendMessage(
+			void api.session.sendMessage(
 				{ customType: IDENTITY_REMINDER_TYPE, content: latest.text, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -99,7 +99,7 @@ export function registerIdentityReminder(api: ExtensionAPI, env: NodeJS.ProcessE
 		}
 	});
 	// Returns a shorter list and never edits a message.
-	api.on(
+	api.bus.on(
 		"context",
 		readsMessagesOnly(async (event) => {
 			const messages = latestReminderOnly(event.messages);

@@ -7,7 +7,6 @@
 import { type Component, type StateSource, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
-import { keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { badge, type BadgeState } from "../../../theme/page-kit.ts";
 import type { Expandable } from "./types.ts";
 
@@ -60,10 +59,6 @@ export function loadedColumns(specs: readonly LoadedRowSpec[]): LoadedColumns {
 	const count = Math.max(0, ...shown.map((row) => String(row.count).length));
 	return { label, count };
 }
-
-/** `(ctrl+o to expand)`, as the collapsed bash output and other expandable views word it; nothing when unbound. */
-export const expandHint = (): string =>
-	keyText("app.tools.expand") ? keyHint("app.tools.expand", "details") : "ctrl+o details";
 
 /** Wraps `text` into `width - indent` cells and indents every row after the first by `indent`. */
 function wrapAfter(text: string, width: number, indent: number): string[] {

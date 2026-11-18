@@ -18,8 +18,8 @@ vi.mock("../src/modes/interactive/components/login-dialog.ts", () => ({
 	},
 }));
 
-vi.mock("../src/modes/interactive/components/extension-selector.ts", () => ({
-	ExtensionSelectorComponent: class {
+vi.mock("../src/modes/interactive/components/dialog-selector.ts", () => ({
+	DialogSelectorComponent: class {
 		constructor(message: string, labels: string[], onSelect: (label: string) => void, onCancel: () => void) {
 			script.selectors.push(message);
 			const label = labels.find((entry) => entry === script.choice);

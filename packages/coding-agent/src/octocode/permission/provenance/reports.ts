@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, ToolResultEvent } from "../../../core/features/index.ts";
+import type { FeatureSetup, SetupPick, FeatureContext, ToolResultEvent } from "../../../core/features/index.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Permission } from "../ask.ts";
@@ -13,7 +13,7 @@ import { pruneSnapshots } from "../snapshot.ts";
 export function startPermissionState(
 	permission: Permission,
 	provenance: ReturnType<typeof createProvenance>,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	reason: Parameters<Permission["start"]>[1],
 ): void {
 	permission.start(ctx, reason);
@@ -34,17 +34,17 @@ export function startPermissionState(
  * names is not, as a foreground result's log is not.
  */
 export function recordChildReports(
-	api: Pick<ExtensionAPI, "on" | "events">,
+	api: SetupPick<"bus", "on"> & Pick<FeatureSetup, "channels">,
 	provenance: ReturnType<typeof createProvenance>,
 	permission: Pick<Permission, "shutdown">,
 	isSubagent: boolean,
 ): void {
-	api.events.on(CHILD_EXPOSURE_EVENT, (data) => {
+	api.channels.on(CHILD_EXPOSURE_EVENT, (data) => {
 		const { child, exposed } = data as ChildExposure;
 		if (typeof child === "string" && typeof exposed === "boolean") provenance.childExposure(child, exposed);
 	});
-	if (isSubagent) api.on("session_shutdown", async (_event, ctx) => permission.shutdown(ctx, provenance.exposed()));
-	api.on("message_end", async (event, ctx) => {
+	if (isSubagent) api.bus.on("session_shutdown", async (_event, ctx) => permission.shutdown(ctx, provenance.exposed()));
+	api.bus.on("message_end", async (event, ctx) => {
 		const { message } = event;
 		if (message.role !== "custom") return;
 		const { content, details } = message;

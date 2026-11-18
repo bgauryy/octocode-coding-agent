@@ -1,5 +1,5 @@
 import { matchesExternalModel, type ExternalModelFilters } from "../shared/model-filters.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { AcpPermission } from "../../../../acp/src/client/client.ts";
 import { GLYPH } from "@octocodeai/octocode-tui/text";
 import { listRunners, type RunnerState } from "./runner-status.ts";
@@ -13,7 +13,7 @@ import { type RunnerTurnInput, runnerTurn, runnerTurnDeps } from "./runner-sessi
  */
 export function connectedRunners(
 	enabled: boolean,
-	permission: (ctx: ExtensionContext) => AcpPermission,
+	permission: (ctx: FeatureContext) => AcpPermission,
 	selected?: readonly string[],
 ) {
 	const states = enabled

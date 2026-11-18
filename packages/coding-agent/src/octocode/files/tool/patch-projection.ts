@@ -2,9 +2,8 @@ import fs from "node:fs";
 import * as Diff from "diff";
 import {
 	applyEditsToNormalizedContent,
-	detectLineEnding,
+	applyReplacementsToOriginal,
 	normalizeToLF,
-	restoreLineEndings,
 } from "../../../core/tools/edit-diff.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -83,8 +82,8 @@ export function projectEditHunk(query: Record<string, unknown>, path: string, gu
 	if (!Buffer.from(source, "utf8").equals(data)) return refuse(`${path} is not valid UTF-8`);
 	const edits = resolveAnchoredEdits(native, data, guard, file).edits ?? [];
 	const { bom, text } = splitBom(source);
-	const { newContent } = applyEditsToNormalizedContent(normalizeToLF(text), edits, path);
-	const expected = bom + restoreLineEndings(newContent, detectLineEnding(text));
+	const { replacements } = applyEditsToNormalizedContent(normalizeToLF(text), edits, path);
+	const expected = bom + applyReplacementsToOriginal(text, replacements);
 	const before = lineTexts(source);
 	const after = lineTexts(expected);
 	for (const context of CONTEXTS) {

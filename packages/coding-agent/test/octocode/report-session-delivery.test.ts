@@ -2,27 +2,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { createHarness } from "../suite/harness.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 describe("report delivery through the real session runtime", () => {
 	it("retries a rejected run preparation in the same session and acknowledges one recorded report", async () => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
 				},
-			],
+			]),
 		});
 		const errors: string[] = [];
-		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
+		await harness.session.bindFeatures({ onError: (error) => errors.push(error.error) });
 		const queue = new ReportQueue(host);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
@@ -59,18 +60,18 @@ describe("report delivery through the real session runtime", () => {
 	});
 
 	it("does not treat buffered setup entries as a durable transcript receipt", async () => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
 				},
-			],
+			]),
 		});
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		const queue = new ReportQueue(host);
 		queue.start(manager);
 		queue.pendingDir = path.join(root, "reports");
@@ -94,18 +95,18 @@ describe("report delivery through the real session runtime", () => {
 		}
 	});
 	const reportsDuringReply = async (ids: string[], after?: (queue: ReportQueue) => void) => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const root = tmp();
 		const manager = SessionManager.create(root, path.join(root, "sessions"));
 		const harness = await createHarness({
 			sessionManager: manager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
 				},
-			],
+			]),
 		});
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		const queue = new ReportQueue(host);
 		queue.start(manager, undefined, undefined, (details, content) =>
 			harness.session.replaceQueuedCustomMessage(details, content),
@@ -149,18 +150,18 @@ describe("report delivery through the real session runtime", () => {
 	});
 
 	it("leaves a follow-up without the option one per turn", async () => {
-		let host!: ExtensionAPI;
+		let host!: FeatureSetup;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					host = api;
 				},
-			],
+			]),
 		});
 		try {
-			await harness.session.bindExtensions({});
+			await harness.session.bindFeatures({});
 			const send = (content: string, together: boolean) =>
-				void host.sendMessage(
+				void host.session.sendMessage(
 					{ customType: "note", content, display: false },
 					{ triggerTurn: true, deliverAs: "followUp", together },
 				);

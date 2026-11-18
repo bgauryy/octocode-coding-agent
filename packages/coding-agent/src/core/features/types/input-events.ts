@@ -43,7 +43,7 @@ export interface UserBashEvent {
 // Input Events
 // ============================================================================
 
-export type InputSource = "interactive" | "rpc" | "extension";
+export type InputSource = "interactive" | "rpc" | "feature";
 
 /** Fired when user input is received, before agent processing */
 export interface InputEvent {

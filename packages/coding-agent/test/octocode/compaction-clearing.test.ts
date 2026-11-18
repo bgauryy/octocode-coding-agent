@@ -369,6 +369,35 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		expect(out[0]).toEqual(custom);
 	});
 
+	it("clears bash reads the plan-mode check refuses (cd prefixes, pipes into sed -n or head, awk), never a line that may write or run a script", async () => {
+		const readsOnly = [
+			"cd packages/x && cat -n src/a.ts | sed -n 1,80p",
+			"sed -n '120,200p' src/b.ts",
+			"rg -n foo src | head -20; wc -l src/c.ts",
+			"awk '{print $1}' data.txt | sort | uniq -c",
+			"cd src && git log --oneline -5 && sed -n '1,40p;60,70p' d.ts",
+		].map((command) => exchange("bash", { command }, textOf(20_000)));
+		const writes = [
+			"sed -i 's/a/b/' src/a.ts",
+			"sed -n '1,5w out.txt' src/a.ts",
+			"sed -n 1,5p src/a.ts > copy.ts",
+			"awk '{print > \"o.txt\"}' data.txt",
+			"awk -f prog.awk data.txt",
+			"cd packages/x && yarn vitest run",
+			"python3 - <<'EOF'\nprint(1)\nEOF",
+			"cat a.ts | xargs sed -n 1p",
+		].map((command) => exchange("bash", { command }, textOf(20_000)));
+		const s = setup([...flat(writes), ...flat(readsOnly), ...flat(reads(KEEP_RECENT_RESULTS)), reply(T0 + 100)]);
+		await s.start(T0 + 100 + HOUR + 1_000);
+		const out = await s.context();
+		const clearedById = new Map(
+			out.filter((m) => m.role === "toolResult").map((m) => [m.toolCallId, cleared(m.content[0].text)]),
+		);
+		const callOf = (item: { messages: unknown[] }) => JSON.stringify(item.messages[0]);
+		for (const item of readsOnly) expect(clearedById.get(item.id), callOf(item)).toBe(true);
+		for (const item of writes) expect(clearedById.get(item.id), callOf(item)).toBe(false);
+	});
+
 	it("leaves errors, results with images and results that are already placeholders alone", async () => {
 		const error = exchange("read", { path: "gone.ts" }, textOf(60_000), { isError: true });
 		const image = exchange("read", { path: "a.png" }, [
@@ -493,6 +522,26 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		// What a resume rebuilds the guard from shows it too.
 		expect(contextReads(s.ctx).map((read) => path.basename(read.file))).toContain("f0.ts");
 	});
+	it("treats a request that timed out past the cache lifetime as cold: its retry clears, though no idle gap preceded it", async () => {
+		// The request sent a moment after the last reply failed with zero cache usage (a client timeout) and was retried
+		// once it gave up, longer than the lifetime after it started.
+		const failed = (usage: Record<string, number>) => ({
+			...reply(T0 + 200),
+			content: [],
+			stopReason: "error",
+			errorMessage: "Request timed out after 300000ms",
+			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, ...usage },
+		});
+		const timedOut = setup([...idleMessages(reads(12)), failed({})]);
+		await timedOut.start(T0 + 200 + HOUR + 1_000);
+		expect(timedOut.entries).toHaveLength(1);
+		expect(timedOut.entries[0].customType).toBe(CLEARED_RESULTS_TYPE);
+		// A failure the provider still billed as a cache read refreshed the entry: past the last good reply's lifetime, nothing is cleared.
+		const read = setup([...idleMessages(reads(12)), failed({ cacheRead: 150_000 })]);
+		await read.start(T0 + 200 + HOUR - 50);
+		expect(read.entries).toEqual([]);
+	});
+
 	it("clears from the context handler alone, also inside a run after a gap longer than the cache lifetime (a long tool), once", async () => {
 		const s = setup(idleMessages(reads(12)));
 		// Warm: the last reply was a moment ago, so this request clears nothing and the prompt is what it was.

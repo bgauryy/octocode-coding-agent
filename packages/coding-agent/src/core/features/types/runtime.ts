@@ -1,8 +1,7 @@
-/** Loaded extensions, their registrations and the shared runtime. */
+/** Loaded features, their registrations and the shared runtime. */
 
 import type { AgentTool, AgentToolCallOutcome, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, Provider, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { KeyId } from "@octocodeai/octocode-tui";
 import type { McpServerChange, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { CustomMessage } from "../../messages.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
@@ -12,21 +11,20 @@ import type { SkillResourceSnapshot } from "../../skill-resource-snapshot.ts";
 import type { SlashCommandInfo } from "../../slash-commands.ts";
 import type { FeatureOwner, SourceInfo } from "../../source-info.ts";
 import type { BuildSystemPromptOptions } from "../../system-prompt.ts";
-import type { VirtualModelDefinition } from "../../virtual-models.ts";
-import type { ExtensionAPI } from "./api.ts";
+import type { FeatureSetup } from "./api.ts";
 import type {
 	CompactOptions,
 	ContextUsage,
 	ExecuteToolOptions,
-	ExtensionContext,
+	FeatureContext,
 	ReplacedSessionContext,
 } from "./context.ts";
 import type { ProviderConfig } from "./provider.ts";
-import type { EntryRenderer, MarkdownTransformer, MessageRenderer, RegisteredCommand } from "./rendering.ts";
+import type { EntryRenderer, MessageRenderer, RegisteredCommand } from "./rendering.ts";
 import type { ToolDefinition, ToolInfo, ToolRendererResolver } from "./tools.ts";
 
-/** Extension factory function type. Supports both sync and async initialization. */
-export type ExtensionFactory = (api: ExtensionAPI) => void | Promise<void>;
+/** Feature factory function type. Supports both sync and async initialization. */
+export type FeatureRegister = (api: FeatureSetup) => void | Promise<void>;
 
 /**
  * A feature the host registers directly: no module is loaded. `native` is the Octocode feature set and `builtin` is
@@ -40,17 +38,15 @@ export interface Feature {
 	readonly hidden?: boolean;
 	/** The source path, when it is not `builtin:<id>` (native) or `<inline:<id>>`. */
 	readonly path?: string;
-	register: ExtensionFactory;
+	register: FeatureRegister;
 }
 
-/** The servers extensions registered with `api.registerMcpServer()`; the MCP workspace's `McpServerRegistry` implements it. */
+/** The servers features registered with `api.mcpServers.register()`; the MCP workspace's `McpServerRegistry` implements it. */
 interface McpServerStore {
 	validate(changes: readonly McpServerChange[]): void;
 	/** Revalidate against the current store before publishing the whole batch. */
 	apply(changes: readonly McpServerChange[]): void;
 	register(server: RegisteredMcpServer): void;
-	/** Remove a server registered by `extensionPath`. Servers of other extensions are left alone. */
-	unregister(name: string, extensionPath: string): void;
 	get(name: string): RegisteredMcpServer | undefined;
 	/** Copies of the registered servers, in registration order. */
 	list(): RegisteredMcpServer[];
@@ -58,30 +54,12 @@ interface McpServerStore {
 	setChangeListener(listener: (() => void) | undefined): void;
 }
 
-/** A feature supplied through `extensionFactories`: a bare factory, or one with a name and visibility. */
-export type InlineExtension =
-	| ExtensionFactory
-	| {
-			/** Display name shown as `<inline:name>` in the startup list and errors. */
-			name: string;
-			factory: ExtensionFactory;
-			/** Omit this feature from the startup list. */
-			hidden?: boolean;
-	  };
-
-// Loaded Extension Types
+// Loaded Feature Types
 // ============================================================================
 
 export interface RegisteredTool {
 	definition: ToolDefinition;
 	sourceInfo: SourceInfo;
-}
-
-export interface ExtensionShortcut {
-	shortcut: KeyId;
-	description?: string;
-	handler: (ctx: ExtensionContext) => Promise<void> | void;
-	extensionPath: string;
 }
 
 type HandlerFn = (...args: unknown[]) => unknown;
@@ -110,7 +88,8 @@ type GetSettingsHandler = () => Settings;
 
 type GetCommandsHandler = () => SlashCommandInfo[];
 
-type SetActiveToolsHandler = (toolNames: string[]) => void;
+/** `boundary`: the change is a feature's own, so held tools do not defer it (set for every owner but `native`). */
+type SetActiveToolsHandler = (toolNames: string[], options?: { boundary?: boolean }) => void;
 
 type RefreshToolsHandler = () => void;
 
@@ -118,50 +97,43 @@ type SetModelHandler = (model: Model<any>) => Promise<boolean>;
 
 type GetThinkingLevelHandler = () => ThinkingLevel;
 
-type SetThinkingLevelHandler = (level: ThinkingLevel) => void;
-
 type SetLabelHandler = (entryId: string, label: string | undefined) => void;
 
 /**
  * Shared state created by loader, used during registration and runtime.
  */
-interface ExtensionRuntimeState {
-	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
-	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
-	/** Native octocode-ai provider registrations queued during extension loading, processed when runner binds. */
-	pendingNativeProviderRegistrations: Array<{ provider: Provider; extensionPath: string }>;
-	/** Virtual model registrations queued during extension loading, processed when runner binds. */
-	pendingVirtualModelRegistrations: Array<{ definition: VirtualModelDefinition; extensionPath: string }>;
-	/** Create an extension context. Throws before the runner binds. */
-	createContext: () => ExtensionContext;
+interface FeatureRuntimeState {
+	/** Legacy provider-config registrations queued during feature loading, processed when runner binds. */
+	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; source: string }>;
+	/** Native octocode-ai provider registrations queued during feature loading, processed when runner binds. */
+	pendingNativeProviderRegistrations: Array<{ provider: Provider; source: string }>;
+	/** Create a feature context. Throws before the runner binds. */
+	createContext: () => FeatureContext;
 	createUsageRecorder: (kind: string) => (message: AssistantMessage) => void;
 	recordUsage: (kind: string, provider: string, model: string, usage: Usage) => void;
-	/** Throws when this extension instance is stale after runtime replacement. */
+	/** Throws when this feature instance is stale after runtime replacement. */
 	assertActive: () => void;
-	/** Marks this extension instance as stale after runtime replacement or reload. */
+	/** Marks this feature instance as stale after runtime replacement or reload. */
 	invalidate: (message?: string) => void;
 	/** Retain an event-bus subscription until this runtime is invalidated. */
 	trackEventBusSubscription: (unsubscribe: () => void) => () => void;
 	/**
-	 * Register or unregister a provider.
+	 * Register a provider.
 	 *
-	 * Before bindCore(): queues registrations / removes from queue.
+	 * Before bindCore(): queues registrations.
 	 * After bindCore(): calls ModelRegistry directly for immediate effect.
 	 */
-	registerProvider: (name: string, config: ProviderConfig, extensionPath?: string) => void;
-	registerNativeProvider: (provider: Provider, extensionPath?: string) => void;
-	unregisterProvider: (name: string, extensionPath?: string) => void;
-	/** Servers registered with `api.registerMcpServer()`. */
+	registerProvider: (name: string, config: ProviderConfig, source?: string) => void;
+	registerNativeProvider: (provider: Provider, source?: string) => void;
+	/** Servers registered with `api.mcpServers.register()`. */
 	mcpServers: McpServerStore;
-	registerVirtualModel: (definition: VirtualModelDefinition, extensionPath?: string) => void;
-	unregisterVirtualModel: (provider: string, id: string) => void;
 }
 
 /**
- * Action implementations for ExtensionAPI methods.
+ * Action implementations for FeatureSetup methods.
  * Provided to runner.initialize(), copied into the shared runtime.
  */
-export interface ExtensionActions {
+export interface SessionActions {
 	sendMessage: SendMessageHandler;
 	sendUserMessage: SendUserMessageHandler;
 	appendEntry: AppendEntryHandler;
@@ -181,14 +153,13 @@ export interface ExtensionActions {
 	getSkillResourceSnapshot: (names?: readonly string[]) => SkillResourceSnapshot;
 	setModel: SetModelHandler;
 	getThinkingLevel: GetThinkingLevelHandler;
-	setThinkingLevel: SetThinkingLevelHandler;
 }
 
 /**
- * Actions for ExtensionContext (ctx.* in event handlers).
+ * Actions for FeatureContext (ctx.* in event handlers).
  * Required by all modes.
  */
-export interface ExtensionContextActions {
+export interface ContextActions {
 	onUsageRecorded?: (entry: Extract<SessionEntry, { type: "usage" }>) => void;
 	getExplicitToolNames?: () => readonly string[];
 	getModel: () => Model<any> | undefined;
@@ -207,14 +178,14 @@ export interface ExtensionContextActions {
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
 	getSystemPromptOptions?: () => BuildSystemPromptOptions;
-	/** Backs `ExtensionToolContext.executeTool()`. Without it, nested calls fail. */
+	/** Backs `ToolContext.executeTool()`. Without it, nested calls fail. */
 	executeTool?: (
 		callerId: string,
 		name: string,
 		args: unknown,
 		options: ExecuteToolOptions,
 	) => Promise<AgentToolCallOutcome>;
-	/** Backs `ExtensionToolContext.tools`. */
+	/** Backs `ToolContext.tools`. */
 	getCallableTools?: () => readonly AgentTool[];
 }
 
@@ -243,10 +214,10 @@ export type SwitchSessionHandler = (
 export type ReloadHandler = () => Promise<void>;
 
 /**
- * Actions for ExtensionCommandContext (ctx.* in command handlers).
- * Only needed for interactive mode where extension commands are invokable.
+ * Actions for CommandContext (ctx.* in command handlers).
+ * Only needed for interactive mode where feature commands are invokable.
  */
-export interface ExtensionCommandContextActions {
+export interface CommandActions {
 	waitForIdle: () => Promise<void>;
 	newSession: NewSessionHandler;
 	fork: ForkHandler;
@@ -259,10 +230,10 @@ export interface ExtensionCommandContextActions {
  * Full runtime = state + actions.
  * Created by loader with throwing action stubs, completed by runner.initialize().
  */
-export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
+export interface FeatureRuntime extends FeatureRuntimeState, SessionActions {}
 
-/** Loaded extension with all registered items. */
-export interface Extension {
+/** Loaded feature with all registered items. */
+export interface FeatureRecord {
 	/** Names the feature: `<inline:id>` for the native feature and injected ones, `builtin:id` for built-ins. */
 	path: string;
 	id: string;
@@ -273,10 +244,8 @@ export interface Extension {
 	tools: Map<string, RegisteredTool>;
 	messageRenderers: Map<string, MessageRenderer>;
 	toolRenderers?: ToolRendererResolver[];
-	markdownTransformer?: MarkdownTransformer;
 	entryRenderers?: Map<string, EntryRenderer>;
 	commands: Map<string, RegisteredCommand>;
-	shortcuts: Map<KeyId, ExtensionShortcut>;
 }
 
 /** A file the loader skipped without failing the session. */
@@ -288,19 +257,19 @@ export interface LoadWarning {
 }
 
 /** The registered features, their diagnostics and the shared runtime. */
-export interface LoadExtensionsResult {
-	extensions: Extension[];
+export interface LoadedFeatures {
+	features: FeatureRecord[];
 	errors: Array<{ path: string; error: string }>;
 	warnings?: LoadWarning[];
 	/** Shared runtime - actions are throwing stubs until runner.initialize() */
-	runtime: ExtensionRuntime;
+	runtime: FeatureRuntime;
 }
 
-// Extension Error
+// Feature Error
 // ============================================================================
 
-export interface ExtensionError {
-	extensionPath: string;
+export interface FeatureError {
+	source: string;
 	event: string;
 	error: string;
 	stack?: string;

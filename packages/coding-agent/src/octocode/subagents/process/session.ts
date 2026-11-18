@@ -2,8 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { getToolListError } from "../../../core/settings-manager.ts";
 import { privateDir, sessionOutputDir } from "../../shared/home.ts";
-import { type AgentProfile, profileExcludes, profileSelectsBrowser, profileTools } from "../profiles.ts";
-import { BROWSER_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
+import {
+	type AgentProfile,
+	profileExcludes,
+	profileSelectsBrowser,
+	profileSelectsServer,
+	profileTools,
+} from "../profiles.ts";
+import { BROWSER_SERVER, FREELLAMA_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { Identity } from "./env.ts";
 import { operatorLimits } from "./operator-limits.ts";
 
@@ -83,11 +89,16 @@ export function buildAgentArgs(
 	args.push("--tools", selection);
 	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
 	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`). The floor
-	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away.
+	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away. The local-model
+	// server (FreeLlama) serves the main session: a child never starts it, and so carries none of its tools or
+	// instructions, unless its profile names the server or its task does (`mcp`).
 	const excluded = [
 		...operator.excludeTools,
 		...profileExcludes(profile?.excludeTools),
 		...(profileSelectsBrowser(profile) ? [] : [`${mcpNamespace(BROWSER_SERVER)}__*`]),
+		...(profileSelectsServer(profile, FREELLAMA_SERVER) || namedServers.includes(FREELLAMA_SERVER)
+			? []
+			: [`${mcpNamespace(FREELLAMA_SERVER)}__*`]),
 	];
 	if (excluded.length > 0) args.push("--exclude-tools", excluded.join(","));
 	if (skillPaths !== undefined) args.push("--no-skills");

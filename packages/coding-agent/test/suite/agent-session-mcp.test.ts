@@ -5,16 +5,16 @@ import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/c
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
+import type { FeatureSetup, FeatureRegister } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import type { McpExposure, McpServerEntry } from "../../../mcp/src/config.ts";
 import type { McpPresentationMode } from "../../../mcp/src/presentation/index.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../mcp/src/section.ts";
 import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 import {
 	createHarness,
 	createTestUiContext,
@@ -24,6 +24,7 @@ import {
 	getToolResult as toolResult,
 } from "./harness.ts";
 import { getMcpSwitch } from "../../../mcp/src/switch.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const TINY_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
@@ -135,8 +136,8 @@ describe("AgentSession MCP integration", () => {
 			sessionManager?: SessionManager;
 			/** Whether to wait for `mcp__docs__search` to register. Default: true. */
 			waitForTools?: boolean;
-			extensionFactories?: ExtensionFactory[];
-			builtinCompactionFactories?: ExtensionFactory[];
+			factories?: FeatureRegister[];
+			builtinCompactionFactories?: FeatureRegister[];
 			toolExposure?: Record<string, McpExposure>;
 			resources?: boolean;
 			description?: string;
@@ -151,7 +152,7 @@ describe("AgentSession MCP integration", () => {
 			excludedToolNames,
 			sessionManager,
 			waitForTools = true,
-			extensionFactories = [],
+			factories = [],
 			builtinCompactionFactories,
 			toolExposure,
 			resources,
@@ -181,11 +182,11 @@ describe("AgentSession MCP integration", () => {
 			allowedToolNames,
 			excludedToolNames,
 			sessionManager,
-			[builtinCompactionFactories ? "builtinCompactionFactories" : "extensionFactories"]: [
+			[builtinCompactionFactories ? "builtinCompactionFactories" : "features"]: [
 				...(builtinCompactionFactories ?? []),
-				...extensionFactories,
-				(api: ExtensionAPI) =>
-					createMcpExtension({
+				...factories,
+				(api: FeatureSetup) =>
+					createMcpFeature({
 						loadConfig: () => ({ servers: [entry], errors: [], ...configOptions }),
 						presentation: presentation ?? "compact",
 						updateConfig: (_entry, patch) => {
@@ -199,20 +200,23 @@ describe("AgentSession MCP integration", () => {
 						},
 					})({
 						...api,
-						registerTool: (definition) => {
-							registrations.push(definition);
-							api.registerTool(definition);
-						},
-						// A connection's tools register as one batch; record each definition.
-						registerTools: (definitions) => {
-							registrations.push(...definitions);
-							api.registerTools(definitions);
+						tools: {
+							...api.tools,
+							register: (definition) => {
+								registrations.push(definition);
+								api.tools.register(definition);
+							},
+							// A connection's tools register as one batch; record each definition.
+							registerAll: (definitions) => {
+								registrations.push(...definitions);
+								api.tools.registerAll(definitions);
+							},
 						},
 					}),
 			],
 		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({
+		await harness.session.bindFeatures({
 			uiContext: createTestUiContext({ notify: (message) => notifications.push(message) }),
 		});
 		// The servers connect in the background after binding; wait for the tools here.
@@ -255,13 +259,11 @@ describe("AgentSession MCP integration", () => {
 	}
 
 	const NOT_CONNECTED = "Not connected yet: its instructions and tools are listed here once it connects.";
-	const MCPS_PREAMBLE =
-		"Each block is one MCP server: its instructions and a typed function for each tool. To call a tool, replace `*` in the block's `tools` prefix with the function's name and pass the input object.";
 
 	it("configures servers through slash subcommands and publishes enabled and connection state", async () => {
-		let api: ExtensionAPI | undefined;
+		let api: FeatureSetup | undefined;
 		const { harness, notifications, saved, servers } = await setup("direct", undefined, {
-			extensionFactories: [
+			factories: [
 				(host) => {
 					api = host;
 				},
@@ -269,31 +271,31 @@ describe("AgentSession MCP integration", () => {
 		});
 		await harness.session.prompt("/mcp list");
 		expect(notifications.at(-1)).toContain("docs: enabled · connected");
-		expect(getMcpSessionStatus(api!.events)).toMatchObject([
+		expect(getMcpSessionStatus(api!.channels)).toMatchObject([
 			{ name: "docs", enabled: true, state: "connected", exposure: "direct", toolCount: 3 },
 		]);
-		await getMcpSwitch(api!.events)!({ name: "docs", enabled: true, inProject: false });
+		await getMcpSwitch(api!.channels)!({ name: "docs", enabled: true, inProject: false });
 		expect(servers).toHaveLength(1);
-		await getMcpSwitch(api!.events)!({ name: "docs", enabled: false, inProject: false });
+		await getMcpSwitch(api!.channels)!({ name: "docs", enabled: false, inProject: false });
 		expect(saved.at(-1)).toEqual({ enabled: false });
-		expect(getMcpSessionStatus(api!.events)).toMatchObject([{ enabled: false, state: "disabled" }]);
+		expect(getMcpSessionStatus(api!.channels)).toMatchObject([{ enabled: false, state: "disabled" }]);
 		expect(nestedToolNames(harness)).not.toContain("mcp__docs__search");
-		// Exposure is changed in /harness mcp: the slash subcommand only points there and saves nothing.
+		// Exposure is changed on the /mcp tools page: the slash subcommand only points there and saves nothing.
 		const count = saved.length;
 		for (const mode of ["direct", "hidden", "deferred", "auto", "nonsense"]) {
 			await harness.session.prompt(`/mcp exposure docs ${mode}`);
 			expect(saved).toHaveLength(count);
-			expect(notifications.at(-1)).toContain("Moved: open /harness mcp, select docs, then Default for tools");
+			expect(notifications.at(-1)).toContain("Moved: open /mcp, select docs, then Tools › Default for tools");
 		}
-		await getMcpSwitch(api!.events)!({ name: "docs", enabled: true, inProject: false });
+		await getMcpSwitch(api!.channels)!({ name: "docs", enabled: true, inProject: false });
 		expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search");
 	});
 
 	it("includes extension registrations alongside configured servers in the common status list", async () => {
 		const { harness, notifications } = await setup("direct", undefined, {
-			extensionFactories: [
+			factories: [
 				(api) => {
-					api.registerMcpServer("octocode", { command: "fixture", exposure: "direct" });
+					api.mcpServers.register("octocode", { command: "fixture", exposure: "direct" });
 				},
 			],
 		});
@@ -315,11 +317,11 @@ describe("AgentSession MCP integration", () => {
 	});
 
 	it("does not start a server --tools does not reach", async () => {
-		let api: ExtensionAPI | undefined;
+		let api: FeatureSetup | undefined;
 		const { harness, servers } = await setup("direct", undefined, {
 			allowedToolNames: ["bash"],
 			waitForTools: false,
-			extensionFactories: [
+			factories: [
 				(host) => {
 					api = host;
 				},
@@ -331,7 +333,7 @@ describe("AgentSession MCP integration", () => {
 		expect(servers).toHaveLength(0);
 		expect(harness.session.getActiveToolNames()).toEqual(["bash"]);
 		expect(harness.session.getAllTools().map((tool) => tool.name)).not.toContain("mcp__docs__search");
-		expect(getMcpSessionStatus(api!.events)).toMatchObject([{ name: "docs", enabled: true, state: "unselected" }]);
+		expect(getMcpSessionStatus(api!.channels)).toMatchObject([{ name: "docs", enabled: true, state: "unselected" }]);
 		expect(serversSection(harness)).toBeUndefined();
 	});
 
@@ -664,7 +666,7 @@ describe("AgentSession MCP integration", () => {
 		const calls: string[] = [];
 		const notifications: string[] = [];
 		const transports: Array<{ close(): Promise<void> }> = [];
-		let events: ExtensionAPI["events"] | undefined;
+		let events: FeatureSetup["channels"] | undefined;
 		const { name = "slow", instructions, presentation, ...serverConfig } = config;
 		const entry: McpServerEntry = {
 			name,
@@ -673,11 +675,11 @@ describe("AgentSession MCP integration", () => {
 		};
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					events = api.events;
+					events = api.channels;
 				},
-				createMcpExtension({
+				createMcpFeature({
 					loadConfig: () => ({ servers: [entry], errors: [] }),
 					createTransport: () => {
 						const pair = createFakeServer(calls, { initializeDelayMs, instructions });
@@ -688,10 +690,10 @@ describe("AgentSession MCP integration", () => {
 					...(startupWaitMs === undefined ? {} : { startupWaitMs }),
 					presentation: presentation ?? "compact",
 				}),
-			],
+			]),
 		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({
+		await harness.session.bindFeatures({
 			uiContext: createTestUiContext({ notify: (message) => notifications.push(message) }),
 		});
 		return { harness, calls, notifications, transports, serverState: () => getMcpSessionStatus(events!)[0]?.state };
@@ -723,10 +725,11 @@ describe("AgentSession MCP integration", () => {
 
 		await harness.session.prompt("first");
 		const first = updates()[0].sections!;
-		expect(first[MCPS_SECTION]).toBe(`<mcps>\n${MCPS_PREAMBLE}\n</mcps>`);
-		expect(first["mcps:slow"]).toBe(
-			`<mcps>\n<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>\n</mcps>`,
-		);
+		// The head opens the family's tag with how to read its blocks, and holds no block itself.
+		expect(first[MCPS_SECTION]).toMatch(/^<mcps>\n[^<\n]/);
+		expect(first[MCPS_SECTION]).not.toContain("<mcp ");
+		expect(first["mcps:slow"]).toBe(`<mcp name="slow" tools="mcp__slow__*">\n${NOT_CONNECTED}\n</mcp>`);
+		expect(first["mcps:/"]).toBe("</mcps>");
 		expect(first[MCP_STATUS_SECTION]).toContain("- slow: connecting");
 		expect(Object.keys(first).at(-1)).toBe(MCP_STATUS_SECTION);
 
@@ -865,7 +868,7 @@ describe("AgentSession MCP integration", () => {
 		const { harness, calls } = await setup("direct", undefined, {
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async ({ preparation }) => ({
+					api.bus.on("session_before_compact", async ({ preparation }) => ({
 						compaction: {
 							summary: "Found the documentation tool; continue the lookup.",
 							firstKeptEntryId: preparation.firstKeptEntryId,
@@ -923,13 +926,13 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	});
 
 	/** `configured` are the mcp.json servers; `plugins` register servers through the extension API. */
-	async function setup(plugins: ExtensionFactory | ExtensionFactory[], configured: McpServerEntry[] = []) {
+	async function setup(plugins: FeatureRegister | FeatureRegister[], configured: McpServerEntry[] = []) {
 		const connected: McpServerEntry[] = [];
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
+			features: testFeatures([
 				...(Array.isArray(plugins) ? plugins : [plugins]),
-				createMcpExtension({
+				createMcpFeature({
 					loadConfig: () => ({ servers: configured, errors: [] }),
 					createTransport: (entry) => {
 						connected.push(entry);
@@ -938,41 +941,38 @@ describe("AgentSession MCP servers registered by extensions", () => {
 						return pair.client;
 					},
 				}),
-			],
+			]),
 		});
 		harnesses.push(harness);
 		// `/reload` emits session_start only to bound extensions.
-		await harness.session.bindExtensions({ uiContext: createTestUiContext() });
+		await harness.session.bindFeatures({ uiContext: createTestUiContext() });
 		return { harness, connected };
 	}
 
 	it("connects servers registered while extensions load", async () => {
 		const { harness, connected } = await setup((api) => {
-			api.registerMcpServer("plugin", { url: "http://plugin.invalid", exposure: "direct" });
+			api.mcpServers.register("plugin", { url: "http://plugin.invalid", exposure: "direct" });
 		});
 		harness.setResponses([fauxAssistantMessage("ready")]);
 		await harness.session.prompt("start");
 
-		expect(connected.map((entry) => [entry.name, entry.scope])).toEqual([["plugin", "extension"]]);
+		expect(connected.map((entry) => [entry.name, entry.scope])).toEqual([["plugin", "feature"]]);
 		expect(harness.session.getActiveToolNames()).toContain("mcp__plugin__search");
 	});
 
-	it("connects and disconnects servers registered during the session", async () => {
-		let api: ExtensionAPI | undefined;
+	it("connects servers registered during the session", async () => {
+		let api: FeatureSetup | undefined;
 		const { harness, connected } = await setup((host) => {
 			api = host;
 		});
 		if (!api) throw new Error("No extension API");
 		const host = api;
 
-		host.registerMcpServer("late", { url: "http://late.invalid" });
+		host.mcpServers.register("late", { url: "http://late.invalid" });
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).toContain("mcp__late__search"));
 		expect(connected.map((entry) => entry.name)).toEqual(["late"]);
 		// Small catalogs on the default model are directly callable.
 		expect(harness.session.getActiveToolNames()).toContain("mcp__late__search");
-
-		host.unregisterMcpServer("late");
-		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).not.toContain("mcp__late__search"));
 	});
 
 	// "my_docs" shares the namespace of "my-docs".
@@ -984,7 +984,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 		};
 		const { connected } = await setup(
 			(api) => {
-				api.registerMcpServer(name, { url: "http://plugin.invalid" });
+				api.mcpServers.register(name, { url: "http://plugin.invalid" });
 			},
 			[configured],
 		);
@@ -997,15 +997,15 @@ describe("AgentSession MCP servers registered by extensions", () => {
 		const errors: string[] = [];
 		await setup([
 			(api) => {
-				api.registerMcpServer("taken", { url: "http://x.invalid" });
+				api.mcpServers.register("taken", { url: "http://x.invalid" });
 				// Registering again replaces the extension's own registration.
-				api.registerMcpServer("taken", { url: "http://y.invalid" });
-				api.registerMcpServer("my-server", { url: "http://x.invalid" });
+				api.mcpServers.register("taken", { url: "http://y.invalid" });
+				api.mcpServers.register("my-server", { url: "http://x.invalid" });
 			},
 			(api) => {
 				for (const name of ["taken", "my_server"]) {
 					try {
-						api.registerMcpServer(name, { url: "http://z.invalid" });
+						api.mcpServers.register(name, { url: "http://z.invalid" });
 					} catch (caught) {
 						errors.push(String(caught));
 					}
@@ -1013,7 +1013,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 			},
 		]);
 		expect(errors).toEqual([
-			expect.stringMatching(/MCP server "taken" is already registered by extension/),
+			expect.stringMatching(/MCP server "taken" is already registered by feature/),
 			// Names that differ only in - and _ share a namespace.
 			'Error: MCP server "my_server" conflicts with registered server "my-server"',
 		]);
@@ -1021,13 +1021,13 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 	it("reports registered servers when no extension connects them", async () => {
 		const harness = await createHarness({
-			extensionFactories: [(api) => api.registerMcpServer("orphan", { url: "http://orphan.invalid" })],
+			features: testFeatures([(api) => api.mcpServers.register("orphan", { url: "http://orphan.invalid" })]),
 		});
 		harnesses.push(harness);
 		const errors: string[] = [];
-		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
+		await harness.session.bindFeatures({ onError: (error) => errors.push(error.error) });
 
-		expect(errors).toEqual([expect.stringContaining('MCP server "orphan" is registered, but no loaded extension')]);
+		expect(errors).toEqual([expect.stringContaining('MCP server "orphan" is registered, but no loaded feature')]);
 	});
 });
 
@@ -1045,7 +1045,7 @@ describe("AgentSession MCP tools after resume and reload", () => {
 	 */
 	async function setup(
 		sessionManager?: SessionManager,
-		extensionFactories: ExtensionFactory[] = [],
+		extraFactories: FeatureRegister[] = [],
 		initializeDelayMs = 0,
 		initializeFails = false,
 	) {
@@ -1053,8 +1053,8 @@ describe("AgentSession MCP tools after resume and reload", () => {
 		const eventBus = createEventBus();
 		const servers: McpServerEntry[] = [{ name: "docs", config: { url: "http://unused.invalid" }, source: "test" }];
 		const factories = [
-			...extensionFactories,
-			createMcpExtension({
+			...extraFactories,
+			createMcpFeature({
 				loadConfig: () => ({ servers, errors: [] }),
 				startupWaitMs: 20,
 				createTransport: (entry) => {
@@ -1065,13 +1065,13 @@ describe("AgentSession MCP tools after resume and reload", () => {
 				},
 			}),
 		];
-		let extensions = await createTestExtensionsResult(factories, undefined, eventBus);
+		let features = await createTestFeaturesResult(factories, undefined, eventBus);
 		const resourceLoader = {
 			...createTestResourceLoader(),
 			getEventBus: () => eventBus,
-			getExtensions: () => extensions,
+			getFeatures: () => features,
 			reload: async () => {
-				extensions = await createTestExtensionsResult(factories, undefined, eventBus);
+				features = await createTestFeaturesResult(factories, undefined, eventBus);
 			},
 		};
 		const harness = await createHarness({ resourceLoader, sessionManager });
@@ -1079,7 +1079,7 @@ describe("AgentSession MCP tools after resume and reload", () => {
 		// A resumed session starts from its transcript, like `createTestSession` does.
 		if (sessionManager) harness.session.agent.state.messages = sessionManager.buildSessionContext().messages;
 		// `/reload` emits session_start only to bound extensions.
-		await harness.session.bindExtensions({ uiContext: createTestUiContext() });
+		await harness.session.bindFeatures({ uiContext: createTestUiContext() });
 		return { harness, connected, eventBus };
 	}
 
@@ -1120,9 +1120,9 @@ describe("AgentSession MCP tools after resume and reload", () => {
 		await declareDocs(first.harness);
 
 		// Like plan mode restoring its tools, or an extension adding one to the current loadout.
-		const setLoadout: ExtensionFactory = (api) => {
-			api.on("session_start", () =>
-				api.setActiveTools(loadout ? [...loadout] : [...api.getActiveTools(), "extra_tool"]),
+		const setLoadout: FeatureRegister = (api) => {
+			api.bus.on("session_start", () =>
+				api.tools.setActive(loadout ? [...loadout] : [...api.tools.getActive(), "extra_tool"]),
 			);
 		};
 		const second = await setup(first.harness.sessionManager, [setLoadout]);

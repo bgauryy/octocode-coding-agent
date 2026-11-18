@@ -1,6 +1,6 @@
 import path from "node:path";
 import { activationId } from "../../shared/activation.ts";
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { newMember } from "../identity.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { type TeamStore } from "../store.ts";
@@ -19,7 +19,7 @@ const JOIN_ATTEMPTS = 8;
 export function claimName(
 	env: NodeJS.ProcessEnv,
 	db: TeamStore,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	goal: string | undefined,
 	newName: (lost: string[]) => string,
 	recorded?: SessionTeamName,

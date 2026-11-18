@@ -10,14 +10,15 @@ import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { nonceFile } from "./nonce-file.ts";
-import * as importedModule4 from "../../src/octocode/files/tool.ts";
+import * as importedModule4 from "../../src/octocode/native/tools/file/tool.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { toolHint } from "../../src/utils/tool-hint.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { trafficRow, widgetLines } from "../../src/octocode/team/panel.ts";
+import { trafficRow } from "../../src/octocode/team/panel.ts";
+import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import * as importedModule5 from "../../src/octocode/team/routing.ts";
 import {
 	deadLetterText,
@@ -29,7 +30,7 @@ import {
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import * as importedModule2 from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { fakePermission, theme } from "./fake-host.ts";
+import { fakePermission, theme, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 
@@ -288,11 +289,12 @@ describe("message feed", () => {
 		const panel = [member("main-aaaaaa"), member("researcher-bbbbbb", { parentId: "main-aaaaaa" })];
 		expect(widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [original]).join("\n")).not.toContain(`#${id}`);
 		expect(widgetLines(panel, "other-session", Date.now(), theme, 200, [original])).toEqual([]);
-		expect(
-			widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [
-				{ ...original, from: "researcher-bbbbbb", to: ["tester-c"] },
-			]).at(-1),
-		).toContain(`#${id}`);
+		// A subagent's message closes the panel as a block: its head, then the body in quotes.
+		const block = widgetLines(panel, "main-aaaaaa", Date.now(), theme, 200, [
+			{ ...original, from: "researcher-bbbbbb", to: ["tester-c"] },
+		]).slice(-2);
+		expect(block[0]).toMatch(new RegExp(`^ {5}✉ #${id} → tester-c · answered · `));
+		expect(block[1]).toBe('       "check the tests"');
 	});
 });
 
@@ -319,15 +321,12 @@ describe("agents view", () => {
 			...foreign,
 		];
 		const lines = widgetLines(list, "main-aaaaaa", now, theme, 120);
-		expect(lines[0]).toContain("1 working · 1 idle");
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
-		expect(lines[1]).toContain("a-0001");
-		expect(lines).toHaveLength(5);
-		expect(lines[1]).toMatch(/^ └ ○ 🐙 a-0001/);
-		expect(lines[2]).toMatch(/idle\s+10s$/);
-		expect(lines[3]).toMatch(/^   └ ⠋ 🐙 b-0002/);
-		expect(lines[4]).toMatch(/working\s+1m$/);
-		expect(lines[3]).toContain("→ localSearch foo");
+		// The root row carries no tally; the marks say who works. A grandchild sits under its parent.
+		expect(lines).toHaveLength(3);
+		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ○ · main +· +1m39s$/);
+		expect(lines[1]).toMatch(/^ └ ○ a-0001 +· a-0001 +· +10s$/);
+		expect(lines[2]).toMatch(/^ {3}└ ⠋ b-0002 +· b-0002 +· +1m · › → localSearch foo$/);
 		expect(
 			widgetLines(
 				[
@@ -399,13 +398,13 @@ describe("collaboration schema", () => {
 	it("does not expose the removed collaborate field", () => {
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
-			{
+			asSetup({
 				registerTool: (tool: never) => tools.push(tool),
 				registerCommand: () => undefined,
 				registerMessageRenderer: () => undefined,
 				on: () => undefined,
 				events: { on: () => () => undefined, emit: () => undefined },
-			} as never,
+			}) as never,
 			{
 				profiles: () => new Map(),
 				team: { view: { members: [], traffic: [] }, members: () => [], setResumer: () => undefined } as never,
@@ -432,7 +431,7 @@ describe("Team", () => {
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
 		const fakeHost = (log: ReturnType<typeof inbox>) =>
-			({
+			asSetup({
 				sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }),
 				appendEntry: () => undefined,
 				getThinkingLevel: () => "off",
@@ -586,7 +585,7 @@ describe("team database schema", () => {
 		const file = path.join(tmp(), "other.sqlite");
 		exec(file, "CREATE TABLE notes (id INTEGER);");
 		const team = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			{
 				OCTOCODE_AGENT_DB: file,
 			},
@@ -624,14 +623,14 @@ describe("Team safety", () => {
 		} as never;
 		const log: Array<{ message: { content: string }; options: unknown }> = [];
 		let failing = false;
-		const api = {
+		const api = asSetup({
 			sendMessage: (message: { content: string }, options: unknown) => {
 				if (failing) throw new Error("not ready");
 				log.push({ message, options });
 			},
 			appendEntry: () => undefined,
 			getThinkingLevel: () => "off",
-		} as never;
+		}) as never;
 		const main = new Team(api, env);
 		main.start(ctx);
 		const me = main.join();
@@ -658,7 +657,7 @@ describe("Team safety", () => {
 		try {
 			const { Team, cwd, file, env, ctx, main, me } = await setup();
 			const child = new Team(
-				{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+				asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: "researcher-1234",
@@ -704,7 +703,7 @@ describe("Team safety", () => {
 		const { Team, cwd, env, main, me } = await setup();
 		const started = (id: string, extra: Record<string, string>) => {
 			const team = new Team(
-				{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+				asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: id,
@@ -738,7 +737,7 @@ describe("Team safety", () => {
 		const { Team } = await Promise.resolve(importedModule2);
 		const cwd = repo();
 		const lonely = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			{
 				OCTOCODE_AGENT_DB: path.join(tmp(), "none.sqlite"),
 			},
@@ -766,13 +765,13 @@ describe("Team safety", () => {
 			guard.reservedBy = (target) => main.reservation(target, target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: () => undefined,
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 			);
@@ -808,13 +807,13 @@ describe("Team safety", () => {
 			guard.record(target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: () => undefined,
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 			);
@@ -832,7 +831,7 @@ describe("Team safety", () => {
 		raw.exec("CREATE TABLE notes (id INTEGER);");
 		raw.close();
 		const solo = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			{
 				OCTOCODE_AGENT_DB: foreign,
 			},
@@ -850,7 +849,7 @@ describe("Team safety", () => {
 		// A healthy database: a solo session still sees a peer's lease, and a busy database does not block it.
 		const { main, env } = await setup();
 		const lone = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			env,
 		);
 		lone.start({
@@ -896,13 +895,13 @@ describe("Team safety", () => {
 		guard.record(target);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -926,7 +925,7 @@ describe("Team safety", () => {
 		vi.useFakeTimers();
 		const { Team, cwd, file, env, ctx, log, main, me } = await setup();
 		const peer = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			{
 				...env,
 				OCTOCODE_AGENT_ID: "peer-0001",
@@ -1012,7 +1011,7 @@ describe("Team safety", () => {
 		vi.useFakeTimers();
 		const { Team, env, ctx, log, main, fail } = await setup();
 		const child = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			{
 				...env,
 				OCTOCODE_AGENT_ID: "researcher-1234",

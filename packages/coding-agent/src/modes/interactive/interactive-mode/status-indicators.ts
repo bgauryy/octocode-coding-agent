@@ -1,6 +1,6 @@
 /**
  * The working, retry and compaction status indicators above the editor or embedded in it, the hidden-thinking
- * label, extension footer status, and the transient status lines in the chat.
+ * label, feature footer status, and the transient status lines in the chat.
  */
 
 import { Spacer, ThemedText, hyperlink } from "@octocodeai/octocode-tui";
@@ -8,7 +8,6 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
-import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
@@ -23,11 +22,9 @@ type StatusIndicatorsHost = Pick<
 	| "chatContainer"
 	| "clearStatusIndicator"
 	| "defaultEditor"
-	| "defaultHiddenThinkingLabel"
 	| "defaultWorkingMessage"
 	| "editor"
 	| "footerDataProvider"
-	| "hiddenThinkingLabel"
 	| "idleStatus"
 	| "lastStatusSpacer"
 	| "lastStatusText"
@@ -42,17 +39,16 @@ type StatusIndicatorsHost = Pick<
 	| "ui"
 	| "workingIndicatorOptions"
 	| "workingMessage"
-	| "workingVisible"
 >;
 
-/** Set extension status text in the footer; the footer data subscription draws it when it changed. */
-export function setExtensionStatus(
+/** Set feature status text in the footer; the footer data subscription draws it when it changed. */
+export function setFeatureStatus(
 	host: StatusIndicatorsHost,
 	key: string,
 	text: string | undefined,
 	tone?: StatusTone,
 ): void {
-	host.footerDataProvider.setExtensionStatus(key, text, tone);
+	host.footerDataProvider.setFeatureStatus(key, text, tone);
 }
 
 export function setEditorWorkingStatusIndicator(
@@ -114,37 +110,10 @@ export function showWorkingStatusIndicator(host: StatusIndicatorsHost): void {
 	);
 }
 
-export function setWorkingVisible(host: StatusIndicatorsHost, visible: boolean): void {
-	host.workingVisible = visible;
-	if (!visible) {
-		host.clearStatusIndicator("working");
-		host.ui.requestRender();
-		return;
-	}
-	// Visibility controls ordinary working activity; retry and compaction own their cancellation and progress.
-	if (host.session.isStreaming && !host.activeStatusIndicator) {
-		host.showWorkingStatusIndicator();
-	}
-	host.ui.requestRender();
-}
-
 export function setWorkingIndicator(host: StatusIndicatorsHost, options?: WorkingIndicatorOptions): void {
 	host.workingIndicatorOptions = options;
 	if (host.activeStatusIndicator?.kind === "working") {
 		host.activeStatusIndicator.setIndicator(options);
-	}
-	host.ui.requestRender();
-}
-
-export function setHiddenThinkingLabel(host: StatusIndicatorsHost, label?: string): void {
-	host.hiddenThinkingLabel = label ?? host.defaultHiddenThinkingLabel;
-	for (const child of host.chatContainer.children) {
-		if (child instanceof AssistantMessageComponent) {
-			child.setHiddenThinkingLabel(host.hiddenThinkingLabel);
-		}
-	}
-	if (host.streamingComponent) {
-		host.streamingComponent.setHiddenThinkingLabel(host.hiddenThinkingLabel);
 	}
 	host.ui.requestRender();
 }

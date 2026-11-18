@@ -1,5 +1,5 @@
 import { APP_NAME, getCliInvocation } from "../../config.ts";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../shared/commands.ts";
 import {
@@ -31,7 +31,7 @@ export async function openInTmux(
 	name: string,
 	folder: string,
 	placement: OpenPlacement,
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	deps: OpenDependencies & { inTmux: boolean },
 ): Promise<void> {
 	const env = deps.env ?? process.env;

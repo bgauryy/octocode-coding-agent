@@ -317,7 +317,12 @@ describe("subagent dialogs relayed to the parent", () => {
 			],
 			{ permission: parent("workspace").permission, ui: dialogs },
 		);
-		expect(dialogs.confirm).toHaveBeenCalledWith(`${LABEL}\nSure?`, "m", expect.anything());
+		// A confirmation is a tool's consent, not the child's question: its heading says so.
+		expect(dialogs.confirm).toHaveBeenCalledWith(
+			`${LABEL.replace(/ asks:$/, " needs your approval:")}\nSure?`,
+			"m",
+			expect.anything(),
+		);
 		expect(dialogs.input).toHaveBeenCalledWith(`${LABEL}\nName`, "p", expect.anything());
 		expect(result.answers).toEqual([
 			{ type: "extension_ui_response", id: "c1", confirmed: true },

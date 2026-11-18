@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { BranchIndex } from "../shared/branch-index.ts";
 import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
@@ -82,7 +82,7 @@ function unchangedNote(toolName: string, input: Record<string, unknown>): string
  * Registered after the file guard's `tool_result` handler (`registerFileTool`): the guard digests the text the read
  * returned, so it must see that text, not the note.
  */
-export function registerReadDedupe(api: ExtensionAPI): void {
+export function registerReadDedupe(api: FeatureSetup): void {
 	const index = new BranchIndex<ReadIndex>(
 		() => ({ calls: new Map(), results: new Map(), rebuild: true }),
 		(state, entry) => {
@@ -92,7 +92,7 @@ export function registerReadDedupe(api: ExtensionAPI): void {
 			if (!state.rebuild && entry.type === "message") indexMessage(state, entry.message);
 		},
 	);
-	api.on("tool_result", async (event, ctx) => {
+	api.bus.on("tool_result", async (event, ctx) => {
 		if (event.isError || !isDeduped(event.toolName)) return undefined;
 		const text = plainText(event.content);
 		if (text === undefined) return undefined;

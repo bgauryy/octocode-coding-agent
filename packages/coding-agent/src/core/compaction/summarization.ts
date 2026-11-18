@@ -2,7 +2,7 @@
  * LLM summarization calls shared by compaction and branch summaries.
  */
 
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
@@ -34,11 +34,11 @@ import {
 } from "./summary-format.ts";
 import { summaryMaxTokens, summaryThinkingLevel } from "./settings.ts";
 
-const SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize.md", {
+const SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/summarize.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
 });
 
-const UPDATE_SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/summarize-update.md", {
+const UPDATE_SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/summarize-update.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
 	tldrHeading: TLDR_HEADING,
 });
@@ -198,7 +198,7 @@ async function completeWithOverflowTrim(
 	for (let trims = 0; ; trims++) {
 		const dropped = messages.length - remaining.length;
 		// The summary must not claim to cover what it never saw.
-		const note = dropped > 0 ? `\n\n${renderInstruction("workflows/compaction/dropped-messages.md", { dropped })}` : "";
+		const note = dropped > 0 ? `\n\n${renderPrompt("workflows/compaction/dropped-messages.md", { dropped })}` : "";
 		const response =
 			pending ??
 			(await completeSummarization(
@@ -218,7 +218,7 @@ async function completeWithOverflowTrim(
 	}
 }
 
-const CUT_OFF_NOTE = renderInstruction("workflows/compaction/cut-off-note.md");
+const CUT_OFF_NOTE = renderPrompt("workflows/compaction/cut-off-note.md");
 
 /**
  * The text of a history summary after every shrinking retry: one still cut off at the cap is kept, marked as cut, when it

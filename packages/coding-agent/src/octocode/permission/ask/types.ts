@@ -1,8 +1,8 @@
 import type { PermissionUpdateCommit, SourcePermissionUpdate } from "../../shared/permission-updates.ts";
 import type { FileInputReplacement } from "../../tool-input/claude-file.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import type { ExtensionToolContext, ToolInvocation } from "../../../core/features/types.ts";
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { ToolContext, ToolInvocation } from "../../../core/features/types.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import type { ActionClass, PermissionMode } from "../mode.ts";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import type { PermissionRequest } from "../request.ts";
@@ -43,9 +43,9 @@ export interface ActionEvent {
 export type Answer = "once" | "session" | "kind" | "deny" | "deny_session" | { deny: string } | undefined;
 
 /** Where an ask is shown: the parts of a context a dialog needs. */
-export type Asker = Pick<ExtensionContext, "hasUI" | "ui"> &
-	Partial<Pick<ExtensionContext, "sessionManager" | "abort" | "cwd">> &
-	Partial<Pick<ExtensionToolContext, "invocation">>;
+export type Asker = Pick<FeatureContext, "hasUI" | "ui"> &
+	Partial<Pick<FeatureContext, "sessionManager" | "abort" | "cwd">> &
+	Partial<Pick<ToolContext, "invocation">>;
 
 export type PermissionResolver = (
 	ctx: Asker,

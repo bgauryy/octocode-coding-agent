@@ -43,7 +43,7 @@ function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjecti
 	const { session } = host;
 	return (
 		estimateLeafContextTokens(projection, session.sessionManager).tokens +
-		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations)
+		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations())
 	);
 }
 
@@ -92,7 +92,7 @@ export function installAgentInputPreparation(host: AgentHooksHost): void {
 		previousInputSelected?.(batch);
 	};
 	agent.prepareInput = async (batch, signal, commit) => {
-		const gated = session.extensionRunner.hasHandlers("user_input");
+		const gated = session.featureHost.hasHandlers("user_input");
 		let blocked = false;
 		let accepted = false;
 		const stop = () => {
@@ -108,7 +108,7 @@ export function installAgentInputPreparation(host: AgentHooksHost): void {
 			inputs.deleteUserInput(message);
 			if (gated && signal?.aborted) return stop();
 			const verdict = gated
-				? await session.extensionRunner.emitUserInput({
+				? await session.featureHost.emitUserInput({
 						type: "user_input",
 						text: input.text,
 						images: input.images,
@@ -211,7 +211,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 
 		// The selection stays in agent state; only this request uses the routed model. A routing
 		// failure rejects, which ends the run with an error response. Only messages the user wrote
-		// start a turn; extension messages can follow them, e.g. from before_agent_start.
+		// start a turn; feature messages can follow them, e.g. from before_agent_start.
 		const lastResponse = context.messages.findLastIndex((message) => message.role === "assistant");
 		const userTurn = context.messages.slice(lastResponse + 1).some((message) => message.role === "user");
 		const state = getVirtualModelState(session.sessionManager.getBranch(), model.provider, model.id);
@@ -292,7 +292,7 @@ function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<Ag
 			},
 		});
 		// Producers whose sections change during a run (MCP blocks and status) update them for this turn.
-		await session.extensionRunner.emit({ type: "turn_prompt", systemPromptOptions: options });
+		await session.featureHost.emit({ type: "turn_prompt", systemPromptOptions: options });
 		const updateMessage = tools.preparePromptAndToolLoadout(options, nextContext.messages);
 		// Keep session.systemPrompt and ctx.getSystemPrompt() in step with what the provider sees.
 		tools.runSystemPromptOptions = options;
@@ -319,7 +319,7 @@ export function installHiddenDeclarationsProjection(host: AgentHooksHost): void 
 	const previousTransformContext = agent.transformContext;
 	agent.transformContext = async (messages, signal) => {
 		const transformed = previousTransformContext ? await previousTransformContext(messages, signal) : messages;
-		return withoutHiddenDeclarations(transformed, host.tools.hiddenDeclarations);
+		return withoutHiddenDeclarations(transformed, host.tools.hiddenDeclarations(transformed));
 	};
 }
 
@@ -331,7 +331,7 @@ export function installHiddenDeclarationsProjection(host: AgentHooksHost): void 
  * in place. The forced text is a rendering of the current prompt, so the transcript keeps
  * its structured sections and the request is projected instead: the system messages
  * collapse into one head holding the forced text and the current tools. Runs after the
- * `context` extension handlers.
+ * `context` feature handlers.
  */
 export function installForcedPromptProjection(host: AgentHooksHost): void {
 	const agent = host.session.agent;

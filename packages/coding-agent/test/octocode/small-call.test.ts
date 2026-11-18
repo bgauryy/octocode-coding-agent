@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { callSmallModel } from "../../src/octocode/subagents/small-call.ts";
 
 const model = (id: string, input: number) => ({
@@ -18,10 +18,10 @@ const ctx = (available: unknown[], auth: { ok: boolean } = { ok: true }) =>
 	({
 		model: parent,
 		modelRegistry: { getAvailable: () => available, getApiKeyAndHeaders: async () => ({ ...auth, apiKey: "k" }) },
-	}) as unknown as ExtensionContext;
+	}) as unknown as FeatureContext;
 
 const call = (
-	context: ExtensionContext,
+	context: FeatureContext,
 	options: { fallbackToSession?: boolean } = {},
 	reply = fauxAssistantMessage("ok"),
 ) => {
@@ -94,7 +94,7 @@ describe("callSmallModel", () => {
 		});
 		expect(result).toEqual({ error: "network" });
 		expect(
-			await callSmallModel({ model: undefined } as unknown as ExtensionContext, {
+			await callSmallModel({ model: undefined } as unknown as FeatureContext, {
 				text: "",
 				signal: new AbortController().signal,
 				maxTokens: 8,

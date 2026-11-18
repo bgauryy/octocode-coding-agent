@@ -4,6 +4,8 @@ import {
 	ApplicationCommandSchema,
 	applicationCommandFingerprint,
 	parseApplicationFrame,
+	isPendingApplicationPhase,
+	isTerminalApplicationPhase,
 	parseApplicationTool,
 } from "../src/application.ts";
 it("validates model input capabilities and clearing a model in stream events", () => {
@@ -170,6 +172,18 @@ it("validates an answer to a blocking dialog: one choice or one text, never both
 	expect(applicationCommandFingerprint({ ...base, choice: "Deny" } as never)).not.toBe(a);
 });
 
+it("validates a hold on a blocking dialog: only the dialog id, and its fingerprint differs from an answer's", () => {
+	const hold = { id: "req", sessionId: "session", action: "hold", dialogId: "d1" };
+	expect(Value.Check(ApplicationCommandSchema, hold)).toBe(true);
+	expect(Value.Check(ApplicationCommandSchema, { ...hold, dialogId: undefined })).toBe(false);
+	expect(Value.Check(ApplicationCommandSchema, { ...hold, dialogId: "" })).toBe(false);
+	expect(Value.Check(ApplicationCommandSchema, { ...hold, choice: "a" })).toBe(false);
+	expect(JSON.parse(applicationCommandFingerprint(hold as never))).toEqual(hold);
+	expect(applicationCommandFingerprint({ ...hold, dialogId: "d2" } as never)).not.toBe(
+		applicationCommandFingerprint(hold as never),
+	);
+});
+
 it("carries an answerable dialog in awaiting: id, options and whether text is accepted; older hosts omit them", () => {
 	const frame = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
 	const answerable = {
@@ -189,4 +203,47 @@ it("carries an answerable dialog in awaiting: id, options and whether text is ac
 			event: { type: "session.awaiting", awaiting: { ...answerable, options: Array(51).fill("x") } },
 		}),
 	).toBeUndefined();
+});
+
+it("carries the session phase in events and snapshots; terminal and pending phases are told apart", () => {
+	const frame = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
+	const waiting = { state: "waiting", agents: 1, queued: 0, bash: 0, external: 0 } as const;
+	expect(
+		parseApplicationFrame({ ...frame, event: { type: "session.phase", phase: waiting, jobStartedAt: 7 } }),
+	).toBeDefined();
+	expect(
+		parseApplicationFrame({
+			...frame,
+			event: { type: "session.phase", phase: { state: "failed", error: "x".repeat(301) } },
+		}),
+	).toBeUndefined();
+	expect(
+		parseApplicationFrame({
+			...frame,
+			type: "snapshot",
+			snapshot: {
+				sessionId: "s",
+				messages: [],
+				streaming: false,
+				steering: [],
+				followUp: [],
+				receipts: [],
+				capabilities: [],
+				phase: { state: "scheduled", timers: 1, id: "t1", dueAt: 9 },
+			},
+		}),
+	).toBeDefined();
+	expect(
+		[waiting, { state: "resuming" }, { state: "scheduled", timers: 1, id: "t" }].map((p) =>
+			isPendingApplicationPhase(p as never),
+		),
+	).toEqual([true, true, true]);
+	expect(
+		[{ state: "done" }, { state: "idle" }, { state: "stopped", open: ["B1"] }, { state: "failed", error: "e" }].map(
+			(p) => isTerminalApplicationPhase(p as never),
+		),
+	).toEqual([true, true, true, true]);
+	expect(isTerminalApplicationPhase(waiting)).toBe(false);
+	expect(isPendingApplicationPhase({ state: "working" })).toBe(false);
+	expect(isTerminalApplicationPhase({ state: "blocked", title: "q" })).toBe(false);
 });

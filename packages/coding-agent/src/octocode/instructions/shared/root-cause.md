@@ -1,1 +1,0 @@
-- Trace bugs to their owning cause; test unclear causes against their strongest rival and name what would disprove them. After failure, change approach; check existing effects before retrying. Report blockers without hiding errors.

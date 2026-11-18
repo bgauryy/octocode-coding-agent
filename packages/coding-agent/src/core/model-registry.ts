@@ -45,7 +45,7 @@ export type ResolvedRequestAuth =
 	| { ok: false; error: string };
 
 /**
- * Synchronous compatibility facade exposed to extensions.
+ * Synchronous compatibility facade exposed to features.
  * Coding-agent internals use ModelRuntime directly.
  */
 export class ModelRegistry {

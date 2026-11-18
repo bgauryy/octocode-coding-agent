@@ -1,6 +1,6 @@
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
-/** A warning or error the child's extensions showed (`notify` with `notifyType` warning or error): the child has no screen, the parent keeps them. Whole, whatever its length. */
+/** A warning or error the child's features showed (`notify` with `notifyType` warning or error): the child has no screen, the parent keeps them. Whole, whatever its length. */
 interface ChildNotice {
 	level: "warning" | "error";
 	text: string;

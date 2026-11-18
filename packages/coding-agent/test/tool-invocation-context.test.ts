@@ -1,10 +1,10 @@
 import { expect, it } from "vitest";
 import { wrapToolDefinition } from "../src/core/tools/tool-definition-wrapper.ts";
-import type { ExtensionToolContext } from "../src/core/features/types.ts";
+import type { ToolContext } from "../src/core/features/types.ts";
 import { Type } from "typebox";
 
 it("provides immutable execution identity on a fresh context and revokes it after completion", async () => {
-	const supplied = {} as ExtensionToolContext;
+	const supplied = {} as ToolContext;
 	let captured: any;
 	let copied: any;
 	const params = { nested: { value: "original" } };
@@ -50,7 +50,7 @@ it("isolates parallel and nested calls and revokes identity on rejection", async
 				throw new Error("expected");
 			},
 		},
-		() => ({}) as ExtensionToolContext,
+		() => ({}) as ToolContext,
 	);
 	const a = tool.execute("a", {}, undefined).catch(() => undefined),
 		b = tool.execute("a/1", {}, undefined).catch(() => undefined);
@@ -87,7 +87,7 @@ it.each(["cycle", "typed", "function", "deep"])(
 					return { content: [], details: {} };
 				},
 			},
-			() => ({}) as ExtensionToolContext,
+			() => ({}) as ToolContext,
 		);
 		await tool.execute("custom", input, undefined);
 		expect(called).toBe(true);

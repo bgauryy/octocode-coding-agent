@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { realmCommand } from "../../src/octocode/realm/command.ts";
 import { buildRealms, findRealm, type RealmFolder, type RealmSession } from "../../src/octocode/realm/model.ts";
@@ -51,7 +51,7 @@ interface ContextOptions {
 	hasUI?: boolean;
 	idle?: boolean;
 	select?: (title: string, options: string[]) => Promise<string | undefined>;
-	pickSession?: NonNullable<ExtensionCommandContext["ui"]["pickSession"]>;
+	pickSession?: NonNullable<CommandContext["ui"]["pickSession"]>;
 }
 
 function contextAt(cwd: string, options: ContextOptions = {}) {
@@ -71,7 +71,7 @@ function contextAt(cwd: string, options: ContextOptions = {}) {
 		isIdle: () => options.idle ?? true,
 		newSession,
 		switchSession,
-	} as unknown as ExtensionCommandContext;
+	} as unknown as CommandContext;
 	return { ctx, newSession, switchSession, select, confirm };
 }
 

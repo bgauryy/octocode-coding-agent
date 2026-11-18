@@ -73,7 +73,8 @@ function startTerminal(): Harness {
 	return harness;
 }
 
-const count = (writes: string[]) => writes.filter((write) => write === ENABLE).length;
+// Start writes the enable sequence together with the window-title push, so count writes that carry it.
+const count = (writes: string[]) => writes.filter((write) => write.includes(ENABLE)).length;
 
 describe("ProcessTerminal bracketed paste re-arm", () => {
 	let fake: FakeTmux;

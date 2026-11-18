@@ -14,7 +14,6 @@ export type ConfigKind =
 	| "systemPrompt"
 	| "appendSystemPrompt"
 	| "keybinding"
-	| "extension"
 	| "agent"
 	| "hook"
 	| "plugin"

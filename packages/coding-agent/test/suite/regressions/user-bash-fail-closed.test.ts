@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSessionRuntime } from "../../../src/core/agent-session-runtime.ts";
-import type { ExtensionAPI, UserBashEvent, UserBashEventResult } from "../../../src/core/features/types.ts";
+import type { FeatureSetup, UserBashEvent, UserBashEventResult } from "../../../src/core/features/types.ts";
 import { setupEditorSubmitHandler } from "../../../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { runRpcMode } from "../../../src/modes/rpc/rpc-mode.ts";
 import { createHarness, type Harness } from "../harness.ts";
 import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 const rpcIo = vi.hoisted(() => ({
 	outputLines: [] as string[],
@@ -86,13 +87,13 @@ function createRuntimeHost(harness: Harness): AgentSessionRuntime {
 	} as unknown as AgentSessionRuntime;
 }
 
-async function startRpcHarness(extension: (api: ExtensionAPI) => void): Promise<{
+async function startRpcHarness(feature: (api: FeatureSetup) => void): Promise<{
 	harness: Harness;
 	send(command: Record<string, unknown>): void;
 	cleanup(): void;
 }> {
 	const listenerSnapshot = takeListenerSnapshot();
-	const harness = await createHarness({ extensionFactories: [extension] });
+	const harness = await createHarness({ features: testFeatures([feature]) });
 	const cleanup = () => {
 		harness.cleanup();
 		restoreListeners(listenerSnapshot);
@@ -138,14 +139,14 @@ const localResult = {
 
 const rpcCases: Array<{
 	name: string;
-	extension: (api: ExtensionAPI) => void;
+	feature: (api: FeatureSetup) => void;
 	error?: string;
 	executeCount: number;
 }> = [
 	{
 		name: "fails the request without executing bash when a handler throws",
-		extension: (api) => {
-			api.on("user_bash", async () => {
+		feature: (api) => {
+			api.bus.on("user_bash", async () => {
 				throw new Error("Routing failed");
 			});
 		},
@@ -154,16 +155,16 @@ const rpcCases: Array<{
 	},
 	{
 		name: "fails the request without executing bash when a handler returns an empty result",
-		extension: (api) => {
-			api.on("user_bash", async () => ({}) as unknown as UserBashEventResult);
+		feature: (api) => {
+			api.bus.on("user_bash", async () => ({}) as unknown as UserBashEventResult);
 		},
 		error: "Invalid user_bash handler result",
 		executeCount: 0,
 	},
 	{
 		name: "executes bash normally when a handler returns undefined",
-		extension: (api) => {
-			api.on("user_bash", async () => undefined);
+		feature: (api) => {
+			api.bus.on("user_bash", async () => undefined);
 		},
 		executeCount: 1,
 	},
@@ -175,8 +176,8 @@ afterEach(() => {
 });
 
 describe("RPC user_bash failure handling", () => {
-	test.each(rpcCases)("$name", async ({ extension, error, executeCount }) => {
-		const rpc = await startRpcHarness(extension);
+	test.each(rpcCases)("$name", async ({ feature, error, executeCount }) => {
+		const rpc = await startRpcHarness(feature);
 		const executeBash = vi.spyOn(rpc.harness.session, "executeBash").mockResolvedValue(localResult);
 
 		try {
@@ -221,14 +222,14 @@ describe("Interactive user_bash failure handling", () => {
 	])("fails closed for %s when a handler returns an empty result", async (input, excludeFromContext) => {
 		const events: UserBashEvent[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("user_bash", async (event) => {
+					api.bus.on("user_bash", async (event) => {
 						events.push(event);
 						return {} as unknown as UserBashEventResult;
 					});
 				},
-			],
+			]),
 		});
 		const executeBash = vi.spyOn(harness.session, "executeBash").mockResolvedValue(localResult);
 		const context: InteractiveBashContext = {

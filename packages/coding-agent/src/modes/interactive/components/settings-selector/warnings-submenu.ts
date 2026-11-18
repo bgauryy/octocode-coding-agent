@@ -1,13 +1,13 @@
-import { Container, type SettingItem, SettingsList } from "@octocodeai/octocode-tui";
+import { Container, type SettingItem } from "@octocodeai/octocode-tui";
+import { SettingsListView } from "../settings-list-view.ts";
 import { SETTINGS_DEFAULTS } from "../../../../core/settings-defaults.ts";
 import type { WarningSettings } from "../../../../core/settings-manager.ts";
-import { getSettingsListTheme } from "../../../../theme/theme.ts";
 
 /**
  * A submenu component for selecting from a list of options.
  */
 export class WarningSettingsSubmenu extends Container {
-	private settingsList: SettingsList;
+	private settingsList: SettingsListView;
 	private state: WarningSettings;
 
 	constructor(warnings: WarningSettings, onChange: (warnings: WarningSettings) => void, onCancel: () => void) {
@@ -26,10 +26,9 @@ export class WarningSettingsSubmenu extends Container {
 			},
 		];
 
-		this.settingsList = new SettingsList(
+		this.settingsList = new SettingsListView(
 			items,
 			Math.min(items.length, 10),
-			getSettingsListTheme(),
 			(id, newValue) => {
 				switch (id) {
 					case "anthropic-extra-usage":

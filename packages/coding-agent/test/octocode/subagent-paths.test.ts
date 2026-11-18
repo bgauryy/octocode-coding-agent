@@ -14,7 +14,7 @@ import { namedParent } from "../../src/octocode/team/session/parent.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { AGENT_ID_ENV, PARENT_ID_ENV, PARENT_PID_ENV } from "../../src/octocode/team/store/env.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
@@ -336,9 +336,9 @@ describe("releasing when the run ends", () => {
 
 	it("when setup fails after the claim", async () => {
 		const s = setup();
-		const { events } = s.api;
+		const { channels: events } = s.api;
 		Object.assign(s.api, {
-			events: {
+			channels: {
 				...events,
 				emit: () => {
 					throw new Error("event bus broke");
@@ -346,7 +346,7 @@ describe("releasing when the run ends", () => {
 			},
 		});
 		await expect(s.run({ task: "report back", paths: ["a.ts"] })).rejects.toThrow("event bus broke");
-		Object.assign(s.api, { events });
+		Object.assign(s.api, { channels: events });
 		expect(s.leases()).toEqual([]);
 		expect(s.rows()).toEqual([]);
 	});

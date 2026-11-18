@@ -14,24 +14,17 @@ import {
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { theme } from "../../../theme/theme.ts";
-import { createResultFallback, rendererFailure, rendererFailureText } from "./tool-execution/fallback.ts";
+import { callFallback, rendererFailure, rendererFailureRow, resultFallback } from "./tool-execution/fallback.ts";
 import { withGenericRenderers } from "./tool-execution/generic.ts";
 import { purposeRows, reasonRow, toolArgsForDisplay } from "../../../octocode/ui/reason-row.ts";
+import { argsKey, hasHiddenContent } from "./tool-execution/hidden.ts";
 import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 import { displayRenderers, rowDisplay } from "./tool-execution/display.ts";
 import { noImages, updateImageRows, type ImageRows } from "./tool-execution/images.ts";
+import * as life from "./tool-execution/state.ts";
 import { resultPurposeData, type ToolDisplay } from "@octocodeai/octocode-contracts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
-
-/** Arguments as comparable text; undefined when they cannot be serialized, which always redraws. */
-function argsKey(args: unknown): string | undefined {
-	try {
-		return JSON.stringify(args);
-	} catch {
-		return undefined;
-	}
-}
 
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
@@ -55,14 +48,21 @@ export class ToolExecutionComponent extends Container {
 	private showImages: boolean;
 	private imageWidthCells: number;
 	private outputPad: number;
-	private isPartial = true;
 	private toolDefinition?: ToolRenderers;
 	private ui: TUI;
 	private cwd: string;
-	private executionStarted = false;
-	private argsComplete = false;
-	private result?: ToolExecutionResult;
+	/** The call's lifecycle; every flag the renderers see is derived from it. */
+	private lifecycle: life.ToolPhase = life.initialToolPhase;
+	/** Cache of the last display build: true when it drew nothing. */
 	private hideComponent = false;
+
+	private get result(): ToolExecutionResult | undefined {
+		return life.phaseResult(this.lifecycle);
+	}
+
+	private get isPartial(): boolean {
+		return life.isPartialPhase(this.lifecycle);
+	}
 
 	constructor(
 		toolName: string,
@@ -102,7 +102,8 @@ export class ToolExecutionComponent extends Container {
 
 		// Always create all shell variants. contentBox is used for default renderer-based composition.
 		// selfRenderContainer is used when the tool renders its own framing.
-		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
+		// The band starts at the header row and ends at the last body row: no vertical padding.
+		this.contentBox = new Box(1, 0, (text: string) => theme.bg("toolPendingBg", text));
 		this.selfRenderContainer = new Container();
 
 		this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
@@ -142,8 +143,8 @@ export class ToolExecutionComponent extends Container {
 			lastComponent,
 			state: this.rendererState,
 			cwd: this.cwd,
-			executionStarted: this.executionStarted,
-			argsComplete: this.argsComplete,
+			executionStarted: life.phaseExecutionStarted(this.lifecycle),
+			argsComplete: life.phaseArgsComplete(this.lifecycle),
 			isPartial: this.isPartial,
 			expanded: this.expanded,
 			showImages: this.showImages,
@@ -154,19 +155,36 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private createCallFallback(): Component {
-		return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded), 0, 0);
+		return callFallback(this.toolName, this.args, this.getRenderContext(undefined));
 	}
 
 	private createResultFallback(): Component | undefined {
-		return createResultFallback(this.getTextOutput(), this.expanded);
+		return resultFallback(this.getTextOutput(), this.getRenderContext(undefined));
 	}
 
 	private createResultRegion(component: Component): MouseRegion {
 		return new MouseRegion(component, (event) => {
-			if (!this.result || event.type !== "click" || event.button !== "left") return undefined;
+			if (
+				event.type !== "click" ||
+				event.button !== "left" ||
+				!hasHiddenContent({
+					hasResult: this.result !== undefined,
+					generic: this.generic,
+					toolName: this.toolName,
+					args: this.args,
+				})
+			)
+				return undefined;
 			this.setExpanded(!this.expanded);
 			return { handled: true };
 		});
+	}
+
+	private transition(next: life.ToolPhase): void {
+		if (life.samePhase(this.lifecycle, next)) return;
+		this.lifecycle = next;
+		this.updateDisplay();
+		this.ui.requestRender();
 	}
 
 	/** A streamed reply repeats every call's arguments on each delta: only a call whose arguments changed is redrawn. */
@@ -179,15 +197,11 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	markExecutionStarted(): void {
-		this.executionStarted = true;
-		this.updateDisplay();
-		this.ui.requestRender();
+		this.transition(life.executionStarted(this.lifecycle));
 	}
 
 	setArgsComplete(): void {
-		this.argsComplete = true;
-		this.updateDisplay();
-		this.ui.requestRender();
+		this.transition(life.argsCompleted(this.lifecycle));
 	}
 
 	/** The host's display of the call; a row without one draws the display it builds from the same result. */
@@ -196,8 +210,7 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	updateResult(result: ToolExecutionResult, isPartial = false): void {
-		this.result = result;
-		this.isPartial = isPartial;
+		this.lifecycle = life.resultReceived(this.lifecycle, result, isPartial);
 		this.updateDisplay();
 	}
 
@@ -235,8 +248,8 @@ export class ToolExecutionComponent extends Container {
 		try {
 			return this.renderContent(width);
 		} catch (error) {
-			const text = rendererFailureText(error, this.toolName, this.args, this.getTextOutput(), this.expanded);
-			return new Text(text, this.outputPad, 0).render(width);
+			const context = this.getRenderContext(undefined);
+			return rendererFailureRow(error, this.toolName, context, this.getTextOutput(), this.outputPad).render(width);
 		}
 	}
 
@@ -291,8 +304,6 @@ export class ToolExecutionComponent extends Container {
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
 				renderContainer.setPaddingX(this.outputPad);
-				// Vertical padding frames a background band; a theme without tool backgrounds would only get blank rows.
-				renderContainer.setPaddingY(theme.paintsBackground("toolPendingBg") ? 1 : 0);
 			}
 			renderContainer.clear();
 
@@ -308,7 +319,7 @@ export class ToolExecutionComponent extends Container {
 					hasContent = true;
 				} catch (error) {
 					this.callRendererComponent = undefined;
-					const fallback = rendererFailure("renderCall", error, this.createCallFallback());
+					const fallback = callFallback(this.toolName, this.args, this.getRenderContext(undefined), error);
 					renderContainer.addChild(this.createResultRegion(fallback));
 					hasContent = true;
 				}
@@ -352,7 +363,7 @@ export class ToolExecutionComponent extends Container {
 						hasContent = true;
 					} catch (error) {
 						this.resultRendererComponent = undefined;
-						const fallback = rendererFailure("renderResult", error, this.createResultFallback());
+						const fallback = rendererFailure("Result", error, this.getTextOutput(), this.getRenderContext(undefined));
 						renderContainer.addChild(this.createResultRegion(fallback));
 						hasContent = true;
 					}

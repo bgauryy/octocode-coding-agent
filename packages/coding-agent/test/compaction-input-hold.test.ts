@@ -7,8 +7,9 @@ import {
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../src/core/features/index.ts";
+import type { FeatureSetup } from "../src/core/features/index.ts";
 import { createHarness, getMessageText, type Harness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const harnesses: Harness[] = [];
 afterEach(() => {
@@ -468,22 +469,22 @@ describe("overflow recovery: input that arrives while the summary is running", (
 describe("extension hooks that fire while compaction runs", () => {
 	it("holds sendUserMessage and sendMessage from session_before_compact until the compaction ends, and delivers each once", async () => {
 		const errors: string[] = [];
-		let api: ExtensionAPI | undefined;
+		let api: FeatureSetup | undefined;
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
-			extensionFactories: [
-				(extension) => {
-					api = extension;
-					extension.on("session_before_compact", async () => {
-						extension.sendUserMessage("from the hook");
-						await extension.sendMessage(
+			features: testFeatures([
+				(feature) => {
+					api = feature;
+					feature.bus.on("session_before_compact", async () => {
+						feature.session.sendUserMessage("from the hook");
+						await feature.session.sendMessage(
 							{ customType: "hook-note", content: "hook note", display: true },
 							{ triggerTurn: false },
 						);
 						return undefined;
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -494,7 +495,7 @@ describe("extension hooks that fire while compaction runs", () => {
 		]);
 		await harness.session.prompt("seed one");
 		await harness.session.prompt("seed two");
-		harness.session.extensionRunner.onError((error) => errors.push(error.error));
+		harness.session.featureHost.onError((error) => errors.push(error.error));
 		const gate = gateSummary(harness);
 		const compacting = harness.session.compact();
 		await gate.started;
@@ -515,25 +516,25 @@ describe("the compact tool's queued request (what `requests.settle` does when th
 		let arm = () => {};
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
-			extensionFactories: [
-				(extension) => {
+			features: testFeatures([
+				(feature) => {
 					let requested = true;
 					arm = () => (requested = false);
-					extension.on("agent_settled", async (_event, ctx) => {
+					feature.bus.on("agent_settled", async (_event, ctx) => {
 						if (requested) return;
 						requested = true;
 						// As `CompactRequests.settle` does: compact in the background, then resume (or report) with a message.
 						ctx.compact({
 							onComplete: () => {
 								resumes.push("done");
-								void extension.sendMessage(
+								void feature.session.sendMessage(
 									{ customType: "resume", content: "RESUME-TASK", display: false },
 									{ triggerTurn: true },
 								);
 							},
 							onError: () => {
 								resumes.push("failed");
-								void extension.sendMessage(
+								void feature.session.sendMessage(
 									{ customType: "resume", content: "COMPACT-FAILED", display: false },
 									{ triggerTurn: false },
 								);
@@ -541,7 +542,7 @@ describe("the compact tool's queued request (what `requests.settle` does when th
 						});
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		const requests: Request[] = [];

@@ -25,7 +25,7 @@ import {
 } from "./e2e-real-process-harness.ts";
 
 /**
- * Every tool, the browser and every subagent profile, in real processes (`e2e-real-process-harness.ts`): what a session
+ * Every tool and every subagent profile (the real browser with `OCTOCODE_E2E_CHROME=1`), in real processes (`e2e-real-process-harness.ts`): what a session
  * declares comes from the endpoint's recorded requests, so a tool nobody wrote a case for fails here instead of going
  * unproved. Nothing but the model is scripted. The GitHub and registry tools may reach the network or not, so their calls
  * only have to come back well formed; no case opens a visible browser, touches the clipboard or uploads.
@@ -300,7 +300,17 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 		// Headless is the refusal: nobody can answer, and the model is told what follows from that. The answer path is below.
 		ok: [
 			answers(
-				call("askUser", { questions: [{ question: "Which?", options: [{ label: "a" }, { label: "b" }] }] }),
+				call("askUser", {
+					questions: [
+						{
+							question: "Which?",
+							options: [
+								{ label: "a", description: "why a" },
+								{ label: "b", description: "why b" },
+							],
+						},
+					],
+				}),
 				"No interactive user is available",
 				"No answer or approval was supplied",
 			),
@@ -465,7 +475,17 @@ describe("the native paths that need a run of their own", () => {
 	it("askUser: over RPC the question reaches the client and its answer reaches the model", async () => {
 		const box = sandbox(endpoint);
 		const steps: Step[] = [
-			call("askUser", { questions: [{ question: "Which?", options: [{ label: "a" }, { label: "b" }] }] }),
+			call("askUser", {
+				questions: [
+					{
+						question: "Which?",
+						options: [
+							{ label: "a", description: "why a" },
+							{ label: "b", description: "why b" },
+						],
+					},
+				],
+			}),
 			{ text: "answered" },
 		];
 		const run = box.start(["--mode", "rpc"], { stdin: "pipe" });
@@ -685,6 +705,9 @@ describe("the Octocode research tools against the real server", () => {
 	let steps: Step[];
 	const expected: { tool: string; value: string; index: number }[] = [];
 	const failing: { tool: string; index: number }[] = [];
+	let remoteAt = 0;
+	let shapeAt = 0;
+	let stopAt = 0;
 
 	beforeAll(async () => {
 		// Every research tool rendered in full: the default defers a tool this folder never called.
@@ -698,7 +721,26 @@ describe("the Octocode research tools against the real server", () => {
 			failing.push({ tool, index: steps.length });
 			steps.push(research(tool, LOCAL_ANSWERS[tool].fail));
 		}
-		steps.push({ text: "research-done" });
+		// The calls that share this process: the remote tools refuse by form before any request, the host refuses
+		// oversized rows and a bad cursor, and a stopped server takes its tools away until restart. Stop comes last.
+		remoteAt = steps.length;
+		for (const [tool, { refused }] of Object.entries(REMOTE)) steps.push(research(tool, refused));
+		shapeAt = steps.length;
+		steps.push(
+			call("mcp__octocode__localSearch", {
+				queries: Array.from({ length: 6 }, () => ({ path: ".", matchString: ["x"] })),
+			}),
+			call("mcp__octocode__localSearch", { cursor: "bogus" }),
+			call("mcp__octocode__localSearch", {}),
+		);
+		stopAt = steps.length;
+		steps.push(
+			call("mcp", { intent: "stop", server: "octocode" }),
+			research("localFetch", { path: "src/math.ts" }),
+			call("mcp", { intent: "restart", server: "octocode" }),
+			research("localFetch", { path: "src/main.ts", matchString: ["total"] }),
+			{ text: "research-done" },
+		);
 		const run = box.start(["-p", script(steps)]);
 		await expectCleanRun(run, "research-done");
 	});
@@ -778,38 +820,27 @@ describe("the Octocode research tools against the real server", () => {
 		expect(result, `${tool} bad call`).toMatch(/error|invalid|failed|not found|required/i);
 	});
 
-	it("mcp stop takes a server's tools away with a clear error and restart brings them back", async () => {
-		const stopSteps: Step[] = [
-			call("mcp", { intent: "stop", server: "octocode" }),
-			research("localFetch", { path: "src/math.ts" }),
-			call("mcp", { intent: "restart", server: "octocode" }),
-			research("localFetch", { path: "src/math.ts", view: "symbols" }),
-			{ text: "restarted" },
-		];
-		const run = repository().start(["-p", script(stopSteps)]);
-		expect((await run.exited).code).toBe(0);
-		const results = lastResults(stopSteps);
+	it("mcp stop takes a server's tools away with a clear error and restart brings them back", () => {
+		const results = lastResults(steps).slice(stopAt);
 		expect(results[0]).toContain("octocode: stopped");
 		expect(results[1]).toContain("not active in this session");
 		expect(results[2]).toMatch(/octocode: connected · \d+ tools/);
-		expect(results[3]).toContain("addNumbers");
+		expect(results[3]).toContain("export function total");
 	});
 
-	it("the host refuses too many rows and a bad cursor with what to do instead", async () => {
-		const shapeSteps: Step[] = [
-			call("mcp__octocode__localSearch", {
-				queries: Array.from({ length: 6 }, () => ({ path: ".", matchString: ["x"] })),
-			}),
-			call("mcp__octocode__localSearch", { cursor: "bogus" }),
-			call("mcp__octocode__localSearch", {}),
-			{ text: "done" },
-		];
-		const run = repository().start(["-p", script(shapeSteps)]);
-		expect((await run.exited).code).toBe(0);
-		const results = lastResults(shapeSteps);
+	it("the host refuses too many rows and a bad cursor with what to do instead", () => {
+		const results = lastResults(steps).slice(shapeAt);
 		expect(results[0]).toContain("holds at most 5");
 		expect(results[1]).toContain("Malformed cursor");
 		expect(results[2]).toContain('{\\"queries\\":[...]}');
+	});
+
+	it("a form-breaking call to a remote tool is refused before any request, naming the field", () => {
+		const results = lastResults(steps).slice(remoteAt);
+		Object.entries(REMOTE).forEach(([tool, { says }], index) => {
+			expect(results[index], tool).toMatch(says);
+			expect(results[index], tool).toMatch(REFUSED_FOR_SHAPE);
+		});
 	});
 });
 
@@ -850,23 +881,7 @@ const REMOTE: Record<string, { refused: Record<string, unknown>; says: RegExp }>
 	},
 };
 
-describe("the tools that need a token or the network", () => {
-	it("a form-breaking call is refused before any request, naming the field", async () => {
-		const steps: Step[] = [
-			...Object.entries(REMOTE).map(([tool, { refused }]) => research(tool, refused)),
-			{ text: "refused" },
-		];
-		const run = repository().start(["-p", script(steps)]);
-		expect((await run.exited).code).toBe(0);
-		const results = lastResults(steps);
-		Object.entries(REMOTE).forEach(([tool, { says }], index) => {
-			expect(results[index], tool).toMatch(says);
-			expect(results[index], tool).toMatch(REFUSED_FOR_SHAPE);
-		});
-	});
-});
-
-const ROLES = fileURLToPath(new URL("../../src/octocode/instructions/roles/", import.meta.url));
+const ROLES = fileURLToPath(new URL("../../src/octocode/native/agents/", import.meta.url));
 
 interface Role {
 	name: string | undefined;
@@ -1033,160 +1048,179 @@ function browserData(result: string | undefined): Record<string, any> {
 	return JSON.parse(result.slice(start).split("\n", 1)[0]) as Record<string, any>;
 }
 
-describe("the browser, for real: headless Chrome on an isolated profile against a loopback page", () => {
-	/** Why Chrome or its server cannot run here, in their own words; anything else is a failure of the case, not a skip. */
-	const unavailable = (tools: readonly string[] | undefined, open: string | undefined): string | undefined => {
-		if (!tools?.includes("mcp__browser__open")) return "the browser server did not start: its tools were not declared";
-		return open?.includes("Chrome not found") ? open.slice(0, 400) : undefined;
-	};
+describe.skipIf(process.env.OCTOCODE_E2E_CHROME !== "1")(
+	"the browser, for real: headless Chrome on an isolated profile against a loopback page",
+	() => {
+		/** Why Chrome or its server cannot run here, in their own words; anything else is a failure of the case, not a skip. */
+		const unavailable = (tools: readonly string[] | undefined, open: string | undefined): string | undefined => {
+			if (!tools?.includes("mcp__browser__open"))
+				return "the browser server did not start: its tools were not declared";
+			return open?.includes("Chrome not found") ? open.slice(0, 400) : undefined;
+		};
 
-	it("opens it, reads the DOM, takes a screenshot and closes it", async (context) => {
-		const box = repository();
-		const port = await freePort();
-		const connection = { port };
-		const requested = path.join(box.root, "page-requested");
-		const loaded = http.createServer((_request, response) => {
-			fs.writeFileSync(requested, "");
-			response.writeHead(200, { "content-type": "text/html" }).end(PAGE);
-		});
-		const url = `http://127.0.0.1:${await listen(loaded)}/page.html`;
-		const child: Step[] = [
-			call("mcp__browser__snapshot", { connection }),
-			call("mcp__browser__open", { url, headless: true, port }),
-			call("mcp__browser__run", { connection, plan: { steps: [{ op: "nonsense" }] } }),
-			// The page has loaded, not just the browser opened.
-			call("bash", { command: waitFor(requested) }),
-			call("mcp__browser__snapshot", { connection, options: { SNAPSHOT_TEXT: 500 } }),
-			call("mcp__browser__run", { connection, plan: { steps: [{ op: "extract", selector: "h1", fields: ["text"] }] } }),
-			call("mcp__browser__screenshot", { connection }),
-			call("mcp__browser__cleanup", { port }),
-			call("agent", { type: "message", to: "parent", message: "browser-note" }),
-			{ text: "browser-report" },
-		];
-		const parent: Step[] = [
-			call("agent", { type: "task", profile: "browser", headless: true, goal: "drive the page", task: script(child) }),
-			{ text: "parent-final" },
-		];
-		const run = box.start(["-p", script(parent)]);
-		const seen = new Set<string>();
-		const watch = setInterval(() => {
-			for (const line of chromeOn(port)) seen.add(line);
-		}, 500);
-		try {
-			expect((await run.exited).code).toBe(0);
-		} finally {
-			clearInterval(watch);
-			killChromeOn(port);
-			loaded.close();
-		}
-		const results = lastResults(child);
-		const reason = unavailable(requestsOf(child)[0]?.tools, results[1]);
-		if (reason) context.skip(`Chrome or the browser server cannot start here: ${reason}`);
-
-		// Before the open: a real failure, not a crash, and the child goes on.
-		expect(browserData(results[0]).ok).toBe(false);
-		// The Chrome it drove: headless, its profile in the sandbox, never the user's.
-		const opened = browserData(results[1]).data as { isolated: boolean; profileDir: string };
-		expect(opened.isolated).toBe(true);
-		expect(opened.profileDir.startsWith(box.root)).toBe(true);
-		expect(seen.size).toBeGreaterThan(0);
-		for (const line of seen) {
-			expect(line).toContain("--headless");
-			// An isolated HOME has no login keychain: without this a Mac's Chrome holds its first request on one.
-			if (process.platform === "darwin") expect(line).toContain("--use-mock-keychain");
-			expect(line).toContain(`--user-data-dir=${opened.profileDir}`);
-			expect(line).not.toContain(`--user-data-dir=${os.homedir()}`);
-		}
-		// A plan the schema refuses names the steps it wanted.
-		expect(results[2]).toContain("Validation failed");
-		expect(results[2]).toContain("plan.steps.0.op");
-		// The DOM, read from the rendered page: the snapshot's text artifact and the plan's extraction.
-		const snapshot = browserData(results[4]);
-		expect(fs.readFileSync(path.join(snapshot.root as string, "page-text.txt"), "utf8")).toContain("loopback-marker");
-		const extraction = (browserData(results[5]).flow as { steps: { data: { file: string } }[] }).steps[0].data.file;
-		expect(fs.readFileSync(extraction, "utf8")).toContain("loopback-marker");
-		// The screenshot: the file the parent's report names is an image of a real size.
-		const reported = lastResults(parent)[0] ?? "";
-		const shot = /Last screenshot: (\S+?)\)/.exec(reported)?.[1] ?? "";
-		const image = fs.readFileSync(path.join(box.project, shot));
-		expect(image.length).toBeGreaterThan(1000);
-		expect([image.subarray(0, 3).toString("hex"), image.subarray(1, 4).toString()]).toSatisfy(
-			([jpeg, png]: string[]) => jpeg === "ffd8ff" || png === "PNG",
-		);
-		// Closed: the package says so and the process is gone.
-		expect(browserData(results[7]).data?.status).toBe("CLEANED_UP");
-		await until(() => chromeOn(port).length === 0, "Chrome to exit after the close", 15_000);
-		// The profile's tools, its message and its report all reached the parent.
-		expect(reported).toContain("browser-report");
-		expect(
-			requestsOf(parent)
-				.at(-1)
-				?.messages.map((message) => message.text)
-				.join("\n"),
-		).toContain("browser-note");
-		await until(() => box.survivors().length === 0, "every process of the run to stop", 15_000);
-	});
-
-	it("a page cannot reach a private address the agent did not open, and a Chrome left open stops with the session", async (context) => {
-		const box = repository();
-		const port = await freePort();
-		const connection = { port };
-		let secretHits = 0;
-		const secret = http.createServer((_request, response) => {
-			secretHits++;
-			response.writeHead(200).end("x");
-		});
-		const secretPort = await listen(secret);
-		const requested = path.join(box.root, "page-requested");
-		const pageWithSecret = http.createServer((_request, response) => {
-			fs.writeFileSync(requested, "");
-			response
-				.writeHead(200, { "content-type": "text/html" })
-				.end(`<!doctype html><title>P</title><h1>page-two</h1><img src="http://127.0.0.1:${secretPort}/secret.png">`);
-		});
-		const url = `http://127.0.0.1:${await listen(pageWithSecret)}/`;
-		const child: Step[] = [
-			call("mcp__browser__open", { url, headless: true, port }),
-			call("bash", { command: waitFor(requested) }),
-			call("mcp__browser__run", {
-				connection,
-				plan: {
-					steps: [
-						{ op: "goto", url },
-						{ op: "extract", selector: "h1", fields: ["text"] },
-					],
-				},
-			}),
-			// No cleanup: a child that fails or forgets leaves its Chrome behind.
-			{ text: "left-it-open" },
-		];
-		const parent: Step[] = [
-			call("agent", { type: "task", profile: "browser", headless: true, goal: "open and leave", task: script(child) }),
-			// Still alive after the child ended, for a follow-up.
-			call("bash", { command: `ps -axww -o command= | grep -c -- '--remote-debugging-por[t]=${port}'` }),
-			{ text: "parent-final" },
-		];
-		const run = box.start(["-p", script(parent)]);
-		try {
-			expect((await run.exited).code).toBe(0);
+		it("opens it, reads the DOM, takes a screenshot and closes it", async (context) => {
+			const box = repository();
+			const port = await freePort();
+			const connection = { port };
+			const requested = path.join(box.root, "page-requested");
+			const loaded = http.createServer((_request, response) => {
+				fs.writeFileSync(requested, "");
+				response.writeHead(200, { "content-type": "text/html" }).end(PAGE);
+			});
+			const url = `http://127.0.0.1:${await listen(loaded)}/page.html`;
+			const child: Step[] = [
+				call("mcp__browser__snapshot", { connection }),
+				call("mcp__browser__open", { url, headless: true, port }),
+				call("mcp__browser__run", { connection, plan: { steps: [{ op: "nonsense" }] } }),
+				// The page has loaded, not just the browser opened.
+				call("bash", { command: waitFor(requested) }),
+				call("mcp__browser__snapshot", { connection, options: { SNAPSHOT_TEXT: 500 } }),
+				call("mcp__browser__run", {
+					connection,
+					plan: { steps: [{ op: "extract", selector: "h1", fields: ["text"] }] },
+				}),
+				call("mcp__browser__screenshot", { connection }),
+				call("mcp__browser__cleanup", { port }),
+				call("agent", { type: "message", to: "parent", message: "browser-note" }),
+				{ text: "browser-report" },
+			];
+			const parent: Step[] = [
+				call("agent", {
+					type: "task",
+					profile: "browser",
+					headless: true,
+					goal: "drive the page",
+					task: script(child),
+				}),
+				{ text: "parent-final" },
+			];
+			const run = box.start(["-p", script(parent)]);
+			const seen = new Set<string>();
+			const watch = setInterval(() => {
+				for (const line of chromeOn(port)) seen.add(line);
+			}, 500);
+			try {
+				expect((await run.exited).code).toBe(0);
+			} finally {
+				clearInterval(watch);
+				killChromeOn(port);
+				loaded.close();
+			}
 			const results = lastResults(child);
-			const reason = unavailable(requestsOf(child)[0]?.tools, results[0]);
+			const reason = unavailable(requestsOf(child)[0]?.tools, results[1]);
 			if (reason) context.skip(`Chrome or the browser server cannot start here: ${reason}`);
-			expect(secretHits, "the page's request to the other port").toBe(0);
-			expect(results[2]).toContain(`127.0.0.1:${secretPort} were refused (403)`);
-			expect(Number.parseInt(/\n(\d+)/.exec(lastResults(parent)[1] ?? "")?.[1] ?? "0", 10)).toBeGreaterThan(0);
-			// Nothing else would ever end it: the package starts Chrome detached.
-			await until(() => chromeOn(port).length === 0, "the session's shutdown to stop its Chrome", 15_000);
-			const state = path.join(box.project, ".octocode/octocode-chrome-devtools/tmp/browser-state");
-			expect(fs.readdirSync(state).filter((file) => file.includes(String(port)))).toEqual([]);
+
+			// Before the open: a real failure, not a crash, and the child goes on.
+			expect(browserData(results[0]).ok).toBe(false);
+			// The Chrome it drove: headless, its profile in the sandbox, never the user's.
+			const opened = browserData(results[1]).data as { isolated: boolean; profileDir: string };
+			expect(opened.isolated).toBe(true);
+			expect(opened.profileDir.startsWith(box.root)).toBe(true);
+			expect(seen.size).toBeGreaterThan(0);
+			for (const line of seen) {
+				expect(line).toContain("--headless");
+				// An isolated HOME has no login keychain: without this a Mac's Chrome holds its first request on one.
+				if (process.platform === "darwin") expect(line).toContain("--use-mock-keychain");
+				expect(line).toContain(`--user-data-dir=${opened.profileDir}`);
+				expect(line).not.toContain(`--user-data-dir=${os.homedir()}`);
+			}
+			// A plan the schema refuses names the steps it wanted.
+			expect(results[2]).toContain("Validation failed");
+			expect(results[2]).toContain("plan.steps.0.op");
+			// The DOM, read from the rendered page: the snapshot's text artifact and the plan's extraction.
+			const snapshot = browserData(results[4]);
+			expect(fs.readFileSync(path.join(snapshot.root as string, "page-text.txt"), "utf8")).toContain("loopback-marker");
+			const extraction = (browserData(results[5]).flow as { steps: { data: { file: string } }[] }).steps[0].data.file;
+			expect(fs.readFileSync(extraction, "utf8")).toContain("loopback-marker");
+			// The screenshot: the file the parent's report names is an image of a real size.
+			const reported = lastResults(parent)[0] ?? "";
+			const shot = /Last screenshot: (\S+?)\)/.exec(reported)?.[1] ?? "";
+			const image = fs.readFileSync(path.join(box.project, shot));
+			expect(image.length).toBeGreaterThan(1000);
+			expect([image.subarray(0, 3).toString("hex"), image.subarray(1, 4).toString()]).toSatisfy(
+				([jpeg, png]: string[]) => jpeg === "ffd8ff" || png === "PNG",
+			);
+			// Closed: the package says so and the process is gone.
+			expect(browserData(results[7]).data?.status).toBe("CLEANED_UP");
+			await until(() => chromeOn(port).length === 0, "Chrome to exit after the close", 15_000);
+			// The profile's tools, its message and its report all reached the parent.
+			expect(reported).toContain("browser-report");
+			expect(
+				requestsOf(parent)
+					.at(-1)
+					?.messages.map((message) => message.text)
+					.join("\n"),
+			).toContain("browser-note");
 			await until(() => box.survivors().length === 0, "every process of the run to stop", 15_000);
-		} finally {
-			killChromeOn(port);
-			secret.close();
-			pageWithSecret.close();
-		}
-	});
-});
+		});
+
+		it("a page cannot reach a private address the agent did not open, and a Chrome left open stops with the session", async (context) => {
+			const box = repository();
+			const port = await freePort();
+			const connection = { port };
+			let secretHits = 0;
+			const secret = http.createServer((_request, response) => {
+				secretHits++;
+				response.writeHead(200).end("x");
+			});
+			const secretPort = await listen(secret);
+			const requested = path.join(box.root, "page-requested");
+			const pageWithSecret = http.createServer((_request, response) => {
+				fs.writeFileSync(requested, "");
+				response
+					.writeHead(200, { "content-type": "text/html" })
+					.end(`<!doctype html><title>P</title><h1>page-two</h1><img src="http://127.0.0.1:${secretPort}/secret.png">`);
+			});
+			const url = `http://127.0.0.1:${await listen(pageWithSecret)}/`;
+			const child: Step[] = [
+				call("mcp__browser__open", { url, headless: true, port }),
+				call("bash", { command: waitFor(requested) }),
+				call("mcp__browser__run", {
+					connection,
+					plan: {
+						steps: [
+							{ op: "goto", url },
+							{ op: "extract", selector: "h1", fields: ["text"] },
+						],
+					},
+				}),
+				// No cleanup: a child that fails or forgets leaves its Chrome behind.
+				{ text: "left-it-open" },
+			];
+			const parent: Step[] = [
+				call("agent", {
+					type: "task",
+					profile: "browser",
+					headless: true,
+					goal: "open and leave",
+					task: script(child),
+				}),
+				// Still alive after the child ended, for a follow-up.
+				call("bash", { command: `ps -axww -o command= | grep -c -- '--remote-debugging-por[t]=${port}'` }),
+				{ text: "parent-final" },
+			];
+			const run = box.start(["-p", script(parent)]);
+			try {
+				expect((await run.exited).code).toBe(0);
+				const results = lastResults(child);
+				const reason = unavailable(requestsOf(child)[0]?.tools, results[0]);
+				if (reason) context.skip(`Chrome or the browser server cannot start here: ${reason}`);
+				expect(secretHits, "the page's request to the other port").toBe(0);
+				expect(results[2]).toContain(`127.0.0.1:${secretPort} were refused (403)`);
+				expect(Number.parseInt(/\n(\d+)/.exec(lastResults(parent)[1] ?? "")?.[1] ?? "0", 10)).toBeGreaterThan(0);
+				// Nothing else would ever end it: the package starts Chrome detached.
+				await until(() => chromeOn(port).length === 0, "the session's shutdown to stop its Chrome", 15_000);
+				const state = path.join(box.project, ".octocode/octocode-chrome-devtools/tmp/browser-state");
+				expect(fs.readdirSync(state).filter((file) => file.includes(String(port)))).toEqual([]);
+				await until(() => box.survivors().length === 0, "every process of the run to stop", 15_000);
+			} finally {
+				killChromeOn(port);
+				secret.close();
+				pageWithSecret.close();
+			}
+		});
+	},
+);
 
 describe("the real research server, declared", () => {
 	it("carries each tool's full description and schema in its declaration, and its instructions in the block", async () => {

@@ -1,4 +1,4 @@
-import { type Db, deliveries, num } from "../../../../../db/src/api.ts";
+import { type Db, correspondence, deliveries, num } from "../../../../../db/src/api.ts";
 import { USER_SENDER } from "../../shared/messages.ts";
 import type { Ask } from "../asks.ts";
 import { type DeadLetter, type Message, type SendOptions, toAsk, toMessage, toTraffic, WAKE } from "../model.ts";
@@ -80,5 +80,15 @@ export function pendingUrgent(db: Db, id: string, after: number, idle: boolean):
 export function recent(db: Db, team: string, limit = 30, now = Date.now(), windowMs = 10 * 60_000): Traffic[] {
 	return deliveries
 		.recentTraffic(db, team, now - windowMs, limit)
+		.map(({ message, deliveries: states }) => toTraffic(message, states));
+}
+
+/**
+ * A page of the team's whole message history, newest first: `limit` messages older than `before` (the newest when absent).
+ * Unlike `recent`, nothing but `limit` bounds it; the next page starts at the oldest one returned (`messageBound` of the feed cursor).
+ */
+export function history(db: Db, team: string, limit: number, before?: correspondence.MessageCursor): Traffic[] {
+	return correspondence
+		.page(db, team, limit, before)
 		.map(({ message, deliveries: states }) => toTraffic(message, states));
 }

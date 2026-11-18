@@ -13,6 +13,7 @@ import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { reserveTokensFor } from "../../src/octocode/shared/tokens.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { asSetup } from "./fake-host.ts";
 
 describe("thrash breaker", () => {
 	const refill = (breaker: ThrashBreaker, turns: number) => {
@@ -124,20 +125,22 @@ describe("tool definitions in the estimate", () => {
 		sourceInfo: {},
 	});
 	it("serializes only the active tools", () => {
-		const api = { getActiveTools: () => ["a"], getAllTools: () => [tool("a"), tool("b")] };
+		const api = asSetup({ getActiveTools: () => ["a"], getAllTools: () => [tool("a"), tool("b")] });
 		const { name, description, parameters, promptGuidelines } = tool("a");
 		expect(toolDefinitionChars(api as never)).toBe(
 			JSON.stringify({ name, description, parameters, promptGuidelines }).length,
 		);
-		expect(toolDefinitionChars({ getActiveTools: () => [], getAllTools: () => [tool("a")] } as never)).toBe(0);
+		expect(toolDefinitionChars(asSetup({ getActiveTools: () => [], getAllTools: () => [tool("a")] }) as never)).toBe(0);
 	});
 	it("counts as zero when Octocode cannot list them", () => {
 		expect(
 			toolDefinitionChars({
-				getActiveTools: () => {
-					throw new Error("gone");
+				tools: {
+					getActive: () => {
+						throw new Error("gone");
+					},
+					getAll: () => [],
 				},
-				getAllTools: () => [],
 			}),
 		).toBe(0);
 	});
@@ -150,7 +153,7 @@ describe("pacing wired into the session", () => {
 	function session(tokens: number | null, tools: unknown[] = []) {
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
 		const notes: Array<{ customType: string; data: unknown }> = [];
-		const api = {
+		const api = asSetup({
 			on: (name: string, handler: never) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -161,8 +164,8 @@ describe("pacing wired into the session", () => {
 			getActiveTools: () => tools.map((t) => (t as { name: string }).name),
 			getAllTools: () => tools,
 			sendMessage: vi.fn(),
-		};
-		registerCompaction(api as never, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
+		});
+		registerCompaction(api, { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never);
 		const ctx = {
 			cwd: "/w",
 			hasUI: true,

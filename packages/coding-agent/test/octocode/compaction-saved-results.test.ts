@@ -18,6 +18,7 @@ import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { sessionOutputDir } from "../../src/octocode/shared/home.ts";
 import { capOutputToFile, saveContentCopy } from "../../src/octocode/shared/spill.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 10_000, contextWindow: 200_000 };
 const at = 1_700_000_000_000;
@@ -54,13 +55,13 @@ function summarize(
 	messages: unknown[],
 	options: { branch?: unknown[]; previousSummary?: string; standalone?: boolean; answer?: string } = {},
 ) {
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
 		getSettings: () => ({}),
 		createUsageRecorder: () => () => {},
 		appendEntry: () => {},
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		modelRegistry: {

@@ -1,4 +1,4 @@
-import { type ExtensionAPI, readsMessagesOnly } from "../../../core/features/index.ts";
+import { type FeatureSetup, readsMessagesOnly } from "../../../core/features/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
@@ -76,7 +76,7 @@ const messageNames = (message: MessageEnvelope): string[] => [
  * which were already seen (a resumed session replays its history), so each received message dispatches once.
  */
 export function registerMessageHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): Pick<HooksView, "messageSend" | "messageReceive"> {
 	let messageAbort = new AbortController();
@@ -84,7 +84,7 @@ export function registerMessageHooks(
 	const received = new Set<string>();
 	let receivedObjects = new WeakSet<MessageEnvelope>();
 
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		messageAbort.abort();
 		messageAbort = new AbortController();
 		messageSessionId = undefined;
@@ -108,7 +108,7 @@ export function registerMessageHooks(
 			messageAbort.abort();
 		}
 	});
-	api.on("session_shutdown", async () => messageAbort.abort());
+	api.bus.on("session_shutdown", async () => messageAbort.abort());
 
 	const messageSend: HooksView["messageSend"] = async (message, ctx) => {
 		if (ctx.sessionManager.getSessionId() !== messageSessionId)
@@ -145,7 +145,7 @@ export function registerMessageHooks(
 	};
 
 	// Observers get envelopes built from each message, never the message itself.
-	api.on(
+	api.bus.on(
 		"context",
 		readsMessagesOnly(async (event, ctx) => {
 			const signal = messageAbort.signal;
@@ -164,7 +164,7 @@ export function registerMessageHooks(
 
 /** Notification observers outlive the foreground turn, but never their session. */
 export function notificationHook(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): HooksView["notification"] {
 	let controller = new AbortController();
@@ -175,8 +175,8 @@ export function notificationHook(
 		controller.abort();
 		await Promise.allSettled(active);
 	};
-	api.on("session_shutdown", stop);
-	api.on("session_start", async () => {
+	api.bus.on("session_shutdown", stop);
+	api.bus.on("session_start", async () => {
 		await stop();
 		controller = new AbortController();
 		closed = false;

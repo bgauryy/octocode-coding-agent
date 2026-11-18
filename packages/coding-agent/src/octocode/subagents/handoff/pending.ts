@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -102,7 +102,7 @@ export async function takePendingReports(dir: string): Promise<Report[]> {
 			if (report.reportId !== undefined) seen.add(report.reportId);
 			const late = {
 				...report,
-				content: renderInstruction("notices/subagents/report-late.md", { content: report.content }),
+				content: renderPrompt("notices/subagents/report-late.md", { content: report.content }),
 			};
 			claims.set(late, { claim, file });
 			taken.push(late);

@@ -43,8 +43,8 @@ const delivered = (sent: Array<{ message: { content: unknown } }>) =>
 function flakyHost() {
 	const fake = fakeHost();
 	const state = { down: false };
-	const send = fake.api.sendMessage;
-	fake.api.sendMessage = (...args: Parameters<typeof send>) => {
+	const send = fake.api.session.sendMessage;
+	fake.api.session.sendMessage = (...args: Parameters<typeof send>) => {
 		if (state.down) throw new Error("The session ended.");
 		return send(...args);
 	};
@@ -68,9 +68,9 @@ describe("pending reports", () => {
 	it.each([false, true])("preserves the batch wake after its last send fails (restart=%s)", async (restart) => {
 		vi.useFakeTimers();
 		const f = fakeHost();
-		const append = f.api.sendMessage;
+		const append = f.api.session.sendMessage;
 		let attempts = 0;
-		f.api.sendMessage = (message, options) => {
+		f.api.session.sendMessage = (message, options) => {
 			if (message.content === report("quiet", false).content && attempts++ === 0)
 				return Promise.reject(new Error("temporarily unavailable"));
 			return append(message, options);
@@ -159,7 +159,7 @@ describe("pending reports", () => {
 		vi.useFakeTimers();
 		const f = fakeHost();
 		const send = vi.fn(() => Promise.resolve());
-		f.api.sendMessage = send;
+		f.api.session.sendMessage = send;
 		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 		queue.pendingDir = tmp();
@@ -178,8 +178,8 @@ describe("pending reports", () => {
 		const f = fakeHost();
 		const queue = queueFor(f);
 		queue.pendingDir = tmp();
-		const send = f.api.sendMessage;
-		f.api.sendMessage = (...args) => {
+		const send = f.api.session.sendMessage;
+		f.api.session.sendMessage = (...args) => {
 			send(...args);
 			if (f.sent.length === 1) queue.persist();
 		};
@@ -198,9 +198,9 @@ describe("pending reports", () => {
 	it("ignores three late send failures from a retired batch and replays its reports once", async () => {
 		vi.useFakeTimers();
 		const f = fakeHost();
-		const accepted = f.api.sendMessage;
+		const accepted = f.api.session.sendMessage;
 		const rejectOld: Array<(error: Error) => void> = [];
-		f.api.sendMessage = () => new Promise<void>((_resolve, reject) => rejectOld.push(reject));
+		f.api.session.sendMessage = () => new Promise<void>((_resolve, reject) => rejectOld.push(reject));
 		const queue = queueFor(f);
 		queue.pendingDir = tmp();
 		try {
@@ -212,7 +212,7 @@ describe("pending reports", () => {
 			for (const reject of rejectOld) reject(new Error("old session closed"));
 			await vi.advanceTimersByTimeAsync(5_000);
 			expect(rejectOld).toHaveLength(3);
-			f.api.sendMessage = accepted;
+			f.api.session.sendMessage = accepted;
 			for (const saved of await takePendingReports(queue.pendingDir)) queue.add(saved);
 			queue.flush();
 			expect(f.sent.map(({ message }) => (message.details as { id: string }).id)).toEqual(["one", "two", "three"]);
@@ -226,8 +226,8 @@ describe("pending reports", () => {
 	it("does not resend when an accepted run subsequently rejects", async () => {
 		vi.useFakeTimers();
 		const f = fakeHost();
-		const append = f.api.sendMessage;
-		f.api.sendMessage = (...args) => {
+		const append = f.api.session.sendMessage;
+		f.api.session.sendMessage = (...args) => {
 			append(...args);
 			return Promise.reject(new Error("later run failure"));
 		};
@@ -248,8 +248,10 @@ describe("pending reports", () => {
 	it("bounds rejected delivery retries and preserves the complete report with a stable ID", async () => {
 		vi.useFakeTimers();
 		const f = fakeHost();
-		const send = vi.fn((..._args: Parameters<typeof f.api.sendMessage>) => Promise.reject(new Error("not ready")));
-		f.api.sendMessage = send;
+		const send = vi.fn((..._args: Parameters<typeof f.api.session.sendMessage>) =>
+			Promise.reject(new Error("not ready")),
+		);
+		f.api.session.sendMessage = send;
 		const queue = new ReportQueue(f.api);
 		queue.start({ getSessionFile: () => undefined, getEntries: () => [] });
 		queue.pendingDir = tmp();
@@ -337,7 +339,7 @@ describe("pending reports", () => {
 		const dir = tmp();
 		const f = fakeHost();
 		const errors: string[] = [];
-		f.api.sendMessage = () => {
+		f.api.session.sendMessage = () => {
 			void Promise.reject(new Error("run preparation failed")).catch((error) => errors.push(error.message));
 		};
 		const queue = new ReportQueue(f.api);

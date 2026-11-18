@@ -9,8 +9,8 @@ export interface CatalogSkill {
 }
 
 /**
- * The skills this session loaded, read through the host's resource snapshot (`api.getSkillResourceSnapshot`): the same
- * inventory a subagent inherits, with extension, plugin and Claude/Codex skills included. Every `skill` call re-reads
+ * The skills this session loaded, read through the host's resource snapshot (`api.resources.getSkillResourceSnapshot`): the same
+ * inventory a subagent inherits, with feature, plugin and Claude/Codex skills included. Every `skill` call re-reads
  * it, so a skill installed or removed in the session shows on the next call.
  */
 export class SkillCatalog {

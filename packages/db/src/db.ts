@@ -8,6 +8,7 @@ import { canonicalPath } from "../../common/src/canonical-path.ts";
 import { withFileLockSync } from "../../common/src/file-write-lock.ts";
 import * as agentEvents from "./queries/agent-events.ts";
 import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
+import * as archiveIndex from "./queries/archive-index.ts";
 import { createMirrorSchema, MIRROR_APPLICATION_ID } from "./schema-mirror.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
@@ -68,6 +69,29 @@ const MIRROR_FILE: FileKind = {
 	version: 1,
 	create: createMirrorSchema,
 };
+
+/** The archive search index: a disposable cache, set aside and rebuilt when its schema version changes. */
+const ARCHIVE_INDEX_FILE: FileKind = {
+	applicationId: archiveIndex.APPLICATION_ID,
+	name: "Octocode archive index",
+	version: 1,
+	create: archiveIndex.create,
+};
+
+/** A connection on the archive index file (`queries/archive-index.ts`); `fts` is false where SQLite lacks FTS5. */
+export interface ArchiveIndexDb {
+	file: string;
+	db: Db;
+	fts: boolean;
+	transaction<T>(fn: () => T): T;
+	close(): void;
+}
+
+/** Opens the archive index at `file`, creating it (or setting aside one at an older schema version). */
+export function openArchiveIndex(file: string, waitMs = 5000): ArchiveIndexDb {
+	const { db, transaction, close } = openConnection(file, false, ARCHIVE_INDEX_FILE, waitMs);
+	return { file, db, fts: archiveIndex.hasFts(db), transaction, close };
+}
 
 /**
  * Open an independent connection on the coordination file; the mirror opens at its first use. The host supplies the

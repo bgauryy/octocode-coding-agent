@@ -79,10 +79,9 @@ describe("/permissions and editor shortcut", () => {
 	});
 
 	it("leaves selector Tab untouched when the main editor is empty", async () => {
-		const { permission, tab, fake } = setup({ env: { OCTOCODE_PERMISSION: "manual" } });
+		const { permission, tab } = setup({ env: { OCTOCODE_PERMISSION: "manual" } });
 		expect(await tab()).toBe(false);
 		expect(permission.mode).toBe("manual");
-		expect(fake.shortcuts.has("tab")).toBe(false);
 	});
 
 	it("switches to any mode by command, full included, without a trust check or confirmation", async () => {

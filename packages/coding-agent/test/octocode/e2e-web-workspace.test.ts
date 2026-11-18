@@ -25,24 +25,29 @@ import {
  * daemon's socket and posts the `answer` command with the launch token (a control tab) or a view-only token.
  */
 let endpoint: Endpoint;
-vi.setConfig({ testTimeout: 240_000 });
+vi.setConfig({ testTimeout: 180_000 });
 
 beforeAll(async () => {
 	endpoint = await startEndpoint();
 });
-afterAll(async () => {
-	await endpoint?.close();
-});
 
 const daemons: LaunchedDaemon[] = [];
 const sockets: WebSocket[] = [];
+/** One session and daemon serve every case: each case is a turn of the same session, so the process boots once. */
+let shared: Workspace | undefined;
+/** Tool results of earlier cases: the session's history carries them into every later model request. */
+const earlier = new Set<string>();
 afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
+	for (const result of toolResults()) earlier.add(result);
+	endpoint.requests.length = 0;
+});
+afterAll(async () => {
 	for (const socket of sockets.splice(0)) socket.terminate();
 	// The daemon outlives its session by design: stop it so no process is left behind.
 	for (const daemon of daemons.splice(0)) await daemonRequest(daemon, "/api/admin/drain", { method: "POST" });
 	await killEverything();
-	endpoint.requests.length = 0;
+	await endpoint?.close();
 });
 
 const WAIT = 120_000;
@@ -60,6 +65,8 @@ interface Workspace {
 	tab: Tab;
 	/** Starts a turn with a scripted model, as the terminal's user typing a prompt would. */
 	prompt(steps: Step[]): void;
+	/** Resolves once the session has finished every turn prompted so far. */
+	settled(): Promise<void>;
 	/** POSTs an application command to the session through the daemon; `token` defaults to the launch capability. */
 	answer(awaiting: ApplicationAwaiting, choice: string, token?: string): Promise<{ status: number; body: unknown }>;
 	viewToken(): Promise<string>;
@@ -160,13 +167,19 @@ async function openWorkspace(): Promise<Workspace> {
 		},
 	};
 	let counter = 0;
+	let prompted = 0;
 	return {
 		box,
 		run,
 		daemon,
 		sessionId,
 		tab,
-		prompt: (steps) => send({ type: "prompt", message: `Please do it. ${script(steps)}` }),
+		prompt: (steps) => {
+			prompted++;
+			send({ type: "prompt", message: `Please do it. ${script(steps)}` });
+		},
+		settled: () =>
+			until(() => (run.stdout().match(/"type":\s*"agent_end"/g) ?? []).length >= prompted, "the turn to finish", WAIT),
 		answer: (awaiting, choice, token = daemon.token) =>
 			post(daemon, `/s/${sessionId}/api/application`, token, {
 				id: `web-answer-${++counter}`,
@@ -197,11 +210,14 @@ const waitingOn = async (workspace: Workspace, what: string) => {
 	return workspace.tab.awaiting()!;
 };
 
+const getWorkspace = async () => (shared ??= await openWorkspace());
 const toolResults = () => endpoint.requests.flatMap((request) => request.toolResults);
+/** Results this case's own turn produced. */
+const freshResults = () => toolResults().filter((result) => !earlier.has(result));
 
 describe("a dialog answered from the web workspace", () => {
 	it("shows a bash ask as awaiting; Allow once over HTTP runs the command and the model sees its output", async () => {
-		const workspace = await openWorkspace();
+		const workspace = await getWorkspace();
 		const marker = path.join(workspace.box.root, "ran-after-allow.txt");
 		workspace.prompt([
 			{ tool: "bash", args: { command: `touch ${marker} && echo web-allowed-output` } },
@@ -222,10 +238,11 @@ describe("a dialog answered from the web workspace", () => {
 		await until(() => toolResults().some((result) => result.includes("web-allowed-output")), "the tool result", WAIT);
 		expect(fs.existsSync(marker)).toBe(true);
 		await until(() => workspace.tab.awaiting() === undefined, "the dialog to close in the stream", WAIT);
+		await workspace.settled();
 	});
 
 	it("refuses an answer from a view-only token: the dialog stays and the command never runs", async () => {
-		const workspace = await openWorkspace();
+		const workspace = await getWorkspace();
 		const marker = path.join(workspace.box.root, "ran-after-view.txt");
 		workspace.prompt([
 			{ tool: "bash", args: { command: `touch ${marker} && printf '%s-%s-%s\\n' view only output` } },
@@ -239,18 +256,19 @@ describe("a dialog answered from the web workspace", () => {
 		expect(JSON.stringify(refused.body)).toMatch(/view-only/);
 		expect(workspace.tab.awaiting()?.id).toBe(awaiting.id);
 		expect(fs.existsSync(marker)).toBe(false);
-		expect(toolResults()).toEqual([]);
+		expect(freshResults()).toEqual([]);
 
 		// A control tab then denies it: the model is told, and the command still never ran.
 		const denied = await workspace.answer(awaiting, "Deny");
 		expect(denied.status, JSON.stringify(denied.body)).toBe(200);
-		await until(() => toolResults().length > 0, "the denied tool result", WAIT);
-		expect(toolResults().join("\n")).not.toContain("view-only-output");
+		await until(() => freshResults().length > 0, "the denied tool result", WAIT);
+		expect(freshResults().join("\n")).not.toContain("view-only-output");
 		expect(fs.existsSync(marker)).toBe(false);
+		await workspace.settled();
 	});
 
 	it("completes a single-choice askUser turn from the web, and the model receives the choice", async () => {
-		const workspace = await openWorkspace();
+		const workspace = await getWorkspace();
 		workspace.prompt([
 			{
 				tool: "askUser",
@@ -258,7 +276,10 @@ describe("a dialog answered from the web workspace", () => {
 					questions: [
 						{
 							question: "Which colour should the badge be?",
-							options: [{ label: "Teal" }, { label: "Orange" }],
+							options: [
+								{ label: "Teal", description: "calm" },
+								{ label: "Orange", description: "loud" },
+							],
 						},
 					],
 				},
@@ -276,10 +297,11 @@ describe("a dialog answered from the web workspace", () => {
 
 		// The turn ends with the model's last scripted text, after it was sent the answer.
 		await until(() => endpoint.requests.some((request) => request.step === 1), "the model's second request", WAIT);
-		const result = toolResults().join("\n");
+		const result = freshResults().join("\n");
 		expect(result).toContain("Which colour should the badge be?");
 		expect(result).toContain("Orange");
 		expect(result).not.toContain("Teal");
 		await until(() => workspace.tab.awaiting() === undefined, "the dialog to close in the stream", WAIT);
+		await workspace.settled();
 	});
 });

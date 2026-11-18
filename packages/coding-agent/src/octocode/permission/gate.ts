@@ -3,12 +3,7 @@ import { type FindProtectedBranch, landingRequest } from "./landing.ts";
 import { readOnlyRole, readOnlyRoleRefusal } from "./read-only-role.ts";
 import { shellParserReady } from "./shell/mutation.ts";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type {
-	ExtensionContext,
-	ToolAnnotations,
-	ToolCallEvent,
-	ToolCallEventResult,
-} from "../../core/features/index.ts";
+import type { FeatureContext, ToolAnnotations, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Classification } from "../../utils/windows/winclassify/types.ts";
 import { classifyPowerShell } from "../../utils/windows/winhelper.ts";
@@ -77,7 +72,7 @@ interface PermissionGateOptions {
 /** What the steps of one call share: the call, and what the earlier steps worked out. */
 interface Call {
 	event: ToolCallEvent;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	input: Record<string, unknown>;
 	prior?: GateVerdict;
 	/** The event as the model made it (before `wait` or `agent` were read as the call they stand for). */
@@ -239,7 +234,7 @@ export function permissionGate(options: PermissionGateOptions) {
 	};
 	return async (
 		event: ToolCallEvent,
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		prior?: GateVerdict,
 		originalEvent: ToolCallEvent = event,
 	): Promise<ToolCallEventResult | undefined> => {

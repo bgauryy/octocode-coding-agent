@@ -43,18 +43,20 @@ Each catalog fetch times out after 60 seconds (`scripts/generate-models/fetchers
 
 The local Ollama tests are opt-in: they run only with `OCTOCODE_LOCAL_LLM=1`, after `ollama pull gpt-oss:20b`, and `OCTOCODE_NO_LOCAL_LLM` still disables them (`test/local-ollama.ts`).
 
+Tests that send requests to a provider are paid, so they are named `*.live.test.ts`: `yarn test` leaves them out even when API keys are exported, and `yarn test:live` runs only them, each still skipped without its provider's credentials. Free tests (payload capture with a fake key, scripted responses) stay in plain `*.test.ts` files.
+
 Cover the new provider in `test/`:
 
-| Test                                                                                         | Covers                                               |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `stream.test.ts`                                                                             | Streaming and tool use                               |
-| `tokens.test.ts`, `total-tokens.test.ts`                                                     | Usage reporting and counting                         |
-| `abort.test.ts`, `empty.test.ts`, `context-overflow.test.ts`                                 | Cancellation, empty messages, context limit errors   |
-| `unicode-surrogate.test.ts`, `tool-call-without-result.test.ts`, `image-tool-result.test.ts` | Unicode, orphaned tool calls, images in tool results |
-| `cross-provider-handoff.test.ts`                                                             | Context replay across providers                      |
-| `providers.test.ts`                                                                          | Provider listing and auth resolution                 |
+| Test                                                                                                        | Covers                                               |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `stream.live.test.ts`                                                                                       | Streaming and tool use                               |
+| `tokens.live.test.ts`, `total-tokens.live.test.ts`                                                          | Usage reporting and counting                         |
+| `abort.live.test.ts`, `empty.live.test.ts`, `context-overflow.live.test.ts`                                 | Cancellation, empty messages, context limit errors   |
+| `unicode-surrogate.live.test.ts`, `tool-call-without-result.live.test.ts`, `image-tool-result.live.test.ts` | Unicode, orphaned tool calls, images in tool results |
+| `cross-provider-handoff.live.test.ts`                                                                       | Context replay across providers                      |
+| `providers.test.ts`                                                                                         | Provider listing and auth resolution                 |
 
-For `cross-provider-handoff.test.ts`, add at least one provider/model pair. If the provider exposes multiple model families (for example GPT and Claude), add at least one pair per family.
+For `cross-provider-handoff.live.test.ts`, add at least one provider/model pair. If the provider exposes multiple model families (for example GPT and Claude), add at least one pair per family.
 
 For providers with non-standard auth (AWS, Google Vertex), create a utility like `bedrock-utils.ts` with credential detection helpers.
 

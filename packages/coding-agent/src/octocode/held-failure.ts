@@ -1,6 +1,6 @@
 import { isRetryableErrorText } from "@octocodeai/octocode-ai";
 import { type AssistantMessage, isContextOverflow } from "@octocodeai/octocode-ai/compat";
-import type { BoundaryContextPreview, ExtensionContext } from "../core/features/index.ts";
+import type { BoundaryContextPreview, FeatureContext } from "../core/features/index.ts";
 import { settleWithin } from "./shared/util.ts";
 import type { AgentControl } from "./subagents/tool.ts";
 
@@ -12,7 +12,7 @@ interface FailedRun {
 }
 
 /** The failure the run is about to end on, when waiting could clear it: a retryable provider error, not an overflow. */
-function retryableFailure(event: FailedRun, ctx: ExtensionContext): AssistantMessage | undefined {
+function retryableFailure(event: FailedRun, ctx: FeatureContext): AssistantMessage | undefined {
 	for (const message of [...event.context.contextMessages].reverse()) {
 		if (message.role !== "assistant") continue;
 		if (message.stopReason !== "error" || !isRetryableErrorText(message.errorMessage ?? "")) return undefined;
@@ -30,7 +30,7 @@ function retryableFailure(event: FailedRun, ctx: ExtensionContext): AssistantMes
  */
 export async function holdFailedRun(
 	event: FailedRun,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	agents: AgentControl | undefined,
 	stop: AbortSignal,
 	held: { value: boolean },

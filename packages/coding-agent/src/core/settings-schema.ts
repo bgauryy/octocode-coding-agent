@@ -1,6 +1,7 @@
 import { ModelThinkingLevelSchema } from "@octocodeai/octocode-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
 import { BashSettingsProperties } from "./settings-schema/bash.ts";
+import { SandboxSettingsProperties } from "./settings-schema/sandbox.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
 import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-availability.ts";
@@ -8,6 +9,7 @@ import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { TimerSettingsProperties } from "./settings-schema/timer.ts";
+import { MonitorSettingsProperties } from "./settings-schema/monitor.ts";
 import { FullscreenSettingsProperties } from "./settings-schema/fullscreen.ts";
 import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
@@ -107,6 +109,7 @@ export const SettingsSchema = Type.Object(
 			Type.String({ description: "Prefix prepended to every bash command, for example to enable shell aliases." }),
 		),
 		...BashSettingsProperties,
+		...SandboxSettingsProperties,
 		externalAgents: Type.Optional(
 			Type.Boolean({
 				description:
@@ -197,12 +200,6 @@ export const SettingsSchema = Type.Object(
 				description: "npm or git package sources, as strings or objects with resource filtering.",
 			}),
 		),
-		extensions: Type.Optional(
-			Type.Array(Type.String(), {
-				description:
-					"`builtin:<id>` entries switch a built-in feature on (llama.cpp, mcp). Other entries are ignored: user code extensions are not supported.",
-			}),
-		),
 		deviceId: Type.Optional(
 			Type.String({
 				description: "Stable installation UUID, generated when authentication first needs it. Global only.",
@@ -290,7 +287,7 @@ export const SettingsSchema = Type.Object(
 		httpIdleTimeoutMs: Type.Optional(
 			timeoutSetting({
 				description:
-					'HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or "disabled" disables both.',
+					'HTTP header or body idle timeout in milliseconds; a model stream or compaction summary attempt that receives nothing for this long is retried. 0 or "disabled" disables it.',
 			}),
 		),
 		remote: Type.Optional(
@@ -347,6 +344,7 @@ export const SettingsSchema = Type.Object(
 			),
 		),
 		...TimerSettingsProperties,
+		...MonitorSettingsProperties,
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:

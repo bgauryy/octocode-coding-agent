@@ -77,20 +77,23 @@ export function getExamplesPath(): string {
 	return resolve(join(getPackageDir(), "examples"));
 }
 
-/** The Markdown prompt files under `octocode/instructions/` (policy, lean, subagent, system, workflows and roles): `instructions/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
-export function getInstructionsDir(): string {
-	if (isBunBinary) return join(getPackageDir(), "instructions");
-	return join(getSourceOrDistDir(), "octocode", "instructions");
+/**
+ * The native harness folder: `prompts/`, `tools/`, `hooks/`, `agents/` and `skills/`. `native/` next to the executable,
+ * or `octocode/native/` of `src/` and `dist/`.
+ */
+export function getNativeDir(): string {
+	if (isBunBinary) return join(getPackageDir(), "native");
+	return join(getSourceOrDistDir(), "octocode", "native");
 }
 
+/** Built-in agent profiles (researcher, implementer, ...). */
 export function getSubagentsDir(): string {
-	return join(getInstructionsDir(), "roles");
+	return join(getNativeDir(), "agents");
 }
 
-/** Skills this application ships itself, such as `octocode-context-optimization`: `native-skills/` next to the executable, or in `octocode/` of `src/` and `dist/`. */
+/** Skills this application ships itself, such as `octocode-context-optimization`. */
 export function getNativeSkillsDir(): string {
-	if (isBunBinary) return join(getPackageDir(), "native-skills");
-	return join(getSourceOrDistDir(), "octocode", "native-skills");
+	return join(getNativeDir(), "skills");
 }
 
 /**
@@ -251,9 +254,10 @@ export function getCustomThemesDir(): string {
 }
 
 /**
- * Where Octocode keeps what agents read of skills and MCP servers after optimization: `skills.json` and `skills.txt` for
- * skill descriptions, `mcp/` for each MCP server's generated file. Sessions write it when the discovered skills or a
- * server's catalog change; the `octocode-context-optimization` skill fills in the rewrites.
+ * Where Octocode keeps what agents read of skills after optimization: `skills.json` and `skills.txt` for skill
+ * descriptions, and `mcp/` for the cache of each MCP server's generated file (`compact` presentation, never reworded).
+ * Sessions write it when the discovered skills or a server's catalog change; the `octocode-context-optimization` skill
+ * fills in the skill rewrites.
  */
 export function getContextOptimizationDir(agentDir = getAgentDir()): string {
 	return join(agentDir, "context-optimization");

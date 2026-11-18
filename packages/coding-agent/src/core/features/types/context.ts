@@ -1,4 +1,4 @@
-/** Contexts passed to extension handlers, tools and commands. */
+/** Contexts passed to feature handlers, tools and commands. */
 
 import type {
 	AgentTool,
@@ -13,9 +13,9 @@ import type { ModelRegistry } from "../../model-registry.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
 import type { ReadonlySessionManager, SessionManager } from "../../session-manager.ts";
 import type { BuildSystemPromptOptions } from "../../system-prompt.ts";
-import type { ExtensionUIContext } from "./ui.ts";
+import type { SessionUI } from "./ui.ts";
 
-// Extension Context
+// Feature Context
 // ============================================================================
 
 export interface ContextUsage {
@@ -35,15 +35,15 @@ export interface CompactOptions {
 }
 
 /**
- * Context passed to extension event handlers.
+ * Context passed to feature event handlers.
  */
-export type ExtensionMode = "tui" | "rpc" | "json" | "print";
+export type UiMode = "tui" | "rpc" | "json" | "print";
 
-export interface ExtensionContext {
+export interface FeatureContext {
 	/** UI methods for user interaction */
-	ui: ExtensionUIContext;
+	ui: SessionUI;
 	/** Current run mode. Use "tui" to guard terminal-only UI such as custom components. */
-	mode: ExtensionMode;
+	mode: UiMode;
 	/** Whether dialog-capable UI is available (true in TUI and RPC modes) */
 	hasUI: boolean;
 	/** Current working directory */
@@ -93,7 +93,7 @@ export interface ExtensionContext {
 	getSystemPromptOptions?(): BuildSystemPromptOptions;
 }
 
-/** Options for {@link ExtensionToolContext.executeTool}. */
+/** Options for {@link ToolContext.executeTool}. */
 export interface ExecuteToolOptions {
 	/** Defaults to the calling tool's signal. */
 	signal?: AbortSignal;
@@ -111,14 +111,14 @@ export interface ToolInvocation {
 }
 
 /**
- * Context passed to tool `execute()` in a session: the extension context plus `executeTool()`
+ * Context passed to tool `execute()` in a session: the feature context plus `executeTool()`
  * for running other tools through the same validation, hooks, and permission checks as
  * model-issued calls.
  *
  * A tool wrapped with `wrapToolDefinition()` without a context factory, such as a built-in tool
  * created with `createBashTool()` and run in a plain `Agent` or called directly, gets no context.
  */
-export interface ExtensionToolContext extends ExtensionContext {
+export interface ToolContext extends FeatureContext {
 	readonly invocation?: ToolInvocation;
 	/** Tools {@link executeTool} can call. */
 	readonly tools: readonly AgentTool[];
@@ -137,7 +137,7 @@ export interface ExtensionToolContext extends ExtensionContext {
  * Extended context for command handlers.
  * Includes session control methods only safe in user-initiated commands.
  */
-export interface ExtensionCommandContext extends ExtensionContext {
+export interface CommandContext extends FeatureContext {
 	/** Get the current base system-prompt construction options. */
 	getSystemPromptOptions(): BuildSystemPromptOptions;
 
@@ -171,7 +171,7 @@ export interface ExtensionCommandContext extends ExtensionContext {
 		options?: { withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
 	): Promise<{ cancelled: boolean }>;
 
-	/** Reload extensions, skills, prompts, themes, and context files. */
+	/** Reload features, skills, prompts, themes, and context files. */
 	reload(): Promise<void>;
 }
 
@@ -180,7 +180,7 @@ export interface ExtensionCommandContext extends ExtensionContext {
  *
  * This is passed to `withSession()` callbacks on `newSession()`, `fork()`, and `switchSession()`.
  */
-export interface ReplacedSessionContext extends ExtensionCommandContext {
+export interface ReplacedSessionContext extends CommandContext {
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },

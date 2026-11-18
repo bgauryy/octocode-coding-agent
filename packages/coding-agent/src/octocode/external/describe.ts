@@ -4,7 +4,7 @@ import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize"
 import { clip } from "../shared/text.ts";
 import { capOutputToFile } from "../shared/spill.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { ExternalAgents } from "./manager.ts";
 
 const asRecords = (value: unknown): Array<Record<string, unknown>> =>
@@ -115,7 +115,7 @@ export function describeExternalFailure(failure: Record<string, unknown>): strin
 /** The `models` block for external agents (connections, instances, installed adapters); empty when off or failing. */
 export async function externalListing(
 	agents: Pick<ExternalAgents, "call"> | undefined,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	filters?: ExternalModelFilters,
 ): Promise<string[]> {
 	if (!agents) return [];

@@ -5,19 +5,18 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
-import { renderInstruction } from "./prompt-template.ts";
+import { renderPrompt } from "./prompt-template.ts";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Message, TextContent } from "@octocodeai/octocode-ai";
 import { compactionSummaryText } from "./compaction/summary-view.ts";
 
-const compactionSummaryPrefix = (): string =>
-	`${renderInstruction("notices/compaction/summary-preface.md")}\n\n<summary>\n`;
+const compactionSummaryPrefix = (): string => `${renderPrompt("notices/compaction/summary-preface.md")}\n\n<summary>\n`;
 
 const COMPACTION_SUMMARY_SUFFIX = `
 </summary>`;
 
 const branchSummaryPrefix = (): string =>
-	`${renderInstruction("notices/compaction/branch-summary-preface.md")}\n\n<summary>\n`;
+	`${renderPrompt("notices/compaction/branch-summary-preface.md")}\n\n<summary>\n`;
 
 const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
@@ -32,7 +31,7 @@ export interface BashExecutionMessage {
 	cancelled: boolean;
 	truncated: boolean;
 	fullOutputPath?: string;
-	/** The first line of the result (exit, time, size, what was trimmed); absent from older sessions and extension results. */
+	/** The first line of the result (exit, time, size, what was trimmed); absent from older sessions and feature results. */
 	header?: string;
 	/** Full display output, as older sessions recorded it; now a view reads `fullOutputPath`. Never added to model context. */
 	fullOutput?: string;
@@ -44,8 +43,8 @@ export interface BashExecutionMessage {
 }
 
 /**
- * Message type for extension-injected messages via sendMessage().
- * These are custom messages that extensions can inject into the conversation.
+ * Message type for feature-injected messages via sendMessage().
+ * These are custom messages that features can inject into the conversation.
  */
 export interface CustomMessage<T = unknown> {
 	role: "custom";
@@ -156,7 +155,7 @@ export function createCustomMessage(
  * This is used by:
  * - Agent's transormToLlm option (for prompt calls and queued messages)
  * - Compaction's generateSummary (for summarization)
- * - Custom extensions and tools
+ * - Custom features and tools
  */
 export function convertToLlm(messages: readonly AgentMessage[]): Message[] {
 	return messages

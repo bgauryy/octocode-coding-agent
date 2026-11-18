@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
@@ -308,7 +309,7 @@ describe("a lingering background subagent", () => {
 		const t = setup("full");
 		let servers: Record<string, unknown> = { old: { command: "echo", env: { TOKEN: "SECRET-PARKED-123" } } };
 		Object.assign(t.f.api, {
-			events: {
+			channels: {
 				on: () => () => undefined,
 				emit: (_name: string, reply: (handoff: unknown) => void) => reply({ servers, stopped: [] }),
 			},
@@ -641,10 +642,10 @@ describe("a lingering background subagent", () => {
 			expect(rewrites[0].details).toBe(
 				t.f.sent.find((entry) => String(entry.message.content).includes("LINGER"))?.message.details,
 			);
-			expect(rewrites[0].content).toContain(`${id} was resumed after it wrote this report`);
+			expect(rewrites[0].content).toContain(renderPrompt("notices/subagents/superseded.md", { id }));
 			await vi.waitFor(() => expect(t.reports()).toHaveLength(2), { timeout: 10_000 });
 			// The new run's own report is not marked, and neither is it rewritten by the resume before it.
-			expect(t.reports()[1]).not.toContain("was resumed");
+			expect(t.reports()[1]).not.toContain(renderPrompt("notices/subagents/superseded.md", { id }));
 			expect(rewrites).toHaveLength(1);
 		} finally {
 			await t.control.stopAll();

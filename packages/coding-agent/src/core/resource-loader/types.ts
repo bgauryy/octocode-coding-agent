@@ -1,24 +1,33 @@
 import type { Theme } from "../../theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { EventBus, ListenerErrorReporter } from "@octocodeai/octocode-agent-core";
-import type { Feature, InlineExtension, LoadExtensionsResult } from "../features/types.ts";
+import type { Feature, LoadedFeatures } from "../features/types.ts";
 import type { PathMetadata } from "../package-manager.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { SkillResourceSnapshot } from "../skill-resource-snapshot.ts";
 import type { LoadSkillsResult, Skill } from "../skills.ts";
 
-export interface ResourceExtensionPaths {
+export interface ResourceFeaturePaths {
 	skillPaths?: Array<{ path: string; metadata: PathMetadata }>;
 	promptPaths?: Array<{ path: string; metadata: PathMetadata }>;
 	themePaths?: Array<{ path: string; metadata: PathMetadata }>;
+}
+
+/**
+ * The native feature set an entry point passes in: the built-ins (such as MCP), registered first, and the native
+ * feature, whose failure to register fails startup. With it the loader also lists the skills Octocode ships.
+ */
+export interface NativeFeatureSet {
+	readonly builtins: readonly Feature[];
+	readonly native: Feature;
 }
 
 export interface ResourceLoader {
 	getEventBus?(): EventBus;
 	/** Where a failing event-bus handler is reported from now on (the session's diagnostics); stderr until called. */
 	reportHandlerErrorsTo?(report: ListenerErrorReporter): void;
-	getExtensions(): LoadExtensionsResult;
+	getFeatures(): LoadedFeatures;
 	getSkills(): LoadSkillsResult;
 	getPrompts(): {
 		prompts: PromptTemplate[];
@@ -30,7 +39,7 @@ export interface ResourceLoader {
 	getSystemPromptSource(): { path: string } | undefined;
 	getAppendSystemPrompt(): string[];
 	getAppendSystemPromptSources(): Array<{ path: string }>;
-	extendResources(paths: ResourceExtensionPaths): void;
+	extendResources(paths: ResourceFeaturePaths): void;
 	reload(): Promise<void>;
 }
 
@@ -43,11 +52,14 @@ export interface DefaultResourceLoaderOptions {
 	additionalSkillPaths?: string[];
 	additionalPromptTemplatePaths?: string[];
 	additionalThemePaths?: string[];
-	/** Features registered after the defaults: a bare factory, or one with a name. They count as `builtin`-owned. */
-	extensionFactories?: InlineExtension[];
-	/** Register the native feature set and the default built-ins. Set false only for a session with its own tool policy. */
-	nativeFeatures?: boolean;
-	/** Built-in features available to the session, instead of llama.cpp and MCP. Settings can still switch each off. */
+	/** Features registered after the native set, in order (tests and hosts that wrap the core). */
+	features?: Feature[];
+	/**
+	 * The native feature set, which every production entry point passes. Omitted: no native features, built-ins or shipped
+	 * skills, for a session with its own tool policy.
+	 */
+	nativeFeatures?: NativeFeatureSet;
+	/** Built-in features instead of the native set's. `disabledFeatures` can still switch each off. */
 	builtinFeatures?: readonly Feature[];
 	/** Built-in features not to register, by id (such as `mcp`), even when settings enable them. */
 	disabledFeatures?: string[];
@@ -59,7 +71,7 @@ export interface DefaultResourceLoaderOptions {
 	contextRoot?: string;
 	systemPrompt?: string;
 	appendSystemPrompt?: string[];
-	extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult;
+	featuresOverride?: (base: LoadedFeatures) => LoadedFeatures;
 	skillsOverride?: (base: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }) => {
 		skills: Skill[];
 		diagnostics: ResourceDiagnostic[];

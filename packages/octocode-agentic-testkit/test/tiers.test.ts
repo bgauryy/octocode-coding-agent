@@ -51,6 +51,116 @@ describe("resolveTier", () => {
 	});
 });
 
+describe("resolveTier from env", () => {
+	it("resolves a custom local tier: name is case-insensitive, defaults are openai, no body, 90s timeout", () => {
+		const r = resolveTier({
+			TESTKIT_TIER: "MyLab",
+			TESTKIT_MYLAB_BASE_URL: "http://localhost:8000/v1",
+			TESTKIT_MYLAB_MODEL: "lab-1",
+		});
+		expect("tier" in r && r.tier).toEqual({
+			name: "mylab",
+			baseUrl: "http://localhost:8000/v1",
+			model: "lab-1",
+			api: "openai",
+			key: undefined,
+			body: {},
+			remote: false,
+			timeoutMs: 90_000,
+		});
+	});
+
+	it("maps non-alphanumerics in the name to _ in variable names", () => {
+		const r = resolveTier({
+			TESTKIT_TIER: "my-lab",
+			TESTKIT_MY_LAB_BASE_URL: "http://127.0.0.1:9/v1",
+			TESTKIT_MY_LAB_MODEL: "m",
+		});
+		expect("tier" in r && r.tier).toMatchObject({ name: "my-lab", baseUrl: "http://127.0.0.1:9/v1", remote: false });
+	});
+
+	it("treats ::1 and [::1] as local", () => {
+		for (const url of ["http://[::1]:8000/v1", "http://localhost:8000/v1"]) {
+			const r = resolveTier({ TESTKIT_TIER: "lab", TESTKIT_LAB_BASE_URL: url, TESTKIT_LAB_MODEL: "m" });
+			expect("tier" in r && r.tier.remote).toBe(false);
+		}
+	});
+
+	it("a custom remote tier needs a key, and resolves with one", () => {
+		const env = {
+			TESTKIT_TIER: "cloud",
+			TESTKIT_CLOUD_BASE_URL: "https://api.example.com/v1",
+			TESTKIT_CLOUD_MODEL: "big",
+		};
+		expect(resolveTier(env)).toEqual({ skip: "tier cloud: set TESTKIT_CLOUD_KEY" });
+		const r = resolveTier({
+			...env,
+			TESTKIT_CLOUD_KEY: "sk",
+			TESTKIT_CLOUD_API: "anthropic",
+			TESTKIT_CLOUD_TIMEOUT_MS: "5000",
+		});
+		expect("tier" in r && r.tier).toMatchObject({
+			name: "cloud",
+			remote: true,
+			key: "sk",
+			api: "anthropic",
+			timeoutMs: 5000,
+		});
+	});
+
+	it("skips a custom tier with a bad API value or timeout, naming the variable", () => {
+		const base = { TESTKIT_TIER: "lab", TESTKIT_LAB_BASE_URL: "http://localhost:1/v1", TESTKIT_LAB_MODEL: "m" };
+		expect(resolveTier({ ...base, TESTKIT_LAB_API: "gemini" })).toEqual({
+			skip: 'tier lab: TESTKIT_LAB_API must be openai, anthropic or responses, got "gemini"',
+		});
+		expect(resolveTier({ ...base, TESTKIT_LAB_TIMEOUT_MS: "soon" })).toEqual({
+			skip: 'tier lab: TESTKIT_LAB_TIMEOUT_MS must be a positive integer, got "soon"',
+		});
+	});
+
+	it("an unknown name with missing variables skips and names each missing one", () => {
+		expect(resolveTier({ TESTKIT_TIER: "gpt" })).toEqual({
+			skip: 'unknown tier "gpt" (presets: local, haiku, deepseek): set TESTKIT_GPT_BASE_URL, TESTKIT_GPT_MODEL',
+		});
+		expect(resolveTier({ TESTKIT_TIER: "gpt", TESTKIT_GPT_BASE_URL: "http://localhost:1/v1" })).toEqual({
+			skip: 'unknown tier "gpt" (presets: local, haiku, deepseek): set TESTKIT_GPT_MODEL',
+		});
+	});
+
+	it("does not treat Object.prototype names as presets", () => {
+		expect(resolveTier({ TESTKIT_TIER: "constructor" })).toEqual({
+			skip: expect.stringContaining('unknown tier "constructor"'),
+		});
+	});
+
+	it("a preset takes a TESTKIT_<NAME>_API override and keeps its other defaults", () => {
+		const r = resolveTier({
+			TESTKIT_TIER: "haiku",
+			TESTKIT_HAIKU_BASE_URL: "https://gw.example.com",
+			TESTKIT_HAIKU_KEY: "k",
+			TESTKIT_HAIKU_API: "openai",
+		});
+		expect("tier" in r && r.tier).toMatchObject({
+			name: "haiku",
+			api: "openai",
+			model: "claude-haiku-5-5",
+			remote: true,
+			timeoutMs: 90_000,
+		});
+	});
+
+	it("a preset rejects a bad TESTKIT_<NAME>_API value", () => {
+		expect(
+			resolveTier({
+				TESTKIT_TIER: "haiku",
+				TESTKIT_HAIKU_BASE_URL: "https://gw.example.com",
+				TESTKIT_HAIKU_KEY: "k",
+				TESTKIT_HAIKU_API: "gemini",
+			}),
+		).toEqual({ skip: 'tier haiku: TESTKIT_HAIKU_API must be openai, anthropic or responses, got "gemini"' });
+	});
+});
+
 interface Seen {
 	url: string;
 	headers: IncomingMessage["headers"];

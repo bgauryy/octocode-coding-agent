@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hostQuirkHint } from "../../src/octocode/files/bash/host-hints.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -62,6 +62,35 @@ describe("bash: macOS host quirks", () => {
 			const result = await run(command);
 			expect(result.content[0].text).not.toMatch(/macOS/);
 		}
+	});
+});
+
+describe("bash: repository layout hint", () => {
+	const VITEST_ROOT = /packages\/coding-agent.*vitest\.octocode\.config\.ts/;
+	const rootFailure = "Cannot resolve entry module vitest.octocode.config.ts";
+
+	it.each(["darwin", "linux", "win32"] as const)("names packages/coding-agent on %s", (platform) => {
+		expect(hostQuirkHint(rootFailure, "yarn vitest run --config vitest.octocode.config.ts", platform)).toMatch(
+			VITEST_ROOT,
+		);
+	});
+
+	it("gives the hint in the failed result of a root-level run", async () => {
+		const { api, tools } = fakeHost();
+		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({}));
+		const failed = (await tools.get("bash").execute(
+			"t",
+			{
+				command: "echo 'Cannot resolve entry module vitest.octocode.config.ts' >&2; exit 1",
+				timeout: 4000,
+				background: false,
+			},
+			undefined,
+			undefined,
+			fakeCtx({ cwd: tmp() }),
+		)) as { content: { text: string }[]; details: { notices?: string[] } };
+		expect(failed.details.notices?.join("\n")).toMatch(VITEST_ROOT);
+		expect(failed.content[0].text).toMatch(VITEST_ROOT);
 	});
 });
 

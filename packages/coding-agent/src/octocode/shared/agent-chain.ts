@@ -1,5 +1,5 @@
 /**
- * The channel (`api.events`) on which the subagents domain announces the links of a chain: a child queued behind
+ * The channel (`api.channels`) on which the subagents domain announces the links of a chain: a child queued behind
  * prerequisites, released when they were met, or held because one failed. The hooks domain turns these into the
  * AgentQueued hook and the chain fields of AgentOn and AgentOff. Neither domain imports the other.
  */

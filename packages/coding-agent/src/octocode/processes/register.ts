@@ -2,7 +2,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Db } from "../../../../db/src/api.ts";
 import { liveStdioServerPids } from "../../../../mcp/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { processStartTime } from "../shared/process.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { PARENT_PID_ENV } from "../team/store/env.ts";
@@ -39,7 +39,7 @@ function parentOf(env: NodeJS.ProcessEnv): { pid: number; started: string | null
  * switch starts another), samples its memory and children while a session runs, and registers `/processes` for a main
  * session. A subagent keeps the title it started with: its id is the agent's, not the session's.
  */
-export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions): void {
+export function registerProcesses(api: FeatureSetup, options: ProcessesOptions): void {
 	const env = options.env ?? process.env;
 	const table = options.table ?? readProcessTable;
 	const db = options.db ?? (() => sharedAgentDb().db);
@@ -58,7 +58,7 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 			}),
 		);
 
-	api.on("session_start", (_event, ctx) => {
+	api.bus.on("session_start", (_event, ctx) => {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const subagent = subagentIdentity(env);
 		const role = subagent?.role ?? (ctx.mode === "rpc" ? "rpc" : "main");
@@ -107,7 +107,7 @@ export function registerProcesses(api: ExtensionAPI, options: ProcessesOptions):
 	});
 
 	// The final sample is written at once from the last table read: a shutdown or a switch never waits for a `ps`.
-	api.on("session_shutdown", () => {
+	api.bus.on("session_shutdown", () => {
 		const stopping = sampler;
 		sampler = undefined;
 		stopping?.stop();

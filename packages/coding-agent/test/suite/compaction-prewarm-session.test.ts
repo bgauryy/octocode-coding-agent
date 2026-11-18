@@ -20,11 +20,11 @@ it("plans the threshold compaction ahead, beside the run, and that compaction ru
 		compactionPolicy: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_compact_prewarm", async (event) => {
+				api.bus.on("session_compact_prewarm", async (event) => {
 					seen.push("prewarm");
 					planned = event.preparation;
 				});
-				api.on("session_before_compact", async (event) => {
+				api.bus.on("session_before_compact", async (event) => {
 					seen.push(`compact:${event.reason}`);
 					compacted = event.preparation;
 					return {
@@ -101,8 +101,8 @@ it("passes the last successful forced system prefix into the real near-threshold
 		compactionPolicy: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("before_agent_start", () => ({ systemPrompt: "Use this exact transient prompt." }));
-				api.on("session_compact_prewarm", async (event, ctx) => {
+				api.bus.on("before_agent_start", () => ({ systemPrompt: "Use this exact transient prompt." }));
+				api.bus.on("session_compact_prewarm", async (event, ctx) => {
 					forced = event.summaryRequest?.forceSystemPrompt;
 					pending = sharedSummary(api, event, ctx, ctx.model!, "Preserve the objective.");
 					await pending;

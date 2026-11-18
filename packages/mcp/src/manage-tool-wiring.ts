@@ -8,22 +8,20 @@ import { mcpServerGroup, mcpServerSource } from "./group.ts";
 import { createMcpManageTool, type ManagedMcpServer, NATIVE_SERVER } from "./manage-tool.ts";
 import { describeState, isEnabled } from "./server.ts";
 import { registerMcpAddedServers } from "./session-servers.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import { hideTools, loadOnDemand } from "./tool-registry.ts";
 
 // The model's `mcp` tool lists, inspects, restarts and stops this session's servers; configuration files stay unchanged.
-export function registerMcpManageTool(state: McpExtensionState): void {
+export function registerMcpManageTool(state: McpFeatureState): void {
 	const { api } = state;
-	// Children inherit enabled extension registrations, including session additions, and the names of servers stopped
+	// Children inherit enabled feature registrations, including session additions, and the names of servers stopped
 	// for this session (they skip those unless their own tool selection names the server; see `session-servers.ts`).
-	registerMcpAddedServers(api.events, () => ({
+	registerMcpAddedServers(api.channels, () => ({
 		servers: Object.fromEntries(
 			state.servers
 				.filter(
 					(server) =>
-						server.entry.scope === "extension" &&
-						server.entry.config.enabled !== false &&
-						!server.connection?.isStopped,
+						server.entry.scope === "feature" && server.entry.config.enabled !== false && !server.connection?.isStopped,
 				)
 				.map((server) => [server.entry.name, server.entry.config]),
 		),
@@ -32,7 +30,7 @@ export function registerMcpManageTool(state: McpExtensionState): void {
 		...(state.recentTools() ? { recent: [...(state.recentTools() ?? [])].sort() } : {}),
 	}));
 	// Inactive on registration: the default tool selection includes it (`core/native-tools.ts`), so `noTools` and `--tools` apply.
-	api.registerTool({
+	api.tools.register({
 		defaultActive: false,
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),

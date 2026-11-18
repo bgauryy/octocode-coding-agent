@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { type AuditEntry, AuditLog, childAuditMessage, RELAY_VIA, WARN_ACTIONS } from "../audit.ts";
 import { exposureMessage } from "../provenance/exposure.ts";
 import { auditLine, auditLines } from "../effect.ts";
@@ -22,7 +22,7 @@ import type { ActionEvent, Decided } from "./types.ts";
  * of its entries to its parent. Each public method backs the `Permission` method of the same name.
  */
 export class PermissionTrail {
-	readonly #api: ExtensionAPI;
+	readonly #api: FeatureSetup;
 	readonly #isSubagent: boolean;
 	/** The secret the parent gave this subagent: what marks a header or audit entry as this module's own. Empty when there is none. */
 	readonly #nonce: string;
@@ -34,10 +34,10 @@ export class PermissionTrail {
 	readonly #listeners = new Set<(event: ActionEvent) => void>();
 	/** The no-secret note was written. */
 	#unforwarded = false;
-	#paintCtx: Pick<ExtensionContext, "hasUI" | "ui" | "mode"> | undefined;
+	#paintCtx: Pick<FeatureContext, "hasUI" | "ui" | "mode"> | undefined;
 
 	constructor(options: {
-		api: ExtensionAPI;
+		api: FeatureSetup;
 		isSubagent: boolean;
 		nonce: string;
 		/** The mode that judges calls (audit entries). */
@@ -56,7 +56,7 @@ export class PermissionTrail {
 		this.#stderr = options.stderr;
 		this.#log = new AuditLog((entry) => {
 			try {
-				this.#api.appendEntry<AuditEntry>(PERMISSION_ID, entry);
+				this.#api.session.appendEntry<AuditEntry>(PERMISSION_ID, entry);
 			} catch {
 				// No session to write to (it was replaced); the decision itself stands.
 			}
@@ -97,7 +97,7 @@ export class PermissionTrail {
 	}
 
 	/** Drops the tallies at session start, counting the entries the session already recorded. */
-	reset(ctx: Pick<ExtensionContext, "sessionManager">): void {
+	reset(ctx: Pick<FeatureContext, "sessionManager">): void {
 		this.#log.reset(this.#recorded(ctx));
 	}
 
@@ -111,7 +111,7 @@ export class PermissionTrail {
 		return this.#log.summary();
 	}
 
-	#recorded(ctx: Pick<ExtensionContext, "sessionManager">): number {
+	#recorded(ctx: Pick<FeatureContext, "sessionManager">): number {
 		try {
 			return ctx.sessionManager
 				.getEntries()
@@ -154,7 +154,7 @@ export class PermissionTrail {
 		this.record({ action: "shell", what: auditLines([command, `cwd: ${cwd}`]), allowed: true, via: "typed" });
 	}
 
-	paint(ctx: Pick<ExtensionContext, "hasUI" | "ui" | "mode">): undefined {
+	paint(ctx: Pick<FeatureContext, "hasUI" | "ui" | "mode">): undefined {
 		this.#paintCtx = ctx;
 		if (!ctx.hasUI) return undefined;
 		const mode = this.#chipMode();

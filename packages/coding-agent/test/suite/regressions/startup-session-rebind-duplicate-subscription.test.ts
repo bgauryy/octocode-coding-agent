@@ -8,7 +8,7 @@ type RebindContext = {
 	applyRuntimeSettings: () => void;
 	programStatus: { reset(): void };
 	renderCurrentSessionState: () => void;
-	bindCurrentSessionExtensions: () => Promise<void>;
+	bindCurrentSessionFeatures: () => Promise<void>;
 	subscribeToAgent: () => void;
 	updateAvailableProviderCount: () => Promise<void>;
 	updateEditorBorderColor: () => void;
@@ -38,7 +38,7 @@ describe("overlapping startup and replacement session rebinds", () => {
 			applyRuntimeSettings: () => {},
 			programStatus: { reset: () => {} },
 			renderCurrentSessionState: () => {},
-			bindCurrentSessionExtensions: () => {
+			bindCurrentSessionFeatures: () => {
 				bindCount += 1;
 				return bindCount === 1 ? startupBind : replacementBind;
 			},

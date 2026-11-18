@@ -7,6 +7,7 @@ const s = (successes: number, trials: number, decision: "pass" | "fail" | "incon
 		trials,
 		successes,
 		failures: trials - successes,
+		passRate: trials ? successes / trials : 0,
 		probability: 0,
 		threshold: 0.5,
 		stoppedEarly: true,

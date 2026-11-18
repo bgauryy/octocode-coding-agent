@@ -1,9 +1,10 @@
-import { Container, type SettingItem, SettingsList, Text } from "@octocodeai/octocode-tui";
+import { Container, type SettingItem, Text } from "@octocodeai/octocode-tui";
+import { SettingsListView } from "./settings-list-view.ts";
 import { appliesText, formatResult } from "../../../configuration/command.ts";
 import type { ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "../../../configuration/index.ts";
-import { getSettingsListTheme, theme } from "../../../theme/theme.ts";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { ExtensionInputComponent } from "./extension-input.ts";
+import { DialogInputComponent } from "./dialog-input.ts";
 
 export type SelectorScope = Exclude<ConfigScope, "run">;
 
@@ -41,7 +42,7 @@ function shown(entry: ConfigEntry, scope: SelectorScope): string {
 export class ConfigurationSelectorComponent extends Container {
 	private scope: SelectorScope;
 	private entries: Map<string, ConfigEntry>;
-	private list: SettingsList;
+	private list: SettingsListView;
 	private readonly header = new Text("", 1, 0);
 	private readonly notice = new Text("", 1, 0);
 
@@ -98,7 +99,7 @@ export class ConfigurationSelectorComponent extends Container {
 		return {
 			...base,
 			submenu: (current, done) =>
-				new ExtensionInputComponent(
+				new DialogInputComponent(
 					`${entry.id} (${this.scope})`,
 					undefined,
 					(value) => done(value.trim()),
@@ -111,16 +112,12 @@ export class ConfigurationSelectorComponent extends Container {
 		};
 	}
 
-	private buildList(initialQuery?: string): SettingsList {
+	private buildList(initialQuery?: string): SettingsListView {
 		const items = [...(this.options.extraItems ?? []), ...[...this.entries.values()].map((entry) => this.item(entry))];
-		return new SettingsList(
-			items,
-			MAX_VISIBLE,
-			getSettingsListTheme(),
-			(id, value) => void this.change(id, value),
-			this.options.onClose,
-			{ enableSearch: true, initialQuery },
-		);
+		return new SettingsListView(items, MAX_VISIBLE, (id, value) => void this.change(id, value), this.options.onClose, {
+			search: true,
+			initialQuery,
+		});
 	}
 
 	private async change(id: string, value: string): Promise<void> {

@@ -2,7 +2,7 @@
  * The summary of the coming threshold compaction, requested ahead while the run goes on.
  *
  * A compaction holds the turn while the model writes its summary. Shortly before the threshold the session fixes the
- * compaction's plan (its cut point) and tells extensions (`session_compact_prewarm`), which may request the summary
+ * compaction's plan (its cut point) and tells features (`session_compact_prewarm`), which may request the summary
  * then. The threshold compaction that follows runs the same plan, so a summary that is ready is used at once and one
  * still being written is waited for only for what is left of it. Everything after the planned cut stays in the context
  * word for word, including what the run added in between.
@@ -17,7 +17,7 @@ import {
 	shouldCompact,
 	type SummaryRequestPolicy,
 } from "../compaction/index.ts";
-import type { ExtensionRunner } from "../features/index.ts";
+import type { FeatureHost } from "../features/index.ts";
 import type { SessionEntry, SessionManager } from "../session-manager.ts";
 
 /** How far below the compaction threshold the plan is made: about the context a run adds while a summary is written. */
@@ -56,10 +56,10 @@ export class CompactionPrewarm {
 		return tokens > window - settings.reserveTokens - prewarmLeadTokens(window);
 	}
 
-	/** Fixes the plan for the branch as it is now and tells extensions; does nothing when nothing can be summarized. */
+	/** Fixes the plan for the branch as it is now and tells features; does nothing when nothing can be summarized. */
 	start(
 		sessionManager: SessionManager,
-		runner: ExtensionRunner,
+		runner: FeatureHost,
 		model: Model<any>,
 		settings: CompactionSettings,
 		summaryRequest: SummaryRequestPolicy,

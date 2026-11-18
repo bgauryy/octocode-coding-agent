@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { contentText, isStaleSessionError } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
 import { abortTurn } from "./bridge/abort.ts";
@@ -41,7 +41,7 @@ import {
 import { ApiServer, type Connection } from "./server.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
-/** Session entry (`api.appendEntry`, never sent to the model) written for every turn an API client starts. */
+/** Session entry (`api.session.appendEntry`, never sent to the model) written for every turn an API client starts. */
 const EXTERNAL_AUDIT_TYPE = "octocode-external";
 /** `messages.list` page size: the default, and the most one page holds (a larger `limit` gets this many; `earlier` reaches the rest). */
 const HISTORY_PAGE = 20;
@@ -50,11 +50,11 @@ const HISTORY_MAX_PAGE = 100;
 /**
  * An external API for one running Octocode session: other programs discover it, send it messages, follow what it does and
  * ask it to stop. JSON-RPC 2.0 over a private Unix socket (and optionally authenticated loopback HTTP + SSE), the
- * shape ACP uses, scoped to this extension's needs.
+ * shape ACP uses, scoped to this feature's needs.
  */
 export class OctocodeApi {
 	readonly log = new EventLog();
-	private ctx: ExtensionContext | undefined;
+	private ctx: FeatureContext | undefined;
 	private server: ApiServer | undefined;
 	private record: InstanceRecord | undefined;
 	private dir: string;
@@ -65,7 +65,7 @@ export class OctocodeApi {
 	private lastAssistantText = "";
 	private pendingDelta = "";
 
-	private readonly api: ExtensionAPI;
+	private readonly api: FeatureSetup;
 	private readonly agents: AgentDirectory;
 	private readonly version: () => string | undefined;
 	private readonly env: NodeJS.ProcessEnv;
@@ -73,7 +73,7 @@ export class OctocodeApi {
 	/** The `sessionApiTurnPermission` ceiling's owner; `operations` is what it hands back. */
 	private readonly ceilings: TurnCeilings;
 	constructor(
-		api: ExtensionAPI,
+		api: FeatureSetup,
 		agents: AgentDirectory,
 		version: () => string | undefined,
 		env: NodeJS.ProcessEnv = process.env,
@@ -111,13 +111,13 @@ export class OctocodeApi {
 			log.publish("message.delta", { delta });
 		};
 		registerExternalMessageRenderer(api);
-		api.on("agent_start", () => {
+		api.bus.on("agent_start", () => {
 			// A new run: `wait` must never answer with the previous run's text.
 			this.lastResult = undefined;
 			this.pendingDelta = "";
 			if (this.server) log.publish("agent.start", {});
 		});
-		api.on("agent_end", (event) => {
+		api.bus.on("agent_end", (event) => {
 			if (!this.server) return;
 			flushDelta();
 			const last = [...event.messages].reverse().find((message) => message.role === "assistant");
@@ -129,7 +129,7 @@ export class OctocodeApi {
 		});
 		// `wait` answers once Octocode has settled: after agent_end it may still continue (a queued follow-up, a compaction
 		// retry), and the caller wants the final answer, not an intermediate one.
-		api.on("agent_settled", (event) => {
+		api.bus.on("agent_settled", (event) => {
 			this.operations.capTurn?.(undefined); // an API-started turn is over, API running or not
 			if (!this.server) return;
 			// The recorded outcome decides failure: recovery can remove the failed attempt `agent_end` would have reported.
@@ -144,19 +144,19 @@ export class OctocodeApi {
 			this.receipts.settle(result);
 			log.publish("agent.settled", result);
 		});
-		api.on("message_end", (event) => {
+		api.bus.on("message_end", (event) => {
 			if (!this.server) return;
 			const { role } = event.message;
 			if (role === "assistant") flushDelta();
 			if (role === "assistant" || role === "user")
 				log.publish("message", { role, text: boundedText(contentText(event.message.content, { separator: "" })) });
 		});
-		api.on("message_update", (event) => {
+		api.bus.on("message_update", (event) => {
 			if (!this.server) return;
 			const inner = event.assistantMessageEvent as { type?: string; delta?: unknown };
 			if (inner.type === "text_delta" && typeof inner.delta === "string") this.pendingDelta += inner.delta;
 		});
-		api.on("tool_execution_start", (event) => {
+		api.bus.on("tool_execution_start", (event) => {
 			if (!this.server) return;
 			log.publish("tool.start", {
 				id: event.toolCallId,
@@ -165,7 +165,7 @@ export class OctocodeApi {
 				...nesting(event.parentToolCallId),
 			});
 		});
-		api.on("tool_execution_end", (event) => {
+		api.bus.on("tool_execution_end", (event) => {
 			if (!this.server) return;
 			log.publish("tool.end", {
 				id: event.toolCallId,
@@ -175,14 +175,14 @@ export class OctocodeApi {
 				...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
 			});
 		});
-		api.on("session_compact", () => {
+		api.bus.on("session_compact", () => {
 			if (this.server) log.publish("compaction", {});
 			return undefined;
 		});
 	}
 
 	/** Bind to the session, and serve on `options` (undefined: bound, not serving). */
-	async start(ctx: ExtensionContext, options: ApiOptions | undefined): Promise<void> {
+	async start(ctx: FeatureContext, options: ApiOptions | undefined): Promise<void> {
 		await this.stop();
 		this.ctx = ctx;
 		if (!options) return;
@@ -243,13 +243,13 @@ export class OctocodeApi {
 		this.log.close();
 	}
 
-	private session(): ExtensionContext {
+	private session(): FeatureContext {
 		if (!this.ctx) throw new RpcError(ERR.unavailable, "No active session");
 		this.receipts.follow(this.ctx.sessionManager.getSessionId());
 		return this.ctx;
 	}
 
-	private guardSession(params: Record<string, unknown>, ctx: ExtensionContext): void {
+	private guardSession(params: Record<string, unknown>, ctx: FeatureContext): void {
 		const expected = stringParam(params, "expectedSessionId", { optional: true });
 		if (expected !== undefined && expected !== ctx.sessionManager.getSessionId())
 			throw new RpcError(ERR.unavailable, "The expected session was replaced; nothing was sent", {
@@ -344,7 +344,7 @@ export class OctocodeApi {
 			ceilings: this.ceilings,
 			receipts: this.receipts,
 			session: () => this.session(),
-			guardSession: (given: Record<string, unknown>, ctx: ExtensionContext) => this.guardSession(given, ctx),
+			guardSession: (given: Record<string, unknown>, ctx: FeatureContext) => this.guardSession(given, ctx),
 			verify: (facts: ExternalFacts, given: Record<string, unknown>) => this.verify(facts, given, connection),
 			audit: (data: Record<string, unknown>) => this.audit(data),
 		};
@@ -363,7 +363,7 @@ export class OctocodeApi {
 	/** Records what an API client did in the session (a `octocode-external` entry): the turns it started, what it stopped and what it read. */
 	private audit(data: Record<string, unknown>): void {
 		try {
-			this.api.appendEntry(EXTERNAL_AUDIT_TYPE, { at: Date.now(), ...data });
+			this.api.session.appendEntry(EXTERNAL_AUDIT_TYPE, { at: Date.now(), ...data });
 		} catch {
 			// The session ended: nothing to record in.
 		}

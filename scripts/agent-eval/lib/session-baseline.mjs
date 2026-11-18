@@ -19,7 +19,7 @@ export const CHARS_PER_TOKEN = 4;
 export const REASON_KEY_TOKENS = 4;
 /** Shorter prompt words match too much by chance to pull a memory in (`memory/inject.ts`). */
 const MIN_TERM_LENGTH = 3;
-/** The words a report starts with (`instructions/report.ts`), and the one label that may come before (`report-outcome.ts`). */
+/** The words a report starts with (`native/prompts/report.ts`), and the one label that may come before (`report-outcome.ts`). */
 const OUTCOME_WORDS = new Set(["done", "partial", "blocked", "failed"]);
 const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;
 

@@ -34,7 +34,7 @@ describe("the composed extension on session_shutdown", () => {
 		"preserves the shared agent database on %s until process cleanup",
 		async (reason) => {
 			const fake = fakeHost();
-			Object.assign(fake.api, { getSessionName: () => undefined });
+			Object.assign(fake.api.session, { getName: () => undefined });
 			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const before = sharedAgentDb();

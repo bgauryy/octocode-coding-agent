@@ -39,7 +39,7 @@ describe("interactive pickSession", () => {
 				usesDefaultSessionDir: () => true,
 			},
 			ui: {},
-			showExtensionCustom: <T>(
+			showCustomDialog: <T>(
 				factory: (
 					tui: unknown,
 					theme: unknown,

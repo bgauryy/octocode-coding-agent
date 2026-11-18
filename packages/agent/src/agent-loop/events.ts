@@ -39,7 +39,7 @@ export function createToolResultMessage(finalized: AgentToolCallOutcome): ToolRe
 		role: "toolResult",
 		toolCallId: finalized.toolCall.id,
 		toolName: finalized.toolCall.name,
-		// Untyped tools (JS extensions) can return results without content; normalize
+		// Untyped tools (JS features) can return results without content; normalize
 		// so the null never enters session history or provider payloads.
 		content: finalized.result.content ?? [],
 		details: finalized.result.details,

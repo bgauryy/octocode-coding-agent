@@ -55,13 +55,13 @@ describe("native features over RPC", () => {
 		for (const name of ["permissions", "agents", "plan"]) {
 			expect(byName.get(name), `/${name}`).toMatchObject({ source: "extension", sourceInfo: { owner: "native" } });
 		}
-		for (const name of ["mcp", "llama"]) {
+		for (const name of ["mcp"]) {
 			expect(byName.get(name), `/${name}`).toMatchObject({ source: "extension", sourceInfo: { owner: "builtin" } });
 		}
 		expect(new Set(commands.map((command) => command.name)).size).toBe(commands.length);
 	}, 90_000);
 
-	it("starts with an Ignored extension diagnostic when settings name a code file", async () => {
+	it("starts with an ignored-key warning when settings still name a code file under extensions", async () => {
 		sandbox = createSandbox();
 		const code = join(sandbox.directory, "startup.mjs");
 		const ran = join(sandbox.directory, "ran.txt");
@@ -74,27 +74,22 @@ describe("native features over RPC", () => {
 		await rpc.start();
 		expect(await rpc.getState()).toHaveProperty("sessionId");
 		expect(await commandNames(rpc)).toContain("permissions");
-		expect(rpc.getStderr()).toMatch(
-			/Ignored extension\. User code extensions are not supported; use plugins and hooks \(see docs\/plugins\.md\)/,
-		);
-		expect(rpc.getStderr()).toContain(code);
+		expect(rpc.getStderr()).toContain('Setting "extensions" is ignored');
 		expect(existsSync(ran), "the module was never imported").toBe(false);
 	}, 90_000);
 
 	it.each([
-		{ settings: ["-builtin:mcp"], args: [] as string[], mcp: true, llama: true },
-		{ settings: ["-builtin:llama.cpp"], args: [], mcp: true, llama: false },
-		{ settings: [], args: ["--no-mcp"], mcp: false, llama: true },
+		{ settings: ["-builtin:mcp"], args: [] as string[], mcp: true },
+		{ settings: [], args: ["--no-mcp"], mcp: false },
 	])(
-		"switches built-ins by $settings $args",
-		async ({ settings, args, mcp, llama }) => {
+		"switches MCP by $settings $args",
+		async ({ settings, args, mcp }) => {
 			sandbox = createSandbox();
 			if (settings.length) writeSettings(sandbox, { extensions: settings });
 			const rpc = rpcClient(args);
 			await rpc.start();
 			const names = await commandNames(rpc);
 			expect(names.includes("mcp")).toBe(mcp);
-			expect(names.includes("llama")).toBe(llama);
 			expect(names, "the native feature set is never switched off").toContain("permissions");
 		},
 		90_000,

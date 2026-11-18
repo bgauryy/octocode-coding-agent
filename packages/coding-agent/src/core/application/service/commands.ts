@@ -19,7 +19,7 @@ export function commandImages(
 	assets: ApplicationAssets,
 	session: Pick<ApplicationSession, "model">,
 ): ImageContent[] | undefined {
-	if (command.action === "abort" || command.action === "answer") return undefined;
+	if (command.action === "abort" || command.action === "answer" || command.action === "hold") return undefined;
 	if (!command.text.trim() && !command.attachments?.length) throw new Error("Enter a message or attach an image");
 	if (!command.attachments?.length) return undefined;
 	const images: ImageContent[] = command.attachments.map((id) => {
@@ -41,7 +41,7 @@ export function commandImages(
 export function invokeCommand(
 	command: ApplicationCommand,
 	images: ImageContent[] | undefined,
-	session: Pick<ApplicationSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog">,
+	session: Pick<ApplicationSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog" | "holdDialog">,
 ): unknown {
 	switch (command.action) {
 		case "abort":
@@ -55,6 +55,11 @@ export function invokeCommand(
 				...(command.text !== undefined ? { text: command.text } : {}),
 				...(command.replies !== undefined ? { replies: command.replies } : {}),
 			});
+			if (!result.ok) throw new Error(result.reason);
+			return undefined;
+		}
+		case "hold": {
+			const result = session.holdDialog(command.dialogId);
 			if (!result.ok) throw new Error(result.reason);
 			return undefined;
 		}

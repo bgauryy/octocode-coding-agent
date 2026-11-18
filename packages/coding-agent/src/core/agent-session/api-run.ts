@@ -18,7 +18,7 @@ import type {
 export interface AgentSessionPromptingApi {
 	/**
 	 * Send a prompt to the agent.
-	 * - Handles extension commands (registered via api.registerCommand) immediately, even during streaming
+	 * - Handles feature commands (registered via api.commands.register) immediately, even during streaming
 	 * - Expands file-based prompt templates by default
 	 * - During streaming, queues via steer() or followUp() based on streamingBehavior option
 	 * - Validates model and API key before sending (when not streaming)
@@ -31,20 +31,20 @@ export interface AgentSessionPromptingApi {
 	 * Queue a steering message while the agent is running.
 	 * Delivered after the current assistant turn finishes executing its tool calls,
 	 * before the next LLM call.
-	 * Expands skill commands and prompt templates. Errors on extension commands.
+	 * Expands skill commands and prompt templates. Errors on feature commands.
 	 * @param images Optional image attachments to include with the message
 	 * @param options Input source (defaults to interactive) and whether to attach image paths the text names
-	 * @throws Error if text is an extension command
+	 * @throws Error if text is a feature command
 	 */
 	steer(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition>;
 
 	/**
 	 * Queue a follow-up message to be processed after the agent finishes.
 	 * Delivered only when agent has no more tool calls or steering messages.
-	 * Expands skill commands and prompt templates. Errors on extension commands.
+	 * Expands skill commands and prompt templates. Errors on feature commands.
 	 * @param images Optional image attachments to include with the message
 	 * @param options Input source (defaults to interactive) and whether to attach image paths the text names
-	 * @throws Error if text is an extension command
+	 * @throws Error if text is a feature command
 	 */
 	followUp(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition>;
 
@@ -77,7 +77,7 @@ export interface AgentSessionPromptingApi {
 	 *
 	 * @param content User message content (string or content array)
 	 * @param options.deliverAs Delivery mode when streaming: "steer" or "followUp"
-	 * @param options.expandPromptTemplates Whether to dispatch extension commands and expand skill commands and prompt templates. Default: false.
+	 * @param options.expandPromptTemplates Whether to dispatch feature commands and expand skill commands and prompt templates. Default: false.
 	 */
 	sendUserMessage(
 		content: string | (TextContent | ImageContent)[],
@@ -144,7 +144,7 @@ export interface AgentSessionPromptingApi {
 
 	waitForIdle(): Promise<void>;
 
-	/** Resolves once the run and what it left behind are done: a compaction an extension asked for as it settled and the turn resuming from it. */
+	/** Resolves once the run and what it left behind are done: a compaction a feature asked for as it settled and the turn resuming from it. */
 	settled(): Promise<void>;
 }
 
@@ -153,7 +153,7 @@ export interface AgentSessionRecoveryApi {
 	/**
 	 * Manually compact the session context.
 	 *
-	 * This is the manual entry point used by `/compact`, RPC, and extensions. It is
+	 * This is the manual entry point used by `/compact`, RPC, and features. It is
 	 * separate from automatic threshold/overflow compaction, which enters through
 	 * `_checkCompaction()` and `_runAutoCompaction()`. After preparation and the
 	 * `session_before_compact` hook, both paths call the lower-level `compact()`
@@ -214,14 +214,14 @@ export interface AgentSessionRecoveryApi {
 
 	/**
 	 * Run a user `!`/`!!` command as every mode does: `user_bash` handlers may run it or supply its operations, else it
-	 * runs here. Fails closed: a failing handler is reported as an extension error, nothing runs, and the promise rejects
+	 * runs here. Fails closed: a failing handler is reported as a feature error, nothing runs, and the promise rejects
 	 * with a `UserBashHookError`. `onStart` fires just before the command runs here, not for a handler's result.
 	 */
 	runUserBash(command: string, options?: UserBashOptions): Promise<BashResult>;
 
 	/**
 	 * Record a bash execution result in session history.
-	 * Used by executeBash and by extensions that handle bash execution themselves.
+	 * Used by executeBash and by features that handle bash execution themselves.
 	 */
 	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void;
 

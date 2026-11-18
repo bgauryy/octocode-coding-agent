@@ -202,7 +202,7 @@ describe("an outbound message whose text came from an agent", () => {
 		);
 	const send = (s: ReturnType<typeof session>, provenance: ReturnType<typeof createProvenance>) =>
 		messagePolicy({
-			api: { sendMessage: () => undefined },
+			api: { session: { sendMessage: () => undefined } },
 			hooks: {} as never,
 			permission: s.permission,
 			planning: { blocked: () => false },

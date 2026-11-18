@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { excludeLiveTests } from "../../vitest.live.ts";
 
 const telemetrySrcIndex = fileURLToPath(new URL("../telemetry/src/index.ts", import.meta.url));
 const aiSrcIndex = fileURLToPath(new URL("../ai/src/index.ts", import.meta.url));
@@ -9,6 +10,7 @@ const agentSrcIndex = fileURLToPath(new URL("./src/index.ts", import.meta.url));
 
 export default defineConfig({
 	test: {
+		exclude: excludeLiveTests(),
 		globalSetup: [fileURLToPath(new URL("../../vitest.tmp.global.ts", import.meta.url))],
 		globals: true,
 		environment: "node",

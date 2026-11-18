@@ -5,7 +5,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, closeSharedAgentDb, sessions } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";

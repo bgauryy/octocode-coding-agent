@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import "../../src/octocode/mcp-host/core-install.ts";
 import { loadMcpServers } from "../../src/configuration/adapters/mcp.ts";
 import { formatStatus } from "../../../mcp/src/report.ts";
@@ -8,18 +8,14 @@ import { mcpServerState, mcpServerToolCount } from "../../../mcp/src/row.ts";
 import { exposureOf } from "../../../mcp/src/exposure.ts";
 import { projectMcpConfigPath } from "../../../mcp/src/paths.ts";
 import type { McpServer } from "../../../mcp/src/server.ts";
-import type { McpExtensionState } from "../../../mcp/src/state.ts";
+import type { McpFeatureState } from "../../../mcp/src/state.ts";
 import type { McpServerStatus } from "../../../mcp/src/api.ts";
 import { mcpItems } from "../../src/octocode/harness/mcp-items.ts";
-import { createMcpToolsSource } from "../../src/octocode/harness/mcp-tools.ts";
-import { HarnessPicker } from "../../src/octocode/harness/picker.ts";
-import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { initTheme, theme } from "../../src/theme/theme.ts";
-import { stripAnsi } from "../../src/utils/ansi.ts";
+import { initTheme } from "../../src/theme/theme.ts";
 import { type Sandbox, createSandbox, write } from "../discovery/fixtures.ts";
 import { configuration } from "../configuration/helpers.ts";
 import { trustFolder } from "./helpers.ts";
+import { menuText, runToolsPage } from "./mcp-tools-page-driver.ts";
 
 beforeAll(() => initTheme("dark"));
 
@@ -80,7 +76,7 @@ describe("one row formatter for /mcp list, /harness and /configuration list mcp"
 			),
 		);
 		const listed = new Map(
-			formatStatus({ servers, configErrors: [], overridden: [] } as unknown as McpExtensionState)
+			formatStatus({ servers, configErrors: [], overridden: [] } as unknown as McpFeatureState)
 				.split("\n")
 				.map((line) => [line.slice(0, line.indexOf(":")), line.slice(line.indexOf(":") + 2)] as const),
 		);
@@ -118,74 +114,37 @@ describe("one row formatter for /mcp list, /harness and /configuration list mcp"
 	});
 });
 
-describe("the server's exposure row in the MCP tools view", () => {
-	const ENTER = "\r";
-	const DOWN = "\x1b[B";
-	const TAB = "\t";
-
-	function open(options: { trusted?: boolean; scope?: "project" } = {}) {
-		const projectTrusted = options.trusted ?? true;
-		const picker = new HarnessPicker(
-			{
-				items: [
-					{ id: "mcp:docs", name: "docs", kind: "mcp", host: "mcp", depth: 0, label: "docs", on: true, detail: "" },
-				],
-				section: "mcp",
-				apply: vi.fn(() => "Saved"),
-				paths: { global: "g", project: "p" },
-				height: 24,
-				done: vi.fn(),
-				requestRender: vi.fn(),
-				mcpTools: createMcpToolsSource({
-					ctx: () => ({
-						cwd: sandbox.cwd,
-						agentDir: sandbox.agentDir,
-						home: sandbox.home,
-						settings: SettingsManager.create(sandbox.cwd, sandbox.agentDir, { projectTrusted }),
-						projectTrusted,
-					}),
-					live: () => undefined,
-				}),
-			},
-			theme,
-			new KeybindingsManager(),
-		);
-		if (options.scope === "project") picker.handleInput(TAB);
-		picker.handleInput(ENTER);
-		return {
-			keys: (...data: string[]) => data.forEach((key) => picker.handleInput(key)),
-			text: () => stripAnsi(picker.render(100).join("\n")),
-		};
-	}
+describe("the server's Default for tools row on the /mcp tools page", () => {
+	const page = (choices: Array<string | undefined>, options: { trusted?: boolean; scope?: "project" } = {}) =>
+		runToolsPage({ cwd: sandbox.cwd, agentDir: sandbox.agentDir, home: sandbox.home, ...options }, choices);
+	const last = (menus: Awaited<ReturnType<typeof page>>) =>
+		menuText(menus.filter((menu) => menu.title === "docs — tools").at(-1)!);
 	const docs = (file = globalFile()) => readJson(file).mcpServers.docs;
 	beforeEach(() => write(globalFile(), JSON.stringify({ mcpServers: { docs: { command: "docs-server" } } })));
 
-	it("shows Default for tools and Tab cycles direct, deferred, hidden, direct, writing exposure each time", () => {
-		const { keys, text } = open();
-		expect(text()).toContain("Default for tools: direct");
-		keys(DOWN, TAB);
-		expect(text()).toContain("Default for tools: deferred");
+	it("shows Default for tools and writes each chosen exposure, leaving direct unwritten", async () => {
+		expect(last(await page([]))).toContain("Default for tools  direct");
+		expect(last(await page(["@default", "deferred"]))).toContain("Default for tools  deferred");
 		expect(docs()).toEqual({ command: "docs-server", exposure: "deferred" });
-		keys(TAB);
+		await page(["@default", "onDemand"]);
+		expect(docs().exposure).toBe("onDemand");
+		await page(["@default", "hidden"]);
 		expect(docs().exposure).toBe("hidden");
-		keys(TAB);
+		await page(["@default", "direct"]);
 		// The default is not written.
 		expect(docs()).toEqual({ command: "docs-server" });
-		expect(text()).toContain("Default for tools: direct");
 	});
 
-	it("writes a project override when project scope is chosen in a trusted folder", () => {
+	it("writes a project override when project scope is chosen in a trusted folder", async () => {
 		trustFolder(sandbox.cwd);
-		const { keys } = open({ scope: "project" });
-		keys(DOWN, TAB);
+		await page(["@default", "deferred"], { scope: "project" });
 		expect(docs(projectFile())).toEqual({ exposure: "deferred" });
 		expect(docs()).toEqual({ command: "docs-server" });
 	});
 
-	it("refuses project scope in an untrusted folder and writes nothing", () => {
-		const { keys, text } = open({ trusted: false, scope: "project" });
-		keys(DOWN, TAB);
-		expect(text()).toContain("not trusted");
+	it("refuses project scope in an untrusted folder and writes nothing", async () => {
+		const text = last(await page(["@default", "deferred"], { trusted: false, scope: "project" }));
+		expect(text).toContain("not trusted");
 		expect(fs.existsSync(projectFile())).toBe(false);
 		expect(docs()).toEqual({ command: "docs-server" });
 	});

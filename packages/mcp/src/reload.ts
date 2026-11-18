@@ -1,5 +1,5 @@
 /**
- * Applying a change of the configured server set during a session: servers registered by extensions
+ * Applying a change of the configured server set during a session: servers registered by features
  * (`mcp_servers_change`) and a config reload (`requestMcpReload`, after `/harness` switches a vendor) share it.
  */
 
@@ -13,13 +13,13 @@ import type { McpContext } from "./host/types.ts";
 import { sayUntrustedProject } from "./notice.ts";
 import { reportProblems } from "./report.ts";
 import { isEnabled, type McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import type { McpReloadResult } from "./switch.ts";
 import { hideTools } from "./tool-registry.ts";
 
 /** Drop `removed` (closing their connections), add `added` and connect those enabled and selected. */
 export async function applyServerChanges(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	ctx: McpContext,
 	removed: readonly McpServer[],
 	added: readonly McpServer[],
@@ -51,7 +51,7 @@ export async function applyServerChanges(
 /** Whether `server` must close because `desired` (its namespace's wanted server, if any) differs from it. */
 function outdated(server: McpServer, desired: McpServer | undefined): boolean {
 	if (!desired) return true;
-	if (server.entry.scope === "extension" || desired.entry.scope === "extension")
+	if (server.entry.scope === "feature" || desired.entry.scope === "feature")
 		return server.entry.scope !== desired.entry.scope || server.registeredConfig !== desired.registeredConfig;
 	return !isDeepStrictEqual(server.entry, desired.entry);
 }
@@ -62,7 +62,7 @@ function outdated(server: McpServer, desired: McpServer | undefined): boolean {
  * block describes the result.
  */
 export async function reloadMcpConfig(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	ctx: McpContext,
 	load: () => LoadedMcpConfig,
 ): Promise<McpReloadResult> {

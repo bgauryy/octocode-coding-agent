@@ -1,5 +1,5 @@
 import { getNativeSkillsDir } from "../config.ts";
-import type { ExtensionAPI } from "../core/features/index.ts";
+import type { FeatureSetup } from "../core/features/index.ts";
 import { isDirectory } from "../utils/fs-probe.ts";
 import { registerSkillDescriptions } from "./context-optimization/skills.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -12,9 +12,9 @@ export function bundledSkillDirs(env: NodeJS.ProcessEnv = process.env): string[]
 	return envFlag(env, SUBAGENT_ENV) ? [] : [getNativeSkillsDir()].filter(isDirectory);
 }
 
-export function registerSkills(api: ExtensionAPI): void {
+export function registerSkills(api: FeatureSetup): void {
 	registerSkillDescriptions(api, { isSubagent: envFlag(process.env, SUBAGENT_ENV) });
-	api.on("resources_discover", async () => {
+	api.bus.on("resources_discover", async () => {
 		// Other agents' skill folders and Octocode's home load through discovery (their harness switch decides).
 		return { skillPaths: bundledSkillDirs() };
 	});

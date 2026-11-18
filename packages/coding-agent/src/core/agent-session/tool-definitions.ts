@@ -1,4 +1,4 @@
-/** The tool definition registry a session builds from built-in, SDK and extension tools. */
+/** The tool definition registry a session builds from built-in, SDK and feature tools. */
 
 import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import type { RegisteredTool, ToolDefinition } from "../features/index.ts";
@@ -31,7 +31,7 @@ function normalizePromptGuidelines(guidelines: string[] | undefined): string[] {
 }
 
 export interface ToolDefinitionRegistry {
-	/** Extension and SDK tools that `--tools` and `--exclude-tools` keep. */
+	/** Feature and SDK tools that `--tools` and `--exclude-tools` keep. */
 	allCustomTools: RegisteredTool[];
 	definitions: Map<string, ToolDefinitionEntry>;
 	promptSnippets: Map<string, string>;
@@ -39,7 +39,7 @@ export interface ToolDefinitionRegistry {
 }
 
 /**
- * Collect the definitions of the allowed tools. Extension and SDK tools replace built-in tools of
+ * Collect the definitions of the allowed tools. Feature and SDK tools replace built-in tools of
  * the same name; native feature tools are listed as built-in.
  */
 export function buildToolDefinitionRegistry(

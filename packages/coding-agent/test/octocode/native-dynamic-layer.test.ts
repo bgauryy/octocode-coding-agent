@@ -14,7 +14,7 @@ import { formatMcpTool } from "../../../mcp/src/inspection.ts";
 import { restoreDeferredSchemas, restoredSchemas } from "../../src/octocode/compaction/deferred-schemas.ts";
 import { nativeToolsPort } from "../../src/octocode/permission/native-deferral.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
-import { fakeHost } from "./fake-host.ts";
+import { fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -60,7 +60,7 @@ async function session(model: Model<Api> = changes, settings: Record<string, unk
 	const host = fakeHost(settings);
 	const api = withNativePermissionOwners(host.api);
 	const full = webTool();
-	api.registerTool(full as never);
+	api.tools.register(full as never);
 	const ctx = {
 		model,
 		sessionManager: { buildSessionProjection: () => ({ messages: [] }) },
@@ -178,11 +178,11 @@ describe("schemas of deferred natives after a compaction", () => {
 			true,
 		);
 		const sent: unknown[] = [];
-		const api = {
+		const api = asSetup({
 			getAllTools: () => declared as never,
 			getActiveTools: () => ["web"],
 			sendMessage: (message: unknown) => void sent.push(message),
-		};
+		});
 		const tail = {
 			role: "toolResult",
 			toolCallId: "1",

@@ -2,6 +2,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 describe("turn_end boundary projection", () => {
 	const harnesses: Harness[] = [];
@@ -16,16 +17,16 @@ describe("turn_end boundary projection", () => {
 		seen: unknown[] = [],
 	): Promise<{ copies: number; previews: number }> {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					for (let index = 0; index < handlerCount; index++) {
-						api.on("turn_end", (event) => {
+						api.bus.on("turn_end", (event) => {
 							seen.push(event.context);
 							return undefined;
 						});
 					}
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("answer")]);

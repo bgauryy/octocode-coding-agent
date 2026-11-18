@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
 import {
 	CLEARED_RESULTS_TYPE,
 	contextMessages,
@@ -10,7 +10,6 @@ import {
 	toolCallArguments,
 } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
-import { readOnlyCommand } from "../permission/shell/read-only.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { estimateTokens } from "../../core/compaction/tokens.ts";
 import { isVirtualModel } from "../../core/virtual-models.ts";
@@ -22,10 +21,12 @@ import { readPaths } from "../shared/home.ts";
 import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { outputDirOnce, saveContentCopy } from "../shared/spill.ts";
 import { cacheClock, cacheCold } from "./cache.ts";
+import { clearableBash } from "./clearable-bash.ts";
 import {
 	cachePrices,
 	catalogPrices,
 	clearingPays,
+	clearingSaving,
 	expectedRemainingRequests,
 	type ClearingCost,
 } from "./clearing-cost.ts";
@@ -40,7 +41,8 @@ import {
  * - the request rewrites the cache anyway: it was last used (the last reply, or a refresh by Octocode's warmer) longer
  *   ago than its lifetime, the model changed, or a system update folds into the leading prompt; or
  * - clearing pays while the cache is warm: the cost of re-sending the old results over the requests still expected
- *   exceeds the one-time cache write clearing causes (`clearing-cost.ts` holds the formula and its inputs).
+ *   exceeds the one-time cache write clearing causes (`clearing-cost.ts` holds the formula and its inputs). Then the
+ *   run of old results that saves most is cleared, which may start after a large message that stays (`bestRun`).
  *
  * A repeated-read note (`files/dedupe`) that points at a cleared result gets the same placeholder, so it never points
  * "above" at text that is gone.
@@ -60,7 +62,7 @@ export const CLEAR_AT_LEAST_TOKENS = 20_000;
 
 /**
  * `web` and every MCP tool result (`isMcpToolName`): its whole text is saved to a file before it is cleared, and the
- * placeholder names that file. Never `file` or `agent`; `bash` only for a read-only command (`readOnlyBash`), saved the
+ * placeholder names that file. Never `file` or `agent`; `bash` only for a command that only prints (`clearableBash`), saved the
  * same way unless Octocode already spilled its whole output to a file.
  * `read`, `grep`, `find` and `ls` are no longer Octocode tools; they stay for resumed transcripts of other hosts that
  * hold their results, and for custom tools that still use those names.
@@ -93,11 +95,11 @@ function noteOf(message: Record<string, unknown>): string | undefined {
 	return typeof unchangedOf === "string" ? unchangedOf : undefined;
 }
 
-/** Commands already judged by `readOnlyCommand`, which parses the shell line: every request asks again for the same calls. */
+/** Commands already judged by `clearableBash`, which parses the shell line: every request asks again for the same calls. */
 const readOnlyJudged = new Map<string, boolean>();
 const JUDGED_LIMIT = 4_096;
 
-/** Whether a `bash` call may be cleared: its command is read-only (`readOnlyCommand`), so repeating it is harmless. */
+/** Whether a `bash` call may be cleared: its command only prints (`clearableBash`), so repeating it is harmless. */
 function readOnlyBash(args: Record<string, unknown> | undefined): boolean {
 	const command = args?.command;
 	if (typeof command !== "string") return false;
@@ -106,7 +108,7 @@ function readOnlyBash(args: Record<string, unknown> | undefined): boolean {
 	let judged = readOnlyJudged.get(key);
 	if (judged === undefined) {
 		if (readOnlyJudged.size >= JUDGED_LIMIT) readOnlyJudged.clear();
-		judged = readOnlyCommand(command, shell);
+		judged = clearableBash(command, shell);
 		readOnlyJudged.set(key, judged);
 	}
 	return judged;
@@ -172,7 +174,7 @@ export function prefixRewritten(
  * since it was summarized. The projection lists the replies kept from before the compaction too, but they are not
  * requests the old results will be re-sent by. A branch without a compaction counts every reply.
  */
-function repliesSinceCompaction(ctx: ExtensionContext, messages: readonly MessageRef[]): number {
+function repliesSinceCompaction(ctx: FeatureContext, messages: readonly MessageRef[]): MessageRef[] {
 	const replies = messages.filter(({ message }) => isRecord(message) && message.role === "assistant");
 	const branch: unknown[] = ctx.sessionManager.getBranch?.() ?? [];
 	let compaction = -1;
@@ -183,9 +185,44 @@ function repliesSinceCompaction(ctx: ExtensionContext, messages: readonly Messag
 			break;
 		}
 	}
-	if (compaction < 0) return replies.length;
+	if (compaction < 0) return replies;
 	const later = new Set(branch.slice(compaction + 1).map((entry) => (isRecord(entry) ? entry.id : undefined)));
-	return replies.filter(({ id }) => later.has(id)).length;
+	return replies.filter(({ id }) => later.has(id));
+}
+
+/** The prompt a reply's request sent, in tokens (input, cache read and cache write), when its usage says. */
+function promptTokens(reply: MessageRef | undefined): number | undefined {
+	const usage = isRecord(reply?.message) && isRecord(reply.message.usage) ? reply.message.usage : undefined;
+	if (!usage) return undefined;
+	const total = [usage.input, usage.cacheRead, usage.cacheWrite].reduce<number>(
+		(sum, part) => sum + (typeof part === "number" ? part : 0),
+		0,
+	);
+	return total > 0 ? total : undefined;
+}
+
+/**
+ * The older results to clear (`older`, oldest first): all of them when the request rewrites the cache anyway; else the
+ * run from the oldest one on whose clearing saves most (`clearingSaving`), of those that free `CLEAR_AT_LEAST_TOKENS`
+ * and pay. A later start clears fewer results but rewrites less of the cache. Empty when none pays.
+ */
+function bestRun(
+	older: readonly Candidate[],
+	tokensOf: (list: readonly Candidate[]) => number,
+	costOf: (list: readonly Candidate[]) => ClearingCost,
+	pays: (list: readonly Candidate[]) => boolean,
+): readonly Candidate[] {
+	if (older.length === 0 || costOf(older).rewriteAnyway) return pays(older) ? older : [];
+	let best: readonly Candidate[] = [];
+	let bestSaving = 0;
+	for (let start = 0; start < older.length; start++) {
+		const run = older.slice(start);
+		// Later runs only hold fewer of the old tokens.
+		if (tokensOf(run) < CLEAR_AT_LEAST_TOKENS) break;
+		const saving = clearingSaving(costOf(run));
+		if (saving > bestSaving && pays(run)) [best, bestSaving] = [run, saving];
+	}
+	return best;
 }
 
 /** The previous request's cache read in tokens, as its reply reported it. */
@@ -211,14 +248,14 @@ export interface ClearingOccasion {
 /**
  * Clears the old results when the request rewrites the cache anyway (the lifetime `ttlMs` has passed since the cache
  * was last used at `now`, or `occasion.rewrite`), or when clearing pays while it is warm (`clearingPays`): saves each,
- * records the decision with `api.appendEntry`, and makes the file guard forget the files whose read was cleared and that
+ * records the decision with `api.session.appendEntry`, and makes the file guard forget the files whose read was cleared and that
  * no read left in the context still shows (the rule `contextReads` rebuilds the guard by on a resume). Does nothing
  * when neither applies, the session has no reply yet, the model's cache lifetime is unknown and nothing rewrites the
  * cache, or less than `CLEAR_AT_LEAST_TOKENS` would be freed.
  */
 export function clearStaleResults(
-	api: Pick<ExtensionAPI, "appendEntry">,
-	ctx: ExtensionContext,
+	api: SetupPick<"session", "appendEntry">,
+	ctx: FeatureContext,
 	guard: Pick<FileGuard, "forget">,
 	ttlMs: number | undefined,
 	occasion: ClearingOccasion = {},
@@ -235,22 +272,33 @@ export function clearStaleResults(
 	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
 	if (tokensOf(older) < CLEAR_AT_LEAST_TOKENS) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));
-	const requests = repliesSinceCompaction(ctx, messages);
-	const contextTokens = occasion.contextTokens ?? tokens.reduce((sum, each) => sum + each, 0);
+	// Tokens from each message to the end, so pricing a run from any start is one lookup.
+	const suffixFrom = tokens.reduceRight<number[]>((sums, each, index) => {
+		sums[index] = each + (sums[index + 1] ?? 0);
+		return sums;
+	}, []);
+	const replies = repliesSinceCompaction(ctx, messages);
+	const contextTokens = occasion.contextTokens ?? suffixFrom[0] ?? 0;
 	const prices = cachePrices(ctx.model, ttlMs ?? 0);
-	const remainingRequests = expectedRemainingRequests(requests, contextTokens, occasion.contextWindow);
+	const remainingRequests = expectedRemainingRequests(
+		replies.length,
+		contextTokens,
+		occasion.contextWindow,
+		promptTokens(replies[0]),
+	);
 	const costOf = (list: readonly Candidate[]): ClearingCost => {
 		const oldTokens = tokensOf(list);
-		const suffix = list.length === 0 ? 0 : tokens.slice(list[0].index).reduce((sum, each) => sum + each, 0);
+		const suffix = list.length === 0 ? 0 : (suffixFrom[list[0].index] ?? 0);
 		const suffixTokensAfter = Math.max(0, suffix - oldTokens) + list.length * PLACEHOLDER_TOKENS;
 		return { oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway };
 	};
 	const pays = (list: readonly Candidate[]): boolean =>
 		list.length > 0 && tokensOf(list) >= CLEAR_AT_LEAST_TOKENS && clearingPays(costOf(list));
-	if (!pays(older)) return;
+	const chosen = bestRun(older, tokensOf, costOf, pays);
+	if (chosen.length === 0) return;
 	// One output folder for the batch: resolving it per result repeated the workspace's realpath and folder checks.
 	const outputDir = outputDirOnce();
-	const saved = older.flatMap((candidate) => {
+	const saved = chosen.flatMap((candidate) => {
 		const file = savedCopy(candidate, outputDir);
 		return file ? [{ candidate, file }] : [];
 	});
@@ -273,7 +321,7 @@ export function clearStaleResults(
 	// What the decision rested on, so the profiler can compare it with what the next request cost (`profiler/clearing-ledger.ts`).
 	const decided = costOf(clearedCandidates);
 	const cacheRead = lastCacheRead(messages);
-	api.appendEntry(CLEARED_RESULTS_TYPE, {
+	api.session.appendEntry(CLEARED_RESULTS_TYPE, {
 		results,
 		oldTokens: Math.round(decided.oldTokens),
 		suffixTokens: Math.round(decided.suffixTokensAfter),

@@ -142,6 +142,14 @@ async function answer(source: AttachSource, peer: Peer, request: AttachRequest):
 			if (request.method === "profiler.trace") return workspace.profiler.trace();
 			return workspace.profiler.timeline(request.params.since);
 		}
+		case "profiler.messages":
+			if (!workspace.profiler) throw new Error("The profiler is unavailable in this session.");
+			return workspace.profiler.messages(request.params.limit, request.params.before);
+		case "profiler.transcript":
+			if (!workspace.profiler) throw new Error("The profiler is unavailable in this session.");
+			return (
+				workspace.profiler.transcript(request.params.agentId, request.params.entry, request.params.sessionId) ?? null
+			);
 		case "profiler.subscribe":
 			peer.unsubscribeProfiler ??= workspace.profiler?.subscribe((data) =>
 				peer.send({ event: "profiler.update", data }),

@@ -13,8 +13,8 @@ import { BUG_REPORT_URL_ENV, bugReportUploadTarget, uploadBugReport } from "../s
 import type { BugReportBundle } from "../src/core/bug-report.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { reportBug } from "../src/modes/interactive/bug-report.ts";
-import { ExtensionEditorComponent } from "../src/modes/interactive/components/extension-editor.ts";
-import { ExtensionSelectorComponent } from "../src/modes/interactive/components/extension-selector.ts";
+import { DialogEditorComponent } from "../src/modes/interactive/components/dialog-editor.ts";
+import { DialogSelectorComponent } from "../src/modes/interactive/components/dialog-selector.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
 
 beforeAll(() => initTheme("dark"));
@@ -56,17 +56,17 @@ describe("bug report upload configuration", () => {
 			const report = reportBug({ session, ui, editorContainer, editor, keybindings, showStatus, showError });
 
 			const descriptionEditor = editorContainer.children[0];
-			if (!(descriptionEditor instanceof ExtensionEditorComponent)) throw new Error("Missing description editor");
+			if (!(descriptionEditor instanceof DialogEditorComponent)) throw new Error("Missing description editor");
 			descriptionEditor.handleInput("\r");
 			for (const _question of ["transcript", "summary"]) {
-				await vi.waitFor(() => expect(editorContainer.children[0]).toBeInstanceOf(ExtensionSelectorComponent));
-				const selector = editorContainer.children[0] as ExtensionSelectorComponent;
+				await vi.waitFor(() => expect(editorContainer.children[0]).toBeInstanceOf(DialogSelectorComponent));
+				const selector = editorContainer.children[0] as DialogSelectorComponent;
 				selector.handleInput("j");
 				selector.handleInput("\r");
 			}
 
-			await vi.waitFor(() => expect(editorContainer.children[0]).toBeInstanceOf(ExtensionSelectorComponent));
-			const delivery = editorContainer.children[0] as ExtensionSelectorComponent;
+			await vi.waitFor(() => expect(editorContainer.children[0]).toBeInstanceOf(DialogSelectorComponent));
+			const delivery = editorContainer.children[0] as DialogSelectorComponent;
 			const text = delivery.render(160).map(stripTerminalSequences).join("\n");
 			expect(text).toContain("Export as Zip");
 			expect(text).not.toContain("Upload Report");

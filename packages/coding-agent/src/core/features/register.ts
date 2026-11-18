@@ -1,8 +1,8 @@
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { createSyntheticSourceInfo, getSyntheticPathSource } from "../source-info.ts";
 import { time } from "../timings.ts";
-import { createExtensionAPI } from "./api.ts";
-import type { Extension, ExtensionRuntime, Feature } from "./types.ts";
+import { createFeatureSetup } from "./api.ts";
+import type { FeatureRecord, FeatureRuntime, Feature } from "./types.ts";
 
 /** The source path that names a feature in diagnostics and tool or command sources. */
 function featurePath(feature: Feature): string {
@@ -16,11 +16,10 @@ function featurePath(feature: Feature): string {
 export async function registerFeature(
 	feature: Feature,
 	eventBus: EventBus,
-	runtime: ExtensionRuntime,
-	cwd: string,
-): Promise<Extension> {
+	runtime: FeatureRuntime,
+): Promise<FeatureRecord> {
 	const path = feature.path ?? featurePath(feature);
-	const extension: Extension = {
+	const record: FeatureRecord = {
 		path,
 		id: feature.id,
 		owner: feature.owner,
@@ -34,16 +33,15 @@ export async function registerFeature(
 		messageRenderers: new Map(),
 		entryRenderers: new Map(),
 		commands: new Map(),
-		shortcuts: new Map(),
 	};
-	const load = createExtensionAPI(extension, runtime, cwd, eventBus);
+	const load = createFeatureSetup(record, runtime, eventBus);
 	try {
-		await feature.register(load.api);
+		await feature.register(load.setup);
 		load.commit();
 	} catch (error) {
 		load.discard();
 		throw error;
 	}
-	time(`${path} register`, "extensions");
-	return extension;
+	time(`${path} register`, "features");
+	return record;
 }

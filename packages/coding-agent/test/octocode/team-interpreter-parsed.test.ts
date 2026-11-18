@@ -6,7 +6,7 @@ import { parsedShell } from "../../src/octocode/permission/shell/commands.ts";
 import { splitString, wrappedCommand } from "../../src/octocode/permission/shell/words.ts";
 import { inlineInterpreter, interpreterRefusal } from "../../src/octocode/team/interpreter.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

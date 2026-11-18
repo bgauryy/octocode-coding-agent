@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { say } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
 import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
@@ -23,13 +23,13 @@ const START_SOURCE: Record<string, string> = {
  * PermissionRequest hooks alone: a subagent in the `decisions` hook mode runs no other event.
  */
 export function loadSessionHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	home: string | undefined,
 	decisionsOnly = false,
 ): void {
-	const settings = api.getSettings();
+	const settings = api.settings.get();
 	const loaded = loadHooks(ctx.cwd, ctx.isProjectTrusted(), home, {
 		plugins: effectivePlugins(settings, ctx.cwd),
 		// An empty map still applies the harness defaults (Claude Code and Codex hooks off until enabled).
@@ -51,7 +51,7 @@ export function loadSessionHooks(
  * SessionStart hooks, and hands their context to the next prompt.
  */
 export function registerSessionStartHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 	home: string | undefined,
@@ -68,7 +68,7 @@ export function registerSessionStartHooks(
 	 * without holding up the event. A result that arrives after the session was replaced belongs to the old one and is
 	 * dropped. A session start ends the previous session's runs; a compaction's run joins any still going.
 	 */
-	const startHooks = (ctx: ExtensionContext, source: string, fresh: boolean): void => {
+	const startHooks = (ctx: FeatureContext, source: string, fresh: boolean): void => {
 		if (fresh) {
 			startAbort.abort();
 			startAbort = new AbortController();
@@ -104,9 +104,9 @@ export function registerSessionStartHooks(
 		starting = run;
 	};
 
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		loadSessionHooks(api, session, ctx, home);
-		// Hooks gate last of the three kinds, so the extension guard's one start-up notice is complete here. It is for a
+		// Hooks gate last of the three kinds, so the feature guard's one start-up notice is complete here. It is for a
 		// person who can open /security: a headless run lists the same with `octocode security check`.
 		if (!child && ctx.hasUI && event.reason === "startup")
 			for (const notice of guardNotices()) say(ctx, notice.text, notice.level);
@@ -114,11 +114,11 @@ export function registerSessionStartHooks(
 		startHooks(ctx, START_SOURCE[event.reason] ?? "startup", true);
 	});
 	// Claude Code runs SessionStart again (source `compact`) after a compaction: its context comes with the next prompt.
-	api.on("session_compact", async (_event, ctx) => startHooks(ctx, "compact", false));
-	api.on("session_shutdown", async () => startAbort.abort());
+	api.bus.on("session_compact", async (_event, ctx) => startHooks(ctx, "compact", false));
+	api.bus.on("session_shutdown", async () => startAbort.abort());
 
 	// SessionStart context reaches the model once, with the next prompt, as data rather than instructions.
-	api.on("before_agent_start", async (_event, ctx) => {
+	api.bus.on("before_agent_start", async (_event, ctx) => {
 		// The first prompt waits a bounded time for their context; a slower hook's context comes with the next prompt.
 		if (starting) {
 			// Shown only while the prompt actually waits: `starting` clears itself once the hooks finish.
@@ -131,7 +131,7 @@ export function registerSessionStartHooks(
 		}
 		if (pending.length === 0) return undefined;
 		const content = capContext(
-			renderInstruction("notices/hooks/context.md", { source: "SessionStart", text: pending.join("\n\n") }),
+			renderPrompt("hooks/context.md", { source: "SessionStart", text: pending.join("\n\n") }),
 		);
 		pending = [];
 		return { message: { customType: CONTEXT_TYPE, content, display: false } };

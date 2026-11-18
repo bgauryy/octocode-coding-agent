@@ -7,7 +7,7 @@ import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSour
 // Startup/Resource Events
 // ============================================================================
 
-/** Fired after session_start to allow extensions to provide additional resource paths. */
+/** Fired after session_start to allow features to provide additional resource paths. */
 export interface ResourcesDiscoverEvent {
 	type: "resources_discover";
 	cwd: string;
@@ -21,9 +21,9 @@ export interface ResourcesDiscoverResult {
 }
 
 /**
- * Fired when an extension registers or unregisters an MCP server after the extensions are bound
- * (see {@link ExtensionAPI.registerMcpServer}). Servers registered while extensions load are read
- * with `api.getMcpServers()` on `session_start`. Handling this event marks an extension as the one
+ * Fired when a feature registers or unregisters an MCP server after the features are bound
+ * (see {@link FeatureSetup.registerMcpServer}). Servers registered while features load are read
+ * with `api.mcpServers.list()` on `session_start`. Handling this event marks a feature as the one
  * that connects registered servers.
  */
 export interface McpServersChangeEvent {
@@ -84,7 +84,7 @@ export interface SessionBeforeCompactEvent {
 	willRetry: boolean;
 	signal: AbortSignal;
 	/**
-	 * How the session sends this compaction's summary requests: an extension that writes the summary itself wraps its
+	 * How the session sends this compaction's summary requests: a feature that writes the summary itself wraps its
 	 * stream function with `watch` (progress on the status line, a silent attempt ended as a retryable timeout) and
 	 * retries by `retry`. Absent when a caller builds the event without a session.
 	 */
@@ -110,7 +110,7 @@ export interface SessionCompactPrewarmEvent {
 export interface SessionCompactEvent {
 	type: "session_compact";
 	compactionEntry: CompactionEntry;
-	fromExtension: boolean;
+	fromFeature: boolean;
 	/** What triggered the compaction: manual /compact, the context threshold, or context overflow recovery */
 	reason: "manual" | "threshold" | "overflow";
 	/** True when the aborted turn is retried after this compaction (overflow recovery) */
@@ -129,10 +129,10 @@ export interface SessionCompactFailedEvent {
 	/** True when the aborted turn would have been retried after this compaction (overflow recovery) */
 	willRetry: boolean;
 	/** True when the failing compaction content came from a session_before_compact handler. */
-	fromExtension: boolean;
+	fromFeature: boolean;
 }
 
-/** Fired before an extension runtime is torn down due to quit, reload, or session replacement. */
+/** Fired before a feature runtime is torn down due to quit, reload, or session replacement. */
 export interface SessionShutdownEvent {
 	type: "session_shutdown";
 	reason: "quit" | "reload" | "new" | "resume" | "fork";
@@ -167,7 +167,7 @@ export interface SessionTreeEvent {
 	newLeafId: string | null;
 	oldLeafId: string | null;
 	summaryEntry?: BranchSummaryEntry;
-	fromExtension?: boolean;
+	fromFeature?: boolean;
 }
 
 export type SessionEvent =

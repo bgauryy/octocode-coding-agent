@@ -4,13 +4,14 @@
  */
 
 import { installMcpHost, type McpHostPorts } from "../../../../mcp/src/api.ts";
-import type { ExtensionCommandContext } from "../../core/features/types.ts";
+import type { CommandContext } from "../../core/features/types.ts";
 import { type Theme } from "../../theme/theme.ts";
 import { AuthUrlComponent } from "./components/auth-url.ts";
 import { frame, renderClipped, runInView } from "../../theme/framed-view.ts";
 import type { EnterVerb } from "../../theme/page-kit.ts";
 import { keyHint } from "../../theme/theme-tui-helpers.ts";
 import { ManagePageComponent } from "../../theme/manage-page.ts";
+import { createMcpToolSwitch } from "../../octocode/mcp-host/tools.ts";
 
 type Keybinding = Parameters<typeof keyHint>[0];
 
@@ -70,7 +71,7 @@ const ui: McpHostPorts["ui"] = {
 	authUrl: (tui, url) => new AuthUrlComponent(tui, url),
 	runInView: (ctx, create, run) =>
 		runInView(
-			ctx as unknown as ExtensionCommandContext,
+			ctx as unknown as CommandContext,
 			(tui, theme, keybindings) => {
 				viewTerminal = tui.terminal;
 				return create(tui, theme, keybindings);
@@ -79,6 +80,7 @@ const ui: McpHostPorts["ui"] = {
 		),
 };
 
+/** The `/mcp` tools page is drawn only here, so its switch port is installed with the view port. */
 export function installMcpUiPort(): void {
-	installMcpHost({ ui });
+	installMcpHost({ ui, toolSwitch: createMcpToolSwitch() });
 }

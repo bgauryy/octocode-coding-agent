@@ -4,6 +4,8 @@
  */
 
 import type { Component } from "../tui.ts";
+import { ELLIPSIS } from "../tokens/design.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { AnsiCodeTracker, updateTrackerFromText } from "../utils/ansi-tracker.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
@@ -110,7 +112,7 @@ interface VisualLinePreviewOptions {
 /**
  * Collapsed tool output limited to a number of visual lines, like bash output. Limiting logical
  * lines instead lets a single long line (such as minified JSON) wrap across the whole screen.
- * Caches its lines per width, since it renders on every frame for every result in the transcript.
+ * Its text is fixed at construction, so its rows change only with the width or `invalidate`: it is render-tracked.
  */
 export class VisualLinePreview implements Component {
 	private options: VisualLinePreviewOptions;
@@ -127,7 +129,7 @@ export class VisualLinePreview implements Component {
 			const preview = truncateToVisualLines(text, maxVisualLines, width, 0, keep);
 			const lines = preview.visualLines;
 			if (preview.skippedCount > 0) {
-				const hint = truncateToWidth(formatHint(preview.skippedCount), width, "...");
+				const hint = truncateToWidth(formatHint(preview.skippedCount), width, ELLIPSIS);
 				this.cachedLines = keep === "start" ? [...lines, hint] : [hint, ...lines];
 			} else {
 				this.cachedLines = lines;
@@ -140,5 +142,7 @@ export class VisualLinePreview implements Component {
 	invalidate(): void {
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;
+		renderChanged(this);
 	}
 }
+trackRenderChanges(VisualLinePreview.prototype);

@@ -1,13 +1,16 @@
 import { retentionProblems } from "../../storage/retention.ts";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
-import { ignoredBuiltinSwitches } from "../features/builtin-ids.ts";
 import { describeIgnoredKeys, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { settingsObject } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
 import { settingsWritesDeferred } from "./storage-deferred.ts";
+
+/** The warning for a settings file that still has the `extensions` key of earlier versions. */
+const REMOVED_EXTENSIONS_KEY =
+	'Setting "extensions" is ignored: Octocode does not support extensions, so none of its entries (code paths or built-in switches) do anything. Remove the key from the settings file.';
 
 /**
  * Writes settings changes back to storage. Tracks which fields changed during the session, so a write merges only
@@ -64,16 +67,20 @@ export class SettingsPersistence {
 	}
 
 	/**
-	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, one for each `extensions`
-	 * entry that tries to switch off an always-on built-in, and one for each invalid `retention` value (a project file's
+	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, one for a leftover
+	 * `extensions` key (extensions are not supported), and one for each invalid `retention` value (a project file's
 	 * `retention` is ignored: retention is global).
 	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
-		const ignored = describeIgnoredKeys(ignoredSettingsKeys(settings), scope);
+		const ignoredKeys = ignoredSettingsKeys(settings);
+		const ignored = describeIgnoredKeys(
+			ignoredKeys.filter((key) => key !== "extensions"),
+			scope,
+		);
 		const messages = [
 			...(ignored ? [ignored] : []),
-			...ignoredBuiltinSwitches(settings.extensions ?? []),
+			...(ignoredKeys.includes("extensions") ? [REMOVED_EXTENSIONS_KEY] : []),
 			...(scope === "project" && settings.retention !== undefined
 				? ['Setting "retention" is global only; a project settings file cannot set it, so it does nothing.']
 				: retentionProblems(settings.retention)),

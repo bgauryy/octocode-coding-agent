@@ -88,9 +88,9 @@ export function isDeadTerminalError(error: unknown): boolean {
 	return code !== undefined && DEAD_TERMINAL_ERROR_CODES.has(code);
 }
 
-export function formatCrashExtensionHint(extensionMatches: readonly string[] | undefined): string | undefined {
-	const matches = Array.isArray(extensionMatches)
-		? extensionMatches.filter((match): match is string => typeof match === "string" && match.length > 0)
+export function formatCrashFeatureHint(featureMatches: readonly string[] | undefined): string | undefined {
+	const matches = Array.isArray(featureMatches)
+		? featureMatches.filter((match): match is string => typeof match === "string" && match.length > 0)
 		: [];
 	if (matches.length === 0) return undefined;
 	const quoted = matches.map((match) => `\`${match}\``);
@@ -100,9 +100,8 @@ export function formatCrashExtensionHint(extensionMatches: readonly string[] | u
 			: quoted.length === 2
 				? quoted.join(" and ")
 				: `${quoted.slice(0, -1).join(", ")}, and ${quoted[quoted.length - 1]}`;
-	const noun = matches.length === 1 ? "extension" : "extensions";
-	const pronoun = matches.length === 1 ? "it" : "them";
-	return `A stack frame came from loaded ${noun} ${labels}, which may be involved. Try disabling ${pronoun} with \`${APP_NAME} config\`, or run \`${APP_NAME} -ne\` to confirm.`;
+	const noun = matches.length === 1 ? "feature" : "features";
+	return `A stack frame came from loaded ${noun} ${labels}, which may be involved.`;
 }
 
 export function quoteIfNeeded(value: string): string {

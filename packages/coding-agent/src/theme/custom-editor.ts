@@ -40,10 +40,6 @@ export class CustomEditor extends Editor {
 	public onPasteImage?: () => void;
 	/** A complete bracketed paste arrives here first; a returned string is inserted in its place. */
 	public onPasteText?: (text: string) => string | undefined;
-	/** Handler for extension-registered shortcuts. Returns true if handled. */
-	public onExtensionShortcut?: (data: string) => boolean;
-	/** Whether `onExtensionShortcut` would take `data`, without running it; unset, typed runs go key by key. */
-	public isExtensionShortcut?: (data: string) => boolean;
 	/** Up in an empty editor without autocomplete; return true to take it, false to browse prompt history as usual. */
 	public onEmptyUp?: () => boolean;
 
@@ -126,15 +122,8 @@ export class CustomEditor extends Editor {
 		return replacement === undefined ? undefined : `${start}${replacement}${end}`;
 	}
 
-	/** Whether `handleInput` passes printable `char` straight to the editor: no app or extension key takes it. */
+	/** Whether `handleInput` passes printable `char` straight to the editor: no app or feature key takes it. */
 	private reachesEditor(char: string): boolean {
-		if (this.onExtensionShortcut) {
-			try {
-				if (!this.isExtensionShortcut || this.isExtensionShortcut(char)) return false;
-			} catch {
-				return false;
-			}
-		}
 		const appKeys: Keybinding[] = [
 			"app.clipboard.pasteImage",
 			"app.interrupt",
@@ -155,7 +144,7 @@ export class CustomEditor extends Editor {
 	}
 
 	/**
-	 * The characters before the first app or extension key reach the editor at once; that key goes through `handleInput`
+	 * The characters before the first app or feature key reach the editor at once; that key goes through `handleInput`
 	 * alone and ends the call, since it may open a selector or overlay. Returns how much of `text` was handled.
 	 */
 	protected override insertTypedRun(text: string): number {
@@ -184,10 +173,6 @@ export class CustomEditor extends Editor {
 			super.handleInput(pasted);
 			return;
 		}
-		if (this.onExtensionShortcut?.(data)) {
-			return;
-		}
-
 		if (this.keybindings.matches(data, "app.clipboard.pasteImage")) {
 			this.onPasteImage?.();
 			return;

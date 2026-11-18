@@ -7,9 +7,15 @@ import {
 	flowPairs,
 	groupThreads,
 	latencyText,
+	MESSAGE_SCOPES,
 	MESSAGE_STATES,
+	type MessageScope,
+	messageRoute,
 	type PairKey,
+	routeText,
+	scopedMessages,
 } from "./message-model.ts";
+import { RouteCell } from "./MessageRouteCell.tsx";
 import type { PanelProps } from "./panel-props.ts";
 import { formatLatency, formatOffset } from "./trace-format.ts";
 import { sessionBounds } from "./trace-view.ts";
@@ -33,7 +39,7 @@ function Waiting({ since }: { since: number }) {
  * Messages between agents: a strip of per-pair counts to filter by, then one row per message with a state pill,
  * delivery and answer latencies and, for an unanswered one, the time it has waited. Selecting a row opens the drawer.
  */
-export function MessagesPanel({ timeline, selection, onSelect, range, filter }: PanelProps) {
+export function MessagesPanel({ timeline, selection, onSelect, range, filter, older }: PanelProps) {
 	const messages = timeline?.messages;
 	const origin = useMemo(
 		() => sessionBounds(timeline?.events ?? [], messages ?? [])?.from ?? 0,
@@ -41,13 +47,41 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 	);
 	const agentId = selection?.kind === "agent" ? selection.agentId : undefined;
 	const [pair, setPair] = useState<PairKey>();
-	const pairs = useMemo(() => flowPairs(messages ?? []), [messages]);
+	const [scope, setScope] = useState<MessageScope>("team");
+	const pairs = useMemo(() => flowPairs(scopedMessages(messages ?? [], scope)), [messages, scope]);
 	const rows = useMemo(
-		() => groupThreads(filterMessages(messages ?? [], { filter, range, agentId, pair })),
-		[messages, filter, range, agentId, pair],
+		() => groupThreads(filterMessages(messages ?? [], { filter, range, agentId, pair, scope })),
+		[messages, filter, range, agentId, pair, scope],
 	);
 	const [focused, setFocused] = useState<number>();
 	const body = useRef<HTMLTableSectionElement>(null);
+
+	const scopeBar = (
+		<fieldset className="pf-m-scope">
+			<legend className="muted">Show</legend>
+			{MESSAGE_SCOPES.map((item) => (
+				<button
+					key={item.scope}
+					type="button"
+					className="pf-t-btn"
+					aria-pressed={scope === item.scope}
+					onClick={() => {
+						setScope(item.scope);
+						setPair(undefined);
+					}}
+				>
+					{item.label}
+				</button>
+			))}
+		</fieldset>
+	);
+	const olderBar = older?.more ? (
+		<button type="button" className="pf-t-btn pf-m-older" disabled={older.loading} onClick={older.load}>
+			{older.loading ? "Loading older messages\u2026" : "Load older messages"}
+		</button>
+	) : older ? (
+		<p className="pf-m-count muted">No older messages.</p>
+	) : null;
 
 	if (!timeline) {
 		return (
@@ -59,11 +93,13 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 	if (!rows.length) {
 		return (
 			<section className="pf-empty-block" aria-label="Messages">
+				{scopeBar}
 				<p className="muted">
 					{timeline.messages.length
-						? "No messages match the filter, range or agent."
+						? "No messages match the filter, range, agent or list."
 						: "No messages between agents yet."}
 				</p>
+				{olderBar}
 				{pair ? (
 					<button type="button" className="pf-t-btn" onClick={() => setPair(undefined)}>
 						Show all pairs
@@ -92,6 +128,7 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 
 	return (
 		<section className="pf-messages" aria-label="Messages">
+			{scopeBar}
 			{pairs.length ? (
 				<ul className="pf-m-flow" aria-label="Messages per agent pair">
 					{pairs.map((item) => {
@@ -129,7 +166,7 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 					<tbody ref={body}>
 						{rows.map(({ message, depth }) => {
 							const selected = message.id === selectedId;
-							const route = `${message.from} \u2192 ${message.to.join(", ")}`;
+							const route = messageRoute(message);
 							return (
 								<tr
 									key={message.id}
@@ -138,7 +175,7 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 									tabIndex={message.id === tabbable ? 0 : -1}
 									aria-selected={selected}
 									aria-level={depth + 1}
-									aria-label={`message ${message.id}, ${route}, ${message.state}, delivered ${formatLatency(message.deliveredMs)}, answered ${formatLatency(message.answeredMs)}`}
+									aria-label={`message ${message.id}, ${routeText(route)}, ${message.state}, delivered ${formatLatency(message.deliveredMs)}, answered ${formatLatency(message.answeredMs)}`}
 									onClick={() => select(message.id)}
 									onKeyDown={(event) => onKeyDown(event, message.id)}
 									onFocus={() => setFocused(message.id)}
@@ -149,13 +186,18 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 											{formatOffset(message.at, origin)}
 										</time>
 									</td>
-									<td className="pf-m-route">{route}</td>
+									<td className="pf-m-route">
+										<RouteCell route={route} />
+									</td>
 									<td>
 										<StatePill state={message.state} />
 										{message.state === "awaiting reply" ? <Waiting since={message.at} /> : null}
 									</td>
 									<td className="pf-m-text" style={{ paddingInlineStart: 8 + depth * 18 }}>
 										{depth > 0 ? <span aria-hidden="true">{"\u21B3 "}</span> : null}
+										{message.internal ? (
+											<span className="pf-mark is-internal">{message.label ?? "internal"}</span>
+										) : null}
 										{selected && message.text ? (
 											<pre aria-label={`Full text of message ${message.id}`}>{message.text}</pre>
 										) : (
@@ -169,6 +211,7 @@ export function MessagesPanel({ timeline, selection, onSelect, range, filter }: 
 					</tbody>
 				</table>
 			</div>
+			{olderBar}
 		</section>
 	);
 }

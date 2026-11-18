@@ -62,6 +62,23 @@ describe("session watch", () => {
 		watch.close();
 	});
 
+	it("stays busy after a run settles while the phase waits on background agents, until the phase is final", async () => {
+		const session = fakeSession("s");
+		const watch = new SessionWatch(session.workspace.application!, "s", () => {});
+		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
+		session.push(snapshot(true));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
+		const waiting = { state: "waiting", agents: 4, queued: 0, bash: 0, external: 0 };
+		session.push(event(2, { type: "session.phase", phase: waiting, jobStartedAt: 1 }));
+		session.push(event(3, { type: "run.settled", runId: "r", outcome: "completed" }));
+		session.push(event(4, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?" }));
+		session.push(event(5, { type: "session.awaiting" }));
+		session.push(event(6, { type: "session.phase", phase: { state: "done" } }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		watch.close();
+	});
+
 	it("reconnects after a resync while the session stays attached, and stops for good when closed", async () => {
 		const session = fakeSession("s");
 		const watch = new SessionWatch(session.workspace.application!, "s", () => {});

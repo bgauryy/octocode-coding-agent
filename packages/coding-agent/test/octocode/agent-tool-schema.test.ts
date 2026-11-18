@@ -8,7 +8,7 @@ import { getCompat } from "../../../ai/src/api/openai-completions/compat.ts";
 import { convertTools as completionTools } from "../../../ai/src/api/openai-completions/tools.ts";
 import { convertResponsesTools } from "../../../ai/src/api/openai-responses-shared/tools.ts";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 

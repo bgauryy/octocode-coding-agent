@@ -1,9 +1,10 @@
-import { Container, getKeybindings, GLYPH, Spacer, Text } from "@octocodeai/octocode-tui";
+import { Container, getKeybindings, ListView, Spacer, Text } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../../config.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar } from "../../../theme/theme-tui-helpers.ts";
+import { answerNumber, dialogHints, listTheme, numberedRow } from "./list-kit.ts";
 
 export interface FirstTimeSetupResult {
 	theme: string;
@@ -29,17 +30,40 @@ const ANALYTICS_OPTIONS: Array<{ value: boolean; label: string }> = [
 
 const SETUP_LOGO_LINES = ["██████", "██  ██", "████  ██", "██    ██"];
 
-/** First-time setup dialog: theme choice and analytics opt-in. */
+/** A step's answers on a numbered dialog list; `clickConfirms` is off where the answer is a privacy choice. */
+function answers<T>(
+	options: Array<{ value: T; label: string }>,
+	clickConfirms: boolean,
+): ListView<{ value: T; label: string }> {
+	return new ListView({
+		items: options,
+		maxRows: options.length,
+		theme: listTheme(),
+		clickConfirms,
+		row: (option, state) => numberedRow(option.label, options.indexOf(option), state),
+	});
+}
+
+/**
+ * First-time setup, two dialogs in a row: the theme (moving the cursor previews it), then the analytics opt-in with
+ * `Don't share` first. Number keys and the arrows move the cursor, Enter confirms, Esc cancels setup. A click on the
+ * selected theme confirms it; the analytics answer takes the keyboard only.
+ */
 export class FirstTimeSetupComponent extends Container {
 	private step: "theme" | "analytics" = "theme";
-	private themeIndex: number;
-	private analyticsIndex = 0;
+	private readonly themes = answers(THEME_OPTIONS, true);
+	private readonly analytics = answers(ANALYTICS_OPTIONS, false);
 	private readonly options: FirstTimeSetupOptions;
 
 	constructor(options: FirstTimeSetupOptions) {
 		super();
 		this.options = options;
-		this.themeIndex = 0;
+		this.themes.onSelectionChange = (option) => {
+			this.options.onThemePreview(option.value);
+			this.update();
+		};
+		this.themes.onSelect = () => this.confirm();
+		this.analytics.onSelect = () => this.confirm();
 		this.update();
 	}
 
@@ -62,10 +86,7 @@ export class FirstTimeSetupComponent extends Container {
 		if (this.step === "theme") {
 			this.addChild(new Text(theme.fg("text", "Pick a theme."), 1, 0));
 			this.addChild(new Spacer(1));
-			this.addOptionList(
-				THEME_OPTIONS.map((option) => option.label),
-				this.themeIndex,
-			);
+			this.addChild(this.themes);
 		} else {
 			this.addChild(new Text(theme.fg("text", "Share anonymous usage data?"), 1, 0));
 			this.addChild(
@@ -79,63 +100,38 @@ export class FirstTimeSetupComponent extends Container {
 				),
 			);
 			this.addChild(new Spacer(1));
-			this.addOptionList(
-				ANALYTICS_OPTIONS.map((option) => option.label),
-				this.analyticsIndex,
-			);
+			this.addChild(this.analytics);
 		}
 
 		this.addChild(new Spacer(1));
-		this.addChild(
-			new HintBar([
-				[keyText("tui.select.confirm"), this.step === "theme" ? "continue" : "finish", 0],
-				[keyText("tui.select.cancel"), "skip setup", 1],
-			]),
-		);
+		this.addChild(new HintBar(dialogHints(this.step === "theme" ? "continue" : "finish")));
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder());
 	}
 
-	private addOptionList(labels: string[], selectedIndex: number): void {
-		for (let i = 0; i < labels.length; i++) {
-			const isSelected = i === selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
-			const label = isSelected ? theme.fg("accent", labels[i]) : theme.fg("text", labels[i]);
-			this.addChild(new Text(`${prefix}${label}`, 1, 0));
-		}
-	}
-
-	private moveSelection(delta: number): void {
+	private confirm(): void {
 		if (this.step === "theme") {
-			const next = Math.max(0, Math.min(THEME_OPTIONS.length - 1, this.themeIndex + delta));
-			if (next !== this.themeIndex) {
-				this.themeIndex = next;
-				this.options.onThemePreview(THEME_OPTIONS[this.themeIndex].value);
-			}
-		} else {
-			this.analyticsIndex = Math.max(0, Math.min(ANALYTICS_OPTIONS.length - 1, this.analyticsIndex + delta));
+			this.step = "analytics";
+			this.update();
+			return;
 		}
-		this.update();
+		this.options.onSubmit({
+			theme: this.themes.getSelectedItem()?.value ?? SYSTEM_THEME_NAME,
+			shareAnalytics: this.analytics.getSelectedItem()?.value ?? false,
+		});
 	}
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		if (kb.matches(keyData, "tui.select.up") || keyData === "k") {
-			this.moveSelection(-1);
-		} else if (kb.matches(keyData, "tui.select.down") || keyData === "j") {
-			this.moveSelection(1);
-		} else if (kb.matches(keyData, "tui.select.confirm") || keyData === "\n") {
-			if (this.step === "theme") {
-				this.step = "analytics";
-				this.update();
-			} else {
-				this.options.onSubmit({
-					theme: THEME_OPTIONS[this.themeIndex].value,
-					shareAnalytics: ANALYTICS_OPTIONS[this.analyticsIndex].value,
-				});
-			}
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
-			this.options.onCancel();
-		}
+		const list = this.step === "theme" ? this.themes : this.analytics;
+		const picked = answerNumber(keyData, list.getItems().length);
+		if (picked !== undefined) {
+			const previous = list.getSelectedIndex();
+			list.setSelectedIndex(picked);
+			if (list === this.themes && picked !== previous) this.themes.onSelectionChange?.(THEME_OPTIONS[picked]);
+			else this.update();
+		} else if (keyData === "\n") this.confirm();
+		else if (kb.matches(keyData, "tui.select.cancel")) this.options.onCancel();
+		else list.handleInput(keyData);
 	}
 }

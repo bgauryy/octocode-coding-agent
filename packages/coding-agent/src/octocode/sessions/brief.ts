@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import { type AgentDb, backlog } from "../../../../db/src/api.ts";
 import { BacklogStore } from "../backlog/store.ts";
@@ -72,7 +72,7 @@ const FIELD_CHARS = { title: 100, goal: 120, why: 160 } as const;
 export function ongoingBrief(agent: AgentDb, repoKey: string, sessionId: string): string[] {
 	const rows = backlog.ongoingItems(agent.db, repoKey, sessionId);
 	if (rows.length === 0) return [];
-	const lines = [renderInstruction("notices/resume/ongoing-items.md")];
+	const lines = [renderPrompt("notices/resume/ongoing-items.md")];
 	for (const row of rows.slice(0, MAX_ITEMS)) {
 		const goal = flatLine(row.goal) ? ` — goal: ${shownLine(row.goal, FIELD_CHARS.goal)}` : "";
 		lines.push(`- B${row.seq} ${shownLine(row.title, FIELD_CHARS.title)}${goal}`);
@@ -110,7 +110,7 @@ export function openTasksBrief(agent: AgentDb, repoKey: string, sessionId: strin
 	];
 	if (open.length === 0) return [];
 	return [
-		renderInstruction("notices/resume/open-steps.md", { counts: stepCounts(open) }),
+		renderPrompt("notices/resume/open-steps.md", { counts: stepCounts(open) }),
 		...open
 			.slice(0, MAX_TASKS)
 			.flatMap((task) => [
@@ -149,7 +149,7 @@ export function teamBrief(notes: TeamNotes): string[] {
 	return [
 		...(reserved.length > 0
 			? [
-					renderInstruction("notices/resume/reserved-paths.md", {
+					renderPrompt("notices/resume/reserved-paths.md", {
 						paths: reserved.slice(0, MAX_RESERVED).join(", "),
 						more: Math.max(0, reserved.length - MAX_RESERVED),
 					}),
@@ -157,7 +157,7 @@ export function teamBrief(notes: TeamNotes): string[] {
 			: []),
 		...(questions.length > 0
 			? [
-					renderInstruction("notices/resume/waiting-questions.md"),
+					renderPrompt("notices/resume/waiting-questions.md"),
 					...questions
 						.slice(0, MAX_QUESTIONS)
 						.map(
@@ -199,11 +199,11 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 	const { previous, git } = input;
 	const facts: string[] = [];
 	if (previous.branch && git.branch && previous.branch !== git.branch)
-		facts.push(renderInstruction("notices/resume/branch-changed.md", { from: previous.branch, to: git.branch }));
+		facts.push(renderPrompt("notices/resume/branch-changed.md", { from: previous.branch, to: git.branch }));
 	if (previous.head && git.head && previous.head !== git.head) {
 		const count = git.commitsSince;
 		facts.push(
-			renderInstruction("notices/resume/head-moved.md", {
+			renderPrompt("notices/resume/head-moved.md", {
 				from: previous.head.slice(0, 7),
 				to: git.head.slice(0, 7),
 				commits: count && count > 0 ? count : 0,
@@ -212,10 +212,10 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 		);
 	}
 	if (input.unreported?.length)
-		facts.unshift(renderInstruction("notices/resume/unreported.md", { work: input.unreported.join("; ") }));
+		facts.unshift(renderPrompt("notices/resume/unreported.md", { work: input.unreported.join("; ") }));
 	if (input.unanswered?.length)
 		facts.unshift(
-			renderInstruction("notices/resume/unanswered.md", {
+			renderPrompt("notices/resume/unanswered.md", {
 				calls: input.unanswered.join("; "),
 				children: input.children?.join("; ") ?? "",
 			}),
@@ -228,15 +228,13 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 	const away = now - input.lastActive;
 	if (facts.length === 0 && away <= LONG_AWAY_MS) return undefined;
 	if (input.request)
-		facts.push(
-			renderInstruction("notices/resume/last-request.md", { newPrompt: input.newPrompt, request: input.request }),
-		);
-	if (todo + proposed > 0) facts.push(renderInstruction("notices/resume/backlog-todo.md", { todo, proposed }));
+		facts.push(renderPrompt("notices/resume/last-request.md", { newPrompt: input.newPrompt, request: input.request }));
+	if (todo + proposed > 0) facts.push(renderPrompt("notices/resume/backlog-todo.md", { todo, proposed }));
 	if (git.dirty > 0)
-		facts.push(renderInstruction("notices/resume/uncommitted.md", { count: git.dirty, several: git.dirty !== 1 }));
+		facts.push(renderPrompt("notices/resume/uncommitted.md", { count: git.dirty, several: git.dirty !== 1 }));
 	const [first, ...rest] = facts;
 	const lines = [
-		renderInstruction("notices/resume/brief.md", { tag: RESUME_TAG, away: shortDuration(away), first }),
+		renderPrompt("notices/resume/brief.md", { tag: RESUME_TAG, away: shortDuration(away), first }),
 		...rest,
 	];
 	// The backlog part is capped (`ongoingBrief`); the request and the unanswered calls are whole, and the brief is never cut.

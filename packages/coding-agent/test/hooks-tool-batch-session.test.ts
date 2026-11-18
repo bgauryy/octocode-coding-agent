@@ -10,6 +10,7 @@ import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it.each([false, true])("observes one full tool batch and applies block=%s before another model call", async (block) => {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "tool-batch-session-"));
@@ -45,15 +46,15 @@ it.each([false, true])("observes one full tool batch and applies block=%s before
 	const harness = await createHarness({
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [tool],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				registerHooks(api, { env: {}, home });
 			},
-		],
+		]),
 	});
 	try {
 		approveFixtureHooks(harness.tempDir, home);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("observe", { value: "first" }), fauxToolCall("observe", { value: "fail" })], {
 				stopReason: "toolUse",

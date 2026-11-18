@@ -11,13 +11,13 @@ import {
 	mcpServerToolCount,
 } from "./row.ts";
 import { describeState, type McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 /**
  * One message for everything that needs the user after startup, or only for `only`, servers
  * that connected later.
  */
-export function reportProblems(state: McpExtensionState, ctx: McpContext, only?: readonly McpServer[]): void {
+export function reportProblems(state: McpFeatureState, ctx: McpContext, only?: readonly McpServer[]): void {
 	const lines = only ? [] : state.configErrors.map((error) => `config: ${error}`);
 	for (const server of only ?? state.servers) {
 		const connectionState = server.connection?.state;
@@ -31,7 +31,7 @@ export function reportProblems(state: McpExtensionState, ctx: McpContext, only?:
 	);
 }
 
-export function formatStatus(state: McpExtensionState): string {
+export function formatStatus(state: McpFeatureState): string {
 	const { servers, configErrors, overridden } = state;
 	if (servers.length === 0 && configErrors.length === 0 && overridden.length === 0) {
 		return `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`;

@@ -9,6 +9,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createBashTool, createBashToolDefinition } from "../src/core/tools/index.ts";
 import { wrapToolDefinition } from "../src/core/tools/tool-definition-wrapper.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const strictToolNames = ["bash"] as const;
 const definitionFor = (cwd: string) => ({ bash: createBashToolDefinition(cwd) });
@@ -50,25 +51,24 @@ describe("strict built-in tools", () => {
 			const agentDir = join(cwd, "agent");
 			const settingsManager = SettingsManager.inMemory({ defaultTools: activeTools });
 			const resourceLoader = new DefaultResourceLoader({
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				settingsManager,
-				disabledFeatures: ["mcp", "llama.cpp"],
+				disabledFeatures: ["mcp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
-				extensionFactories: [
+				features: testFeatures([
 					(api) => {
-						api.on("session_start", () => {
+						api.bus.on("session_start", () => {
 							const definitions = definitionFor(cwd);
 							for (const name of strictToolNames) {
-								api.registerTool({ ...definitions[name], constrainedSampling: false } as never);
+								api.tools.register({ ...definitions[name], constrainedSampling: false } as never);
 							}
-							api.setActiveTools(activeTools);
+							api.tools.setActive(activeTools);
 						});
 					},
-				],
+				]),
 			});
 			try {
 				await resourceLoader.reload();
@@ -82,7 +82,7 @@ describe("strict built-in tools", () => {
 				});
 				try {
 					const originalPrompt = session.systemPrompt;
-					await session.bindExtensions({});
+					await session.bindFeatures({});
 					expect(session.getActiveToolNames()).toEqual(activeTools);
 					expect(session.systemPrompt).toBe(originalPrompt);
 					for (const name of strictToolNames) {

@@ -1,4 +1,4 @@
-import type { ExtensionUIContext } from "../../core/features/index.ts";
+import type { SessionUI } from "../../core/features/index.ts";
 import {
 	AUDIT_NOTIFY_PREFIX,
 	type AuditEntry,
@@ -23,7 +23,7 @@ import { askShortcut, refusedReplies, relayAsk, relayedQuestions } from "./relay
  * shows each one in its own UI, unchanged apart from a line naming the child (taken from the process the request arrived
  * on, never from the request), and returns the user's answer. A child is always started with `--rpc-ask`, so its permission
  * prompts and `askUser` questions arrive as one `ask` request of typed questions (`relay-ask.ts`), decoded by role; a
- * plain select, confirm or input is an extension's own dialog and carries no approval. A permission prompt's options are
+ * plain select, confirm or input is a feature's own dialog and carries no approval. A permission prompt's options are
  * the child's, so the grant a user picks ("Allow all shell commands for this session") applies to that child only: the
  * parent's own grants are never touched. This enforces the parent's policy; it is not a sandbox, the child is the same OS user.
  */
@@ -59,7 +59,7 @@ interface RelayPermission {
 /** What the parent offers its children: its permission state always, its UI only when a person can be asked. */
 export interface RelayHost {
 	permission: RelayPermission;
-	ui?: Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify" | "ask"> | undefined;
+	ui?: Pick<SessionUI, "select" | "confirm" | "input" | "notify" | "ask"> | undefined;
 	/** Registers the secret given to child `id` with the team, so the user's messages to it are signed; returns what ends that when the child is gone (`Team.vouch`). */
 	vouch?: ((id: string, secret: string) => () => void) | undefined;
 	/** Child `id` reported, on the channel only its own harness writes to, whether it read anything untrusted (`parseExposure`). */
@@ -284,7 +284,8 @@ export class ChildRelay {
 		if (this.#open.size === 1) this.#options.onWaiting?.(true);
 		// A header the parent rejected is shown whole, but never with the child's secret in it.
 		const shown = (text: string): string => sanitizeTerminalText(redactNonce(text, this.#options.nonce));
-		const heading = `${this.#label()} asks:\n${shown(title)}`;
+		// A confirmation is a yes/no consent a tool needs (spending, stopping), not a question the child's model wrote.
+		const heading = `${this.#label()} ${method === "confirm" ? "needs your approval" : "asks"}:\n${shown(title)}`;
 		// A relayed dialog is a wait even while the parent is idle (a background child asks after the parent's turn ended).
 		const limit = this.#limit(event);
 		const dialogOptions = { signal: controller.signal, blocking: true, timeout: limit };

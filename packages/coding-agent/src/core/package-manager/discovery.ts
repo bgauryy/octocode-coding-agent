@@ -5,8 +5,8 @@ import { CONFIG_DIR_NAME } from "../../config.ts";
 import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { addIgnoreRules, type IgnoreMatcher, toPosixPath } from "../../utils/ignore.ts";
 
-export function getExtensionTempFolder(agentDir: string): string {
-	const tempFolder = join(agentDir, "tmp", "extensions");
+export function getPackageTempFolder(agentDir: string): string {
+	const tempFolder = join(agentDir, "tmp", "packages");
 	mkdirSync(tempFolder, { recursive: true, mode: 0o700 });
 	chmodSync(tempFolder, 0o700);
 	return tempFolder;

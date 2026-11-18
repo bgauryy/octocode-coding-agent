@@ -5,7 +5,7 @@
  * page only renders them.
  */
 
-import type { TrafficDrop } from "./team.ts";
+import type { Endpoint, FeedCursor, TrafficDelivery, TrafficDrop, TranscriptRef } from "./team.ts";
 
 /** What a layer of a request is, in the order the provider matched the prompt prefix. */
 export const PROFILE_LAYER_KINDS = [
@@ -222,6 +222,15 @@ export interface ProfileMessage {
 	answeredMs?: number;
 	/** The recipients that left without reading it, or without answering it (`Traffic.dropped`). */
 	dropped?: TrafficDrop[];
+	/** Who sent and received it, with role, worktree and tmux pane (`Traffic`'s fields of the same names). */
+	fromEndpoint?: Endpoint;
+	toEndpoints?: Endpoint[];
+	deliveries?: TrafficDelivery[];
+	/** An internal notice, not a team message: `from` is `team` or the external caller and `label` the notice type. Its id is negative. */
+	internal?: true;
+	label?: string;
+	/** The sender's transcript entry nearest the send, where its thinking and output are. */
+	transcript?: TranscriptRef;
 }
 
 /** What the analysis found worth changing, like a Lighthouse audit: each finding names its cost and evidence. */
@@ -308,6 +317,37 @@ export interface ProfileUpdate {
 }
 
 /**
+ * `GET <profiler>/messages?limit=<n>&beforeAt=<ms>&beforeKey=<key>`: a page of the session's team messages older than the
+ * cursor (the newest when absent) whatever their age (the timeline holds only the last 30 of the last ten minutes).
+ * The first page also carries the internal notices. `next` is the cursor for the next older page; it is set whenever
+ * older messages may remain, even when this page found fewer than `limit` (the team's history is shared by every session).
+ */
+export interface ProfileMessages {
+	messages: ProfileMessage[];
+	next?: FeedCursor;
+}
+
+/** One transcript entry as the Messages tab shows it; `thinking` and `text` are cut at a size the page can hold (`truncated`). */
+export interface ProfileTranscriptEntry {
+	/** The line index in the agent's session file (`TranscriptRef.entry`). */
+	entry: number;
+	role: "assistant" | "user" | "toolResult" | "notice" | "other";
+	at: number;
+	text?: string;
+	thinking?: string;
+	/** The names of the tools an assistant entry called. */
+	tools?: string[];
+	truncated?: true;
+}
+
+/** `GET <profiler>/transcript?agent=<id>&entry=<n>&session=<id>`: the entries around `entry` of that agent's transcript (the one of `session` when given), oldest first. */
+export interface ProfileTranscript {
+	agentId: string;
+	entry: number;
+	entries: ProfileTranscriptEntry[];
+}
+
+/**
  * Sub-routes under `WORKSPACE_ROUTES.profiler`. `trace` downloads the session as Chrome Trace Event JSON (one process
  * per agent), which Perfetto and chrome://tracing open.
  */
@@ -315,5 +355,7 @@ export const PROFILER_PATHS = {
 	agents: "/agents",
 	timeline: "/timeline",
 	insights: "/insights",
+	messages: "/messages",
+	transcript: "/transcript",
 	trace: "/trace",
 } as const;

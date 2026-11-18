@@ -34,7 +34,7 @@ function fakeSession(extra: Record<string, unknown> = {}): AgentSession & { emit
 		emit(event: AgentSessionEvent) {
 			for (const listener of listeners) listener(event);
 		},
-		extensionRunner: { getMessageRenderer: () => undefined, getCommand: () => undefined },
+		featureHost: { getMessageRenderer: () => undefined, getCommand: () => undefined },
 		...extra,
 	} as unknown as AgentSession & { emit(event: AgentSessionEvent): void };
 	sessions.push(session);
@@ -122,7 +122,7 @@ describe("interactive streaming and input races", () => {
 			},
 			sessionManager: { getCwd: () => "/tmp", buildContextEntries: () => [] },
 			getRegisteredToolDefinition: (): ReturnType<InteractiveModeHost["getRegisteredToolDefinition"]> => undefined,
-			programStatus: { handleEvent() {} },
+			programStatus: { handleEvent() {}, setPhase() {} },
 			maybeShowThinkingDropNotice() {},
 			maybeShowCacheMissNotice() {},
 			maybeShowInstallChangeWarning() {},
@@ -179,7 +179,7 @@ describe("interactive streaming and input races", () => {
 		const showError = vi.fn();
 		const session = fakeSession({
 			isCompacting: true,
-			extensionRunner: { getCommand: (name: string) => (name === "deploy" ? {} : undefined) },
+			featureHost: { getCommand: (name: string) => (name === "deploy" ? {} : undefined) },
 			prompt: vi.fn(async () => {
 				throw new Error("The session was replaced");
 			}),

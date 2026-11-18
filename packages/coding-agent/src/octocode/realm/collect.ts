@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { worktreesDir } from "../worktree-paths/own-worktree.ts";
 import { canonical } from "../worktrees/repo.ts";
 import { worktreeStatuses, type WorktreeStatus } from "../worktrees/status.ts";
@@ -42,7 +42,7 @@ function folderOf(status: WorktreeStatus, isolatedDir: string): RealmFolder {
  * when only the session list fails, the realms still come back, with `sessionsProblem` saying why they show none.
  */
 export async function collectRealms(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	deps: RealmDependencies,
 ): Promise<{ view: RealmView; sessionsProblem?: string }> {
 	const { main, statuses } = await worktreeStatuses(ctx.cwd);

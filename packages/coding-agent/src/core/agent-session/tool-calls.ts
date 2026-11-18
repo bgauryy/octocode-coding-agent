@@ -1,5 +1,5 @@
 /**
- * The session's tool call hooks: `tool_call` and `tool_result` extension handlers with tool result
+ * The session's tool call hooks: `tool_call` and `tool_result` feature handlers with tool result
  * image normalization, and the calls tools make through `ctx.executeTool()`.
  */
 
@@ -28,6 +28,10 @@ export interface ToolCallsHost extends Pick<SessionInternals, "session" | "emit"
 	resolveUndeclaredTool(name: string): AgentTool | undefined;
 	/** Declared MCP tools whose server is still connecting. */
 	pendingToolNames(): ReadonlySet<string>;
+	/** Tools switched off that the transcript still declares (`HeldTools`); a call to one is refused. */
+	heldToolNames?(): ReadonlySet<string>;
+	/** The refusal text for a call to a held tool, after `Tool <name> not found: `. */
+	heldToolRefusal?(name: string): string | undefined;
 }
 
 /**
@@ -43,7 +47,7 @@ const REMOVED_TOOLS: ReadonlyMap<string, string> = new Map([
 
 /**
  * The error a call to an undeclared tool gets when the session knows the tool: it is switched off for this session.
- * A removed tool names its replacement, unless an extension or MCP server registered a tool of that name. Other unknown
+ * A removed tool names its replacement, unless a feature or MCP server registered a tool of that name. Other unknown
  * names keep the agent's default. A declared MCP tool whose server is still connecting is retried shortly.
  * Each text keeps the default's `Tool <name> not found` prefix, which consumers match.
  */
@@ -94,29 +98,35 @@ export class SessionToolCalls {
 	/**
 	 * Install tool hooks once on the Agent instance.
 	 *
-	 * The callbacks read the session's extension runner at execution time, so extension reload swaps in the
-	 * new runner without reinstalling hooks. Extension-specific tool wrappers are still used to adapt
-	 * registered tool execution to the extension context. Tool call and tool result interception now
+	 * The callbacks read the session's feature runner at execution time, so feature reload swaps in the
+	 * new runner without reinstalling hooks. Feature-specific tool wrappers are still used to adapt
+	 * registered tool execution to the feature context. Tool call and tool result interception now
 	 * happens here instead of in wrappers.
 	 */
 	install(): void {
 		const agent = this.host.session.agent;
 		agent.beforeToolCall = (context, signal) => this._beforeToolCall(context, signal);
 		agent.afterToolCall = (context) => this._afterToolCall(context);
-		agent.unknownToolMessage = (name) => unknownToolMessage(this.host.session, name, this.host.pendingToolNames());
-		agent.pendingToolNames = () => this.host.pendingToolNames();
+		agent.unknownToolMessage = (name) => {
+			const held = this.host.heldToolRefusal?.(name);
+			return held === undefined
+				? unknownToolMessage(this.host.session, name, this.host.pendingToolNames())
+				: `Tool ${name} not found: ${held}`;
+		};
+		// Declared but not executable: servers still connecting and held tools stay declared.
+		agent.pendingToolNames = () => new Set([...this.host.pendingToolNames(), ...(this.host.heldToolNames?.() ?? [])]);
 		agent.resolveUndeclaredTool = (name) => this.host.resolveUndeclaredTool(name);
-		// `toolExecution.earlyStart`: the extensions decide which calls may start while the message streams (no dialog).
+		// `toolExecution.earlyStart`: the features decide which calls may start while the message streams (no dialog).
 		agent.earlyStart = {
 			mayStart: (toolCall) =>
 				this.host.session.settingsManager.getToolExecutionEarlyStart() &&
-				this.host.session.extensionRunner.mayStartToolCallEarly({
+				this.host.session.featureHost.mayStartToolCallEarly({
 					origin: "model",
 					toolName: toolCall.name,
 					toolCallId: toolCall.id,
 					input: toolCall.arguments,
 				}),
-			onDiscarded: (toolCallId) => this.host.session.extensionRunner.toolCallDiscarded(toolCallId),
+			onDiscarded: (toolCallId) => this.host.session.featureHost.toolCallDiscarded(toolCallId),
 		};
 	}
 
@@ -126,7 +136,7 @@ export class SessionToolCalls {
 		signal?: AbortSignal,
 		parentToolCallId?: string,
 	): Promise<BeforeToolCallResult | undefined> {
-		const runner = this.host.session.extensionRunner;
+		const runner = this.host.session.featureHost;
 		if (!runner.hasHandlers("tool_call")) {
 			return undefined;
 		}
@@ -148,7 +158,7 @@ export class SessionToolCalls {
 			if (err instanceof Error) {
 				throw err;
 			}
-			throw new Error(`Extension failed, blocking execution: ${String(err)}`, { cause: err });
+			throw new Error(`Feature failed, blocking execution: ${String(err)}`, { cause: err });
 		}
 	}
 
@@ -157,7 +167,7 @@ export class SessionToolCalls {
 		{ toolCall, args, result, isError }: AfterToolCallContext,
 		parentToolCallId?: string,
 	): Promise<AfterToolCallResult | undefined> {
-		const runner = this.host.session.extensionRunner;
+		const runner = this.host.session.featureHost;
 		const hookResult = runner.hasHandlers("tool_result")
 			? await runner.emitToolResult({
 					type: "tool_result",
@@ -174,7 +184,7 @@ export class SessionToolCalls {
 			: undefined;
 
 		const content = hookResult?.content ?? result.content ?? [];
-		// Runs after the extension hook so images injected or replaced by extensions are normalized too.
+		// Runs after the feature hook so images injected or replaced by features are normalized too.
 		const resizeOptions = this.host.limitsModel()?.inputLimits?.images?.resize;
 		const normalizedContent = await normalizeToolResultImages(content, {
 			autoResizeImages: this.host.session.settingsManager.getImageAutoResize(),
@@ -235,7 +245,7 @@ export class SessionToolCalls {
 				});
 			},
 			emit: async (event) => {
-				await session.extensionRunner.emit(event);
+				await session.featureHost.emit(event);
 				this.host.emit(event);
 			},
 		});

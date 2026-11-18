@@ -18,11 +18,11 @@ import type {
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import type {
 	EditorFactory,
-	ExtensionCommandContext,
-	ExtensionRunner,
-	ExtensionUIContext,
-	ExtensionUIDialogOptions,
-	ExtensionWidgetOptions,
+	CommandContext,
+	FeatureHost,
+	SessionUI,
+	DialogOptions,
+	WidgetOptions,
 	MarkdownTransformer,
 	WorkingIndicatorOptions,
 	ToolRenderers,
@@ -62,21 +62,21 @@ export interface InteractiveModeMethods {
 	addCacheWarmingUsage(entry: UsageEntry): void;
 	addCompactionCostNotice(notice: CompactionCostNotice): void;
 	addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void;
-	addExtensionTerminalInputListener(
+	addFeatureTerminalInputListener(
 		handler: (data: string) => { consume?: boolean; data?: string } | undefined,
 	): () => void;
 	addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void;
 	applyFullscreenScrollbarSetting(): void;
 	applyRuntimeSettings(): void;
 	backgroundError(kind: "uncaughtException" | "unhandledRejection", error: unknown): void;
-	bindCurrentSessionExtensions(): Promise<void>;
+	bindCurrentSessionFeatures(): Promise<void>;
 	buildScopeGroups(items: SourcedPath[]): ScopeGroup[];
 	checkForPackageUpdates(): Promise<string[]>;
 	checkShutdownRequested(): Promise<void>;
 	checkTmuxKeyboardSetup(): Promise<string | undefined>;
 	clearAllQueues(): { steering: string[]; followUp: string[] };
 	clearEditor(): void;
-	clearExtensionTerminalInputListeners(): void;
+	clearFeatureTerminalInputListeners(): void;
 	clearStatusIndicator(kind?: StatusIndicator["kind"]): void;
 	completeProviderAuthentication(
 		providerId: string,
@@ -85,7 +85,7 @@ export interface InteractiveModeMethods {
 	): Promise<void>;
 	crashReportInstructions(): string;
 	createBaseAutocompleteProvider(): AutocompleteProvider;
-	createExtensionUIContext(): ExtensionUIContext;
+	createSessionUI(): SessionUI;
 	cycleModel(direction: "forward" | "backward"): Promise<void>;
 	cycleThinkingLevel(): void;
 	disposeActiveSelector(): void;
@@ -97,23 +97,23 @@ export interface InteractiveModeMethods {
 	formatContextPath(p: string): string;
 	formatDiagnostics(diagnostics: readonly ResourceDiagnostic[], sourceInfos: Map<string, SourceInfo>): string;
 	formatDisplayPath(p: string): string;
-	formatExtensionDisplayPath(path: string): string;
+	formatFeatureDisplayPath(path: string): string;
 	formatScopeGroups(groups: ScopeGroup[], options: ScopeGroupFormatOptions): string;
 	getAllQueuedMessages(): { steering: string[]; followUp: string[] };
 	getAppKeyDisplay(action: AppKeybinding): string;
-	getBuiltInCommandConflictDiagnostics(extensionRunner: ExtensionRunner): ResourceDiagnostic[];
+	getBuiltInCommandConflictDiagnostics(featureHost: FeatureHost): ResourceDiagnostic[];
 	getChangelogForDisplay(): string | undefined;
 	getCompactDisplayPathSegments(resourcePath: string): string[];
-	getCompactExtensionLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
-	getCompactExtensionLabels(extensions: SourcedPath[]): string[];
-	getCompactNonPackageExtensionLabel(
+	getCompactFeatureLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
+	getCompactFeatureLabels(features: SourcedPath[]): string[];
+	getCompactNonPackageFeatureLabel(
 		resourcePath: string,
 		index: number,
 		allPaths: Array<{ path: string; segments: string[] }>,
 	): string;
 	getCompactPackageSourceLabel(sourceInfo?: SourceInfo): string;
 	getCompactPathLabel(resourcePath: string, sourceInfo?: SourceInfo): string;
-	getCrashExtensionHint(error: unknown): string | undefined;
+	getCrashFeatureHint(error: unknown): string | undefined;
 	getLoginProviderOptions(authType?: "oauth" | "api_key"): AuthSelectorProvider[];
 	getMarkdownThemeWithSettings(): MarkdownTheme;
 	getMarkdownTransformers(): MarkdownTransformer[];
@@ -150,17 +150,17 @@ export interface InteractiveModeMethods {
 	handleReloadCommand(): Promise<void>;
 	handleResumeSession(
 		sessionPath: string,
-		options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
+		options?: Parameters<CommandContext["switchSession"]>[1],
 	): Promise<{ cancelled: boolean }>;
 	handleSessionCommand(): void;
 	handleShareCommand(): Promise<void>;
 	handleStartupSubmit(text: string): void;
 	handleThinkingCommand(searchTerm?: string): void;
-	hideExtensionEditor(): void;
-	hideExtensionInput(): void;
-	hideExtensionSelector(): void;
+	hideEditorDialog(): void;
+	hideInputDialog(): void;
+	hideSelectorDialog(): void;
 	init(): Promise<void>;
-	isExtensionCommand(text: string): boolean;
+	isFeatureCommand(text: string): boolean;
 	isPackageSource(sourceInfo?: SourceInfo): boolean;
 	maybeShowCacheMissNotice(message: AssistantMessage): void;
 	maybeShowInstallChangeWarning(): boolean;
@@ -172,7 +172,7 @@ export interface InteractiveModeMethods {
 	queueCompactionMessage(text: string, mode: "steer" | "followUp"): void;
 	queueInteractiveMessage(text: string, mode: "steer" | "followUp"): Promise<void>;
 	rebindCurrentSession(options?: { renderBeforeBind?: boolean }): Promise<void>;
-	rebindExtensionTerminalInputListeners(): void;
+	rebindFeatureTerminalInputListeners(): void;
 	rebuildChatFromMessages(): void;
 	recordCrash(kind: "uncaught_exception" | "fatal_error", error: unknown): boolean;
 	registerSignalHandlers(): void;
@@ -182,45 +182,41 @@ export interface InteractiveModeMethods {
 	renderSessionItems(items: readonly RenderSessionItem[], options?: SessionRenderOptions): void;
 	renderWidgets(): void;
 	sendCarriedMessages(): Promise<void>;
-	resetExtensionUI(): void;
+	resetFeatureUI(): void;
 	restoreQueuedMessagesToEditor(options?: { abort?: boolean }): number;
 	setCustomEditorComponent(factory: EditorFactory | undefined): void;
 	setEditorWorkingStatusIndicator(indicator: StatusIndicator | undefined): boolean;
-	setExtensionFooter: ExtensionUIContext["setFooter"];
-	setExtensionHeader: ExtensionUIContext["setHeader"];
-	setExtensionStatus: ExtensionUIContext["setStatus"];
-	setExtensionWidget(
+	setFeatureFooter: SessionUI["setFooter"];
+	setFeatureHeader: SessionUI["setHeader"];
+	setFeatureStatus: SessionUI["setStatus"];
+	setFeatureWidget(
 		key: string,
 		content: string[] | ((tui: TUI, thm: Theme) => Component & { dispose?(): void }) | undefined,
-		options?: ExtensionWidgetOptions,
+		options?: WidgetOptions,
 	): void;
-	setHiddenThinkingLabel(label?: string): void;
-	setToolsExpanded(expanded: boolean): void;
 	setupAutocompleteProvider(): void;
 	setupEditorSubmitHandler(): void;
-	setupExtensionShortcuts(extensionRunner: ExtensionRunner): void;
 	setupKeyHandlers(): void;
 	setWorkingIndicator(options?: WorkingIndicatorOptions): void;
-	setWorkingVisible(visible: boolean): void;
 	shouldShowStartupDetails(): boolean;
 	shouldShowStartupHeader(): boolean;
 	showAmbientAuthDialog(providerOption: AuthSelectorProvider, onBack?: () => void): void;
 	showApiKeyLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
 	showError(errorMessage: string): void;
-	showExtensionConfirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>;
-	showExtensionCustom: ExtensionUIContext["custom"];
-	showExtensionEditor(title: string, prefill?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
-	showExtensionError(extensionPath: string, error: string, stack?: string): void;
-	showExtensionInput(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>;
-	showExtensionSelector(
+	showConfirmDialog(title: string, message: string, opts?: DialogOptions): Promise<boolean>;
+	showCustomDialog: SessionUI["custom"];
+	showEditorDialog(title: string, prefill?: string, opts?: DialogOptions): Promise<string | undefined>;
+	showFeatureError(source: string, error: string, stack?: string): void;
+	showInputDialog(title: string, placeholder?: string, opts?: DialogOptions): Promise<string | undefined>;
+	showSelectorDialog(
 		title: string,
 		options: string[],
-		opts?: ExtensionUIDialogOptions,
+		opts?: DialogOptions,
 		blocked?: BlockedStatus,
 		card?: SelectorCard,
 	): Promise<string | undefined>;
 	showLoadedResources(options?: {
-		extensions?: SourcedPath[];
+		features?: SourcedPath[];
 		force?: boolean;
 		showDiagnosticsWhenQuiet?: boolean;
 	}): void;

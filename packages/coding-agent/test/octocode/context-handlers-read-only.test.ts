@@ -8,7 +8,7 @@ import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { IDENTITY_REMINDER_TYPE } from "../../src/octocode/shared/reminder-view.ts";
 import { registerIdentityReminder } from "../../src/octocode/subagents/identity-reminder.ts";
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -81,22 +81,23 @@ afterEach(() => {
 
 async function contextHandlers(): Promise<Array<{ owner: string; handler: Handler }>> {
 	const fake = fakeHost();
-	Object.assign(fake.api, { getSessionName: () => undefined });
+	Object.assign(fake.api.session, { getName: () => undefined });
 	await octocode(fake.api);
 	const found = (fake.handlers.get("context") ?? []).map((handler) => ({
 		owner: "octocode",
 		handler: handler as Handler,
 	}));
-	const capture = (owner: string) => ({
-		on: (event: string, handler: Handler) => {
-			if (event === "context") found.push({ owner, handler });
-		},
-		registerProvider: () => {},
-		appendEntry: () => {},
-		sendMessage: () => {},
-	});
-	attachBackend(capture("claude-code") as never, { provider: {}, markTurn: () => {} } as never);
-	registerIdentityReminder(capture("identity-reminder") as never, { [AGENT_ID_ENV]: "kid" });
+	const capture = (owner: string) =>
+		asSetup({
+			on: (event: string, handler: Handler) => {
+				if (event === "context") found.push({ owner, handler });
+			},
+			registerProvider: () => {},
+			appendEntry: () => {},
+			sendMessage: () => {},
+		});
+	attachBackend(capture("claude-code"), { provider: {}, markTurn: () => {} } as never);
+	registerIdentityReminder(capture("identity-reminder"), { [AGENT_ID_ENV]: "kid" });
 	return found;
 }
 

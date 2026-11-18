@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runInproc } from "../src/agents/inproc.ts";
 import { script } from "../src/gateway.ts";
+import { mockMcp, type ToolDef } from "../src/mcp.ts";
 import { gateway, mcp, searchTool } from "./helpers.ts";
 
 async function setup(steps: Parameters<typeof script>[0]) {
@@ -125,5 +126,73 @@ describe("mock MCP identity and stalls", () => {
 		await docs.close();
 		expect(await pending).toBeInstanceOf(Error);
 		expect(docs.stalledCalls()).toBe(0);
+	});
+});
+
+describe("mock MCP: async handlers and JSON-schema tools", () => {
+	const closers: (() => Promise<void>)[] = [];
+	afterEach(async () => {
+		await Promise.all(closers.splice(0).map((c) => c()));
+	});
+	const make = (tool: ToolDef) => {
+		const m = mockMcp({ name: "x", tools: [tool] });
+		closers.push(() => m.close());
+		return m;
+	};
+
+	it("awaits an async handler and records the resolved value", async () => {
+		const m = make({ ...searchTool, handler: async () => "REAL" });
+		const r = await m.client().callTool("search", { query: "q" });
+		expect(r).toEqual({ isError: false, text: "REAL" });
+		expect(m.trace.of("tool_exec")[0].data).toBe("REAL");
+	});
+
+	it("awaits a returns() promise", async () => {
+		const m = make(searchTool);
+		m.tool("search").returns(Promise.resolve("FIXED"));
+		expect(await m.client().callTool("search", { query: "q" })).toEqual({ isError: false, text: "FIXED" });
+	});
+
+	it("a rejecting handler behaves like a throwing one", async () => {
+		const m = make({
+			...searchTool,
+			handler: async () => {
+				throw new Error("boom");
+			},
+		});
+		expect(await m.client().callTool("search", { query: "q" })).toEqual({ isError: true, text: "boom" });
+		expect(m.trace.of("tool_error")[0].data).toMatchObject({ reason: "error", message: "boom" });
+	});
+
+	it("failOnce still works with async handlers", async () => {
+		const m = make({ ...searchTool, handler: async () => "OK" });
+		m.tool("search").failOnce("error");
+		expect((await m.client().callTool("search", { query: "q" })).isError).toBe(true);
+		expect((await m.client().callTool("search", { query: "q" })).text).toBe("OK");
+	});
+
+	it("validates enum, type arrays and integers", async () => {
+		const m = make({
+			name: "pick",
+			description: "d",
+			inputSchema: {
+				type: "object",
+				properties: {
+					mode: { type: "string", enum: ["a", "b"] },
+					n: { type: ["integer", "null"] },
+				},
+				required: ["mode"],
+				additionalProperties: false,
+			},
+		});
+		const c = m.client();
+		const bad = await c.callTool("pick", { mode: "c" });
+		expect(bad.isError).toBe(true);
+		expect(bad.text).toMatch(/must be one of/);
+		expect(m.trace.of("tool_error")[0].data).toMatchObject({ reason: "invalid-args" });
+		expect((await c.callTool("pick", { mode: "a", n: null })).isError).toBe(false);
+		expect((await c.callTool("pick", { mode: "a", n: 2 })).isError).toBe(false);
+		expect((await c.callTool("pick", { mode: "a", n: 2.5 })).text).toMatch(/integer or null/);
+		expect((await c.callTool("pick", { mode: "a", n: "x" })).isError).toBe(true);
 	});
 });

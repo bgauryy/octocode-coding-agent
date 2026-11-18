@@ -2,20 +2,19 @@
 
 import { addMcpWithUi } from "./add-ui.ts";
 import type { SelectItem } from "@octocodeai/octocode-tui";
-import { firstLine } from "@octocodeai/octocode-common/clip";
 import type { McpContext } from "./host/types.ts";
-import { hostPaths } from "./host.ts";
+import { hostPaths, hostToolSwitch } from "./host.ts";
 import { reconnect, signIn, signOut } from "./connections.ts";
 import { exposureOf } from "./exposure.ts";
-import { formatMcpTool, toolCatalog } from "./inspection.ts";
+import { showServerTools } from "./tools-page.ts";
 
 export { toolCatalog } from "./inspection.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { attentionRank, describeState, describeTransport, isEnabled, type McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import type { McpMenu, McpMenuItem, McpUi } from "./ui.ts";
 
-function notices(state: McpExtensionState): string[] {
+function notices(state: McpFeatureState): string[] {
 	return [
 		...state.configErrors.map((error) => `config: ${error}`),
 		...state.overridden.map((line) => `overridden: ${line}`),
@@ -37,7 +36,7 @@ function stateTone(server: McpServer): McpMenuItem["tone"] {
 	}
 }
 
-function serversMenu(state: McpExtensionState): McpMenu {
+function serversMenu(state: McpFeatureState): McpMenu {
 	const { projectTrusted } = state;
 	return {
 		title: "MCP servers — connect, sign in, inspect tools, add",
@@ -62,7 +61,7 @@ function serversMenu(state: McpExtensionState): McpMenu {
 	};
 }
 
-function serverMenu(state: McpExtensionState, name: string): McpMenu {
+function serverMenu(state: McpFeatureState, name: string): McpMenu {
 	const server = state.findServer(name);
 	if (!server) {
 		return {
@@ -79,9 +78,9 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 		const connectionState = connection?.state;
 		if (connectionState === "needs-auth")
 			items.push({ value: "signin", label: "Sign in", description: "opens the browser" });
-		if (connectionState === "connected" && connection) {
+		if (connectionState === "connected" && connection)
 			items.push({ value: "tools", label: "Tools", description: `${connection.tools.length} offered` });
-		}
+		else if (hostToolSwitch()) items.push({ value: "tools", label: "Tools", description: "pins and exposure" });
 		if (
 			connectionState === "failed" ||
 			connectionState === "disconnected" ||
@@ -96,7 +95,7 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 	}
 	const facts = [
 		{ label: "Transport", value: describeTransport(entry) },
-		{ label: "Exposure", value: `${exposureOf(entry)} · change in /harness mcp` },
+		{ label: "Exposure", value: `${exposureOf(entry)} · change in Tools` },
 		{ label: entry.scope ?? "config", value: entry.source },
 		...(entry.override ? [{ label: `${entry.overrideScope ?? "project"} override`, value: entry.override }] : []),
 		{ label: "State", value: isEnabled(server) ? describeState(server, false) : "Off · turn on in /harness mcp" },
@@ -119,43 +118,8 @@ function serverMenu(state: McpExtensionState, name: string): McpMenu {
 	};
 }
 
-async function showTools(state: McpExtensionState, ui: McpUi, name: string): Promise<void> {
-	for (;;) {
-		const selected = await ui.menu(
-			() => ({
-				title: `${name} — tools`,
-				heading: "Tools",
-				details: "Open a tool to inspect its description and input schema. Hidden tools cannot be called.",
-				items: toolCatalog(state, name).map((tool) => ({
-					value: tool.name,
-					label: tool.name,
-					description: `[${tool.exposure}] ${firstLine(tool.description ?? "")}`,
-				})),
-				empty: "No tools available. The server may be disabled, disconnected, or offer no tools.",
-				confirmLabel: "inspect",
-				cancelLabel: "back",
-			}),
-			state.subscribe,
-		);
-		if (!selected) return;
-		const tool = toolCatalog(state, name).find((candidate) => candidate.name === selected);
-		if (tool)
-			await ui.menu(() => ({
-				title: `${tool.name} — tool`,
-				heading: "Details",
-				facts: formatMcpTool(tool, true)
-					.split("\n")
-					.map((value) => ({ label: "", value })),
-				items: [],
-				empty: "",
-				confirmLabel: "",
-				cancelLabel: "back",
-			}));
-	}
-}
-
 /** Sign in with the manager view's sign-in screen, which shows the URL with a copy key and cancels with Esc. */
-export function signInWithUi(state: McpExtensionState, ui: McpUi, server: McpServer): Promise<string | undefined> {
+export function signInWithUi(state: McpFeatureState, ui: McpUi, server: McpServer): Promise<string | undefined> {
 	const title = `Sign in to ${server.entry.name}`;
 	const cancel = new AbortController();
 	const status = (message: string) => ui.status(title, message, () => cancel.abort());
@@ -201,7 +165,7 @@ async function confirmSignOut(ui: McpUi, name: string): Promise<boolean> {
 
 /** Keep the subscribed menu usable while a connection opens or closes. */
 function runInBackground(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	ctx: McpContext,
 	server: McpServer,
 	operation: () => Promise<string | undefined>,
@@ -218,7 +182,7 @@ function runInBackground(
 }
 
 async function runAction(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	ui: McpUi,
 	ctx: McpContext,
 	server: McpServer,
@@ -242,7 +206,7 @@ async function runAction(
 			await signOut(state, server);
 			break;
 		case "tools":
-			await showTools(state, ui, server.entry.name);
+			await showServerTools(state, ui, server.entry.name);
 			break;
 	}
 	// The session ended meanwhile (for example during a sign-in), which made ctx stale.
@@ -251,7 +215,7 @@ async function runAction(
 	state.emitChange();
 }
 
-export async function manage(state: McpExtensionState, ui: McpUi, ctx: McpContext): Promise<void> {
+export async function manage(state: McpFeatureState, ui: McpUi, ctx: McpContext): Promise<void> {
 	for (;;) {
 		const name = await ui.menu(() => serversMenu(state), state.subscribe);
 		if (!name) return;

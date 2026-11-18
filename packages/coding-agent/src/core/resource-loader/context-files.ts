@@ -1,4 +1,4 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import chalk from "chalk";
@@ -41,7 +41,7 @@ function capContextFile(path: string, content: string): string {
 	let end = CONTEXT_FILE_MAX_BYTES;
 	// Back up to a character boundary: UTF-8 continuation bytes are 0b10xxxxxx.
 	while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-	return `${bytes.subarray(0, end).toString("utf8")}\n\n${renderInstruction("notices/context-file-cut.md", { path })}`;
+	return `${bytes.subarray(0, end).toString("utf8")}\n\n${renderPrompt("notices/context-file-cut.md", { path })}`;
 }
 
 function loadContextFileFromDir(dir: string): { path: string; content: string } | null {
@@ -242,7 +242,7 @@ function claudeMemoryEntry(path: string): { path: string; content: string } {
 	while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
 	const body = bytes.subarray(0, end).toString("utf8");
 	// The header says when lines were left out, and where they are: a silent cut reads as the whole file.
-	const header = renderInstruction("notices/claude-memory.md", {
+	const header = renderPrompt("notices/claude-memory.md", {
 		path,
 		dir: dirname(path),
 		cut: body.trimEnd().length < whole.trimEnd().length,

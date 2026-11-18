@@ -61,11 +61,11 @@ Project settings cannot change these choices. Pausing external tasks keeps the s
 
 Global configuration and runtime state live in `~/.octocode/octocodecode/` ("global" below). Project configuration lives in `.octocode/` of the workspace. MCP definitions are the exception: `~/.octocode/mcp.json` and `.octocode/mcp.json`.
 
-| Override                    | Moves                                                                                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `OCTOCODE_HOME`             | The shared configuration and runtime home                                                                                                |
-| `OCTOCODE_CODING_AGENT_DIR` | Only the core configuration directory; native runtime files keep their own home                                                          |
-| `OCTOCODE_AGENT_DB`         | The agent database file (default `<octocode home>/agent/workspaces.db`); its transcript mirror sits beside it as `<name>.transcripts.db` |
+| Override                    | Moves                                                                                                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OCTOCODE_HOME`             | The shared configuration and runtime home                                                                                                                                                          |
+| `OCTOCODE_CODING_AGENT_DIR` | Only the core configuration directory; native runtime files keep their own home                                                                                                                    |
+| `OCTOCODE_AGENT_DB`         | The agent database file (default `<octocode home>/agent/workspaces.db`); its transcript mirror sits beside it as `<name>.transcripts.db` and its archive search index as `<name>.archive-index.db` |
 
 An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` also turns off the [Pi fallback](#pi-configuration-fallback) and moves the user MCP file to `mcp.json` in that directory. `/mcp config` prints the exact MCP paths, their read order and trust state without connecting servers.
 
@@ -80,18 +80,17 @@ Workspace files are relative to the session's working directory; agent profiles 
 | Providers, model defs     | `models.json`                                                          | none; select a model in workspace settings          | `/model` reloads definitions; `/modelsettings`                        |
 | Provider sign-in, keys    | `auth.json`                                                            | none                                                | `/providers`, `/logout`                                               |
 | MCP OAuth tokens          | `mcp-auth.json`                                                        | none                                                | `/mcp login\|logout <server>`                                         |
-| Derived context files     | `context-optimization/` (project ones under `projects/<repo>-<hash>/`) | none in the repository                              | Rewritten on change; `octocode context`, `octocode mcp compact`       |
+| Derived context files     | `context-optimization/` (project ones under `projects/<repo>-<hash>/`) | none in the repository                              | Rewritten on change; `octocode context`                               |
 | Skills                    | `skills/<name>/SKILL.md`, `~/.agents/skills/`                          | `.octocode/skills/`, `.agents/skills/`              | `/harness list skills`; [skills](skills.md)                           |
 | Prompt templates          | `prompts/*.md`                                                         | `.octocode/prompts/*.md`                            | [prompt templates](prompt-templates.md)                               |
 | Themes                    | `themes/*.json`                                                        | `.octocode/themes/*.json`                           | `/configuration` → Interface and session → Theme; [themes](themes.md) |
 | Keyboard shortcuts        | `keybindings.json`                                                     | none                                                | `/keys`, `/reload`; [keybindings](keybindings.md)                     |
 | System prompt             | `SYSTEM.md`, `APPEND_SYSTEM.md`                                        | `.octocode/SYSTEM.md`, `.octocode/APPEND_SYSTEM.md` | `/reload`; the workspace file wins                                    |
-| Project instructions      | `AGENTS.md` in the agent directory                                     | `AGENTS.md` in the project and its ancestors        | [instructions](instructions.md)                                       |
+| Project instructions      | `AGENTS.md` in the agent directory                                     | `AGENTS.md` in the project and its ancestors        | [instructions](prompts.md)                                            |
 | Agent profiles            | `agents/*.md`                                                          | `.octocode/agents/*.md` at the repository root      | `/agents`, `/reload`                                                  |
 | Hooks                     | `hooks.json` in the runtime home                                       | `.octocode/hooks.json` at the repository root       | `/harness hooks`; [hooks](hooks.md)                                   |
 | Plugins                   | `plugins` in `settings.json`                                           | `plugins` in `.octocode/settings.json`              | `/harness`; [plugins](plugins.md)                                     |
 | Plugin marketplaces       | `marketplaces` in `settings.json` (global only)                        | not read                                            | `octocode marketplace add`                                            |
-| Extensions                | `extensions/` (ignored with a warning)                                 | `.octocode/extensions/` (ignored)                   | User code extensions are not supported; use plugins and hooks         |
 | GitHub sign-in (research) | The Octocode CLI's own store                                           | none                                                | `/octocode auth login\|status\|logout`                                |
 
 ## Precedence
@@ -123,7 +122,7 @@ The web Settings page saves or clears the startup provider and model as one pair
 octocode configuration ... [--local] [--trust] [--json]
 ```
 
-Ids are `kind:name` (`tool:`, `mcp:`, `harness:`, `plugin:`, `hook:`, `skill:`, `extension:`, `prompt:`, `theme:`, `provider:`, `source:`) or a bare settings key such as `retry.maxRetries`.
+Ids are `kind:name` (`tool:`, `mcp:`, `harness:`, `plugin:`, `hook:`, `skill:`, `prompt:`, `theme:`, `provider:`, `source:`) or a bare settings key such as `retry.maxRetries`.
 
 | Verb                                | Does                                                                   | Example                                                     |
 | ----------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -142,17 +141,17 @@ Without a verb a terminal opens a selector; otherwise the CLI lists. `--json` pr
 
 Each result says when it applies: now (MCP switches, live settings), after `/reload`, or in the next session. Run flags are repeatable, apply before tools and resources load, survive `/reload` and are never written: `octocode --disable tool:backlog --set retry.maxRetries=4`. A refused id or key prints the reason and exits 1; `mcp:` ids have no run form (use `--no-mcp`). `--tools` and `--exclude-tools` still choose tools for one run. Features register no CLI flags, so unknown flags such as `--extension` fail at startup.
 
-MCP is always on and cannot be switched through `extensions`; a `-builtin:mcp` entry is ignored with a warning. Only `builtin:<id>` entries of `extensions` act (`-builtin:llama.cpp` switches the llama.cpp provider off). Octocode is the default MCP server: `/configuration disable mcp:octocode` turns it off and `enable` brings it back (`OCTOCODE_MCP=0` also turns it off, unless configuration overrides it).
+MCP is always on and has no switch; start with `--no-mcp` to run without it. A leftover `extensions` key in a settings file is ignored with one warning; remove it. Octocode is the default MCP server: `/configuration disable mcp:octocode` turns it off and `enable` brings it back (`OCTOCODE_MCP=0` also turns it off, unless configuration overrides it).
 
 ### Harnesses
 
-A harness is one source of configuration. `/harness` opens on an **Overview** tab with one row per section (**Skills**, **MCPs**, **Hooks**, **Sources**, **Extensions**): how many items are on and off (`N on · M off`) and how many wait for approval in `/security`. Empty sections stay visible. **Sources** contains the harness switches below.
+A harness is one source of configuration. `/harness` opens on an **Overview** tab with one row per section (**Skills**, **MCPs**, **Hooks**, **Sources**): how many items are on and off (`N on · M off`) and how many wait for approval in `/security`. Empty sections stay visible. **Sources** contains the harness switches below.
 
-| Command                                            | Opens                                                             |
-| -------------------------------------------------- | ----------------------------------------------------------------- |
-| `/harness`, `/harness overview`                    | The Overview                                                      |
-| `/harness skills\|mcp\|hooks\|sources\|extensions` | That section (outside the terminal it prints the section instead) |
-| `/harness list [section]`                          | A plain list, for example `/harness list sources`                 |
+| Command                                | Opens                                                             |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| `/harness`, `/harness overview`        | The Overview                                                      |
+| `/harness skills\|mcp\|hooks\|sources` | That section (outside the terminal it prints the section instead) |
+| `/harness list [section]`              | A plain list, for example `/harness list sources`                 |
 
 | Key                               | Action                                                             |
 | --------------------------------- | ------------------------------------------------------------------ |
@@ -170,11 +169,11 @@ Changing section, scope, selection or filter clears an armed disable confirmatio
 
 **MCP servers.** In the **MCPs** section Space switches a server on or off. Enter or → on a server opens its tools:
 
-| Row               | Meaning                                                                                                           | Change with                                                      |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Available to      | `every agent`, or `only agents whose profile tools: names mcp__<server>__` (the server's `defaultActive` setting) | Space                                                            |
-| Default for tools | The server's exposure (`direct`, `deferred` or `hidden`) for tools without a pin                                  | Tab                                                              |
-| Each tool         | The tool's state; a pin overrides the server default                                                              | Space hides or unpins, Tab cycles `direct`, `deferred`, `hidden` |
+| Row               | Meaning                                                                                                           | Change with                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Available to      | `every agent`, or `only agents whose profile tools: names mcp__<server>__` (the server's `defaultActive` setting) | Space                                                                        |
+| Default for tools | The server's exposure (`direct`, `deferred`, `onDemand` or `hidden`) for tools without a pin                      | Tab                                                                          |
+| Each tool         | The tool's state; a pin overrides the server default                                                              | Space hides or unpins, Tab cycles `direct`, `deferred`, `onDemand`, `hidden` |
 
 ← or Esc goes back. A server that is not connected lists its pinned tools and tells you to connect to list the rest. Changes apply from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
@@ -233,7 +232,7 @@ What decides the state, first match wins:
 }
 ```
 
-`onDemand` applies only where the model's provider can add a tool after the cached prompt (Anthropic and OpenAI models that support it); elsewhere such a tool is `deferred`, and a switch to such a model declares the unused ones `deferred`. The bundled Octocode server sets it for its GitHub, package-registry and security tools, and `web`, `archive` and `models` take it whenever they would be `deferred`; a `nativeToolExposure` pin opts one out. A resumed session declares again what it had loaded. The Tools panel shows `onDemand` tools as `deferred`.
+`onDemand` applies only where the model's provider can add a tool after the cached prompt (Anthropic and OpenAI models that support it); elsewhere such a tool is `deferred`, and a switch to such a model declares the unused ones `deferred`. The bundled Octocode server sets it for its GitHub, package-registry and security tools, and `archive` and `models` take it whenever they would be `deferred`; a `nativeToolExposure` pin opts one out. A resumed session declares again what it had loaded. The Tools panel shows `onDemand` tools as `deferred`.
 
 See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/harness mcp` → the server → **Default for tools** sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
@@ -247,7 +246,7 @@ flowchart TD
     B -- yes --> R[load project configuration]
     B -- refused before --> X["exit with hint: /trust or octocode trust add"]
     B -- undecided --> C{Interactive?}
-    C -- yes --> D["prompt: folder, parent, grandparent, Not now, Do not trust"]
+    C -- yes --> D["prompt: Not now (selected), folder, parent, grandparent, Do not trust"]
     C -- "print / JSON / RPC" --> E["exit non-zero (use --trust)"]
     D -- trust --> R
     D -- Not now --> X2[exit, nothing recorded]
@@ -261,7 +260,7 @@ flowchart TD
 | `--trust`     | Records a grant (source `flag`) and runs; not for `--mode acp`                                                                                                                                                                                                                                        |
 | In a session  | `trust add\|remove` and `--trust` refuse when `OCTOCODE_SESSION_ID` is set: trust is your decision, run them in your own terminal                                                                                                                                                                     |
 | Moving folder | `/resume`, `/import`, a new session or `/worktree switch` with a `cwd`, and RPC `switch_session` check trust first; declining keeps the old session                                                                                                                                                   |
-| Instructions  | `AGENTS.override.md` and `AGENTS.md` load from the grant's folder down to the working folder, never from a parent repository above the working folder's own ([instructions](instructions.md))                                                                                                         |
+| Instructions  | `AGENTS.override.md` and `AGENTS.md` load from the grant's folder down to the working folder, never from a parent repository above the working folder's own ([instructions](prompts.md))                                                                                                              |
 | Worktrees     | A new one (`/worktree`, `--worktree`, isolated subagents) asks once before creation (headless: `--trust`); yes records a `worktree` grant that removing the worktree revokes. An isolated subagent's worktree is granted without asking when its source repository is trusted. Subagents never prompt |
 | Old files     | `trust.json` and `pi-trust.json` from earlier releases are not read: run `octocode trust add <path>`                                                                                                                                                                                                  |
 
@@ -326,7 +325,7 @@ For providers only, the Octocode Pi extension's folders come first: `models.json
 | Credentials             | A provider with no Octocode credential and no `apiKey` in Octocode's `models.json` uses Pi's `auth.json` entry, read only. Secret-command keys, entries Octocode does not recognize and account sign-ins Octocode cannot use (Pi's Claude Pro/Max) are skipped; an unreadable file or entry is a startup warning naming the file. Login, logout and refresh write Octocode's file only. `/providers pi` copies a credential after confirmation ([providers](providers.md#use-pi-configuration)). Sessions, trust decisions, device identity and telemetry consent are never imported |
 | Skills, prompts, themes | Pi directories are read like Octocode's, under the `pi` harness switch; missing Pi packages are not installed                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Instruction files       | Pi's global `AGENTS.md` loads only when the Octocode directory has none; `SYSTEM.md` and `APPEND_SYSTEM.md` apply when no Octocode file does; project `AGENTS.md` is shared. In a trusted folder `.pi/skills`, `.pi/prompts`, `.pi/themes`, `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md` are read; nothing in `.pi/` is read in an untrusted folder                                                                                                                                                                                                                                       |
-| Pi code                 | Never runs. TypeScript in Pi's `extensions/` and `hooks/` folders and Pi extension packages are listed as "Pi extension, not loaded" with a hint to use `hooks.json` or a plugin. A package's `package.json` declares its resources under `octocode`; Pi's `pi` key is not read                                                                                                                                                                                                                                                                                                      |
+| Pi code                 | Never runs. TypeScript in Pi's `hooks/` folders is listed as "Pi hook, not loaded" with a hint to use `hooks.json` or a plugin. A package's `package.json` declares its resources under `octocode`; Pi's `pi` key is not read                                                                                                                                                                                                                                                                                                                                                        |
 | Switch                  | Pi skills, prompts, themes and MCP follow `harness:pi`; models, settings and keybindings load regardless                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Same name in both products:
@@ -418,17 +417,18 @@ Session writers keep JSONL transcripts, the record of every session, and mirror 
 
 Each workspace declares its UUID in `.octocode/code/workspace/id`: starting in a subdirectory uses the nearest declaration, a new Git worktree gets its own, names are display labels that may repeat, a same-filesystem rename keeps the id, and copying a marker cannot claim another database's records.
 
-| Location                                                  | Contents                                                                                                                    |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `<octocode home>/agent/workspaces.db`                     | All registered workspaces and their coordination                                                                            |
-| `<octocode home>/agent/transcripts.db`                    | The transcript mirror: session entries and compaction summaries, rebuildable from the JSONL transcripts                     |
-| `.octocode/code/sessions/`                                | Default JSONL transcripts (explicit session directories win)                                                                |
-| `.octocode/code/session-data/<session>/`                  | Per-session artifacts: compaction archives, checkpoints                                                                     |
-| `.octocode/code/temp/`                                    | Scratch, tool output, child handoffs                                                                                        |
-| `.octocode/code/agents.txt`, `backlog.md`, `backlog.html` | Generated activity and exported backlog snapshots                                                                           |
-| `<octocode home>/child-credentials/`, `agent/job-owners/` | Child credentials, background process ownership; job output stays in scratch                                                |
-| `<octocode home>/archive/`                                | Gzip JSONL history archives (below)                                                                                         |
-| `<octocode home>/web/`                                    | Web daemon: its record, and one owner-only attach record per running session ([web workspace](web-workspace.md#web-daemon)) |
+| Location                                                  | Contents                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `<octocode home>/agent/workspaces.db`                     | All registered workspaces and their coordination                                                                               |
+| `<octocode home>/agent/transcripts.db`                    | The transcript mirror: session entries and compaction summaries, rebuildable from the JSONL transcripts                        |
+| `<octocode home>/agent/archive-index.db`                  | The archive search index: a disposable cache of archive passages for keyword search, safe to delete; rebuilt in the background |
+| `.octocode/code/sessions/`                                | Default JSONL transcripts (explicit session directories win)                                                                   |
+| `.octocode/code/session-data/<session>/`                  | Per-session artifacts: compaction archives, checkpoints                                                                        |
+| `.octocode/code/temp/`                                    | Scratch, tool output, child handoffs                                                                                           |
+| `.octocode/code/agents.txt`, `backlog.md`, `backlog.html` | Generated activity and exported backlog snapshots                                                                              |
+| `<octocode home>/child-credentials/`, `agent/job-owners/` | Child credentials, background process ownership; job output stays in scratch                                                   |
+| `<octocode home>/archive/`                                | Gzip JSONL history archives (below)                                                                                            |
+| `<octocode home>/web/`                                    | Web daemon: its record, and one owner-only attach record per running session ([web workspace](web-workspace.md#web-daemon))    |
 
 Sessions written before the move live in `<octocode home>/sessions/--<working directory>--/`; `/resume`, `--continue` and `--session <id>` still list those whose header names the current directory (`/resume all` lists every such folder), and opening one keeps writing beside it. `octocode --fork <full-session-id>` recreates a session in the current workspace from stored entries when its file is gone. Team coordination and project-scoped memories span linked worktrees; backlogs and workspace memories belong to one workspace. The catalog keeps entries after a checkout is removed.
 
@@ -508,7 +508,7 @@ Automatic compaction is always on; `/compact` runs the same flow by hand. No set
 | Summary output     | A standalone summary (compaction, split-turn prefix, branch summary) may write up to 32,768 tokens, or the model's own limit when lower; one that reaches it fails and saves nothing. The cache-shared summary keeps its cap of 80% of the reserve        |
 | Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                        |
 | Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                      |
-| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off                                                                 |
+| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off. The same limit ends a silent model stream as a retryable error |
 
 ## Prompt cache warming
 
@@ -574,6 +574,46 @@ A foreground `bash` command moves to the background as a job after `bashBackgrou
 
 A command the shell runs under another name (a wrapper script) is not recognised and keeps the `bashBackgroundAfterSeconds` threshold. Hints for GNU tools missing on macOS (`timeout`, `sed -i`) are shown only on macOS.
 
+## Shell sandbox
+
+By default the agent's shell commands run with your own rights, and permission modes only decide what asks first. The sandbox also confines what a command can do once it runs, with an operating-system sandbox around every command the agent starts: the `bash` tool and its background jobs.
+
+| Setting                    | Default | Effect                                                                                                                                                                                                                                                                     |
+| -------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sandbox.mode`             | `"off"` | `"auto"` sandboxes agent shell commands in the `manual`, `workspace` and `full` permission modes and not in `bypass`; `"on"` sandboxes them in every mode; `"off"` leaves them as they are. Global settings only; a project file cannot change it. New sessions pick it up |
+| `sandbox.allowUnsandboxed` | `true`  | Whether the agent may ask to run a command outside the sandbox. `false` refuses `sandbox: false` and the question below without asking. Global settings only                                                                                                               |
+
+```json
+{ "sandbox": { "mode": "auto" } }
+```
+
+A sandboxed command can read everything you can. What it can write depends on who runs it:
+
+| Who runs the command  | Can write                                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A session or subagent | the workspace (the repository root, or the working folder outside a repository); in a linked git worktree, also the repository's shared git folder              |
+| A read-only subagent  | its scratch folder, `.octocode/tmp/` and Markdown files under `.octocode/`, as its role allows                                                                  |
+| An isolated subagent  | its own worktree and, in the main repository's git folder, only what a commit on its branch needs; the main working tree and its checked-out branch stay closed |
+
+Every sandboxed command can also write the system temporary folders, its scratch folder and Octocode's host lock for test runs. Inside the workspace, paths that a later session loads stay write-protected even before they exist: git hooks and config (a nested repository's too), `.octocode/` configuration (skills, agents, hooks, settings, MCP servers), the workspace state folder except its scratch, `AGENTS.md`, and the project folders of Pi, Claude Code, Codex and Agents. Outside it, your home folder (`~/.zshrc`, `~/.ssh`, Octocode's own settings and credentials) is not writable. A program that writes elsewhere, such as `node -e "require('fs').writeFileSync('/some/other/file', '1')"`, fails with `EPERM`; so does a `git checkout` that would rewrite a protected file. A failed command's result names what the sandbox refused (the path or host). Your own `!` commands are never sandboxed.
+
+Network access goes through a filtering proxy:
+
+| Context                                               | A host nobody allowed yet                                                                                                    |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `manual`, `workspace`                                 | asks (a private address asks as a private-network action); allow once (the commands running now) or the host for the session |
+| `full`, `bypass` with `"on"`                          | allowed and recorded in `/permissions log`                                                                                   |
+| read-only subagent                                    | refused, without asking                                                                                                      |
+| subagent that cannot ask (in `manual` or `workspace`) | refused                                                                                                                      |
+
+There is no answer that allows every host, so hosts are allowed one at a time.
+
+Loopback and this machine's own addresses are always reachable, so local test servers and databases work; a command that skips the proxy cannot reach anything else.
+
+When a command needs something the sandbox refuses, the agent can run it again with `sandbox: false` on the `bash` tool. That asks in every permission mode except `bypass`; allowing all shell commands never covers it, and the session answer covers only that exact command.
+
+The sandbox works on macOS (Seatbelt). On another platform, or when a dependency is missing, a warning says why the sandbox cannot start and one question asks whether this session's commands run unsandboxed; a no refuses them. When the session starts in your home folder (which would make all of it writable), a command is refused with the reason. Each command costs a few tens of milliseconds more to start.
+
 ## Wake hold window
 
 A child's report, a background job's exit or team mail starts a turn of an idle session at once. Reports and exits that arrive seconds apart each cost a turn that re-reads the whole prompt. `subagents.wakeHoldSeconds` (default `0`, off; at most `10`) makes an idle session hold a wake: the first one opens the window, and everything that arrives before it closes is delivered together and starts one turn.
@@ -585,6 +625,78 @@ A child's report, a background job's exit or team mail starts a turn of an idle 
 A wake costs up to that many seconds of latency, so leave it off unless several children or jobs routinely finish within seconds of each other. A session that is already running a turn is not delayed. When the session ends inside the window, what is held is delivered without starting a turn.
 
 Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
+
+## Related-agent pings
+
+An agent hears of backlog changes to items related to the ones it holds or waits on, without polling. When a prerequisite of an item you hold is done or closed, or an item you wait on ends, you are woken. When another agent claims an item whose paths overlap the paths of an item you hold, or paths you reserve, you are woken once for that pair. Other changes (an epic sibling claimed or finished, a note on an item you wait on) join your next turn as a short line. A change is never reported to the agent that made it, and the same item wakes a session at most once in five minutes.
+
+`subagents.peerOverlapWake` (default `true`) controls the overlap wake; with `false` an overlapping claim is only a line at your next turn.
+
+```json
+{ "subagents": { "peerOverlapWake": false } }
+```
+
+## Machine monitor
+
+Once a minute one Octocode process on the machine samples the 1-minute load, available memory, swap, GPU use and the busiest processes, and keeps the samples for 24 hours. Every other session reads those samples instead of measuring again, and when the sampling process exits, another one takes over. A threshold alerts after it holds for `samples` samples in a row, then stays quiet for `cooldownMinutes`.
+
+The session whose processes weigh most (CPU for load, memory for swap and memory) is woken with the reading and the busiest processes. Other sessions get a short note at their next turn, and every session shows the tripped readings in the footer until they clear. The sampling session also sends one desktop notification through the `Notification` hook, with `notification_type` `monitor_alert`. A background `bash` job that writes no output and uses almost no CPU for `stuckJobMinutes` wakes the session that started it, once per silence.
+
+| Setting                          | Default            | Range                                                                             |
+| -------------------------------- | ------------------ | --------------------------------------------------------------------------------- |
+| `monitor.enabled`                | `true`             | `false` stops sampling and alerts                                                 |
+| `monitor.sampleSeconds`          | `60`               | 10 to 3600                                                                        |
+| `monitor.samples`                | `3`                | 1 to 60 samples in a row before an alert                                          |
+| `monitor.cooldownMinutes`        | `15`               | minutes before the same threshold alerts again                                    |
+| `monitor.loadPerCore`            | `3`                | load average per logical CPU; `0` turns it off                                    |
+| `monitor.memoryAvailablePercent` | `10`               | alert at or below this share of memory free; `0` turns it off                     |
+| `monitor.swapPercent`            | `90`               | share of swap used; above `100` turns it off                                      |
+| `monitor.gpuPercent`             | `95`               | GPU utilization; above `100` turns it off                                         |
+| `monitor.stuckJobMinutes`        | `15`               | silent, idle background job; `0` turns it off                                     |
+| `monitor.contextBands`           | `[0.5, 0.75, 0.9]` | shares of the room before compaction, each above 0 and below 1; `[]` turns it off |
+| `monitor.checkInSeconds`         | `300`              | seconds without a message before a subagent is asked; `0` turns it off            |
+| `monitor.idleAgentMinutes`       | `5`                | minutes a working agent may make no progress; `0` turns it off                    |
+
+```json
+{ "monitor": { "loadPerCore": 4, "gpuPercent": 101 } }
+```
+
+GPU use is read on macOS and on Linux with `nvidia-smi`; elsewhere the GPU threshold never trips.
+
+### Attention rules
+
+The monitor also owns the nudges about a session's own work. A wake is listed as `monitor.alert` with its rule on the woken turn's row; a note joins the next request and starts no turn.
+
+| Rule                            | Checked                                         | Told as                                                                                        | Setting                                                                                              |
+| ------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `load`, `memory`, `swap`, `gpu` | each machine sample                             | wake for the session whose processes cause it, else a note                                     | `monitor.loadPerCore`, `monitor.memoryAvailablePercent`, `monitor.swapPercent`, `monitor.gpuPercent` |
+| `job`                           | each machine sample                             | wake                                                                                           | `monitor.stuckJobMinutes`                                                                            |
+| `context`                       | turn end                                        | note, once per band until a compaction                                                         | `monitor.contextBands`                                                                               |
+| `check-in`                      | between a subagent's steps                      | note to the subagent                                                                           | `monitor.checkInSeconds`                                                                             |
+| `idle-agent`                    | once a minute, in the agent responsible for it  | parent: wake within the wake pace, else a note; main session: note to itself and a footer mark | `monitor.idleAgentMinutes` (deprecated: `monitor.silenceMinutes`)                                    |
+| `compaction-prewarm`            | each compaction cycle                           | ledger and one warning to the user; the model is not told                                      | none                                                                                                 |
+| `idle-items`                    | when the main session settles with work running | wake                                                                                           | none                                                                                                 |
+
+`idle-agent` measures a working agent's last model or tool event: a subagent's parent tells it about the child, and a main session, which nobody is above, tells itself. Each silence is told once; the agent's next progress re-arms the rule. An agent waiting on the user's answer, on its own working agents or on its background jobs is not reported.
+
+`compaction-prewarm` alerts at most once per compaction cycle (from one successful compaction to the next) when the summary requested ahead of the threshold was billed for nothing (its request failed, it was discarded or a newer one replaced it), when a threshold compaction still waited 10 seconds or more for it, or when the context reached the threshold with no early summary planned. The alert counts as delivered: it reaches the `MonitorAlert` hook, `/monitor` and one warning notice.
+
+`subagents.checkInSeconds` still works, and is read only when `monitor.checkInSeconds` is unset. `monitor.silenceMinutes`, then `subagents.silenceMinutes`, are deprecated and read only when `monitor.idleAgentMinutes` is unset.
+
+## Scheduled tasks
+
+`wait` with `cron`, and the `/loop` command, run a prompt on a schedule (see [Scheduled tasks](native-features.md#scheduled-tasks)). Each run is a model turn with nobody attending, so two global settings guard it. A project settings file cannot change either.
+
+| Setting                       | Default | Effect                                                                                                                                                                                |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timer.cron.enabled`          | `false` | Lets a session with no screen to ask on (print, JSON, RPC) set a cron schedule. A session with a screen asks once instead, and this setting skips that question. Subagents never may. |
+| `timer.cron.maxUsdPerSession` | `2`     | The most a session may spend, in US dollars, since its first scheduled task was set. Past it the next due run does not happen and the task ends `failed`. `0` stops every run.        |
+
+```json
+{ "timer": { "cron": { "enabled": true, "maxUsdPerSession": 5 } } }
+```
+
+A scheduled task lasts for its session: it survives a restart and resume, and ends with the session. It stops after 20 runs or 7 days unless `maxRuns` or `deadline` says otherwise.
 
 ## Other topics
 

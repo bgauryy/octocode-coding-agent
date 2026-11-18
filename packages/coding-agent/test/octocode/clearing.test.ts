@@ -69,13 +69,18 @@ const filler = (chars: number): Item => ({
 });
 
 /**
- * 14 exchanges kept from before a compaction and 33 after it. The first result after the compaction is followed by
- * `fillerChars` of user text, which clearing cannot remove and a cleared history would write again.
+ * 14 exchanges kept from before a compaction and 32 after it. `fillerChars` of user text, which clearing cannot remove and
+ * a cleared history would write again, follow the first `fillerAfter` results after the compaction: by default all but the
+ * newest five, so every run of old results has it in its rewritten suffix.
  */
-function session(fillerChars: number, usage?: Record<string, number>, compacted = true) {
+function session(fillerChars: number, usage?: Record<string, number>, compacted = true, fillerAfter = 27) {
 	counter = 0;
 	const kept = Array.from({ length: 14 }, () => exchange(3_000)).flat();
-	const later = [...exchange(3_000), filler(fillerChars), ...Array.from({ length: 31 }, () => exchange(3_000)).flat()];
+	const later = [
+		...Array.from({ length: fillerAfter }, () => exchange(3_000)).flat(),
+		filler(fillerChars),
+		...Array.from({ length: 32 - fillerAfter }, () => exchange(3_000)).flat(),
+	];
 	const closing: Item = {
 		id: "end",
 		message: {
@@ -149,6 +154,18 @@ describe("clearing counts the requests since the last compaction", () => {
 		const s = session(190_000);
 		await s.warmRequest();
 		expect(s.entries).toEqual([]);
+	});
+
+	it("on a warm cache, clears the old results after a large message that makes clearing from the oldest not pay", async () => {
+		const s = session(190_000, undefined, true, 1);
+		await s.warmRequest();
+		expect(s.entries).toHaveLength(1);
+		const data = s.entries[0].data as { results: Array<{ id: string }>; oldTokens: number; rewriteAnyway: boolean };
+		expect(data.rewriteAnyway).toBe(false);
+		expect(data.oldTokens).toBeGreaterThanOrEqual(20_000);
+		// Nothing before the large message is cleared: its rewrite would cost more than the results there save.
+		const ids = new Set(data.results.map((result) => result.id));
+		for (let call = 1; call <= 15; call++) expect(ids.has(`call${call}`)).toBe(false);
 	});
 
 	it("records at most the replies since the compaction as the remaining requests when the wave pays", async () => {

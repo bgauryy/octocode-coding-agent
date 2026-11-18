@@ -329,8 +329,10 @@ describe("environment section", () => {
 		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [], skills: [] };
 		expect(Object.keys(buildSystemPromptSections(base))).not.toContain("environment");
 		const sections = buildSystemPromptSections({ ...base, environment: "Date: 2026-10-28" });
-		expect(Object.keys(sections).at(-1)).toBe("environment:date");
-		expect(sections["environment:date"]).toBe("<environment>\nDate: 2026-10-28\n</environment>");
+		expect(Object.keys(sections).slice(-3)).toEqual(["environment", "environment:date", "environment:/"]);
+		expect(sections.environment).toBe("<environment>");
+		expect(sections["environment:date"]).toBe("Date: 2026-10-28");
+		expect(sections["environment:/"]).toBe("</environment>");
 	});
 });
 
@@ -353,25 +355,30 @@ describe("base sections", () => {
 			"rules",
 			"docs",
 			"mcps",
+			"mcps:/",
 			"other_base",
 			"addendum",
 			"project_context",
 			"project_context:/tmp/AGENTS.md",
+			"project_context:/",
 			"octocode",
 			"cwd",
+			"environment",
 			"environment:date",
+			"environment:/",
 		]);
-		expect(buildSystemPromptSections(base).mcps).toBe("<mcps>\nservers\n</mcps>");
+		expect(buildSystemPromptSections(base).mcps).toBe("<mcps>\nservers");
 	});
 
 	test("follow the preamble of a custom prompt, and stay after rules when a subagent removes docs", () => {
-		expect(Object.keys(buildSystemPromptSections({ ...base, customPrompt: "Custom." })).slice(0, 3)).toEqual([
+		expect(Object.keys(buildSystemPromptSections({ ...base, customPrompt: "Custom." })).slice(0, 4)).toEqual([
 			"preamble",
 			"mcps",
+			"mcps:/",
 			"other_base",
 		]);
 		const child = buildSystemPromptSections({ ...base, sections: { docs: "" } });
-		expect(Object.keys(child).slice(0, 4)).toEqual(["preamble", "rules", "mcps", "other_base"]);
+		expect(Object.keys(child).slice(0, 5)).toEqual(["preamble", "rules", "mcps", "mcps:/", "other_base"]);
 	});
 
 	test("reject invalid section names and drop empty ones", () => {

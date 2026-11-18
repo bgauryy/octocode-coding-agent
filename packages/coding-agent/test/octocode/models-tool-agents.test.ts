@@ -5,8 +5,8 @@ import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { runnerRows } from "../../src/octocode/external/connected.ts";
 import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
 import { externalListing } from "../../src/octocode/external/describe.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
-import { meteredBilling } from "./fake-host.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
+import { meteredBilling, asSetup } from "./fake-host.ts";
 
 const refs: ModelRef[] = [
 	{ provider: "openai", id: "gpt-5", cost: { input: 5, output: 25 }, contextWindow: 200_000 },
@@ -21,7 +21,7 @@ function run(
 ) {
 	let tool: ToolDefinition | undefined;
 	registerModelsTool(
-		{ registerTool: (definition: ToolDefinition) => void (tool = definition) } as never,
+		asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
 		() => new Map(),
 		// `octocode/index.ts` composes the external listing; the models tool imports nothing of `external/`.
 		async (ctx, _signal, filters) => [

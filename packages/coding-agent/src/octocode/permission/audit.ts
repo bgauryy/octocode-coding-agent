@@ -25,12 +25,13 @@ const ROLLUP_EVERY = 500;
 /** Actions that carry a ⚠ in the footer counter, the activity line and the exit summary: they cannot be undone cheaply or reach beyond the repository. */
 export const WARN_ACTIONS: ReadonlySet<string> = new Set<ActionClass>([
 	"shell.destructive",
+	"shell.unsandboxed",
 	"browser.control",
 	"browser.cookies",
 	"net.private",
 ]);
 
-/** One audit entry (`api.appendEntry`, never sent to the model). */
+/** One audit entry (`api.session.appendEntry`, never sent to the model). */
 export interface AuditEntry {
 	at: number;
 	mode: PermissionMode;

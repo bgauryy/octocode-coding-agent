@@ -231,7 +231,7 @@ describe("user ! commands and a PreToolUse hook", () => {
 		}
 		approveFixtureHooks(cwd);
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = Object.assign(fakeCtx({ cwd, hasUI: true, mode: "rpc" }), { isProjectTrusted: () => true });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);

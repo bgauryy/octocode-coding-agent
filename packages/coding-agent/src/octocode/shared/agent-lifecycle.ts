@@ -1,5 +1,5 @@
 /**
- * The channel (`api.events`) on which the team announces the transitions of an agent that this process itself wrote: the team
+ * The channel (`api.channels`) on which the team announces the transitions of an agent that this process itself wrote: the team
  * domain emits, the hooks domain turns `on` and `off` into the AgentOn and AgentOff hooks. Neither imports the other.
  */
 export const AGENT_LIFECYCLE_CHANNEL = "octocode:agent-lifecycle";

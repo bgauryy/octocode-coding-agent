@@ -1,4 +1,4 @@
-import type { MarkdownTheme } from "@octocodeai/octocode-tui";
+import { GLYPH, type MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
 import { viewSummary } from "../../../core/compaction/summary-view.ts";
 import { formatTokens } from "../../../octocode/shared/format.ts";
@@ -22,7 +22,7 @@ function compactionText(message: CompactionSummaryMessage): SummaryMessageText {
 	];
 	return {
 		label: "compaction",
-		title: `Compacted ${message.tokensBefore.toLocaleString()} tokens into a ~${formatTokens(view.summaryTokens)}-token summary`,
+		title: `${formatTokens(message.tokensBefore)} tokens ${GLYPH.arrow} ${formatTokens(view.summaryTokens)}-token summary`,
 		meta: records.slice(0, 1),
 		summary: view.body,
 		appendix: [

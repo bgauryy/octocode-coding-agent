@@ -191,6 +191,19 @@ it("tracks the dialog a session waits on, and drops it when the dialog closes, n
 	stream.accept(frame(5, { type: "event", event: { type: "session.awaiting" } }));
 	expect(stream.snapshot?.awaiting).toBeUndefined();
 });
+it("follows the session phase: a run that settled with a background child stays waiting until the phase is final", () => {
+	const stream = new ApplicationStream();
+	stream.accept(frame(0, { type: "snapshot", snapshot: { ...snapshot, streaming: true, runId: "r" } }));
+	const waiting = { state: "waiting", agents: 1, queued: 0, bash: 0, external: 0 };
+	expect(
+		stream.accept(frame(1, { type: "event", event: { type: "session.phase", phase: waiting, jobStartedAt: 3 } })),
+	).toBe("applied");
+	stream.accept(frame(2, { type: "event", event: { type: "run.settled", runId: "r", aborted: false } }));
+	expect(stream.snapshot).toMatchObject({ streaming: false, phase: waiting, jobStartedAt: 3 });
+	stream.accept(frame(3, { type: "event", event: { type: "session.phase", phase: { state: "done" } } }));
+	expect(stream.snapshot?.phase).toEqual({ state: "done" });
+	expect(stream.snapshot?.jobStartedAt).toBeUndefined();
+});
 it("keeps a tool call's hint after progress and completion replace its text", () => {
 	const stream = new ApplicationStream();
 	stream.accept(frame(0, { type: "snapshot", snapshot }));

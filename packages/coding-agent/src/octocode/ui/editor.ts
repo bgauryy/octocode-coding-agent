@@ -6,17 +6,17 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { CustomEditor } from "../../theme/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
 
-type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type EditorFactory = NonNullable<ReturnType<FeatureContext["ui"]["getEditorComponent"]>>;
 type Paint = Pick<Theme, "fg">;
 
 /** What the editor needs from the permission state: the Shift+Tab step (the footer shows the mode). */
 interface EditorPermission {
 	/** May wait for a confirmation (`Permission.chooseMode`); the editor does not wait for it. */
-	cycle(ctx: ExtensionContext): unknown;
+	cycle(ctx: FeatureContext): unknown;
 }
 
 /** Columns the closed box takes: `│ ` on the left and ` │` on the right. */
@@ -146,23 +146,23 @@ const isEditor = (component: Component): component is CustomEditor =>
 
 /**
  * The main editor in the TUI: `app.permission.cycle` (Shift+Tab by default) cycles the permission mode before any
- * editor action sees the key; it is a reserved built-in binding, so registerShortcut would skip it and the override
+ * editor action sees the key; it is a reserved built-in binding, so the override
  * lives in the editor. `decorateEditor` draws the prompt. A prior
  * factory's editor is kept and decorated when it is an editor; any other component only gets the shortcut. The hint
  * shows until the conversation starts: by then the footer chip carries the Shift+Tab reminder.
  */
-export function registerEditor(api: ExtensionAPI, permission: EditorPermission): void {
+export function registerEditor(api: FeatureSetup, permission: EditorPermission): void {
 	let installed: EditorFactory | undefined;
-	let context: ExtensionContext;
+	let context: FeatureContext;
 	let started = false;
-	const sample = (ctx: ExtensionContext) => {
+	const sample = (ctx: FeatureContext) => {
 		started = ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 	};
-	api.on("agent_start", async () => {
+	api.bus.on("agent_start", async () => {
 		started = true;
 	});
-	api.on("session_tree", async (_event, ctx) => sample(ctx));
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_tree", async (_event, ctx) => sample(ctx));
+	api.bus.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		context = ctx;
 		sample(ctx);

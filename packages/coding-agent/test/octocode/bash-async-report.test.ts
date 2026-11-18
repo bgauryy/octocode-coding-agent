@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -10,7 +10,7 @@ it("warns in the active session when a finished job report is rejected asynchron
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api.session, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
 	registerBashTool(api, undefined, jobs, () => ({}));
 	const ctx = fakeCtx({ cwd: tmp() });
@@ -36,7 +36,7 @@ it("does not show a rejected report in a later session", async () => {
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api.session, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
 	registerBashTool(api, undefined, jobs, () => ({}));
 	const previous = fakeCtx({ cwd: tmp() });
@@ -61,7 +61,7 @@ it("does not notify a closing session after its report is rejected", async () =>
 	const delivery = new Promise<void>((_resolve, reject) => {
 		rejectDelivery = reject;
 	});
-	const sending = vi.spyOn(api, "sendMessage").mockReturnValue(delivery);
+	const sending = vi.spyOn(api.session, "sendMessage").mockReturnValue(delivery);
 	const jobs = new BashJobs(tmp());
 	registerBashTool(api, undefined, jobs, () => ({}));
 	const ctx = fakeCtx({ cwd: tmp() });

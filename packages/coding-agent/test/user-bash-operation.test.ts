@@ -3,9 +3,9 @@ import { runUserBash, UserBashHookError, type UserBashHost } from "../src/core/a
 
 const ran = { output: "ran here", exitCode: 0, cancelled: false, truncated: false };
 
-function host(emitUserBash: UserBashHost["extensionRunner"]["emitUserBash"]) {
+function host(emitUserBash: UserBashHost["featureHost"]["emitUserBash"]) {
 	return {
-		extensionRunner: { emitUserBash },
+		featureHost: { emitUserBash },
 		sessionManager: { getCwd: () => "/work" },
 		executeBash: vi.fn(async () => ran),
 		recordBashResult: vi.fn(),

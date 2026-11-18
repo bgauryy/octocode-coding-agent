@@ -2,7 +2,9 @@ import fs from "node:fs";
 import type { ProfilerSource } from "./service.ts";
 import { catalogFiles, runMember, runTranscript, sessionRuns } from "./runs.ts";
 import { toTraffic } from "../team/model.ts";
-import { correspondence, sessions, type Db } from "../../../../db/src/api.ts";
+import type { DepartedAgent, EndpointDirectory } from "../team/endpoint.ts";
+import { departedLookup } from "../team/feed-read.ts";
+import { type AgentRun, correspondence, sessions, type Db } from "../../../../db/src/api.ts";
 
 /** The coordinator's name when its session never registered with the team database (a session that worked alone). */
 const SOLO_ID = "main";
@@ -48,6 +50,17 @@ export interface StoredProfilerOptions {
 	session: StoredSession;
 }
 
+/** What a stored run says of its agent: the profile (`main` for the session's own), parent, session and where it worked. */
+function runFacts(run: AgentRun, self: boolean): DepartedAgent {
+	return {
+		role: self ? "main" : (run.profile ?? "general"),
+		...(run.parentAgentId && !self ? { parentId: run.parentAgentId } : {}),
+		...(run.sessionId ? { sessionId: run.sessionId } : {}),
+		...(run.cwd ? { cwd: run.cwd } : {}),
+		...(run.branch ? { branch: run.branch } : {}),
+	};
+}
+
 /**
  * What a running workspace hands the profiler, rebuilt from stored data: the team runs the database kept for the
  * session and its descendants, the messages that involve them, and the transcripts their session rows point at. Reads
@@ -57,6 +70,15 @@ export function storedProfilerSource({ db, session }: StoredProfilerOptions): Pr
 	const { all: runs, coordinator, children: latest } = sessionRuns(db, session.id);
 	const children = [...latest.values()];
 	const files = catalogFiles(db);
+	const facts = new Map<string, DepartedAgent>(
+		runs.map((run) => [run.agentId, runFacts(run, run.agentId === coordinator?.agentId)]),
+	);
+	const elsewhere = departedLookup(db);
+	const endpoints: EndpointDirectory = {
+		members: [],
+		departed: (id) => facts.get(id) ?? elsewhere(id),
+		root: coordinator?.cwd ?? session.cwd,
+	};
 	return {
 		sessionId: session.id,
 		self: () => (coordinator ? runMember(coordinator, true) : { id: SOLO_ID, role: "main", status: "idle" }),
@@ -69,6 +91,7 @@ export function storedProfilerSource({ db, session }: StoredProfilerOptions): Pr
 				? correspondence.involving(db, ids, since).map(({ message, deliveries }) => toTraffic(message, deliveries))
 				: [];
 		},
+		endpoints: () => endpoints,
 		transcript: (agentId) => {
 			const run = latest.get(agentId);
 			return run ? runTranscript(db, run, files) : undefined;

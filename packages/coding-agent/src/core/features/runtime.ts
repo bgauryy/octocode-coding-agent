@@ -1,13 +1,13 @@
 import { McpServerRegistry } from "../../../../mcp/src/api.ts";
-import type { ExtensionRuntime } from "./types.ts";
+import type { FeatureRuntime } from "./types.ts";
 
 /**
  * Create a runtime with throwing stubs for action methods.
  * Runner.bindCore() replaces these with real implementations.
  */
-export function createExtensionRuntime(): ExtensionRuntime {
+export function createFeatureRuntime(): FeatureRuntime {
 	const notInitialized = () => {
-		throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
+		throw new Error("Feature runtime not initialized. Action methods cannot be called during feature loading.");
 	};
 	const state: { staleMessage?: string } = {};
 	const eventBusUnsubscribers = new Set<() => void>();
@@ -17,7 +17,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		}
 	};
 
-	const runtime: ExtensionRuntime = {
+	const runtime: FeatureRuntime = {
 		sendMessage: notInitialized,
 		sendUserMessage: notInitialized,
 		appendEntry: notInitialized,
@@ -33,25 +33,23 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		setActiveTools: notInitialized,
 		selectsTools: notInitialized,
 		setToolPolicy: notInitialized,
-		// registerTool() is valid during extension load; refresh is only needed post-bind.
+		// registerTool() is valid during feature load; refresh is only needed post-bind.
 		refreshTools: () => {},
 		getCommands: notInitialized,
 		getSkillDirectories: notInitialized,
 		getSkillResourceSnapshot: notInitialized,
-		setModel: () => Promise.reject(new Error("Extension runtime not initialized")),
+		setModel: () => Promise.reject(new Error("Feature runtime not initialized")),
 		getThinkingLevel: notInitialized,
-		setThinkingLevel: notInitialized,
 		pendingProviderRegistrations: [],
 		pendingNativeProviderRegistrations: [],
 		mcpServers: new McpServerRegistry(),
-		pendingVirtualModelRegistrations: [],
 		createContext: notInitialized,
 		assertActive,
 		invalidate: (message) => {
 			if (state.staleMessage) return;
 			state.staleMessage =
 				message ??
-				"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
+				"This feature ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
 			for (const unsubscribe of eventBusUnsubscribers) unsubscribe();
 			eventBusUnsubscribers.clear();
 		},
@@ -68,25 +66,11 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		},
 		// Pre-bind: queue registrations so bindCore() can flush them once the
 		// model registry is available. bindCore() replaces both with direct calls.
-		registerProvider: (name, config, extensionPath = "<unknown>") => {
-			runtime.pendingProviderRegistrations.push({ name, config, extensionPath });
+		registerProvider: (name, config, source = "<unknown>") => {
+			runtime.pendingProviderRegistrations.push({ name, config, source });
 		},
-		registerNativeProvider: (provider, extensionPath = "<unknown>") => {
-			runtime.pendingNativeProviderRegistrations.push({ provider, extensionPath });
-		},
-		unregisterProvider: (name) => {
-			runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter((r) => r.name !== name);
-			runtime.pendingNativeProviderRegistrations = runtime.pendingNativeProviderRegistrations.filter(
-				(r) => r.provider.id !== name,
-			);
-		},
-		registerVirtualModel: (definition, extensionPath = "<unknown>") => {
-			runtime.pendingVirtualModelRegistrations.push({ definition, extensionPath });
-		},
-		unregisterVirtualModel: (provider, id) => {
-			runtime.pendingVirtualModelRegistrations = runtime.pendingVirtualModelRegistrations.filter(
-				({ definition }) => definition.provider !== provider || definition.id !== id,
-			);
+		registerNativeProvider: (provider, source = "<unknown>") => {
+			runtime.pendingNativeProviderRegistrations.push({ provider, source });
 		},
 	};
 

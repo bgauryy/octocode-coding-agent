@@ -5,8 +5,7 @@ import { sessionOutputDir, withSessionStorage } from "../../storage/runtime-path
 import { DISPLAY_OUTPUT_MAX_BYTES, outputFileReadable } from "../../utils/output-files.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type { BashExecutionMessage } from "../messages.ts";
-import { type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
-import { BASH_UPDATE_THROTTLE_MS } from "../tools/renderers/bash.ts";
+import { BASH_UPDATE_THROTTLE_MS, type BashOperations, createLocalBashOperations } from "../tools/bash.ts";
 import type { SessionInternals } from "./host.ts";
 
 export interface BashHost extends Pick<SessionInternals, "session" | "emit" | "refreshContext"> {
@@ -65,7 +64,7 @@ export class SessionBash {
 				executeBashWithOperations(
 					resolvedCommand,
 					session.sessionManager.getCwd(),
-					options?.operations ?? createLocalBashOperations({ shellPath }),
+					options?.operations ?? createLocalBashOperations({ shellPath, unsandboxed: true }),
 					{
 						onChunk: (delta) => {
 							onChunk?.(delta);

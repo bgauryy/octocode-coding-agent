@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { AcpError } from "../../../acp/src/client/client.ts";
 import {
 	ExternalAgents,
@@ -430,7 +430,7 @@ describe("external manager policy and lifecycle", () => {
 		const state = setup();
 		await state.connect();
 		state.authorize.mockClear();
-		const otherCtx = { ...state.ctx, cwd: "/different-caller-workspace" } as ExtensionContext;
+		const otherCtx = { ...state.ctx, cwd: "/different-caller-workspace" } as FeatureContext;
 		await state.manager.call({ action: "prompt", id: "one", text: "request" }, otherCtx);
 		expect(state.authorize.mock.calls[0]?.[0]).toMatchObject({
 			cwd: state.cwd,

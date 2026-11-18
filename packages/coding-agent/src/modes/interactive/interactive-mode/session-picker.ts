@@ -3,10 +3,10 @@ import type { SessionPickerOptions } from "../../../core/session-picker.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-type SessionPickerHost = Pick<InteractiveModeHost, "session" | "sessionManager" | "showExtensionCustom" | "ui">;
+type SessionPickerHost = Pick<InteractiveModeHost, "session" | "sessionManager" | "showCustomDialog" | "ui">;
 
 /**
- * `ExtensionUIContext.pickSession`: the session selector in place of the editor. Resolves with the session picked, or
+ * `SessionUI.pickSession`: the session selector in place of the editor. Resolves with the session picked, or
  * undefined on cancel. A host action runs once the picker has closed, because its dialogs need the editor slot.
  */
 export async function pickSession(
@@ -28,7 +28,7 @@ export async function pickSession(
 	const { quickList } = options;
 	let afterClose: Promise<void> | undefined;
 	const manager = host.sessionManager;
-	const picked = await host.showExtensionCustom<SessionInfo | undefined>(
+	const picked = await host.showCustomDialog<SessionInfo | undefined>(
 		(tui, _theme, keybindings, done) =>
 			new SessionSelectorComponent(
 				async (onProgress, signal) => {

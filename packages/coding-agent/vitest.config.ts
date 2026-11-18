@@ -1,3 +1,4 @@
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { defineConfig, mergeConfig } from "vitest/config";
 import baseConfig from "../../vitest.base.ts";
@@ -13,6 +14,8 @@ export default mergeConfig(
 			// Absolute: the common and mcp configs inherit this config from their own roots.
 			globalSetup: [fileURLToPath(new URL("test/home-guard.global.ts", import.meta.url))],
 			testTimeout: 30000,
+			// Like the e2e suite: a third of the cores, 2 to 4 workers, so a full run leaves the host usable.
+			maxWorkers: Math.max(2, Math.min(4, Math.floor(os.availableParallelism() / 3))),
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
 			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0" },
 			unstubEnvs: true,

@@ -3,7 +3,7 @@ import type { PackageSource, Settings } from "../../settings-schema.ts";
 import type { ResourceSettingsApi } from "../api/resources.ts";
 import { EnvironmentSettingsAccessors } from "./environment.ts";
 
-/** Packages and resource paths (extensions, skills, prompt templates, themes). Project setters write project settings. */
+/** Packages and resource paths (skills, prompt templates, themes). Project setters write project settings. */
 export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAccessors implements ResourceSettingsApi {
 	getPackages(): PackageSource[] {
 		return [...(this.settings.packages ?? [])];
@@ -18,22 +18,6 @@ export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAcces
 	setProjectPackages(packages: PackageSource[]): void {
 		this.updateProjectSettings("packages", (settings) => {
 			settings.packages = packages;
-		});
-	}
-
-	getExtensionPaths(): string[] {
-		return [...(this.settings.extensions ?? [])];
-	}
-
-	setExtensionPaths(paths: string[]): void {
-		this.globalSettings.extensions = paths;
-		this.markModified("extensions");
-		this.save();
-	}
-
-	setProjectExtensionPaths(paths: string[]): void {
-		this.updateProjectSettings("extensions", (settings) => {
-			settings.extensions = paths;
 		});
 	}
 

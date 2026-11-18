@@ -14,8 +14,9 @@ import { loadTheme } from "../../src/theme/theme-loader.ts";
 import { setTerminalColors } from "../../src/theme/theme-terminal.ts";
 import { getEditorTheme, setThemeInstance, theme } from "../../src/theme/theme.ts";
 import { qaTool } from "./tui-design-qa-tools.ts";
+import { qaTranscript } from "./tui-design-qa-transcript.ts";
 
-export const QA_STATES = ["idle", "running", "warning", "error", "queue", "session-picker", "tool-queries", "tool-results"] as const;
+export const QA_STATES = ["idle", "running", "warning", "error", "queue", "session-picker", "tool-queries", "tool-results", "transcript-tools", "transcript-messages"] as const;
 export interface QaConfig {
 	theme: "dark" | "light";
 	width: 40 | 80 | 120;
@@ -34,7 +35,7 @@ function syntheticFooter(config: QaConfig): Component {
 		: config.state === "warning" ? { text: "Session save delayed", tone: "warning" }
 			: { text: "Session saved", tone: "success" };
 	const state: FooterState = {
-		model: "qa-model", provider: "fixture", kind: "local", thinking: "high",
+		model: "qa-model", kind: "local", thinking: "high",
 		context: { percent: config.state === "error" ? 92 : config.state === "warning" ? 65 : 12.5, limit: 200_000 },
 		usage: { input: 20_000, cacheRead: 8_000, cacheWrite: 2_000, output: 1_250, cost: 0.042, unpriced: false },
 		running: config.state === "running", compactions: 2, cwd: "/synthetic/project", sessionName: "TUI visual audit",
@@ -79,6 +80,8 @@ export function buildQaScene(config: QaConfig, ui: TUI): { components: Component
 			const tool = qaTool(ui, config.state);
 			document.addChild(tool);
 			disposables.push(tool);
+		} else if (config.state === "transcript-tools" || config.state === "transcript-messages") {
+			document.addChild(qaTranscript(ui, config.state));
 		} else {
 		document.addChild(new UserMessageComponent("Review rendering, session status, and queued work."));
 		const assistant = new AssistantMessageComponent();

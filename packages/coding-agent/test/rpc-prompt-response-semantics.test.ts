@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import type { AgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import type { LoadExtensionsResult } from "../src/core/features/index.ts";
+import type { LoadedFeatures } from "../src/core/features/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { runRpcMode } from "../src/modes/rpc/rpc-mode.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "./utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "./utilities.ts";
 
 const rpcIo = vi.hoisted(() => ({
 	outputLines: [] as string[],
@@ -84,7 +84,7 @@ async function createRuntimeHost(options: {
 	withAuth: boolean;
 	responseDelayMs: number;
 	model?: Model<any>;
-	extensionsResult?: LoadExtensionsResult;
+	featuresResult?: LoadedFeatures;
 }): Promise<{
 	runtimeHost: AgentSessionRuntime;
 	cleanup: () => Promise<void>;
@@ -130,7 +130,7 @@ async function createRuntimeHost(options: {
 		settingsManager,
 		cwd: tempDir,
 		modelRuntime: getModelRuntime(modelRegistry),
-		resourceLoader: createTestResourceLoader({ extensionsResult: options.extensionsResult }),
+		resourceLoader: createTestResourceLoader({ featuresResult: options.featuresResult }),
 	});
 
 	const runtimeHost = {
@@ -244,10 +244,10 @@ describe("RPC prompt response semantics", () => {
 		const { lineHandler, cleanup } = await startRpcMode({
 			withAuth: false,
 			responseDelayMs: 0,
-			extensionsResult: await createTestExtensionsResult([
+			featuresResult: await createTestFeaturesResult([
 				(api) => {
-					api.registerCommand("handled", { handler: async () => {} });
-					api.on("input", (event) => {
+					api.commands.register("handled", { handler: async () => {} });
+					api.bus.on("input", (event) => {
 						if (event.text === "handled input") return { action: "handled" };
 					});
 				},
@@ -278,9 +278,9 @@ describe("RPC prompt response semantics", () => {
 			const { lineHandler, cleanup } = await startRpcMode({
 				withAuth: false,
 				responseDelayMs: 0,
-				extensionsResult: await createTestExtensionsResult([
+				featuresResult: await createTestFeaturesResult([
 					(api) => {
-						api.registerCommand("broken", {
+						api.commands.register("broken", {
 							handler: async () => {
 								throw new Error("no such revision");
 							},
@@ -348,11 +348,11 @@ describe("RPC prompt response semantics", () => {
 			const { lineHandler, cleanup } = await startRpcMode({
 				withAuth: true,
 				responseDelayMs: 500,
-				extensionsResult: await createTestExtensionsResult([
+				featuresResult: await createTestFeaturesResult([
 					(api) => {
-						api.on("input", (event) => {
+						api.bus.on("input", (event) => {
 							if (event.text === "A" && event.source === "rpc") {
-								api.sendUserMessage("B", { deliverAs: type === "steer" ? "steer" : "followUp" });
+								api.session.sendUserMessage("B", { deliverAs: type === "steer" ? "steer" : "followUp" });
 								return { action: "handled" };
 							}
 						});
@@ -394,9 +394,9 @@ describe("RPC prompt response semantics", () => {
 		const { lineHandler, cleanup } = await startRpcMode({
 			withAuth: false,
 			responseDelayMs: 0,
-			extensionsResult: await createTestExtensionsResult([
+			featuresResult: await createTestFeaturesResult([
 				(api) => {
-					api.on("input", (event) => {
+					api.bus.on("input", (event) => {
 						if (event.text === "A") return { action: "transform", text: "B" };
 					});
 				},

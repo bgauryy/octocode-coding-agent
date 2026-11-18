@@ -1,5 +1,11 @@
+import { getActiveOsc8Close } from "../utils/ansi-tracker.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
+import { wrapTextWithAnsi } from "../utils/wrap.ts";
+
+/** Starts a wrapped cell's continuation line. */
+export const WRAP_MARK = "↳ ";
+const WRAP_MARK_WIDTH = 2;
 
 /**
  * One column of a row grid. Columns are dropped by `priority` (the lowest goes first) when the line is too narrow; the
@@ -14,6 +20,11 @@ export interface RowColumn {
 	align?: "left" | "right";
 	/** Cap the natural width, so one long cell cannot push every row's later columns off the line. */
 	max?: number;
+	/**
+	 * `cut` (default) ends a cell that does not fit in an ellipsis; `wrap` continues it on extra lines that start at the
+	 * column with `↳ `, the other columns left blank there. A column narrower than 3 cells cuts instead.
+	 */
+	overflow?: "cut" | "wrap";
 }
 
 export interface RowFitOptions {
@@ -26,8 +37,13 @@ export interface RowFitOptions {
 }
 
 export interface RowFit {
-	/** One line per row, none wider than `width`. Cells are padded so the columns align across rows. */
+	/**
+	 * The lines, none wider than `width`: one per row, plus a row's continuation lines after it when a `wrap` column
+	 * overflowed. Cells are padded so the columns align across rows.
+	 */
 	lines: string[];
+	/** For each line, the index of the row it belongs to. */
+	lineRows: number[];
 	/** Which of the columns were kept, by index. */
 	kept: boolean[];
 }
@@ -37,7 +53,8 @@ export interface RowFit {
  * row takes no room. The columns share one width across the rows, so they line up; the widths come from
  * `visibleWidth` and cuts from `truncateToWidth`, so wide characters (CJK, emoji) never split and no line overflows.
  * When the line is too narrow, the lowest-priority column goes first until the flex column keeps `minFlex` columns;
- * a grid without a flex column drops columns until it fits and cuts what is left.
+ * a grid without a flex column drops columns until it fits and cuts what is left. A column with `overflow: "wrap"`
+ * continues a cell that does not fit on extra lines instead of cutting it.
  */
 export function fitRows(
 	rows: readonly (readonly string[])[],
@@ -77,18 +94,62 @@ export function fitRows(
 		widths.set(flexIndex, Math.max(0, Math.min(natural[flexIndex], limit - others)));
 	} else if (shown.length === 1 && total() > limit) widths.set(shown[0], limit);
 
-	const lines = rows.map((row) => {
+	const lines: string[] = [];
+	const lineRows: number[] = [];
+	rows.forEach((row, rowIndex) => {
 		let line = "";
+		let start = 0;
+		const continued: { start: number; parts: string[] }[] = [];
 		shown.forEach((index, position) => {
 			const cell = row[index] ?? "";
 			const room = widths.get(index) ?? 0;
-			const fitted = truncateToWidth(cell, room, ellipsis);
-			const padding = " ".repeat(Math.max(0, room - visibleWidth(fitted)));
+			const wraps = columns[index].overflow === "wrap" && room > WRAP_MARK_WIDTH && visibleWidth(cell) > room;
+			const [first, ...rest] = wraps ? wrapCell(cell, room) : [truncateToWidth(cell, room, ellipsis)];
+			if (rest.length > 0) continued.push({ start: start + (position === 0 ? 0 : gapWidth), parts: rest });
+			const padding = " ".repeat(Math.max(0, room - visibleWidth(first)));
 			const last = position === shown.length - 1;
-			const text = columns[index].align === "right" ? `${padding}${fitted}` : last ? fitted : `${fitted}${padding}`;
+			const text = columns[index].align === "right" ? `${padding}${first}` : last ? first : `${first}${padding}`;
 			line += position === 0 ? text : `${gap}${text}`;
+			start += (position === 0 ? 0 : gapWidth) + room;
 		});
-		return line;
+		lines.push(line);
+		lineRows.push(rowIndex);
+		for (const extra of continuationLines(continued)) {
+			lines.push(extra);
+			lineRows.push(rowIndex);
+		}
 	});
-	return { lines, kept: columns.map((_, index) => active[index]) };
+	return { lines, lineRows, kept: columns.map((_, index) => active[index]) };
+}
+
+/** A cell that overflows `room`: its first line at `room`, the rest re-wrapped to leave space for the mark. */
+function wrapCell(cell: string, room: number): string[] {
+	const [first = "", ...rest] = wrapTextWithAnsi(cell, room);
+	if (rest.length === 0) return [first];
+	const tail = wrapTextWithAnsi(rest.join(" "), room - WRAP_MARK_WIDTH);
+	return [closed(first, room), ...tail.map((part) => closed(part, room - WRAP_MARK_WIDTH))];
+}
+
+/** A wrapped part within `room`, its open link and styles closed so they end with the part, not in the next column. */
+function closed(part: string, room: number): string {
+	const fitted = truncateToWidth(part, room, "");
+	return fitted.includes("\x1b") ? `${fitted}${getActiveOsc8Close(fitted)}\x1b[0m` : fitted;
+}
+
+/** The continuation lines of one row: wrapped columns side by side, each part behind `↳ ` at its column. */
+function continuationLines(continued: { start: number; parts: string[] }[]): string[] {
+	const count = Math.max(0, ...continued.map((column) => column.parts.length));
+	const lines: string[] = [];
+	for (let i = 0; i < count; i++) {
+		let line = "";
+		let at = 0;
+		for (const column of continued) {
+			const part = column.parts[i];
+			if (part === undefined) continue;
+			line += " ".repeat(Math.max(0, column.start - at)) + WRAP_MARK + part;
+			at = column.start + WRAP_MARK_WIDTH + visibleWidth(part);
+		}
+		lines.push(line);
+	}
+	return lines;
 }

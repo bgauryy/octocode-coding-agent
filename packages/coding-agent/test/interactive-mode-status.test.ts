@@ -18,13 +18,12 @@ import type { SourceInfo } from "../src/core/source-info.ts";
 import type { AuthSelectorProvider } from "../src/modes/interactive/components/oauth-selector.ts";
 import * as autocomplete from "../src/modes/interactive/interactive-mode/autocomplete.ts";
 import * as display from "../src/modes/interactive/interactive-mode/display.ts";
-import * as extensionContext from "../src/modes/interactive/interactive-mode/extension-context.ts";
-import * as extensionDialogs from "../src/modes/interactive/interactive-mode/extension-dialogs.ts";
+import * as extensionContext from "../src/modes/interactive/interactive-mode/session-ui.ts";
+import * as extensionDialogs from "../src/modes/interactive/interactive-mode/dialogs.ts";
 import * as loadedResources from "../src/modes/interactive/interactive-mode/loaded-resources.ts";
 import * as resourceGroups from "../src/modes/interactive/interactive-mode/resource-groups.ts";
 import * as resourcePaths from "../src/modes/interactive/interactive-mode/resource-paths.ts";
 import * as statusIndicators from "../src/modes/interactive/interactive-mode/status-indicators.ts";
-import * as viewState from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import type { ToolStatus } from "../src/utils/tools-manager.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
@@ -91,7 +90,7 @@ function normalizeRenderedOutput(container: Container, width = 220): string {
 		.trim();
 }
 
-type ExtensionFixture = {
+type FeatureFixture = {
 	path: string;
 	sourceInfo?: SourceInfo;
 };
@@ -244,7 +243,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		const header = { setExpanded: vi.fn() };
 		const loadedResourcesChild = { setExpanded: vi.fn() };
 		const chatChild = { setExpanded: vi.fn() };
-		const footerDataProvider = { setExtensionStatus: vi.fn() };
+		const footerDataProvider = { setFeatureStatus: vi.fn() };
 		const fakeThis: any = {
 			uiStore: createUiStore(),
 			customHeader: undefined,
@@ -258,7 +257,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 
 		const host = createFakeHost(fakeThis);
 		bindViewState(host);
-		viewState.setToolsExpanded(host, true);
+		fakeThis.uiStore.getState().setToolsExpanded(true);
 
 		expect(fakeThis.uiStore.getState().view.toolsExpanded).toBe(true);
 		expect(header.setExpanded).toHaveBeenCalledWith(true);
@@ -266,7 +265,7 @@ describe("InteractiveMode.setToolsExpanded", () => {
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
 		// The acknowledgement is a status line in the messages list; the footer shows state only.
 		expect(fakeThis.showStatus).toHaveBeenCalledWith("Output: expanded");
-		expect(footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(footerDataProvider.setFeatureStatus).not.toHaveBeenCalled();
 	});
 
 	test("says each toggle once in the messages list and keeps a burst on one line", () => {
@@ -276,23 +275,23 @@ describe("InteractiveMode.setToolsExpanded", () => {
 			builtInHeader: undefined,
 			loadedResourcesContainer: { children: [] },
 			chatContainer: new Container(),
-			footerDataProvider: { setExtensionStatus: vi.fn() },
+			footerDataProvider: { setFeatureStatus: vi.fn() },
 			ui: { requestRender: vi.fn() },
 		};
 		const host = createFakeHost(fakeThis);
 		bindViewState(host);
 
-		viewState.setToolsExpanded(host, true);
-		viewState.setToolsExpanded(host, true);
-		viewState.setToolsExpanded(host, false);
+		fakeThis.uiStore.getState().setToolsExpanded(true);
+		fakeThis.uiStore.getState().setToolsExpanded(true);
+		fakeThis.uiStore.getState().setToolsExpanded(false);
 		// A spacer and one line: the second toggle replaced the first in place; an unchanged state said nothing.
 		expect(fakeThis.chatContainer.children).toHaveLength(2);
 		expect(normalizeRenderedOutput(fakeThis.chatContainer)).toBe("Output: collapsed");
-		expect(fakeThis.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(fakeThis.footerDataProvider.setFeatureStatus).not.toHaveBeenCalled();
 	});
 });
 
-describe("InteractiveMode.createExtensionUIContext setTheme", () => {
+describe("InteractiveMode.createSessionUI setTheme", () => {
 	test("persists theme changes to settings manager", () => {
 		initTheme("dark");
 
@@ -316,7 +315,7 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 			ui: { requestRender: vi.fn() },
 		};
 
-		const uiContext = extensionContext.createExtensionUIContext(createFakeHost(fakeThis));
+		const uiContext = extensionContext.createSessionUI(createFakeHost(fakeThis));
 		const result = uiContext.setTheme("light");
 
 		expect(result.success).toBe(true);
@@ -343,7 +342,7 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 			ui: { requestRender: vi.fn() },
 		};
 
-		const uiContext = extensionContext.createExtensionUIContext(createFakeHost(fakeThis));
+		const uiContext = extensionContext.createSessionUI(createFakeHost(fakeThis));
 		const result = uiContext.setTheme("__missing_theme__");
 
 		expect(result.success).toBe(false);
@@ -353,7 +352,7 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 	});
 });
 
-describe("InteractiveMode.showExtensionCustom", () => {
+describe("InteractiveMode.showCustomDialog", () => {
 	beforeAll(() => {
 		initTheme("dark");
 	});
@@ -380,10 +379,10 @@ describe("InteractiveMode.showExtensionCustom", () => {
 			uiStore: createUiStore(),
 			disposeActiveSelector: vi.fn(),
 		};
-		const showExtensionCustom = <T>(
+		const showCustomDialog = <T>(
 			factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
 			options?: { overlay?: boolean },
-		): Promise<T | undefined> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
+		): Promise<T | undefined> => extensionDialogs.showCustomDialog(createFakeHost(fakeThis), factory, options);
 
 		editorContainer.addChild(editor);
 		ui.addChild(editorContainer);
@@ -391,7 +390,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 		ui.setFocus(palette);
 		ui.start();
 		try {
-			const overlayPromise = showExtensionCustom<string>(
+			const overlayPromise = showCustomDialog<string>(
 				(_tui, _theme, _keybindings, done) => {
 					closeOverlay = done;
 					return overlay;
@@ -401,7 +400,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 			await flushTui(ui, terminal);
 			expect(overlay.focused).toBe(true);
 
-			const replacementPromise = showExtensionCustom<string>((_tui, _theme, _keybindings, done) => {
+			const replacementPromise = showCustomDialog<string>((_tui, _theme, _keybindings, done) => {
 				closeReplacement = done;
 				return replacement;
 			});
@@ -451,17 +450,17 @@ describe("InteractiveMode.showExtensionCustom", () => {
 				ui,
 				disposeActiveSelector: vi.fn(),
 			};
-			const showExtensionCustom = <T>(
+			const showCustomDialog = <T>(
 				factory: (tui: TUI, theme: unknown, keybindings: unknown, done: (result: T) => void) => Component,
 				options?: { overlay?: boolean; overlayOptions?: { nonCapturing?: boolean } },
-			): Promise<T | undefined> => extensionDialogs.showExtensionCustom(createFakeHost(fakeThis), factory, options);
+			): Promise<T | undefined> => extensionDialogs.showCustomDialog(createFakeHost(fakeThis), factory, options);
 
 			editorContainer.addChild(editor);
 			ui.addChild(editorContainer);
 			ui.setFocus(editor);
 			ui.start();
 			try {
-				const lowerPromise = showExtensionCustom<string>(
+				const lowerPromise = showCustomDialog<string>(
 					(_tui, _theme, _keybindings, done) => {
 						closeLower = done;
 						return lower;
@@ -469,7 +468,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 					{ overlay: true, overlayOptions: { nonCapturing } },
 				);
 				await flushTui(ui, terminal);
-				const upperPromise = showExtensionCustom<string>(
+				const upperPromise = showCustomDialog<string>(
 					(_tui, _theme, _keybindings, done) => {
 						closeUpper = done;
 						return upper;
@@ -503,7 +502,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 	);
 });
 
-describe("InteractiveMode.createExtensionUIContext addAutocompleteProvider", () => {
+describe("InteractiveMode.createSessionUI addAutocompleteProvider", () => {
 	test("stores wrapper factories and rebuilds autocomplete immediately", () => {
 		const wrapper: AutocompleteProviderFactory = (current) => current;
 		const fakeThis = {
@@ -511,7 +510,7 @@ describe("InteractiveMode.createExtensionUIContext addAutocompleteProvider", () 
 			setupAutocompleteProvider: vi.fn(),
 		};
 
-		const uiContext = extensionContext.createExtensionUIContext(createFakeHost(fakeThis));
+		const uiContext = extensionContext.createSessionUI(createFakeHost(fakeThis));
 		uiContext.addAutocompleteProvider(wrapper);
 
 		expect(fakeThis.autocompleteProviderWrappers).toEqual([wrapper]);
@@ -606,7 +605,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				scopedModels: Array<{ model: TestModel }>;
 				modelRuntime: { getAvailableSnapshot: () => TestModel[] };
 				promptTemplates: [];
-				extensionRunner: { getRegisteredCommands: () => [] };
+				featureHost: { getRegisteredCommands: () => [] };
 				resourceLoader: { getSkills: () => { skills: [] } };
 			};
 			settingsManager: { getEnableSkillCommands: () => boolean };
@@ -624,7 +623,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				scopedModels: [],
 				modelRuntime: { getAvailableSnapshot: () => models },
 				promptTemplates: [],
-				extensionRunner: { getRegisteredCommands: () => [] },
+				featureHost: { getRegisteredCommands: () => [] },
 				resourceLoader: { getSkills: () => ({ skills: [] }) },
 			},
 			settingsManager: { getEnableSkillCommands: () => false },
@@ -651,7 +650,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				scopedModels: [];
 				modelRuntime: { getAvailableSnapshot: () => [] };
 				promptTemplates: [];
-				extensionRunner: { getRegisteredCommands: () => [] };
+				featureHost: { getRegisteredCommands: () => [] };
 				resourceLoader: { getSkills: () => { skills: [] } };
 			};
 			settingsManager: { getEnableSkillCommands: () => boolean };
@@ -666,7 +665,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 				scopedModels: [],
 				modelRuntime: { getAvailableSnapshot: () => [] },
 				promptTemplates: [],
-				extensionRunner: { getRegisteredCommands: () => [] },
+				featureHost: { getRegisteredCommands: () => [] },
 				resourceLoader: { getSkills: () => ({ skills: [] }) },
 			},
 			settingsManager: { getEnableSkillCommands: () => false },
@@ -746,12 +745,12 @@ describe("InteractiveMode.showLoadedResources", () => {
 		contextFiles?: Array<{ path: string; content?: string }>;
 		systemPromptSource?: { path: string };
 		appendSystemPromptSources?: Array<{ path: string }>;
-		extensions?: ExtensionFixture[];
+		features?: FeatureFixture[];
 		skills?: Array<{ filePath: string; name: string }>;
 		skillDiagnostics?: Array<{ type: "warning" | "error" | "collision"; message: string }>;
 		useRealScopeGroups?: boolean;
 		events?: EventBus;
-		extensionWarnings?: Array<{ path: string; warning: string; listedInContext?: boolean }>;
+		featureWarnings?: Array<{ path: string; warning: string; listedInContext?: boolean }>;
 	}) {
 		const fakeThis: any = {
 			options: { verbose: options.verbose ?? false },
@@ -769,9 +768,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 			},
 			session: {
 				promptTemplates: [],
-				extensionRunner: {
+				featureHost: {
 					getCommandDiagnostics: () => [],
-					getShortcutDiagnostics: () => [],
 				},
 				resourceLoader: {
 					getEventBus: () => options.events,
@@ -784,17 +782,17 @@ describe("InteractiveMode.showLoadedResources", () => {
 						diagnostics: options.skillDiagnostics ?? [],
 					}),
 					getPrompts: () => ({ prompts: [], diagnostics: [] }),
-					getExtensions: () => ({
-						extensions: options.extensions ?? [],
+					getFeatures: () => ({
+						features: options.features ?? [],
 						errors: [],
-						warnings: options.extensionWarnings,
+						warnings: options.featureWarnings,
 						runtime: {},
 					}),
 					getThemes: () => ({ themes: [], diagnostics: [] }),
 				},
 			},
 			formatDisplayPath: (p: string) => resourcePaths.formatDisplayPath(p),
-			formatExtensionDisplayPath: (p: string) => resourcePaths.formatExtensionDisplayPath(createFakeHost(fakeThis), p),
+			formatFeatureDisplayPath: (p: string) => resourcePaths.formatFeatureDisplayPath(createFakeHost(fakeThis), p),
 			formatContextPath: (p: string) => resourcePaths.formatContextPath(createFakeHost(fakeThis), p),
 			getStartupExpansionState: () => display.getStartupExpansionState(createFakeHost(fakeThis)),
 			shouldShowStartupDetails: () => display.shouldShowStartupDetails(createFakeHost(fakeThis)),
@@ -806,17 +804,17 @@ describe("InteractiveMode.showLoadedResources", () => {
 			getCompactPathLabel: (p: string, sourceInfo?: SourceInfo) =>
 				resourcePaths.getCompactPathLabel(createFakeHost(fakeThis), p, sourceInfo),
 			getCompactPackageSourceLabel: (sourceInfo?: SourceInfo) => resourcePaths.getCompactPackageSourceLabel(sourceInfo),
-			getCompactExtensionLabel: (p: string, sourceInfo?: SourceInfo) =>
-				resourcePaths.getCompactExtensionLabel(createFakeHost(fakeThis), p, sourceInfo),
+			getCompactFeatureLabel: (p: string, sourceInfo?: SourceInfo) =>
+				resourcePaths.getCompactFeatureLabel(createFakeHost(fakeThis), p, sourceInfo),
 			getCompactDisplayPathSegments: (p: string) =>
 				resourcePaths.getCompactDisplayPathSegments(createFakeHost(fakeThis), p),
-			getCompactNonPackageExtensionLabel: (
+			getCompactNonPackageFeatureLabel: (
 				p: string,
 				index: number,
 				allPaths: Array<{ path: string; segments: string[] }>,
-			) => resourcePaths.getCompactNonPackageExtensionLabel(createFakeHost(fakeThis), p, index, allPaths),
-			getCompactExtensionLabels: (extensions: ExtensionFixture[]) =>
-				resourcePaths.getCompactExtensionLabels(createFakeHost(fakeThis), extensions),
+			) => resourcePaths.getCompactNonPackageFeatureLabel(createFakeHost(fakeThis), p, index, allPaths),
+			getCompactFeatureLabels: (features: FeatureFixture[]) =>
+				resourcePaths.getCompactFeatureLabels(createFakeHost(fakeThis), features),
 			formatDiagnostics: () => "diagnostics",
 			getBuiltInCommandConflictDiagnostics: () => [],
 		};
@@ -850,7 +848,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		};
 	}
 
-	function createExtensionFixtures(): ExtensionFixture[] {
+	function createFeatureFixtures(): FeatureFixture[] {
 		return [
 			{
 				path: "/tmp/project/.octocode/extensions/answer.ts",
@@ -952,7 +950,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(output).toContain("/4 chars");
 		expect(output).not.toMatch(/Skill list too long|Context files too long/);
 		expect(output).toContain("test-model · 1 providers · 1 models · /model · /providers");
-		expect(output).toContain("ctrl+o details");
+		expect(output).toContain("(ctrl+o to toggle details)");
 		expect(output).not.toMatch(/Hooks|Plugins/);
 	});
 
@@ -976,7 +974,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 				"Skills   ✓ 1  0/8.0k chars · octocode context check · /harness",
 				"Model    ⚠ 1  none selected · 0 providers · 0 models · /model · /providers",
 				"Harness  ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness",
-				"✓ ready  ⚠ needs action · ctrl+o details",
+				"✓ ready  ⚠ needs action · (ctrl+o to toggle details)",
 			].join("\n"),
 		);
 	});
@@ -1075,7 +1073,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	test("abbreviates extensions in compact listing", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions: [{ path: "/tmp/extensions/answer.ts" }, { path: "/tmp/extensions/btw.ts" }],
+			features: [{ path: "/tmp/extensions/answer.ts" }, { path: "/tmp/extensions/btw.ts" }],
 		});
 
 		loadedResources.showLoadedResources(createFakeHost(fakeThis), {
@@ -1083,7 +1081,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		const output = renderAll(fakeThis.loadedResourcesContainer);
-		expect(output).toMatch(/^Extensions\s+✓ 2/m);
+		expect(output).toMatch(/^Features\s+✓ 2/m);
 		expect(output).toContain("answer.ts, btw.ts");
 		expect(output).not.toContain("extensions/answer.ts");
 	});
@@ -1091,7 +1089,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 	test("captures mixed extension layouts in compact output", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions: createExtensionFixtures(),
+			features: createFeatureFixtures(),
 			useRealScopeGroups: true,
 		});
 
@@ -1101,16 +1099,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 8  @scope/pi-scoped, answer.ts, cli-extension.ts, HazAT/pi-interactive-subagents, HazAT/pi-interactive-subagents:subagents, local-index, pi-markdown-preview, user-index · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("adds more parent folders until local extension labels are unique", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/alpha/one/index.ts",
 				sourceInfo: createSourceInfo("/tmp/alpha/one/index.ts", {
@@ -1142,7 +1140,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1152,16 +1150,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 3  alpha/one, beta/one, gamma/one · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 3  alpha/one, beta/one, gamma/one · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("strips index.ts from local extension label, showing parent dir", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/extensions/plan-mode/index.ts",
 				sourceInfo: createSourceInfo("/tmp/extensions/plan-mode/index.ts", {
@@ -1175,7 +1173,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1185,16 +1183,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 1  plan-mode · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 1  plan-mode · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("strips index.js from local extension label, showing parent dir", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/extensions/plan-mode/index.js",
 				sourceInfo: createSourceInfo("/tmp/extensions/plan-mode/index.js", {
@@ -1208,7 +1206,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1218,16 +1216,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 1  plan-mode · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 1  plan-mode · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("mixed single-file and subdirectory index.ts extensions strip index.ts", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/extensions/webfetch.ts",
 				sourceInfo: createSourceInfo("/tmp/extensions/webfetch.ts", {
@@ -1250,7 +1248,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1260,16 +1258,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 2  plan-mode, webfetch.ts · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 2  plan-mode, webfetch.ts · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("multiple index.ts with unique parent dirs need no disambiguation", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/extensions/foo/index.ts",
 				sourceInfo: createSourceInfo("/tmp/extensions/foo/index.ts", {
@@ -1292,7 +1290,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1302,16 +1300,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 2  bar, foo · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 2  bar, foo · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("multiple index.ts with same parent dir name disambiguated with grandparent", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/alpha/tools/index.ts",
 				sourceInfo: createSourceInfo("/tmp/alpha/tools/index.ts", {
@@ -1334,7 +1332,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1344,16 +1342,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 2  alpha/tools, beta/tools · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 2  alpha/tools, beta/tools · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("non-index file in subdirectory stays as filename", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/extensions/my-ext/main.ts",
 				sourceInfo: createSourceInfo("/tmp/extensions/my-ext/main.ts", {
@@ -1367,7 +1365,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1377,16 +1375,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 1  main.ts · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 1  main.ts · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("package extensions still strip index.ts correctly (regression guard)", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/project/.octocode/npm/node_modules/pi-markdown-preview/extensions/index.ts",
 				sourceInfo: createSourceInfo(
@@ -1403,7 +1401,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1413,16 +1411,16 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 1  pi-markdown-preview · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 1  pi-markdown-preview · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
 
 	test("labels npm sibling extensions relative to the declaring package", () => {
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: "/tmp/project/.octocode/npm/node_modules/primary-package/index.ts",
 				sourceInfo: createSourceInfo("/tmp/project/.octocode/npm/node_modules/primary-package/index.ts", {
@@ -1445,7 +1443,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1455,10 +1453,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 2  primary-package, primary-package:../sibling-package · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 2  primary-package, primary-package:../sibling-package · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
@@ -1467,7 +1465,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const primaryPath = "C:\\Users\\me\\.pi\\agent\\npm\\node_modules\\primary-package\\index.ts";
 		const siblingPath = "C:\\Users\\me\\.pi\\agent\\npm\\node_modules\\sibling-package\\index.ts";
 		const baseDir = "C:\\Users\\me\\.pi\\agent\\npm\\node_modules\\primary-package";
-		const extensions: ExtensionFixture[] = [
+		const features: FeatureFixture[] = [
 			{
 				path: primaryPath,
 				sourceInfo: createSourceInfo(primaryPath, {
@@ -1490,7 +1488,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensions,
+			features,
 			useRealScopeGroups: true,
 		});
 
@@ -1500,10 +1498,10 @@ describe("InteractiveMode.showLoadedResources", () => {
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(
 			`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
-			Extensions  ✓ 2  primary-package, primary-package:../sibling-package · /harness
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			Features  ✓ 2  primary-package, primary-package:../sibling-package · /harness
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`,
 		);
 	});
@@ -1512,7 +1510,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
 			toolsExpanded: true,
-			extensions: createExtensionFixtures(),
+			features: createFeatureFixtures(),
 			useRealScopeGroups: true,
 		});
 
@@ -1521,25 +1519,25 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer)).toMatchInlineSnapshot(`
-			"Model       ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
+			"Model     ⚠ 1  none selected · 0 providers · 0 models · /model · /providers
 
-			Extensions  ✓ 8  /harness
-			                 project
-			                   /tmp/project/.octocode/extensions/answer.ts
-			                   /tmp/project/.octocode/extensions/local-index
-			                   git:github.com/HazAT/pi-interactive-subagents
-			                     extensions
-			                     extensions/subagents
-			                   npm:@scope/pi-scoped
-			                     extensions
-			                   npm:pi-markdown-preview
-			                     extensions
-			                 user
-			                   /tmp/agent/extensions/user-index
-			                 path
-			                   /tmp/temp/cli-extension.ts
-			Harness     ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
-			⚠ needs action  ✓ ready · ctrl+o details"
+			Features  ✓ 8  /harness
+			               project
+			                 /tmp/project/.octocode/extensions/answer.ts
+			                 /tmp/project/.octocode/extensions/local-index
+			                 git:github.com/HazAT/pi-interactive-subagents
+			                   extensions
+			                   extensions/subagents
+			                 npm:@scope/pi-scoped
+			                   extensions
+			                 npm:pi-markdown-preview
+			                   extensions
+			               user
+			                 /tmp/agent/extensions/user-index
+			               path
+			                 /tmp/temp/cli-extension.ts
+			Harness   ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness
+			⚠ needs action  ✓ ready · (ctrl+o to toggle details)"
 		`);
 	});
 
@@ -1615,7 +1613,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const contextFiles = [{ path: path.join(homedir(), ".octocode", "agent", "AGENTS.md") }];
 		const collapsed = createShowLoadedResourcesThis({ quietStartup: false, contextFiles });
 		loadedResources.showLoadedResources(createFakeHost(collapsed), { force: true });
-		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/ctrl\+o details/);
+		expect(renderAll(collapsed.loadedResourcesContainer)).toMatch(/ctrl\+o to toggle details/);
 		const expanded = createShowLoadedResourcesThis({ quietStartup: false, contextFiles, toolsExpanded: true });
 		loadedResources.showLoadedResources(createFakeHost(expanded), { force: true });
 		expect(renderAll(expanded.loadedResourcesContainer)).not.toContain("to expand");
@@ -1628,18 +1626,18 @@ describe("InteractiveMode.showLoadedResources", () => {
 	test("lists a Pi extension that is not loaded once, without the extension issues block", () => {
 		const fakeThis = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensionWarnings: [
+			featureWarnings: [
 				{ path: "/tmp/.pi/agent/extensions/legacy.ts", warning: "Pi extension, not loaded.", listedInContext: true },
 			],
 		});
 		loadedResources.showLoadedResources(createFakeHost(fakeThis), { force: true });
-		expect(renderAll(fakeThis.loadedResourcesContainer)).not.toContain("Extension issues");
+		expect(renderAll(fakeThis.loadedResourcesContainer)).not.toContain("Feature issues");
 		const other = createShowLoadedResourcesThis({
 			quietStartup: false,
-			extensionWarnings: [{ path: "/tmp/pkg/ext.ts", warning: "Ignored extension shipped by package." }],
+			featureWarnings: [{ path: "/tmp/pkg/ext.ts", warning: "Ignored extension shipped by package." }],
 		});
 		loadedResources.showLoadedResources(createFakeHost(other), { force: true });
-		expect(renderAll(other.loadedResourcesContainer)).toContain("Extension issues");
+		expect(renderAll(other.loadedResourcesContainer)).toContain("Feature issues");
 	});
 
 	test("does not show verbose listing on quiet startup during reload", () => {
@@ -1649,7 +1647,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 		});
 
 		loadedResources.showLoadedResources(createFakeHost(fakeThis), {
-			extensions: [{ path: "/tmp/ext/index.ts" }],
+			features: [{ path: "/tmp/ext/index.ts" }],
 			force: false,
 			showDiagnosticsWhenQuiet: true,
 		});
@@ -1767,7 +1765,7 @@ describe("InteractiveMode.showLoadedResources", () => {
 			useRealScopeGroups: true,
 			contextFiles: [{ path: `/tmp/project/${osc}AGENTS.md` }],
 			skills: [{ filePath: `/tmp/skills/${osc}one/SKILL.md`, name: "one" }],
-			extensions: [{ path: `/tmp/extensions/${osc}ext.ts` }],
+			features: [{ path: `/tmp/extensions/${osc}ext.ts` }],
 			skillDiagnostics: [
 				{
 					type: "collision",

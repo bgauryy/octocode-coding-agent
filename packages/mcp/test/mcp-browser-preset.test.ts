@@ -90,13 +90,13 @@ describe("browser MCP preset", () => {
 		const host = mcpHost({ presets: [browserPreset()], cwd: tmp() });
 		hosts.push(host);
 		// The main agent's selection: tools active by default only.
-		host.api.selectsTools = (_prefix: string, activeByDefault: boolean) => activeByDefault;
+		host.api.tools.selects = (_prefix: string, activeByDefault: boolean) => activeByDefault;
 		await host.start();
 		const server = host.state.findServer(BROWSER_SERVER)!;
 		expect(server.unselected).toBe(true);
 		expect(server.connection).toBeUndefined();
 		expect(host.transports).toHaveLength(0);
-		expect(getMcpSessionStatus(host.api.events)).toMatchObject([{ name: BROWSER_SERVER, state: "unselected" }]);
+		expect(getMcpSessionStatus(host.api.channels)).toMatchObject([{ name: BROWSER_SERVER, state: "unselected" }]);
 		const sections = await host.prompt();
 		expect(Object.keys(sections).filter((name) => name.startsWith("mcp_"))).toEqual([]);
 	});
@@ -105,7 +105,7 @@ describe("browser MCP preset", () => {
 		const host = mcpHost({ presets: [browserPreset()], cwd: tmp(), presentation: "compact" });
 		hosts.push(host);
 		// The browser subagent's selection names mcp__browser__*, which activates the tools that are off by default.
-		host.api.getActiveTools = () =>
+		host.api.tools.getActive = () =>
 			[...host.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 		await host.start();
 		const sections = await host.prompt();

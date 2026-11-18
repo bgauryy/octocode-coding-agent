@@ -1,6 +1,6 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { withDialog } from "../shared/locks.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
@@ -34,15 +34,15 @@ export function externalIdentity(
 }
 
 export function registerExternal(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	commands: Subcommands,
 	policy: ExternalPolicy,
-	registerTool: ExtensionAPI["registerTool"] = (tool) => api.registerTool(tool),
+	registerTool: FeatureSetup["tools"]["register"] = (tool) => api.tools.register(tool),
 	factories?: Partial<ExternalFactories>,
 ): ExternalAgents {
 	const agents = new ExternalAgents(policy, factories);
 	// Declared only when an agent or instance can be reached: the type costs about 1.8k of every request otherwise.
-	const declare: ExtensionAPI["registerTool"] = agents.discoverable() ? registerTool : () => undefined;
+	const declare: FeatureSetup["tools"]["register"] = agents.discoverable() ? registerTool : () => undefined;
 	const render = (data: unknown) =>
 		fenceUntrusted(
 			"External agent response",
@@ -52,10 +52,7 @@ export function registerExternal(
 	 * Bare `/agents`: the local list, and the external rows only when something is connected or discoverable. A second
 	 * notice would replace the first on screen, so the local text is captured and shown as one notice with the rows.
 	 */
-	const listAll = async (
-		ctx: ExtensionCommandContext,
-		runLocal: (text: string, via: ExtensionCommandContext) => unknown,
-	) => {
+	const listAll = async (ctx: CommandContext, runLocal: (text: string, via: CommandContext) => unknown) => {
 		let rows: string[] = [];
 		try {
 			rows = externalRows(await agents.call({ action: "list" }, ctx));

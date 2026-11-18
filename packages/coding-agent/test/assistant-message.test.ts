@@ -1,5 +1,11 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
-import { animationClock, getKeybindings, setKeybindings, type TuiMouseEvent } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	getKeybindings,
+	setKeybindings,
+	setPointerClicksActive as setTranscriptRowsClickable,
+	type TuiMouseEvent,
+} from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { resetThinkingSpans } from "../src/modes/interactive/components/reasoning-label.ts";
@@ -57,7 +63,10 @@ describe("AssistantMessageComponent", () => {
 		setKeybindings(new KeybindingsManager());
 		resetThinkingSpans();
 	});
-	afterEach(() => setKeybindings(previousKeybindings));
+	afterEach(() => {
+		setKeybindings(previousKeybindings);
+		setTranscriptRowsClickable(false);
+	});
 
 	test("ends the thinking indicator when answer text arrives and preserves reasoning", () => {
 		initTheme("dark");
@@ -76,7 +85,7 @@ describe("AssistantMessageComponent", () => {
 		component.updateContent(answer, false);
 		component.setHideThinkingBlock(true);
 		const hidden = stripAnsi(component.render(60).join("\n"));
-		expect(hidden).toContain("▸ Thought (ctrl+t)");
+		expect(hidden).toContain("▸ Thought (ctrl+t to expand)");
 		expect(hidden).not.toContain("click");
 		expect(hidden).not.toContain("Toggle reasoning");
 	});
@@ -176,7 +185,7 @@ describe("AssistantMessageComponent", () => {
 			component.setHideThinkingBlock(true);
 			const lines = stripAnsi(component.render(80).join("\n")).split("\n");
 			expect(lines.filter((line) => line.includes("Thought"))).toEqual([
-				expect.stringContaining("▸ Thought for 4s (ctrl+t)"),
+				expect.stringContaining("▸ Thought for 4s (ctrl+t to expand)"),
 			]);
 			expect(lines.join("\n")).not.toContain("Toggle reasoning");
 			expect(lines.join("\n")).not.toContain("click");
@@ -221,10 +230,12 @@ describe("AssistantMessageComponent", () => {
 			initTheme("dark");
 			const component = streamedReasoning(4_000);
 			component.setHideThinkingBlock(true);
-			component.setMouseHint(true);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t or click)");
-			component.setMouseHint(false);
-			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t)");
+			setTranscriptRowsClickable(true);
+			component.invalidate();
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t or click to expand)");
+			setTranscriptRowsClickable(false);
+			component.invalidate();
+			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t to expand)");
 		});
 
 		test("collapses a finished block to one line by default and keeps an explicit false expanded", () => {

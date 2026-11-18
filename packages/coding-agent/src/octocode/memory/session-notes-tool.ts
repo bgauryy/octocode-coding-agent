@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { clipText, textResult } from "../shared/util.ts";
 import { SESSION_NOTE_BODY_MAX } from "./limits.ts";
@@ -55,7 +55,7 @@ function noteOf(fold: NoteFold, id: number): SessionNote {
 }
 
 /** The session and, when known, the model whose window sizes the note limits. */
-type NoteContext = Pick<ExtensionContext, "sessionManager"> & { model?: { contextWindow?: number } | undefined };
+type NoteContext = Pick<FeatureContext, "sessionManager"> & { model?: { contextWindow?: number } | undefined };
 
 interface SaveCall {
 	ctx: NoteContext;

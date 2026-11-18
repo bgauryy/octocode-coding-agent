@@ -9,6 +9,7 @@ import { ApplicationService } from "../src/core/application/service.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -34,10 +35,16 @@ async function open(
 		cwd: dir,
 		agentDir: dir,
 		modelRuntime,
-		resourceLoaderOptions: { appendSystemPrompt, noSkills: true, noPromptTemplates: true, noThemes: true },
+		resourceLoaderOptions: {
+			nativeFeatures: nativeFeatureSet(),
+			appendSystemPrompt,
+			noSkills: true,
+			noPromptTemplates: true,
+			noThemes: true,
+		},
 	});
 	const { session } = await createSessionFromServices({ services, sessionManager, model });
-	await session.bindExtensions({});
+	await session.bindFeatures({});
 	return session;
 }
 

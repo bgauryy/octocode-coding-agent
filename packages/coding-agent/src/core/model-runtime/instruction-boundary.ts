@@ -8,7 +8,7 @@ const INSTRUCTION_CACHE_SPLIT_ENV = "OCTOCODE_INSTRUCTION_CACHE_SPLIT";
 
 /**
  * The first known section of the leading system message outside the base tier (`system-prompt-spec.ts`): where the
- * second instruction cache block starts. Everything before it (preamble, tools, rules, docs, `mcps` and extension base
+ * second instruction cache block starts. Everything before it (preamble, tools, rules, docs, `mcps` and feature base
  * sections) depends only on the tools and the install. Undefined for a forced prompt, which has no sections, and when
  * no such section is present.
  */

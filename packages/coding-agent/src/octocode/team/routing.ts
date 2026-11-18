@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { mutatedPaths } from "../tool-input/file-input.ts";
 import { apiClientLabel, fenceUntrusted, headerText, messageHeader, PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import { formatAgo, formatDuration } from "../shared/format.ts";
@@ -21,7 +21,7 @@ export const outside = (from: string) => from === USER_SENDER || from === EXTERN
 
 /** What a sender can do about mail `who` can no longer read: a child's report and resume, or, for a peer, another agent or the user. */
 export const nextStep = (who: string, { child, reported }: RecipientKind): string =>
-	renderInstruction("notices/mail/dead-letter-next.md", { who, child, reported });
+	renderPrompt("notices/mail/dead-letter-next.md", { who, child, reported });
 
 const PEER: RecipientKind = { child: false, reported: false };
 
@@ -32,22 +32,22 @@ const PEER: RecipientKind = { child: false, reported: false };
 export function deadLetterText(letter: DeadLetter): string {
 	const read = letter.read ?? [];
 	const unread = letter.recipients.filter((recipient) => !read.includes(recipient));
-	const began = renderInstruction("notices/mail/dead-letter-began.md", {
+	const began = renderPrompt("notices/mail/dead-letter-began.md", {
 		text: cutText(letter.text.split("\n")[0], 120, { chars: true }),
 	});
 	if (letter.relay) {
 		const reason =
 			letter.relay.reason ??
-			renderInstruction("notices/mail/dead-letter-parent-left.md", {
+			renderPrompt("notices/mail/dead-letter-parent-left.md", {
 				parents: letter.recipients.join(", "),
 				to: letter.relay.to,
 			});
 		return visibleControls(
-			renderInstruction("notices/mail/dead-letter-relay.md", { id: letter.id, to: letter.relay.to, reason, began }),
+			renderPrompt("notices/mail/dead-letter-relay.md", { id: letter.id, to: letter.relay.to, reason, began }),
 		);
 	}
 	const notice = (who: string[], wasRead: boolean) =>
-		renderInstruction("notices/mail/dead-letter.md", {
+		renderPrompt("notices/mail/dead-letter.md", {
 			id: letter.id,
 			who: who.join(", "),
 			read: wasRead,
@@ -89,23 +89,23 @@ export function messageText(
 	const label = claimsUser
 		? fromUser
 			? "the user"
-			: renderInstruction("notices/mail/unverified-user.md")
+			: renderPrompt("notices/mail/unverified-user.md")
 		: message.from === EXTERNAL_SENDER
 			? apiClientLabel()
 			: `${fromParent ? "your coordinator" : writtenByParent ? "agent (your coordinator)" : claimsParent ? "agent (recorded as your coordinator, unverified)" : "agent"} ${headerText(message.from, 64)}${senderTag(message.sender)}`;
 	const footer = outside(message.from)
 		? ""
 		: message.replyRequired
-			? renderInstruction("notices/mail/reply-needed.md", { to: headerText(message.from, 64), id: message.id })
-			: renderInstruction("notices/mail/no-reply-needed.md");
+			? renderPrompt("notices/mail/reply-needed.md", { to: headerText(message.from, 64), id: message.id })
+			: renderPrompt("notices/mail/no-reply-needed.md");
 	// sendMessage saves a longer body to a file and sends its start with the path, so a body over the limit comes from a
 	// writer that bypassed it: withheld whole, since a cut instruction can lose the line that changes its meaning.
 	const body =
 		message.text.length > MESSAGE_MAX_CHARS
-			? renderInstruction("notices/mail/body-withheld.md", { max: MESSAGE_MAX_CHARS })
+			? renderPrompt("notices/mail/body-withheld.md", { max: MESSAGE_MAX_CHARS })
 			: message.text;
 	// Only the user's own interrupt asks to be acted on first; any other is a request from a sender that is not verified as the user.
-	const interrupt = stopped && message.interrupt ? renderInstruction("notices/mail/interrupt.md", { fromUser }) : "";
+	const interrupt = stopped && message.interrupt ? renderPrompt("notices/mail/interrupt.md", { fromUser }) : "";
 	// The header says which message this one answers, so a reply reads as one without relying on its content.
 	const answers = message.replyTo === undefined ? "" : ` (in reply to #${message.replyTo})`;
 	// A forward keeps the original sender, id and fence; the forwarder is named, and its note sits in a fence of its own.
@@ -213,7 +213,7 @@ export function resolveTarget(
 	if (named && to !== "all") return inTeam(named) ? [named] : outsideTeam(named.id, parentId);
 	// `parent` is the coordinator's id, never a role: once it left, the child is told so, and how to end its run.
 	if (to === "parent" && parentId !== undefined && !outside(from))
-		return renderInstruction("notices/mail/coordinator-left.md", { parent: parentId });
+		return renderPrompt("notices/mail/coordinator-left.md", { parent: parentId });
 	const others = members.filter((member) => member.id !== from);
 	if (to === "all") {
 		// A stalled member is still in the session: its mail waits for it, like a named message does.

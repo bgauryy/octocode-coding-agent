@@ -1,4 +1,12 @@
-import { type Component, Container, type Focusable, getKeybindings, Input, Spacer } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	Container,
+	type Focusable,
+	getKeybindings,
+	Input,
+	Spacer,
+	type TuiMouseEvent,
+} from "@octocodeai/octocode-tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -50,6 +58,12 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.sessionList.handleInput(data);
 	}
 
+	/** The mouse reaches the list, rename field or actions menu shown; none while a rename or delete is running. */
+	override handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]> {
+		if (this.disposed || this.mutating) return undefined;
+		return super.handleMouse(event);
+	}
+
 	private sessionList: SessionList;
 	private header: SessionSelectorHeader;
 	private keybindings: KeybindingsManager;
@@ -82,7 +96,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		}
 	}
 
-	/** Border, title, content, hints: the list is the only content that fills the terminal. */
+	/** Rule, title, content, hints, rule: the list is the only content that fills the terminal. */
 	private buildBaseLayout(content: Component, options?: { showHeader?: boolean }): void {
 		this.clear();
 		this.addChild(new DynamicBorder((s) => theme.fg("border", s)));
@@ -90,6 +104,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 			this.addChild(this.header);
 			this.addChild(content);
 			this.addChild({ render: (width) => this.header.renderFooter(width), invalidate: () => {} });
+			this.addChild(new DynamicBorder((s) => theme.fg("border", s)));
 		} else {
 			this.addChild(new Spacer(1));
 			this.addChild(content);

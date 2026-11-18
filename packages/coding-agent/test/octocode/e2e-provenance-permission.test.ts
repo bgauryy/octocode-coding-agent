@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../../src/core/agent-session.ts";
 import { emitSessionShutdownEvent } from "../../src/core/features/runner.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureSetup, FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -22,6 +22,8 @@ import { createTestSession } from "../helpers/session.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * The provenance tripwire (`src/octocode/permission/provenance.ts`, `docs/permissions.md`) through the real Octocode runtime with
@@ -30,7 +32,7 @@ import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
  * for one agent stops the asks about it; `full` does not ask.
  */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as ExtensionFactory;
+const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<AgentSession> = [];
@@ -111,10 +113,10 @@ async function interactive(
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
 	let page = PAGE;
-	let host: ExtensionAPI | undefined;
-	const fixtures: ExtensionFactory = (api) => {
+	let host: FeatureSetup | undefined;
+	const fixtures: FeatureRegister = (api) => {
 		host = api;
-		api.registerProvider("faux", {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -123,7 +125,7 @@ async function interactive(
 			streamSimple: faux.streamSimple,
 		} as never);
 		// An MCP-named tool: its result is untrusted by name (`Provenance.origin`).
-		api.registerTool({
+		api.tools.register({
 			name: FETCH,
 			label: FETCH,
 			description: "Fetch a page",
@@ -136,10 +138,11 @@ async function interactive(
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "faux-provider", factory: fixtures },
 			{ name: "octocode", factory: octocode },
-		],
+		]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -163,7 +166,7 @@ async function interactive(
 			return decide(dialog);
 		},
 	});
-	await session.bindExtensions({ uiContext: ui, mode: "rpc", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ uiContext: ui, mode: "rpc", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 
 	const turns: Result[][] = [];
@@ -185,10 +188,10 @@ async function interactive(
 	};
 	/** What a subagent's report does when it arrives as a message (`recordChildReports`), after the child's own exposure message. */
 	const report = async (child: string, text: string, exposed?: boolean) => {
-		if (exposed !== undefined) host!.events.emit(CHILD_EXPOSURE_EVENT, { child, exposed });
+		if (exposed !== undefined) host!.channels.emit(CHILD_EXPOSURE_EVENT, { child, exposed });
 		// A background report wakes the parent, as `handoff.ts` sends it; the scripted model acknowledges it.
 		faux.setResponses([() => fauxAssistantMessage("noted")]);
-		await host!.sendMessage(
+		await host!.session.sendMessage(
 			{ customType: AGENT_RESULT_TYPE, content: text, display: true, details: { id: child } },
 			{ triggerTurn: true },
 		);
@@ -220,7 +223,7 @@ const bash = (command: string) => nativeCall("bash", { command });
 // first session's listener on the shared dialog queue, and its stale ctx then throws inside the next session's dialog.
 afterEach(async () => {
 	for (const session of sessions.splice(0)) {
-		await emitSessionShutdownEvent(session.extensionRunner, { type: "session_shutdown", reason: "quit" });
+		await emitSessionShutdownEvent(session.featureHost, { type: "session_shutdown", reason: "quit" });
 		session.dispose();
 	}
 });

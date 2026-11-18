@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { changeNote } from "../../src/octocode/team/edits.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";

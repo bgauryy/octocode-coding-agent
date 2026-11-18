@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { instructionSource, renderInstruction } from "../../src/core/prompt-template.ts";
+import { promptSource, renderPrompt } from "../../src/core/prompt-template.ts";
 import { PolicyRenderError, renderPolicySection, SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
-import { leanPromptSections } from "../../src/octocode/instructions/lean.ts";
-import { octocodePromptSections } from "../../src/octocode/instructions/policy.ts";
+import { leanPromptSections } from "../../src/octocode/native/prompts/lean.ts";
+import { octocodePromptSections } from "../../src/octocode/native/prompts/policy.ts";
 import { FAKE_RESEARCH } from "./fake-research.ts";
 
 /**
@@ -63,7 +63,7 @@ describe("policy section templates", () => {
 		expect(rendered).toBe(2 * 2 ** FLAGS.length);
 		for (const scratchDays of [0, 1, 30])
 			expect(
-				octocodePromptSections({ research: undefined, profiles: [], canDelegate: false, scratchDays }).coordinator,
+				octocodePromptSections({ research: undefined, profiles: [], canDelegate: false, scratchDays }).subagent,
 			).not.toBe("");
 	});
 
@@ -75,24 +75,21 @@ describe("policy section templates", () => {
 		}
 	});
 
-	it("has a template for every section the map puts in the policy and lean groups", () => {
-		for (const section of SYSTEM_PROMPT_SECTIONS.filter((section) => section.group !== undefined))
-			expect(instructionSource(`sections/${section.name}.md`), section.name).not.toBe("");
+	it("has a chunk list of existing files for every section the map puts in the policy and lean groups", () => {
+		for (const section of SYSTEM_PROMPT_SECTIONS.filter((section) => section.group !== undefined)) {
+			expect(section.chunks?.length, section.name).toBeGreaterThan(0);
+			for (const { file } of section.chunks ?? []) expect(promptSource(file), file).not.toBe("");
+		}
 	});
 
 	it("names the section when a template does not render", () => {
 		const failing = () =>
-			renderPolicySection(
-				"safety",
-				() => renderInstruction("shared/parent-waits.md", {}) + renderInstruction("no/such.md"),
-			);
+			renderPolicySection("safety", () => renderPrompt("shared/parent-waits.md", {}) + renderPrompt("no/such.md"));
 		expect(failing).toThrow(PolicyRenderError);
-		expect(failing).toThrow(
-			/The `safety` prompt section failed to render \(Instruction template: no file no\/such\.md/,
-		);
+		expect(failing).toThrow(/The `safety` prompt section failed to render \(Prompt template: no file no\/such\.md/);
 		// A value the code does not pass: the renderer's error, wrapped the same way.
-		expect(() => renderPolicySection("work", () => renderInstruction("policy/scratch.md", {}))).toThrow(
-			/The `work` prompt section failed to render \(Instruction template: unknown name "keepsScratch"\)/,
+		expect(() => renderPolicySection("work", () => renderPrompt("policy/scratch.md", {}))).toThrow(
+			/The `work` prompt section failed to render \(Prompt template: unknown name "keepsScratch"\)/,
 		);
 		expect(renderPolicySection("work", () => "text")).toBe("text");
 	});

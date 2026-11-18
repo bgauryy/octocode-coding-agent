@@ -2,7 +2,7 @@ import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { forks } from "../../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../../storage/database.ts";
 import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import type { RecordMessage, SessionRecord } from "../../history/archive/record.ts";
 import { registeredWorkspace } from "../../../storage/workspace-database.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -10,7 +10,7 @@ import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 
 /** Ancestry is recorded when the host forks. Header paths supplied by imported and historical files are never opened here. */
 export function forkLineage(
-	sessions: Pick<ExtensionContext["sessionManager"], "getSessionId" | "getSessionFile" | "getCwd">,
+	sessions: Pick<FeatureContext["sessionManager"], "getSessionId" | "getSessionFile" | "getCwd">,
 ): string[] {
 	const file = sessions.getSessionFile();
 	if (!file) return [];
@@ -43,7 +43,7 @@ const messageText = (content: unknown): string =>
  * not saved (`--no-session`: nothing outlives it) or has no user message yet.
  */
 export function sessionRecordOf(
-	sessions: ExtensionContext["sessionManager"],
+	sessions: FeatureContext["sessionManager"],
 	lineage: readonly string[],
 	env: NodeJS.ProcessEnv = process.env,
 ): SessionRecord | undefined {

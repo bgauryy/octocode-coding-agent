@@ -1,4 +1,4 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 
 /**
  * Text kept inline, cut to a budget, when a session has no file to save its complete text in (an in-memory,
@@ -13,8 +13,7 @@ import { renderInstruction } from "../prompt-template.ts";
  */
 export function clipWithMarker(text: string, max: number, saved = false): string {
 	if (text.length <= max) return text;
-	const marker = (omitted: number) =>
-		`\n${renderInstruction("notices/compaction/text-omitted.md", { omitted, saved })}\n`;
+	const marker = (omitted: number) => `\n${renderPrompt("notices/compaction/text-omitted.md", { omitted, saved })}\n`;
 	const room = Math.max(0, max - marker(text.length).length);
 	const head = Math.ceil((room * 2) / 3);
 	const tail = room - head;

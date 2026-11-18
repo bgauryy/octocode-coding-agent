@@ -43,7 +43,8 @@ describe("MCP instructions after the first request (declared presentation)", () 
 		const { harness, callable, turn } = await setup(fresh(), { late: late(), presentation: "declared" });
 		const first = await turn("start");
 		// The late server was still pending when the first request went out.
-		expect(newestMcps(first)).toContain("Not connected yet");
+		expect(newestMcps(first)).toContain("late");
+		expect(newestMcps(first)).not.toContain(LATE_RULE);
 		const head = leading(harness);
 		const before = toolNames(harness);
 		await vi.waitFor(() => expect(callable()).toContain("mcp__late__search"));
@@ -54,7 +55,6 @@ describe("MCP instructions after the first request (declared presentation)", () 
 		expect(patches[0]).toContain(LATE_RULE);
 		// Only the new server's block travels; the other server's block stays as the model has it.
 		expect(patches[0]).not.toContain(OLD_RULE);
-		expect(patches[0]).not.toContain("Not connected yet");
 		expect(newestMcps(harness.session.messages)).toContain(OLD_RULE);
 		// Exactly one update carries it, and the leading message is untouched.
 		expect(updates.filter((update) => update.sections?.["mcps:late"])).toHaveLength(1);

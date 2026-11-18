@@ -7,7 +7,7 @@ import { getPackageCommandUsage, printPackageCommandHelp } from "./package-manag
 import { getActiveManagedInstallRoot, runManagedSelfUpdate } from "./package-manager-cli/managed-install.ts";
 import {
 	parsePackageCommand,
-	updateTargetIncludesExtensions,
+	updateTargetIncludesPackages,
 	updateTargetIncludesSelf,
 } from "./package-manager-cli/parse.ts";
 import {
@@ -196,11 +196,11 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 
 			case "update": {
 				const target = options.updateTarget ?? { type: "self" };
-				if (options.showExtensionsSkippedNote) {
-					console.log(chalk.dim(`Extensions are skipped. Run ${APP_NAME} update --extensions to update extensions.`));
+				if (options.showPackagesSkippedNote) {
+					console.log(chalk.dim(`Packages are skipped. Run ${APP_NAME} update --packages to update packages.`));
 				}
-				if (updateTargetIncludesExtensions(target)) {
-					const updateSource = target.type === "extensions" ? target.source : undefined;
+				if (updateTargetIncludesPackages(target)) {
+					const updateSource = target.type === "packages" ? target.source : undefined;
 					await packageManager.update(updateSource);
 					if (updateSource) {
 						console.log(chalk.green(`Updated ${updateSource}`));

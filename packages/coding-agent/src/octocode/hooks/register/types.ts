@@ -2,7 +2,8 @@ import type { FileInputReplacement } from "../../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../../core/features/types.ts";
 import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts";
 import type { JsonObject } from "@octocodeai/octocode-ai";
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../../core/features/index.ts";
+import type { FeatureContext, ToolCallEvent, ToolCallEventResult } from "../../../core/features/index.ts";
+import type { CompletionInfo } from "../../shared/completion-info.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 import type { HookEvent, HookProtocol } from "../catalog.ts";
 import type { HookConfig, HookHandler, HookVerdict } from "../contracts.ts";
@@ -43,7 +44,7 @@ export interface HooksView {
 	fileInputCommitted(id: string, input: Record<string, unknown>, cwd?: string): void;
 	permissionRequest(
 		invocation: ToolInvocation,
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal: AbortSignal,
 	): Promise<
 		| {
@@ -57,7 +58,7 @@ export interface HooksView {
 		| undefined
 	>;
 	/** `/harness hooks test`: runs the configured hooks on a sample event and describes the answers. */
-	testRun(ctx: ExtensionContext, words: readonly string[]): Promise<string>;
+	testRun(ctx: FeatureContext, words: readonly string[]): Promise<string>;
 	/** One line for the `/status` report. */
 	summary(): string;
 	/** On/off, the loaded commands per event, the files read (✓ = exists) and any config errors. */
@@ -67,12 +68,14 @@ export interface HooksView {
 	/** The PreToolUse hooks as a tool-call gate (a no-op while hooks are off); `ask` carries a hook's ask to the permission gate. */
 	preToolUse(
 		event: ToolCallEvent,
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 	): Promise<(ToolCallEventResult & { ask?: string; rewritten?: true }) | undefined>;
 	/** Runs the Notification hooks matching `notice.type` in the background (a no-op while hooks are off). */
-	notification(notice: HookNotice, ctx: ExtensionContext): void;
-	messageSend(message: MessageEnvelope, ctx: ExtensionContext): Promise<{ block?: string; ask?: string } | undefined>;
-	messageReceive(message: MessageEnvelope, ctx: ExtensionContext): Promise<void>;
+	notification(notice: HookNotice, ctx: FeatureContext): void;
+	messageSend(message: MessageEnvelope, ctx: FeatureContext): Promise<{ block?: string; ask?: string } | undefined>;
+	messageReceive(message: MessageEnvelope, ctx: FeatureContext): Promise<void>;
+	/** The TaskCompleted hooks for an item about to end: a reason refuses the write, undefined lets it go ahead (always undefined while hooks are off). */
+	taskCompleted(info: CompletionInfo, ctx: FeatureContext, signal?: AbortSignal): Promise<string | undefined>;
 }
 
 /** Records a hook outcome in the permission audit: a `PreToolUse` hook that gave no answer (`allowed`: the call went ahead), or an HTTP hook's allow or input rewrite (`allowed: true`, naming its host). */
@@ -89,7 +92,7 @@ export interface HookSession {
 }
 
 export type Dispatch = (
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	event: HookEvent,
 	names: string[],
 	input: () => Record<string, unknown>,
@@ -104,4 +107,4 @@ export interface HookHostMetadata {
 	agentType?: string;
 }
 
-export type ReportFailure = (ctx: ExtensionContext, event: HookEvent, error: unknown) => void;
+export type ReportFailure = (ctx: FeatureContext, event: HookEvent, error: unknown) => void;

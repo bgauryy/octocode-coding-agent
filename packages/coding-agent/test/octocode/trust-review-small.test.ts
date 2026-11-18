@@ -30,6 +30,7 @@ describe("worktree question for an untrusted origin (finding 5)", () => {
 			0,
 		);
 		expect(trusted.render(120).join("\n")).toMatch(/recommended/);
+		trusted.handleInput("2");
 		trusted.handleInput("\r");
 		expect(choices).toEqual([false, true]);
 	});

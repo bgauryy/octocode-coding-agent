@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
 import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message, RecipientKind } from "./model.ts";
@@ -35,9 +35,9 @@ export class Mail {
 	private lastProvenancePrune = 0;
 
 	/** `secret`: what the parent gave this process (a subagent), which checks a user message the parent signed (`userProof`). */
-	private readonly api: Pick<ExtensionAPI, "sendMessage">;
+	private readonly api: SetupPick<"session", "sendMessage">;
 	private readonly secret: () => string | undefined;
-	constructor(api: Pick<ExtensionAPI, "sendMessage">, secret: () => string | undefined = () => undefined) {
+	constructor(api: SetupPick<"session", "sendMessage">, secret: () => string | undefined = () => undefined) {
 		this.api = api;
 		this.secret = secret;
 	}
@@ -95,15 +95,6 @@ export class Mail {
 		);
 	}
 
-	/** Like `notice`, but starts a turn when `wake` and the agent is idle (the caller paces wakes). */
-	alert(text: string, wake: boolean): boolean {
-		return this.inject(
-			text,
-			{ messages: [{ from: "team", text, at: Date.now() }] },
-			{ triggerTurn: wake, deliverAs: "steer" },
-		);
-	}
-
 	private peers: PeerNotices | undefined;
 
 	/** Starts telling this agent when a peer it corresponded with ends (`peer-left.ts`); `reset` stops it. */
@@ -119,7 +110,7 @@ export class Mail {
 	deliver(
 		batch: Message[],
 		parentId: string | undefined,
-		ctx?: Pick<ExtensionContext, "isIdle" | "abort">,
+		ctx?: Pick<FeatureContext, "isIdle" | "abort">,
 		onRejected?: () => void,
 	): boolean {
 		// A steer is read only after the running tool returns: an interrupt stops the run instead (Octocode cancels the tool),

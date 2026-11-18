@@ -30,7 +30,7 @@ function dispatch(owner: object, id: string = randomUUID()): Dispatch {
 	return { id, owner, controller: new AbortController(), pending: new Set(), open: true };
 }
 
-/** Counts input preparation as work, before model execution exists. Nested extension sends share their caller's scope. */
+/** Counts input preparation as work, before model execution exists. Nested feature sends share their caller's scope. */
 export function trackSessionDispatch<T>(
 	owner: object,
 	operation: () => Promise<T>,
@@ -89,7 +89,7 @@ export function abortSessionDispatches(owner: object): void {
 	}
 }
 
-/** Wait for all work the command actually dispatched, including asynchronous extension preflight and nested sends. */
+/** Wait for all work the command actually dispatched, including asynchronous feature preflight and nested sends. */
 export async function completeSessionDispatch(
 	owner: object,
 	operation: () => Promise<void>,

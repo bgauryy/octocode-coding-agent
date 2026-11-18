@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { excludeLiveTests } from "./vitest.live.ts";
 
 const workspaceSourcePaths = {
 	telemetryIndex: fileURLToPath(new URL("./packages/telemetry/src/index.ts", import.meta.url)),
@@ -15,10 +16,19 @@ const workspaceSourcePaths = {
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 	tuiAnsi: fileURLToPath(new URL("./packages/tui/src/utils/ansi-codes.ts", import.meta.url)),
 	tuiText: fileURLToPath(new URL("./packages/tui/src/utils/text.ts", import.meta.url)),
+	tuiInkIndex: fileURLToPath(new URL("./packages/tui-ink/src/index.ts", import.meta.url)),
 } as const;
 
 export default defineConfig({
-	test: { globalSetup: [fileURLToPath(new URL("./vitest.tmp.global.ts", import.meta.url))] },
+	test: {
+		// Paid tests never join a default run; see vitest.live.ts.
+		exclude: excludeLiveTests(),
+		// The run lock comes first: a waiting run creates no folders and starts no workers.
+		globalSetup: [
+			fileURLToPath(new URL("./vitest.run-lock.global.ts", import.meta.url)),
+			fileURLToPath(new URL("./vitest.tmp.global.ts", import.meta.url)),
+		],
+	},
 	resolve: {
 		alias: [
 			{
@@ -65,6 +75,7 @@ export default defineConfig({
 			{ find: /^@octocodeai\/octocode-tui$/, replacement: workspaceSourcePaths.tuiIndex },
 			{ find: /^@octocodeai\/octocode-tui\/ansi$/, replacement: workspaceSourcePaths.tuiAnsi },
 			{ find: /^@octocodeai\/octocode-tui\/text$/, replacement: workspaceSourcePaths.tuiText },
+			{ find: /^@octocodeai\/octocode-tui-ink$/, replacement: workspaceSourcePaths.tuiInkIndex },
 		],
 	},
 });

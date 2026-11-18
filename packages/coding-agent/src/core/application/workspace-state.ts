@@ -7,7 +7,7 @@ interface WorkspaceRuntimeState {
 	events: readonly WorkspaceEvent[];
 }
 
-/** Extension-scoped activity, including SDK hosts that have no application session attached. */
+/** Feature-scoped activity, including SDK hosts that have no application session attached. */
 export function createWorkspaceRuntimeState() {
 	return createStore<WorkspaceRuntimeState>()(() => ({ sessionId: undefined, sequence: 0, events: [] }));
 }

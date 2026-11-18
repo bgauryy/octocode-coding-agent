@@ -10,10 +10,11 @@ import { InMemoryAuthStorageBackend } from "../../src/core/auth-storage.ts";
 import { emitSessionShutdownEvent } from "../../src/core/features/runner.ts";
 import { runMcpCommand } from "../../../mcp/src/cli.ts";
 import type { McpOAuthConfig, McpServerEntry } from "../../../mcp/src/config.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { McpOAuthCredentialStore } from "../../../mcp/src/oauth.ts";
 import { createHarness, createTestUiContext, getMessageText, type Harness } from "./harness.ts";
 import { startOAuthMcpServer } from "./mcp-oauth-server.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 describe("AgentSession MCP OAuth", () => {
 	const cleanups: (() => Promise<void> | void)[] = [];
@@ -37,8 +38,8 @@ describe("AgentSession MCP OAuth", () => {
 		let redirectLocation: Promise<string> | undefined;
 		const harness: Harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
-				createMcpExtension({
+			features: testFeatures([
+				createMcpFeature({
 					loadConfig: () => ({ servers: [entry], errors: [] }),
 					credentials: new McpOAuthCredentialStore(backend),
 					openUrl: (url) => {
@@ -54,10 +55,10 @@ describe("AgentSession MCP OAuth", () => {
 						}
 					},
 				}),
-			],
+			]),
 		});
 		cleanups.push(() => harness.cleanup());
-		await harness.session.bindExtensions({
+		await harness.session.bindFeatures({
 			uiContext: createTestUiContext({
 				notify: (message) => notifications.push(message),
 				// Signing out asks first; the user agrees.
@@ -128,7 +129,7 @@ describe("AgentSession MCP OAuth", () => {
 		const result = await callWhoami(harness);
 		expect(result.isError).toBe(true);
 		expect(getMessageText(result)).toBe(
-			"Tool mcp__issues__whoami not found: it is not active in this session. Use another tool, or ask the user to enable it.",
+			"Tool mcp__issues__whoami not found: it is not active in this session. Use another tool from `<tools>` instead, or ask the user to enable it.",
 		);
 
 		await harness.session.prompt("/mcp login issues");
@@ -148,7 +149,7 @@ describe("AgentSession MCP OAuth", () => {
 	/** Emit session_shutdown like quitting does; resolves to how long the handlers took. */
 	async function shutdown(harness: Harness): Promise<number> {
 		const start = Date.now();
-		await emitSessionShutdownEvent(harness.session.extensionRunner, { type: "session_shutdown", reason: "quit" });
+		await emitSessionShutdownEvent(harness.session.featureHost, { type: "session_shutdown", reason: "quit" });
 		return Date.now() - start;
 	}
 

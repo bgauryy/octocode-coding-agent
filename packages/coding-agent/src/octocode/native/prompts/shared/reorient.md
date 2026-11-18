@@ -1,0 +1,1 @@
+- After compaction, resume, surprises or long runs, and before reporting, recheck the latest `<summary>`, {{#if main}}`[After compaction]`/`[Resumed]`{{else}}`[After compaction]`/coordinator follow-up{{/if}}{{#if backlog}}, your item's steps{{/if}}, current state and changed assumptions before retrying. User corrections in a summary beat older messages.

@@ -6,12 +6,12 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
 
 /** Compaction supplied by an extension hook, as in the reported sessions. */
-const compactViaHook: ExtensionFactory = (api) => {
-	api.on("session_before_compact", async (event) => ({
+const compactViaHook: FeatureRegister = (api) => {
+	api.bus.on("session_before_compact", async (event) => ({
 		compaction: {
 			summary: "extension summary",
 			firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -63,7 +63,7 @@ describe("context handlers and system messages", () => {
 			builtinCompactionFactories: [
 				compactViaHook,
 				(api) => {
-					api.on("context", async (event) => {
+					api.bus.on("context", async (event) => {
 						seen.push(event.messages);
 						const summary = event.messages.findIndex((message) => message.role === "compactionSummary");
 						return { messages: event.messages.slice(summary) };
@@ -90,10 +90,10 @@ describe("context handlers and system messages", () => {
 		const harness = await createHarness({
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("before_agent_start", (event) => {
+					api.bus.on("before_agent_start", (event) => {
 						if (++turn === 2) event.systemPromptOptions.sections.plan_mode = "Plan only.";
 					});
-					api.on("context", async (event) => ({ messages: event.messages }));
+					api.bus.on("context", async (event) => ({ messages: event.messages }));
 				},
 			],
 		});
@@ -113,7 +113,7 @@ describe("context handlers and system messages", () => {
 		const harness = await createHarness({
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("context", async (event) => {
+					api.bus.on("context", async (event) => {
 						event.messages.splice(0, 0, {
 							role: "user",
 							content: [{ type: "text", text: "injected" }],
@@ -137,7 +137,7 @@ describe("context handlers and system messages", () => {
 		const harness = await createHarness({
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("context", async (event) => ({
+					api.bus.on("context", async (event) => ({
 						messages: [{ role: "system", content: "ephemeral reminder", timestamp: 0 }, ...event.messages],
 					}));
 				},

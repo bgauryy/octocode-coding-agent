@@ -17,7 +17,7 @@ it("keeps one active checkpoint and a bounded recent tail through repeated compa
 		compactionPolicy: { keepRecentTokens: 100 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_before_compact", async (event) => ({
+				api.bus.on("session_before_compact", async (event) => ({
 					compaction: {
 						summary: `Checkpoint ${cycle}: retain the goal; B7 remains blocked on agent:worker and job:verify.`,
 						firstKeptEntryId: event.preparation.firstKeptEntryId,

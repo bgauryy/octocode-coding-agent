@@ -31,10 +31,9 @@ afterEach(async () => {
 /** What the provider receives of the server's tools: every declaration field, in registration order. */
 const declared = (h: ReturnType<typeof mcpHost>) =>
 	JSON.stringify([...h.tools.values()].filter((tool) => tool.name.startsWith("mcp__octocode__")));
-const activeTools = (h: ReturnType<typeof mcpHost>) => JSON.stringify(h.api.getActiveTools());
+const activeTools = (h: ReturnType<typeof mcpHost>) => JSON.stringify(h.api.tools.getActive());
 /** Every batch of tool registrations the host received. */
-const registrations = (h: ReturnType<typeof mcpHost>) =>
-	(h.api as unknown as { registerToolBatches: string[][] }).registerToolBatches;
+const registrations = (h: ReturnType<typeof mcpHost>) => h.flat.registerToolBatches as string[][];
 const connectionOf = (h: ReturnType<typeof mcpHost>) => h.state.findServer("octocode")!.connection!;
 
 async function dropServer(h: ReturnType<typeof mcpHost>) {

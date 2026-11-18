@@ -1,20 +1,17 @@
 import type { Model } from "@octocodeai/octocode-ai";
 import {
+	type Component,
 	Container,
 	type Focusable,
-	fuzzyFilter,
 	getKeybindings,
-	GLYPH,
-	Input,
-	Key,
-	matchesKey,
+	ListView,
 	Spacer,
 	Text,
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import { getModelSearchText } from "../model-search.ts";
-import { emptyState, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { shortcutsFooter } from "./scoped-models-selector/footer.ts";
@@ -29,6 +26,7 @@ import {
 } from "./scoped-models-selector/enabled-ids.ts";
 import { plainText } from "./styled-line.ts";
 import { providerBadge } from "./model-selector/rows.ts";
+import { listRows, listTheme, syncEmpty } from "./list-kit.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 interface ModelItem {
@@ -43,6 +41,8 @@ interface ModelsConfig {
 	refreshStatus?: string;
 	/** Each provider's kind for its badge (`ModelRuntime.getProviderKind`); without it the badge names the provider only. */
 	providerKind?: (provider: string) => string;
+	/** Terminal rows, for the list's height; without it the list shows eight rows. */
+	rows?: number;
 }
 
 interface ModelsCallbacks {
@@ -54,35 +54,37 @@ interface ModelsCallbacks {
 	requestRender?: () => void;
 }
 
+/** Draws lines computed at the render width, each cut to it. */
+class LinesView implements Component {
+	private readonly lines: (width: number) => string[];
+	constructor(lines: (width: number) => string[]) {
+		this.lines = lines;
+	}
+	invalidate(): void {}
+	render(width: number): string[] {
+		return this.lines(width).map((line) => truncateToWidth(line, width, "…"));
+	}
+}
+
 /**
- * Component for enabling/disabling models for Ctrl+P cycling.
- * Changes are session-only until explicitly persisted with Ctrl+S.
+ * Component for enabling/disabling models for Ctrl+P cycling: a `⌕` search over the models, Enter toggles the
+ * highlighted one. Changes are session-only until explicitly persisted with Ctrl+S.
  */
 export class ScopedModelsSelectorComponent extends Container implements Focusable {
 	private modelsById: Map<string, Model<any>> = new Map();
 	private allIds: string[] = [];
 	private enabledIds: EnabledIds = null;
-	private filteredItems: ModelItem[] = [];
-	private selectedIndex = 0;
-	private searchInput: Input;
-
-	// Focusable implementation - propagate to searchInput for IME cursor positioning
-	private _focused = false;
+	private readonly list: ListView<ModelItem>;
 	get focused(): boolean {
-		return this._focused;
+		return this.list.focused;
 	}
 	set focused(value: boolean) {
-		this._focused = value;
-		this.searchInput.focused = value;
+		this.list.focused = value;
 	}
-	private listContainer: Container;
-	private footerText: Text;
 	private callbacks: ModelsCallbacks;
 	private providerKind: ModelsConfig["providerKind"];
-	private maxVisible = 8;
 	private isDirty = false;
 	private refreshStatusText?: Text;
-	private layoutWidth = 80;
 	private saving = false;
 	private saveError?: string;
 
@@ -90,44 +92,45 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		super();
 		this.callbacks = callbacks;
 		this.providerKind = config.providerKind;
-
-		for (const model of config.allModels) {
-			const fullId = `${model.provider}/${model.id}`;
-			this.modelsById.set(fullId, model);
-			this.allIds.push(fullId);
-		}
-
+		this.setModels(config.allModels);
 		this.enabledIds = config.enabledModelIds === null ? null : [...config.enabledModelIds];
-		this.filteredItems = this.buildItems();
+
+		this.list = new ListView<ModelItem>({
+			items: this.buildItems(),
+			maxRows: listRows(config.rows, 14, 8),
+			theme: listTheme(),
+			search: {
+				text: (item) =>
+					item.model
+						? getModelSearchText({ id: item.model.id, provider: item.model.provider, name: item.model.name })
+						: item.fullId,
+				placeholder: "type to search",
+			},
+			row: (item, state) => this.row(item, state),
+		});
+		this.list.onSelect = (item) => {
+			this.enabledIds = toggle(this.enabledIds, this.allIds, item.fullId);
+			this.changed();
+		};
+		this.list.onCancel = () => this.callbacks.onCancel();
+		syncEmpty(this.list, "models");
 
 		this.addChild(new DynamicBorder());
+		this.addChild(new Text(theme.fg("accent", theme.bold("Model shortcuts")), 1, 0));
+		this.addChild(new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} saves globally.`), 1, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", theme.bold("Model shortcuts")), 0, 0));
-		this.addChild(new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} saves globally.`), 0, 0));
-		this.addChild(new Spacer(1));
-
-		this.searchInput = new Input();
-		this.addChild(this.searchInput);
-		this.addChild(new Spacer(1));
-
-		this.listContainer = new Container();
-		this.addChild(this.listContainer);
-
+		this.addChild(this.list);
+		this.addChild(new LinesView(() => this.selectedLines()));
 		this.addChild(new Spacer(1));
 		if (config.refreshStatus) {
-			this.refreshStatusText = new Text(theme.fg("muted", `  ${plainText(config.refreshStatus)}`), 0, 0);
+			this.refreshStatusText = new Text(theme.fg("muted", plainText(config.refreshStatus)), 1, 0);
 			this.addChild(this.refreshStatusText);
 		}
-		this.footerText = new Text(this.getFooterText(), 0, 0);
-		this.addChild(this.footerText);
-
+		this.addChild(new LinesView((width) => this.footerLines(width)));
 		this.addChild(new DynamicBorder());
-		this.updateList();
 	}
 
-	updateModels(models: readonly Model<any>[], enabledModelIds?: string[] | null): void {
-		const selectedId = this.filteredItems[this.selectedIndex]?.fullId;
-		if (enabledModelIds !== undefined) this.enabledIds = enabledModelIds === null ? null : [...enabledModelIds];
+	private setModels(models: readonly Model<any>[]): void {
 		this.modelsById.clear();
 		this.allIds = [];
 		for (const model of models) {
@@ -135,22 +138,25 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.modelsById.set(fullId, model);
 			this.allIds.push(fullId);
 		}
+	}
+
+	updateModels(models: readonly Model<any>[], enabledModelIds?: string[] | null): void {
+		const selectedId = this.list.getSelectedItem()?.fullId;
+		if (enabledModelIds !== undefined) this.enabledIds = enabledModelIds === null ? null : [...enabledModelIds];
+		this.setModels(models);
 		this.refresh();
 		if (selectedId) this.select(selectedId);
 	}
 
 	/** Keep `fullId` selected after the list was rebuilt, when it is still listed. */
 	private select(fullId: string): void {
-		const index = this.filteredItems.findIndex((item) => item.fullId === fullId);
-		if (index >= 0 && index !== this.selectedIndex) {
-			this.selectedIndex = index;
-			this.updateList();
-		}
+		const index = this.list.getItems().findIndex((item) => item.fullId === fullId);
+		if (index >= 0) this.list.setSelectedIndex(index);
 	}
 
 	setRefreshStatus(message: string, kind: "muted" | "success" | "warning"): void {
 		// The message can carry a refresh error's text.
-		this.refreshStatusText?.setText(theme.fg(kind, `  ${plainText(message)}`));
+		this.refreshStatusText?.setText(theme.fg(kind, plainText(message)));
 	}
 
 	private buildItems(): ModelItem[] {
@@ -161,226 +167,116 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		}));
 	}
 
-	private getFooterText(): string {
+	/** The enabled mark, the id (struck through when unavailable) and the provider badge, cut to `width`. */
+	private row(item: ModelItem, state: { selected: boolean; width: number }): string {
+		// Model ids, names and providers can come from vendor model lists and the remote catalog.
+		const id = plainText(item.model?.id ?? item.fullId);
+		const styledId = item.model ? id : theme.strikethrough(id);
+		const modelText = state.selected ? theme.fg("accent", theme.bold(styledId)) : styledId;
+		const provider = item.model?.provider;
+		const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
+		const providerText = theme.fg("muted", ` ${badge}`);
+		const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
+		const badgeRoom = item.model ? Math.min(24, Math.floor(state.width / 3)) : visibleWidth(providerText);
+		const clippedBadge = truncateToWidth(providerText, Math.max(0, Math.min(state.width - 2, badgeRoom)), "…");
+		const label = truncateToWidth(modelText, Math.max(0, state.width - 2 - visibleWidth(clippedBadge)), "…");
+		return truncateToWidth(`${status}${label}${clippedBadge}`, state.width, "…");
+	}
+
+	/** The highlighted model's name and provider under the list. */
+	private selectedLines(): string[] {
+		const selected = this.list.getSelectedItem();
+		if (!selected) return [];
+		const text = selected.model
+			? `${plainText(selected.model.name)} · ${providerBadge(plainText(selected.model.provider), this.providerKind?.(selected.model.provider))}`
+			: `Unavailable: ${plainText(selected.fullId)}`;
+		return ["", theme.fg("muted", `  ${text}`)];
+	}
+
+	private footerLines(width: number): string[] {
 		const enabledCount = this.enabledIds?.filter((id) => this.modelsById.has(id)).length ?? this.allIds.length;
 		const unavailableCount = this.enabledIds?.filter((id) => !this.modelsById.has(id)).length ?? 0;
-		const allEnabled = this.enabledIds === null;
-		const countText = allEnabled
-			? "all enabled"
-			: `${enabledCount}/${this.allIds.length} enabled${unavailableCount ? ` · ${unavailableCount} unavailable` : ""}`;
-		return shortcutsFooter(countText, this.layoutWidth, this.isDirty, this.saving, this.saveError);
+		const countText =
+			this.enabledIds === null
+				? "all enabled"
+				: `${enabledCount}/${this.allIds.length} enabled${unavailableCount ? ` · ${unavailableCount} unavailable` : ""}`;
+		return shortcutsFooter(countText, width, {
+			dirty: this.isDirty,
+			saving: this.saving,
+			error: this.saveError,
+			empty: this.list.getItems().length === 0,
+		});
 	}
 
+	/** Rebuild the rows from the enabled set; the cursor keeps its index, clamped. */
 	private refresh(): void {
-		const query = this.searchInput.getValue();
-		const items = this.buildItems();
-		this.filteredItems = query
-			? fuzzyFilter(items, query, (item) =>
-					item.model
-						? getModelSearchText({ id: item.model.id, provider: item.model.provider, name: item.model.name })
-						: item.fullId,
-				)
-			: items;
-		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredItems.length - 1));
-		this.updateList();
-		this.footerText.setText(this.getFooterText());
+		this.list.setItems(this.buildItems());
+		syncEmpty(this.list, "models");
 	}
 
-	private notifyChange(): void {
+	private changed(): void {
+		this.isDirty = true;
+		this.refresh();
 		void this.callbacks.onChange(this.enabledIds === null ? null : [...this.enabledIds]);
 	}
 
-	private updateList(): void {
-		this.listContainer.clear();
-
-		if (this.filteredItems.length === 0) {
-			this.listContainer.addChild(new Text(emptyState("No matching models"), 0, 0));
-			return;
-		}
-
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredItems.length - this.maxVisible),
-		);
-		const endIndex = Math.min(startIndex + this.maxVisible, this.filteredItems.length);
-		for (let i = startIndex; i < endIndex; i++) {
-			const item = this.filteredItems[i];
-			const isSelected = i === this.selectedIndex;
-			const prefix = isSelected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
-			// Model ids, names and providers can come from vendor model lists and the remote catalog.
-			const id = plainText(item.model?.id ?? item.fullId);
-			const styledId = item.model ? id : theme.strikethrough(id);
-			const modelText = isSelected ? theme.fg("accent", styledId) : styledId;
-			const provider = item.model?.provider;
-			const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
-			const providerText = theme.fg("muted", ` ${badge}`);
-			const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
-			const clippedBadge = truncateToWidth(
-				providerText,
-				Math.max(
-					0,
-					Math.min(
-						this.layoutWidth - 4,
-						item.model ? Math.min(24, Math.floor(this.layoutWidth / 3)) : visibleWidth(providerText),
-					),
-				),
-				"…",
-			);
-			const label = truncateToWidth(modelText, Math.max(0, this.layoutWidth - 4 - visibleWidth(clippedBadge)), "…");
-			this.listContainer.addChild(
-				new Text(truncateToWidth(`${prefix}${status}${label}${clippedBadge}`, this.layoutWidth, "…"), 0, 0),
-			);
-		}
-
-		if (startIndex > 0 || endIndex < this.filteredItems.length) {
-			this.listContainer.addChild(
-				new Text(theme.fg("muted", `  (${this.selectedIndex + 1}/${this.filteredItems.length})`), 0, 0),
-			);
-		}
-
-		if (this.filteredItems.length > 0) {
-			const selected = this.filteredItems[this.selectedIndex];
-			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(
-				new Text(
-					theme.fg(
-						"muted",
-						`  ${selected.model ? `${plainText(selected.model.name)} · ${providerBadge(plainText(selected.model.provider), this.providerKind?.(selected.model.provider))}` : `Unavailable: ${plainText(selected.fullId)}`}`,
-					),
-					0,
-					0,
-				),
-			);
-		}
+	/** The ids a bulk key acts on: the search's matches while it searches, otherwise every model. */
+	private bulkTargets(): string[] | undefined {
+		return this.list.getQuery() ? this.list.getItems().map((item) => item.fullId) : undefined;
 	}
 
 	handleInput(data: string): void {
 		const kb = getKeybindings();
 		if (this.saving && !kb.matches(data, "tui.select.cancel")) return;
-
-		if (kb.matches(data, "tui.select.up")) {
-			if (this.filteredItems.length === 0) return;
-			this.selectedIndex = this.selectedIndex === 0 ? this.filteredItems.length - 1 : this.selectedIndex - 1;
-			this.updateList();
-			return;
-		}
-		if (kb.matches(data, "tui.select.down")) {
-			if (this.filteredItems.length === 0) return;
-			this.selectedIndex = this.selectedIndex === this.filteredItems.length - 1 ? 0 : this.selectedIndex + 1;
-			this.updateList();
-			return;
-		}
+		const item = this.list.getSelectedItem();
 
 		const reorderUp = kb.matches(data, "app.models.reorderUp");
-		const reorderDown = kb.matches(data, "app.models.reorderDown");
-		if (reorderUp || reorderDown) {
-			if (this.enabledIds === null) return;
-			const item = this.filteredItems[this.selectedIndex];
-			if (item && isEnabled(this.enabledIds, item.fullId)) {
-				const delta = reorderUp ? -1 : 1;
-				const currentIndex = this.enabledIds.indexOf(item.fullId);
-				const newIndex = currentIndex + delta;
-				if (newIndex >= 0 && newIndex < this.enabledIds.length) {
-					this.enabledIds = move(this.enabledIds, item.fullId, delta);
-					this.isDirty = true;
-					this.refresh();
-					// A search hides some models, so the moved one need not be one row away: follow it by id.
-					this.select(item.fullId);
-					this.notifyChange();
-				}
-			}
+		if (reorderUp || kb.matches(data, "app.models.reorderDown")) {
+			if (this.enabledIds === null || !item || !isEnabled(this.enabledIds, item.fullId)) return;
+			const delta = reorderUp ? -1 : 1;
+			const newIndex = this.enabledIds.indexOf(item.fullId) + delta;
+			if (newIndex < 0 || newIndex >= this.enabledIds.length) return;
+			this.enabledIds = move(this.enabledIds, item.fullId, delta);
+			this.changed();
+			// A search hides some models, so the moved one need not be one row away: follow it by id.
+			this.select(item.fullId);
 			return;
 		}
-
-		if (kb.matches(data, "tui.select.confirm")) {
-			const item = this.filteredItems[this.selectedIndex];
-			if (item) {
-				this.enabledIds = toggle(this.enabledIds, this.allIds, item.fullId);
-				this.isDirty = true;
-				this.refresh();
-				this.notifyChange();
-			}
-			return;
-		}
-
-		// Enable all (filtered if search active, otherwise all)
 		if (kb.matches(data, "app.models.enableAll")) {
-			const targetIds = this.searchInput.getValue() ? this.filteredItems.map((i) => i.fullId) : undefined;
-			this.enabledIds = enableAll(this.enabledIds, this.allIds, targetIds);
-			this.isDirty = true;
-			this.refresh();
-			this.notifyChange();
-			return;
+			this.enabledIds = enableAll(this.enabledIds, this.allIds, this.bulkTargets());
+			return this.changed();
 		}
-
-		// Clear all (filtered if search active, otherwise all)
 		if (kb.matches(data, "app.models.clearAll")) {
-			const targetIds = this.searchInput.getValue() ? this.filteredItems.map((i) => i.fullId) : undefined;
-			this.enabledIds = clearAll(this.enabledIds, this.allIds, targetIds);
-			this.isDirty = true;
-			this.refresh();
-			this.notifyChange();
-			return;
+			this.enabledIds = clearAll(this.enabledIds, this.allIds, this.bulkTargets());
+			return this.changed();
 		}
-
 		if (kb.matches(data, "app.models.toggleProvider")) {
-			const item = this.filteredItems[this.selectedIndex];
-			if (item?.model) {
-				const provider = item.model.provider;
-				const providerIds = this.allIds.filter((id) => this.modelsById.get(id)!.provider === provider);
-				const allEnabled = providerIds.every((id) => isEnabled(this.enabledIds, id));
-				this.enabledIds = allEnabled
-					? clearAll(this.enabledIds, this.allIds, providerIds)
-					: enableAll(this.enabledIds, this.allIds, providerIds);
-				this.isDirty = true;
-				this.refresh();
-				this.notifyChange();
-			}
-			return;
+			if (!item?.model) return;
+			const provider = item.model.provider;
+			const providerIds = this.allIds.filter((id) => this.modelsById.get(id)!.provider === provider);
+			const allEnabled = providerIds.every((id) => isEnabled(this.enabledIds, id));
+			this.enabledIds = allEnabled
+				? clearAll(this.enabledIds, this.allIds, providerIds)
+				: enableAll(this.enabledIds, this.allIds, providerIds);
+			return this.changed();
 		}
-
 		if (kb.matches(data, "app.models.save")) {
 			void this.persist();
 			return;
 		}
-
-		// Ctrl+C - clear search or cancel if empty
-		if (matchesKey(data, Key.ctrl("c"))) {
-			if (this.searchInput.getValue()) {
-				this.searchInput.setValue("");
-				this.refresh();
-			} else {
-				this.callbacks.onCancel();
-			}
-			return;
-		}
-
-		if (matchesKey(data, Key.escape)) {
-			this.callbacks.onCancel();
-			return;
-		}
-
-		this.searchInput.handleInput(data);
-		this.refresh();
+		// Enter toggles, Esc clears the search first and then closes, the rest moves or searches.
+		this.list.handleInput(data);
+		syncEmpty(this.list, "models");
 	}
 
-	getSearchInput(): Input {
-		return this.searchInput;
-	}
-
-	override render(width: number): string[] {
-		if (this.layoutWidth !== width) {
-			this.layoutWidth = width;
-			this.updateList();
-			this.footerText.setText(this.getFooterText());
-		}
-		return super.render(width);
+	/** The search text the list filters by. */
+	getQuery(): string {
+		return this.list.getQuery();
 	}
 
 	private async persist(): Promise<void> {
 		this.saving = true;
 		this.saveError = undefined;
-		this.footerText.setText(this.getFooterText());
 		try {
 			await this.callbacks.onPersist(this.enabledIds === null ? null : [...this.enabledIds]);
 			this.isDirty = false;
@@ -388,7 +284,6 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			this.saveError = `Could not save shortcuts: ${errorMessage(error)}`;
 		} finally {
 			this.saving = false;
-			this.footerText.setText(this.getFooterText());
 			this.callbacks.requestRender?.();
 		}
 	}

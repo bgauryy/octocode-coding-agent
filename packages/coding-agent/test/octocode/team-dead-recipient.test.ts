@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderInstruction } from "../../src/core/prompt-template.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -51,9 +51,9 @@ const noticesAbout = (who: string) =>
 		)
 		.map((entry) => ({ text: String(entry.message.content), turn: entry.options?.triggerTurn === true }));
 
-const peerNext = renderInstruction("notices/mail/dead-letter-next.md", { who: "x", child: false });
+const peerNext = renderPrompt("notices/mail/dead-letter-next.md", { who: "x", child: false });
 const childNext = (who: string, reported: boolean) =>
-	renderInstruction("notices/mail/dead-letter-next.md", { who, child: true, reported });
+	renderPrompt("notices/mail/dead-letter-next.md", { who, child: true, reported });
 
 beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "team-dead-recipient-")));

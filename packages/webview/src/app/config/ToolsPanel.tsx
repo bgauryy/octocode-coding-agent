@@ -16,11 +16,16 @@ export interface ToolsApi {
 
 type Scope = ToolPinCommand["scope"];
 type Pin = NonNullable<ToolExposureRow["pin"]>;
+type State = ToolExposureRow["state"];
 
-const STATE = { direct: "Direct", deferred: "Deferred", hidden: "Hidden" } as const;
-const TONE = { direct: "success", deferred: "accent", hidden: "neutral" } as const;
+const STATE = { direct: "Direct", deferred: "Deferred", onDemand: "On demand", hidden: "Hidden" } as const;
+const TONE: Record<State, "success" | "accent" | "neutral"> = {
+	direct: "success",
+	deferred: "accent",
+	hidden: "neutral",
+};
 const NATIVE_PINS: readonly Pin[] = ["direct", "deferred"];
-const MCP_PINS: readonly Pin[] = ["direct", "deferred", "hidden"];
+const MCP_PINS: readonly Pin[] = ["direct", "deferred", "onDemand", "hidden"];
 
 const size = (bytes: number): string => (bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`);
 
@@ -96,7 +101,10 @@ function ToolRow({
 			</td>
 			<td className="muted">
 				{reason(row)}
-				{row.pin && row.pin !== row.state && ` · ${STATE[row.pin]} from the next session`}
+				{row.pin &&
+					row.pin !== row.state &&
+					!(row.pin === "onDemand" && row.state === "deferred") &&
+					` · ${STATE[row.pin]} from the next session`}
 			</td>
 			<td className="muted">{usage(row)}</td>
 			<td>

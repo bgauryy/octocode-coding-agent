@@ -1,7 +1,7 @@
 import type { SkillCategory } from "./skills/category.ts";
 
 /**
- * The port through which core learns which skills the user has not approved (the extension guard). Core never reads
+ * The port through which core learns which skills the user has not approved (the feature guard). Core never reads
  * review records and never imports `octocode/`: the host installs a reviewer (`octocode/guard/install.ts`) and core drops
  * the skill files it names. Without a reviewer every skill loads. Octocode's own skills (`core`, `octocode`) are never
  * asked about.

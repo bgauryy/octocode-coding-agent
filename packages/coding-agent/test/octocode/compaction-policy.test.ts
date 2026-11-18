@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { idleContinuation } from "../../src/octocode/compaction/cache.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCachePolicy } from "./fake-host.ts";
+import { fakeCachePolicy, asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -28,7 +28,7 @@ describe("turn_end", () => {
 	it("never edits the context of a turn the provider accepted, however large and old its results", async () => {
 		const handlers = new Map<string, Handler>();
 		const sendMessage = vi.fn(async () => undefined);
-		const api = {
+		const api = asSetup({
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -37,7 +37,7 @@ describe("turn_end", () => {
 			getSettings: () => ({}),
 			getThinkingLevel: () => "off",
 			sendMessage,
-		} as unknown as ExtensionAPI;
+		}) as unknown as FeatureSetup;
 		const guard = { restore: vi.fn(), forget: vi.fn() };
 		registerCompaction(api, guard as unknown as FileGuard);
 		const model = {
@@ -114,7 +114,7 @@ describe("turn_end", () => {
 
 	it("keeps active refresh decisions but stops idle headless refreshes", async () => {
 		const handlers = new Map<string, Handler>();
-		const api = {
+		const api = asSetup({
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -122,7 +122,7 @@ describe("turn_end", () => {
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
 			getThinkingLevel: () => "off",
-		} as unknown as ExtensionAPI;
+		}) as unknown as FeatureSetup;
 		registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const decide = handlers.get("cache_warming_decision")!;
 		const event = {
@@ -180,7 +180,7 @@ describe("context edits", () => {
 
 	it("are the only entries the turn_end handler returns, and only for a turn rejected as too large", async () => {
 		const handlers = new Map<string, Handler>();
-		const api = {
+		const api = asSetup({
 			on: (name: string, handler: Handler) => {
 				handlers.set(name, handler);
 				return undefined;
@@ -188,7 +188,7 @@ describe("context edits", () => {
 			registerProvider: vi.fn(),
 			getSettings: () => ({}),
 			getThinkingLevel: () => "off",
-		} as unknown as ExtensionAPI;
+		}) as unknown as FeatureSetup;
 		registerCompaction(api, { restore: vi.fn(), forget: vi.fn() } as unknown as FileGuard);
 		const model = {
 			provider: "p",

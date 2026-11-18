@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("session names do not contain newlines", () => {
 	const harnesses: Harness[] = [];
@@ -21,18 +22,18 @@ describe("session names do not contain newlines", () => {
 		expect(harness.eventsOfType("session_info_changed").map((event) => event.name)).toEqual(["hello world again"]);
 	});
 
-	it("filters newlines when an extension calls api.setSessionName", async () => {
-		let api: ExtensionAPI | undefined;
+	it("filters newlines when an extension calls api.session.setName", async () => {
+		let api: FeatureSetup | undefined;
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(host) => {
 					api = host;
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
-		api?.setSessionName("from\nextension");
+		api?.session.setName("from\nextension");
 
 		expect(harness.sessionManager.getSessionName()).toBe("from extension");
 		expect(harness.eventsOfType("session_info_changed").map((event) => event.name)).toEqual(["from extension"]);

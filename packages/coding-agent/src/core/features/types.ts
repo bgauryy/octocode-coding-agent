@@ -1,15 +1,14 @@
 /**
- * Extension system types.
+ * Feature system types.
  *
- * Extensions are TypeScript modules that can:
+ * Features are TypeScript modules that can:
  * - Subscribe to agent lifecycle events
  * - Register LLM-callable tools
- * - Register commands, and keyboard shortcuts
+ * - Register commands
  * - Interact with the user via UI primitives
  */
 
 export type { AgentToolResult } from "@octocodeai/octocode-agent-core";
-export type { ExecResult } from "../exec.ts";
 export type { BuildSystemPromptOptions } from "../system-prompt.ts";
 export type * from "./types/agent-events.ts";
 export type * from "./types/api.ts";

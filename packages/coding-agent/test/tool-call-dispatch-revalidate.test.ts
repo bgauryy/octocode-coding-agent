@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { dispatchToolCall } from "../src/core/features/runner/emit-events.ts";
+import { SessionBus } from "../src/core/features/bus/session-bus.ts";
 import type { RunnerHost } from "../src/core/features/runner/types.ts";
 import type { ToolCallEvent, ToolCallEventResult } from "../src/core/features/types.ts";
 
 type Handler = (event: ToolCallEvent) => Promise<ToolCallEventResult | undefined>;
 
-/** One extension per handler, in load order, as `snapshotEventHandlers` reads them. */
+/** One feature per handler, in load order, as the session bus reads them. */
 function host(...handlers: Handler[]): RunnerHost {
+	const features = handlers.map((handler) => ({ handlers: new Map([["tool_call", [handler]]]) }));
 	return {
-		extensions: handlers.map((handler) => ({ handlers: new Map([["tool_call", [handler]]]) })),
+		extensions: features,
+		bus: new SessionBus(features as never),
 		createContext: () => ({}),
 		assertActive: () => undefined,
 	} as unknown as RunnerHost;

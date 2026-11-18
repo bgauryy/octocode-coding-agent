@@ -197,11 +197,11 @@ A call any PreToolUse hook would see (after `if`) never starts early ([early too
 
 Source-profile PreToolUse `updatedInput` replaces Bash and generic tool arguments after validation against the tool's schema; Codex requires `permissionDecision: "allow"` with a rewrite. Reservations and permissions are rechecked on the changed arguments, and `allow` never bypasses policy. Conflicting rewrites, invalid arguments and rewrites of a user-typed shell command refuse the call.
 
-| Tool    | Rewrite behavior                                                                                                                                                                                                                                                                                                               |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Bash    | Claude timeout in milliseconds maps to native seconds, `run_in_background` to `background`; advisory `description` is kept; a nonempty replacement drops omitted options; negative timeouts are rejected. Codex `tool_input` is only `command`; a rewrite changes that string and keeps native timeout and background options. |
-| `file`  | Claude Write, Edit and MultiEdit projections reverse into native queries and the whole batch is validated; `replace_all` maps to `edits[].replaceAll`. Codex patch rewrites use [canonical patch mode](native-features.md#canonical-patch-mode).                                                                               |
-| `wait` | A wait on `check.result` reaches PreToolUse as the `bash` call its command runs (`Bash` matcher; deny or ask apply, a rewrite is refused). A wait without one keeps its own name.                                                                                                                                                 |
+| Tool   | Rewrite behavior                                                                                                                                                                                                                                                                                                               |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bash   | Claude timeout in milliseconds maps to native seconds, `run_in_background` to `background`; advisory `description` is kept; a nonempty replacement drops omitted options; negative timeouts are rejected. Codex `tool_input` is only `command`; a rewrite changes that string and keeps native timeout and background options. |
+| `file` | Claude Write, Edit and MultiEdit projections reverse into native queries and the whole batch is validated; `replace_all` maps to `edits[].replaceAll`. Codex patch rewrites use [canonical patch mode](native-features.md#canonical-patch-mode).                                                                               |
+| `wait` | A wait on `check.result` reaches PreToolUse as the `bash` call its command runs (`Bash` matcher; deny or ask apply, a rewrite is refused). A wait without one keeps its own name.                                                                                                                                              |
 
 Host timeout defaults and background lifetime stay native.
 
@@ -374,6 +374,56 @@ Codex `Interrupt` runs once after an explicit interruption cancels active work a
 ### Failure and stop events
 
 `StopFailure` (Claude) observes a final error after automatic recovery: `error: "unknown"` plus the provider's message in `error_details` and `last_assistant_message`; no category inference. Success and abort emit nothing. Its output and exit status cannot block or continue the run. Native and Codex reject it.
+
+### Backlog events in the Octocode profile
+
+`TaskCreated`, `TaskCompleted` and `BacklogChange` are Octocode's own events; Claude Code's events of the first two names are not run from Claude or Codex files. They are written in the Octocode hooks file.
+
+| Event           | Fires                                                                          | Matcher                     | Can block |
+| --------------- | ------------------------------------------------------------------------------ | --------------------------- | --------- |
+| `TaskCreated`   | An item this session added                                                     | none                        | no        |
+| `TaskCompleted` | Before the `backlog` tool writes `done` or `close` of an item                  | `done` or `closed`          | yes       |
+| `BacklogChange` | Every audited change to an item, from any session, the web board or `/backlog` | The change kind (see below) | no        |
+
+`TaskCompleted` exits 2, or prints `{"decision": "block", "reason": "…"}`, to refuse the write: the item stays as it was and the agent reads the reason. It runs in the process that writes, so a write from the web board, `/backlog` or another session is not gated. A hook that fails or times out lets the write go ahead. Subagents run no hooks by default, so their completions are not gated.
+
+`BacklogChange` kinds: `created`, `claimed`, `released`, `reassigned`, `done`, `closed`, `reopened`, `paths_changed`, `blocked` (a prerequisite was added), `unblocked` (one was removed), `note`, `step` and `edited`. Every session that follows the backlog runs the hook once per change, so a change made by another session reaches your hook too; `own` says whether this session made it.
+
+```json
+{ "BacklogChange": [{ "matcher": "done|closed", "hooks": [{ "type": "command", "command": "jq -r .task_id" }] }] }
+```
+
+| Field                                                                                     | Events                         | Meaning                                                                                                               |
+| ----------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `task_id`, `task_subject`                                                                 | all three                      | The item (`B12`) and its title                                                                                        |
+| `task_description`, `teammate_name`                                                       | `TaskCompleted`                | The item's goal and its assignee                                                                                      |
+| `change`                                                                                  | all three                      | `done` or `closed` for `TaskCompleted`; the change kind otherwise                                                     |
+| `completion`, `close`                                                                     | `TaskCompleted`                | What the call carries, with secrets masked                                                                            |
+| `by`, `surface`, `own`, `audit_id`                                                        | `TaskCreated`, `BacklogChange` | Who made the change, through which surface (`tool`, `web`, `command`), and the audit row                              |
+| `state`, `assignee`, `before_assignee`, `parent_id`, `paths`, `version`, `target`, `note` | `TaskCreated`, `BacklogChange` | The item after the change; `target` names the prerequisite of `blocked` and `unblocked`, `note` the comment of `note` |
+
+### Monitor alerts in the Octocode profile
+
+`MonitorAlert` is Octocode's own event: it runs your hook once for each alert the monitor raised, and only observes (it cannot block or add context). The matcher is the rule id, a regex over the rules in the [attention rules](configuration.md#attention-rules) table (`/monitor` lists them with their counts). The hook follows the monitor's own alerts, which are already paced per rule (cooldowns, one note per band), so it adds no repeats of its own.
+
+The machine rules (`load`, `memory`, `swap`, `gpu`) describe the whole machine. Every session sees the same sample, so the hook runs only in the one process that holds the machine sampler, not in each open session. The other rules belong to the session they were raised in and run there.
+
+```json
+{
+	"MonitorAlert": [
+		{ "matcher": "swap|memory", "hooks": [{ "type": "command", "command": "jq -r .rule >> ~/monitor.log" }] }
+	]
+}
+```
+
+| Field       | Meaning                                                                                                        |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `rule`      | The rule id                                                                                                    |
+| `value`     | The reading that tripped it, in the rule's unit (load per CPU, percent, minutes)                               |
+| `threshold` | The setting it crossed                                                                                         |
+| `subject`   | What the alert is about (a job id, a child, a list of items), or `null`                                        |
+| `at`        | When it tripped, in epoch milliseconds                                                                         |
+| `delivered` | `false` when the alert did not reach the session (it ended, or the send was refused); the hook still runs once |
 
 ### Agent presence in the Octocode profile
 

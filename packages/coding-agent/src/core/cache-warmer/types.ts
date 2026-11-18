@@ -22,7 +22,7 @@ export interface CacheWarmingDecision {
 
 /**
  * Fired before each refresh with Octocode's decision filled in. Everything else an
- * extension might want (model, idle state, context size) is on the context.
+ * feature might want (model, idle state, context size) is on the context.
  */
 export interface CacheWarmingDecisionEvent extends Pick<
 	CacheWarmingDecision,
@@ -44,8 +44,8 @@ export interface CacheWarmingStatus {
 	nextWarmAt?: number;
 	/** The pending decision, or the decision that stopped warming. */
 	decision?: CacheWarmingDecision;
-	/** True when an extension changed `decision.action`. */
-	extensionOverride?: boolean;
+	/** True when a feature changed `decision.action`. */
+	featureOverride?: boolean;
 }
 
 /** The request whose prompt cache entry should be kept warm, exactly as it was sent. */
@@ -69,7 +69,7 @@ export interface ActiveRun extends CacheWarmRequest {
 	controller: AbortController;
 	phase: "streaming" | "idle";
 	nextWarmAt: number;
-	/** Set while a refresh that an extension forced is in flight. */
-	extensionOverride: boolean;
+	/** Set while a refresh that a feature forced is in flight. */
+	featureOverride: boolean;
 	timer?: ReturnType<typeof setTimeout>;
 }

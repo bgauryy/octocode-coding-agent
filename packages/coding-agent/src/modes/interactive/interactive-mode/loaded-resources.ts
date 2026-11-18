@@ -1,5 +1,5 @@
 /**
- * The startup listing of loaded context files, skills, MCP servers, prompts and extensions (one aligned row each, with
+ * The startup listing of loaded context files, skills, MCP servers, prompts and features (one aligned row each, with
  * a count; ctrl+o lists the items), followed by resource diagnostics.
  */
 
@@ -20,6 +20,7 @@ import {
 	skillListingBudgetChars,
 } from "../../../core/skills/listing-budget.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
+import { expandHint } from "../../../octocode/shared/text.ts";
 import { legend } from "../../../theme/page-kit.ts";
 import { theme } from "../../../theme/theme.ts";
 import { ExpandableText } from "./helpers.ts";
@@ -27,7 +28,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import { harnessRow, startupWarnings, viewRows } from "./discovery-rows.ts";
 import { sessionHarnesses } from "../../../core/discovery/vendors/prompt.ts";
 import { mcpRow } from "./loaded-mcp.ts";
-import { LoadedRow, type LoadedRowSpec, expandHint, loadedColumns } from "./loaded-row.ts";
+import { LoadedRow, type LoadedRowSpec, loadedColumns } from "./loaded-row.ts";
 import type { SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the loaded-resources listing. */
@@ -37,10 +38,10 @@ type LoadedResourcesHost = Pick<
 	| "formatContextPath"
 	| "formatDiagnostics"
 	| "formatDisplayPath"
-	| "formatExtensionDisplayPath"
+	| "formatFeatureDisplayPath"
 	| "formatScopeGroups"
 	| "getBuiltInCommandConflictDiagnostics"
-	| "getCompactExtensionLabels"
+	| "getCompactFeatureLabels"
 	| "getShortPath"
 	| "getStartupExpansionState"
 	| "loadedResourcesContainer"
@@ -59,7 +60,7 @@ export function disposeLoadedResources(container: Container): void {
 export function showLoadedResources(
 	host: LoadedResourcesHost,
 	options?: {
-		extensions?: SourcedPath[];
+		features?: SourcedPath[];
 		force?: boolean;
 		showDiagnosticsWhenQuiet?: boolean;
 	},
@@ -88,19 +89,19 @@ export function showLoadedResources(
 	const skillsResult = host.session.resourceLoader.getSkills();
 	const promptsResult = host.session.resourceLoader.getPrompts();
 	const themesResult = host.session.resourceLoader.getThemes();
-	const extensions =
-		options?.extensions ??
+	const features =
+		options?.features ??
 		host.session.resourceLoader
-			.getExtensions()
-			.extensions.filter((extension) => !extension.hidden)
-			.map((extension) => ({
-				path: extension.path,
-				sourceInfo: extension.sourceInfo,
+			.getFeatures()
+			.features.filter((feature) => !feature.hidden)
+			.map((feature) => ({
+				path: feature.path,
+				sourceInfo: feature.sourceInfo,
 			}));
 	const sourceInfos = new Map<string, SourceInfo>();
-	for (const extension of extensions) {
-		if (extension.sourceInfo) {
-			sourceInfos.set(extension.path, extension.sourceInfo);
+	for (const feature of features) {
+		if (feature.sourceInfo) {
+			sourceInfos.set(feature.path, feature.sourceInfo);
 		}
 	}
 	for (const skill of skillsResult.skills) {
@@ -121,7 +122,7 @@ export function showLoadedResources(
 
 	if (showListing) {
 		// Context, skills, prompts and the other file-based kinds come from the loaded-context view (one row per kind, with
-		// where each item came from); MCP follows live server status, and loaded extension code keeps its own labels.
+		// where each item came from); MCP follows live server status, and loaded feature code keeps its own labels.
 		// Collapsed, the listing shows what the agent includes now; agents, prompts, themes and code that does not run are
 		// listed only expanded.
 		view = loadedContextView(host, skillsResult.skills);
@@ -152,18 +153,18 @@ export function showLoadedResources(
 		});
 		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));
 		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/settings")));
-		if (extensions.length > 0) {
-			const groups = host.buildScopeGroups(extensions);
+		if (features.length > 0) {
+			const groups = host.buildScopeGroups(features);
 			const extList = () =>
 				host.formatScopeGroups(groups, {
-					formatPath: (item) => host.formatExtensionDisplayPath(item.path),
-					formatPackagePath: (item) => host.formatExtensionDisplayPath(host.getShortPath(item.path, item.sourceInfo)),
+					formatPath: (item) => host.formatFeatureDisplayPath(item.path),
+					formatPackagePath: (item) => host.formatFeatureDisplayPath(host.getShortPath(item.path, item.sourceInfo)),
 				});
-			const extensionLabels = host.getCompactExtensionLabels(extensions);
+			const featureLabels = host.getCompactFeatureLabels(features);
 			rows.push({
-				label: "Extensions",
-				count: () => extensions.length,
-				summary: () => `${formatCompactList(extensionLabels)} · /harness`,
+				label: "Features",
+				count: () => features.length,
+				summary: () => `${formatCompactList(featureLabels)} · /harness`,
 				expandedSummary: () => "/harness",
 				details: extList,
 			});
@@ -192,7 +193,18 @@ export function showLoadedResources(
 							() =>
 								theme.fg(
 									"dim",
-									`${legend(rows.filter((r) => (r.count() > 0 || r.showZero) && (!r.expandedOnly || host.getStartupExpansionState())).map((r) => r.state?.() ?? "ready"))} · ${expandHint()}`,
+									[
+										legend(
+											rows
+												.filter(
+													(r) => (r.count() > 0 || r.showZero) && (!r.expandedOnly || host.getStartupExpansionState()),
+												)
+												.map((r) => r.state?.() ?? "ready"),
+										),
+										expandHint("toggle details", undefined, false),
+									]
+										.filter(Boolean)
+										.join(" · "),
 								),
 							0,
 							0,
@@ -278,29 +290,26 @@ export function showLoadedResources(
 		});
 		addDiagnostics(warningTitle("Prompt conflicts"), "prompt", promptsResult.diagnostics);
 
-		const extensionDiagnostics: ResourceDiagnostic[] = [];
-		const extensionsResult = host.session.resourceLoader.getExtensions();
-		for (const error of extensionsResult.errors) {
-			extensionDiagnostics.push({ type: "error", message: error.error, path: error.path });
+		const featureDiagnostics: ResourceDiagnostic[] = [];
+		const featuresResult = host.session.resourceLoader.getFeatures();
+		for (const error of featuresResult.errors) {
+			featureDiagnostics.push({ type: "error", message: error.error, path: error.path });
 		}
 		// Code that is not loaded has its row in the listing above; the other loader warnings need this block.
 		for (const warning of showListing
-			? warningsBesideListing(extensionsResult.warnings)
-			: (extensionsResult.warnings ?? [])) {
-			extensionDiagnostics.push({ type: "warning", message: warning.warning, path: warning.path });
+			? warningsBesideListing(featuresResult.warnings)
+			: (featuresResult.warnings ?? [])) {
+			featureDiagnostics.push({ type: "warning", message: warning.warning, path: warning.path });
 		}
 
-		const commandDiagnostics = host.session.extensionRunner.getCommandDiagnostics();
-		extensionDiagnostics.push(...commandDiagnostics);
-		extensionDiagnostics.push(...host.getBuiltInCommandConflictDiagnostics(host.session.extensionRunner));
+		const commandDiagnostics = host.session.featureHost.getCommandDiagnostics();
+		featureDiagnostics.push(...commandDiagnostics);
+		featureDiagnostics.push(...host.getBuiltInCommandConflictDiagnostics(host.session.featureHost));
 
-		const shortcutDiagnostics = host.session.extensionRunner.getShortcutDiagnostics();
-		extensionDiagnostics.push(...shortcutDiagnostics);
-
-		if (extensionDiagnostics.length > 0) {
-			const warningLines = () => host.formatDiagnostics(extensionDiagnostics, sourceInfos);
+		if (featureDiagnostics.length > 0) {
+			const warningLines = () => host.formatDiagnostics(featureDiagnostics, sourceInfos);
 			const issues = new ThemedText(
-				() => `${theme.fg("warning", warningTitle("Extension issues"))}\n${warningLines()}`,
+				() => `${theme.fg("warning", warningTitle("Feature issues"))}\n${warningLines()}`,
 				0,
 				0,
 			);

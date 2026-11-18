@@ -16,6 +16,14 @@ export interface ProfileRange {
 	to: number;
 }
 
+/** Paging the Messages tab past the last 30 messages of ten minutes the live list holds. */
+interface OlderMessages {
+	/** False once a page was loaded and no older one remains. */
+	more: boolean;
+	loading: boolean;
+	load(): void;
+}
+
 export interface PanelProps {
 	/** Tree order: the coordinator, then each agent under its parent. */
 	agents: ProfileAgent[];
@@ -29,4 +37,5 @@ export interface PanelProps {
 	onRange(range: ProfileRange | undefined): void;
 	/** The toolbar's filter text. */
 	filter: string;
+	older?: OlderMessages;
 }

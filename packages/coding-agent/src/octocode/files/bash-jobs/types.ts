@@ -40,7 +40,7 @@ export interface BashJob {
 	verification?: VerificationReceipt;
 	/** Seconds after which the job is stopped; unset: it runs until it exits, is stopped, or the session ends. */
 	timeout?: number;
-	/** Why the extension stopped it, when it did. */
+	/** Why the feature stopped it, when it did. */
 	stopped?: "timeout" | "user" | "session end" | "reload" | "run end";
 	/** Its process group is gone; only its last output may still be draining before `done` resolves. */
 	exited?: boolean;

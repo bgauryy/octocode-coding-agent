@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assistantMsg, userMsg } from "../../utilities.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("tree cancellation compaction state", () => {
 	const harnesses: Harness[] = [];
@@ -13,11 +14,11 @@ describe("tree cancellation compaction state", () => {
 
 	it("clears branch summary state when session_before_tree cancels navigation", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_before_tree", () => ({ cancel: true }));
+					api.bus.on("session_before_tree", () => ({ cancel: true }));
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 

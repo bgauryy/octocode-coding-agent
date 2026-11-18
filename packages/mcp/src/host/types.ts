@@ -1,8 +1,7 @@
 /**
- * The slice of the host's extension contract that the MCP workspace uses, as structural types. The host's own types
- * (`ExtensionAPI`, `ExtensionContext`, `ToolDefinition`, `Theme`) satisfy them without being imported here: a separate
- * extension-contract leaf is planned, and until it exists this file is the one place the MCP workspace names the
- * host's shapes. Add a member only when MCP code uses it.
+ * The slice of the host's feature contract that the MCP workspace uses, as structural types. The host's own types
+ * (`FeatureSetup`, `FeatureContext`, `ToolDefinition`, `Theme`) satisfy them without being imported here: this file is
+ * the one place the MCP workspace names the host's shapes. Add a member only when MCP code uses it.
  */
 
 import type { ToolDisplay } from "@octocodeai/octocode-contracts";
@@ -175,29 +174,34 @@ interface McpRegisteredCommand {
 	handler: (args: string, ctx: McpCommandContext) => Promise<void>;
 }
 
-/** The extension API MCP registers its tools, commands, servers and event handlers through. */
-export interface McpExtensionApi {
-	on(event: string, handler: (event: any, ctx: McpContext) => unknown): void;
-	registerTool<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(
-		tool: McpToolDefinition<TParams, TDetails, TState>,
-	): void;
-	registerTools?<TDetails = unknown>(tools: readonly McpToolDefinition<TSchema, TDetails>[]): void;
-	registerCommand(name: string, options: McpRegisteredCommand): void;
-	registerToolRenderer(resolver: McpToolRendererResolver): void;
-	getActiveTools(): string[];
-	getAllTools(): McpToolInfo[];
-	setActiveTools(toolNames: string[]): void;
-	selectsTools?(prefix: string, activeByDefault: boolean): boolean;
-	getSettings?(): { mcpPresentation?: McpPresentationMode; mcpExposure?: string };
-	getSkillDirectories(): string[];
-	registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
-	unregisterMcpServer(name: string): void;
-	getMcpServers(): RegisteredMcpServer[];
-	/** Sends text as the user's next message (`/mcp prompt`). */
-	sendUserMessage?(content: string): void;
-	/** Saves a record in the session that no model sees (the in-use set, `recent-session.ts`). */
-	appendEntry?(customType: string, data?: unknown): void;
-	events: EventBus;
+/** The feature setup MCP registers its tools, commands, servers and event handlers through. */
+export interface McpFeatureApi {
+	bus: { on(event: string, handler: (event: any, ctx: McpContext) => unknown): void };
+	tools: {
+		register<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(
+			tool: McpToolDefinition<TParams, TDetails, TState>,
+		): void;
+		registerAll?<TDetails = unknown>(tools: readonly McpToolDefinition<TSchema, TDetails>[]): void;
+		getActive(): string[];
+		getAll(): McpToolInfo[];
+		setActive(toolNames: string[]): void;
+		selects?(prefix: string, activeByDefault: boolean): boolean;
+	};
+	commands: { register(name: string, options: McpRegisteredCommand): void };
+	renderers: { tool(resolver: McpToolRendererResolver): void };
+	settings: { get?(): { mcpPresentation?: McpPresentationMode; mcpExposure?: string } };
+	resources: { getSkillDirectories(): string[] };
+	mcpServers: {
+		register(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
+		list(): RegisteredMcpServer[];
+	};
+	session: {
+		/** Sends text as the user's next message (`/mcp prompt`). */
+		sendUserMessage?(content: string): void;
+		/** Saves a record in the session that no model sees (the in-use set, `recent-session.ts`). */
+		appendEntry?(customType: string, data?: unknown): void;
+	};
+	channels: EventBus;
 }
 
-export type McpExtensionFactory = (api: McpExtensionApi) => void | Promise<void>;
+export type McpFeatureFactory = (api: McpFeatureApi) => void | Promise<void>;

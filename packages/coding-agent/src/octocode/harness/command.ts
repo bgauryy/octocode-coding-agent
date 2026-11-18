@@ -1,13 +1,13 @@
 import path from "node:path";
 import type { AutocompleteItem } from "@octocodeai/octocode-tui";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { getMcpSessionStatus, getMcpSwitch, requestMcpReload } from "../../../../mcp/src/api.ts";
+import { getMcpSessionStatus, getMcpSwitch, getMcpToolsPage, requestMcpReload } from "../../../../mcp/src/api.ts";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { createConfiguration } from "../../configuration/index.ts";
 import { buildInventory, type InventoryItem, renderInventory } from "./inventory.ts";
 import { withReviewState } from "./review-state.ts";
 import { type SwitchScope, switchItem } from "../../core/extensibility/switch.ts";
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { showLoadedConfig } from "../discovery/config-command.ts";
 import { hookEventsReport } from "../hooks/register/report.ts";
@@ -16,7 +16,6 @@ import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { confirmAction, successNotice } from "../shared/page.ts";
-import { createMcpToolsSource } from "./mcp-tools.ts";
 import { HarnessPicker } from "./picker.ts";
 import { HARNESS_SECTIONS, type HarnessSection, sectionOf } from "./sections.ts";
 import { switchHarness, switchOnPreview } from "./vendor-items.ts";
@@ -27,7 +26,6 @@ const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
 	hooks: (item) => item.kind === "hooks" || item.kind === "hook-file" || item.kind === "hook",
 	skills: (item) => item.kind === "skill",
 	mcp: (item) => item.kind === "mcp",
-	extensions: (item) => item.kind === "extension",
 	sources: (item) => sectionOf(item) === "sources",
 };
 /** `/harness <section>` opens the picker on that section; outside the terminal it prints it. */
@@ -38,7 +36,6 @@ const SUBCOMMANDS: Array<[string, string]> = [
 	["skills", "Open the picker on Skills"],
 	["mcp", "Open the picker on MCPs"],
 	["sources", "Open the picker on Sources"],
-	["extensions", "Open the picker on Extensions"],
 	["list", "Print the inventory, or one section"],
 	["install", "Install a marketplace plugin"],
 	["update", "Update a marketplace plugin"],
@@ -102,10 +99,10 @@ const where = (scope: SwitchScope) => (scope === "project" ? "for this project" 
  * After a harness switch is saved, the MCP owner re-reads its files and connects or drops the difference at once (a
  * harness's servers need no reload); one line says what changed.
  */
-async function reloadMcp(api: ExtensionAPI): Promise<string> {
+async function reloadMcp(api: FeatureSetup): Promise<string> {
 	let result: Awaited<ReturnType<typeof requestMcpReload>>;
 	try {
-		result = await requestMcpReload(api.events);
+		result = await requestMcpReload(api.channels);
 	} catch (error) {
 		return `Warning: the switches are saved, but the MCP reload failed (${errorMessage(error)}); run /reload to apply them.`;
 	}
@@ -120,21 +117,21 @@ async function reloadMcp(api: ExtensionAPI): Promise<string> {
 }
 
 /**
- * `/harness`: one place to see and switch what extends a session: plugins, hooks, skills, MCP servers and extensions.
- * Settings-backed switches (plugins, hooks, skills, extensions) apply on `/reload`, so a batch of them costs one reload
+ * `/harness`: one place to see and switch what extends a session: plugins, hooks, skills and MCP servers.
+ * Settings-backed switches (plugins, hooks, skills) apply on `/reload`, so a batch of them costs one reload
  * and one prompt-cache rebuild; MCP switches go to the MCP owner, which opens or closes the connection at once.
  */
-export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, api: ExtensionAPI): void {
-	async function load(ctx: ExtensionCommandContext) {
+export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, api: FeatureSetup): void {
+	async function load(ctx: CommandContext) {
 		const agentDir = getAgentDir();
 		const manager = SettingsManager.create(ctx.cwd, agentDir, { projectTrusted: ctx.isProjectTrusted() });
 		const inventory = await buildInventory({
 			cwd: ctx.cwd,
 			agentDir,
-			settings: api.getSettings(),
+			settings: api.settings.get(),
 			manager,
 			projectTrusted: ctx.isProjectTrusted(),
-			mcp: getMcpSessionStatus(api.events),
+			mcp: getMcpSessionStatus(api.channels),
 		});
 		inventory.items = withReviewState(inventory.items);
 		return { agentDir, manager, inventory };
@@ -146,12 +143,12 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 	 * apply at once. Nothing is offered when the writes left the files as they were.
 	 */
 	async function finish(
-		ctx: ExtensionCommandContext,
+		ctx: CommandContext,
 		batch: { lines: string[]; failed: boolean; settingsChanged: boolean; mcpChanges: McpChange[] },
 	): Promise<void> {
 		const { lines, settingsChanged, mcpChanges } = batch;
 		let failed = batch.failed;
-		const mcp = getMcpSwitch(api.events);
+		const mcp = getMcpSwitch(api.channels);
 		const runMcp = async (saveOnly: boolean) => {
 			for (const change of mcpChanges) {
 				const result = mcp
@@ -183,7 +180,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		say(ctx, `${lines.join("\n")}${settingsChanged ? "\nRun /reload to apply." : ""}`, failed ? "warning" : "info");
 	}
 
-	async function marketplace(words: string[], ctx: ExtensionCommandContext): Promise<void> {
+	async function marketplace(words: string[], ctx: CommandContext): Promise<void> {
 		// Approval is asked in the terminal UI; without one (print, RPC) the user passes --yes.
 		const lines: string[] = [];
 		const code = await runPluginCommand(words, {
@@ -203,7 +200,10 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 		);
 	}
 
-	async function picker(ctx: ExtensionCommandContext, section: HarnessSection = "overview"): Promise<void> {
+	async function picker(ctx: CommandContext, section: HarnessSection = "overview", initialId?: string): Promise<void> {
+		const openTools = getMcpToolsPage(api.channels);
+		/** The server whose `/mcp` tools page opens once the picker closed. */
+		let toolsRequest: { server: string; scope: SwitchScope } | undefined;
 		let loaded: Awaited<ReturnType<typeof load>> | undefined;
 		let before = "";
 		let closed = false;
@@ -247,7 +247,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				return switchHarness(item, on, scope, manager, { cwd: ctx.cwd, agentDir });
 			}
 			if (item.kind !== "mcp") return switchItem(item, on, scope, manager, { cwd: ctx.cwd, agentDir, force });
-			if (!getMcpSwitch(api.events)) throw new Error("MCP is not running in this session.");
+			if (!getMcpSwitch(api.channels)) throw new Error("MCP is not running in this session.");
 			pending.set(item.id, { item, on, scope, was: pending.get(item.id)?.was ?? item.on });
 			return `${item.label} switches ${on ? "on" : "off"} ${where(scope)} when this list closes.`;
 		};
@@ -266,19 +266,18 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 								cwd: ctx.cwd,
 								agentDir: loaded.agentDir,
 								projectTrusted: ctx.isProjectTrusted(),
-								settings: api.getSettings(),
+								settings: api.settings.get(),
 							}),
-						mcpTools: createMcpToolsSource({
-							ctx: () => {
-								if (!loaded) throw new Error("Harness inventory is not ready.");
-								return {
-									cwd: ctx.cwd,
-									agentDir: loaded.agentDir,
-									settings: loaded.manager,
-									projectTrusted: ctx.isProjectTrusted(),
-								};
-							},
-						}),
+						initialId,
+						...(openTools
+							? {
+									openTools: (server: string, scope: SwitchScope) => {
+										toolsRequest = { server, scope };
+										closed = true;
+										done(false);
+									},
+								}
+							: {}),
 						paths: {
 							global: `${homeTilde(path.join(getAgentDir(), "settings.json"))} (MCP: its mcp.json)`,
 							project: `${path.join(CONFIG_DIR_NAME, "settings.json")} (MCP: ${path.join(CONFIG_DIR_NAME, "mcp.json")})`,
@@ -318,11 +317,14 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			settingsChanged,
 			mcpChanges,
 		});
+		if (!toolsRequest || !openTools) return;
+		await openTools(ctx, toolsRequest.server, toolsRequest.scope);
+		return picker(ctx, "mcp", `mcp:${toolsRequest.server}`);
 	}
 
 	commands.add("harness", {
 		description: "Other agents' skills, MCPs, hooks and plugins",
-		argumentHint: "[overview|skills|mcp|hooks|sources|extensions|list|install|update|remove|config]",
+		argumentHint: "[overview|skills|mcp|hooks|sources|list|install|update|remove|config]",
 		// `enable` and `disable` stay so their moved-to-/configuration hint still shows.
 		argumentWords: [...SUBCOMMANDS.map(([name]) => name), "enable", "disable"],
 		dialog: "interaction",

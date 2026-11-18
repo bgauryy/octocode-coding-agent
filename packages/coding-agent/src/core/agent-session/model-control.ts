@@ -133,7 +133,7 @@ export class SessionModelControl {
 		reason?: string,
 	): Promise<void> {
 		if (modelsAreEqual(previousModel, nextModel)) return;
-		await this.host.session.extensionRunner.emit({
+		await this.host.session.featureHost.emit({
 			type: "model_select",
 			model: nextModel,
 			previousModel,
@@ -278,7 +278,7 @@ export class SessionModelControl {
 		if (isChanging) {
 			session.sessionManager.appendThinkingLevelChange(effectiveLevel);
 			this.host.emit({ type: "thinking_level_changed", level: effectiveLevel });
-			void session.extensionRunner.emit({
+			void session.featureHost.emit({
 				type: "thinking_level_select",
 				level: effectiveLevel,
 				previousLevel,

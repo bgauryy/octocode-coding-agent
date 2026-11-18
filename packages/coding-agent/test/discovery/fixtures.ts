@@ -74,7 +74,6 @@ export function createLoader(sandbox: Sandbox, projectTrusted: boolean): Default
 	return new DefaultResourceLoader({
 		cwd: sandbox.cwd,
 		agentDir: sandbox.agentDir,
-		nativeFeatures: false,
 		settingsManager: SettingsManager.create(sandbox.cwd, sandbox.agentDir, { projectTrusted }),
 	});
 }

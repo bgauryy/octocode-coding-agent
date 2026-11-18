@@ -7,20 +7,21 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentSessionServices } from "../src/core/agent-session-services.ts";
 import { createSessionFromServices } from "../src/core/agent-session/create-session.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import type { InlineExtension } from "../src/core/features/index.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "./octocode/fake-research-roles.ts";
 import type { CreateTestSessionOptions } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { type TestFeatureInput, testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 /**
  * Octocode's only core tool is `bash`. These inactive extension tools stand in for further built-in tools: a
  * `defaultTools` entry, `--tools` or a recorded loadout activates them by name like any registered tool.
  */
-const extraTools: InlineExtension = (api) => {
+const extraTools: TestFeatureInput = (api) => {
 	for (const name of ["alpha", "beta", "gamma"]) {
-		api.registerTool({
+		api.tools.register({
 			name,
 			label: name,
 			description: `Extra tool ${name}`,
@@ -53,16 +54,16 @@ describe("defaultTools setting", () => {
 	async function createSession(
 		defaultTools: string[] | undefined,
 		options: ToolOptions = {},
-		extensionFactories: InlineExtension[] = [],
-		nativeFeatures = false,
+		factories: TestFeatureInput[] = [],
+		native = false,
 	) {
 		const settingsManager = SettingsManager.inMemory({ defaultTools });
 		const resourceLoader = new DefaultResourceLoader({
-			nativeFeatures,
+			nativeFeatures: native ? nativeFeatureSet() : undefined,
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories,
+			features: testFeatures(factories),
 		});
 		await resourceLoader.reload();
 
@@ -95,8 +96,8 @@ describe("defaultTools setting", () => {
 	});
 
 	it("applies explicit tool selections to native features while preserving user extension tools", async () => {
-		const extension: InlineExtension = (api) => {
-			api.registerTool({
+		const feature: TestFeatureInput = (api) => {
+			api.tools.register({
 				name: "user_tool",
 				label: "User tool",
 				description: "A user extension tool",
@@ -105,7 +106,7 @@ describe("defaultTools setting", () => {
 			});
 		};
 		for (const options of [{}, { noTools: "builtin" as const }, { tools: ["file"] }]) {
-			const session = await createSession(["file"], options, [extension], true);
+			const session = await createSession(["file"], options, [feature], true);
 			try {
 				expect(session.getAllTools().map((tool) => tool.name)).toContain("file");
 				expect(session.getActiveToolNames().sort()).toEqual(
@@ -164,7 +165,7 @@ describe("defaultTools setting", () => {
 		async ({ defaults, options, expected }) => {
 			const session = await createSession(defaults, options, [], true);
 			try {
-				await session.bindExtensions({});
+				await session.bindFeatures({});
 				expect(
 					session
 						.getActiveToolNames()
@@ -181,7 +182,7 @@ describe("defaultTools setting", () => {
 						.sort(),
 				).toEqual(expected);
 			} finally {
-				await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+				await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 				session.dispose();
 			}
 		},
@@ -192,12 +193,12 @@ describe("defaultTools setting", () => {
 		async ({ tools }) => {
 			const session = await createSession([], { tools }, [], true);
 			try {
-				await session.bindExtensions({});
+				await session.bindFeatures({});
 				// `agent` brings its companion `timer` (docs/native-features.md, companionTools).
 				const companions = tools.includes("agent") ? ["wait"] : [];
 				expect(session.getActiveToolNames().sort()).toEqual([...tools, ...companions].sort());
 			} finally {
-				await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+				await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 				session.dispose();
 			}
 		},
@@ -258,7 +259,7 @@ describe("defaultTools setting", () => {
 			{},
 			[
 				(api) =>
-					api.registerTool({
+					api.tools.register({
 						name,
 						label: "read_file",
 						description: "Read a source file",
@@ -270,10 +271,10 @@ describe("defaultTools setting", () => {
 			true,
 		);
 		try {
-			await session.bindExtensions({});
+			await session.bindFeatures({});
 			publishRoles([RESEARCH_ENTRY]);
 			const input = { queries: [{ path: file }] };
-			const blocked = await session.extensionRunner.emitToolCall({
+			const blocked = await session.featureHost.emitToolCall({
 				type: "tool_call",
 				toolName: name,
 				toolCallId: "fetch",
@@ -281,7 +282,7 @@ describe("defaultTools setting", () => {
 			});
 			expect(blocked?.block).not.toBe(true);
 			const structuredContent = { results: [{ data: { path: file, content: "1\tbefore\n", totalLines: 1 } }] };
-			const result = await session.extensionRunner.emitToolResult({
+			const result = await session.featureHost.emitToolResult({
 				type: "tool_result",
 				toolName: name,
 				toolCallId: "fetch",
@@ -306,7 +307,7 @@ describe("defaultTools setting", () => {
 			expect(readFileSync(file, "utf8")).toBe("after\n");
 		} finally {
 			publishRoles([]);
-			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+			await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 		}
 	});
@@ -314,7 +315,7 @@ describe("defaultTools setting", () => {
 	it("activates an inactive extension tool with +name", async () => {
 		const session = await createSession(["+inactive_tool"], {}, [
 			(api) => {
-				api.registerTool({
+				api.tools.register({
 					name: "inactive_tool",
 					label: "Inactive Tool",
 					description: "Extension tool registered inactive",
@@ -345,15 +346,15 @@ describe("defaultTools setting", () => {
 			},
 			[
 				(api) => {
-					api.registerTool({
+					api.tools.register({
 						name: "static_tool",
 						label: "Static Tool",
 						description: "Statically registered extension tool",
 						parameters: Type.Object({}),
 						execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 					});
-					api.on("session_start", () => {
-						api.registerTool({
+					api.bus.on("session_start", () => {
+						api.tools.register({
 							name: "dynamic_tool",
 							label: "Dynamic Tool",
 							description: "Dynamically registered extension tool",
@@ -364,7 +365,7 @@ describe("defaultTools setting", () => {
 				},
 			],
 		);
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 
 		expect(session.getActiveToolNames().sort()).toEqual(["bash", "dynamic_tool", "sdk_tool", "static_tool"]);
 		expect(session.getAllTools().map((tool) => tool.name)).toEqual(
@@ -389,8 +390,8 @@ describe("defaultTools setting", () => {
 	});
 
 	it("applies +name and -name tool options to the default selection", async () => {
-		const inactiveTool: InlineExtension = (api) => {
-			api.registerTool({
+		const inactiveTool: TestFeatureInput = (api) => {
+			api.tools.register({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -398,7 +399,7 @@ describe("defaultTools setting", () => {
 				execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 				defaultActive: false,
 			});
-			api.registerTool({
+			api.tools.register({
 				name: "active_tool",
 				label: "Active Tool",
 				description: "Extension tool registered active",
@@ -433,8 +434,8 @@ describe("defaultTools setting", () => {
 	});
 
 	describe("reload", () => {
-		const inactiveTool: InlineExtension = (api) => {
-			api.registerTool({
+		const inactiveTool: TestFeatureInput = (api) => {
+			api.tools.register({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -450,11 +451,10 @@ describe("defaultTools setting", () => {
 		async function createFileSession(options: ToolOptions = {}) {
 			const settingsManager = SettingsManager.create(tempDir, agentDir);
 			const resourceLoader = new DefaultResourceLoader({
-				nativeFeatures: false,
 				cwd: tempDir,
 				agentDir,
 				settingsManager,
-				extensionFactories: [inactiveTool, extraTools],
+				features: testFeatures([inactiveTool, extraTools]),
 			});
 			await resourceLoader.reload();
 			return (
@@ -522,8 +522,8 @@ describe("defaultTools setting", () => {
 	});
 
 	describe("resume", () => {
-		const extensionTools: InlineExtension = (api) => {
-			api.registerTool({
+		const featureTools: TestFeatureInput = (api) => {
+			api.tools.register({
 				name: "inactive_tool",
 				label: "Inactive Tool",
 				description: "Extension tool registered inactive",
@@ -531,7 +531,7 @@ describe("defaultTools setting", () => {
 				execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 				defaultActive: false,
 			});
-			api.registerTool({
+			api.tools.register({
 				name: "active_tool",
 				label: "Active Tool",
 				description: "Extension tool registered active",
@@ -555,11 +555,10 @@ describe("defaultTools setting", () => {
 		async function resume(sessionManager: SessionManager, options: ToolOptions = {}) {
 			const settingsManager = SettingsManager.inMemory();
 			const resourceLoader = new DefaultResourceLoader({
-				nativeFeatures: false,
 				cwd: tempDir,
 				agentDir,
 				settingsManager,
-				extensionFactories: [extensionTools, extraTools],
+				features: testFeatures([featureTools, extraTools]),
 			});
 			await resourceLoader.reload();
 			return (
@@ -625,7 +624,7 @@ describe("defaultTools setting", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			resourceLoaderOptions: { nativeFeatures: false, extensionFactories: [extraTools] },
+			resourceLoaderOptions: { features: testFeatures([extraTools]) },
 		});
 		const { session } = await createSessionFromServices({
 			services,

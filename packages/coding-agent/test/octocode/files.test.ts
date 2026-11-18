@@ -8,7 +8,7 @@ import { stripAnsi } from "../../src/utils/ansi.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/outcome.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { validateFileInput } from "../../src/octocode/tool-input/file-input.ts";
 import { BASH_READER, FileGuard, mcpReader, returnedContent } from "../../src/octocode/files/tool/guard.ts";
 import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
@@ -17,7 +17,7 @@ import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { readPaths, resolveToolPath } from "../../src/octocode/shared/home.ts";
 import { capChars } from "../../src/octocode/shared/util.ts";
-import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
+import { fakeCtx, fakePermission, theme, asSetup } from "./fake-host.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 import { tmp } from "./helpers.ts";
 
@@ -45,13 +45,13 @@ describe("file tool one-of input", () => {
 	it("refuses both and neither with the taught shape", async () => {
 		let tool: { description: string; execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission(),
 		);
@@ -319,7 +319,10 @@ describe("file tool", () => {
 		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
-			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
+			asSetup({
+				registerTool: () => undefined,
+				on: (name: string, handler: never) => handlers.set(name, handler),
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -338,7 +341,10 @@ describe("file tool", () => {
 		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
-			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
+			asSetup({
+				registerTool: () => undefined,
+				on: (name: string, handler: never) => handlers.set(name, handler),
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -372,7 +378,10 @@ describe("file tool", () => {
 		const guard = researchGuard();
 		const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 		registerFileTool(
-			{ registerTool: () => undefined, on: (name: string, handler: never) => handlers.set(name, handler) } as never,
+			asSetup({
+				registerTool: () => undefined,
+				on: (name: string, handler: never) => handlers.set(name, handler),
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -396,13 +405,13 @@ describe("file tool", () => {
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		const guard = researchGuard();
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -436,13 +445,13 @@ describe("file tool", () => {
 			  }
 			| undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission(),
 		);
@@ -471,13 +480,13 @@ describe("file tool", () => {
 		guard.record(file);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -523,13 +532,13 @@ describe("file tool", () => {
 			| { execute: (...args: unknown[]) => Promise<{ details: { outcomes: Array<{ diff?: string }> } }> }
 			| undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -569,13 +578,13 @@ describe("file tool", () => {
 					? { allowed: false, message: "denied here", via: "mode" }
 					: { allowed: true, via: "mode" }) as never);
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			guard,
 			permission,
 		);
@@ -609,13 +618,13 @@ describe("file tool", () => {
 			guard.record(file, { sha256: sha256(content), size: Buffer.byteLength(content) });
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: () => undefined,
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 			);
@@ -693,13 +702,13 @@ describe("file tool", () => {
 		const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: (name: string, handler: never) => handlers.set(name, handler),
-			} as never,
+			}) as never,
 			guard,
 			fakePermission(),
 		);
@@ -854,13 +863,13 @@ describe("file tool", () => {
 			const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: (name: string, handler: never) => handlers.set(name, handler),
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 			);
@@ -975,13 +984,13 @@ describe("file tool", () => {
 			fs.writeFileSync(file, "one\ntwo\nthree\n");
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: () => undefined,
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 			);
@@ -1221,13 +1230,13 @@ describe("file tool", () => {
 			const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<void>>();
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				{
+				asSetup({
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
 					},
 					on: (name: string, handler: never) => handlers.set(name, handler),
-				} as never,
+				}) as never,
 				guard,
 				fakePermission(),
 				checkpoints,
@@ -1286,13 +1295,13 @@ describe("file tool", () => {
 		const outside = tmp();
 		let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission(),
 		);
@@ -1320,13 +1329,13 @@ describe("file tool", () => {
 		expect(allowing.ui.selects).toEqual(["Allow once"]);
 		let full: typeof tool;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					full = t;
 					return full;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission("full"),
 		);
@@ -1350,13 +1359,13 @@ describe("file tool", () => {
 		vi.spyOn(checkpoints, "settle").mockRejectedValue(new Error("disk full"));
 		let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission(),
 			checkpoints,
@@ -1430,13 +1439,13 @@ describe("file change rendering", () => {
 			  }
 			| undefined;
 		registerFileTool(
-			{
+			asSetup({
 				registerTool: (definition: never) => {
 					tool = definition;
 					return tool;
 				},
 				on: () => undefined,
-			} as never,
+			}) as never,
 			researchGuard(),
 			fakePermission(),
 		);
@@ -1477,16 +1486,16 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		expect(single).toBe("✓ File(edit src/a.ts · 2 edits) · 1.2s");
+		expect(single).toBe("✓ File(edit src/a.ts) · 2 edits · 1.2s");
 		const expandedSingle = (callArgs: object) =>
 			tool!
 				.renderCall(callArgs, theme, { lastComponent: undefined, expanded: true, isPartial: false })
 				.render(120)
 				.join("\n");
 		expect(expandedSingle({ reason: "Fix the loop bounds", queries: [args.queries[0]] })).toBe(
-			"✓ File(edit src/a.ts · 2 edits)",
+			"✓ File(edit src/a.ts) · 2 edits",
 		);
-		expect(expandedSingle({ queries: [args.queries[0]] })).toBe("✓ File(edit src/a.ts · 2 edits)");
+		expect(expandedSingle({ queries: [args.queries[0]] })).toBe("✓ File(edit src/a.ts) · 2 edits");
 		const diff = Array.from({ length: 30 }, (_, index) => `+${index} added line ${index}`).join("\n");
 		const result = {
 			content: [],
@@ -1505,7 +1514,8 @@ describe("file change rendering", () => {
 			.render(120)
 			.join("\n");
 		expect(collapsed.split("\n")[0]).toBe("  ⎿  Applied 1 of 2 changes");
-		expect(collapsed).toMatch(/✓ edit src\/a\.ts \+30(?! -)/);
+		// Each file in a several-file result carries no mark of its own unless it failed.
+		expect(collapsed).toMatch(/^ {5}edit src\/a\.ts \+30$/m);
 		expect(collapsed).toMatch(/… \+\d+ diff lines \(ctrl\+o to expand\)/);
 		expect(collapsed).toMatch(/✗ write test\/a\.test\.ts: has not been read/);
 		expect(collapsed).not.toContain("added line");
@@ -1519,8 +1529,9 @@ describe("file change rendering", () => {
 			.render(120)
 			.join("\n")
 			.split("\n");
-		expect(oneCollapsed[0]).toMatch(/^ {2}⎿ {2}✓ edit src\/a\.ts \+30$/);
-		expect(oneCollapsed).toHaveLength(1 + 6 + 1);
+		// One change: the header names the path, so the outcome row is the size alone, then a five-line diff preview.
+		expect(oneCollapsed[0]).toMatch(/^ {2}⎿ {2}\+30$/);
+		expect(oneCollapsed).toHaveLength(1 + 5 + 1);
 		expect(oneCollapsed.at(-1)).toMatch(/… \+\d+ lines \(ctrl\+o to expand\)/);
 		const failed = tool!
 			.renderResult(

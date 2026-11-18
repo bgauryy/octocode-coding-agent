@@ -41,6 +41,8 @@ export interface CapturedRequest {
 	hash: string;
 	bytes: number;
 	usage?: Usage;
+	/** USD for this request when the gateway has a price table (`caps.pricing`); estimated when `usage.estimated`. */
+	costUsd?: number;
 }
 
 export type EventKind =
@@ -54,7 +56,8 @@ export type EventKind =
 	| "spawn"
 	| "report"
 	| "compaction"
-	| "cut";
+	| "cut"
+	| "guard";
 
 export interface TraceEvent {
 	seq: number;
@@ -67,6 +70,12 @@ export interface TraceEvent {
 	server?: string;
 }
 
+/** A position in a trace (`Trace.mark()`). */
+export interface TraceMark {
+	requests: number;
+	events: number;
+}
+
 export interface Span {
 	id: string;
 	role: string;
@@ -74,16 +83,49 @@ export interface Span {
 	reported: boolean;
 }
 
+const EVENT_PROBE_KINDS = new Set<EventKind>([
+	"skill_load",
+	"memory_read",
+	"memory_write",
+	"spawn",
+	"report",
+	"compaction",
+]);
+
 /** One run: every model request the gateway saw and every event agents, mocks and the gateway reported. */
 export class Trace {
 	readonly requests: CapturedRequest[] = [];
 	readonly events: TraceEvent[] = [];
 	readonly spans = new Map<string, Span>();
+	/**
+	 * What this run can see: `"events"` (the adapter reports harness events), `` `mcp:${server}` `` (a mock server),
+	 * `"guards"`, and `"lineage"` (the gateway infers agents from header-less requests). A matcher that needs a probe
+	 * throws when it is absent.
+	 */
+	readonly probes = new Set<string>();
+	/** A cap or a guard stopped part of the run (`cut` and `guard` events say which). */
 	cut = false;
 	private seq = 0;
 
-	record(e: Omit<TraceEvent, "seq">): TraceEvent {
-		const full = { ...e, seq: this.seq++ };
+	/** Declare that a source (adapter, mock) reports into this trace, so "nothing happened" is evidence. */
+	observe(probe: string): void {
+		this.probes.add(probe);
+	}
+
+	/**
+	 * Append an event. A harness event kind (skill, memory, spawn, report, compaction) marks the `events` probe as
+	 * wired, unless `inferred`: the gateway's own lineage guesses (`data.inferred: true`) never claim that the
+	 * harness reports events.
+	 */
+	record(e: Omit<TraceEvent, "seq">, opts: { inferred?: boolean } = {}): TraceEvent {
+		const data =
+			opts.inferred && (e.data === undefined || (typeof e.data === "object" && !Array.isArray(e.data)))
+				? { ...(e.data as Record<string, unknown> | undefined), inferred: true }
+				: opts.inferred
+					? { value: e.data, inferred: true }
+					: e.data;
+		const full = { ...e, ...(data === undefined ? {} : { data }), seq: this.seq++ };
+		if (EVENT_PROBE_KINDS.has(e.kind) && !opts.inferred) this.probes.add("events");
 		this.events.push(full);
 		return full;
 	}
@@ -103,11 +145,34 @@ export class Trace {
 		view.events.push(...this.events.filter((e) => e.agent === role));
 		for (const s of this.spans.values()) if (s.role === role) view.addSpan(s);
 		view.cut = this.cut;
+		for (const p of this.probes) view.probes.add(p);
+		return view;
+	}
+
+	/** The current end of the trace, for `since`. */
+	mark(): TraceMark {
+		return { requests: this.requests.length, events: this.events.length };
+	}
+
+	/** A view of what was recorded after `mark` (one turn); `cut` is set when a cut or guard event falls in it. */
+	since(mark: TraceMark): Trace {
+		const view = new Trace();
+		view.requests.push(...this.requests.slice(mark.requests));
+		view.events.push(...this.events.slice(mark.events));
+		for (const s of this.spans.values()) view.addSpan(s);
+		view.cut = view.events.some((e) => e.kind === "cut" || e.kind === "guard");
+		for (const p of this.probes) view.probes.add(p);
 		return view;
 	}
 
 	toJSON(): unknown {
-		return { requests: this.requests, events: this.events, spans: [...this.spans.values()], cut: this.cut };
+		return {
+			requests: this.requests,
+			events: this.events,
+			spans: [...this.spans.values()],
+			probes: [...this.probes],
+			cut: this.cut,
+		};
 	}
 }
 
@@ -135,7 +200,7 @@ export function canonicalize(value: unknown, opts: CanonicalOptions = {}): strin
 		if (Array.isArray(v)) return v.map(strip);
 		if (v && typeof v === "object") {
 			const out: Record<string, unknown> = {};
-			for (const k of Object.keys(v).sort()) {
+			for (const k of Object.keys(v).toSorted()) {
 				if (k === "cache_control") continue;
 				out[k] = strip((v as Record<string, unknown>)[k]);
 			}
@@ -152,6 +217,43 @@ export function canonicalize(value: unknown, opts: CanonicalOptions = {}): strin
 	};
 	return JSON.stringify(strip(value));
 }
+
+const PLAIN_TEXT_KEYS = new Set(["type", "text", "cache_control"]);
+
+/**
+ * A message as a provider's prompt cache reads it: blocks that are only text (cache markers aside) say nothing the
+ * `content` text does not, so they are dropped. A harness that sends one system turn as a string in one request and
+ * as text blocks in the next keeps its cached prefix.
+ */
+export function cacheForm(m: ChatMessage): ChatMessage {
+	if (!m.blocks?.every((b) => b.type === "text" && Object.keys(b).every((k) => PLAIN_TEXT_KEYS.has(k)))) return m;
+	const { blocks: _blocks, ...rest } = m;
+	return rest;
+}
+
+/** `mcp__<server>__<tool>`, as agents namespace MCP tools; server characters outside [A-Za-z0-9_] become `_`. */
+export const mcpToolName = (server: string, tool: string): string =>
+	`mcp__${server.replace(/[^A-Za-z0-9_]/g, "_")}__${tool}`;
+
+/** A tool-name pattern: an exact name, a glob where `*` matches any run of characters, or a RegExp. */
+export type NamePattern = string | RegExp;
+
+export function matchName(pattern: NamePattern, name: string | undefined): boolean {
+	if (name === undefined) return false;
+	if (pattern instanceof RegExp) return pattern.test(name);
+	if (!pattern.includes("*")) return pattern === name;
+	const re = pattern
+		.split("*")
+		.map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+		.join(".*");
+	return new RegExp(`^${re}$`).test(name);
+}
+
+/** Event data as text: a string as is, anything else as JSON. */
+export const dataText = (data: unknown): string => (typeof data === "string" ? data : JSON.stringify(data ?? null));
+
+/** Why a guard fired: the `reason` of a `guard` event's data. */
+export const guardReason = (e: TraceEvent): string => dataText((e.data as { reason?: unknown } | undefined)?.reason);
 
 export function hashOf(text: string): string {
 	return createHash("sha256").update(text).digest("hex").slice(0, 16);

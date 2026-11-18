@@ -1,4 +1,4 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 
 /** One earlier side question and its answer, kept as reference for the next side question. */
 export interface SideQuestionExchange {
@@ -6,8 +6,8 @@ export interface SideQuestionExchange {
 	answer: string;
 }
 
-/** The side question's system prompt (`octocode/instructions/workflows/side-question.md`). */
-export const SIDE_QUESTION_SYSTEM_PROMPT = renderInstruction("workflows/side-question.md");
+/** The side question's system prompt (`octocode/native/prompts/workflows/side-question.md`). */
+export const SIDE_QUESTION_SYSTEM_PROMPT = renderPrompt("workflows/side-question.md");
 
 /** Bound the serialized payload, including JSON escaping, without ever truncating the current question. */
 export function buildSideQuestionPrompt(

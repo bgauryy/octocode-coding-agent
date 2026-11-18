@@ -70,11 +70,22 @@ describe("bounded API client calls", () => {
 			});
 			try {
 				const client = new ApiClient({ socket: "/private-example-token.sock" });
-				const message = `API socket transport failed${code.startsWith("E") ? ` (${code})` : ""}`;
-				for (const call of [() => client.call("ping"), () => client.watch(() => undefined)]) {
+				const safeCode = code.startsWith("E") ? ` (${code})` : "";
+				// A call that never connected wrote nothing: it is a non-delivery, not an unknown outcome.
+				const cases = [
+					{
+						call: () => client.call("ping"),
+						expected: { message: `API socket connection failed${safeCode}; nothing was sent`, execution: "not-sent" },
+					},
+					{
+						call: () => client.watch(() => undefined),
+						expected: { message: `API socket transport failed${safeCode}` },
+					},
+				];
+				for (const { call, expected } of cases) {
 					const error: unknown = await call().catch((error: unknown) => error);
 					expect(error).toBeInstanceOf(Error);
-					expect(error).toMatchObject({ message });
+					expect(error).toMatchObject(expected);
 					expect(String(error)).not.toContain("private-example-token");
 				}
 			} finally {
@@ -114,7 +125,7 @@ describe("bounded API client calls", () => {
 		const requests = vi.fn();
 		const { target } = await httpServer(requests);
 		const client = new ApiClient({ socket: "/absent/octocode.sock", http: target });
-		await expect(client.call("ping")).rejects.toThrow("socket transport failed");
+		await expect(client.call("ping")).rejects.toMatchObject({ execution: "not-sent", reason: "unreachable" });
 		expect(requests).not.toHaveBeenCalled();
 	});
 

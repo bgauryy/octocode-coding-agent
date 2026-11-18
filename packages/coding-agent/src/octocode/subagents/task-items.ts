@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { openBacklog } from "../backlog/context.ts";
 import { type Item, priorityName } from "../backlog/store.ts";
 import { fenceUntrusted, PARENT_FENCE_NOTE } from "../shared/fence.ts";
@@ -70,7 +70,7 @@ export function itemsSection(task: string, store: { get(ref: string): Item | und
 export function withItems(
 	referenced: string,
 	params: { task: string; item?: string | undefined },
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 ): string {
 	if (params.item || findItemIds(params.task).length === 0) return referenced;
 	const items = itemsSection(params.task, openBacklog(ctx, { isSubagent: false }).store);

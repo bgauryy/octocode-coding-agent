@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 function createEchoTool(): AgentTool {
 	return {
@@ -29,15 +30,15 @@ describe("agent session event settlement", () => {
 	it("keeps persisted assistant/toolResult message order when extension message_end handlers yield", async () => {
 		const harness = await createHarness({
 			tools: [createEchoTool()],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_end", async (event) => {
+					api.bus.on("message_end", async (event) => {
 						if (event.message.role === "assistant") {
 							await new Promise((resolve) => setTimeout(resolve, 20));
 						}
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -69,9 +70,9 @@ describe("agent session event settlement", () => {
 		const branchRolesAtToolCall: string[][] = [];
 		const harness: Harness = await createHarness({
 			tools: [createEchoTool()],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("tool_call", () => {
+					api.bus.on("tool_call", () => {
 						branchRolesAtToolCall.push(
 							harness.sessionManager
 								.getBranch()
@@ -80,7 +81,7 @@ describe("agent session event settlement", () => {
 						);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([

@@ -12,12 +12,14 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import type { ExtensionFactory } from "../src/core/features/types.ts";
+import type { FeatureRegister } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 describe("session stream options", () => {
 	let tempDir: string;
@@ -84,7 +86,7 @@ describe("session stream options", () => {
 		api: Api,
 		settings: Partial<Settings>,
 		requestOptions: SimpleStreamOptions = {},
-		extensionFactory?: ExtensionFactory,
+		featureFactory?: FeatureRegister,
 		providerEvent?: unknown,
 		context: TranscriptContext = normalizeContext({ messages: [] }),
 	): Promise<SimpleStreamOptions | undefined> {
@@ -94,7 +96,8 @@ describe("session stream options", () => {
 			cwd,
 			agentDir,
 			settingsManager,
-			extensionFactories: extensionFactory ? [extensionFactory] : [],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures(featureFactory ? [featureFactory] : []),
 		});
 		await resourceLoader.reload();
 

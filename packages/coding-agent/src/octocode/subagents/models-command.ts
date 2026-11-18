@@ -1,6 +1,6 @@
 import { getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
 import { builtinDescription } from "../../core/slash-commands.ts";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
 import { formatTokens } from "../shared/format.ts";
 import {
@@ -349,7 +349,7 @@ export function registerModels(commands: Subcommands, getProfiles: () => Map<str
 	commands.add("modelsettings", {
 		description: builtinDescription("modelsettings"),
 		argumentHint: "[check]",
-		handler: async (args, ctx: ExtensionCommandContext) => {
+		handler: async (args, ctx: CommandContext) => {
 			if (args.trim() === "check") {
 				const available = ctx.modelRegistry.getAvailable();
 				const targets = checkCandidates(available, ctx.model);

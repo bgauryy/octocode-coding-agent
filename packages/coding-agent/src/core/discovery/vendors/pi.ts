@@ -4,7 +4,7 @@ import { themeName } from "../roots.ts";
 import {
 	contextItems,
 	directoryItems,
-	ignoredCodeItems,
+	piHookItems,
 	namedFileItems,
 	productRoots,
 	promptName,
@@ -21,7 +21,7 @@ const roots = (input: DiscoverInput) => productRoots(input, "pi");
 const skills = (input: DiscoverInput): ConfigItem[] =>
 	roots(input).flatMap((root) => skillItemsIn([join(root.dir, "skills")], root, input));
 
-/** Pi's folders. Its TypeScript extensions and hooks never run; its models, settings and keybindings load whatever the switch says. */
+/** Pi's folders. Its TypeScript hooks never run (they are listed); its models, settings and keybindings load whatever the switch says. */
 export const piVendor: Vendor = {
 	id: "pi",
 	label: "Pi",
@@ -39,9 +39,8 @@ export const piVendor: Vendor = {
 			kind: "theme",
 			discover: (input) => directoryItems("theme", "themes", collectAutoThemeEntries, themeName, roots(input), input),
 		},
-		{ kind: "extension", discover: (input) => ignoredCodeItems("extension", "extensions", roots(input), input) },
 		// Pi's `hooks/` held TypeScript hooks until Pi 0.35 merged them into extensions; Octocode's hooks are JSON files.
-		{ kind: "hook", discover: (input) => ignoredCodeItems("hook", "hooks", roots(input), input) },
+		{ kind: "hook", discover: (input) => piHookItems("hooks", roots(input), input) },
 		{ kind: "context", discover: (input) => contextItems(roots(input), input) },
 		{
 			kind: "systemPrompt",

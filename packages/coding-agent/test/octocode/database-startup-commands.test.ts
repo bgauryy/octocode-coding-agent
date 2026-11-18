@@ -5,6 +5,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { runSession } from "../../src/main/run-session.ts";
 import { runSubcommand } from "../../src/main/subcommands.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 let cwd: string;
 let agentDir: string;
@@ -42,6 +43,11 @@ it("preserves profile's missing-file guard through command dispatch", async () =
 });
 
 it("returns ACP help before database admission", async () => {
-	await runSession(["--mode", "acp", "--help"], { cwd, agentDir, offlineMode: true });
+	await runSession(["--mode", "acp", "--help"], {
+		cwd,
+		agentDir,
+		nativeFeatures: nativeFeatureSet(),
+		offlineMode: true,
+	});
 	expect(fs.existsSync(file)).toBe(false);
 });

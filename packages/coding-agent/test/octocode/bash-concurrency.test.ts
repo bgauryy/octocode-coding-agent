@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { resolveToolConcurrency, ToolSchedule } from "../../../agent/src/agent-loop/tool-schedule.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { bashConcurrency } from "../../src/octocode/files/bash/mutation.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
@@ -21,6 +21,7 @@ describe("how a bash call is ordered in its message", () => {
 		"npm install",
 		"touch /tmp/marker",
 		'echo x > "$F"',
+		"PATH=/tmp/x cat a.ts",
 	])("runs %j alone", (command) => {
 		expect(bashConcurrency({ command })).toBe("exclusive");
 	});

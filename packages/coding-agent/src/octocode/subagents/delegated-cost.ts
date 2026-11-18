@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { entryUsage } from "../../core/usage-totals.ts";
 import { formatCost } from "../shared/format.ts";
 
@@ -41,7 +41,7 @@ export function delegatedCostNote(scope: object, entries: readonly Entry[], runC
 		const multiple = Math.floor((delegated + runCost) / own);
 		if (multiple <= passed) return "";
 		told.set(scope, multiple);
-		const note = renderInstruction("notices/subagents/cost.md", {
+		const note = renderPrompt("notices/subagents/cost.md", {
 			once: multiple === 1,
 			multiple,
 			delegated: formatCost({ cost: delegated + runCost, unpriced: false }),

@@ -114,7 +114,7 @@ const costOf = (usage: unknown): number => num(asRecord(asRecord(usage).cost).to
 
 /**
  * A lane's cost by part: its assistant replies, the requests recorded as `usage` entries (compaction summaries, cache
- * warming and any other kind), and the usage a `branch_summary` or `compaction` entry carries (an extension's summary, or
+ * warming and any other kind), and the usage a `branch_summary` or `compaction` entry carries (a feature's summary, or
  * a session written before attempts were recorded). None of these are assistant messages, but all are billed the same.
  * A compaction entry's usage always counts, as in `cache-stats.ts`: the built-in paths record their requests as
  * `compaction_attempt` usage and write the entry without usage, so usage on the entry is billed nowhere else. Usage

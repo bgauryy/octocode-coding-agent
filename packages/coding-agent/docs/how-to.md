@@ -160,6 +160,5 @@ Details: [create a skill](skills.md#create-a-skill), [find and control skills](s
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `OCTOCODE_MAX_SUBAGENTS`                   | Subagents running at once; default is one per CPU and one per GiB of memory, at most 6. A child with its MCP pair peaks near 450 MB |
 | `terminal.reduceMotion` in `settings.json` | Stops the animated marks                                                                                                            |
-| `/llama`                                   | A local model stays in memory while it runs; it warns when a download exceeds free memory, so pick a smaller quantization           |
 | `/processes`                               | Shows what each Octocode process uses                                                                                               |
 | `OCTOCODE_TIMING=1`                        | Prints wall and CPU time per startup phase                                                                                          |

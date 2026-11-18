@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { addFileToolOps } from "../../src/octocode/compaction/register.ts";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { appliedFileOutcomes, seenFiles } from "../../src/octocode/files/reads.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { batchText } from "../../src/octocode/files/tool/queries.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";

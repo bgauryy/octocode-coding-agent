@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrusted, headerText } from "../../shared/fence.ts";
@@ -17,15 +17,15 @@ const RESERVED_SENDERS = new Set([USER_SENDER, `the ${USER_SENDER}`, EXTERNAL_SE
 
 /** What `message.send` needs of the API it runs in; `OctocodeApi` passes its own state and checks. */
 interface SendHost {
-	readonly api: ExtensionAPI;
+	readonly api: FeatureSetup;
 	readonly agents: AgentDirectory;
 	readonly operations: ApiOperations;
 	readonly receipts: SendReceipts;
 	readonly log: EventLog;
 	/** The bound session; throws when there is none. */
-	session(): ExtensionContext;
+	session(): FeatureContext;
 	/** Refuses a call whose `expectedSessionId` no longer names the session. */
-	guardSession(params: Record<string, unknown>, ctx: ExtensionContext): void;
+	guardSession(params: Record<string, unknown>, ctx: FeatureContext): void;
 	/** The next message id (`x1`, `x2`, …). */
 	nextId(): string;
 	/** Records an API-started turn in the session. */
@@ -113,7 +113,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		timeout,
 	);
 	preparingTimer.unref();
-	let external = externalFacts(from, caller, host.transport, wait, replyRequired);
+	let external = externalFacts(from, caller, host.transport, wait, replyRequired, host.agents.list());
 	// Every message is held to the ceiling, also one that steers or queues behind running work: the run it joins, the
 	// user's own included, runs under it until the session settles, so timing a message never yields the session's full mode.
 	const admitCeiling = sessionApiTurnCeiling();
@@ -159,7 +159,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			const ceiling = sessionApiTurnCeiling();
 			if (ceiling) host.operations.capTurn?.(ceiling);
 			if (ctx.isIdle() && !ctx.hasPendingMessages()) capped = ceiling;
-			const sending = host.api.sendMessage(
+			const sending = host.api.session.sendMessage(
 				{
 					customType: EXTERNAL_MESSAGE_TYPE,
 					content: fenceUntrusted(externalHeader(external, at), text, { footer: externalFooter(external) }),
@@ -174,7 +174,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 				if (receipt.phase !== "accepted" || host.receipts.settlementVersion !== settlementVersion) return;
 				if (capped) host.operations.capTurn?.(undefined);
 				// A replaced/stopped session has forgotten this receipt; never record its late failure in the new session.
-				let current: ExtensionContext;
+				let current: FeatureContext;
 				try {
 					current = host.session();
 				} catch {
@@ -252,7 +252,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 function guardPreparedSend(
 	host: SendHost,
 	params: Record<string, unknown>,
-	original: ExtensionContext,
+	original: FeatureContext,
 	sessionId: string,
 	key: string | undefined,
 	receipt: SendReceipt,

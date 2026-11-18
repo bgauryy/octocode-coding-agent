@@ -1,11 +1,11 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { noticeLines } from "./render.ts";
 import type { RunRoute } from "./claim.ts";
 import type { RanModel } from "./event-ran.ts";
 import { routeSummary } from "./model.ts";
-import { routeThinking, thinkingSuffix, withThinking } from "./thinking.ts";
+import { routeThinking, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
 import { isCredentialError } from "@octocodeai/octocode-ai";
 import { BILLING_ERROR, refusedBeforeWork } from "./provider-health.ts";
 import type { RunDetails } from "./run-types.ts";
@@ -51,7 +51,7 @@ export function ranOn(route: RunRoute, ran?: RanModel): string {
 }
 
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
-export const FAILED_NEXT = renderInstruction("notices/subagents/failed-narrower.md");
+export const FAILED_NEXT = renderPrompt("notices/subagents/failed-narrower.md");
 
 /** An unknown or unavailable model id: the provider's other models may work. */
 const MODEL_UNKNOWN =
@@ -88,7 +88,7 @@ export function failedNext(
 	const ranLine = ranOn(route, ran);
 	const kind = refusalKind(error, nothingSpent);
 	const provider = route.model ? providerOf(route.model) : "";
-	const advice = renderInstruction("notices/subagents/failed-next.md", {
+	const advice = renderPrompt("notices/subagents/failed-next.md", {
 		billing: kind === "billing",
 		credential: kind === "credential",
 		request: kind === "request",

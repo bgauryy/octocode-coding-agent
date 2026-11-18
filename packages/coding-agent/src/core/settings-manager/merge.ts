@@ -64,7 +64,7 @@ export function mergeScopedSettings(global: Settings, project: Settings): Settin
 	const merged = deepMergeSettings(global, project);
 	const toggles = mergeToggles(global.toggles, project.toggles);
 	const result = toggles === undefined ? merged : { ...merged, toggles };
-	// Which kinds the extension guard enforces is the user's choice: a repository cannot switch its own review off.
+	// Which kinds the feature guard enforces is the user's choice: a repository cannot switch its own review off.
 	if (project.security !== undefined) {
 		if (global.security === undefined) delete result.security;
 		else result.security = global.security;

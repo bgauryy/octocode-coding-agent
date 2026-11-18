@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runTrustCommand } from "../../src/cli/trust-command.ts";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { trust, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -11,6 +11,7 @@ import { grantFolder, listFolderGrants, refuseFolder } from "../../src/octocode/
 import { folderEntry } from "../../src/octocode/trust/identity.ts";
 import { resolveFolderTrust, type TrustOptions } from "../../src/octocode/trust/resolve.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 let root: string;
 let home: string;
@@ -56,7 +57,7 @@ function session(
 				select.shift()
 			),
 		},
-	} as unknown as ExtensionCommandContext;
+	} as unknown as CommandContext;
 	const commands = new Subcommands();
 	registerTrustCommand(commands, options);
 	const run = (args: string) => commands.get("trust")!.handler(args, ctx);
@@ -77,10 +78,12 @@ describe("/trust", () => {
 		const commands = new Subcommands();
 		registerTrustCommand(commands, options);
 		const registered = new Map<string, { getArgumentCompletions?: (prefix: string) => unknown }>();
-		commands.register({
-			registerCommand: (name: string, command: never) => registered.set(name, command),
-			on: vi.fn(),
-		} as never);
+		commands.register(
+			asSetup({
+				registerCommand: (name: string, command: never) => registered.set(name, command),
+				on: vi.fn(),
+			}) as never,
+		);
 		const complete = registered.get("trust")!.getArgumentCompletions!;
 		const values = (prefix: string) => (complete(prefix) as Array<{ value: string }> | null)?.map((item) => item.value);
 		expect(values("")).toEqual(["list", "add", "remove"]);

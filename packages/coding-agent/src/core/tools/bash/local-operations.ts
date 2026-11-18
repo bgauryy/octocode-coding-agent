@@ -30,7 +30,11 @@ function resolveTimeoutMs(timeout: number | undefined): number | undefined {
 }
 
 /** Shared process execution used by the built-in shell tools. */
-function createLocalShellOperations(shellName: string, resolveShellConfig: () => ShellConfig): BashOperations {
+function createLocalShellOperations(
+	shellName: string,
+	resolveShellConfig: () => ShellConfig,
+	unsandboxed: boolean,
+): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout, env }) => {
 			const timeoutMs = resolveTimeoutMs(timeout);
@@ -44,7 +48,7 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute ${shellName} commands.`);
 			}
 
-			const child = await spawnShell(shellConfig, command, { cwd, env: env ?? getShellEnv() });
+			const child = await spawnShell(shellConfig, command, { cwd, env: env ?? getShellEnv(), unsandboxed });
 			if (child.pid) trackDetachedChildPid(child.pid);
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
@@ -96,9 +100,11 @@ function createLocalShellOperations(shellName: string, resolveShellConfig: () =>
 /**
  * Create bash operations using Octocode's built-in local shell execution backend.
  *
- * This is useful for extensions that intercept user_bash and still want Octocode's
+ * This is useful for features that intercept user_bash and still want Octocode's
  * standard local shell behavior while wrapping or rewriting commands.
+ *
+ * A command sandbox (`sandbox.mode`) applies unless `unsandboxed`, which is for the user's own `!` commands.
  */
-export function createLocalBashOperations(options?: { shellPath?: string }): BashOperations {
-	return createLocalShellOperations("bash", () => getShellConfig(options?.shellPath));
+export function createLocalBashOperations(options?: { shellPath?: string; unsandboxed?: boolean }): BashOperations {
+	return createLocalShellOperations("bash", () => getShellConfig(options?.shellPath), options?.unsandboxed ?? false);
 }

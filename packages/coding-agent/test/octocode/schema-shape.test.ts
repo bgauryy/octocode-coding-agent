@@ -50,12 +50,12 @@ describe("tool schemas", () => {
 		it(`carry no size or range bounds (${subagent ? "subagent" : "main session"})`, async () => {
 			if (subagent) process.env.OCTOCODE_SUBAGENT = "1";
 			const fake = fakeHost();
-			Object.assign(fake.api, { getSessionName: () => undefined });
+			Object.assign(fake.api.session, { getName: () => undefined });
 			await octocode(fake.api);
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: !subagent });
 			Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-			const tools = fake.api.getAllTools();
+			const tools = fake.api.tools.getAll();
 			expect(tools.length).toBeGreaterThan(5);
 			const found = tools.flatMap((tool: { name: string; parameters: unknown }) =>
 				boundsIn(tool.parameters, tool.name, []),

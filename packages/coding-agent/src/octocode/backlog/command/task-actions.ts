@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../../core/features/index.ts";
+import type { CommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { say } from "../../shared/commands.ts";
 import { TASK_STATES, type BacklogTask, type TaskState, isOpenTask } from "@octocodeai/octocode-contracts/backlogs";
@@ -11,13 +11,13 @@ export type TaskOwnerChoice = { item: string } | { session: true };
 
 /** What the user does to tasks from the board: add, change the state, edit the goal, promote a session task. The user acts as the human actor. */
 export function createTaskActions(
-	applyAndSay: (ctx: ExtensionCommandContext, change: () => void, done?: string) => void,
-	apply: (ctx: ExtensionCommandContext, change: () => void) => string | undefined,
+	applyAndSay: (ctx: CommandContext, change: () => void, done?: string) => void,
+	apply: (ctx: CommandContext, change: () => void) => string | undefined,
 ) {
 	const human = (backlog: Backlog) => ({ ...backlog.actor, kind: "human" as const });
 
 	/** Asks for a goal, then adds the task under `owner`; nothing when the prompt is cancelled or empty. */
-	const add = async (ctx: ExtensionCommandContext, backlog: Backlog, owner: TaskOwnerChoice): Promise<void> => {
+	const add = async (ctx: CommandContext, backlog: Backlog, owner: TaskOwnerChoice): Promise<void> => {
 		const where = "item" in owner ? owner.item : "this session";
 		const goal = (await ctx.ui.input(`New task for ${where}`, "goal"))?.trim();
 		if (!goal) return;
@@ -31,7 +31,7 @@ export function createTaskActions(
 
 	/** Moves a task to `state`; done and dropped ask for an optional result. Returns the refusal, if any. */
 	const setState = async (
-		ctx: ExtensionCommandContext,
+		ctx: CommandContext,
 		backlog: Backlog,
 		task: BacklogTask,
 		state: TaskState,
@@ -51,13 +51,13 @@ export function createTaskActions(
 	};
 
 	/** The board's ←/→ step: no prompts, so a task moves between todo, ongoing and done in one key. */
-	const step = (ctx: ExtensionCommandContext, backlog: Backlog, task: BacklogTask, state: TaskState) =>
+	const step = (ctx: CommandContext, backlog: Backlog, task: BacklogTask, state: TaskState) =>
 		apply(ctx, () => {
 			backlog.store.tasks.update(task.ref, { state, version: task.version }, human(backlog));
 		});
 
 	/** The action menu for one task. */
-	const actions = async (ctx: ExtensionCommandContext, backlog: Backlog, ref: string): Promise<void> => {
+	const actions = async (ctx: CommandContext, backlog: Backlog, ref: string): Promise<void> => {
 		const task = backlog.store.tasks.get(ref);
 		if (!task) return say(ctx, `No task ${ref}.`, "warning");
 		const choices: Array<{ label: string; run(): void | Promise<void> }> = [

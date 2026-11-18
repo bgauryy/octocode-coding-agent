@@ -6,6 +6,7 @@ import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { historyPrefixRewritten } from "../../src/octocode/compaction/history-cache.ts";
 import { startEarlySummary } from "../../src/octocode/compaction/early-summary.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = { provider: "p", id: "m", api: "anthropic-messages", contextWindow: 100_000, maxTokens: 10_000 } as never;
 const reply = () => ({
@@ -36,14 +37,14 @@ function setup() {
 	const assistant = manager.appendMessage(reply());
 	const calls: SimpleStreamOptions[] = [];
 	const notes: string[] = [];
-	const api = {
+	const api = asSetup({
 		getSettings: () => ({}),
 		getThinkingLevel: () => "off",
 		getHiddenDeclarations: () => [],
 		getActiveTools: () => [],
 		createUsageRecorder: () => () => undefined,
 		appendEntry: (_type: string, data: { reason: string }) => notes.push(data.reason),
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		sessionManager: manager,

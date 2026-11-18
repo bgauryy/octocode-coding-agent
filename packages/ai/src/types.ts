@@ -168,6 +168,11 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
 	 */
 	timeoutMs?: number;
 	/**
+	 * Longest silence in milliseconds on a streaming response body before the attempt fails with a retryable
+	 * "timed out" error. Any received bytes, including keep-alives, reset it. Default 300000; 0 disables.
+	 */
+	streamIdleTimeoutMs?: number;
+	/**
 	 * Maximum extra attempts the provider adapter makes itself (SDK clients are created without their own retries).
 	 * Defaults to 0: the session retry (`retryAssistantCall`) owns retrying, so attempts do not multiply.
 	 */

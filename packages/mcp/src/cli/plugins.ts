@@ -16,7 +16,7 @@ export function withPluginServers(
 			...loaded.servers,
 			...plugins.servers
 				.filter((server) => !taken.has(server.name))
-				.map((server) => ({ name: server.name, config: server.config, source: "plugin", scope: "extension" as const })),
+				.map((server) => ({ name: server.name, config: server.config, source: "plugin", scope: "feature" as const })),
 		],
 		errors: [...loaded.errors, ...plugins.errors],
 	};

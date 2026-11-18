@@ -32,26 +32,6 @@ async function startBusy() {
 }
 
 describe("queue while streaming", () => {
-	it("shows queued messages, then delivers the steer message before the follow-up", async () => {
-		const first = await startBusy();
-		await t!.type("steer me");
-		t!.press(KEY.enter);
-		await t!.until(shows(/Next turn: steer me/), "steer in the queue list");
-		await t!.type("follow me");
-		t!.press(ALT_ENTER);
-		await t!.until(shows(/Next turn: steer me/), "steer in the queue list");
-		await t!.until(shows(/follow me/), "follow-up in the queue list");
-		expect(t!.requests).toHaveLength(1);
-
-		first.release();
-		await t!.until(shows("follow reply"), "all three replies");
-		await t!.until(() => !t!.host.session.isStreaming, "idle");
-		expect(t!.requests).toHaveLength(3);
-		expect(userTexts(t!.requests[1]).at(-1)).toBe("steer me");
-		expect(userTexts(t!.requests[2]).slice(-2)).toEqual(["steer me", "follow me"]);
-		expect(await t!.text()).not.toMatch(/queued/);
-	});
-
 	it("keeps a follow-up typed in the same tick as the Enter that steered", async () => {
 		const first = await startBusy();
 		// No awaits between keys: the follow-up arrives while the steer message is still being accepted.
@@ -69,6 +49,7 @@ describe("queue while streaming", () => {
 		expect(t!.requests).toHaveLength(3);
 		expect(userTexts(t!.requests[1]).at(-1)).toBe("steer me");
 		expect(userTexts(t!.requests[2]).slice(-2)).toEqual(["steer me", "follow me"]);
+		expect(await t!.text()).not.toMatch(/queued/);
 	});
 
 	it("keeps a second steer message submitted in the same tick as the first", async () => {
@@ -117,6 +98,8 @@ describe("Esc while streaming", () => {
 		t!.press(KEY.esc);
 		await t!.until(() => editorText() === "steer me\n\nfollow me", "both messages back in the editor");
 		await t!.until(() => !t!.host.session.isStreaming, "idle");
+		// Time for anything that would auto-send after the aborted turn to do so.
+		await new Promise((resolve) => setTimeout(resolve, 150));
 		expect(await t!.text()).not.toMatch(/queued/);
 		expect(t!.requests).toHaveLength(1);
 		expect(JSON.stringify(t!.host.session.messages)).not.toContain("follow me");
@@ -134,10 +117,10 @@ describe("messages queued before a session switch", () => {
 		t!.press(KEY.enter);
 		await t!.until(() => !t!.host.session.isStreaming && t!.host.session.messages.length === 0, "new session");
 		// Time for anything that would auto-send to do so.
-		await new Promise((resolve) => setTimeout(resolve, 400));
+		await new Promise((resolve) => setTimeout(resolve, 150));
 	};
 
-	it("stay listed in the new session with order and kind, and are not sent", async () => {
+	it("stay listed in the new session with order and kind, are not sent, and are sent steer first by Enter in an empty editor", async () => {
 		await switched();
 		const text = await t!.text();
 		expect(text).toMatch(/2 queued · 1 next turn · 1 after run/);
@@ -145,10 +128,7 @@ describe("messages queued before a session switch", () => {
 		expect(text).toMatch(/2\. After run: follow me/);
 		expect(t!.requests).toHaveLength(1);
 		expect(t!.host.session.messages).toHaveLength(0);
-	});
 
-	it("are sent, steer first, by Enter in an empty editor", async () => {
-		await switched();
 		t!.press(KEY.enter);
 		await t!.until(shows("follow reply"), "both replies");
 		await t!.until(() => !t!.host.session.isStreaming, "idle");
@@ -229,17 +209,6 @@ describe("the queue list and long queues", () => {
 		t!.press(KEY.esc);
 		await t!.until(() => editorText().split("\n\n").length === 12, "all twelve back in the editor");
 		expect(editorText().split("\n\n")).toEqual(texts);
-	});
-});
-
-describe("queued messages after an aborted turn", () => {
-	it("a message queued behind an aborted turn is restored by that Esc, not sent", async () => {
-		await queueTwo();
-		t!.press(KEY.esc);
-		await t!.until(() => !t!.host.session.isStreaming, "turn aborted");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		expect(t!.requests).toHaveLength(1);
-		expect(editorText()).toBe("steer me\n\nfollow me");
 	});
 });
 

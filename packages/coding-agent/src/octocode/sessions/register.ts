@@ -1,9 +1,9 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import path from "node:path";
 import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { sessions as sessionRows } from "../../../../db/src/api.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
@@ -72,8 +72,8 @@ interface SessionsOptions {
  * The summary may have dropped them. The running jobs, subagents and timers are not repeated here: the summary's
  * Recovery block states them (`compaction/live-state.ts`). Every part is capped (see brief.ts).
  */
-function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
-	api.on("session_compact", async (event, ctx) => {
+function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
+	api.bus.on("session_compact", async (event, ctx) => {
 		const branch = branchOf(ctx);
 		const source = ctx.sessionManager.getSessionFile();
 		let ongoing: string[] = [];
@@ -94,9 +94,9 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
 		const request = latest ? compactionRequestBrief(latest, event.compactionEntry, source) : undefined;
 		if (ongoing.length === 0 && held.length === 0 && !request) return;
 		const lines = [...ongoing, ...held, ...(request ? [request] : [])];
-		const content = renderInstruction("notices/compaction/session-state.md", { lines: lines.join("\n") });
+		const content = renderPrompt("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
-			void api.sendMessage(
+			void api.session.sendMessage(
 				{
 					customType: RUNNING_WORK_TYPE,
 					content,
@@ -117,7 +117,7 @@ function registerRunningWork(api: ExtensionAPI, team?: TeamNotes): void {
  * messages). Database failures never break the session: the feature warns once and stays out of the way. Git runs off
  * the event loop, so a slow repository never stalls a turn.
  */
-export function registerSessions(api: ExtensionAPI, options: SessionsOptions): void {
+export function registerSessions(api: FeatureSetup, options: SessionsOptions): void {
 	registerRunningWork(api, options.team);
 	if (options.isSubagent) {
 		registerGoalName(api, options.goal);
@@ -134,9 +134,9 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	const index = () => new SessionIndex(sharedAgentDb(), () => sharedAgentDbWriter());
 	const titler = createAutoTitler(api, {
 		...options.titleCall,
-		enabled: () => api.getSettings().sessions?.autoTitle !== false,
+		enabled: () => api.settings.get().sessions?.autoTitle !== false,
 	});
-	const warn = (ctx: ExtensionContext, error: unknown) => {
+	const warn = (ctx: FeatureContext, error: unknown) => {
 		// A background git result can arrive after the host invalidates this
 		// context. The optional warning must not turn that failure into a rejection.
 		try {
@@ -153,7 +153,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 			// The UI context was replaced while the background work completed.
 		}
 	};
-	const safely = (ctx: ExtensionContext, work: (sessions: SessionIndex) => void) => {
+	const safely = (ctx: FeatureContext, work: (sessions: SessionIndex) => void) => {
 		try {
 			if (ctx.sessionManager.getSessionFile()) work(index());
 		} catch (error) {
@@ -161,7 +161,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		}
 	};
 	/** `safely` for the per-turn writes, which go through the database writer (`SessionIndex` `…Later`). */
-	const later = async (ctx: ExtensionContext, work: (sessions: SessionIndex) => Promise<void>) => {
+	const later = async (ctx: FeatureContext, work: (sessions: SessionIndex) => Promise<void>) => {
 		try {
 			if (ctx.sessionManager.getSessionFile()) await work(index());
 		} catch (error) {
@@ -169,7 +169,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		}
 	};
 	/** Records where git stands now, without waiting for it. */
-	const recordGit = (ctx: ExtensionContext, id: string) => {
+	const recordGit = (ctx: FeatureContext, id: string) => {
 		const revision = ++gitRevision;
 		return gitState(ctx.cwd).then(async (state) => {
 			// A newer request or session shutdown makes this result stale, including its Octocode context.
@@ -177,7 +177,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		});
 	};
 
-	api.registerMessageRenderer(RESUME_MESSAGE_TYPE, (message, { expanded }, theme) => {
+	api.renderers.message(RESUME_MESSAGE_TYPE, (message, { expanded }, theme) => {
 		// The tag is for the model; the arrow already marks the brief for the person.
 		const text = contentText(message.content).replace(`${RESUME_TAG} `, "");
 		const [head = "", ...rest] = sanitizeTerminalText(text).split("\n");
@@ -190,7 +190,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		return new Text(theme.fg("dim", `↻ ${head}${tail}`), 1, 0);
 	});
 
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		gitRevision++;
 		titler.cancel();
 		pending = undefined;
@@ -249,30 +249,30 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		void recordGit(ctx, id);
 	});
 
-	const add = (spend: Spend | undefined, ctx: ExtensionContext) => {
+	const add = (spend: Spend | undefined, ctx: FeatureContext) => {
 		if (!spend) return;
 		addUsage(usage, spend.usage);
 		unpriced ||= unpricedModel(spend, modelLookup(ctx)) !== undefined;
 	};
 	/** Spend recorded outside a reply (a compaction summary request, a cache refresh, a side question) since the last look. */
-	const addRecorded = (ctx: ExtensionContext) => {
+	const addRecorded = (ctx: FeatureContext) => {
 		for (const spend of scan.recordedIn(ctx.sessionManager)) add(spend, ctx);
 	};
-	api.on("message_end", async (event, ctx) => {
+	api.bus.on("message_end", async (event, ctx) => {
 		add(spendOf(event.message), ctx);
 		return undefined;
 	});
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("session_compact", async (event, ctx) => {
 		add(scan.entry(event.compactionEntry), ctx);
 		addRecorded(ctx);
 		return undefined;
 	});
-	api.on("session_tree", async (event, ctx) => {
+	api.bus.on("session_tree", async (event, ctx) => {
 		add(scan.entry(event.summaryEntry), ctx);
 		return undefined;
 	});
 
-	api.on("before_agent_start", async (event, ctx) => {
+	api.bus.on("before_agent_start", async (event, ctx) => {
 		if (!pending) return undefined;
 		const input = pending;
 		pending = undefined;
@@ -292,7 +292,7 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 		return content ? { message: { customType: RESUME_MESSAGE_TYPE, content, display: true } } : undefined;
 	});
 
-	api.on("agent_end", async (_event, ctx) => {
+	api.bus.on("agent_end", async (_event, ctx) => {
 		addRecorded(ctx);
 		const id = ctx.sessionManager.getSessionId();
 		const stats = {
@@ -312,15 +312,15 @@ export function registerSessions(api: ExtensionAPI, options: SessionsOptions): v
 	});
 
 	// A session still unnamed when it is compacted gets one title from the summary's goal, in the background.
-	api.on("session_compact", async (event, ctx) => {
+	api.bus.on("session_compact", async (event, ctx) => {
 		void titler.onCompact(ctx, event);
 	});
 
-	api.on("session_info_changed", async (event, ctx) => {
+	api.bus.on("session_info_changed", async (event, ctx) => {
 		await later(ctx, (sessions) => recordTitle(sessions, ctx.sessionManager, event.name, event.source));
 	});
 
-	api.on("session_shutdown", async (_event, ctx) => {
+	api.bus.on("session_shutdown", async (_event, ctx) => {
 		gitRevision++;
 		titler.cancel();
 		// After the turn's writes still queued, so the row cannot be marked live again once it ended.

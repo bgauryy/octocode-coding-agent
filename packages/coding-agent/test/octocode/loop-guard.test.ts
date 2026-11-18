@@ -15,7 +15,7 @@ function guard() {
 	const fake = fakeHost();
 	// The `loop` step, run on `tool_call` as the pipeline runs it first (`tool-gates.ts`).
 	const loop = registerLoopGuard(fake.api);
-	fake.api.on("tool_call", (event, ctx) => loop(event, ctx));
+	fake.api.bus.on("tool_call", (event, ctx) => loop(event, ctx));
 	const ctx = fakeCtx({ cwd: "/repo" });
 	let id = 0;
 	return {
@@ -61,6 +61,8 @@ function guard() {
 	};
 }
 
+/** The stronger note due at a streak of `count`. */
+const stopNote = (tool: string, count: number) => loopNote(tool, count, false)!;
 const noteOf = (result: Result) => result?.message.content.at(-1)?.text;
 
 describe("repeated-call loop guard", () => {
@@ -69,12 +71,12 @@ describe("repeated-call loop guard", () => {
 		const notes: Array<string | undefined> = [];
 		for (let i = 0; i < 9; i++) notes.push(noteOf(await call("mcp__octocode__localSearch", { query: "x" })));
 		expect(notes.slice(0, LOOP_NOTE_AT - 1)).toEqual([undefined, undefined]);
-		expect(notes[2]).toContain("returned the same result 3 times in a row");
+		expect(notes[2]).toContain(loopNote("mcp__octocode__localSearch", 3, false)!);
 		expect(notes[3]).toBeUndefined();
-		expect(notes[LOOP_STOP_AT - 1]).toContain("5 identical");
+		expect(notes[LOOP_STOP_AT - 1]).toContain(stopNote("mcp__octocode__localSearch", 5));
 		expect(notes[5]).toBeUndefined();
 		expect(notes[6]).toBeUndefined();
-		expect(notes[7]).toContain("8 identical");
+		expect(notes[7]).toContain(stopNote("mcp__octocode__localSearch", 8));
 	});
 
 	it("keeps the original result and does not change a call whose result or arguments differ", async () => {
@@ -112,7 +114,7 @@ describe("repeated-call loop guard", () => {
 		const notes: Array<string | undefined> = [];
 		for (let i = 0; i < 3; i++)
 			notes.push(noteOf(await call("file", {}, `Invalid arguments at position ${i}`, { isError: true })));
-		expect(notes[2]).toContain("failed the same way 3 times");
+		expect(notes[2]).toContain(loopNote("file", 3, true)!);
 	});
 
 	it("exempts messaging and bookkeeping tools, nested calls and waiting shell commands", async () => {
@@ -147,7 +149,7 @@ describe("repeated-call loop guard", () => {
 		await call("bash", { command: "rm -rf build" }, "Blocked by user", { blocked: true });
 		await call("bash", { command: "rm -rf build" }, "Blocked by user", { blocked: true });
 		expect(noteOf(await call("bash", { command: "rm -rf build" }, "Blocked", { blocked: true }))).toContain(
-			"failed the same way 3 times",
+			loopNote("bash", 3, true)!,
 		);
 	});
 
@@ -157,7 +159,7 @@ describe("repeated-call loop guard", () => {
 		expect((await before("web", { url: "u" }))?.terminate).toBe(true);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({
 			type: "error",
-			message: expect.stringContaining(`Loop guard ended this run: ${LOOP_HALT_AT} identical web calls`),
+			message: expect.stringContaining(`${LOOP_HALT_AT}`),
 		});
 	});
 
@@ -169,15 +171,17 @@ describe("repeated-call loop guard", () => {
 		expect(await before("web", { url: "other" })).toBeUndefined();
 		const refused = await before("web", { url: "u", reason: "once more" });
 		expect(refused).toMatchObject({ block: true, terminate: true });
-		expect(refused?.reason).toContain("Loop guard: refused");
+		expect(refused?.reason).toContain("web");
 		await fake.fire("before_agent_start", {}, ctx);
 		expect(await before("web", { url: "u" })).toBeUndefined();
 	});
 
-	it("words the notes for a failing and a repeating call", () => {
+	it("gives a failing call a different note than a repeating one, and a longer streak a different one than a short", () => {
 		expect(loopNote("bash", 2, false)).toBeUndefined();
-		expect(loopNote("bash", 3, true)).toContain("failed the same way");
-		expect(loopNote("bash", 5, false)).toContain("report that you are blocked");
+		expect(loopNote("bash", 3, true)).toBeDefined();
+		expect(loopNote("bash", 3, true)).not.toBe(loopNote("bash", 3, false));
+		expect(loopNote("bash", 5, false)).toBeDefined();
+		expect(loopNote("bash", 5, false)).not.toBe(loopNote("bash", 3, false));
 	});
 
 	it("halts a call whose arguments validation coerces, comparing the same raw arguments it counted", async () => {

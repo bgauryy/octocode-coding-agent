@@ -2,7 +2,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { parseContextSize } from "../../../utils/token-count.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-type Host = Pick<InteractiveModeHost, "session" | "showExtensionSelector" | "showStatus" | "showWarning" | "ui">;
+type Host = Pick<InteractiveModeHost, "session" | "showSelectorDialog" | "showStatus" | "showWarning" | "ui">;
 
 export { parseContextSize } from "../../../utils/token-count.ts";
 
@@ -22,10 +22,7 @@ export async function handleContextSize(host: Host, args: string): Promise<boole
 		);
 		const full = `Full model capacity — ${capacity.toLocaleString()} tokens`;
 		const labels = [full, ...sizes.map((size) => `${size.toLocaleString()} tokens`)];
-		const selection = await host.showExtensionSelector(
-			"Context budget for this session (custom: /context 32k)",
-			labels,
-		);
+		const selection = await host.showSelectorDialog("Context budget for this session (custom: /context 32k)", labels);
 		if (!selection) return true;
 		if (
 			host.session !== session ||

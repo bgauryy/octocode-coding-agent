@@ -19,7 +19,7 @@ export const LAYER_RULES = [
 		name: "core-must-not-import-octocode",
 		from: "coding-agent/src/core/",
 		to: "coding-agent/src/octocode/",
-		baseline: ["coding-agent/src/core/resource-loader/builtins.ts"],
+		baseline: [],
 	},
 	{
 		name: "core-must-not-import-mcp",
@@ -31,7 +31,6 @@ export const LAYER_RULES = [
 			"coding-agent/src/core/features/api.ts",
 			"coding-agent/src/core/features/runtime.ts",
 			"coding-agent/src/core/plugin-mcp.ts",
-			"coding-agent/src/core/resource-loader/builtins.ts",
 			"coding-agent/src/core/system-prompt.ts",
 		],
 	},
@@ -102,7 +101,7 @@ export const LAYER_RULES = [
 		except: ["coding-agent/src/octocode/permission/"],
 		to: ["coding-agent/src/octocode/permission/bash-", "coding-agent/src/octocode/permission/shell/"],
 		baseline: [
-			"coding-agent/src/octocode/compaction/clearing.ts",
+			"coding-agent/src/octocode/compaction/clearable-bash.ts",
 			"coding-agent/src/octocode/compaction/edit-ledger.ts",
 			"coding-agent/src/octocode/compaction/register.ts",
 			"coding-agent/src/octocode/files/bash-reads.ts",

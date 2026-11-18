@@ -28,8 +28,8 @@ export interface QueueItem {
 	mode: "steer" | "followUp";
 	text: string;
 	imageCount: number;
-	/** Queued by an extension rather than typed by the user. */
-	extension: boolean;
+	/** Queued by a feature rather than typed by the user. */
+	feature: boolean;
 	/** The session-queue entry, or the compaction-queue entry held by the interface. */
 	session?: QueuedInput;
 	compaction?: CompactionQueuedMessage;
@@ -45,13 +45,13 @@ export function listQueueItems(host: Pick<QueueManagerHost, "session" | "uiStore
 				mode,
 				text: queued.text,
 				imageCount: queued.imageCount,
-				extension: queued.source === "extension",
+				feature: queued.source === "feature",
 				session: queued,
 			});
 		}
 		for (const message of held(host)) {
 			if (message.mode === mode)
-				items.push({ mode, text: message.text, imageCount: 0, extension: false, compaction: message });
+				items.push({ mode, text: message.text, imageCount: 0, feature: false, compaction: message });
 		}
 	}
 	return items;

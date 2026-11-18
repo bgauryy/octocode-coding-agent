@@ -10,7 +10,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -20,6 +20,8 @@ import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A user-configured stdio MCP server in a real session on a scripted model. By default (`declared`) each enabled tool's
@@ -86,8 +88,8 @@ async function firstRequest(
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -105,7 +107,8 @@ async function firstRequest(
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -130,7 +133,7 @@ async function firstRequest(
 		else process.env.OCTOCODE_PERMISSION = saved.permission;
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 	let captured: TranscriptContext | undefined;
 	faux.setResponses(
@@ -168,7 +171,8 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 	it("declares each enabled tool with the server's description and full schema, and the block holds the instructions", async () => {
 		const request = await firstRequest({ toolExposure: { purge: "hidden" } });
 		const mcps = request.sections.mcps;
-		expect(mcps.startsWith("<mcps>\nEach block is one MCP server's instructions.")).toBe(true);
+		// The family's tag opens with its head (how to read the blocks), before the first server block.
+		expect(mcps).toMatch(/^<mcps>\n[^<\n][^\n]*\n[\s\S]*<mcp name="docs"/);
 		expect(mcps).toContain('<mcp name="docs" tools="mcp__docs__*">\nDocs server. Search with lookup');
 		expect(mcps.match(/<mcp /g)).toHaveLength(1);
 		expect(request.sections.tools).toContain("\n- mcp__docs__*: Product docs\n");

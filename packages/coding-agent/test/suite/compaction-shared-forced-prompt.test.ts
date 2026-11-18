@@ -13,7 +13,7 @@ it.each(["forced", "normal", "cleared", "moved", "unsent"] as const)(
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("before_agent_start", () => {
+					api.bus.on("before_agent_start", () => {
 						turn++;
 						return mode === "forced" ||
 							(mode === "cleared" && turn === 1) ||
@@ -21,7 +21,7 @@ it.each(["forced", "normal", "cleared", "moved", "unsent"] as const)(
 							? { systemPrompt: "Use this exact transient prompt." }
 							: undefined;
 					});
-					api.on("session_before_compact", async (event, ctx) => ({
+					api.bus.on("session_before_compact", async (event, ctx) => ({
 						compaction: await sharedSummary(api, event, ctx, ctx.model!, "Preserve the objective."),
 					}));
 				},

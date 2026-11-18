@@ -7,7 +7,7 @@
 import type { Agent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CompactionResult } from "../compaction/index.ts";
-import type { ContextUsage, ExtensionRunner, ToolInfo } from "../features/index.ts";
+import type { ContextUsage, FeatureHost, ToolInfo } from "../features/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { PromptTemplate } from "../prompt-templates.ts";
@@ -25,7 +25,7 @@ export interface SessionRunState {
 	active: boolean;
 	logicalTurnId: string | undefined;
 	agentRunAbortRequested: boolean;
-	extensionRunAbortRequested: boolean;
+	featureRunAbortRequested: boolean;
 	inputTerminated: boolean;
 	/**
 	 * Failed response that the next request repeats, set by auto-retry and overflow recovery. The
@@ -55,7 +55,7 @@ export interface SessionRunState {
 	beforeSettleAbort: AbortController;
 	isEmittingAgentSettled: boolean;
 	readonly deferredSettledActions: Array<() => Promise<void>>;
-	/** What an extension started as a run settled (a compaction it asked for): `settled()` waits for it, a headless run with it. */
+	/** What a feature started as a run settled (a compaction it asked for): `settled()` waits for it, a headless run with it. */
 	readonly settledWork: Set<Promise<void>>;
 }
 
@@ -64,7 +64,7 @@ export function createRunState(): SessionRunState {
 		active: false,
 		logicalTurnId: undefined,
 		agentRunAbortRequested: false,
-		extensionRunAbortRequested: false,
+		featureRunAbortRequested: false,
 		inputTerminated: false,
 		failedResponse: undefined,
 		overflowRecoveryAttempted: false,
@@ -90,7 +90,7 @@ export interface SessionPublic {
 	readonly sessionManager: SessionManager;
 	readonly settingsManager: SettingsManager;
 	readonly modelRuntime: ModelRuntime;
-	readonly extensionRunner: ExtensionRunner;
+	readonly featureHost: FeatureHost;
 	readonly resourceLoader: ResourceLoader;
 	readonly promptTemplates: ReadonlyArray<PromptTemplate>;
 	readonly model: Model<any> | undefined;

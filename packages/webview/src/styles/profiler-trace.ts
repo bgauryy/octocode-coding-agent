@@ -123,6 +123,24 @@ export const PROFILER_TRACE_CSS = `/* Trace */
 .pf-m-text pre { margin: 0; max-height: 320px; overflow: auto; font-family: inherit; white-space: pre-wrap; }
 .pf-m-latency { color: var(--text-2); font-size: var(--fs-xs); }
 .pf-m-wait { margin-inline-start: 6px; font-family: var(--mono); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--warning); }
+.pf-m-scope { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.pf-m-scope legend { float: left; padding: 0; margin-inline-end: 6px; font-size: var(--fs-xs); }
+.pf-m-scope .pf-t-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); font-weight: 600; }
+.pf-m-route { white-space: normal; }
+.pf-end { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.pf-end.is-departed .pf-end-name { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--border); }
+.pf-mark { padding: 0 6px; border: 1px solid var(--border-soft); border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); font-family: var(--mono); }
+.pf-mark.is-departed, .pf-mark.is-warning { border-color: var(--warning); color: var(--warning); }
+.pf-mark.is-danger { border-color: var(--danger); color: var(--danger); }
+.pf-mark.is-internal { margin-inline-end: 6px; }
+.pf-m-older { justify-self: start; }
+.pf-tr h4 { margin: 0 0 6px; font-size: var(--fs-sm); }
+.pf-tr-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pf-tr-entry { padding: 6px 8px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); }
+.pf-tr-entry.is-near { border-color: var(--accent-line); }
+.pf-tr-head { margin: 0 0 4px; font-size: var(--fs-xs); }
+.pf-tr-text, .pf-tr-thinking { margin: 0; max-height: 320px; overflow: auto; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pf-tr-thinking { color: var(--text-2); font-style: italic; }
 .pf-pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; background: var(--surface-3); color: var(--text-2); }
 .pf-pill.is-tool { color: var(--tool); background: var(--surface-2); outline: 1px solid var(--tool); }
 .pf-pill.is-warning { color: var(--warning); background: var(--surface-2); outline: 1px solid var(--warning); }

@@ -13,6 +13,7 @@ import { createCompactionSummaryMessage, createCustomMessage } from "../../../co
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
 import { applicationRenderer } from "./application-events.ts";
+import { bindSessionPhase } from "./session-phase.ts";
 import { bindQueueState } from "../state/bind-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -35,7 +36,6 @@ type AgentEventsHost = Pick<
 	| "getAppKeyDisplay"
 	| "getRegisteredToolDefinition"
 	| "handleEvent"
-	| "hiddenThinkingLabel"
 	| "uiStore"
 	| "init"
 	| "isInitialized"
@@ -60,7 +60,6 @@ type AgentEventsHost = Pick<
 	| "updateAvailableProviderCount"
 	| "updateEditorBorderColor"
 	| "updateTerminalTitle"
-	| "workingVisible"
 > &
 	RunStateEventsHost;
 
@@ -69,6 +68,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 	const port = getApplicationPort(session);
 	const render = applicationRenderer(host, port);
 	const closeQueue = bindQueueState(host, port.stateSource);
+	const closePhase = bindSessionPhase(host, port.stateSource);
 	applicationDriven.add(host);
 	// A failed redraw or a service failure is shown in the transcript: stderr would write over the screen.
 	const onError = (error: unknown) => {
@@ -91,6 +91,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 		closeProviders();
 		closeApplication();
 		closeQueue();
+		closePhase();
 		closeNative();
 		applicationDriven.delete(host);
 	};
@@ -119,12 +120,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 			if (host.settingsManager.getShowTerminalProgress()) {
 				host.ui.terminal.setProgress(true);
 			}
-			if (host.workingVisible) {
-				if (host.activeStatusIndicator?.kind !== "working") {
-					host.showWorkingStatusIndicator();
-				}
-			} else {
-				host.clearStatusIndicator();
+			if (host.activeStatusIndicator?.kind !== "working") {
+				host.showWorkingStatusIndicator();
 			}
 			// The turns before this one are finished: the oldest of them may leave a long transcript (live-window.ts).
 			foldScrolledTranscript(host);

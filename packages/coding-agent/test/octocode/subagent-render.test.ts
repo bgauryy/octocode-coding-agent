@@ -8,6 +8,7 @@ import {
 import { rendered, theme } from "./fake-host.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
+import { stripTerminalSequences } from "@octocodeai/octocode-tui";
 
 const ctx = (extra: Record<string, unknown> = {}) =>
 	({
@@ -66,11 +67,11 @@ describe("subagent renderers", () => {
 		).toContain("Agent(audit auth token refresh · isolated)");
 	});
 
-	it("summarizes a finished run briefly: outcome, tool calls and elapsed time, no zero count", () => {
-		expect(doneSummary(details(), 38_000)).toBe("Done · 2 tool calls · 38s");
-		expect(doneSummary(details({ toolCalls: 1 }), undefined)).toBe("Done · 1 tool call");
-		expect(doneSummary(details({ toolCalls: 0 }), 4_000)).toBe("Done · 4s");
-		expect(doneSummary(details(), 38_000, true)).toBe("Done · general-0001 · 2 tool calls · 38s");
+	it("summarizes a finished run briefly: outcome and tool calls, no zero count; the header carries the time", () => {
+		expect(doneSummary(details())).toBe("Done · 2 tool calls");
+		expect(doneSummary(details({ toolCalls: 1 }))).toBe("Done · 1 tool call");
+		expect(doneSummary(details({ toolCalls: 0 }))).toBe("Done");
+		expect(doneSummary(details(), true)).toBe("Done · general-0001 · 2 tool calls");
 	});
 
 	it("moves tokens, cost and the model (without its provider) to the expanded summary", () => {
@@ -86,19 +87,20 @@ describe("subagent renderers", () => {
 					ctx({ expanded, durationMs: 38_000 }),
 				),
 			);
-		expect(run(false)).toContain("⎿  Done · general-0001 · 2 tool calls · 38s\n");
+		expect(run(false)).toContain("⎿  Done · general-0001 · 2 tool calls\n");
+		expect(run(false)).not.toContain("38s");
 		expect(run(false)).not.toContain("↑");
 		expect(run(false)).not.toContain("claude-haiku-5-5");
 		expect(run(true)).toContain(
-			"Done · general-0001 · 2 tool calls · 38s · ↑300 +1.2k cached ↓500 · ≈$0.12 · claude-haiku-5-5:low",
+			"Done · general-0001 · 2 tool calls · ↑300 +1.2k cached ↓500 · ≈$0.12 · claude-haiku-5-5:low",
 		);
 		expect(run(true)).not.toContain("anthropic/");
 	});
 
 	it("labels a run by the outcome its report names, Done when it names none", () => {
-		expect(doneSummary(details({ outcome: "done" }), 38_000)).toBe("Done · 2 tool calls · 38s");
-		expect(doneSummary(details({ outcome: "partial" }), 38_000)).toBe("Partial · 2 tool calls · 38s");
-		expect(doneSummary(details({ outcome: "blocked" }), undefined)).toMatch(/^Blocked · /);
+		expect(doneSummary(details({ outcome: "done" }))).toBe("Done · 2 tool calls");
+		expect(doneSummary(details({ outcome: "partial" }))).toBe("Partial · 2 tool calls");
+		expect(doneSummary(details({ outcome: "blocked" }))).toMatch(/^Blocked · /);
 		expect(
 			rendered(
 				renderAgentResult(
@@ -118,7 +120,7 @@ describe("subagent renderers", () => {
 		const call = rendered(
 			renderAgentCall({ task: "look\nsecond", profile: "researcher", background: true }, theme, ctx()),
 		);
-		expect(call).toMatch(/^. 🐙 Agent · background/);
+		expect(call).toMatch(/^. Agent · background/);
 		expect(call).not.toContain("look");
 		expect(call).not.toContain("researcher");
 		expect(
@@ -126,7 +128,7 @@ describe("subagent renderers", () => {
 				renderAgentCall({ task: "x", profile: "implementer", model: "openai/gpt-5", isolate: true }, theme, ctx()),
 			),
 		).toContain("Agent(openai/gpt-5 · isolated)");
-		expect(rendered(renderAgentCall({ background: true }, theme, ctx()))).toMatch(/^. 🐙 Agent · background/);
+		expect(rendered(renderAgentCall({ background: true }, theme, ctx()))).toMatch(/^. Agent · background/);
 	});
 
 	it("draws a background start, Octocode's native duration and a run without details", () => {
@@ -165,7 +167,10 @@ describe("subagent renderers", () => {
 				ctx({ durationMs: 90_000 }),
 			),
 		);
-		expect(finished).toContain("Done · general-0001 · 2 tool calls · 1m30s");
+		// The duration shows once, in the header; the outcome does not repeat it.
+		expect(finished).toContain("⎿  Done · general-0001 · 2 tool calls\n");
+		expect(finished).not.toContain("1m30s");
+		expect(rendered(renderAgentCall({ task: "x" }, theme, ctx({ durationMs: 90_000 })))).toBe("✓ Agent · 1m30s");
 		const bare = rendered(
 			renderAgentResult(
 				{ content: [{ type: "text", text: "Subagent failed\ndetail" }], details: undefined },
@@ -340,6 +345,42 @@ describe("the call row names the model and level the child runs on", () => {
 		// A purpose or bare id in the call is replaced by what it resolved to.
 		expect(row(running, { goal: "audit auth", model: "small" })).toContain("Agent(audit auth · claude-haiku-5-5:low)");
 		expect(row(running, { goal: "audit auth", model: "small" })).not.toContain("small");
+	});
+
+	describe("a finished run's outcome row", () => {
+		const outcome = (width: number, extra: Partial<RunDetails> = {}, expanded = false) =>
+			stripTerminalSequences(
+				renderAgentResult(
+					{ content: [], details: details({ toolCalls: 14, ...extra }) },
+					{ isPartial: false, expanded },
+					theme,
+					ctx({ expanded }),
+				).render(width)[0] ?? "",
+			).trimEnd();
+
+		it.each([
+			[120, "  ⎿  Done · general-0001 · 14 tool calls · 2 denied"],
+			[80, "  ⎿  Done · general-0001 · 14 tool calls · 2 denied"],
+			[40, "  ⎿  Done · general-0001 · 14 tool calls"],
+			[30, "  ⎿  Done · general-0001"],
+			[20, "  ⎿  Done"],
+		])("drops trailing parts whole, never cutting one, at %i columns", (width, row) => {
+			expect(outcome(width, { denied: 2 })).toBe(row);
+		});
+
+		it("keeps the outcome itself, cut with …, only when even it does not fit", () => {
+			expect(outcome(8, { outcome: "blocked" })).toBe("  ⎿  Bl…");
+		});
+
+		it("drops the expanded stats whole from the end too", () => {
+			const wide = outcome(200, { model: "anthropic/claude-haiku-5-5" }, true);
+			const parts = wide.split(" · ");
+			expect(parts.slice(0, 3)).toEqual(["  ⎿  Done", "general-0001", "14 tool calls"]);
+			for (let kept = parts.length; kept >= 1; kept--) {
+				const row = parts.slice(0, kept).join(" · ");
+				expect(outcome(row.length, { model: "anthropic/claude-haiku-5-5" }, true)).toBe(row);
+			}
+		});
 	});
 
 	it("keeps the requested model until the run reports its route", () => {

@@ -26,9 +26,9 @@ import {
 	isReplayable,
 } from "../src/core/cache-warmer.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "./helpers/features.ts";
-import { ExtensionRunner } from "../src/core/features/runner.ts";
-import type { ExtensionFactory } from "../src/core/features/types.ts";
+import { createFeatureRuntime, loadFeatureFromFactory } from "./helpers/features.ts";
+import { FeatureHost } from "../src/core/features/runner.ts";
+import type { FeatureRegister } from "../src/core/features/types.ts";
 import { type SessionEntry, SessionManager, type UsageEntry } from "../src/core/session-manager.ts";
 import type { CacheWarmingMode } from "../src/core/settings-manager.ts";
 import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";
@@ -526,7 +526,7 @@ describe("cache warming", () => {
 		runtime.warmer.cancel();
 	});
 
-	it("applies economic decisions and extension overrides", async () => {
+	it("applies economic decisions and feature overrides", async () => {
 		vi.useFakeTimers();
 		const unprofitable = fakeRuntime({ branch: branchWithPrompt(5_000) });
 		unprofitable.warmer.start(request(), current);
@@ -535,21 +535,21 @@ describe("cache warming", () => {
 		expect(unprofitable.warmer.status).toMatchObject({
 			state: "inactive",
 			decision: { action: "stop", economicsAvailable: true },
-			extensionOverride: false,
+			featureOverride: false,
 		});
 
 		const forced = fakeRuntime({ branch: branchWithPrompt(5_000), decide: () => "warm" });
 		forced.warmer.start(request(), current);
 		await vi.advanceTimersByTimeAsync(270_000);
 		expect(forced.calls).toHaveLength(1);
-		expect(forced.warmedEntries[0]?.note).toBe("extension override");
+		expect(forced.warmedEntries[0]?.note).toBe("feature override");
 		forced.warmer.cancel();
 
 		const vetoed = fakeRuntime({ decide: () => "stop" });
 		vetoed.warmer.start(request(), current);
 		await vi.advanceTimersByTimeAsync(270_000);
 		expect(vetoed.calls).toHaveLength(0);
-		expect(vetoed.warmer.status).toMatchObject({ state: "inactive", extensionOverride: true });
+		expect(vetoed.warmer.status).toMatchObject({ state: "inactive", featureOverride: true });
 
 		const unavailable = fakeRuntime({ branch: branchWithPrompt(0) });
 		unavailable.warmer.start(request(), current);
@@ -654,30 +654,30 @@ describe("cache warming", () => {
 			adaptiveModel.provider,
 			adaptiveModel.id,
 			usage,
-			"extension override",
+			"feature override",
 		);
-		expect(formatCacheWarmingUsage(entry)).toBe("Cache warmed (extension override): $0.029497");
+		expect(formatCacheWarmingUsage(entry)).toBe("Cache warmed (feature override): $0.029497");
 	});
 });
 
-describe("ExtensionRunner.emitCacheWarmingDecision", () => {
-	it("uses the last extension override", async () => {
-		const runtime = createExtensionRuntime();
+describe("FeatureHost.emitCacheWarmingDecision", () => {
+	it("uses the last feature override", async () => {
+		const runtime = createFeatureRuntime();
 		const eventBus = createEventBus();
-		const factories: ExtensionFactory[] = [
+		const factories: FeatureRegister[] = [
 			(api) => {
-				api.on("cache_warming_decision", () => ({ action: "warm" }));
+				api.bus.on("cache_warming_decision", () => ({ action: "warm" }));
 			},
 			(api) => {
-				api.on("cache_warming_decision", () => ({ action: "stop" }));
+				api.bus.on("cache_warming_decision", () => ({ action: "stop" }));
 			},
 		];
-		const extensions = [];
+		const features = [];
 		for (const factory of factories) {
-			extensions.push(await loadExtensionFromFactory(factory, process.cwd(), eventBus, runtime));
+			features.push(await loadFeatureFromFactory(factory, process.cwd(), eventBus, runtime));
 		}
 		const modelRegistry = await createInMemoryModelRegistry(AuthStorage.inMemory());
-		const runner = new ExtensionRunner(extensions, runtime, process.cwd(), SessionManager.inMemory(), modelRegistry);
+		const runner = new FeatureHost(features, runtime, process.cwd(), SessionManager.inMemory(), modelRegistry);
 		const event: CacheWarmingDecisionEvent = {
 			type: "cache_warming_decision",
 			warmCost: 0.05,

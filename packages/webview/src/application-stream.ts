@@ -165,6 +165,9 @@ export class ApplicationStream {
 			case "session.awaiting":
 				next = { ...next, awaiting: event.awaiting };
 				break;
+			case "session.phase":
+				next = { ...next, phase: event.phase, jobStartedAt: event.jobStartedAt };
+				break;
 		}
 		this.snapshot = next;
 		this.cursor = frame.cursor;

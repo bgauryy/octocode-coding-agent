@@ -9,7 +9,7 @@
 
 import { defersByRecentUse } from "./deferral.ts";
 import type { McpContext } from "./host/types.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 /** The session record's `customType`. */
 export const RECENT_TOOLS_ENTRY = "mcp-recent-tools";
@@ -49,24 +49,25 @@ function savedRecentTools(ctx: McpContext): SavedRecentTools | undefined {
 }
 
 /** What each instance's session saved (its key), so a run saves only a set the session does not hold yet. */
-const savedKeys = new WeakMap<McpExtensionState, string | undefined>();
+const savedKeys = new WeakMap<McpFeatureState, string | undefined>();
 
 /** At `session_start`: forget the last session's set, and take the one this session saved, if any. */
-export function restoreRecentTools(state: McpExtensionState, ctx: McpContext): void {
+export function restoreRecentTools(state: McpFeatureState, ctx: McpContext): void {
 	const saved = state.recentToolsHandedIn() ? undefined : savedRecentTools(ctx);
 	state.forgetRecentTools(saved && new Set(saved.tools));
 	savedKeys.set(state, saved && keyOf(saved.tools));
 }
 
 /** At a run's start: save the set the session declares when the session does not hold it yet. Fails open. */
-export function saveRecentTools(state: McpExtensionState): void {
-	if (!state.api.appendEntry || state.recentToolsHandedIn() || !defersByRecentUse(state.exposureSetting())) return;
+export function saveRecentTools(state: McpFeatureState): void {
+	if (!state.api.session.appendEntry || state.recentToolsHandedIn() || !defersByRecentUse(state.exposureSetting()))
+		return;
 	const tools = state.recentTools();
 	if (!tools) return;
 	const key = keyOf(tools);
 	if (savedKeys.get(state) === key) return;
 	try {
-		state.api.appendEntry(RECENT_TOOLS_ENTRY, { cwd: state.sessionCwd, tools: [...tools].sort() });
+		state.api.session.appendEntry(RECENT_TOOLS_ENTRY, { cwd: state.sessionCwd, tools: [...tools].sort() });
 		savedKeys.set(state, key);
 	} catch {
 		// Unsaved, a later start of this session reads the record as before.

@@ -9,7 +9,8 @@ import { ApplicationAssets } from "../src/core/application/assets.ts";
 import { APPLICATION_EVENT_ROUTES } from "../src/core/application/service/activity-data.ts";
 import { createHarness } from "./suite/harness.ts";
 import type { BashOperations } from "../src/core/tools/bash.ts";
-import type { ExtensionAPI } from "../src/core/features/index.ts";
+import type { FeatureSetup } from "../src/core/features/index.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const services: ApplicationService[] = [];
 afterEach(() => {
@@ -321,17 +322,17 @@ it("keeps combined populated snapshots below the stream queue budget", async () 
 });
 
 it("publishes real model and label changes immediately with persisted activity identities", async () => {
-	let extension: ExtensionAPI | undefined;
+	let feature: FeatureSetup | undefined;
 	const harness = await createHarness({
 		models: [
 			{ id: "faux-1", reasoning: true },
 			{ id: "faux-2", reasoning: true },
 		],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				extension = api;
+				feature = api;
 			},
-		],
+		]),
 	});
 	const service = getApplicationPort(harness.session);
 	try {
@@ -343,7 +344,7 @@ it("publishes real model and label changes immediately with persisted activity i
 			type: "session.activity",
 			activity: { id: `entry:${entry.id}`, kind: "model_change", source: "session", data: { modelId: "faux-2" } },
 		});
-		extension!.setLabel(entry.id, "selection");
+		feature!.session.setLabel(entry.id, "selection");
 		expect(events.at(-1)).toMatchObject({
 			type: "session.activity",
 			activity: { kind: "label", source: "session", data: { targetId: entry.id, label: "selection" } },

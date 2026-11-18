@@ -1,4 +1,4 @@
-/** Provider and virtual model registration. */
+/** Provider registration. */
 
 import type {
 	AnyModel,
@@ -15,19 +15,11 @@ import type {
 	SimpleStreamOptions,
 	TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import type { ModelRoute, ModelRouteRequest, VirtualModelDefinition } from "../../virtual-models.ts";
-import type { ExtensionContext } from "./context.ts";
 
 // Provider Registration Types
 // ============================================================================
 
-/** Virtual model registered via api.registerVirtualModel(). */
-export interface ExtensionVirtualModel<TState = unknown> extends Omit<VirtualModelDefinition<TState>, "route"> {
-	/** Like `VirtualModelDefinition.route`, with an extension context. */
-	route(request: ModelRouteRequest<TState>, ctx: ExtensionContext): ModelRoute<TState> | Promise<ModelRoute<TState>>;
-}
-
-/** Configuration for registering a provider via api.registerProvider(). */
+/** Configuration for registering a provider via api.providers.register(). */
 export interface ProviderConfig {
 	/** Display name for the provider in UI. */
 	name?: string;
@@ -62,7 +54,7 @@ export interface ProviderConfig {
 	/** Models to register. If provided, replaces all existing models for this provider. */
 	models?: ProviderModelConfig[];
 	/**
-	 * Refresh this provider's model list. The returned list replaces extension-provided models.
+	 * Refresh this provider's model list. The returned list replaces feature-provided models.
 	 * Use context.publish({ persist: entry }) when the catalog should persist across sessions.
 	 */
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;

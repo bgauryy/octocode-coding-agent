@@ -1,7 +1,7 @@
 // What a session's entries say: its spend, last activity, branch, pending subagent reports and goal name.
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { cleanTitle } from "../../core/session-manager/title.ts";
 import { CLAIM_MARKER, pendingReportsDir } from "../subagents/handoff/pending.ts";
 import type { SpendScan } from "../shared/spend.ts";
@@ -49,7 +49,7 @@ export function lastActive(entries: readonly Entry[]): number | undefined {
 }
 
 /** The session's current branch (what the model sees), or all entries when Octocode offers no branch. */
-export const branchOf = (ctx: ExtensionContext): readonly unknown[] =>
+export const branchOf = (ctx: FeatureContext): readonly unknown[] =>
 	ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
 
 /**
@@ -76,12 +76,12 @@ export function pendingReportIds(sessionId: string): Set<string> {
 }
 
 /** A subagent's session is named for its goal, unless it already has a name (a resumed one). */
-export function registerGoalName(api: ExtensionAPI, goal: string | undefined): void {
+export function registerGoalName(api: FeatureSetup, goal: string | undefined): void {
 	const name = goal ? cleanTitle(goal, GOAL_NAME_MAX) : "";
 	if (!name) return;
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		try {
-			if (!ctx.sessionManager.getSessionName()) api.setSessionName(name, "goal");
+			if (!ctx.sessionManager.getSessionName()) api.session.setName(name, "goal");
 		} catch {
 			// The session was replaced: it keeps no goal name.
 		}

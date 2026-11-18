@@ -440,3 +440,22 @@ it("dispatches an answer command to the session's dialog broker and reports its 
 	expect(refused).toMatchObject({ status: "failed", message: "No such dialog" });
 	service.dispose();
 });
+it("carries the session phase in snapshots and live frames, and keeps it when a run settles", async () => {
+	const f = fixture();
+	const service = getApplicationPort(f.session);
+	const iterator = service.connect()[Symbol.asyncIterator]();
+	await iterator.next();
+	expect(service.getSnapshot().phase).toBeUndefined();
+	const waiting = { state: "waiting", agents: 2, queued: 0, bash: 0, external: 0 } as const;
+	service.publishDomain({ type: "session.phase", phase: waiting, jobStartedAt: 5 });
+	expect((await iterator.next()).value).toMatchObject({
+		type: "event",
+		event: { type: "session.phase", phase: waiting, jobStartedAt: 5 },
+	});
+	f.emit({ type: "agent_settled", aborted: false });
+	expect(service.getSnapshot()).toMatchObject({ phase: waiting, jobStartedAt: 5 });
+	service.publishDomain({ type: "session.phase", phase: { state: "done" } });
+	expect(service.getSnapshot().phase).toEqual({ state: "done" });
+	expect("jobStartedAt" in service.getSnapshot()).toBe(false);
+	service.dispose();
+});

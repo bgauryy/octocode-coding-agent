@@ -2,8 +2,7 @@
 
 import { normalizeBuildSystemPromptOptions } from "../../system-prompt.ts";
 import { createSessionUsageRecorder } from "../../usage-totals.ts";
-import type { VirtualModelDefinition } from "../../virtual-models.ts";
-import type { ExtensionActions, ExtensionCommandContextActions, ExtensionContextActions } from "../types.ts";
+import type { SessionActions, CommandActions, ContextActions } from "../types.ts";
 import type { RunnerBindings, RunnerHost, RunnerProviderActions } from "./types.ts";
 
 /** The callbacks a runner uses before `bindCore()` and `bindCommandContext()` supply the session's. */
@@ -39,11 +38,11 @@ export function createRunnerBindings(cwd: string): RunnerBindings {
 
 export function bindRunnerCore(
 	host: RunnerHost,
-	actions: ExtensionActions,
-	contextActions: ExtensionContextActions,
+	actions: SessionActions,
+	contextActions: ContextActions,
 	providerActions?: RunnerProviderActions,
 ): void {
-	// Copy actions into the shared runtime (all extension APIs reference this)
+	// Copy actions into the shared runtime (all feature APIs reference this)
 	host.runtime.sendMessage = actions.sendMessage;
 	host.runtime.sendUserMessage = actions.sendUserMessage;
 	host.runtime.appendEntry = actions.appendEntry;
@@ -69,7 +68,6 @@ export function bindRunnerCore(
 	host.runtime.getSkillResourceSnapshot = actions.getSkillResourceSnapshot;
 	host.runtime.setModel = actions.setModel;
 	host.runtime.getThinkingLevel = actions.getThinkingLevel;
-	host.runtime.setThinkingLevel = actions.setThinkingLevel;
 	host.runtime.createContext = () => host.createContext();
 
 	// Context actions (required)
@@ -94,15 +92,15 @@ export function bindRunnerCore(
 	host.bindings.executeToolFn = contextActions.executeTool;
 	host.bindings.getCallableToolsFn = contextActions.getCallableTools ?? (() => []);
 
-	// Servers registered from now on reach the extension that connects them right away. Servers
+	// Servers registered from now on reach the feature that connects them right away. Servers
 	// registered during loading are read on session_start.
 	host.runtime.mcpServers.setChangeListener(() => {
 		void host.emit({ type: "mcp_servers_change", servers: host.runtime.mcpServers.list() });
 		host.reportUnhandledMcpServers();
 	});
 
-	// Flush provider registrations queued during extension loading
-	for (const { name, config, extensionPath } of host.runtime.pendingProviderRegistrations) {
+	// Flush provider registrations queued during feature loading
+	for (const { name, config, source } of host.runtime.pendingProviderRegistrations) {
 		try {
 			if (providerActions?.registerProvider) {
 				providerActions.registerProvider(name, config);
@@ -111,7 +109,7 @@ export function bindRunnerCore(
 			}
 		} catch (err) {
 			host.emitError({
-				extensionPath,
+				source,
 				event: "register_provider",
 				error: err instanceof Error ? err.message : String(err),
 				stack: err instanceof Error ? err.stack : undefined,
@@ -119,7 +117,7 @@ export function bindRunnerCore(
 		}
 	}
 	host.runtime.pendingProviderRegistrations = [];
-	for (const { provider, extensionPath } of host.runtime.pendingNativeProviderRegistrations) {
+	for (const { provider, source } of host.runtime.pendingNativeProviderRegistrations) {
 		try {
 			if (providerActions?.registerNativeProvider) {
 				providerActions.registerNativeProvider(provider);
@@ -128,7 +126,7 @@ export function bindRunnerCore(
 			}
 		} catch (err) {
 			host.emitError({
-				extensionPath,
+				source,
 				event: "register_provider",
 				error: err instanceof Error ? err.message : String(err),
 				stack: err instanceof Error ? err.stack : undefined,
@@ -136,26 +134,8 @@ export function bindRunnerCore(
 		}
 	}
 	host.runtime.pendingNativeProviderRegistrations = [];
-	const registerVirtualModel = (definition: VirtualModelDefinition) => {
-		if (providerActions?.registerVirtualModel) providerActions.registerVirtualModel(definition);
-		else host.modelRegistry.registerVirtualModel(definition);
-	};
-	for (const { definition, extensionPath } of host.runtime.pendingVirtualModelRegistrations) {
-		try {
-			registerVirtualModel(definition);
-		} catch (err) {
-			host.emitError({
-				extensionPath,
-				event: "register_virtual_model",
-				error: err instanceof Error ? err.message : String(err),
-				stack: err instanceof Error ? err.stack : undefined,
-			});
-		}
-	}
-	host.runtime.pendingVirtualModelRegistrations = [];
 
-	// From this point on, provider registration/unregistration takes effect immediately
-	// without requiring a /reload.
+	// From this point on, provider registration takes effect immediately without requiring a /reload.
 	host.runtime.registerProvider = (name, config) => {
 		if (providerActions?.registerProvider) {
 			providerActions.registerProvider(name, config);
@@ -170,21 +150,9 @@ export function bindRunnerCore(
 		}
 		host.modelRegistry.registerProvider(provider);
 	};
-	host.runtime.unregisterProvider = (name) => {
-		if (providerActions?.unregisterProvider) {
-			providerActions.unregisterProvider(name);
-			return;
-		}
-		host.modelRegistry.unregisterProvider(name);
-	};
-	host.runtime.registerVirtualModel = registerVirtualModel;
-	host.runtime.unregisterVirtualModel = (provider, id) => {
-		if (providerActions?.unregisterVirtualModel) providerActions.unregisterVirtualModel(provider, id);
-		else host.modelRegistry.unregisterVirtualModel(provider, id);
-	};
 }
 
-export function bindRunnerCommandContext(bindings: RunnerBindings, actions?: ExtensionCommandContextActions): void {
+export function bindRunnerCommandContext(bindings: RunnerBindings, actions?: CommandActions): void {
 	if (actions) {
 		bindings.waitForIdleFn = actions.waitForIdle;
 		bindings.newSessionHandler = actions.newSession;

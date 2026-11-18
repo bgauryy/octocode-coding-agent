@@ -23,10 +23,6 @@ export const HARNESS_SECTIONS = {
 		empty:
 			"No harness or plugin sources found. Add a plugin with /harness install <plugin@marketplace>; /harness config shows loaded configuration.",
 	},
-	extensions: {
-		title: "Extensions",
-		empty: "No extensions found. Add an extension in settings.json, then run /reload.",
-	},
 } as const;
 export type HarnessSection = keyof typeof HARNESS_SECTIONS;
 /** The sections that list items; Overview only summarises them. */
@@ -39,9 +35,7 @@ export const sectionOf = (item: InventoryItem): ItemSection =>
 			? "mcp"
 			: item.kind === "hooks" || item.kind === "hook-file" || item.kind === "hook"
 				? "hooks"
-				: item.kind === "extension"
-					? "extensions"
-					: "sources";
+				: "sources";
 
 /** The rows a section counts: hooks count handlers, not their files. */
 export function sectionItems(items: readonly InventoryItem[], section: ItemSection): InventoryItem[] {

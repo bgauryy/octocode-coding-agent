@@ -67,7 +67,7 @@ describe("how a run ended", () => {
 
 	it("records a failed preparation, so a later reader does not see a success", async () => {
 		const harness = await createHarness({ settings: { retry: { enabled: false } } });
-		harness.session.extensionRunner.emitBeforeAgentStart = async () => {
+		harness.session.featureHost.emitBeforeAgentStart = async () => {
 			throw new Error("handler broke");
 		};
 		await expect(harness.session.prompt("go")).rejects.toThrow("handler broke");
@@ -114,7 +114,7 @@ describe("a write failure at the end of a run", () => {
 			],
 		});
 		box.session = harness.session;
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("t", {})], { stopReason: "toolUse" }),
 			fauxAssistantMessage("done"),

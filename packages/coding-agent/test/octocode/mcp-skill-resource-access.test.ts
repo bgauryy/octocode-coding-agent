@@ -14,6 +14,8 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { researchServerLaunch } from "./research-server-launch.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -84,16 +86,17 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			cwd,
 			agentDir,
 			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
 			additionalSkillPaths: [winner, loser, modelOnly],
-			disabledFeatures: ["llama.cpp"],
+			disabledFeatures: [],
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			extensionFactories: [
+			features: testFeatures([
 				{
 					name: "faux",
 					factory: (api) => {
-						api.registerProvider("faux", {
+						api.providers.register("faux", {
 							name: "Faux",
 							api: faux.api,
 							baseUrl: "http://127.0.0.1:0",
@@ -101,12 +104,12 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 							models: faux.models,
 							streamSimple: faux.streamSimple,
 						} as never);
-						api.on("session_start", () => {
-							commands = api.getCommands().map((command) => command.name);
+						api.bus.on("session_start", () => {
+							commands = api.resources.getCommands().map((command) => command.name);
 						});
 					},
 				},
-			],
+			]),
 		});
 		await resourceLoader.reload();
 		const { session } = await createTestSession({
@@ -117,7 +120,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 			sessionManager: SessionManager.inMemory(cwd),
 		});
 		try {
-			await session.bindExtensions({
+			await session.bindFeatures({
 				mode: "json",
 				shutdownHandler: () => undefined,
 			} as never);
@@ -183,7 +186,7 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 				expect(blocked).not.toContain("UNRELATED_SECRET");
 			}
 		} finally {
-			await session.extensionRunner.emit({
+			await session.featureHost.emit({
 				type: "session_shutdown",
 				reason: "quit",
 			});

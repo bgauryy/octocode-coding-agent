@@ -87,7 +87,7 @@ describe("source SessionEnd hooks", () => {
 			}),
 		);
 		const f = fakeHost(HOOK_SETTINGS);
-		f.api.getSettings = () => ({ plugins: [{ path: plugin, protocol: "claude" }] });
+		f.api.settings.get = () => ({ plugins: [{ path: plugin, protocol: "claude" }] });
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 		registerHooks(f.api, { env: {}, home });
 		await f.fire("session_start", { reason: "startup" }, ctx);

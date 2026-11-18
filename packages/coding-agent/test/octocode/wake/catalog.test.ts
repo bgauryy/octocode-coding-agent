@@ -9,13 +9,13 @@ import {
 
 describe("the agent event catalog", () => {
 	it("gives every kind a label and a dedupe key, and lists the closed set", () => {
-		expect(EVENT_KINDS).toHaveLength(13);
+		expect(EVENT_KINDS).toHaveLength(16);
 		for (const kind of EVENT_KINDS) {
 			expect(typeof CATALOG[kind].label).toBe("function");
 			expect(typeof CATALOG[kind].key).toBe("function");
 		}
 		expect([...EXPLICIT_EVENTS].sort()).toEqual(
-			["agent.ended", "check.result", "item.state", "path.unlocked", "time.due"].sort(),
+			["agent.ended", "check.result", "item.changed", "item.state", "path.unlocked", "peer.landed", "time.due"].sort(),
 		);
 	});
 

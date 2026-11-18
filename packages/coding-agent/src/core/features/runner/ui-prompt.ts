@@ -1,5 +1,5 @@
 /**
- * Tracking of UI dialogs, reported to extensions as `ui_prompt_start` and `ui_prompt_end`, and the broker that lets a
+ * Tracking of UI dialogs, reported to features as `ui_prompt_start` and `ui_prompt_end`, and the broker that lets a
  * client other than the mode's own UI answer them.
  *
  * Every tracked dialog gets an id. The mode's dialog (terminal, RPC host) and a remote answer race: the first answer
@@ -11,7 +11,7 @@
 
 import { randomUUID } from "node:crypto";
 import { checkedReplies, type Question } from "@octocodeai/octocode-contracts";
-import type { ExtensionUIAskView, ExtensionUIContext, ExtensionUIDialogOptions, UIPromptKind } from "../types.ts";
+import type { AskView, SessionUI, DialogOptions, UIPromptKind } from "../types.ts";
 import type { RunnerEmitEvent } from "./types.ts";
 
 type UIPromptEvent = Extract<RunnerEmitEvent, { type: "ui_prompt_start" | "ui_prompt_end" }>;
@@ -37,11 +37,13 @@ interface Pending {
 	/** An `ask` dialog with an `approval` question: it decides whether to allow an action. */
 	approval?: boolean;
 	/** The structured card a custom dialog with a remote answer shape draws, reported so a client can draw it too. */
-	ask?: ExtensionUIAskView;
+	ask?: AskView;
 	/** The typed questions an `ask` dialog shows, so a client can draw and answer them. */
 	questions?: Question[];
-	/** The dialog blocks work that goes on without the user (`ExtensionUIDialogOptions.blocking`). */
+	/** The dialog blocks work that goes on without the user (`DialogOptions.blocking`). */
 	blocking?: boolean;
+	/** Stops the countdown the dialog runs, when a client starts answering. */
+	hold?: () => void;
 	/** Settles the dialog with the remote answer's value; undefined when the dialog cannot be answered remotely. */
 	settle?: (value: unknown) => void;
 	/** Maps a client's answer to the dialog's value, or `REFUSED`. */
@@ -59,14 +61,14 @@ export class UIPromptTracker {
 		this.emit = emit;
 	}
 
-	wrap(ui: ExtensionUIContext): ExtensionUIContext {
+	wrap(ui: SessionUI): SessionUI {
 		const hostAsk = ui.ask?.bind(ui);
 		return {
 			...ui,
 			// A host that draws questions itself: tracked so a remote client sees them and answers by reply.
 			...(hostAsk
 				? {
-						ask: (questions: Question[], opts?: Parameters<NonNullable<ExtensionUIContext["ask"]>>[1]) =>
+						ask: (questions: Question[], opts?: Parameters<NonNullable<SessionUI["ask"]>>[1]) =>
 							this.tracked(
 								{
 									kind: "ask",
@@ -75,6 +77,7 @@ export class UIPromptTracker {
 									questions,
 									...(questions.some((question) => question.type === "approval") ? { approval: true } : {}),
 									...(opts?.blocking ? { blocking: true } : {}),
+									...(opts?.hold ? { hold: opts.hold } : {}),
 								},
 								(signal) => hostAsk(questions, { ...opts, ...(signal ? { signal } : {}) }),
 								opts,
@@ -131,6 +134,7 @@ export class UIPromptTracker {
 						options: [...remote.options],
 						allowsText: remote.allowsText === true,
 						...(remote.ask ? { ask: remote.ask } : {}),
+						...(remote.hold ? { hold: () => remote.hold?.() } : {}),
 					},
 					() => ui.custom(shown, options),
 					undefined,
@@ -169,10 +173,21 @@ export class UIPromptTracker {
 		return { ok: true };
 	}
 
+	/**
+	 * A client started answering the dialog `id`: stop the countdown it runs, so nothing is taken for the person. A
+	 * dialog without a countdown has nothing to stop; only a dialog that is no longer open is refused.
+	 */
+	hold(id: string): DialogAnswerResult {
+		const dialog = this.pending.get(id);
+		if (!dialog) return { ok: false, reason: "No such dialog is open; it may have been answered already." };
+		dialog.hold?.();
+		return { ok: true };
+	}
+
 	private tracked<T>(
 		dialog: Omit<Pending, "settle" | "parse">,
 		run: (signal: AbortSignal | undefined) => Promise<T>,
-		opts?: ExtensionUIDialogOptions,
+		opts?: DialogOptions,
 		parse?: (answer: DialogAnswer) => T | typeof REFUSED,
 		close?: () => void,
 	): Promise<T> {
@@ -261,7 +276,7 @@ export class UIPromptTracker {
 }
 
 /** What a dialog's options say about it: whether it blocks work that goes on without the user. */
-function dialogFlags(opts: ExtensionUIDialogOptions | undefined): Pick<Pending, "blocking"> {
+function dialogFlags(opts: DialogOptions | undefined): Pick<Pending, "blocking"> {
 	return opts?.blocking ? { blocking: true } : {};
 }
 

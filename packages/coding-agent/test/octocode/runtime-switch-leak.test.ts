@@ -16,6 +16,7 @@ import { ModelAvailability } from "../../src/core/model-runtime/availability.ts"
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { createCliRuntimeFactory } from "../../src/main/runtime-factory.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Each /new, /resume, fork or reload builds new services with a new model runtime. The replaced runtime's credential
@@ -55,7 +56,9 @@ describe("session switches", () => {
 		const watchers = countWatchers();
 		vi.spyOn(DefaultResourceLoader.prototype, "reload").mockRejectedValue(new Error("failed resources"));
 		for (let cycle = 0; cycle < 10; cycle++) {
-			await expect(createAgentSessionServices({ cwd, agentDir })).rejects.toThrow("failed resources");
+			await expect(
+				createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions: { nativeFeatures: nativeFeatureSet() } }),
+			).rejects.toThrow("failed resources");
 			expect(watchers.live).toBe(0);
 		}
 	});
@@ -66,7 +69,14 @@ describe("session switches", () => {
 		const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json") });
 		try {
 			vi.spyOn(DefaultResourceLoader.prototype, "reload").mockRejectedValue(new Error("failed resources"));
-			await expect(createAgentSessionServices({ cwd, agentDir, modelRuntime })).rejects.toThrow("failed resources");
+			await expect(
+				createAgentSessionServices({
+					cwd,
+					agentDir,
+					modelRuntime,
+					resourceLoaderOptions: { nativeFeatures: nativeFeatureSet() },
+				}),
+			).rejects.toThrow("failed resources");
 			expect(watchers.live).toBe(1);
 		} finally {
 			modelRuntime.dispose();
@@ -97,6 +107,7 @@ describe("session switches", () => {
 		const factory = createCliRuntimeFactory({
 			parsed: parseArgs(["--no-mcp", "--no-skills", "--no-prompt-templates", "--no-themes"]),
 			cwd,
+			nativeFeatures: nativeFeatureSet(),
 			folderTrust: () => ({ state: "trusted", root: cwd }),
 			requireTrust: false,
 			getAppMode: () => "print",
@@ -139,7 +150,13 @@ describe("session switches", () => {
 			const services = await createAgentSessionServices({
 				cwd,
 				agentDir,
-				resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true, disabledFeatures: ["mcp"] },
+				resourceLoaderOptions: {
+					nativeFeatures: nativeFeatureSet(),
+					noSkills: true,
+					noPromptTemplates: true,
+					noThemes: true,
+					disabledFeatures: ["mcp"],
+				},
 			});
 			return {
 				...(await createSessionFromServices({ services, sessionManager, sessionStartEvent, noTools: "all" })),
@@ -170,14 +187,26 @@ describe("session switches", () => {
 		const callerOwned = await createAgentSessionServices({
 			cwd,
 			agentDir,
-			resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true, disabledFeatures: ["mcp"] },
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+				disabledFeatures: ["mcp"],
+			},
 		});
 		expect(watchers.live).toBe(1);
 		const shared: AgentSessionServices = await createAgentSessionServices({
 			cwd,
 			agentDir,
 			modelRuntime: callerOwned.modelRuntime,
-			resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true, disabledFeatures: ["mcp"] },
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+				disabledFeatures: ["mcp"],
+			},
 		});
 		let releases = 0;
 		const release = shared.dispose;
@@ -211,6 +240,7 @@ describe("session switches", () => {
 		const factory = createCliRuntimeFactory({
 			parsed: parseArgs(["--no-mcp", "--no-skills", "--no-prompt-templates", "--no-themes"]),
 			cwd,
+			nativeFeatures: nativeFeatureSet(),
 			folderTrust: () => ({ state: "trusted", root: cwd }),
 			requireTrust: false,
 			getAppMode: () => "print",

@@ -39,7 +39,7 @@ function host(servers: McpServerEntry[], options: Parameters<typeof mcpHost>[0] 
 		presentation: "compact",
 		...options,
 	});
-	h.api.getActiveTools = () =>
+	h.api.tools.getActive = () =>
 		[...h.tools.values()]
 			.filter((tool) => tool.exposure !== "hidden" && (manage || tool.name !== "mcp"))
 			.map((tool) => tool.name);
@@ -78,7 +78,7 @@ describe("deferred MCP exposure", () => {
 		expect(block).not.toContain("function shout(");
 		expect(block).not.toContain("searchText");
 		// The section says once how to load a deferred tool.
-		expect(mcps).toContain("`mcp` tool (intent `tools`");
+		expect(mcps).toContain("intent `tools`");
 	});
 
 	it("shows the server's instructions exactly as a direct block does, before the index lines", async () => {
@@ -195,11 +195,11 @@ describe("mcpExposure auto threshold", () => {
 	it("reads `deferred` and the default from the setting", async () => {
 		expect(blockOf(await directBlock([entry("docs")], "deferred"), "docs")).not.toContain("function shout(");
 		const h = host([entry("docs")]);
-		h.api.getSettings = () => ({ mcpExposure: "auto:200" });
+		h.api.settings.get = () => ({ mcpExposure: "auto:200" });
 		await h.start();
 		expect(blockOf((await h.prompt()).mcps, "docs")).not.toContain("function shout(");
 		const direct = host([entry("docs")]);
-		direct.api.getSettings = () => ({ mcpExposure: "direct" });
+		direct.api.settings.get = () => ({ mcpExposure: "direct" });
 		await direct.start();
 		expect(blockOf((await direct.prompt()).mcps, "docs")).toContain("function shout(");
 		// Without a setting, `recent`: a tool this working directory used in the last 24 hours is direct, the rest deferred.

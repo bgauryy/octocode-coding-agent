@@ -1,6 +1,6 @@
 import { AGENT_CHAIN_CHANNEL, type AgentChainNotice } from "../../shared/agent-chain.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 
 const AGENT = "agent:";
 /** Chain links remembered for a hook that has not read them yet; a session starts few chains, so a small bound is enough. */
@@ -56,7 +56,7 @@ export class ChainLinks {
 
 /** Calls `listener` for each chain notice on `events`; returns the unsubscribe. */
 export function onChainNotice(
-	events: ExtensionAPI["events"],
+	events: FeatureSetup["channels"],
 	listener: (notice: AgentChainNotice) => void,
 ): () => void {
 	return events.on(AGENT_CHAIN_CHANNEL, (value) => {

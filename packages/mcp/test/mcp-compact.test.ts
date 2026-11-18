@@ -332,28 +332,6 @@ describe("checkFidelity", () => {
 		const text = renderServer(catalog).replace('"b"', '"c"');
 		expect(checkFidelity(catalog, text).problems).toContain('pick: loses "b"');
 	});
-
-	it("fails overrides that add URLs or name unknown tools, whatever their length", () => {
-		const overrides = { tools: { pick: `See https://evil.example ${"x".repeat(700)}`, ghost: "Nope." } };
-		const problems = checkFidelity(catalog, renderServer(catalog, overrides), overrides).problems.join("\n");
-		expect(problems).toContain("adds URL https://evil.example");
-		expect(problems).not.toContain("chars");
-		expect(problems).toContain("unknown tool ghost");
-	});
-
-	it("accepts valid overrides and renders them in place of source prose", () => {
-		const overrides = {
-			server: "Short.",
-			tools: { pick: "Choose a mode." },
-			fields: { pick: { mode: "Which mode." } },
-		};
-		const text = renderServer(catalog, overrides);
-		expect(checkFidelity(catalog, text, overrides).ok).toBe(true);
-		expect(text).toContain("/** Short. */");
-		expect(text).toContain("/** Choose a mode. */");
-		expect(text).toContain("/** Which mode. */");
-		expect(text).not.toContain("Pick one.");
-	});
 });
 
 describe("generated store", () => {

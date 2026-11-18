@@ -134,8 +134,12 @@ When ghost text shows after the cursor (a suggested `!` command, see [shell comp
 | `tui.select.down`     | `down`                  | Move selection down |
 | `tui.select.pageUp`   | `pageUp`                | Page up in list     |
 | `tui.select.pageDown` | `pageDown`              | Page down in list   |
+| `tui.select.home`     | `home`                  | First item in list  |
+| `tui.select.end`      | `end`                   | Last item in list   |
 | `tui.select.confirm`  | `enter`                 | Confirm selection   |
 | `tui.select.cancel`   | `escape`, `ctrl+c`      | Cancel selection    |
+
+These keys drive every picker, dialog and page. Up and Down stop at the ends; PgUp and PgDn move the selection by the rows in view and stop at the ends too; Home and End jump to the first and last row. In a picker with a search line, `tui.select.cancel` first clears the search, then closes the picker. In the session picker it first closes the preview and drops the marks; in `/tree`, Left and Right page like PgUp and PgDn. In a dialog, the number keys `1` to `9` move the selection to that answer; Enter confirms it.
 
 #### Fullscreen
 
@@ -202,7 +206,7 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 | `app.model.cycleForward`  | `ctrl+p`                                    | Cycle to next model                                                            |
 | `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model                                                        |
 | `app.models.save`         | `ctrl+s`                                    | Save the global default model or model shortcuts after storage succeeds        |
-| `app.models.details`      | `ctrl+d`                                    | Toggle model identifiers, billing, pricing and cache details; PgUp/PgDn scroll |
+| `app.models.details`      | `alt+i`                                     | Toggle model identifiers, billing, pricing and cache details; PgUp/PgDn scroll |
 | `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)          |
 | `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                        |
 | `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                             |
@@ -225,6 +229,7 @@ While the agent runs, Enter queues input for the next assistant turn, after the 
 | Key in the queue list             | Action                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------- |
 | `↑` / `↓` (`k` / `j`)             | Select a message                                                                |
+| `PgUp` / `PgDn`, `Home` / `End`   | Move by the rows in view, or to the first or last message                       |
 | `Shift+↑` / `Shift+↓` (`K` / `J`) | Move it one place among messages of the same kind                               |
 | `Enter` or `e`                    | Edit it in place: `Enter` saves, `Shift+Enter` adds a line, `Escape` cancels    |
 | `s`                               | Switch between **After run** and **Next turn**; it goes last among its new kind |

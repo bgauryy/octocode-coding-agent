@@ -1,4 +1,4 @@
-import type { ExtensionContext, ToolAnnotations, ToolCallEvent } from "../../../core/features/index.ts";
+import type { FeatureContext, ToolAnnotations, ToolCallEvent } from "../../../core/features/index.ts";
 import { mcpCallChange } from "../mcp-reads.ts";
 import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { callReason, derivedReason, hasDerivedReason } from "../../shared/reason.ts";
@@ -8,6 +8,7 @@ import type { PermissionRequest } from "../request.ts";
 import { SHELL_TOOLS, simpleCommand } from "../shell.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { catastrophicCommand } from "../shell/destructive.ts";
+import { activeCommandSandbox } from "../../../utils/command-sandbox.ts";
 
 /** Whether `command` is a shell command a destructive pattern matches, relative targets resolved against `cwd`: a `shell.destructive` call, ask each time. */
 const destructive = (command: string, cwd: string): boolean => catastrophicCommand(command, cwd) !== undefined;
@@ -34,7 +35,7 @@ export function reasonPurpose(event: Pick<ToolCallEvent, "toolName" | "input">):
 export function callRequest(
 	request: PermissionRequest,
 	event: ToolCallEvent,
-	ctx: Pick<ExtensionContext, "cwd">,
+	ctx: Pick<FeatureContext, "cwd">,
 ): PermissionRequest {
 	return {
 		...request,
@@ -48,7 +49,7 @@ export function callRequest(
 /** What a call is, as a permission request; undefined when no mode asks about it. */
 export function classify(
 	event: ToolCallEvent,
-	ctx: Pick<ExtensionContext, "cwd">,
+	ctx: Pick<FeatureContext, "cwd">,
 	forceDestructive = false,
 	annotations?: ToolAnnotations,
 ): PermissionRequest | undefined {
@@ -66,6 +67,18 @@ function classOf(
 	if (SHELL_TOOLS.has(tool)) {
 		const command = optionalString(input.command) ?? "";
 		const simple = simpleCommand(command);
+		// Outside the sandbox: asked in every mode but bypass, allowed for the session only as this exact command.
+		if (input.sandbox === false && activeCommandSandbox())
+			return {
+				action: "shell.unsandboxed",
+				...(forceDestructive || destructive(command, cwd) ? { also: ["shell.destructive" as const] } : {}),
+				title: "Run this command outside the sandbox?",
+				what: [command, `cwd: ${cwd}`],
+				grant: {
+					key: JSON.stringify([tool, input.type ?? "bash", canonicalPath(cwd), command]),
+					label: `\`${command}\` outside the sandbox in ${cwd}`,
+				},
+			};
 		if (forceDestructive || destructive(command, cwd))
 			return { action: "shell.destructive", title: "Run this destructive command?", what: [command, `cwd: ${cwd}`] };
 		const grant = simple

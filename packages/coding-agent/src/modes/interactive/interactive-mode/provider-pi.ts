@@ -69,7 +69,7 @@ export async function showPiProviders(
 			const entry = entries.find((candidate) => candidate.providerId === id);
 			return `${provider?.name ?? id} (${id}) — ${entry ? (entry.type === "oauth" ? "account" : "API key") : "models.json"} · ${count} catalog models${provider ? "" : " · provider definition missing"}`;
 		});
-		const choice = await host.showExtensionSelector("Pi (config) — models.json providers and saved sign-ins", choices);
+		const choice = await host.showSelectorDialog("Pi (config) — models.json providers and saved sign-ins", choices);
 		if (!choice) return;
 		const id = ids[choices.indexOf(choice)];
 		const entry = entries.find((candidate) => candidate.providerId === id);
@@ -82,7 +82,7 @@ export async function showPiProviders(
 			return;
 		}
 		if (runtime.getAvailableSnapshot().some((model) => model.provider === id)) {
-			const action = await host.showExtensionSelector(`Pi · ${id}`, ["Choose a model", "Import Pi credential"]);
+			const action = await host.showSelectorDialog(`Pi · ${id}`, ["Choose a model", "Import Pi credential"]);
 			if (action === "Choose a model") host.showModelSelector(`${id}/`);
 			if (action !== "Import Pi credential") return;
 		}

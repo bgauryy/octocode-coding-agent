@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
@@ -134,7 +134,7 @@ export class Activity {
 		const lost = this.host.held.lost(db.owned(me.id, now));
 		const why = idle ? ` after ${Math.round((now - this.activeAt) / 60_000)}m idle` : "";
 		if (lost.length > 0)
-			this.host.mail.notice(renderInstruction("notices/mail/reservation-lapsed.md", { paths: lost.join(", "), why }));
+			this.host.mail.notice(renderPrompt("notices/mail/reservation-lapsed.md", { paths: lost.join(", "), why }));
 	}
 
 	/** Writes the heartbeat when a status changed or `HEARTBEAT_MS` passed since the last; whether it did. */

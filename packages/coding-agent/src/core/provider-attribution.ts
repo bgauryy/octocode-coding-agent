@@ -72,7 +72,7 @@ const REQUEST_AGENT_HEADERS_ENV = "OCTOCODE_REQUEST_AGENT_HEADERS";
 
 /**
  * `x-octocode-agent` (the subagent id, `main` for the session itself), `x-octocode-role` and `x-octocode-parent` for a
- * provider that is not built in (a `models.json` or extension provider), so a gateway or test server can tell a child's
+ * provider that is not built in (a `models.json` or feature provider), so a gateway or test server can tell a child's
  * requests from its parent's. Built-in vendors never receive them.
  */
 function getAgentHeaders(model: Model<Api>, env: NodeJS.ProcessEnv): Record<string, string> | undefined {

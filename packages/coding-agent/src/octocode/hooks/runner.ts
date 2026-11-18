@@ -128,6 +128,9 @@ function verdictOf(event: HookEvent, run: HookRun, protocol: HookProtocol): Hook
 		event === "SessionEnd" ||
 		event === "AgentOn" ||
 		event === "AgentOff" ||
+		event === "TaskCreated" ||
+		event === "BacklogChange" ||
+		event === "MonitorAlert" ||
 		event === "StopFailure" ||
 		(protocol === "claude" && event === "PostCompact") ||
 		run.timedOut ||

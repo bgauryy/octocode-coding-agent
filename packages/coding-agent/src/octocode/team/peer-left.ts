@@ -1,3 +1,4 @@
+import { processAlive } from "../shared/process.ts";
 import type { AgentLifecycleBus, LifecycleEvent } from "./lifecycle-bus.ts";
 
 /** What the notices need of the team: its bus, this agent's name, its database and a way to tell it. */
@@ -16,6 +17,8 @@ export interface PeerNoticeHost {
  * peer's AgentOff is heard. A correspondent is one this agent sent mail to or received mail from; the line is an FYI that
  * starts no turn. When mail this agent sent that peer went unread or unanswered, its dead-letter notice is the one notice
  * (`Mail.reportDeadLetters`), so no line. A subagent's parent hears its children's ends in their reports, so those get none.
+ * A `crashed` end of a process that still runs was a wrong verdict, not an end: the peer registers again with its next
+ * heartbeat, so no line (every wrong retirement of one process would otherwise be announced again).
  */
 export class PeerNotices {
 	private unwatch: (() => void) | undefined;
@@ -41,6 +44,7 @@ export class PeerNotices {
 		const me = this.host.self();
 		const db = this.host.db();
 		if (event.kind !== "off" || !me || !db || event.agent === me || event.parent === me) return;
+		if (event.reason === "crashed" && processAlive(event.stats?.pid)) return;
 		const joined = typeof event.stats?.joinedAt === "number" ? event.stats.joinedAt : 0;
 		const { exchanged, dead } = db.correspondence(me, event.agent, joined);
 		if (!exchanged || dead) return;

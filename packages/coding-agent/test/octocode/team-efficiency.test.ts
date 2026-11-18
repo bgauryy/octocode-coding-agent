@@ -143,7 +143,7 @@ describe("team delivery efficiency", () => {
 			store.save(member("recipient"));
 			store.send("sender", ["recipient"], "request", { replyRequired: true });
 			store.remove("recipient");
-			vi.spyOn(api, "sendMessage").mockImplementationOnce(() => {
+			vi.spyOn(api.session, "sendMessage").mockImplementationOnce(() => {
 				throw new Error("not ready");
 			});
 			mail.reportDeadLetters(store, "sender");
@@ -198,7 +198,7 @@ describe("team delivery efficiency", () => {
 		const newHandoff = new Promise<void>((resolve) => {
 			acceptNew = resolve;
 		});
-		const send = vi.spyOn(api, "sendMessage").mockReturnValueOnce(oldHandoff).mockReturnValueOnce(newHandoff);
+		const send = vi.spyOn(api.session, "sendMessage").mockReturnValueOnce(oldHandoff).mockReturnValueOnce(newHandoff);
 		try {
 			for (const store of [oldStore, newStore]) {
 				store.save(member("recipient"));
@@ -233,7 +233,7 @@ describe("team delivery efficiency", () => {
 		const handoff = new Promise<void>((resolve) => {
 			accept = resolve;
 		});
-		const send = vi.spyOn(api, "sendMessage").mockReturnValueOnce(handoff);
+		const send = vi.spyOn(api.session, "sendMessage").mockReturnValueOnce(handoff);
 		try {
 			store.save(member("recipient"));
 			store.send("sender", ["recipient"], "request", { replyRequired: true });

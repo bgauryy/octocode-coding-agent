@@ -15,7 +15,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
-import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
 import { batchAdd } from "../../src/octocode/backlog/tool-batch.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

@@ -3,10 +3,11 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RegisteredCommand } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
-import { registerMcpHost, type McpExtensionOptions } from "../src/index.ts";
-import type { McpExtensionState } from "../src/state.ts";
+import { registerMcpHost, type McpFeatureOptions } from "../src/index.ts";
+import type { McpFeatureState } from "../src/state.ts";
 import * as manager from "../src/ui.ts";
 import { createHarness, createTestUiContext, type Harness } from "../../coding-agent/test/suite/harness.ts";
+import { testFeatures } from "../../coding-agent/test/helpers/features.ts";
 
 const entry = (name = "octocode", scope: McpServerEntry["scope"] = "default"): McpServerEntry => ({
 	name,
@@ -21,30 +22,32 @@ const entry = (name = "octocode", scope: McpServerEntry["scope"] = "default"): M
 
 describe("unified MCP slash management", () => {
 	const harnesses: Harness[] = [];
-	const states: McpExtensionState[] = [];
+	const states: McpFeatureState[] = [];
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		await Promise.all(states.splice(0).flatMap((state) => state.connections().map((connection) => connection.close())));
 		for (const harness of harnesses.splice(0)) harness.cleanup();
 	});
-	async function setup(entries: McpServerEntry[] = [entry()], tui = false, options: McpExtensionOptions = {}) {
+	async function setup(entries: McpServerEntry[] = [entry()], tui = false, options: McpFeatureOptions = {}) {
 		let command!: Omit<RegisteredCommand, "name" | "sourceInfo">;
-		let state!: McpExtensionState;
+		let state!: McpFeatureState;
 		const notifications: string[] = [];
 		const select = vi.fn(async (_title: string, _options: string[]): Promise<string | undefined> => undefined);
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					state = registerMcpHost(
 						{
 							...api,
-							registerCommand: (name, definition) => {
-								command = definition;
-								api.registerCommand(name, {
-									...definition,
-									handler: (args, ctx) => definition.handler(args, tui ? { ...ctx, mode: "tui" } : ctx),
-								});
+							commands: {
+								register: (name, definition) => {
+									command = definition;
+									api.commands.register(name, {
+										...definition,
+										handler: (args, ctx) => definition.handler(args, tui ? { ...ctx, mode: "tui" } : ctx),
+									});
+								},
 							},
 						},
 						{
@@ -53,11 +56,11 @@ describe("unified MCP slash management", () => {
 						},
 					);
 				},
-			],
+			]),
 		});
 		states.push(state);
 		harnesses.push(harness);
-		await harness.session.bindExtensions({
+		await harness.session.bindFeatures({
 			uiContext: createTestUiContext({ notify: (message) => notifications.push(message), select }),
 		});
 		await state.pending;
@@ -107,15 +110,15 @@ describe("unified MCP slash management", () => {
 			{ value: "@add", label: "Add MCP" },
 		]);
 		expect(menus[1].items.map((item) => item.value)).toEqual(["tools", "reconnect"]);
-		expect(menus[1].facts).toContainEqual({ label: "Exposure", value: "direct · change in /harness mcp" });
+		expect(menus[1].facts).toContainEqual({ label: "Exposure", value: "direct · change in Tools" });
 		expect(restart).toHaveBeenCalledOnce();
 	});
-	it("points /mcp assign and /mcp exposure at /harness mcp", async () => {
+	it("points /mcp assign and /mcp exposure at the /mcp tools page", async () => {
 		const { harness, state, command, notifications } = await setup();
 		await harness.session.prompt("/mcp assign octocode all");
-		expect(notifications.at(-1)).toBe("Moved: open /harness mcp, select octocode, then Available to");
+		expect(notifications.at(-1)).toBe("Moved: open /mcp, select octocode, then Tools › Available to");
 		await harness.session.prompt("/mcp exposure octocode hidden --local");
-		expect(notifications.at(-1)).toBe("Moved: open /harness mcp, select octocode, then Default for tools");
+		expect(notifications.at(-1)).toBe("Moved: open /mcp, select octocode, then Tools › Default for tools");
 		expect(state.findServer("octocode")?.entry.config.exposure).toBe("direct");
 		expect(await command.getArgumentCompletions?.("assign ")).toBeNull();
 	});
@@ -195,9 +198,11 @@ describe("unified MCP slash management", () => {
 		expect(updateConfig).not.toHaveBeenCalled();
 	});
 	it("opens default tool schemas in the manager", async () => {
-		const { harness } = await setup([entry()], true);
+		// Not named "octocode": the tools page reads the files a new session reads, and the built-in octocode preset pins
+		// its own tools there, which would list them beside the fixture's.
+		const { harness } = await setup([entry("fixture")], true);
 		const menus: manager.McpMenu[] = [];
-		const choices = ["octocode", "tools", "echo", undefined, undefined, undefined, undefined];
+		const choices = ["fixture", "tools", "echo", undefined, undefined, undefined, undefined];
 		vi.spyOn(manager, "showMcpManager").mockImplementation(async (_ctx, manage) =>
 			manage({
 				menu: async (build) => {
@@ -210,7 +215,8 @@ describe("unified MCP slash management", () => {
 		);
 		await harness.session.prompt("/mcp");
 		expect(menus[0].details).toContain(join(harness.tempDir, "agent", "mcp.json"));
-		expect(menus[2].items[0].value).toBe("echo");
+		// The host installs the tool switch port: the server rows come first, then the fixture's one tool.
+		expect(menus[2].items.map((item) => item.value)).toEqual(["@available", "@default", "echo"]);
 		expect(menus[3].facts?.map((fact) => fact.value).join("\n")).toContain('"type": "object"');
 	});
 	it.each(["global", "default"] as const)(
@@ -226,7 +232,7 @@ describe("unified MCP slash management", () => {
 			// `/mcp enable|disable` moved to /configuration, which switches through this same MCP switch.
 			await harness.session.prompt("/mcp disable fixture --local");
 			expect(notifications.at(-1)).toContain("/configuration disable mcp:fixture --local");
-			const mcpSwitch = getMcpSwitch(state.api.events)!;
+			const mcpSwitch = getMcpSwitch(state.api.channels)!;
 			expect((await mcpSwitch({ name: "fixture", enabled: false, inProject: true })).message).toContain(
 				"requires a trusted project",
 			);
@@ -253,7 +259,7 @@ describe("unified MCP slash management", () => {
 				params,
 				signal,
 				undefined,
-				harness.session.extensionRunner.createToolContext("call", signal),
+				harness.session.featureHost.createToolContext("call", signal),
 			);
 			return (result.content[0] as { text: string }).text;
 		};
@@ -275,7 +281,7 @@ describe("unified MCP slash management", () => {
 			{ ...entry("docs-server", "global"), config: { command: "never-launch", enabled: false } },
 		]);
 		const signal = new AbortController().signal;
-		const ctx = harness.session.extensionRunner.createToolContext("add-alias", signal);
+		const ctx = harness.session.featureHost.createToolContext("add-alias", signal);
 		const confirm = vi.spyOn(ctx.ui, "confirm").mockResolvedValue(true);
 		const tool = harness.session.getToolDefinition("mcp")!;
 		await expect(
@@ -288,7 +294,7 @@ describe("unified MCP slash management", () => {
 			),
 		).rejects.toThrow('The mcp intent "add" was removed');
 		expect(confirm).not.toHaveBeenCalled();
-		expect(state.api.getMcpServers()).toEqual([]);
+		expect(state.api.mcpServers.list()).toEqual([]);
 		expect(state.servers.map((server) => server.entry.name)).toEqual(["docs-server"]);
 		expect(state.overridden).toEqual([]);
 	});

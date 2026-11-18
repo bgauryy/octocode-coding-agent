@@ -1,5 +1,5 @@
-import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
-import { renderInstruction } from "../core/prompt-template.ts";
+import type { SetupPick, FeatureContext } from "../core/features/index.ts";
+import { renderPrompt } from "../core/prompt-template.ts";
 import type { ExternalAdmission } from "./api/bridge/contracts.ts";
 import type { ExternalParams } from "./external/protocol.ts";
 import type { registerHooks } from "./hooks/register.ts";
@@ -18,7 +18,7 @@ import { type BranchMerged, mergeWorktreeBranch } from "./worktrees/merge.ts";
  * workspace with its own board. None when there are no sessions or the board cannot be read (the merge's other checks
  * still run).
  */
-function heldOpenItems(ctx: ExtensionContext, worktree: string, sessions: string[]): string[] {
+function heldOpenItems(ctx: FeatureContext, worktree: string, sessions: string[]): string[] {
 	if (sessions.length === 0) return [];
 	try {
 		const { store } = openBacklog({ cwd: worktree, sessionManager: ctx.sessionManager }, { isSubagent: false });
@@ -41,14 +41,14 @@ export function messagePolicy({
 	provenance,
 	team,
 }: {
-	api: Pick<ExtensionAPI, "sendMessage">;
+	api: SetupPick<"session", "sendMessage">;
 	hooks: ReturnType<typeof registerHooks>;
 	permission: Permission;
 	planning: { blocked(): boolean };
 	provenance: ReturnType<typeof createProvenance>;
 	team: Pick<Team, "reservation" | "members">;
 }) {
-	const messageHooks = async (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => {
+	const messageHooks = async (message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal) => {
 		const verdict = await hooks.messageSend(message, signal ? { ...ctx, signal } : ctx);
 		if (verdict?.block) {
 			permission.refused([`${message.from} → ${message.to}`], verdict.block, "message");
@@ -70,7 +70,7 @@ export function messagePolicy({
 		if (planning.blocked()) throw new Error(`${what} blocked during planning.`);
 	};
 	/** What a worktree merge's readiness check reads: reservations, the agents still working there, the backlog items held there. */
-	const readiness = (ctx: ExtensionContext) => ({
+	const readiness = (ctx: FeatureContext) => ({
 		reservation: (file: string, shown: string) => team.reservation(file, shown),
 		occupants: () => team.members(),
 		openItems: (worktree: string, sessions: string[]) => heldOpenItems(ctx, worktree, sessions),
@@ -81,7 +81,7 @@ export function messagePolicy({
 	const authorizeSend = async (
 		hit: ReturnType<typeof provenance.sent>,
 		request: { title: string; what: string[]; cwd: string; effect: string; grant?: { key: string; label: string } },
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal?: AbortSignal,
 	) => {
 		const checked = await permission.check(ctx, {
@@ -100,13 +100,13 @@ export function messagePolicy({
 	};
 	return {
 		/** An outbound message to a teammate or an outside agent. */
-		beforeMessage: async (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => {
+		beforeMessage: async (message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal) => {
 			notWhilePlanning("Agent message dispatch is");
 			await messageHooks(message, ctx, signal);
 		},
 		/** An inbound message's hooks; whether it may arrive at all is `admit`. */
 		inboundHooks: messageHooks,
-		admit: (claim: ExternalAdmission, ctx: ExtensionContext, signal?: AbortSignal, onAsk?: () => void) =>
+		admit: (claim: ExternalAdmission, ctx: FeatureContext, signal?: AbortSignal, onAsk?: () => void) =>
 			admitExternalMessage(permission, ctx, claim, {
 				self: claim.self,
 				planning: planning.blocked(),
@@ -114,7 +114,7 @@ export function messagePolicy({
 				...(onAsk ? { onAsk } : {}),
 				...(signal ? { signal } : {}),
 			}),
-		authorizeExternal: async (input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal) => {
+		authorizeExternal: async (input: ExternalParams, ctx: FeatureContext, signal: AbortSignal) => {
 			notWhilePlanning("External agent dispatch is");
 			await authorizeSend(
 				input.action === "prompt" ? provenance.sent(input, ctx, allowedSource) : undefined,
@@ -132,7 +132,7 @@ export function messagePolicy({
 		authorizePeer: async (
 			target: { name: string; cwd: string },
 			text: string,
-			ctx: ExtensionContext,
+			ctx: FeatureContext,
 			signal?: AbortSignal,
 		) => {
 			notWhilePlanning("Agent message dispatch is");
@@ -161,7 +161,7 @@ export function messagePolicy({
 		 */
 		mergeBranch: async (
 			branch: string,
-			ctx: ExtensionContext,
+			ctx: FeatureContext,
 			signal?: AbortSignal,
 		): Promise<{ ok: boolean; text: string; merged?: BranchMerged }> => {
 			let bypassed = false;
@@ -182,14 +182,17 @@ export function messagePolicy({
 				},
 			});
 			if (result.ok && result.merged && bypassed) {
-				const content = renderInstruction("notices/landing/bypass-merged.md", { merged: result.text });
-				void api.sendMessage({ customType: "octocode-merge-notice", content, display: true }, { triggerTurn: false });
+				const content = renderPrompt("notices/landing/bypass-merged.md", { merged: result.text });
+				void api.session.sendMessage(
+					{ customType: "octocode-merge-notice", content, display: true },
+					{ triggerTurn: false },
+				);
 				notify(ctx.ui, content, "warning");
 			}
 			return result;
 		},
 		/** `/worktree merge <branch>`: consent by typing, so it runs after the readiness check, and the audit still says so. */
-		typedMerge: (branch: string, ctx: ExtensionContext) => {
+		typedMerge: (branch: string, ctx: FeatureContext) => {
 			permission.typed(`/worktree merge ${branch}`, ctx.cwd);
 			return mergeWorktreeBranch(ctx.cwd, branch, readiness(ctx));
 		},

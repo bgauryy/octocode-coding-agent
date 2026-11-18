@@ -5,7 +5,7 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import type { AgentMessage, StreamFn } from "@octocodeai/octocode-agent-core";
 import type { RetryCallbacks, RetryPolicy } from "@octocodeai/octocode-ai";
 import { contentText } from "@octocodeai/octocode-ai";
@@ -200,7 +200,7 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 
 	// First pass: collect file ops from ALL entries (even if they don't fit in token budget)
 	// This ensures we capture cumulative file tracking from nested branch summaries
-	// Only extract from pi-generated summaries (fromHook !== true), not extension-generated ones
+	// Only extract from pi-generated summaries (fromHook !== true), not feature-generated ones
 	for (const entry of entries) {
 		if (entry.type === "branch_summary" && !entry.fromHook && entry.details) {
 			const details = entry.details as BranchSummaryDetails;
@@ -264,7 +264,7 @@ function prepareBranchEntries(entries: SessionEntry[], tokenBudget: number = 0):
 // Summary Generation
 // ============================================================================
 
-const BRANCH_SUMMARY_PROMPT = renderInstruction("workflows/compaction/branch-summary.md", {
+const BRANCH_SUMMARY_PROMPT = renderPrompt("workflows/compaction/branch-summary.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
 });
 
@@ -324,7 +324,7 @@ export async function generateBranchSummary(
 		instructions = BRANCH_SUMMARY_PROMPT;
 	}
 	// The summary must not claim to cover what it never saw.
-	const note = dropped > 0 ? `\n\n${renderInstruction("workflows/compaction/dropped-messages.md", { dropped })}` : "";
+	const note = dropped > 0 ? `\n\n${renderPrompt("workflows/compaction/dropped-messages.md", { dropped })}` : "";
 	// Serialized to text so the model does not treat it as a conversation to continue; custom messages keep their type as the label.
 	const buildPrompt = (remaining: AgentMessage[]): string =>
 		`<conversation>\n${serializeMessages(remaining)}\n</conversation>\n\n${instructions}${note}`;

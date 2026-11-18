@@ -21,6 +21,8 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 let root: string;
 let cwd: string;
@@ -46,7 +48,9 @@ function harness(options: { subagent?: boolean; mode?: PermissionMode; session?:
 	const session = options.session ?? SessionManager.inMemory(cwd);
 	const fake = fakeHost();
 	// The real host appends synchronously into the session file; the fake would only record it.
-	Object.assign(fake.api, { appendEntry: (type: string, data?: unknown) => session.appendCustomEntry(type, data) });
+	Object.assign(fake.api.session, {
+		appendEntry: (type: string, data?: unknown) => session.appendCustomEntry(type, data),
+	});
 	registerMemory(fake.api, {
 		commands: new Subcommands(),
 		isSubagent: options.subagent === true,
@@ -248,13 +252,14 @@ describe("session notes and the cached prefix", () => {
 			cwd: project,
 			agentDir,
 			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
 			noPromptTemplates: true,
 			noThemes: true,
-			extensionFactories: [
+			features: testFeatures([
 				{
 					name: "notes-fixture",
 					factory: (api) =>
-						api.registerProvider("faux-notes", {
+						api.providers.register("faux-notes", {
 							name: "Fixture",
 							api: faux.api,
 							baseUrl: "http://127.0.0.1:0",
@@ -279,7 +284,7 @@ describe("session notes and the cached prefix", () => {
 							},
 						} as never),
 				},
-			],
+			]),
 		});
 		await resourceLoader.reload();
 		const { session } = await createTestSession({
@@ -289,7 +294,7 @@ describe("session notes and the cached prefix", () => {
 			resourceLoader,
 			sessionManager: SessionManager.create(project, path.join(dir, "sessions")),
 		});
-		await session.bindExtensions({
+		await session.bindFeatures({
 			mode: "json",
 			uiContext: { confirm: async () => true, notify: () => undefined } as never,
 			shutdownHandler: () => undefined,
@@ -301,7 +306,7 @@ describe("session notes and the cached prefix", () => {
 			await session.prompt("What was the rule?");
 		} finally {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+			await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 		}
 		const turns = captured.filter((request) => request.system !== "");

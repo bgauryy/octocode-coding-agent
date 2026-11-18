@@ -21,8 +21,9 @@ import {
 	buildSystemPromptState,
 	diffSystemPromptSections,
 } from "../src/core/system-prompt.ts";
-import type { ExtensionFactory } from "../src/core/features/index.ts";
+import type { FeatureRegister } from "../src/core/features/index.ts";
 import { createHarness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 describe("system prompt updates", () => {
 	test("declares the prompt and tools once and reuses them across resume", async () => {
@@ -111,13 +112,13 @@ describe("system prompt updates", () => {
 
 	test("a forced prompt is sent as the leading prompt for the run and never recorded", async () => {
 		let turn = 0;
-		const extension: ExtensionFactory = (api) => {
-			api.on("before_agent_start", (event) => {
+		const feature: FeatureRegister = (api) => {
+			api.bus.on("before_agent_start", (event) => {
 				if (++turn === 3) event.systemPromptOptions.sections.plan_mode = "Plan only.";
 				return turn === 2 || turn === 3 ? { systemPrompt: "Exact prompt." } : undefined;
 			});
 		};
-		const harness = await createHarness({ extensionFactories: [extension] });
+		const harness = await createHarness({ features: testFeatures([feature]) });
 		try {
 			const requests: TranscriptContext[] = [];
 			harness.setResponses(
@@ -166,9 +167,9 @@ describe("system prompt updates", () => {
 	});
 
 	test("setActiveTools emits prompt sections and tool changes before the next request", async () => {
-		const extension: ExtensionFactory = (api) => {
+		const feature: FeatureRegister = (api) => {
 			for (const name of ["first", "second"]) {
-				api.registerTool({
+				api.tools.register({
 					name,
 					label: name,
 					description: `${name} description`,
@@ -179,7 +180,7 @@ describe("system prompt updates", () => {
 				});
 			}
 		};
-		const harness = await createHarness({ extensionFactories: [extension], initialActiveToolNames: ["first"] });
+		const harness = await createHarness({ features: testFeatures([feature]), initialActiveToolNames: ["first"] });
 		try {
 			// Faux response callbacks swallow thrown assertions, so capture and assert afterwards.
 			const requests: TranscriptContext[] = [];
@@ -212,8 +213,12 @@ describe("system prompt updates", () => {
 			expect(update).toEqual({
 				role: "system",
 				content: "",
-				sections: { tools: expect.stringContaining("second prompt snippet"), rules: expect.any(String) },
-				toolsRemoved: [{ name: "first" }],
+				// The scripted model's transport cannot remove a tool in place: it is announced and held to the next span.
+				sections: {
+					tools: expect.stringContaining("second prompt snippet"),
+					rules: expect.any(String),
+					tools_off: expect.stringContaining("first is turned off"),
+				},
 				timestamp: expect.any(Number),
 			});
 			expect(update?.sections?.tools).not.toContain("first prompt snippet");
@@ -223,7 +228,7 @@ describe("system prompt updates", () => {
 			expect(result).toMatchObject({ role: "toolResult", toolName: "first", isError: true });
 
 			const current = getCurrentSystemMessage(harness.session.messages);
-			expect(current?.toolsAdded?.map((value) => value.name)).toEqual(["second"]);
+			expect(current?.toolsAdded?.map((value) => value.name)).toEqual(["first", "second"]);
 			expect(getSystemMessageText(current!)).toBe(harness.session.systemPrompt);
 		} finally {
 			harness.cleanup();
@@ -231,9 +236,9 @@ describe("system prompt updates", () => {
 	});
 
 	test("setActiveTools in before_agent_start controls the same request", async () => {
-		const extension: ExtensionFactory = (api) => {
+		const feature: FeatureRegister = (api) => {
 			for (const name of ["first", "second"]) {
-				api.registerTool({
+				api.tools.register({
 					name,
 					label: name,
 					description: `${name} description`,
@@ -242,11 +247,11 @@ describe("system prompt updates", () => {
 				});
 			}
 			let turn = 0;
-			api.on("before_agent_start", () => {
-				if (turn++ === 1) api.setActiveTools(["second"]);
+			api.bus.on("before_agent_start", () => {
+				if (turn++ === 1) api.tools.setActive(["second"]);
 			});
 		};
-		const harness = await createHarness({ extensionFactories: [extension], initialActiveToolNames: ["first"] });
+		const harness = await createHarness({ features: testFeatures([feature]), initialActiveToolNames: ["first"] });
 		try {
 			const requests: TranscriptContext[] = [];
 			harness.setResponses([
@@ -263,7 +268,9 @@ describe("system prompt updates", () => {
 			await harness.session.prompt("second");
 			expect(requests).toHaveLength(2);
 			const update = requests[1]?.messages.filter((message) => message.role === "system").at(-1);
+			// An extension's own setActiveTools is a span boundary: held tools do not defer it, unlike the SDK call above.
 			expect(update?.toolsRemoved).toEqual([{ name: "first" }]);
+			expect(update?.sections?.tools_off).toBeUndefined();
 			expect(update?.toolsAdded).toBeUndefined();
 			expect(harness.session.getActiveToolNames()).toEqual(["second"]);
 		} finally {

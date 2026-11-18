@@ -30,8 +30,13 @@ export function memberTranscript(db: Db, member: { id: string; sessionId?: strin
 	const resolved = resolveAgent(db, member.id);
 	if (resolved?.sessionFile && fs.existsSync(resolved.sessionFile)) return resolved.sessionFile;
 	const id = member.sessionId ?? resolved?.sessionId;
-	const dir = id ? sessions.byId(db, id)?.dir : undefined;
-	if (!id || !dir) return undefined;
+	return id ? sessionTranscript(db, id) : undefined;
+}
+
+/** The transcript of session `id` by the folder its session row records (`<timestamp>_<id>.jsonl`); undefined when the row or the file is missing. */
+export function sessionTranscript(db: Db, id: string): string | undefined {
+	const dir = sessions.byId(db, id)?.dir;
+	if (!dir) return undefined;
 	try {
 		const name = fs.readdirSync(dir).find((entry) => entry.endsWith(`_${id}.jsonl`));
 		return name ? path.join(dir, name) : undefined;

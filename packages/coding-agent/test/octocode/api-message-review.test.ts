@@ -171,8 +171,8 @@ describe("API messaging review regressions", () => {
 	});
 	it("retains an uncertain keyed handoff instead of executing its retry again", async () => {
 		const { fake, client } = await boot();
-		const send = fake.api.sendMessage;
-		fake.api.sendMessage = (message, options) => {
+		const send = fake.api.session.sendMessage;
+		fake.api.session.sendMessage = (message, options) => {
 			send(message, options);
 			throw new Error("failure after handoff");
 		};

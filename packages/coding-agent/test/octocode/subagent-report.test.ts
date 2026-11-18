@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { REPORT_MAX_BYTES } from "../../src/octocode/instructions/report.ts";
+import { REPORT_MAX_BYTES } from "../../src/octocode/native/prompts/report.ts";
 import { capOutput } from "../../src/octocode/shared/util.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { reportChecks, reportOutcome, reportStatus } from "../../src/octocode/subagents/report-outcome.ts";

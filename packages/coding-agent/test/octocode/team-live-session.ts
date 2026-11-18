@@ -2,15 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureSetup, FeatureContext, FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /** A tool that runs until the test calls `release`; `entered` resolves when the model's call started it. */
 export function gate() {
@@ -23,7 +25,7 @@ export function gate() {
 
 export interface LiveTool {
 	name: string;
-	run: (signal: AbortSignal | undefined, ctx: ExtensionContext) => Promise<string>;
+	run: (signal: AbortSignal | undefined, ctx: FeatureContext) => Promise<string>;
 }
 
 export interface LiveOptions {
@@ -35,7 +37,7 @@ export interface LiveOptions {
 	cwd?: string;
 	mode?: "tui" | "print";
 	/** Registers more real tools (for example `bash`) in the session; `names` are enabled with the test tools. */
-	extra?: { register: (api: ExtensionAPI) => void; names: string[] };
+	extra?: { register: (api: FeatureSetup) => void; names: string[] };
 	/** The peer's agent id (set it as `OCTOCODE_PARENT_ID` of a session that plays a subagent). */
 	peerId?: string;
 	/** The peer's environment once this session has joined (its id is `selfId`): make the peer a subagent of it. */
@@ -57,10 +59,10 @@ export async function liveSession(options: LiveOptions) {
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 	});
 	let team!: Team;
-	let api!: ExtensionAPI;
-	const factory: ExtensionFactory = (host) => {
+	let api!: FeatureSetup;
+	const factory: FeatureRegister = (host) => {
 		api = host;
-		api.registerProvider("faux", {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -72,7 +74,7 @@ export async function liveSession(options: LiveOptions) {
 		registerCollab(api, team);
 		options.extra?.register(api);
 		for (const tool of options.tools)
-			api.registerTool({
+			api.tools.register({
 				name: tool.name,
 				label: tool.name,
 				description: `Test tool ${tool.name}`,
@@ -87,8 +89,9 @@ export async function liveSession(options: LiveOptions) {
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "live-session", factory }],
-		disabledFeatures: ["mcp", "llama.cpp"],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "live-session", factory }]),
+		disabledFeatures: ["mcp"],
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -106,7 +109,7 @@ export async function liveSession(options: LiveOptions) {
 	});
 	const ui = fakeCtx({ cwd }).ui;
 	const mode = options.mode ?? "tui";
-	await session.bindExtensions({
+	await session.bindFeatures({
 		mode,
 		...(mode === "tui" ? { uiContext: ui } : {}),
 		shutdownHandler: () => undefined,
@@ -152,7 +155,7 @@ export async function liveSession(options: LiveOptions) {
 				peer.stop();
 				try {
 					await session.abort("shutdown");
-					await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+					await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 				} finally {
 					team.stop();
 					session.dispose();

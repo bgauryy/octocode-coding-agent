@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { Team } from "../team/session.ts";
 import { dirtyAmong } from "../worktrees/merge.ts";
@@ -45,7 +45,7 @@ async function dirtyRefusal(cwd: string, id: string): Promise<string | undefined
 export async function landChild(
 	team: Pick<Team, "reservation" | "members">,
 	id: string,
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	override: (listed: string) => Promise<boolean>,
 	signal?: AbortSignal,
 ): Promise<MergeResult> {
@@ -73,7 +73,7 @@ export async function mergeChild(
 	team: Pick<Team, "reservation" | "members">,
 	permission: Permission,
 	id: string,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	signal?: AbortSignal,
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);
@@ -110,7 +110,7 @@ export async function mergeChild(
 export async function discardChild(
 	team: Pick<Team, "members">,
 	id: string,
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	confirm: (ref: string, files: string[]) => Promise<boolean>,
 ): Promise<MergeResult> {
 	const working = stillWorking(team, id);

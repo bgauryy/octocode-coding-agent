@@ -1,17 +1,18 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { createHarness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 function toolNames(tools: Array<{ name: string }>): string[] {
 	return tools.map((tool) => tool.name).sort();
 }
 
 describe("exclude tools", () => {
-	const extensionFactories: ExtensionFactory[] = [
+	const factories: FeatureRegister[] = [
 		(api) => {
-			api.on("session_start", () => {
-				api.registerTool({
+			api.bus.on("session_start", () => {
+				api.tools.register({
 					name: "ask_question",
 					label: "Ask Question",
 					description: "Ask a question",
@@ -22,7 +23,7 @@ describe("exclude tools", () => {
 						details: {},
 					}),
 				});
-				api.registerTool({
+				api.tools.register({
 					name: "dynamic_tool",
 					label: "Dynamic Tool",
 					description: "Dynamic test tool",
@@ -40,10 +41,10 @@ describe("exclude tools", () => {
 	it("filters built-in and extension tools from available and active tools", async () => {
 		const harness = await createHarness({
 			excludedToolNames: ["bash", "ask_question"],
-			extensionFactories,
+			features: testFeatures(factories),
 		});
 		try {
-			await harness.session.bindExtensions({});
+			await harness.session.bindFeatures({});
 
 			const allToolNames = toolNames(harness.session.getAllTools());
 			expect(allToolNames).not.toContain("bash");
@@ -63,10 +64,10 @@ describe("exclude tools", () => {
 			allowedToolNames: ["bash", "dynamic_tool", "ask_question"],
 			excludedToolNames: ["bash", "ask_question"],
 			initialActiveToolNames: ["bash", "dynamic_tool", "ask_question"],
-			extensionFactories,
+			features: testFeatures(factories),
 		});
 		try {
-			await harness.session.bindExtensions({});
+			await harness.session.bindFeatures({});
 
 			expect(toolNames(harness.session.getAllTools())).toEqual(["dynamic_tool"]);
 			expect(harness.session.getActiveToolNames()).toEqual(["dynamic_tool"]);
@@ -83,10 +84,10 @@ describe("exclude tools", () => {
 			allowedToolNames: ["*_tool", "ask_*", "ba*"],
 			excludedToolNames: ["ask*"],
 			initialActiveToolNames: ["*_tool", "ask_*", "ba*"],
-			extensionFactories,
+			features: testFeatures(factories),
 		});
 		try {
-			await harness.session.bindExtensions({});
+			await harness.session.bindFeatures({});
 
 			// Patterns that match a tool activate it like its name.
 			expect(toolNames(harness.session.getAllTools())).toEqual(["bash", "dynamic_tool"]);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { COMPACT_TOOL, CompactRequests, registerCompactTool } from "../../src/octocode/compaction/compact-tool.ts";
+import { COMPACT_TOOL, CompactRequests, registerCompactTool } from "../../src/octocode/native/tools/compact/tool.ts";
 import { ThrashBreaker } from "../../src/octocode/compaction/pacing.ts";
 import { fakeHost, rendered, theme } from "./fake-host.ts";
 

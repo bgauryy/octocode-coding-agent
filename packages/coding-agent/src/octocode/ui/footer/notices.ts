@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { modelLookup, unpricedModel } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -7,12 +7,12 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
  * Says once per session, as a warning, that a reply came from a model without pricing: the cost shown leaves its usage
  * out (the displays mark it `n/a`). Not only in the TUI: an RPC client shows notifications too.
  */
-export function registerUnpricedNotice(api: ExtensionAPI): void {
+export function registerUnpricedNotice(api: FeatureSetup): void {
 	let warned = false;
-	api.on("session_start", async () => {
+	api.bus.on("session_start", async () => {
 		warned = false;
 	});
-	api.on("message_end", async (event, ctx) => {
+	api.bus.on("message_end", async (event, ctx) => {
 		if (warned || !ctx.hasUI || event.message.role !== "assistant") return;
 		const model = unpricedModel(event.message, modelLookup(ctx));
 		if (!model) return;
@@ -21,7 +21,7 @@ export function registerUnpricedNotice(api: ExtensionAPI): void {
 	});
 }
 
-type ModelInfo = Pick<NonNullable<ExtensionContext["model"]>, "provider" | "id" | "reasoning" | "compat">;
+type ModelInfo = Pick<NonNullable<FeatureContext["model"]>, "provider" | "id" | "reasoning" | "compat">;
 
 /** A model of another provider with the same id that declares `reasoning` (a built-in one, for a `models.json` copy that left it out). */
 export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): ModelInfo | undefined {
@@ -32,8 +32,8 @@ export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): Mode
 /** `retry.fallbackModels` replaced a failed model: say so and why, since the session model changed by itself.
  * Interactive and RPC clients see this notification; print mode has no UI and reads the run outcome warning instead
  * (`retry-fallback.ts`), so each surface shows the notice once. */
-export function registerFallbackNotice(api: ExtensionAPI): void {
-	api.on("model_select", async (event, ctx) => {
+export function registerFallbackNotice(api: FeatureSetup): void {
+	api.bus.on("model_select", async (event, ctx) => {
 		if (event.source !== "fallback" || !ctx.hasUI) return;
 		const from = event.previousModel ? `${event.previousModel.provider}/${event.previousModel.id}` : "The model";
 		notify(
@@ -48,9 +48,9 @@ export function registerFallbackNotice(api: ExtensionAPI): void {
  * Says once per model and session when the model declares no `reasoning` but a model with its id does: Octocode then never
  * asks it to think, so there are no thinking blocks, no thinking level, and no thought on the working line.
  */
-export function registerReasoningNotice(api: ExtensionAPI): void {
+export function registerReasoningNotice(api: FeatureSetup): void {
 	const warned = new Set<string>();
-	const check = async (_event: unknown, ctx: ExtensionContext) => {
+	const check = async (_event: unknown, ctx: FeatureContext) => {
 		const model = ctx.model;
 		if (!ctx.hasUI || !model) return;
 		const key = `${model.provider}/${model.id}`;
@@ -67,9 +67,9 @@ export function registerReasoningNotice(api: ExtensionAPI): void {
 			"warning",
 		);
 	};
-	api.on("session_start", async (event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		warned.clear();
 		await check(event, ctx);
 	});
-	api.on("model_select", check);
+	api.bus.on("model_select", check);
 }

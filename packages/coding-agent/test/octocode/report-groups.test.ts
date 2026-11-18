@@ -134,9 +134,9 @@ describe("ReportGroups", () => {
 				groups.working(id, () => true);
 			}
 			const f = fakeHost();
-			const send = f.api.sendMessage;
+			const send = f.api.session.sendMessage;
 			let rejecting = true;
-			f.api.sendMessage = (...args: Parameters<typeof send>) => {
+			f.api.session.sendMessage = (...args: Parameters<typeof send>) => {
 				send(...args);
 				const id = (args[0].details as { id: string }).id;
 				return rejecting && id === "a" ? Promise.reject(new Error("busy")) : undefined;
@@ -275,8 +275,8 @@ describe("group report batching over random steps, children, stalls, crashes and
 			};
 
 			const sent: Array<{ id: string; at: number; wake: boolean }> = [];
-			const send = f.api.sendMessage;
-			f.api.sendMessage = (...args: Parameters<typeof send>) => {
+			const send = f.api.session.sendMessage;
+			f.api.session.sendMessage = (...args: Parameters<typeof send>) => {
 				const id = (args[0].details as { id: string }).id;
 				// Nothing goes that should still wait.
 				expect(shouldWait(id), `${id} sent at ${Date.now()}`).toBe(false);

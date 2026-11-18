@@ -1,7 +1,8 @@
-import { renderInstruction } from "./prompt-template.ts";
+import { renderPrompt } from "./prompt-template.ts";
 import * as os from "node:os";
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { hasTmuxSession } from "@octocodeai/octocode-tui/multiplexer";
+import type { OutputTelemetry } from "@octocodeai/octocode-tui";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@octocodeai/octocode-ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
 import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
@@ -17,7 +18,7 @@ import {
 } from "./compaction/index.ts";
 import type { CrashRecord } from "./crash-log.ts";
 import type { ProblemRecord } from "./diagnostics-log.ts";
-import type { Extension } from "./features/types.ts";
+import type { FeatureRecord } from "./features/types.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { ReadonlySessionManager } from "./session-manager.ts";
 import type { Settings } from "./settings-manager.ts";
@@ -115,13 +116,13 @@ function describeProvider(modelRuntime: ModelRuntime, provider: Provider) {
 	};
 }
 
-function describeExtension(extension: Extension) {
+function describeFeature(feature: FeatureRecord) {
 	return {
-		path: extension.path,
-		source: redactUrl(extension.sourceInfo.source),
-		scope: extension.sourceInfo.scope,
-		origin: extension.sourceInfo.origin,
-		hidden: extension.hidden === true,
+		path: feature.path,
+		source: redactUrl(feature.sourceInfo.source),
+		scope: feature.sourceInfo.scope,
+		origin: feature.sourceInfo.origin,
+		hidden: feature.hidden === true,
 	};
 }
 
@@ -136,8 +137,8 @@ interface CollectBugReportMetadataOptions {
 	model?: Model<Api>;
 	modelRuntime: ModelRuntime;
 	thinkingLevel: ThinkingLevel;
-	extensions: readonly Extension[];
-	extensionErrors: ReadonlyArray<{ path: string; error: string }>;
+	features: readonly FeatureRecord[];
+	featureErrors: ReadonlyArray<{ path: string; error: string }>;
 	globalSettings: Settings;
 	projectSettings: Settings;
 }
@@ -161,8 +162,8 @@ export function collectBugReportMetadata(options: CollectBugReportMetadataOption
 		model: options.model ? describeModel(options.model) : null,
 		provider: provider ? describeProvider(options.modelRuntime, provider) : null,
 		thinkingLevel: options.thinkingLevel,
-		extensions: options.extensions.map(describeExtension),
-		extensionErrors: options.extensionErrors.map(({ path, error }) => ({ path, error })),
+		extensions: options.features.map(describeFeature),
+		featureErrors: options.featureErrors.map(({ path, error }) => ({ path, error })),
 		settings: {
 			global: redactSettings(options.globalSettings),
 			project: redactSettings(options.projectSettings),
@@ -170,11 +171,15 @@ export function collectBugReportMetadata(options: CollectBugReportMetadataOption
 	};
 }
 
-/** Collect failed assistant turns without collecting conversation content. */
+/**
+ * Collect failed assistant turns without collecting conversation content, and the times the terminal stopped reading
+ * output (`terminalStalls`), which tell a frozen terminal apart from a busy Octocode.
+ */
 export function collectBugReportDiagnostics(
 	sessionManager: ReadonlySessionManager,
 	crashes: readonly CrashRecord[] = [],
 	problems: readonly ProblemRecord[] = [],
+	terminalStalls?: OutputTelemetry["stalls"],
 ) {
 	const entries = sessionManager.getEntries();
 	const assistant = [];
@@ -212,6 +217,7 @@ export function collectBugReportDiagnostics(
 		assistant,
 		crashes: crashes.map(({ notified: _notified, ...record }) => record),
 		problems: [...problems],
+		...(terminalStalls ? { terminalStalls } : {}),
 	};
 }
 
@@ -277,9 +283,9 @@ export function bugReportArchiveFileName(id: string): string {
 	return `octocode-bug-report-${id}.zip`;
 }
 
-const BUG_SUMMARY_SYSTEM_PROMPT = renderInstruction("workflows/bug-report-system.md");
+const BUG_SUMMARY_SYSTEM_PROMPT = renderPrompt("workflows/bug-report-system.md");
 
-const BUG_SUMMARY_INSTRUCTIONS = renderInstruction("workflows/bug-report-instructions.md");
+const BUG_SUMMARY_INSTRUCTIONS = renderPrompt("workflows/bug-report-instructions.md");
 
 function selectMessages(messages: readonly AgentMessage[], tokenBudget: number): AgentMessage[] {
 	const selected: AgentMessage[] = [];

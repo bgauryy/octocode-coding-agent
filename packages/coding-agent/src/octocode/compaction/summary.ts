@@ -7,7 +7,7 @@ import {
 	persistCheckpointText,
 	spillFileLists,
 } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
 import { nextSegment } from "../history/archive.ts";
@@ -96,7 +96,7 @@ export function carryFileLists(
 }
 
 /** The cache-sharing request was unusable: the summary is a standalone request over the serialized conversation, which the prompt cache does not hold. */
-function notifyStandalone(ctx: Pick<ExtensionContext, "hasUI" | "ui">, reason: string): void {
+function notifyStandalone(ctx: Pick<FeatureContext, "hasUI" | "ui">, reason: string): void {
 	if (ctx.hasUI)
 		notify(
 			ctx.ui,
@@ -125,9 +125,9 @@ const paid = new WeakMap<object, PaidSummary>();
  * whole checkpoint becoming a file reference. A subagent's task, its oldest message, is the last to go.
  */
 function codeSections(
-	api: Pick<ExtensionAPI, "getActiveTools">,
+	api: SetupPick<"tools", "getActive">,
 	event: SessionBeforeCompactEvent,
-	ctx: Pick<ExtensionContext, "model" | "sessionManager">,
+	ctx: Pick<FeatureContext, "model" | "sessionManager">,
 	summary: string,
 	previous: { messages: string[]; omitted: number },
 	segment: number,
@@ -141,7 +141,7 @@ function codeSections(
 	const skills = loadedSkills(summarized, carriedLoadedSkills(event.branchEntries));
 	const note = transcriptNote(
 		ctx.sessionManager.getSessionFile(),
-		api.getActiveTools().includes("backlogPlan"),
+		api.tools.getActive().includes("backlogPlan"),
 		archivePointer(segment),
 		// The backlog and running work as the tools state them now, ahead of the skills line.
 		[...(liveState?.() ?? []), ...loadedSkillsLines(skills)],
@@ -182,7 +182,7 @@ function codeSections(
 export async function writeSummary(
 	api: SummaryApi,
 	event: SessionBeforeCompactEvent,
-	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
+	ctx: Pick<FeatureContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
 	fallback?: FallbackContinuity,
 	/** The agent that started this one, when it is a subagent: its mail to this agent is kept word for word. */
@@ -214,8 +214,8 @@ export async function writeSummary(
 	const kept = carriedUserMessages(previous, event.branchEntries);
 	const automatic = event.reason === "threshold" || event.reason === "overflow";
 	try {
-		// Through the model registry, as Octocode's own session streams: request-time auth, and providers an extension registered.
-		const recordUsage = api.createUsageRecorder("compaction_attempt");
+		// Through the model registry, as Octocode's own session streams: request-time auth, and providers a feature registered.
+		const recordUsage = api.usage.createRecorder("compaction_attempt");
 		// Watched as the session watches its own summary (progress, a silent attempt retried), inside the usage record.
 		const send = event.summaryRequest?.watch(ctx.modelRegistry.streamSimple.bind(ctx.modelRegistry));
 		const stream = async (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
@@ -239,12 +239,13 @@ export async function writeSummary(
 			...(previous === undefined ? {} : { previousSummary: previous.body }),
 		});
 		const forced = event.summaryRequest?.forceSystemPrompt;
-		const key = paidSummaryKey(model, event.preparation, event.customInstructions, api.getThinkingLevel(), forced);
+		const level = api.models.getThinkingLevel();
+		const key = paidSummaryKey(model, event.preparation, event.customInstructions, level, forced);
 		let paidSummary = paid.get(ctx.sessionManager);
 		// The summary requested ahead of the threshold (`early-summary.ts`): ready, or waited for what is left of it.
 		const earlyNote = (text: string) => recordCompactionNote(api, "early-summary", text);
 		if (paidSummary?.key !== key && !summaryModel && event.reason === "threshold" && !event.customInstructions) {
-			const thinking = api.getThinkingLevel();
+			const thinking = api.models.getThinkingLevel();
 			const taken = await takeEarlySummary(
 				ctx.sessionManager,
 				model,
@@ -308,13 +309,13 @@ export async function writeSummary(
 					undefined,
 					instructions(STANDALONE_IMAGE_FOCUS),
 					event.signal,
-					api.getThinkingLevel(),
+					api.models.getThinkingLevel(),
 					stream,
 					undefined,
 					event.summaryRequest?.retry,
 					event.summaryRequest?.callbacks,
 					ctx.sessionManager.getSessionId(),
-					{ ...sessionCachePreferences(ctx, model, api.getSettings()), cacheRetention: "none" },
+					{ ...sessionCachePreferences(ctx, model, api.settings.get()), cacheRetention: "none" },
 				));
 			// A cancelled compaction saves nothing, so a summary that returned after the cancel is not kept either.
 			if (event.signal.aborted) return undefined;

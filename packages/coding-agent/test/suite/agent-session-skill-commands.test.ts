@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 import { createHarness, getMessageText, type Harness } from "./harness.ts";
 
 const roots: string[] = [];
@@ -36,22 +36,22 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 			}),
 		};
 	});
-	let api!: ExtensionAPI;
-	let extensionCalls = 0;
-	const extensionsResult = await createTestExtensionsResult(
+	let api!: FeatureSetup;
+	let featureCalls = 0;
+	const featuresResult = await createTestFeaturesResult(
 		[
 			(host) => {
 				api = host;
-				host.registerCommand("custom", {
+				host.commands.register("custom", {
 					handler: async () => {
-						extensionCalls++;
+						featureCalls++;
 					},
 				});
 			},
 		],
 		root,
 	);
-	const loader = createTestResourceLoader({ extensionsResult });
+	const loader = createTestResourceLoader({ featuresResult });
 	loader.getSkills = () => ({ skills, diagnostics: [] });
 	loader.getPrompts = () => ({
 		prompts: [
@@ -74,14 +74,14 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 	});
 	const harness = await createHarness({ resourceLoader: loader, settings: { enableSkillCommands: false } });
 	harnesses.push(harness);
-	await harness.session.bindExtensions({ mode: "rpc" });
+	await harness.session.bindFeatures({ mode: "rpc" });
 	expect(
-		api
+		api.resources
 			.getCommands()
 			.filter((command) => command.source === "prompt")
 			.map((command) => command.name),
 	).toEqual(["review", "prompt:configuration"]);
-	const discovered = api.getCommands().filter((command) => command.source === "skill");
+	const discovered = api.resources.getCommands().filter((command) => command.source === "skill");
 	expect(discovered.map((command) => command.name)).toEqual([
 		"research",
 		"skill:review",
@@ -91,7 +91,7 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 	]);
 	expect(discovered[0].sourceInfo).toBe(skills[0].sourceInfo);
 	await harness.session.prompt("/custom arguments");
-	expect(extensionCalls).toBe(1);
+	expect(featureCalls).toBe(1);
 	for (const [command, expected] of [
 		['/prompt:configuration "quoted argument"', "Settings quoted argument"],
 		["/research\tkeep  two spaces", "Body 0"],

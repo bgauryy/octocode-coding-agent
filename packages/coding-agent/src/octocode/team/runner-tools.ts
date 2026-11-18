@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ServedCall, ServedTool } from "../../../../mcp/src/api.ts";
 import type { RunnerMember } from "./runner-member.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { INBOX_BATCH_SIZE } from "./store/limits.ts";
 
 const parameters = Type.Object(
@@ -21,7 +21,7 @@ const parameters = Type.Object(
 
 export const runnerTeamTool = {
 	name: "team",
-	description: renderInstruction("tools/agent/runner-tool.md"),
+	description: renderPrompt("tools/agent/runner-tool.md"),
 	inputSchema: { ...parameters },
 } satisfies ServedTool;
 

@@ -15,9 +15,9 @@ import type { InteractiveModeHost } from "./host.ts";
 import { disposeComponent } from "./transcript-dispose.ts";
 
 /** Top-level transcript rows a fold keeps mounted. */
-export const LIVE_WINDOW_ROWS = 400;
+const LIVE_WINDOW_ROWS = 400;
 /** Rows past the window before a fold: folds come in batches, each one a single repaint of the screen. */
-export const LIVE_FOLD_BATCH = 200;
+const LIVE_FOLD_BATCH = 200;
 
 type LiveWindowHost = Pick<InteractiveModeHost, "chatContainer" | "pendingTools" | "streamingComponent" | "ui">;
 
@@ -55,15 +55,15 @@ function holdsLive(component: Component, live: ReadonlySet<Component>): boolean 
  * after them.
  */
 export function foldScrolledTranscript(host: LiveWindowHost, keep = LIVE_WINDOW_ROWS, batch = LIVE_FOLD_BATCH): number {
-	const { ui, chatContainer } = host;
+	const { ui, chatContainer, pendingTools, streamingComponent } = host;
 	if (!ui.isAboveViewport || !ui.keepScrollbackOnCollapse) return 0;
 	const children = chatContainer.children;
 	const fold = currentFold(chatContainer, children);
 	const start = fold ? 1 : 0;
 	if (children.length - start - keep < batch) return 0;
 	let cut = children.length - keep;
-	const live = new Set<Component>(host.pendingTools.values());
-	if (host.streamingComponent) live.add(host.streamingComponent);
+	const live = new Set<Component>(pendingTools.values());
+	if (streamingComponent) live.add(streamingComponent);
 	if (live.size > 0) {
 		for (let index = start; index < cut; index++) {
 			if (holdsLive(children[index], live)) {

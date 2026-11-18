@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionContext, ToolCallEvent } from "../../src/core/features/index.ts";
+import type { FeatureContext, ToolCallEvent } from "../../src/core/features/index.ts";
 import {
 	runPermissionSteps,
 	GATE_STEPS,
@@ -12,7 +12,7 @@ import {
 } from "../../src/octocode/permission/judge.ts";
 
 const event = { type: "tool_call", toolCallId: "c1", toolName: "bash", input: { command: "ls" } } as ToolCallEvent;
-const ctx = {} as ExtensionContext;
+const ctx = {} as FeatureContext;
 
 /** Bodies that record the order they ran in, and decide as `verdicts` say. */
 function recording(verdicts: Partial<Record<GateStepName, Awaited<ReturnType<Gate>>>> = {}) {
@@ -21,7 +21,7 @@ function recording(verdicts: Partial<Record<GateStepName, Awaited<ReturnType<Gat
 	const bodies = Object.fromEntries(
 		GATE_STEPS.map((step) => [
 			step.name,
-			async (_event: ToolCallEvent, _ctx: ExtensionContext, prior?: { ask?: string }) => {
+			async (_event: ToolCallEvent, _ctx: FeatureContext, prior?: { ask?: string }) => {
 				ran.push(step.name);
 				priors[step.name] = prior?.ask;
 				return verdicts[step.name];

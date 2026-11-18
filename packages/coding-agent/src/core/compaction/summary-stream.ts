@@ -32,7 +32,7 @@ type SummaryStream<C> = (
 	options?: SimpleStreamOptions,
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
-/** How the session sends a compaction's summary requests; an extension that writes the summary itself uses it too. */
+/** How the session sends a compaction's summary requests; a feature that writes the summary itself uses it too. */
 export interface SummaryRequestPolicy {
 	/** The run's transient system override for cache-sharing requests; absent for the recorded instruction projection. */
 	forceSystemPrompt?: string;

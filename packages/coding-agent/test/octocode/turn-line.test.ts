@@ -37,7 +37,7 @@ describe("turn line", () => {
 		const ctx = fakeCtx({ cwd: "/x", ...options });
 		await fake.emit("agent_start", {}, ctx);
 		for (let index = 0; index < tools; index++)
-			await fake.emit("tool_execution_start", { toolCallId: `t${index}` }, ctx);
+			await fake.emit("tool_execution_start", { toolCallId: `t${index}`, toolName: "bash" }, ctx);
 		await fake.emit("tool_execution_start", { toolCallId: "t/nested", parentToolCallId: "t0" }, ctx);
 		vi.setSystemTime(10_000 + ms);
 		await fake.emit("agent_end", { messages: [] }, ctx);
@@ -99,7 +99,8 @@ describe("turn line", () => {
 		const ctx = fakeCtx({ cwd: "/x" });
 		const segment = async (tools: number, message: unknown) => {
 			await fake.emit("agent_start", {}, ctx);
-			for (let index = 0; index < tools; index++) await fake.emit("tool_execution_start", { toolCallId: "t" }, ctx);
+			for (let index = 0; index < tools; index++)
+				await fake.emit("tool_execution_start", { toolCallId: "t", toolName: "bash" }, ctx);
 			await fake.emit("message_end", { message }, ctx);
 			vi.advanceTimersByTime(10_000);
 			await fake.emit("agent_end", { messages: [] }, ctx);

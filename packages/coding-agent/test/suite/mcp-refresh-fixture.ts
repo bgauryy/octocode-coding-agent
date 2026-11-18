@@ -5,10 +5,10 @@ import { expect, vi } from "vitest";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/client/index.ts";
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
 import type { McpServerEntry } from "../../../mcp/src/config.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import type { McpPresentationMode } from "../../../mcp/src/presentation/index.ts";
 import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../mcp/src/section.ts";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, createTestUiContext, type Harness } from "./harness.ts";
 
@@ -70,10 +70,12 @@ export const appendedChars = (updates: SystemMessage[]) =>
 		0,
 	);
 
-/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head), joined. */
+/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head or `mcps:/` closer), joined. */
 const serverBlocks = (sections: Record<string, string | null> = {}) =>
 	Object.entries(sections)
-		.flatMap(([name, text]) => (text !== null && name.startsWith(`${MCPS_SECTION}:`) ? [text] : []))
+		.flatMap(([name, text]) =>
+			text !== null && name.startsWith(`${MCPS_SECTION}:`) && name !== `${MCPS_SECTION}:/` ? [text] : [],
+		)
 		.join("\n\n");
 
 export const mcpsPatches = (updates: SystemMessage[]) =>
@@ -116,7 +118,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 			config: { url: "http://unused.invalid", exposure: "direct" },
 			source: "test",
 		});
-		let events: ExtensionAPI["events"] | undefined;
+		let events: FeatureSetup["channels"] | undefined;
 		const servers = [entry("docs"), ...(options.late ? [entry("late")] : [])];
 		const harness = await createHarness({
 			initialActiveToolNames: options.sessionManager ? undefined : [],
@@ -124,9 +126,9 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 			sessionManager: options.sessionManager,
 			...(options.models ? { models: options.models } : {}),
 			builtinCompactionFactories: [
-				(api: ExtensionAPI) => {
-					events = api.events;
-					api.on("session_before_compact", async ({ preparation }) => ({
+				(api: FeatureSetup) => {
+					events = api.channels;
+					api.bus.on("session_before_compact", async ({ preparation }) => ({
 						compaction: {
 							summary: options.compactionSummary ?? "Looked up the docs.",
 							firstKeptEntryId: preparation.firstKeptEntryId,
@@ -134,7 +136,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 						},
 					}));
 				},
-				createMcpExtension({
+				createMcpFeature({
 					loadConfig: () => ({ servers, errors: [] }),
 					startupWaitMs: 10,
 					// `/configuration enable|disable mcp:<name>` change the session's servers; nothing is written to a real mcp.json.
@@ -155,7 +157,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 		// A resumed session starts from its transcript, like `createTestSession` does.
 		if (options.sessionManager)
 			harness.session.agent.state.messages = options.sessionManager.buildSessionContext().messages;
-		await harness.session.bindExtensions({ uiContext: createTestUiContext() });
+		await harness.session.bindFeatures({ uiContext: createTestUiContext() });
 		/** What `/configuration enable|disable mcp:<name>` calls: the MCP owner's live switch of this session. */
 		const switchMcp = (name: string, enabled: boolean) => getMcpSwitch(events!)!({ name, enabled, inProject: false });
 		const callable = () => harness.session.getCallableToolNames();

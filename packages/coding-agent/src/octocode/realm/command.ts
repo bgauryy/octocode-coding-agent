@@ -1,6 +1,6 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinDescription } from "../../core/slash-commands.ts";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { cancelledText, type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { worktreeNames } from "../worktrees/names.ts";
 import { MAIN_CHECKOUT, switchToWorktree } from "../worktrees/switch.ts";
@@ -18,14 +18,14 @@ export interface RealmCommandDependencies extends RealmDependencies {
 }
 
 /** `/realm <name> switch`: the worktree switch (idle only, the old session stays saved), after saying why a realm cannot be entered. */
-async function switchTo(realm: Realm, ctx: ExtensionCommandContext): Promise<void> {
+async function switchTo(realm: Realm, ctx: CommandContext): Promise<void> {
 	const problem = switchProblem(realm);
 	if (problem) return say(ctx, `Cannot switch to ${realm.name}. ${problem}`, "warning");
 	await switchToWorktree(switchTarget(realm), ctx);
 }
 
 /** `/realm <name> resume`: a picker of the saved sessions started in the realm, or their ids as text without a UI. */
-async function resumeFrom(realm: Realm, ctx: ExtensionCommandContext): Promise<void> {
+async function resumeFrom(realm: Realm, ctx: CommandContext): Promise<void> {
 	if (realm.sessions.length === 0) return say(ctx, `No saved session was started in ${realm.name}.`);
 	if (!ctx.hasUI || !ctx.ui.pickSession) {
 		const rows = realm.sessions.map(
@@ -53,7 +53,7 @@ async function resumeFrom(realm: Realm, ctx: ExtensionCommandContext): Promise<v
 }
 
 /** The realm's page: its detail and the actions that apply, until the user goes back. Resolves true once an action ended the page. */
-async function realmPage(realm: Realm, view: RealmView, ctx: ExtensionCommandContext, now: number): Promise<boolean> {
+async function realmPage(realm: Realm, view: RealmView, ctx: CommandContext, now: number): Promise<boolean> {
 	const switchLabel = `Switch this session to ${realm.name}`;
 	const resumeLabel = `Resume a session from ${realm.name}`;
 	const options = [
@@ -68,7 +68,7 @@ async function realmPage(realm: Realm, view: RealmView, ctx: ExtensionCommandCon
 }
 
 /** The realm list as a picker: Enter opens a realm's page, Escape closes. Running work is never touched. */
-async function listPage(ctx: ExtensionCommandContext, deps: RealmCommandDependencies): Promise<void> {
+async function listPage(ctx: CommandContext, deps: RealmCommandDependencies): Promise<void> {
 	for (;;) {
 		const { view, sessionsProblem } = await collectRealms(ctx, deps);
 		const now = (deps.now ?? Date.now)();

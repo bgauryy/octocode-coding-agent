@@ -45,13 +45,13 @@ describe("application operations", () => {
 		const session = await newSession();
 		const port = getApplicationPort(session);
 		const dispose = vi.spyOn(session, "dispose");
-		const bindExtensions = vi.spyOn(session, "bindExtensions");
+		const bindFeatures = vi.spyOn(session, "bindFeatures");
 		// An untyped caller (JavaScript, a cast) reaches `invoke` with any name.
 		const invokeAny = port.invoke.bind(port) as (operation: string, ...args: unknown[]) => unknown;
 		expect(() => invokeAny("dispose")).toThrow("dispose is not an application operation");
-		expect(() => invokeAny("bindExtensions", {})).toThrow("bindExtensions is not an application operation");
+		expect(() => invokeAny("bindFeatures", {})).toThrow("bindFeatures is not an application operation");
 		expect(() => invokeAny("sessionId")).toThrow("sessionId is not an application operation");
 		expect(dispose).not.toHaveBeenCalled();
-		expect(bindExtensions).not.toHaveBeenCalled();
+		expect(bindFeatures).not.toHaveBeenCalled();
 	});
 });

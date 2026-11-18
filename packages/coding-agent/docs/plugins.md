@@ -11,7 +11,7 @@ A plugin is a container with one identity that can carry skills, prompt commands
 | Share skills, prompts and themes through npm or git                      | [Package](packages.md)                      |
 | Give the model task instructions only                                    | [Skill](skills.md)                          |
 
-User code extensions do not exist: features register through an internal API, `--extension <code path>` exits 2, and code named by a setting or package is ignored with a warning ([native features](native-features.md#runtime-ownership)).
+Octocode has no extensions: features register through an internal API, and `--extension` is an unknown flag ([native features](native-features.md#runtime-ownership)).
 
 ## Format support
 
@@ -145,7 +145,7 @@ octocode plugin list
 
 ## Inspect and switch
 
-`/harness` lists every plugin, hook, skill and MCP server grouped by host (Claude Code, Codex, Octocode, packages); `/harness list [plugins|hooks|skills|mcp|extensions|<text>]` prints a section, `/harness hooks [events]` inspects hooks, `/harness config` shows loaded configuration and sources. Switch items with `/configuration enable|disable <id>... [--local]` ([changing configuration](configuration.md#changing-configuration)); then `/reload` (MCP switches apply at once). IDs and rules:
+`/harness` lists every plugin, hook, skill and MCP server grouped by host (Claude Code, Codex, Octocode, packages); `/harness list [plugins|hooks|skills|mcp|<text>]` prints a section, `/harness hooks [events]` inspects hooks, `/harness config` shows loaded configuration and sources. Switch items with `/configuration enable|disable <id>... [--local]` ([changing configuration](configuration.md#changing-configuration)); then `/reload` (MCP switches apply at once). IDs and rules:
 
 - Plugins and hooks are stored in the `toggles` setting by ID: `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<file>`, `hook:<id>`. The most specific switch wins, so one hook can stay on while its host is off. Claude and Codex files are never edited. Skills (`skill:<path>`) and extensions use the settings patterns `octocode configuration` writes; MCP servers (`mcp:<name>`) are written to `mcp.json`. Skills supplied only by a plugin are switched through the plugin. Skills from Claude, Codex and Cursor folders are rows only while their harness is on; Pi's global skills are read-only.
 - A project switch (`--local`) only reaches items inside the repository: a committed `.octocode/settings.json` cannot switch off your own hooks or plugins, and `/harness` lists the project keys it ignored.

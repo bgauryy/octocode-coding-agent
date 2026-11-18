@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assistantMsg, userMsg } from "../../utilities.ts";
 import { createHarness, getMessageText, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 	let resolve!: () => void;
@@ -23,7 +24,7 @@ describe("tree navigation during manual compaction", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => {
+					api.bus.on("session_before_compact", async (event) => {
 						compactionStarted.resolve();
 						await compactionReleased.promise;
 						return {
@@ -70,14 +71,14 @@ describe("tree navigation during manual compaction", () => {
 		const navigationStarted = createDeferred();
 		const navigationReleased = createDeferred();
 		harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_before_tree", async () => {
+					api.bus.on("session_before_tree", async () => {
 						navigationStarted.resolve();
 						await navigationReleased.promise;
 					});
 				},
-			],
+			]),
 		});
 
 		const secondTargetId = harness.sessionManager.appendMessage(userMsg("first user"));

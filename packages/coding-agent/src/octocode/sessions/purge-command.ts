@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cancelledText, notify, say, type Subcommands, wordCompletions } from "../shared/commands.ts";
 import {
@@ -23,7 +23,7 @@ interface PurgeCommandOptions {
  * `/purge workspace|all`: removes this workspace's (or every workspace's and the global) Octocode data after a preview
  * and a typed confirmation. Without a terminal UI it refuses: nothing can be confirmed.
  */
-export function registerPurgeCommand(_api: ExtensionAPI, commands: Subcommands, options: PurgeCommandOptions): void {
+export function registerPurgeCommand(_api: FeatureSetup, commands: Subcommands, options: PurgeCommandOptions): void {
 	commands.add("purge", {
 		description: "Delete this workspace's or all Octocode data",
 		argumentHint: "workspace|all",
@@ -32,7 +32,7 @@ export function registerPurgeCommand(_api: ExtensionAPI, commands: Subcommands, 
 	});
 }
 
-async function purgeHandler(args: string, ctx: ExtensionCommandContext, options: PurgeCommandOptions): Promise<void> {
+async function purgeHandler(args: string, ctx: CommandContext, options: PurgeCommandOptions): Promise<void> {
 	const scope = SCOPES.find((name) => name === args);
 	if (!scope)
 		return say(

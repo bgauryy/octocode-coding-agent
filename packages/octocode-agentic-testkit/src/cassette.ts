@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { cacheDir, recordCacheEvent } from "./cache-report.ts";
+import { dirname, join, resolve } from "node:path";
+import { cacheDir, recordCacheEvent, runId } from "./cache-report.ts";
+import { withFileLock } from "./file-lock.ts";
 import type { Reply } from "./reply.ts";
 
 /**
  * `auto` replays a hit and records a miss (only when a real upstream is configured: scripted runs need no cassette),
- * `record` always calls upstream and rewrites the file, `replay` answers from the file and fails on a miss,
+ * `record` always calls upstream and rewrites the file (keeping what this test run recorded, in any worker),
+ * `replay` answers from the file and fails on a miss,
  * `off` disables the cassette. `TESTKIT_CASSETTE` sets the default; an explicit option wins.
  */
 export type CassetteMode = "auto" | "record" | "replay" | "off";
@@ -21,8 +23,14 @@ export interface Fingerprint {
 }
 
 export interface CassetteOptions {
-	/** Default: `<cache dir>/testkit-cassettes/<tier>-<model>-<upstream hash>.json`. */
+	/** Default: `<dir>/<tier>-<model>-<upstream hash>.json`. */
 	file?: string;
+	/**
+	 * Where auto-named files go; point it at a committed directory to replay in CI. Default: `TESTKIT_CASSETTE_DIR`,
+	 * else `<cache dir>/testkit-cassettes`, which is untracked and the only directory pruned (files older than 14 days).
+	 * Ignored when `file` is set.
+	 */
+	dir?: string;
 	/** Default: `TESTKIT_CASSETTE`, else `auto`. */
 	mode?: CassetteMode;
 	/** Merged over the gateway's own (`model`, `tier`). */
@@ -38,6 +46,8 @@ interface Entry {
 	reply: Reply;
 	/** Wall time of the upstream call that produced the reply. */
 	latencyMs: number;
+	/** The test run that recorded it (`runId()`): a rewrite keeps this run's entries, which sibling workers wrote. */
+	run?: string;
 }
 
 interface CassetteFile {
@@ -67,7 +77,7 @@ const stable = (f: Fingerprint): string =>
 			? Object.fromEntries(
 					Object.entries(v)
 						.filter(([, x]) => x !== undefined)
-						.sort(([a], [b]) => (a < b ? -1 : 1)),
+						.toSorted(([a], [b]) => (a < b ? -1 : 1)),
 				)
 			: v,
 	);
@@ -85,14 +95,26 @@ const slug = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0,
 
 const STALE_FILE_DAYS = 14;
 
-/** Default cassette file: one per tier, model and upstream, so unrelated upstreams never share replies. Prunes old ones. */
-function defaultCassetteFile(fp: Fingerprint, upstream: string): string {
-	const dir = join(cacheDir(), "testkit-cassettes");
-	if (existsSync(dir))
-		for (const f of readdirSync(dir)) {
-			const p = join(dir, f);
-			if (Date.now() - statSync(p).mtimeMs > STALE_FILE_DAYS * 86_400_000) rmSync(p, { force: true });
-		}
+/** The directory for auto-named files, and whether it is the untracked default, which is pruned. */
+function cassetteDir(chosen: string | undefined): { dir: string; untracked: boolean } {
+	const dir = chosen ?? process.env.TESTKIT_CASSETTE_DIR;
+	return dir
+		? { dir: resolve(dir), untracked: false }
+		: { dir: join(cacheDir(), "testkit-cassettes"), untracked: true };
+}
+
+/** Removes entries older than 14 days: cassettes, temp files and abandoned locks. Another worker may prune too. */
+function prune(dir: string): void {
+	if (!existsSync(dir)) return;
+	for (const f of readdirSync(dir)) {
+		const p = join(dir, f);
+		const s = statSync(p, { throwIfNoEntry: false });
+		if (s && Date.now() - s.mtimeMs > STALE_FILE_DAYS * 86_400_000) rmSync(p, { recursive: true, force: true });
+	}
+}
+
+/** Default cassette file: one per tier, model and upstream, so unrelated upstreams never share replies. */
+function defaultCassetteFile(dir: string, fp: Fingerprint, upstream: string): string {
 	const where = createHash("sha256").update(upstream).digest("hex").slice(0, 8);
 	return join(dir, `${slug(fp.tier ?? "upstream")}-${slug(fp.model ?? "any")}-${where}.json`);
 }
@@ -112,9 +134,8 @@ export class Cassette {
 	private readonly fresh: Record<string, Entry> = {};
 	private readonly seen = new Map<string, number>();
 	private readonly sample: string;
-	/** The first write replaces the file instead of merging with it (record mode, stale file). */
-	private replaceOnWrite: boolean;
-	private written = false;
+	/** Writes keep only this run's entries from the file (record mode, stale file), not earlier recordings. */
+	private readonly replace: boolean;
 
 	/**
 	 * `undefined` when the cassette is off: mode `off`, or `auto` without a real upstream.
@@ -130,8 +151,11 @@ export class Cassette {
 		const mode = opts?.mode ?? cassetteModeFromEnv();
 		if (mode === "off" || (mode === "auto" && !forwarding)) return undefined;
 		const fingerprint = { ...base, ...opts?.fingerprint };
-		const file = opts?.file ?? defaultCassetteFile(fingerprint, upstream ?? "scripted");
-		return new Cassette(mode, file, fingerprint, opts?.sample);
+		if (opts?.file !== undefined) return new Cassette(mode, opts.file, fingerprint, opts.sample, false);
+		const { dir, untracked } = cassetteDir(opts?.dir);
+		if (untracked) prune(dir);
+		const file = defaultCassetteFile(dir, fingerprint, upstream ?? "scripted");
+		return new Cassette(mode, file, fingerprint, opts?.sample, untracked);
 	}
 
 	private constructor(
@@ -139,15 +163,22 @@ export class Cassette {
 		file: string,
 		fingerprint: Fingerprint,
 		sample: string | number | undefined,
+		untracked: boolean,
 	) {
 		this.mode = mode;
 		this.sample = sample === undefined ? "" : `@${sample}`;
 		this.file = file;
 		this.fingerprint = fingerprint;
-		this.replaceOnWrite = mode === "record";
+		this.replace = mode === "record";
 		if (mode === "record") return;
 		if (!existsSync(file)) {
-			if (mode === "replay") throw new Error(`cassette ${file} does not exist (record it first)`);
+			if (mode === "replay")
+				throw new Error(
+					`cassette ${file} does not exist; record it by running with TESTKIT_CASSETTE=auto (or record) and a real upstream` +
+						(untracked
+							? ", with TESTKIT_CASSETTE_DIR or cassette.dir set to a committed directory: the default directory is untracked and pruned"
+							: ""),
+				);
 			return;
 		}
 		const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<CassetteFile>;
@@ -163,7 +194,7 @@ export class Cassette {
 		if (mode === "replay")
 			throw new Error(`cassette stale: ${file} was recorded under another fingerprint (${why}); re-record`);
 		this.staleKeys = new Set(Object.keys(saved.entries ?? {}));
-		this.replaceOnWrite = true;
+		this.replace = true;
 	}
 
 	/** Next key for a request with this hash. */
@@ -196,27 +227,36 @@ export class Cassette {
 		return { action: "call" };
 	}
 
+	/**
+	 * Saves the reply and merges it into the file under a lock, so gateways in other processes (Vitest fork workers)
+	 * recording into the same file never drop each other's entries.
+	 */
 	record(key: string, reply: Reply, latencyMs: number): void {
-		this.fresh[key] = { reply, latencyMs };
+		this.fresh[key] = { reply, latencyMs, run: runId() };
 		recordCacheEvent({ file: this.file, outcome: "recorded", upstreamMs: latencyMs, usage: reply.usage });
-		const merged = { ...(this.replaceOnWrite && !this.written ? {} : this.onDisk()), ...this.fresh };
-		const out: CassetteFile = {
-			header: { version: 1, fingerprint: this.fingerprint, recordedAt: new Date().toISOString() },
-			entries: merged,
-		};
 		mkdirSync(dirname(this.file), { recursive: true });
-		const tmp = `${this.file}.${process.pid}.tmp`;
-		writeFileSync(tmp, JSON.stringify(out, null, "\t"));
-		renameSync(tmp, this.file);
-		this.written = true;
-		this.entries = merged;
+		this.entries = withFileLock(`${this.file}.lock`, () => {
+			const merged = { ...this.onDisk(), ...this.fresh };
+			const out: CassetteFile = {
+				header: { version: 1, fingerprint: this.fingerprint, recordedAt: new Date().toISOString() },
+				entries: merged,
+			};
+			const tmp = `${this.file}.${process.pid}.tmp`;
+			writeFileSync(tmp, JSON.stringify(out, null, "\t"));
+			renameSync(tmp, this.file);
+			return merged;
+		});
 		this.staleKeys.delete(key);
 	}
 
-	/** Entries another gateway wrote since we loaded, if the file still matches our fingerprint. */
+	/** Entries on disk to keep: none from another fingerprint, and on a rewrite only those this run recorded. */
 	private onDisk(): Record<string, Entry> {
 		if (!existsSync(this.file)) return {};
 		const saved = JSON.parse(readFileSync(this.file, "utf8")) as Partial<CassetteFile>;
-		return saved.header && stable(saved.header.fingerprint) === stable(this.fingerprint) ? (saved.entries ?? {}) : {};
+		if (!saved.header || stable(saved.header.fingerprint) !== stable(this.fingerprint)) return {};
+		const entries = saved.entries ?? {};
+		if (!this.replace) return entries;
+		const run = runId();
+		return Object.fromEntries(Object.entries(entries).filter(([, e]) => e.run === run));
 	}
 }

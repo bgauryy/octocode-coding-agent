@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { expect, it, vi } from "vitest";
 import type { AgentInterruptedEvent } from "../src/core/features/types.ts";
 import { createHarness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 	"latches first active abort reason %s and records before observation",
@@ -31,9 +32,9 @@ it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 					},
 				},
 			],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("agent_interrupted", async (event, ctx) => {
+					api.bus.on("agent_interrupted", async (event, ctx) => {
 						seen.push(event);
 						durable = ctx.sessionManager
 							.getEntries()
@@ -41,10 +42,10 @@ it.each(["interrupted", "internal", "replacement", "shutdown"] as const)(
 						await h.session.abort();
 					});
 				},
-			],
+			]),
 		});
 		try {
-			await h.session.bindExtensions({});
+			await h.session.bindFeatures({});
 			h.setResponses([
 				fauxAssistantMessage([fauxToolCall("hold", {})], {
 					stopReason: "toolUse",
@@ -96,18 +97,18 @@ it("keeps external abort callers waiting while allowing the interruption observe
 				},
 			},
 		],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("agent_interrupted", async () => {
+				api.bus.on("agent_interrupted", async () => {
 					await h.session.abort();
 					observing();
 					await observerHeld;
 				});
 			},
-		],
+		]),
 	});
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		h.setResponses([
 			fauxAssistantMessage([fauxToolCall("hold", {})], {
 				stopReason: "toolUse",
@@ -136,17 +137,17 @@ it("keeps external abort callers waiting while allowing the interruption observe
 it("saves pending records before observing interruption when preparation fails", async () => {
 	const seen: string[] = [];
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.on("agent_interrupted", (_event, ctx) => {
+				api.bus.on("agent_interrupted", (_event, ctx) => {
 					for (const entry of ctx.sessionManager.getEntries())
 						if (entry.type === "custom_message") seen.push(entry.customType);
 				});
 			},
-		],
+		]),
 	});
 	try {
-		await h.session.bindExtensions({});
+		await h.session.bindFeatures({});
 		let abort: Promise<void> | undefined;
 		vi.spyOn(h.session as unknown as { _prepareRun(): Promise<never> }, "_prepareRun").mockImplementation(async () => {
 			await h.session.sendCustomMessage(

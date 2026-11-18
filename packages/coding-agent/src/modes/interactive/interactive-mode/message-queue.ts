@@ -17,7 +17,7 @@ type MessageQueueHost = Pick<
 	| "clearAllQueues"
 	| "editor"
 	| "getAllQueuedMessages"
-	| "isExtensionCommand"
+	| "isFeatureCommand"
 	| "pendingBashComponents"
 	| "pendingMessagesContainer"
 	| "queueCompactionMessage"
@@ -25,8 +25,8 @@ type MessageQueueHost = Pick<
 	| "restoreQueuedMessagesToEditor"
 	| "session"
 	| "showError"
-	| "showExtensionEditor"
-	| "showExtensionSelector"
+	| "showEditorDialog"
+	| "showSelectorDialog"
 	| "showStatus"
 	| "ui"
 	| "uiStore"
@@ -56,14 +56,14 @@ export async function queueInteractiveMessage(
 	}
 }
 
-/** While compaction runs, executes extension commands at once and queues other input; returns whether it did. */
+/** While compaction runs, executes feature commands at once and queues other input; returns whether it did. */
 export async function handleInputDuringCompaction(
-	host: Pick<InteractiveModeHost, "editor" | "isExtensionCommand" | "queueCompactionMessage" | "session" | "showError">,
+	host: Pick<InteractiveModeHost, "editor" | "isFeatureCommand" | "queueCompactionMessage" | "session" | "showError">,
 	text: string,
 	mode: "steer" | "followUp",
 ): Promise<boolean> {
 	if (!host.session.isCompacting) return false;
-	if (host.isExtensionCommand(text)) {
+	if (host.isFeatureCommand(text)) {
 		host.editor.addToHistory?.(text);
 		host.editor.setText("");
 		// Callers are editor key handlers that drop the promise; a command that could not start goes back to the editor.
@@ -88,7 +88,7 @@ export async function handleFollowUp(host: MessageQueueHost): Promise<void> {
 	if (host.session.isCompacting && (await handleInputDuringCompaction(host, text, "followUp"))) return;
 
 	// Alt+Enter queues a follow-up message (waits until agent finishes)
-	// This handles extension commands (execute immediately), prompt template expansion, and queueing
+	// This handles feature commands (execute immediately), prompt template expansion, and queueing
 	if (host.session.isStreaming) {
 		await host.queueInteractiveMessage(text, "followUp");
 	}
@@ -165,14 +165,14 @@ export function queueCompactionMessage(host: MessageQueueHost, text: string, mod
 	host.showStatus("Queued message for after compaction");
 }
 
-export function isExtensionCommand(host: MessageQueueHost, text: string): boolean {
+export function isFeatureCommand(host: MessageQueueHost, text: string): boolean {
 	if (!text.startsWith("/")) return false;
 
-	const extensionRunner = host.session.extensionRunner;
+	const featureHost = host.session.featureHost;
 
 	const spaceIndex = text.indexOf(" ");
 	const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-	return !!extensionRunner.getCommand(commandName);
+	return !!featureHost.getCommand(commandName);
 }
 
 /** Sends the messages typed during compaction. Messages carried over a session switch wait for the user. */
@@ -200,7 +200,7 @@ async function deliverHeldMessages(
 	let started = willRetry;
 	try {
 		for (const message of pending) {
-			if (host.isExtensionCommand(message.text)) {
+			if (host.isFeatureCommand(message.text)) {
 				await getApplicationPort(host.session).invoke("prompt", message.text);
 			} else if (!started) {
 				let beganRun = false;

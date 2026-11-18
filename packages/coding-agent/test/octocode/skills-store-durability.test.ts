@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { registerSkillDescriptions } from "../../src/octocode/context-optimization/skills.ts";
 import {
@@ -13,6 +12,7 @@ import {
 	writeSkillsStore,
 } from "../../src/octocode/context-optimization/skills-store.ts";
 import { contextOptimizationDirs } from "../../src/octocode/shared/home.ts";
+import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -33,10 +33,10 @@ describe("the skills store a session records", () => {
 		fs.mkdirSync(cwd);
 		const userDir = contextOptimizationDirs(cwd, agentDir).user;
 		const handlers = new Map<string, Handler>();
-		registerSkillDescriptions(
-			{ on: (event: string, handler: Handler) => handlers.set(event, handler) } as unknown as ExtensionAPI,
-			{ isSubagent: false, agentDir: () => agentDir },
-		);
+		registerSkillDescriptions(asSetup({ on: (event: string, handler: Handler) => handlers.set(event, handler) }), {
+			isSubagent: false,
+			agentDir: () => agentDir,
+		});
 		const file = path.join(root, "skills", "a", "SKILL.md");
 		const skills = [{ name: "a", description: "A source", filePath: file, baseDir: path.dirname(file) } as Skill];
 		const fsync = vi.spyOn(fs, "fsyncSync");

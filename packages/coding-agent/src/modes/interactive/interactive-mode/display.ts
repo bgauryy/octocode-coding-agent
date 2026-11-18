@@ -3,10 +3,10 @@
  * renderer lookup, the fullscreen scrollbar and PNG transcoder, and the startup display flags.
  */
 
-import { GLYPH, type MarkdownTheme, Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { GLYPH, type MarkdownTheme, Spacer, ThemedText, TONE } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MarkdownTransformer, ToolRenderers } from "../../../core/features/index.ts";
-import { withBuiltInRenderers } from "../../../core/tools/renderers/index.ts";
+import { withBuiltInRenderers } from "../../../octocode/files/built-in-renderers.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
@@ -53,7 +53,7 @@ export function applyFullscreenScrollbarSetting(host: DisplayHost): void {
 	host.transcriptScrollView?.setScrollbar(host.settingsManager.getFullscreenScrollbar());
 }
 
-/** Lets extension images use the PNG transcoder; tool results register it themselves. */
+/** Lets feature images use the PNG transcoder; tool results register it themselves. */
 export function ensurePngTranscoder(host: DisplayHost): void {
 	ensureSharedPngTranscoder(() => {
 		host.ui.invalidate();
@@ -65,17 +65,17 @@ export function ensurePngTranscoder(host: DisplayHost): void {
  * Get a registered tool definition by name (for custom rendering).
  */
 /**
- * Extension-registered definition, falling back to the built-in one. The renderer components take
+ * Feature-registered definition, falling back to the built-in one. The renderer components take
  * whatever this returns, so they never reach into the tool registry themselves.
  */
 export function getRegisteredToolDefinition(host: DisplayHost, toolName: string): ToolRenderers | undefined {
-	return host.session.extensionRunner.resolveToolRenderers(toolName, () =>
+	return host.session.featureHost.resolveToolRenderers(toolName, () =>
 		withBuiltInRenderers(toolName, host.session.getToolDefinition(toolName)),
 	);
 }
 
 export function getMarkdownTransformers(host: DisplayHost): MarkdownTransformer[] {
-	return [host.mermaidMarkdownTransformer, ...host.session.extensionRunner.getMarkdownTransformers()];
+	return [host.mermaidMarkdownTransformer];
 }
 
 export function clearEditor(host: DisplayHost): void {
@@ -83,19 +83,23 @@ export function clearEditor(host: DisplayHost): void {
 	host.ui.requestRender();
 }
 
-/** The three notice kinds: one `<glyph> <sentence>` line in a state colour (`STATE_COLOR`; `warning` is the risk colour). */
+/**
+ * The three notice kinds: one `<glyph> <tone> <sentence>` line. The glyph says the state in its colour (`STATE_COLOR`;
+ * `warning` is the risk colour); the sea mark beside it says the tone (`TONE`).
+ */
 type NoticeKind = "success" | "warning" | "error";
 
-const NOTICE_MARK: Record<NoticeKind, { glyph: string; color: ThemeColor }> = {
-	success: { glyph: GLYPH.done, color: STATE_COLOR.done },
-	warning: { glyph: GLYPH.warning, color: "warning" },
-	error: { glyph: GLYPH.failed, color: STATE_COLOR.failed },
+const NOTICE_MARK: Record<NoticeKind, { glyph: string; tone: string; color: ThemeColor }> = {
+	success: { glyph: GLYPH.done, tone: TONE.calm, color: STATE_COLOR.done },
+	warning: { glyph: GLYPH.warning, tone: TONE.caution, color: "warning" },
+	error: { glyph: GLYPH.failed, tone: TONE.problem, color: STATE_COLOR.failed },
 };
 
-/** A notice line at the transcript's left pad: `✓ New session started`, `⚠ Project config not loaded`, `✗ Compaction failed`. */
+/** A notice line at the transcript's left pad: `✓ 🐚 New session started`, `⚠ 🦀 Project config not loaded`, `✗ 🦈 Compaction failed`. */
 export function noticeLine(kind: NoticeKind, message: string, pad: number): ThemedText {
-	const { glyph, color } = NOTICE_MARK[kind];
-	// Messages often carry tool or provider output (gh stderr, extension errors); none of it may drive the terminal.
+	const { glyph: state, tone, color } = NOTICE_MARK[kind];
+	const glyph = `${state} ${tone}`;
+	// Messages often carry tool or provider output (gh stderr, feature errors); none of it may drive the terminal.
 	const text = sanitizeTerminalText(message);
 	// An error must stand out whole; elsewhere the mark carries the state, so a long warning is no wall of amber.
 	const paint = () =>

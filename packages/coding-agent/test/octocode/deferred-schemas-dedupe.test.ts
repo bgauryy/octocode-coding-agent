@@ -6,6 +6,7 @@ import {
 	restoredSchemas,
 	restoreDeferredSchemas,
 } from "../../src/octocode/compaction/deferred-schemas.ts";
+import { asSetup } from "./fake-host.ts";
 
 const schemaOf = (name: string) => ({
 	type: "object",
@@ -32,11 +33,11 @@ const result = (toolName: string, text: string) => ({
 
 function fixture(declared: ReturnType<typeof deferred>[], tail: unknown[], branchCalls: string[]) {
 	const sent: Array<Record<string, unknown>> = [];
-	const api = {
+	const api = asSetup({
 		getAllTools: () => declared as never,
 		getActiveTools: () => declared.map((tool) => tool.name),
 		sendMessage: (message: Record<string, unknown>) => void sent.push(message),
-	};
+	});
 	const ctx = {
 		model: { contextWindow: 200_000 },
 		sessionManager: {

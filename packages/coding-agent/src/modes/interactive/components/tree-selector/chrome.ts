@@ -11,30 +11,8 @@ import {
 import { theme } from "../../../../theme/theme.ts";
 import { formatKeyText, keyText, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
 import { plainText } from "../styled-line.ts";
-import type { TreeList } from "./tree-list.ts";
 
-/** Component that displays the current search query */
-export class SearchLine implements Component {
-	private treeList: TreeList;
-
-	constructor(treeList: TreeList) {
-		this.treeList = treeList;
-	}
-
-	invalidate(): void {}
-
-	render(width: number): string[] {
-		const query = this.treeList.getSearchQuery();
-		if (query) {
-			return [truncateToWidth(`  ${theme.fg("muted", "Type to search:")} ${theme.fg("accent", query)}`, width)];
-		}
-		return [truncateToWidth(`  ${theme.fg("muted", "Type to search:")}`, width)];
-	}
-
-	handleInput(_keyData: string): void {}
-}
-
-/** Component that renders tree help as semantic rows with chunk-aware wrapping */
+/** The tree's key reference above the list: semantic rows with chunk-aware wrapping (the hint line never wraps). */
 export class TreeHelp implements Component {
 	invalidate(): void {}
 
@@ -145,7 +123,7 @@ export class LabelInput implements Component, Focusable {
 	constructor(entryId: string, currentLabel: string | undefined) {
 		this.entryId = entryId;
 		this.input = new Input();
-		// A stored label is untrusted text (a session file or an extension wrote it): edit it as the list shows it.
+		// A stored label is untrusted text (a session file or a feature wrote it): edit it as the list shows it.
 		if (currentLabel) {
 			this.input.setValue(plainText(currentLabel));
 		}

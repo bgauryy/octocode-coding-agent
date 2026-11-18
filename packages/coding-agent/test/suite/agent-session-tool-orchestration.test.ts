@@ -2,29 +2,30 @@ import { fauxAssistantMessage, fauxToolCall, getCurrentTools, type TranscriptCon
 import type { ToolResultMessage } from "@octocodeai/octocode-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 /**
  * A tool that calls other tools, built only on the extension API: its own name, exposure, loadout
  * hook, and ctx.executeTool(). It hides the declarations of the tools only it should call.
  */
-function orchestratorExtension(api: ExtensionAPI): void {
-	api.registerTool({
+function orchestratorFeature(api: FeatureSetup): void {
+	api.tools.register({
 		name: "echo",
 		label: "echo",
 		description: "Echo text.",
 		parameters: Type.Object({ text: Type.String() }),
 		execute: async (_id, { text }) => ({ content: [{ type: "text", text: `echo: ${text}` }], details: {} }),
 	});
-	api.registerTool({
+	api.tools.register({
 		name: "helper",
 		label: "helper",
 		description: "Only reachable from other tools.",
 		parameters: Type.Object({}),
 		execute: async () => ({ content: [{ type: "text", text: "helped" }], details: {} }),
 	});
-	api.registerTool({
+	api.tools.register({
 		name: "run_tools",
 		label: "run_tools",
 		description: "Runs tools.",
@@ -60,17 +61,17 @@ describe("AgentSession tool orchestration", () => {
 		const toolCalls: string[] = [];
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
-				orchestratorExtension,
+			features: testFeatures([
+				orchestratorFeature,
 				(api) => {
-					api.on("tool_call", (event) => {
+					api.bus.on("tool_call", (event) => {
 						toolCalls.push(`${event.toolName}:${event.parentToolCallId ?? "top"}`);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 
 		expect(harness.session.getActiveToolNames()).toEqual(["echo", "helper", "run_tools"]);
 		expect(harness.session.getCallableToolNames()).toEqual(["echo", "helper"]);
@@ -110,9 +111,9 @@ describe("AgentSession tool orchestration", () => {
 	});
 
 	it("registers defaultActive: false tools inactive until they are named", async () => {
-		const extensionFactories = [
-			(api: ExtensionAPI) =>
-				api.registerTool({
+		const factories = [
+			(api: FeatureSetup) =>
+				api.tools.register({
 					name: "probe",
 					label: "probe",
 					description: "Opt-in tool.",
@@ -121,16 +122,16 @@ describe("AgentSession tool orchestration", () => {
 					execute: async () => ({ content: [], details: {} }),
 				}),
 		];
-		const plain = await createHarness({ extensionFactories });
+		const plain = await createHarness({ features: testFeatures(factories) });
 		harnesses.push(plain);
 		expect(plain.session.getAllTools().map((tool) => tool.name)).toEqual(expect.arrayContaining(["probe"]));
 		expect(plain.session.getActiveToolNames()).toEqual(["bash"]);
 
 		// --tools and the defaultTools setting name them explicitly.
-		const allowed = await createHarness({ allowedToolNames: ["bash", "probe"], extensionFactories });
+		const allowed = await createHarness({ allowedToolNames: ["bash", "probe"], features: testFeatures(factories) });
 		harnesses.push(allowed);
 		expect(allowed.session.getActiveToolNames()).toEqual(["bash", "probe"]);
-		const initial = await createHarness({ initialActiveToolNames: ["probe"], extensionFactories });
+		const initial = await createHarness({ initialActiveToolNames: ["probe"], features: testFeatures(factories) });
 		harnesses.push(initial);
 		expect(initial.session.getActiveToolNames()).toEqual(["probe"]);
 	});
@@ -143,9 +144,9 @@ describe("AgentSession tool orchestration", () => {
 		let parentAborted: boolean | undefined;
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.registerTool({
+					api.tools.register({
 						name: "protected_child",
 						label: "Child",
 						description: "A protected nested tool.",
@@ -155,7 +156,7 @@ describe("AgentSession tool orchestration", () => {
 							return { content: [], details: {} };
 						},
 					});
-					api.registerTool({
+					api.tools.register({
 						name: "parent",
 						label: "Parent",
 						description: "Call a protected tool with a deadline.",
@@ -169,7 +170,7 @@ describe("AgentSession tool orchestration", () => {
 							};
 						},
 					});
-					api.on("tool_call", async (event, ctx) => {
+					api.bus.on("tool_call", async (event, ctx) => {
 						if (event.toolName !== "protected_child") return;
 						observed = ctx.signal;
 						await new Promise<void>((resolve) => {
@@ -189,10 +190,10 @@ describe("AgentSession tool orchestration", () => {
 						return { block: true, reason: "Nested permission request cancelled" };
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("parent", {})], { stopReason: "toolUse" }),
 			fauxAssistantMessage("done"),
@@ -205,9 +206,12 @@ describe("AgentSession tool orchestration", () => {
 	});
 
 	it("leaves results without nested calls unchanged", async () => {
-		const harness = await createHarness({ initialActiveToolNames: [], extensionFactories: [orchestratorExtension] });
+		const harness = await createHarness({
+			initialActiveToolNames: [],
+			features: testFeatures([orchestratorFeature]),
+		});
 		harnesses.push(harness);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("echo", { text: "x" })], { stopReason: "toolUse" }),
 			fauxAssistantMessage("done"),

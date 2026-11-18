@@ -1,9 +1,9 @@
 import { withSessionStorage } from "../../storage/runtime-paths.ts";
 import { captureToolInvocation } from "./tool-invocation.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import type { ExtensionToolContext, ToolDefinition } from "../features/types.ts";
+import type { ToolContext, ToolDefinition } from "../features/types.ts";
 
-type ToolContextFactory = (toolCallId: string, signal: AbortSignal | undefined) => ExtensionToolContext;
+type ToolContextFactory = (toolCallId: string, signal: AbortSignal | undefined) => ToolContext;
 
 /** Wrap a ToolDefinition into an AgentTool for the core runtime. */
 export function wrapToolDefinition<TDetails = unknown>(
@@ -25,10 +25,9 @@ export function wrapToolDefinition<TDetails = unknown>(
 		executionMode: definition.executionMode,
 		concurrency: definition.concurrency,
 		abortGraceMs: definition.abortGraceMs,
-		execute: async (toolCallId, params, signal, onUpdate, ctx?: ExtensionToolContext) => {
+		execute: async (toolCallId, params, signal, onUpdate, ctx?: ToolContext) => {
 			const base = ctx ?? ctxFactory?.(toolCallId, signal);
-			if (!base)
-				return definition.execute(toolCallId, params, signal, onUpdate, base as unknown as ExtensionToolContext);
+			if (!base) return definition.execute(toolCallId, params, signal, onUpdate, base as unknown as ToolContext);
 			let active = true;
 			const invocation = captureToolInvocation(toolCallId, definition.name, params, () => active);
 			const descriptors: Record<string, PropertyDescriptor> = Object.getOwnPropertyDescriptors(base);

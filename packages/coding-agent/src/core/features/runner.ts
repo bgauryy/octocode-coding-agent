@@ -1,23 +1,16 @@
 /**
- * Extension runner - executes extensions and manages their lifecycle.
+ * Feature runner - executes features and manages their lifecycle.
  */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent } from "@octocodeai/octocode-ai";
-import type { KeyId } from "@octocodeai/octocode-tui";
 import type { CacheWarmingAction } from "../cache-warmer.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
-import type { KeybindingsConfig } from "../keybindings.ts";
 import type { ModelRegistry } from "../model-registry.ts";
 import type { SessionManager } from "../session-manager.ts";
 import type { BuildSystemPromptOptions } from "../system-prompt.ts";
 import { bindRunnerCommandContext, bindRunnerCore, createRunnerBindings } from "./runner/bind.ts";
-import {
-	createExtensionCommandContext,
-	createExtensionContext,
-	createExtensionToolContext,
-	noOpUIContext,
-} from "./runner/context.ts";
+import { createCommandContext, createFeatureContext, createToolContext, noOpUIContext } from "./runner/context.ts";
 import {
 	dispatchBoundary,
 	dispatchCacheWarmingDecision,
@@ -34,65 +27,67 @@ import {
 	dispatchResourcesDiscover,
 	dispatchUserInput,
 } from "./runner/emit-transforms.ts";
+import type { BusEventType } from "./bus/events.ts";
+import { SessionBus } from "./bus/session-bus.ts";
 import { reportMcpServersOnce } from "./runner/event-handlers.ts";
 import {
 	collectRegisteredTools,
 	findEntryRenderer,
 	findMessageRenderer,
-	hasEventHandlers,
 	commandResolutionDiagnostics,
 	resolveRegisteredCommands,
-	resolveShortcuts,
 } from "./runner/registrations.ts";
 import type * as Runner from "./runner/types.ts";
 import { type DialogAnswer, type DialogAnswerResult, UIPromptTracker } from "./runner/ui-prompt.ts";
 import type * as Types from "./types.ts";
 
-export type { BeforeAgentStartTrigger, ExtensionErrorListener, ShutdownHandler } from "./runner/types.ts";
+export type { BeforeAgentStartTrigger, FeatureErrorListener, ShutdownHandler } from "./runner/types.ts";
 
 /**
- * Helper function to emit session_shutdown event to extensions.
+ * Helper function to emit session_shutdown event to features.
  * Returns true if the event was emitted, false if there were no handlers.
  */
 export async function emitSessionShutdownEvent(
-	extensionRunner: ExtensionRunner,
+	featureHost: FeatureHost,
 	event: Types.SessionShutdownEvent,
 ): Promise<boolean> {
-	if (extensionRunner.hasHandlers("session_shutdown")) {
-		await extensionRunner.emit(event);
+	if (featureHost.hasHandlers("session_shutdown")) {
+		await featureHost.emit(event);
 		return true;
 	}
 	return false;
 }
 
-export class ExtensionRunner {
-	private readonly extensions: Types.Extension[];
-	private readonly runtime: Types.ExtensionRuntime;
-	private uiContext: Types.ExtensionUIContext;
-	private mode: Types.ExtensionMode = "print";
+export class FeatureHost {
+	private readonly features: Types.FeatureRecord[];
+	/** The subscriptions of every feature, which every dispatch reads. */
+	readonly bus: SessionBus;
+	private readonly runtime: Types.FeatureRuntime;
+	private uiContext: Types.SessionUI;
+	private mode: Types.UiMode = "print";
 	private readonly cwd: string;
 	private readonly sessionManager: SessionManager;
 	private readonly modelRegistry: ModelRegistry;
-	private errorListeners: Set<Runner.ExtensionErrorListener> = new Set();
+	private errorListeners: Set<Runner.FeatureErrorListener> = new Set();
 	/** Callbacks bound by bindCore() and bindCommandContext(). */
 	private readonly bindings: Runner.RunnerBindings;
 	/** The runner as the delegated parts in `runner/` see it. */
 	private readonly host: Runner.RunnerHost;
 	/** Registered MCP servers already reported as unhandled. */
 	private readonly reportedMcpServers = new Set<string>();
-	private shortcutDiagnostics: ResourceDiagnostic[] = [];
 	private commandDiagnostics: ResourceDiagnostic[] = [];
 	private staleMessage: string | undefined;
 	private readonly uiPrompts = new UIPromptTracker((event) => this.emit(event));
 
 	constructor(
-		extensions: Types.Extension[],
-		runtime: Types.ExtensionRuntime,
+		features: Types.FeatureRecord[],
+		runtime: Types.FeatureRuntime,
 		cwd: string,
 		sessionManager: SessionManager,
 		modelRegistry: ModelRegistry,
 	) {
-		this.extensions = extensions;
+		this.features = features;
+		this.bus = new SessionBus(features);
 		this.runtime = runtime;
 		this.uiContext = noOpUIContext;
 		this.cwd = cwd;
@@ -102,7 +97,8 @@ export class ExtensionRunner {
 		// oxlint-disable-next-line typescript/no-this-alias -- the host's getters have their own `this` and resolve runner state at access time
 		const runner = this;
 		this.host = {
-			extensions,
+			features,
+			bus: this.bus,
 			runtime,
 			cwd,
 			sessionManager,
@@ -124,23 +120,23 @@ export class ExtensionRunner {
 	}
 
 	bindCore(
-		actions: Types.ExtensionActions,
-		contextActions: Types.ExtensionContextActions,
+		actions: Types.SessionActions,
+		contextActions: Types.ContextActions,
 		providerActions?: Runner.RunnerProviderActions,
 	): void {
 		bindRunnerCore(this.host, actions, contextActions, providerActions);
 	}
 
-	bindCommandContext(actions?: Types.ExtensionCommandContextActions): void {
+	bindCommandContext(actions?: Types.CommandActions): void {
 		bindRunnerCommandContext(this.bindings, actions);
 	}
 
-	setUIContext(uiContext?: Types.ExtensionUIContext, mode: Types.ExtensionMode = "print"): void {
+	setUIContext(uiContext?: Types.SessionUI, mode: Types.UiMode = "print"): void {
 		this.uiContext = uiContext ? this.uiPrompts.wrap(uiContext) : noOpUIContext;
 		this.mode = mode;
 	}
 
-	getUIContext(): Types.ExtensionUIContext {
+	getUIContext(): Types.SessionUI {
 		return this.uiContext;
 	}
 
@@ -148,35 +144,21 @@ export class ExtensionRunner {
 		return this.uiContext !== noOpUIContext;
 	}
 
-	getExtensionPaths(): string[] {
-		return this.extensions.map((e) => e.path);
+	getFeaturePaths(): string[] {
+		return this.features.map((e) => e.path);
 	}
 
 	/** User registrations override native tools; the first user registration per name wins. */
 	getAllRegisteredTools(): Types.RegisteredTool[] {
-		return collectRegisteredTools(this.extensions);
+		return collectRegisteredTools(this.features);
 	}
 
 	getToolDefinition(toolName: string): Types.RegisteredTool["definition"] | undefined {
 		return this.getAllRegisteredTools().find((tool) => tool.definition.name === toolName)?.definition;
 	}
 
-	getShortcuts(resolvedKeybindings: KeybindingsConfig): Map<KeyId, Types.ExtensionShortcut> {
-		this.shortcutDiagnostics = [];
-		return resolveShortcuts(this.extensions, resolvedKeybindings, (message, extensionPath) => {
-			this.shortcutDiagnostics.push({ type: "warning", message, path: extensionPath });
-			if (!this.hasUI()) {
-				process.stderr.write(`${message}\n`);
-			}
-		});
-	}
-
-	getShortcutDiagnostics(): ResourceDiagnostic[] {
-		return this.shortcutDiagnostics;
-	}
-
 	invalidate(
-		message = "This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
+		message = "This feature ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 	): void {
 		if (!this.staleMessage) {
 			this.staleMessage = message;
@@ -190,7 +172,7 @@ export class ExtensionRunner {
 		}
 	}
 
-	onError(listener: Runner.ExtensionErrorListener): () => void {
+	onError(listener: Runner.FeatureErrorListener): () => void {
 		this.errorListeners.add(listener);
 		return () => this.errorListeners.delete(listener);
 	}
@@ -199,7 +181,7 @@ export class ExtensionRunner {
 		return this.errorListeners.size > 0;
 	}
 
-	emitError(error: Types.ExtensionError): void {
+	emitError(error: Types.FeatureError): void {
 		for (const listener of this.errorListeners) {
 			try {
 				listener(error);
@@ -211,8 +193,8 @@ export class ExtensionRunner {
 	}
 
 	/**
-	 * Report registered MCP servers when no extension handles `mcp_servers_change`, which means
-	 * nothing connects them (for example when another MCP extension replaced the built-in one).
+	 * Report registered MCP servers when no feature handles `mcp_servers_change`, which means
+	 * nothing connects them (for example when another MCP feature replaced the built-in one).
 	 */
 	reportUnhandledMcpServers(): void {
 		if (this.hasHandlers("mcp_servers_change")) return;
@@ -224,13 +206,18 @@ export class ExtensionRunner {
 		return this.uiPrompts.answer(id, answer);
 	}
 
+	/** A client started answering the open dialog `id`: stop its countdown (`UIPromptTracker.hold`). */
+	holdDialog(id: string): DialogAnswerResult {
+		return this.uiPrompts.hold(id);
+	}
+
 	hasHandlers(eventType: string): boolean {
-		return hasEventHandlers(this.extensions, eventType);
+		return this.bus.has(eventType as BusEventType);
 	}
 
 	/** `tool_call_early_start`: true only when some handler answers and every handler returns true; a throw is false. */
 	mayStartToolCallEarly(event: Omit<Types.ToolCallEvent, "type">): boolean {
-		const handlers = this.extensions.flatMap((extension) => extension.handlers.get("tool_call_early_start") ?? []);
+		const handlers = this.bus.handlers("tool_call_early_start");
 		try {
 			const ctx = this.createContext();
 			return (
@@ -244,35 +231,29 @@ export class ExtensionRunner {
 
 	/** `tool_call_discarded`, synchronously; a failing handler does not stop the others. */
 	toolCallDiscarded(toolCallId: string): void {
-		for (const extension of this.extensions) {
-			for (const handler of extension.handlers.get("tool_call_discarded") ?? []) {
-				try {
-					void (handler as (e: { toolCallId: string }) => unknown)({ toolCallId });
-				} catch {
-					// A cleanup handler's failure leaves only its own leftovers.
-				}
+		for (const handler of this.bus.handlers("tool_call_discarded")) {
+			try {
+				void (handler as (e: { toolCallId: string }) => unknown)({ toolCallId });
+			} catch {
+				// A cleanup handler's failure leaves only its own leftovers.
 			}
 		}
 	}
 
 	getMessageRenderer(customType: string): Types.MessageRenderer | undefined {
-		return findMessageRenderer(this.extensions, customType);
+		return findMessageRenderer(this.features, customType);
 	}
 
-	getMarkdownTransformers(): Types.MarkdownTransformer[] {
-		return this.extensions.flatMap((ext) => (ext.markdownTransformer ? [ext.markdownTransformer] : []));
-	}
-
-	/** Renderers of calls to `toolName`: extension resolvers in load order, then `base`. */
+	/** Renderers of calls to `toolName`: feature resolvers in load order, then `base`. */
 	resolveToolRenderers(toolName: string, base: () => Types.ToolRenderers | undefined): Types.ToolRenderers | undefined {
-		const resolvers = this.extensions.flatMap((ext) => ext.toolRenderers ?? []);
+		const resolvers = this.features.flatMap((ext) => ext.toolRenderers ?? []);
 		const resolve = (index: number): Types.ToolRenderers | undefined =>
 			index < resolvers.length ? resolvers[index](toolName, () => resolve(index + 1)) : base();
 		return resolve(0);
 	}
 
 	getEntryRenderer(customType: string): Types.EntryRenderer | undefined {
-		return findEntryRenderer(this.extensions, customType);
+		return findEntryRenderer(this.features, customType);
 	}
 
 	getModelRegistry(): ModelRegistry {
@@ -280,7 +261,7 @@ export class ExtensionRunner {
 	}
 
 	getRegisteredCommands(): Types.ResolvedCommand[] {
-		const commands = resolveRegisteredCommands(this.extensions);
+		const commands = resolveRegisteredCommands(this.features);
 		this.commandDiagnostics = commandResolutionDiagnostics(commands);
 		return commands;
 	}
@@ -290,12 +271,12 @@ export class ExtensionRunner {
 	}
 
 	getCommand(name: string): Types.ResolvedCommand | undefined {
-		return resolveRegisteredCommands(this.extensions).find((command) => command.invocationName === name);
+		return resolveRegisteredCommands(this.features).find((command) => command.invocationName === name);
 	}
 
 	/**
-	 * Request a graceful shutdown. Called by extension tools and event handlers.
-	 * The actual shutdown behavior is provided by the mode via bindExtensions().
+	 * Request a graceful shutdown. Called by feature tools and event handlers.
+	 * The actual shutdown behavior is provided by the mode via bindFeatures().
 	 */
 	shutdown(): void {
 		this.bindings.shutdownHandler();
@@ -307,23 +288,23 @@ export class ExtensionRunner {
 	}
 
 	/**
-	 * Create an Types.ExtensionContext for use in event handlers and tool execution.
+	 * Create an Types.FeatureContext for use in event handlers and tool execution.
 	 * Context values are resolved at call time, so changes via bindCore/bindUI are reflected.
 	 */
-	createContext(): Types.ExtensionContext {
-		return createExtensionContext(this.host);
+	createContext(): Types.FeatureContext {
+		return createFeatureContext(this.host);
 	}
 
 	/**
-	 * Create the context for executing the tool call `toolCallId`: the extension context plus
+	 * Create the context for executing the tool call `toolCallId`: the feature context plus
 	 * `tools` and `executeTool()`. `signal` is the default signal of nested calls.
 	 */
-	createToolContext(toolCallId: string, signal: AbortSignal | undefined): Types.ExtensionToolContext {
-		return createExtensionToolContext(this.host, toolCallId, signal);
+	createToolContext(toolCallId: string, signal: AbortSignal | undefined): Types.ToolContext {
+		return createToolContext(this.host, toolCallId, signal);
 	}
 
-	createCommandContext(): Types.ExtensionCommandContext {
-		return createExtensionCommandContext(this.host);
+	createCommandContext(): Types.CommandContext {
+		return createCommandContext(this.host);
 	}
 
 	emitBoundary(
@@ -376,9 +357,9 @@ export class ExtensionRunner {
 		cwd: string,
 		reason: Types.ResourcesDiscoverEvent["reason"],
 	): Promise<{
-		skillPaths: Array<{ path: string; extensionPath: string }>;
-		promptPaths: Array<{ path: string; extensionPath: string }>;
-		themePaths: Array<{ path: string; extensionPath: string }>;
+		skillPaths: Array<{ path: string; source: string }>;
+		promptPaths: Array<{ path: string; source: string }>;
+		themePaths: Array<{ path: string; source: string }>;
 	}> {
 		return dispatchResourcesDiscover(this.host, cwd, reason);
 	}

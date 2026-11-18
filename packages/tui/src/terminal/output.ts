@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { resolveWriteLogPath } from "./environment.ts";
+import { type OutputStallReport, type OutputStallWatch, stallWatchFor } from "./stall-watch.ts";
 import type { OutputKind, OutputTelemetry } from "./types.ts";
 
 /**
@@ -49,8 +50,13 @@ const MAX_UTF8_BYTES_PER_UNIT = 3;
  * the meantime. A frame only replaces the one before it, so once the queue passes the frame cap new frames are dropped,
  * never mode, restore, status or scrollback bytes (`essential`, the default). When the queue drains after a drop, the
  * recovery callback repaints the screen whole.
+ *
+ * Queued bytes that wait more than a few seconds open a stall episode (see `OutputStallWatch`): the telemetry reports
+ * it even with counters off, and decoration such as progress keepalives waits until the terminal reads again.
  */
 export class TerminalOutput {
+	private readonly stream: typeof process.stdout;
+	private readonly stalls: OutputStallWatch;
 	private frameCapBytes: number | undefined = DEFAULT_FRAME_OUTPUT_CAP;
 	private framesDropped = false;
 	private awaitingDrain = false;
@@ -64,8 +70,11 @@ export class TerminalOutput {
 		for (const finish of this.drains) finish(false);
 	};
 
-	constructor() {
-		this.useNonblockingWrites();
+	/** @param stream Where output goes; another stream than stdout is for tests and keeps its blocking mode. */
+	constructor(stream: typeof process.stdout = process.stdout) {
+		this.stream = stream;
+		this.stalls = stallWatchFor(stream);
+		if (stream === process.stdout) this.useNonblockingWrites();
 	}
 
 	/**
@@ -78,7 +87,12 @@ export class TerminalOutput {
 	}
 
 	get pendingBytes(): number {
-		return process.stdout.writableLength;
+		return this.stream.writableLength;
+	}
+
+	/** The terminal's stalls so far; undefined when it never stopped reading. */
+	get stall(): OutputStallReport | undefined {
+		return this.stalls.report();
 	}
 
 	/** Wait for queued bytes before an explicit exit, with a deadline for a disconnected or paused consumer. */
@@ -91,14 +105,14 @@ export class TerminalOutput {
 				settled = true;
 				clearTimeout(timer);
 				this.drains.delete(finish);
-				if (this.drains.size === 0) process.stdout.off("error", this.failDrains);
+				if (this.drains.size === 0) this.stream.off("error", this.failDrains);
 				resolve(drained);
 			};
 			const timer = maxMs === Infinity ? undefined : setTimeout(() => finish(false), maxMs);
-			if (this.drains.size === 0) process.stdout.on("error", this.failDrains);
+			if (this.drains.size === 0) this.stream.on("error", this.failDrains);
 			this.drains.add(finish);
 			try {
-				process.stdout.write("", (error) => finish(!error));
+				this.stream.write("", (error) => finish(!error));
 			} catch {
 				finish(false);
 			}
@@ -123,8 +137,9 @@ export class TerminalOutput {
 		this.decorativePressureThreshold = bytes;
 	}
 
-	/** Whether decorative output, such as progress keepalives, may be written given the queued bytes. */
+	/** Whether decorative output, such as progress keepalives, may be written given the queued bytes and any stall. */
 	allowsDecorativeOutput(): boolean {
+		if (!this.stalls.acceptsDecoration()) return false;
 		return this.decorativePressureThreshold === undefined || this.pendingBytes <= this.decorativePressureThreshold;
 	}
 
@@ -136,7 +151,8 @@ export class TerminalOutput {
 	}
 
 	getTelemetry(): Readonly<OutputTelemetry> {
-		return { ...this.telemetry };
+		const stalls = this.stalls.report();
+		return stalls ? { ...this.telemetry, stalls } : { ...this.telemetry };
 	}
 
 	/**
@@ -145,12 +161,12 @@ export class TerminalOutput {
 	 * terminal that hung up (EIO) or went away takes nothing more: the bytes are dropped, never thrown at the exit.
 	 */
 	writeOnExit(data: string): void {
-		if (!process.stdout.isTTY) return this.write(data);
+		if (!this.stream.isTTY) return this.write(data);
 		const bytes = Buffer.from(data);
 		let offset = 0;
 		while (offset < bytes.length) {
 			try {
-				offset += fs.writeSync(process.stdout.fd, bytes, offset, bytes.length - offset);
+				offset += fs.writeSync(this.stream.fd, bytes, offset, bytes.length - offset);
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code !== "EAGAIN") return;
 				exitWriteDeadline ??= Date.now() + EXIT_WRITE_BUDGET_MS;
@@ -169,7 +185,9 @@ export class TerminalOutput {
 				if (pending + bytes > this.frameCapBytes) return this.dropFrame(bytes);
 			}
 		}
-		const accepted = process.stdout.write(data);
+		const accepted = this.stream.write(data);
+		// Essential bytes are measured only during a stall, which is when their growth matters.
+		this.stalls.noteWrite(kind, kind === "essential" && this.stalls.stalled ? Buffer.byteLength(data) : 0);
 		if (this.telemetryEnabled) {
 			const bytes = Buffer.byteLength(data);
 			this.telemetry.writtenBytes += bytes;
@@ -190,11 +208,12 @@ export class TerminalOutput {
 	/** Count a dropped frame and repaint once everything queued before it has reached the terminal. */
 	private dropFrame(bytes: number): void {
 		this.telemetry.droppedFrameBytes += bytes;
+		this.stalls.noteWrite("dropped", bytes);
 		this.framesDropped = true;
 		if (this.awaitingDrain) return;
 		this.awaitingDrain = true;
 		// An empty write's callback runs once every byte queued before it has been written.
-		process.stdout.write("", () => {
+		this.stream.write("", () => {
 			this.awaitingDrain = false;
 			if (!this.framesDropped) return;
 			this.framesDropped = false;

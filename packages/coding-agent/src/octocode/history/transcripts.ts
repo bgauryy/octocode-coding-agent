@@ -3,7 +3,7 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { archiveFolder, ownArchives, readSegments, type Segment, segmentFiles, sessionLineage } from "./archive.ts";
+import { archiveFolder, ownArchives, type Segment, segmentFiles, segmentsIn, sessionLineage } from "./archive.ts";
 import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { HISTORY_BYTES, scanCursor, scanHistory, scanResume } from "./search.ts";
 import { sessionsRoot } from "../shared/home.ts";
@@ -30,6 +30,8 @@ export interface HistorySession {
 	relation: Relation;
 	record?: RecordHeader;
 	segments: Segment[];
+	/** Its segment files as `segmentFiles` listed them with `segments`; `historyFiles` lists the folder when absent. */
+	segmentFiles?: ReadonlyArray<{ n: number; name: string }>;
 }
 
 /** The session folder and archive folder `file` is in, when it is inside an archive under the sessions root. */
@@ -140,8 +142,10 @@ export function historySessions(cwd: string, env: NodeJS.ProcessEnv = process.en
  */
 export function historyScope(cwd: string, env: NodeJS.ProcessEnv = process.env): HistorySession[] {
 	return historySessions(cwd, env).flatMap((session) => {
-		const segments = readSegments(session.id, env);
-		return session.record || segments.length ? [{ ...session, segments }] : [];
+		// One listing per folder serves both the segments and `historyFiles`.
+		const files = segmentFiles(session.folder);
+		const segments = segmentsIn(session.folder, files);
+		return session.record || segments.length ? [{ ...session, segments, segmentFiles: files }] : [];
 	});
 }
 
@@ -160,13 +164,11 @@ export function historyFiles(sessions: readonly HistorySession[]): HistoryFile[]
 		const record = session.record
 			? [{ file: path.join(session.folder, RECORD_FILE), session, label: "record: goal and ending" }]
 			: [];
-		const segments = segmentFiles(session.folder)
-			.reverse()
-			.map(({ n, name }) => ({
-				file: path.join(session.folder, name),
-				session,
-				label: `segment ${n}${tldr.get(n) ? ` · ${tldr.get(n)}` : ""}`,
-			}));
+		const segments = [...(session.segmentFiles ?? segmentFiles(session.folder))].reverse().map(({ n, name }) => ({
+			file: path.join(session.folder, name),
+			session,
+			label: `segment ${n}${tldr.get(n) ? ` · ${tldr.get(n)}` : ""}`,
+		}));
 		return [...record, ...segments];
 	});
 }

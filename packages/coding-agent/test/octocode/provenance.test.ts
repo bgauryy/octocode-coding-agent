@@ -7,6 +7,7 @@ import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/e
 import { recordChildReports } from "../../src/octocode/permission/provenance/reports.ts";
 import { AGENT_RESULT_TYPE } from "../../src/octocode/shared/messages.ts";
 import type { MessageReader } from "../../src/octocode/child-sessions/references.ts";
+import { asSetup } from "./fake-host.ts";
 
 const ROOT = "/work/repo";
 const ctx = { cwd: ROOT };
@@ -247,13 +248,13 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 	it("indexes a background child's report, which arrives as a message", async () => {
 		const { provenance } = setup();
 		let handler: ((event: unknown, context: unknown) => Promise<void>) | undefined;
-		const api = {
+		const api = asSetup({
 			on: (name: string, run: typeof handler) => {
 				if (name === "message_end") handler = run;
 			},
 			events: { on: () => () => undefined },
-		};
-		recordChildReports(api as never, provenance, { shutdown: () => undefined }, false);
+		});
+		recordChildReports(api, provenance, { shutdown: () => undefined }, false);
 		const message = (customType: string) => ({
 			message: { role: "custom", customType, content: `Report: ${SPAN}`, details: { id: "researcher-1" } },
 		});
@@ -269,7 +270,7 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		const { provenance } = setup();
 		const published: Array<(data: unknown) => void> = [];
 		let message: ((event: unknown, context: unknown) => Promise<void>) | undefined;
-		const api = {
+		const api = asSetup({
 			on: (name: string, run: typeof message) => {
 				if (name === "message_end") message = run;
 			},
@@ -279,8 +280,8 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 					return () => undefined;
 				},
 			},
-		};
-		recordChildReports(api as never, provenance, { shutdown: () => undefined }, false);
+		});
+		recordChildReports(api, provenance, { shutdown: () => undefined }, false);
 		const report = (id: string) => ({
 			message: { role: "custom", customType: AGENT_RESULT_TYPE, content: `Report: ${SPAN}`, details: { id } },
 		});
@@ -301,13 +302,13 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 		for (const isSubagent of [true, false]) {
 			const shutdown = vi.fn();
 			let handler: ((event: unknown, context: unknown) => Promise<void>) | undefined;
-			const api = {
+			const api = asSetup({
 				on: (name: string, run: typeof handler) => {
 					if (name === "session_shutdown") handler = run;
 				},
 				events: { on: () => () => undefined },
-			};
-			recordChildReports(api as never, provenance, { shutdown }, isSubagent);
+			});
+			recordChildReports(api, provenance, { shutdown }, isSubagent);
 			void handler?.({}, ctx);
 			expect(shutdown.mock.calls).toEqual(isSubagent ? [[ctx, true]] : []);
 		}

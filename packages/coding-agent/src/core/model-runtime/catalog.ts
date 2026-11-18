@@ -113,13 +113,13 @@ export abstract class ModelCatalog {
 	}
 
 	/**
-	 * The provider's plan facts. A models.json or extension overlay recomposes a provider without them, so the built-in
-	 * (or native extension) definition answers when the composed one does not.
+	 * The provider's plan facts. A models.json or feature overlay recomposes a provider without them, so the built-in
+	 * (or native feature) definition answers when the composed one does not.
 	 */
 	getProviderPlan(providerId: string): ProviderPlan | undefined {
 		return (
 			this.models.getProvider(providerId)?.auth.plan ??
-			(this.layers.nativeExtensionProviders.get(providerId) ?? this.layers.builtins.get(providerId))?.auth.plan
+			(this.layers.nativeFeatureProviders.get(providerId) ?? this.layers.builtins.get(providerId))?.auth.plan
 		);
 	}
 
@@ -148,15 +148,15 @@ export abstract class ModelCatalog {
 	}
 
 	getRegisteredProviderConfig(providerId: string): ProviderConfigInput | undefined {
-		return this.layers.extensionProviders.get(providerId);
+		return this.layers.featureProviders.get(providerId);
 	}
 
 	getRegisteredProviderIds(): readonly string[] {
-		return [...new Set([...this.layers.extensionProviders.keys(), ...this.layers.nativeExtensionProviders.keys()])];
+		return [...new Set([...this.layers.featureProviders.keys(), ...this.layers.nativeFeatureProviders.keys()])];
 	}
 
 	getRegisteredNativeProvider(providerId: string): Provider | undefined {
-		return this.layers.nativeExtensionProviders.get(providerId);
+		return this.layers.nativeFeatureProviders.get(providerId);
 	}
 
 	/** @internal Compatibility fallback for ModelRegistry when provider auth is unconfigured. */
@@ -164,7 +164,7 @@ export abstract class ModelCatalog {
 		return resolveCompatibilityRequestConfig(
 			model,
 			this.layers.config.getProvider(model.provider),
-			this.layers.extensionProviders.get(model.provider),
+			this.layers.featureProviders.get(model.provider),
 		);
 	}
 

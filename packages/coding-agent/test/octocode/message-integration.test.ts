@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { ExternalAgents } from "../../src/octocode/external/manager.ts";
@@ -30,7 +30,7 @@ async function hookRuntime(hooks: unknown) {
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	const view = registerHooks(fake.api, { env: {}, home: tmp() });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
-	const beforeSend = async (message: MessageEnvelope, context: ExtensionContext, signal?: AbortSignal) => {
+	const beforeSend = async (message: MessageEnvelope, context: FeatureContext, signal?: AbortSignal) => {
 		const verdict = await view.messageSend(message, signal ? { ...context, signal } : context);
 		if (verdict?.block) throw new Error(verdict.block);
 		if (verdict?.ask) throw new Error("The test permission authority denies hook asks.");

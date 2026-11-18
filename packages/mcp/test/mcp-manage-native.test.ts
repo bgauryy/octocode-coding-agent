@@ -2,12 +2,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { usageCounts } from "../../common/src/usage-counts.ts";
-import type { ExtensionToolContext } from "../../coding-agent/src/core/features/types.ts";
+import type { ToolContext } from "../../coding-agent/src/core/features/types.ts";
 import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import { createMcpManageTool, type McpManageOperations, type McpNativeTools } from "../src/manage-tool.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 
 /** A deferred native tool is read by name through `server: "native"`: its full schema, counted as a load. */
 afterEach(() => vi.unstubAllEnvs());
@@ -42,7 +42,7 @@ describe("mcp tools with server native", () => {
 			stop: vi.fn(async () => undefined),
 		};
 		const tool = createMcpManageTool(operations);
-		const ctx = { hasUI: false } as unknown as ExtensionToolContext;
+		const ctx = { hasUI: false } as unknown as ToolContext;
 		const run = (params: Record<string, unknown>) =>
 			tool.execute("call", params as never, new AbortController().signal, undefined, ctx);
 		return { run, loaded, operations, tool };
@@ -87,9 +87,9 @@ describe("mcp tools with server native", () => {
 		const dir = tmp();
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", dir);
 		const fake = fakeHost();
-		Object.assign(fake.api, { events: createEventBus() });
+		Object.assign(fake.api, { channels: createEventBus() });
 		const nativeTools = port();
-		const state = new McpExtensionState(fake.api, { nativeTools });
+		const state = new McpFeatureState(fake.api, { nativeTools });
 		registerMcpManageTool(state);
 		const ctx = fakeCtx({ cwd: "/workspace", hasUI: false });
 		const mcp = fake.tools.get("mcp");

@@ -219,6 +219,33 @@ describe("StreamableHttpTransport", () => {
 		await client.close();
 	});
 
+	it.each([
+		["CR", "\r"],
+		["CRLF", "\r\n"],
+	])("reads an SSE reply with %s line endings, split mid line break", async (_name, eol) => {
+		const { url } = await startServer(async (request, response, requests) => {
+			if (request.method !== "POST") return protocolHandler(request, response, requests);
+			const message = JSON.parse(await readBody(request)) as Record<string, unknown>;
+			if (message.method !== "tools/call") return protocolHandler(request, response, requests, message);
+			response.writeHead(200, { "content-type": "text/event-stream" });
+			const data = JSON.stringify({
+				jsonrpc: "2.0",
+				id: message.id,
+				result: { content: [{ type: "text", text: "cr" }] },
+			});
+			const text = `id: cr-result${eol}event: message${eol}data: ${data}${eol}${eol}`;
+			const cut = text.indexOf("\r") + 1;
+			response.write(text.slice(0, cut));
+			setTimeout(() => response.end(text.slice(cut)), 20);
+		});
+		const client = new McpClient({ name: "http-test", version: "1.0.0" });
+		await client.connect(new StreamableHttpTransport({ url, openGetStream: false }));
+		expect(await client.callTool("echo", {}, { timeoutMs: 5_000 })).toEqual({
+			content: [{ type: "text", text: "cr" }],
+		});
+		await client.close();
+	});
+
 	it("fails a request whose response stream ends without an answer", async () => {
 		const { url } = await startServer(async (request, response, requests) => {
 			if (request.method !== "POST") return protocolHandler(request, response, requests);

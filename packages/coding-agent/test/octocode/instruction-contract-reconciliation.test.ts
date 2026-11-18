@@ -1,7 +1,7 @@
 import { type Tool, validateToolArguments } from "@octocodeai/octocode-ai";
 import { beforeAll, describe, expect, it } from "vitest";
-import { renderInstruction } from "../../src/core/prompt-template.ts";
-import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
 import { forkNote, resumeNote, resumableChild } from "../../src/octocode/subagents/children.ts";
 import { registerChildRunnerTask } from "../../src/octocode/subagents/runner-task.ts";
 import { captureAll, type AgentContext } from "./agent-context/capture.ts";
@@ -15,7 +15,7 @@ beforeAll(async () => {
 describe("instructions agree with the tools their recipient receives", () => {
 	it("names the public stop field accepted by the main agent schema", () => {
 		const agent = contexts.find((context) => context.name === "main")!.tools.find((tool) => tool.name === "agent")!;
-		const notice = renderInstruction("notices/subagents/lingering.md", {
+		const notice = renderPrompt("notices/subagents/lingering.md", {
 			id: "child-example",
 			seconds: 900,
 			blocked: false,
@@ -93,7 +93,7 @@ describe("instructions agree with the tools their recipient receives", () => {
 		expect(
 			contexts.find((context) => context.name === "general")!.tools.some((tool) => tool.name === "backlogPlan"),
 		).toBe(false);
-		const completion = renderInstruction("workflows/backlog/completion.md", {
+		const completion = renderPrompt("workflows/backlog/completion.md", {
 			ref: "B1",
 			goal: true,
 			guidance: "Required completion fields",
@@ -101,7 +101,7 @@ describe("instructions agree with the tools their recipient receives", () => {
 		expect(completion).toContain("B1");
 		expect(completion).toContain("Required completion fields");
 		expect(completion).not.toMatch(/\{\{|\}\}/);
-		const withoutGoal = renderInstruction("workflows/backlog/completion.md", {
+		const withoutGoal = renderPrompt("workflows/backlog/completion.md", {
 			ref: "B1",
 			goal: false,
 			guidance: "Required completion fields",
@@ -126,7 +126,7 @@ describe("instructions agree with the tools their recipient receives", () => {
 		registerChildRunnerTask(
 			{ ids: ["codex"], turn: async () => ({ text: "" }) },
 			{ check: async () => ({ allowed: false }) },
-			fake.api.registerTool,
+			fake.api.tools.register,
 		);
 		const runner = (fake.tools.get("agent")!.parameters as { properties: Record<string, { description?: string }> })
 			.properties.runner;

@@ -1,18 +1,19 @@
-import { animationClock, GLYPH, SEPARATOR, SPINNER, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, SPINNER } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { spinnerMs } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
-import { formatCost, formatTokens } from "../../shared/format.ts";
-import { collapsedRows, type Finished, panelBudget } from "./compact.ts";
-import { needsYou } from "./attention.ts";
-import { hasPriority, noteLine, sentMessages } from "./traffic.ts";
-import { roster } from "./roster.ts";
-import { memberRowGroups, rootRow, totalTokens, treePrefixes } from "./rows.ts";
-import { workRows } from "./work.ts";
 import type { WorkRow } from "../../shared/running-work.ts";
-import { needsAttention, type PanelEntry, panelState } from "./state.ts";
+import { needsYou } from "./attention.ts";
+import { type Finished, panelBudget } from "./compact.ts";
+import { peers as peerSessions, roster } from "./roster.ts";
+import { agentLines, type Detail, frame, gridRows, moreLine, peerLines, rootLines } from "./rows.ts";
+import type { PanelEntry } from "./state.ts";
+import { sentMessages } from "./traffic.ts";
+import { workRows } from "./work.ts";
 
-const MAX_ROWS = 6;
+/** At most this many agents and peer sessions get a row of their own. */
+const MAX_AGENTS = 6;
+const MAX_PEERS = 2;
 
 /** The mark of a running work row: the spinner frame the agents' marks use for `now`, a still dot in reduced motion. */
 const workMark = (now: number): string =>
@@ -20,56 +21,28 @@ const workMark = (now: number): string =>
 		? GLYPH.live
 		: SPINNER.braille[Math.floor(now / spinnerMs(true)) % SPINNER.braille.length];
 
-/** How much each agent shows, from most to least: its rows and every message line; its rows and the lines that wait on the user; one row each with those lines; one row each. */
-const TIERS = [
-	{ collapsed: false, notes: "all" },
-	{ collapsed: false, notes: "priority" },
-	{ collapsed: true, notes: "priority" },
-	{ collapsed: true, notes: "none" },
-] as const;
-type Tier = (typeof TIERS)[number];
-
-/** The header's counts: what needs the user (drawn apart, in warning), then the rest of the team's states, tokens and cost. */
-function tally(tree: PanelEntry[], others: Member[], now: number): { attention: string; summary: string } {
-	const labels = tree.map((entry) => panelState(entry, now));
-	const count = (...names: string[]) => labels.filter((state) => names.includes(state.label)).length;
-	const attention = labels.filter(needsAttention).length;
-	const [working, idle, done, failed, stopped, left] = [
-		count("working"),
-		count("idle"),
-		count("done", "partial"),
-		count("failed"),
-		count("stopped"),
-		count("left"),
-	];
-	const tokens = others.reduce((total, member) => total + totalTokens(member), 0);
-	const cost = formatCost({
-		cost: others.reduce((total, member) => total + member.cost, 0),
-		unpriced: others.some((member) => member.unpriced),
-	});
-	const summary = [
-		...(count("asks parent") ? [`${count("asks parent")} asks parent`] : []),
-		...(working ? [`${working} working`] : []),
-		...(idle ? [`${idle} idle`] : []),
-		...(done ? [`${GLYPH.done} ${done} done`] : []),
-		...(count("blocked") ? [`${count("blocked")} blocked`] : []),
-		...(failed ? [`${GLYPH.failed} ${failed} failed`] : []),
-		...(stopped ? [`${GLYPH.stopped} ${stopped} stopped`] : []),
-		...(left ? [`${left} left`] : []),
-		...(tokens ? [`${formatTokens(tokens)} tok`] : []),
-		...(cost ? [cost] : []),
-	].join(SEPARATOR);
-	return { attention: attention ? `${GLYPH.waiting} ${attention} needs you` : "", summary };
-}
+type Step = Detail & { peers: "rows" | "one" | "none" };
+/**
+ * What the panel keeps, from most to least, until it fits its budget: everything; message bodies only of agents worth a
+ * short terminal; no `↳ action` lines; peers on one row; lines only of those agents. Past the last, the rows
+ * after the first `budget - 2` leave for a `+N more` row. Every step keeps the grid, so no row changes form.
+ */
+const STEPS: readonly Step[] = [
+	{ bodies: "all", actions: true, lines: "all", peers: "rows" },
+	{ bodies: "priority", actions: true, lines: "all", peers: "rows" },
+	{ bodies: "priority", actions: false, lines: "all", peers: "rows" },
+	{ bodies: "priority", actions: false, lines: "all", peers: "one" },
+	{ bodies: "priority", actions: false, lines: "needs", peers: "one" },
+];
 
 /**
- * Rows for the widget under the editor; empty when this session has no live subagents. Each agent's row is followed by a
- * muted line with its latest message (or the question it waits on you to answer, or its finish headline). Agents that
- * need the user sort first and the header leads with their count. When the full layout would take more than
- * `panelBudget(rows)` rows, detail leaves in steps (lines of agents that do not need you, then agents' detail rows, then
- * the lines themselves) but the needs-you mark and label and the `✉` count stay.
+ * Rows for the widget under the editor; empty when this session has no live subagents. A grid: this session, its agents
+ * (agents that need the user sort first) and up to two peer sessions, each `tree mark name · role:effort · spend · goal`
+ * with the columns aligned down the list. Under a row: its action when it does not fit beside the goal, the words its mark
+ * says twice (`↳ waits for your approval`), and its latest message as a block of up to three lines. When that takes more
+ * than `panelBudget(rows)` rows, detail leaves in steps (`STEPS`).
  */
-export function widgetLines(
+export function widgetRows(
 	members: Member[],
 	selfId: string | undefined,
 	now: number,
@@ -84,10 +57,14 @@ export function widgetLines(
 	work: readonly WorkRow[] = [],
 	/** Seconds in the work rows' clock cells; false: whole minutes, for a panel that repaints once a minute. */
 	precise = true,
-): string[] {
-	const needs = needsYou(members, traffic, selfId);
+	/** Agents (by id) whose detail line shows. */
+	expanded: ReadonlySet<string> | "all" = new Set(),
+	/** When each agent was first seen waiting on a dialog (`needsYou`), kept by the caller across frames. */
+	waitSeen?: Map<string, number>,
+): WidgetRows {
+	const needs = needsYou(members, traffic, selfId, waitSeen, now);
 	const { others, tree } = roster(members, selfId, now, finished, needs);
-	const budget = rows === undefined ? undefined : panelBudget(rows);
+	const budget = panelBudget(rows);
 	// With agents the work block leaves them three rows of the budget; without, it may take all of it.
 	const workBlock = workRows(
 		work,
@@ -95,47 +72,68 @@ export function widgetLines(
 		theme,
 		width,
 		{ live: workMark(now), waiting: animationClock.isReducedMotion() ? GLYPH.waiting : workMark(now) },
-		budget === undefined ? undefined : others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
+		others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
 		precise,
 	);
-	if (others.length === 0 || !selfId) return workBlock;
+	const plain = (lines: string[]): WidgetRows => ({ lines, owners: lines.map(() => undefined) });
+	if (others.length === 0 || !selfId) return plain(workBlock);
 	const sent = sentMessages(traffic, others, selfId);
-	const { attention, summary } = tally(tree, others, now);
 	const self = members.find((member) => member.id === selfId);
-	const moreRow = (hidden: PanelEntry[]) => {
-		const urgent = hidden.filter((entry) => needsAttention(panelState(entry, now))).length;
-		const text = ` +${hidden.length} more${urgent ? ` · ${GLYPH.waiting} ${urgent} need you` : ""}`;
-		return truncateToWidth(theme.fg(urgent ? "warning" : "muted", text), Math.max(1, width), "…");
-	};
-	const build = (tier: Tier, agents: PanelEntry[]): string[] => {
-		const groups = tier.collapsed
-			? collapsedRows(agents, now, theme, width).map((line) => [line])
-			: memberRowGroups(agents, now, theme, width);
-		const prefixes = treePrefixes(agents);
-		const lines = agents.flatMap((entry, index) => {
-			const wanted = tier.notes === "all" || (tier.notes === "priority" && hasPriority(entry, now));
-			const note = wanted
-				? noteLine(entry, sent.get(entry.member.id), now, theme, width, prefixes[index] ?? "")
-				: undefined;
-			return [...groups[index], ...(note ? [note] : [])];
-		});
-		const alignTo = Math.max(0, ...groups.flat().map((line) => visibleWidth(line)));
+	const peerMembers = peerSessions(members, selfId, now);
+	const open = (id: string) => expanded === "all" || expanded.has(id);
+
+	const build = (step: Step, agents: PanelEntry[]): WidgetRows => {
+		const shownPeers = step.peers === "none" ? [] : peerMembers.slice(0, MAX_PEERS);
+		const grid = gridRows(self, selfId, agents, shownPeers, now, theme);
+		const measured = step.peers === "rows" ? [grid.root, ...grid.agents, ...grid.peers] : [grid.root, ...grid.agents];
+		const f = frame(measured, theme, width, now);
+		const owned = grid.agents.flatMap((r) =>
+			agentLines(f, r, sent.get(r.entry.member.id), open(r.entry.member.id), step).map((line) => ({
+				line,
+				owner: r.entry.member.id,
+			})),
+		);
+		const head = rootLines(f, grid.root, step);
 		const hidden = tree.slice(agents.length);
-		return [
-			rootRow(self, selfId, summary, theme, width, alignTo, attention),
-			...lines,
-			...(hidden.length > 0 ? [moreRow(hidden)] : []),
-		];
+		const more = hidden.length > 0 ? [moreLine(hidden, now, theme, width)] : [];
+		const peerBlock = peerLines(f, grid.peers, peerMembers.length - grid.peers.length, step.peers === "one");
+		const none = (lines: string[]) => lines.map(() => undefined);
+		return {
+			lines: [...head, ...owned.map((row) => row.line), ...more, ...peerBlock],
+			owners: [...none(head), ...owned.map((row) => row.owner), ...none(more), ...none(peerBlock)],
+		};
 	};
-	const agentBudget = budget === undefined ? undefined : Math.max(3, budget - workBlock.length);
-	const shown = tree.slice(0, MAX_ROWS);
-	const [full, priority, collapsed, bare] = TIERS;
-	const roomy = build(full, shown);
-	if (agentBudget === undefined || roomy.length <= agentBudget) return [...roomy, ...workBlock];
-	const trimmed = build(priority, shown);
-	if (trimmed.length <= agentBudget) return [...trimmed, ...workBlock];
-	// Few terminal rows: one row per agent, as many as fit beside the header and a "+N more" row; the lines that wait on the user stay while they fit.
+	const withWork = (block: WidgetRows): WidgetRows => ({
+		lines: [...block.lines, ...workBlock],
+		owners: [...block.owners, ...workBlock.map(() => undefined)],
+	});
+	const agentBudget = Math.max(3, budget - workBlock.length);
+	const shown = tree.slice(0, MAX_AGENTS);
+	for (const step of STEPS) {
+		const block = build(step, shown);
+		if (block.lines.length <= agentBudget) return withWork(block);
+	}
+	// Few terminal rows: one grid row per agent, as many as fit beside this session's row and a "+N more" row; the lines
+	// of agents worth a short terminal stay while they fit, their `↳` reasons longest.
 	const fits = tree.length + 1 <= agentBudget ? tree : tree.slice(0, Math.max(1, agentBudget - 2));
-	const short = build(collapsed, fits);
-	return [...(short.length <= agentBudget ? short : build(bare, fits)), ...workBlock];
+	const last = STEPS[STEPS.length - 1];
+	const tail: Step[] = [
+		{ ...last, peers: "none" },
+		{ ...last, peers: "none", messages: false },
+		{ ...last, peers: "none", lines: "none" },
+	];
+	for (const step of tail.slice(0, -1)) {
+		const block = build(step, fits);
+		if (block.lines.length <= agentBudget) return withWork(block);
+	}
+	return withWork(build(tail[tail.length - 1], fits));
 }
+
+/** The widget's lines, and for each the agent it belongs to (a click on it opens that agent's detail). */
+export interface WidgetRows {
+	lines: string[];
+	owners: Array<string | undefined>;
+}
+
+/** `widgetRows`' lines alone. */
+export const widgetLines = (...args: Parameters<typeof widgetRows>): string[] => widgetRows(...args).lines;

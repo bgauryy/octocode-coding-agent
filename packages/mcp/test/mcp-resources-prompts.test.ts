@@ -34,7 +34,7 @@ function host(script: string, log?: string) {
 	const notes: string[] = [];
 	vi.spyOn(h.ctx.ui, "notify").mockImplementation((text: string) => void notes.push(text));
 	const sent = vi.fn();
-	(h.api as { sendUserMessage?: (text: string) => void }).sendUserMessage = sent;
+	(h.api.session as { sendUserMessage?: (text: string) => void }).sendUserMessage = sent;
 	hosts.push(h);
 	const slash = async (args: string) => {
 		await h.commands.get("mcp").handler(args, h.ctx);

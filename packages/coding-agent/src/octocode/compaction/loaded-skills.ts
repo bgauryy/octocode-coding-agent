@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { contentText } from "../shared/util.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -12,7 +12,7 @@ import { carriedRecords } from "./saved-results.ts";
  * `details.loadedSkills`, so the next summary lists them again.
  */
 
-/** The compaction `details` key that carries the skills into the next summary. */
+/** The compaction `details` key that carries the skills into the next summary; a tool result lists the skills it delivered under it too. */
 export const LOADED_SKILLS_DETAILS = "loadedSkills";
 
 interface LoadedSkill {
@@ -39,13 +39,20 @@ function isLoadedSkill(value: unknown): value is LoadedSkill {
 	);
 }
 
-/** The skills `message` loaded: a successful `skill` result (its details name the file), or a `/skill:` block in a user message. */
+/**
+ * The skills `message` loaded: a successful `skill` result (its details name the file), a result that carried a skill
+ * to the model (`details.loadedSkills`, as `skill/first-use.ts` does), or a `/skill:` block in a user message.
+ */
 function skillsOf(message: unknown): LoadedSkill[] {
 	if (!isRecord(message)) return [];
-	if (message.role === "toolResult")
-		return message.toolName === "skill" && message.isError !== true && isLoadedSkill(message.details)
+	if (message.role === "toolResult") {
+		if (message.isError === true || !isRecord(message.details)) return [];
+		const carried = message.details[LOADED_SKILLS_DETAILS];
+		if (Array.isArray(carried)) return carried.filter(isLoadedSkill).map(({ name, location }) => ({ name, location }));
+		return message.toolName === "skill" && isLoadedSkill(message.details)
 			? [{ name: message.details.name, location: message.details.location }]
 			: [];
+	}
 	if (message.role !== "user") return [];
 	return [...contentText(message.content).matchAll(SKILL_BLOCK)].map(([, name, location]) => ({ name, location }));
 }
@@ -67,5 +74,5 @@ export function carriedLoadedSkills(branch: readonly SessionEntry[]): LoadedSkil
 export function loadedSkillsLines(skills: readonly LoadedSkill[]): string[] {
 	if (skills.length === 0) return [];
 	const named = skills.map((skill) => `${skill.name} (${homeTilde(skill.location)})`).join(", ");
-	return [renderInstruction("notices/recovery/loaded-skills.md", { skills: named })];
+	return [renderPrompt("notices/recovery/loaded-skills.md", { skills: named })];
 }

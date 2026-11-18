@@ -63,7 +63,7 @@ describe("declarations", () => {
 		expect(entry).toMatchObject({ type: "object", additionalProperties: false });
 		const fields = planEntryFields(plan);
 		const single = ["title", "goal", "why", "type", "parentId", "dependsOn", "paths", "evidence", "plan", "priority"];
-		expect(Object.keys(fields)).toEqual(["id", ...single, "tags", "from", "links", "state", "note"]);
+		expect(Object.keys(fields)).toEqual(["id", "version", ...single, "tags", "from", "links", "state", "note"]);
 		for (const [name, field] of Object.entries(fields)) {
 			expect(field.type ?? field.anyOf, name).toBeDefined();
 			// `tags` is named for what it holds; every other field says how to fill it.

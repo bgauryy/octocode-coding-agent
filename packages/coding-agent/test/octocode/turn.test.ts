@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
+import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/native/prompts/role.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
@@ -46,7 +46,7 @@ describe("registerTurnSetup", () => {
 	it("uses the core tool set at session start and leaves the active set alone per turn", async () => {
 		const { fake } = setup();
 		process.argv = ["node", "octocode"];
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "file"]);
 		const event = {
 			systemPromptOptions: {
 				sections: {} as Record<string, string>,
@@ -62,35 +62,35 @@ describe("registerTurnSetup", () => {
 		const { fake } = setup();
 		process.argv = ["node", "octocode"];
 		await fake.emit("session_start", { type: "session_start", reason: "startup" }, {});
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
-		fake.api.setActiveTools(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "file"]);
+		fake.api.tools.setActive(["read", "bash", "edit", "write", "file"]);
 		await fake.emit("session_start", { type: "session_start", reason: "reload" }, {});
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "edit", "write", "file"]);
 		// Custom tools remain registered even if they use former built-in names.
 		await fake.emit("session_start", { type: "session_start", reason: "resume" }, {});
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
 	it("keeps edit/write explicitly selected by the session", async () => {
 		const { fake } = setup();
-		fake.api.setActiveTools(["read", "bash", "edit", "write", "file"]);
+		fake.api.tools.setActive(["read", "bash", "edit", "write", "file"]);
 		process.argv = ["node", "octocode", "--tools", "read,edit,write,file"];
 		await run(fake);
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "edit", "write", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "edit", "write", "file"]);
 	});
 
 	it.each(["edit", "+edit"])("does not synthesize a removed tool from the %s setting", async (entry) => {
 		const { fake } = setup();
-		vi.spyOn(fake.api, "getSettings").mockReturnValue({ defaultTools: [entry, "-write"] });
+		vi.spyOn(fake.api.settings, "get").mockReturnValue({ defaultTools: [entry, "-write"] });
 		await run(fake);
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "file"]);
 	});
 
 	it("does not inherit another session's tool choices from the host command line", async () => {
 		const { fake } = setup();
 		process.argv = ["node", "host", "--tools", "read,edit,write,file"];
 		await run(fake);
-		expect(fake.api.getActiveTools()).toEqual(["read", "bash", "file"]);
+		expect(fake.api.tools.getActive()).toEqual(["read", "bash", "file"]);
 	});
 
 	it.each([false, true])("preserves browser and web selections for isSubagent=%s", async (isSubagent) => {
@@ -105,11 +105,11 @@ describe("registerTurnSetup", () => {
 		for (const reason of ["startup", "reload", "resume"]) {
 			await fake.emit("session_start", { type: "session_start", reason }, {});
 			await run(fake);
-			expect(fake.api.getActiveTools()).toEqual(selected);
+			expect(fake.api.tools.getActive()).toEqual(selected);
 		}
-		fake.api.setActiveTools(["read"]);
+		fake.api.tools.setActive(["read"]);
 		await run(fake);
-		expect(fake.api.getActiveTools()).toEqual(["read"]);
+		expect(fake.api.tools.getActive()).toEqual(["read"]);
 	});
 
 	it("keeps browser role instructions stable across modes and reads them once per child", async () => {

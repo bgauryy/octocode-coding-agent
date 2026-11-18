@@ -1,19 +1,19 @@
 import { expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import { createExtensionRuntime, loadExtensionFromFactory } from "../../coding-agent/test/helpers/features.ts";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import { createFeatureRuntime, loadFeatureFromFactory } from "../../coding-agent/test/helpers/features.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import { fakeCtx } from "../../coding-agent/test/octocode/fake-host.ts";
 import { reconnect } from "../src/connections.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 
 it("lists registered servers and refuses the removed add and remove intents without touching registrations", async () => {
-	const runtime = createExtensionRuntime();
+	const runtime = createFeatureRuntime();
 	const events = createEventBus();
-	let state!: McpExtensionState;
-	const extension = await loadExtensionFromFactory(
+	let state!: McpFeatureState;
+	const feature = await loadFeatureFromFactory(
 		(api) => {
-			state = new McpExtensionState(api, {});
+			state = new McpFeatureState(api, {});
 			registerMcpManageTool(state);
 		},
 		process.cwd(),
@@ -21,8 +21,8 @@ it("lists registered servers and refuses the removed add and remove intents with
 		runtime,
 		"<mcp>",
 	);
-	let other!: ExtensionAPI;
-	await loadExtensionFromFactory(
+	let other!: FeatureSetup;
+	await loadFeatureFromFactory(
 		(api) => {
 			other = api;
 		},
@@ -31,8 +31,8 @@ it("lists registered servers and refuses the removed add and remove intents with
 		runtime,
 		"<other>",
 	);
-	other.registerMcpServer("notes", { command: "other-owner" });
-	const tool = extension.tools.get("mcp")!.definition;
+	other.mcpServers.register("notes", { command: "other-owner" });
+	const tool = feature.tools.get("mcp")!.definition;
 	const ctx = { ...fakeCtx({ cwd: process.cwd() }), tools: [], executeTool: vi.fn() };
 	const run = (params: Record<string, unknown>) => tool.execute("test", params, undefined, undefined, ctx);
 	try {
@@ -44,7 +44,7 @@ it("lists registered servers and refuses the removed add and remove intents with
 		);
 		await expect(run({ intent: "remove", server: "notes" })).rejects.toThrow("/mcp or `octocode mcp remove`");
 		expect(runtime.mcpServers.list()).toEqual([
-			{ name: "notes", config: { command: "other-owner" }, extensionPath: "<other>" },
+			{ name: "notes", config: { command: "other-owner" }, source: "<other>" },
 		]);
 	} finally {
 		runtime.invalidate();
@@ -52,11 +52,11 @@ it("lists registered servers and refuses the removed add and remove intents with
 });
 
 it("tells the model why a server without a connection cannot restart", async () => {
-	const runtime = createExtensionRuntime();
-	let state!: McpExtensionState;
-	const extension = await loadExtensionFromFactory(
+	const runtime = createFeatureRuntime();
+	let state!: McpFeatureState;
+	const feature = await loadFeatureFromFactory(
 		(api) => {
-			state = new McpExtensionState(api, {});
+			state = new McpFeatureState(api, {});
 			registerMcpManageTool(state);
 		},
 		process.cwd(),
@@ -74,7 +74,7 @@ it("tells the model why a server without a connection cannot restart", async () 
 		{ entry: { ...entry("browser"), config: { command: "unused", defaultActive: false } }, unselected: true },
 		{ entry: entry("docs") },
 	];
-	const tool = extension.tools.get("mcp")!.definition;
+	const tool = feature.tools.get("mcp")!.definition;
 	const ctx = { ...fakeCtx({ cwd: process.cwd() }), tools: [], executeTool: vi.fn() };
 	const restart = (server: string) =>
 		tool.execute("test", { intent: "restart", server }, undefined, undefined, ctx).then(

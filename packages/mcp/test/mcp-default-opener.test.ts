@@ -22,9 +22,9 @@ describe("the default MCP sign-in opener", () => {
 		vi.resetModules();
 		await import("../../coding-agent/test/mcp-host.ts");
 		expect(vi.isMockFunction((await import("../../common/src/open-target.ts")).openTarget)).toBe(true);
-		const { McpExtensionState } = await import("../src/state.ts");
+		const { McpFeatureState } = await import("../src/state.ts");
 		opener.openTarget.mockRejectedValueOnce(new Error("spawn xdg-open ENOENT"));
-		const state = new McpExtensionState(fakeHost().api, {});
+		const state = new McpFeatureState(fakeHost().api, {});
 		expect(() => state.openUrl("https://auth.example.com/authorize?a=1&b=2")).not.toThrow();
 		await tick();
 		expect(opener.openTarget).toHaveBeenLastCalledWith("https://auth.example.com/authorize?a=1&b=2");

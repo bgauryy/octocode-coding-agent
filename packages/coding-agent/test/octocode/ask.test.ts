@@ -2,7 +2,7 @@ import { CURSOR_MARKER, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showAskDialog } from "./ask-dialog-helper.ts";
-import { formatAnswers, registerAskUser } from "../../src/octocode/ask/tool.ts";
+import { formatAnswers, registerAskUser } from "../../src/octocode/native/tools/ask-user/tool.ts";
 import { promptTitle, withDialog } from "../../src/octocode/shared/locks.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import type { AskQuestion, AskResult } from "../../src/octocode/ask/dialog/answers.ts";
@@ -60,13 +60,20 @@ async function drive(
 const scope: AskQuestion = {
 	question: "Which scope?",
 	header: "Scope",
-	options: [{ label: "Small (Recommended)", description: "One file" }, { label: "Large" }],
+	options: [
+		{ label: "Small (Recommended)", description: "One file" },
+		{ label: "Large", description: "Whole repo" },
+	],
 };
 const extras: AskQuestion = {
 	question: "Which extras?",
 	header: "Extras",
 	multiSelect: true,
-	options: [{ label: "Docs" }, { label: "Tests" }, { label: "Bench" }],
+	options: [
+		{ label: "Docs", description: "why Docs" },
+		{ label: "Tests", description: "why Tests" },
+		{ label: "Bench", description: "why Bench" },
+	],
 };
 
 /** `extras` as the model sends it: the `type` field, not the internal multiSelect flag. */
@@ -101,8 +108,8 @@ describe("askUser", () => {
 		const keybindings = new KeybindingsManager({ "tui.select.down": "j", "tui.select.confirm": "y" });
 		const { result, frames } = await drive([scope], [KEY.down, "j", "y"], undefined, keybindings);
 		expect(result.answers[0]?.answer).toBe("Large");
-		expect(frames[0]).toContain("up/j/1-9 move · y choose");
-		expect(frames[0]).not.toContain("enter choose");
+		expect(frames[0]).toContain("up/j/1-9 move · y select");
+		expect(frames[0]).not.toContain("enter select");
 	});
 	it("rewraps on resize and strips terminal controls from question text", async () => {
 		const ctx = fakeCtx({
@@ -189,8 +196,8 @@ describe("askUser", () => {
 		).toBe('"Q?" → A, B + (typed) mine');
 	});
 
-	it("picks a single answer with the arrows and Enter", async () => {
-		const { result, frames } = await drive([scope], [KEY.down, KEY.up, KEY.up, KEY.down, KEY.down, KEY.enter]);
+	it("picks a single answer with the arrows and Enter, stopping at the ends", async () => {
+		const { result, frames } = await drive([scope], [KEY.down, KEY.up, KEY.up, KEY.down, KEY.enter]);
 		expect(result).toEqual({
 			cancelled: false,
 			answers: [{ question: "Which scope?", answer: "Large", custom: false }],
@@ -199,7 +206,7 @@ describe("askUser", () => {
 		expect(frames[0]).toContain("› 1. Small (Recommended)");
 		expect(frames[0]).toContain("One file");
 		expect(frames[0]).toContain("3. Write an answer");
-		expect(frames[0]).toContain("up/down/1-9 move · enter choose · esc/ctrl+c cancel");
+		expect(frames[0]).toContain("up/down/1-9 move · enter select · esc/ctrl+c cancel");
 		expect(frames[0]).toContain("Choose one");
 		expect(frames[0]).not.toContain("Submit");
 	});
@@ -213,7 +220,7 @@ describe("askUser", () => {
 		expect(typed.frames[3]).toContain("enter submit · esc/ctrl+c back");
 		// An empty submission keeps the dialog open and leaves typing mode.
 		const empty = await drive([scope], ["3", KEY.enter, KEY.enter, KEY.escape]);
-		expect(empty.frames[3]).toContain("enter choose");
+		expect(empty.frames[3]).toContain("enter select");
 		const cancelled = await drive([scope], ["q", KEY.escape]);
 		expect(cancelled.result).toEqual({ cancelled: true, answers: [] });
 	});
@@ -401,7 +408,7 @@ describe("askUser tool", () => {
 		const ctx = fakeCtx({
 			cwd: ".",
 			mode: "rpc",
-			ui: { selects: ["2. Large", "Write an answer"], inputs: ["  just docs  "] },
+			ui: { selects: ["2. Large — Whole repo", "Write an answer"], inputs: ["  just docs  "] },
 		});
 		const result = await tool.execute("c", params, undefined, undefined, ctx);
 		expect(result.details).toMatchObject({
@@ -431,7 +438,7 @@ describe("askUser tool", () => {
 			fakeCtx({
 				cwd: ".",
 				mode: "rpc",
-				ui: { selects: ["Write an answer", "2. Large", "Write an answer"], inputs: ["   ", "tests"] },
+				ui: { selects: ["Write an answer", "2. Large — Whole repo", "Write an answer"], inputs: ["   ", "tests"] },
 			}),
 		);
 		expect(emptyTyped.details).toMatchObject({
@@ -448,7 +455,11 @@ describe("askUser tool", () => {
 			multi,
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["3. Bench", "1. Docs", "Submit selection"] } }),
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["3. Bench — why Bench", "1. Docs — why Docs", "Submit selection"] },
+			}),
 		);
 		expect(done.details).toMatchObject({
 			cancelled: false,
@@ -459,7 +470,11 @@ describe("askUser tool", () => {
 			multi,
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. Docs", "2. Tests", "3. Bench"] } }),
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["1. Docs — why Docs", "2. Tests — why Tests", "3. Bench — why Bench"] },
+			}),
 		);
 		expect(all.details.answers[0].answer).toBe("Docs, Tests, Bench");
 		const typed = await tool.execute(
@@ -467,7 +482,7 @@ describe("askUser tool", () => {
 			multi,
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Tests", "Write an answer"], inputs: ["CI"] } }),
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Tests — why Tests", "Write an answer"], inputs: ["CI"] } }),
 		);
 		expect(typed.details.answers[0]).toEqual({
 			question: "Which extras?",
@@ -484,9 +499,13 @@ describe("askUser tool", () => {
 		expect(JSON.stringify(tool.parameters)).not.toContain("maxItems");
 		const questions = Array.from({ length: 6 }, (_, i) => ({
 			question: `Q${i}?`,
-			options: ["A", "B", "C", "D", "E"].map((label) => ({ label })),
+			options: ["A", "B", "C", "D", "E"].map((label) => ({ label, description: `why ${label}` })),
 		}));
-		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A", "1. A", "1. A", "1. A"] } });
+		const ctx = fakeCtx({
+			cwd: ".",
+			mode: "rpc",
+			ui: { selects: ["1. A — why A", "1. A — why A", "1. A — why A", "1. A — why A"] },
+		});
 		await expect(tool.execute("c", { questions }, undefined, undefined, ctx)).rejects.toThrow(
 			/at most 4 questions; got 6/,
 		);
@@ -496,14 +515,20 @@ describe("askUser tool", () => {
 	});
 
 	it("drops only a bare write-in option and refuses a lone option", async () => {
-		const ctx = () => fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Other tools only"] } });
+		const ctx = () =>
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Other tools only — why Other tools only"] } });
 		const kept = await tool.execute(
 			"c",
 			{
 				questions: [
 					{
 						question: "Which?",
-						options: [{ label: "A" }, { label: "Other tools only" }, { label: "Other (specify)" }, { label: "Other" }],
+						options: [
+							{ label: "A", description: "why A" },
+							{ label: "Other tools only", description: "why Other tools only" },
+							{ label: "Other (specify)", description: "why Other (specify)" },
+							{ label: "Other", description: "why Other" },
+						],
 					},
 				],
 			},
@@ -517,7 +542,7 @@ describe("askUser tool", () => {
 		await expect(
 			tool.execute(
 				"c",
-				{ questions: [{ question: "Which?", options: [{ label: "A" }] }] },
+				{ questions: [{ question: "Which?", options: [{ label: "A", description: "why A" }] }] },
 				undefined,
 				undefined,
 				ctx(),
@@ -527,7 +552,15 @@ describe("askUser tool", () => {
 
 	it("says how many empty questions and options it did not ask", async () => {
 		const questions = [
-			{ question: "Which?", options: [{ label: "A" }, { label: "B" }, { label: "  " }, { label: "" }] },
+			{
+				question: "Which?",
+				options: [
+					{ label: "A", description: "why A" },
+					{ label: "B", description: "why B" },
+					{ label: "  " },
+					{ label: "" },
+				],
+			},
 			{ question: "   " },
 			{ question: "" },
 			{ question: " " },
@@ -537,17 +570,28 @@ describe("askUser tool", () => {
 			{ questions },
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } }),
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
 		);
 		expect(result.content[0].text).toBe(
 			'"Which?" → A\n(Not asked: 3 empty questions and 2 options with an empty label.)',
 		);
 		const one = await tool.execute(
 			"c",
-			{ questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }, { question: "" }] },
+			{
+				questions: [
+					{
+						question: "Which?",
+						options: [
+							{ label: "A", description: "why A" },
+							{ label: "B", description: "why B" },
+						],
+					},
+					{ question: "" },
+				],
+			},
 			undefined,
 			undefined,
-			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } }),
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
 		);
 		expect(one.content[0].text).toBe('"Which?" → A\n(Not asked: 1 empty question.)');
 		// Nothing skipped, nothing said.
@@ -555,10 +599,20 @@ describe("askUser tool", () => {
 			(
 				await tool.execute(
 					"c",
-					{ questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }] },
+					{
+						questions: [
+							{
+								question: "Which?",
+								options: [
+									{ label: "A", description: "why A" },
+									{ label: "B", description: "why B" },
+								],
+							},
+						],
+					},
 					undefined,
 					undefined,
-					fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } }),
+					fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
 				)
 			).content[0].text,
 		).toBe('"Which?" → A');
@@ -571,7 +625,7 @@ describe("askUser tool", () => {
 				options: [
 					{ label: "Done.", description: "first" },
 					{ label: "Done.", description: "second" },
-					{ label: "Write an answer" },
+					{ label: "Write an answer", description: "why Write an answer" },
 				],
 			},
 		];

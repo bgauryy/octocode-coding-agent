@@ -10,7 +10,7 @@ import type {
 	ToolResultMessage,
 } from "@octocodeai/octocode-ai";
 import type { Question } from "@octocodeai/octocode-contracts";
-import type { ExtensionUIAskView } from "./ui.ts";
+import type { AskView } from "./ui.ts";
 import type { RunOutcome } from "../../agent-session/run-outcome.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ContextEditEntry, ReadonlyProjectedSessionEntry } from "../../session-manager.ts";
@@ -42,7 +42,7 @@ interface BeforeAgentStartEventBase {
 	systemPromptOptions: NormalizedBuildSystemPromptOptions;
 }
 
-/** A run started by a submitted prompt, RPC prompt, or `api.sendUserMessage()`. */
+/** A run started by a submitted prompt, RPC prompt, or `api.session.sendUserMessage()`. */
 export interface BeforeAgentStartUserEvent extends BeforeAgentStartEventBase {
 	messageType: "user";
 	/** The raw user prompt text (after expansion). */
@@ -51,7 +51,7 @@ export interface BeforeAgentStartUserEvent extends BeforeAgentStartEventBase {
 	images?: ImageContent[];
 }
 
-/** A run started by `api.sendMessage(..., { triggerTurn: true })` while idle. */
+/** A run started by `api.session.sendMessage(..., { triggerTurn: true })` while idle. */
 export interface BeforeAgentStartCustomEvent extends BeforeAgentStartEventBase {
 	messageType: "custom";
 	/** The custom message that starts the run. */
@@ -141,10 +141,18 @@ export interface AgentSettledEvent {
 	outcome?: RunOutcome;
 }
 
+/**
+ * Fired after the `agent_settled` handlers returned and the sends they deferred ran, also when there were none. A run one of
+ * those sends started has begun by then: a message sent while the run settled and still not taken up started nothing.
+ */
+export interface AgentSettleEndEvent {
+	type: "agent_settle_end";
+}
+
 export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom" | "ask";
 
 /**
- * Fired when Octocode starts waiting on a blocking user-facing extension UI prompt. `id` names the dialog for a
+ * Fired when Octocode starts waiting on a blocking user-facing feature UI prompt. `id` names the dialog for a
  * remote answer (`AgentSession.answerDialog`); `options` are a select's choices (a confirm's are Yes and No);
  * `allowsText` says an input dialog takes free text; `approval` is set when an `ask` dialog holds an approval question, `blocking` repeats the dialog option;
  * `nested` marks a dialog opened over another still open one.
@@ -159,14 +167,14 @@ export interface UIPromptStartEvent {
 	allowsText?: boolean;
 	approval?: boolean;
 	/** The card a custom dialog with a remote answer shape draws, for clients that draw it too. */
-	ask?: ExtensionUIAskView;
-	/** An `ask` dialog's typed questions (`ExtensionUIContext.ask`), which a remote client answers with one reply each. */
+	ask?: AskView;
+	/** An `ask` dialog's typed questions (`SessionUI.ask`), which a remote client answers with one reply each. */
 	questions?: Question[];
 	blocking?: boolean;
 	nested?: boolean;
 }
 
-/** Fired when Octocode is no longer waiting on a blocking user-facing extension UI prompt. */
+/** Fired when Octocode is no longer waiting on a blocking user-facing feature UI prompt. */
 export interface UIPromptEndEvent {
 	type: "ui_prompt_end";
 	reason: "ui_prompt";

@@ -89,7 +89,7 @@ function manager() {
 		},
 		showWarning: vi.fn(),
 		showSelector: vi.fn(),
-		showExtensionSelector: vi.fn(),
+		showSelectorDialog: vi.fn(),
 		showLoginDialog: vi.fn(),
 		showApiKeyLoginDialog: vi.fn(),
 		showAmbientAuthDialog: vi.fn(),
@@ -203,7 +203,7 @@ describe("provider setup flow", () => {
 		await vi.waitFor(() =>
 			expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("anthropic", "Anthropic", expect.any(Function)),
 		);
-		expect(value.showExtensionSelector).not.toHaveBeenCalled();
+		expect(value.showSelectorDialog).not.toHaveBeenCalled();
 		expect(value.ui.stop).not.toHaveBeenCalled();
 	});
 
@@ -312,7 +312,7 @@ describe("provider setup flow", () => {
 		choose(installedPage, "Claude Code");
 		await installedRun;
 		expect(value.showApiKeyLoginDialog).toHaveBeenCalledTimes(2);
-		expect(value.showExtensionSelector).not.toHaveBeenCalled();
+		expect(value.showSelectorDialog).not.toHaveBeenCalled();
 	});
 
 	it("a source's page toggles Pi through settings and reapplies the sources; Octocode has no toggle", async () => {
@@ -543,7 +543,7 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		let offered: readonly string[] = [];
-		value.showExtensionSelector.mockImplementation(async (_title: string, labels: string[]) => {
+		value.showSelectorDialog.mockImplementation(async (_title: string, labels: string[]) => {
 			offered = labels;
 			return labels.find((label) => label.startsWith("Gemini CLI"));
 		});
@@ -584,6 +584,9 @@ describe("provider setup flow", () => {
 		expect(rows(picker).filter((line) => /OpenAI|Anthropic/.test(line))).toEqual([
 			expect.stringContaining("OpenAI Codex · account sign-in"),
 		]);
+		// Esc clears the search first, then cancels back to the provider page.
+		picker.handleInput(ESC);
+		expect(rows(picker).filter((line) => /Anthropic/.test(line)).length).toBeGreaterThan(0);
 		picker.handleInput(ESC);
 		(await pageAt(value, 2)).handleInput(ESC);
 		await run;
@@ -593,7 +596,7 @@ describe("provider setup flow", () => {
 		const { host, value } = manager();
 		await showOAuthSelector(host, "logout", "open");
 		const picker = await pageAt(value, 0);
-		expect(textOf(picker)).toContain("> open");
+		expect(textOf(picker)).toContain(" ⌕ open");
 		expect(textOf(picker)).toMatch(/OpenAI · saved API key/);
 		expect(textOf(picker)).not.toContain("configured");
 		picker.handleInput(ESC);
@@ -609,11 +612,11 @@ describe("provider setup flow", () => {
 
 	it("can cancel credential removal and explains remaining environment access after removal", async () => {
 		const { host, value, runtime } = manager();
-		value.showExtensionSelector.mockResolvedValueOnce("Cancel");
+		value.showSelectorDialog.mockResolvedValueOnce("Cancel");
 		await removeProviderCredential(host, "openai", "OpenAI");
-		expect(value.showExtensionSelector.mock.calls[0][1][0]).toBe("Cancel");
+		expect(value.showSelectorDialog.mock.calls[0][1][0]).toBe("Cancel");
 		expect(runtime.logout).not.toHaveBeenCalled();
-		value.showExtensionSelector.mockResolvedValueOnce("Remove credential — environment and models.json stay unchanged");
+		value.showSelectorDialog.mockResolvedValueOnce("Remove credential — environment and models.json stay unchanged");
 		await removeProviderCredential(host, "openai", "OpenAI");
 		expect(runtime.logout).toHaveBeenCalledOnce();
 		expect(value.showStatus).toHaveBeenCalledWith(

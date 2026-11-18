@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 

@@ -1,4 +1,5 @@
 import type { ProgramStatus } from "../program-status.ts";
+import type { OutputStallReport } from "./stall-watch.ts";
 
 /**
  * Minimal terminal interface for TUI
@@ -41,7 +42,7 @@ export interface Terminal {
 	/** Queued bytes past which frames are dropped; undefined when every frame is kept. */
 	readonly frameOutputCap?: number;
 	setOutputRecovery?(recover: (() => void) | undefined): void;
-	/** Optional aggregate output counters; no rendered text is retained. */
+	/** Optional aggregate output counters and terminal stalls; no rendered text is retained. */
 	setOutputTelemetryEnabled?(enabled: boolean): void;
 	getOutputTelemetry?(): Readonly<OutputTelemetry>;
 
@@ -88,4 +89,6 @@ export interface OutputTelemetry {
 	maxQueuedBytes: number;
 	/** Bytes of frames dropped because the terminal was not reading. */
 	droppedFrameBytes: number;
+	/** Stretches in which the terminal took no queued output; reported even with counters off, absent if none. */
+	stalls?: OutputStallReport;
 }

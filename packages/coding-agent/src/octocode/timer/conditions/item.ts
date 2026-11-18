@@ -1,7 +1,9 @@
 import { LIST_STATES } from "@octocodeai/octocode-contracts/snapshot";
+import { staleHint, watchBacklog } from "./backlog-wait.ts";
+import { parseSince } from "./changed.ts";
 import { type ConditionSpec, fields, text } from "./types.ts";
 
-type Item = { kind: "item"; ref: string; state: string };
+type Item = { kind: "item"; ref: string; state: string; since?: number };
 
 /** Not a stored state: every `dependsOn` item of the ref is done or closed. */
 const READY = "ready";
@@ -23,24 +25,36 @@ function parseRefs(value: unknown): string {
 export const itemSpec: ConditionSpec<Item> = {
 	kind: "item",
 	parse(value) {
-		const given = fields(value, "item", ["ref", "state"]);
+		const given = fields(value, "item", ["ref", "state", "since"]);
 		const state = text(given.state, "until.item.state");
 		if (state !== READY && !(LIST_STATES as readonly string[]).includes(state))
 			throw new Error(`until.item.state is one of ${LIST_STATES.join(", ")}, ${READY}.`);
-		return { kind: "item", ref: parseRefs(given.ref), state };
+		const since = parseSince(given.since, "until.item.since");
+		return { kind: "item", ref: parseRefs(given.ref), state, ...(since !== undefined ? { since } : {}) };
 	},
-	encode: (condition) => JSON.stringify({ ref: condition.ref, state: condition.state }),
+	encode: (condition) =>
+		JSON.stringify({
+			ref: condition.ref,
+			state: condition.state,
+			...(condition.since !== undefined ? { since: condition.since } : {}),
+		}),
 	decode(stored) {
 		const parsed = JSON.parse(stored) as Partial<Item>;
 		return typeof parsed.ref === "string" && typeof parsed.state === "string"
-			? { kind: "item", ref: parsed.ref, state: parsed.state }
+			? {
+					kind: "item",
+					ref: parsed.ref,
+					state: parsed.state,
+					...(typeof parsed.since === "number" ? { since: parsed.since } : {}),
+				}
 			: undefined;
 	},
 	describe: (condition) =>
 		`${refsOf(condition.ref).length > 1 ? "any of " : ""}${condition.ref.replaceAll(",", ", ")} is ${condition.state}`,
 	safetyMs: 60_000,
 	pollMs: 15_000,
-	async check(condition, { deps }) {
+	async check(condition, env) {
+		const { deps } = env;
 		const lines: string[] = [];
 		let met = false;
 		for (const ref of refsOf(condition.ref)) {
@@ -62,7 +76,12 @@ export const itemSpec: ConditionSpec<Item> = {
 				lines.push(`${ref} is ${state}.`);
 			}
 		}
-		return { met, exit: null, output: lines.join(" ") };
+		const hint = met ? undefined : staleHint(refsOf(condition.ref), env, condition.since);
+		return { met, exit: null, output: [lines.join(" "), ...(hint ? [hint] : [])].join("\n") };
 	},
-	watch: (_condition, { deps }, poke) => deps.watchDatabase(poke),
+	watch(condition, { deps }, poke) {
+		const refs = refsOf(condition.ref);
+		// `ready` also moves when a prerequisite of the ref ends, which is a change to another item.
+		return watchBacklog(deps, (change) => condition.state === READY || refs.includes(change.ref), poke);
+	},
 };

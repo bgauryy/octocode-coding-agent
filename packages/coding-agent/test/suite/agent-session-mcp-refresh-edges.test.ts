@@ -42,7 +42,8 @@ describe("AgentSession MCP refresh edges", () => {
 		expect(mcpsPatches([...withdrawn, ...back])).toEqual([]);
 		expect(newestMcps(harness.session.messages)).toBe(block);
 		expect(currentStatus(harness.session.messages)).toBeUndefined();
-		expect(toolChanges(back)).toEqual(["+mcp__docs__fail"]);
+		// The withdrawn tool stayed declared (held tools), so offering it again changes no declaration.
+		expect(toolChanges(back)).toEqual([]);
 		expect(thin("mcp__docs__fail")).toBe(true);
 	});
 

@@ -1,0 +1,1 @@
+{{names}} may not be declared yet: call one by name with its fields (a call its schema rejects returns the schema), or read it with the `mcp` tool (intent `tools`, server `native`). It is declared from then on.

@@ -11,6 +11,11 @@ import {
 	userMessagesSection,
 	writeSummary,
 } from "../../src/octocode/compaction/summary.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { asSetup } from "./fake-host.ts";
+
+/** What every "complete text saved at <file>" pointer starts with, taken from the notice itself. */
+const POINTER = renderPrompt("notices/compaction/text-saved.md", { file: "\u0000" }).split("\u0000")[0];
 
 describe("lossless compaction references", () => {
 	it("preserves a whole inherited message when a smaller budget requires a reference", () => {
@@ -139,13 +144,13 @@ describe("lossless compaction references", () => {
 		expect(task.length).toBeGreaterThan(USER_MESSAGE_CHARS);
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compaction-child-"));
 		const summarize = async (parentId?: string) => {
-			const api = {
+			const api = asSetup({
 				getThinkingLevel: () => "off",
 				getActiveTools: () => [],
 				getSettings: () => ({}),
 				appendEntry: () => {},
 				createUsageRecorder: () => () => {},
-			};
+			});
 			const event = {
 				signal: new AbortController().signal,
 				preparation: {
@@ -184,13 +189,13 @@ describe("lossless compaction references", () => {
 				},
 				hasUI: false,
 			};
-			const out = await writeSummary(api as never, event as never, ctx as never, undefined, undefined, parentId);
+			const out = await writeSummary(api, event as never, ctx as never, undefined, undefined, parentId);
 			return splitSummary(out!.compaction!.summary).messages;
 		};
 		expect(await summarize("main-1")).toEqual([task, "Go on."]);
 		// The same text from a user is over the limit: its own pointer, and the next message stays.
 		const main = await summarize();
-		expect(main[0]).toContain("Complete text saved at");
+		expect(main[0]).toContain(POINTER);
 		expect(main[1]).toBe("Go on.");
 	});
 	it("saves the full tool result before using a pointer in the standalone summarizer", () => {
@@ -207,13 +212,13 @@ describe("lossless compaction references", () => {
 	});
 	it("keeps the evidence inline, cut with a marker, when the session has no file to persist it in; the messages stay whole", async () => {
 		const messages = [{ role: "toolResult", content: [{ type: "text", text: "complete evidence ".repeat(1000) }] }];
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			appendEntry: () => {},
 			createUsageRecorder: () => () => {},
-		};
+		});
 		const event = {
 			signal: new AbortController().signal,
 			preparation: {
@@ -244,7 +249,7 @@ describe("lossless compaction references", () => {
 				}),
 			},
 		};
-		const out = await writeSummary(api as never, event as never, ctx as never, ctx.model as never);
+		const out = await writeSummary(api, event as never, ctx as never, ctx.model as never);
 		expect(out?.cancel).toBeUndefined();
 		expect(out?.compaction?.summary).toContain("## Goal\nsummary");
 		expect(messages[0].content[0].text).toBe("complete evidence ".repeat(1000));
@@ -257,13 +262,13 @@ describe("lossless compaction references", () => {
 		const words = Array.from({ length: 10 }, (_, i) => `${i} ${"pasted spec line ".repeat(260)}`);
 		const reserveTokens = 16_384;
 		const body = `## Goal\n${"summary detail ".repeat(2_000)}`;
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			appendEntry: () => {},
 			createUsageRecorder: () => () => {},
-		};
+		});
 		const event = {
 			signal: new AbortController().signal,
 			preparation: {
@@ -295,10 +300,10 @@ describe("lossless compaction references", () => {
 			},
 		};
 		try {
-			const out = await writeSummary(api as never, event as never, ctx as never, ctx.model as never);
+			const out = await writeSummary(api, event as never, ctx as never, ctx.model as never);
 			const summary = out?.compaction?.summary ?? "";
 			expect(summary).toContain(body);
-			expect(summary).toContain("Complete text saved at");
+			expect(summary).toContain(POINTER);
 			expect(summary.length).toBeLessThanOrEqual(inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN);
 			const saved = fs
 				.readdirSync(dir)

@@ -4,7 +4,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, openDatabase, timers } from "../../../db/src/api.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { conditionChecker, conditionWatcher } from "../../src/octocode/timer/condition.ts";
 import { parseUntil } from "../../src/octocode/timer/conditions/index.ts";
@@ -293,7 +293,7 @@ function judging(replies: Array<string | Error>, cost = 0.002) {
 			getAvailable: () => [parent, model("cheap", 1)],
 			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }),
 		},
-	} as unknown as ExtensionContext;
+	} as unknown as FeatureContext;
 	const complete = vi.fn(async () => {
 		const next = replies.shift();
 		if (next instanceof Error) throw next;
@@ -696,8 +696,10 @@ describe("the timer tool and check", () => {
 		expect([...tool.parameters.properties.event.enum].sort((a: string, b: string) => a.localeCompare(b))).toEqual([
 			"agent.ended",
 			"check.result",
+			"item.changed",
 			"item.state",
 			"path.unlocked",
+			"peer.landed",
 		]);
 		const call = (args: object) => tool.execute("c", { op: "on", note: "n", ...args }, undefined, undefined, ctx);
 		await expect(call({ event: "file.changed" })).rejects.toThrow(
@@ -709,6 +711,14 @@ describe("the timer tool and check", () => {
 		await expect(call({ event: "path.unlocked", filter: { path: "a", ref: "B1" } })).rejects.toThrow(
 			"filters on path, not ref",
 		);
+		// A check that only repeats the command would pay a model for what the command already decides.
+		await expect(
+			call({
+				event: "check.result",
+				filter: { command: "grep -q Duration a.log" },
+				check: 'grep -q "Duration"  a.log',
+			}),
+		).rejects.toThrow("check repeats filter.command");
 		await expect(
 			tool.execute("c", { op: "set", after: 5, note: "n", event: "item.state" }, undefined, undefined, ctx),
 		).rejects.toThrow("belong to on");
@@ -999,5 +1009,42 @@ describe("a persistent listener wakes when its condition turns true, not while i
 		expect(woke("fired:1", "active", null)).toContain("wake 1 of 2)");
 		expect(woke("fired:1", "active", null)).toContain("off id 4 to stop it");
 		expect(woke("fired:2", "done", "maxRuns")).toContain("wake 2 of 2, the last)");
+	});
+});
+
+describe("an expired command wait", () => {
+	const expired = (output: string) =>
+		({
+			id: 9,
+			kind: "until",
+			note: "start checks once load is low",
+			status: "expired",
+			stop_reason: "deadline",
+			max_runs: null,
+			runs: 0,
+			condition_kind: "command",
+			condition: JSON.stringify("node scripts/full-run-lock.ts --status"),
+			baseline: null,
+			last_exit: 1,
+			last_output: output,
+			checks: 0,
+			spent_usd: 0,
+		}) as never;
+
+	it("names the last exit code and the output tail, redacted and bounded", () => {
+		const secret = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+		const output = `${"x".repeat(5000)}\nheld by yarn test (pid 7)\ntoken ${secret}`;
+		const text = wakeText(expired(output));
+		const [headline] = text.split("\n");
+		expect(headline).toContain("deadline reached before");
+		expect(headline).toContain("last check exit 1");
+		expect(text).toContain("Last check (exit 1): ");
+		expect(text).toContain("held by yarn test (pid 7)");
+		expect(text).not.toContain(secret);
+		expect(text.length).toBeLessThan(1200);
+	});
+
+	it("says there was no output rather than nothing", () => {
+		expect(wakeText(expired(""))).toContain("Last check (exit 1): (no output)");
 	});
 });

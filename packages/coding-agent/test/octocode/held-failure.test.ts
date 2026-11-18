@@ -1,9 +1,10 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { registerNativeSessionLifecycle } from "../../src/octocode/session-lifecycle.ts";
 import type { AgentControl } from "../../src/octocode/subagents/tool.ts";
 import { createHarness, type Harness } from "../suite/harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const FIVE_OH_THREE = "503 Service Unavailable";
 
@@ -11,10 +12,10 @@ const FIVE_OH_THREE = "503 Service Unavailable";
 async function session(children: number, settings: { maxRetries: number } = { maxRetries: 0 }) {
 	let live = children;
 	let reported: (() => void) | undefined;
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const report = (text: string) => {
 		live--;
-		void api.sendMessage(
+		void api.session.sendMessage(
 			{ customType: "octocode-agent-result", content: text, display: true },
 			{ triggerTurn: true, deliverAs: "followUp" },
 		);
@@ -30,10 +31,10 @@ async function session(children: number, settings: { maxRetries: number } = { ma
 	} as unknown as AgentControl;
 	const harness = await createHarness({
 		settings: { retry: { enabled: settings.maxRetries > 0, ...settings, baseDelayMs: 1 } },
-		extensionFactories: [
-			(extension) => {
-				api = extension;
-				registerNativeSessionLifecycle(extension, {
+		features: testFeatures([
+			(feature) => {
+				api = feature;
+				registerNativeSessionLifecycle(feature, {
 					isSubagent: false,
 					team: { interrupted: new AbortController().signal } as never,
 					permission: { shutdown: () => undefined } as never,
@@ -41,7 +42,7 @@ async function session(children: number, settings: { maxRetries: number } = { ma
 					agents,
 				});
 			},
-		],
+		]),
 	});
 	return { harness, report, live: () => live };
 }

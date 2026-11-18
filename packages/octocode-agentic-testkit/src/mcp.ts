@@ -1,12 +1,29 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { vi, type Mock } from "vitest";
-import { Trace } from "./trace.ts";
+import { checkGuards, serverCalls, type Guard } from "./guards.ts";
+import { httpMcpClient, type ClientIdentity, type McpClient } from "./mcp-client.ts";
+import { contentServer, type PromptDef, type PromptMock, type ResourceDef, type ResourceMock } from "./mcp-content.ts";
+import { header, parseMessage, readBody, RPC_ERROR, rpcError, RpcFailure, send, type Rpc } from "./mcp-rpc.ts";
+import { schemaError, type ObjectSchema } from "./mcp-schema.ts";
+import { mcpToolName, Trace } from "./trace.ts";
+
+export { connectMcp, type ClientIdentity, type McpCallResult, type McpClient, type McpToolInfo } from "./mcp-client.ts";
+export type { PromptArgument, PromptDef, PromptMessage, PromptMock, ResourceDef, ResourceMock } from "./mcp-content.ts";
+export type { JsonSchema, ObjectSchema } from "./mcp-schema.ts";
 
 export interface ToolDef {
 	name: string;
 	description: string;
-	inputSchema: { type: "object"; properties?: Record<string, { type?: string }>; required?: string[] };
+	/** Checked recursively before the handler runs; a violation is an `invalid-args` error result. */
+	inputSchema: ObjectSchema;
+	/**
+	 * Advertised in `tools/list`. When the handler returns an object, it is checked against this schema and sent as
+	 * `structuredContent` beside its JSON text; a violation is an `invalid-output` error result.
+	 */
+	outputSchema?: ObjectSchema;
+	/** May be async; a rejection behaves like a throw. */
 	handler?: (args: Record<string, unknown>) => unknown;
 }
 
@@ -19,34 +36,27 @@ export type ToolMock = Mock<(args: Record<string, unknown>) => unknown> & {
 	failOnce(kind: FailKind): ToolMock;
 };
 
-export interface McpToolInfo {
-	name: string;
-	description: string;
-	inputSchema: ToolDef["inputSchema"];
-}
-
-export interface McpCallResult {
-	isError: boolean;
-	text: string;
-}
-
-export interface McpClient {
-	server: string;
-	listTools(): Promise<McpToolInfo[]>;
-	callTool(name: string, args: Record<string, unknown>): Promise<McpCallResult>;
-}
-
-export interface ClientIdentity {
-	agent?: string;
-	span?: string;
-	/** Abort a request that gets no answer after this long (default 30000). */
-	timeoutMs?: number;
+/** A session the mock issued on `initialize` (the `Mcp-Session-Id` header). */
+export interface McpSession {
+	id: string;
+	/** Requests after `initialize` that carried this id. */
+	requests: number;
+	/** Ended by the client's DELETE; a later request with this id gets 404. */
+	closed: boolean;
 }
 
 export interface MockMcp {
 	name: string;
 	trace: Trace;
+	/** The tools as the server advertises them in `tools/list`. */
+	defs: readonly ToolDef[];
 	tool(name: string): ToolMock;
+	/** Spy on `resources/read` of one configured resource. */
+	resource(uri: string): ResourceMock;
+	/** Spy on `prompts/get` of one configured prompt. */
+	prompt(name: string): PromptMock;
+	/** Sessions issued so far, oldest first. */
+	sessions(): McpSession[];
 	listen(): Promise<string>;
 	client(identity?: ClientIdentity): McpClient;
 	/** Calls currently held open by `failOnce("timeout")`. */
@@ -59,50 +69,32 @@ interface Control {
 	fail: FailKind[];
 }
 
-type Rpc = { id?: number | string | null; method: string; params?: Record<string, unknown> };
-
-function validate(def: ToolDef, args: Record<string, unknown>): string | undefined {
-	for (const key of def.inputSchema.required ?? []) if (!(key in args)) return `missing required argument "${key}"`;
-	for (const [key, spec] of Object.entries(def.inputSchema.properties ?? {})) {
-		const v = args[key];
-		if (v === undefined || !spec.type) continue;
-		const actual = Array.isArray(v) ? "array" : v === null ? "null" : typeof v;
-		const ok = spec.type === "integer" ? Number.isInteger(v) : actual === spec.type;
-		if (!ok) return `argument "${key}" must be ${spec.type}, got ${actual}`;
-	}
-	return undefined;
-}
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 function text(v: unknown): string {
 	return typeof v === "string" ? v : JSON.stringify(v ?? null);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		req.on("data", (c: Buffer) => chunks.push(c));
-		req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-		req.on("error", reject);
-	});
+/**
+ * A minimal MCP server (Streamable HTTP, JSON responses, sessions) whose tools, resources and prompts are `vi.fn`
+ * spies. `resources` and `prompts` are advertised as capabilities only when given.
+ */
+export interface MockMcpOptions {
+	name: string;
+	tools: ToolDef[];
+	resources?: ResourceDef[];
+	prompts?: PromptDef[];
+	trace?: Trace;
+	/** Judged before each `tools/call`; a block answers with an error result and records a `guard` event. */
+	guards?: readonly Guard[];
 }
 
-function send(res: ServerResponse, body: unknown): void {
-	res.writeHead(200, { "content-type": "application/json" });
-	res.end(JSON.stringify(body));
-}
-
-/** The sanitized namespace the agent prefixes tools with: `mcp__<server>__<tool>`. */
-const namespaced = (server: string, tool: string): string => `mcp__${server.replace(/[^A-Za-z0-9_]/g, "_")}__${tool}`;
-
-const hdr = (req: IncomingMessage, k: string): string | undefined => {
-	const v = req.headers[k];
-	return Array.isArray(v) ? v[0] : v;
-};
-
-/** A minimal MCP server (Streamable HTTP, JSON responses) whose tools are `vi.fn` spies. */
-export function mockMcp(opts: { name: string; tools: ToolDef[]; trace?: Trace }): MockMcp {
+export function mockMcp(opts: MockMcpOptions): MockMcp {
 	const trace = opts.trace ?? new Trace();
+	trace.observe(`mcp:${opts.name}`);
+	if (opts.guards?.length) trace.observe("guards");
 	const defs = new Map(opts.tools.map((t) => [t.name, t]));
+	const content = contentServer(opts.name, opts.resources, opts.prompts);
 	const controls = new Map<string, Control>();
 	const mocks = new Map<string, ToolMock>();
 	for (const def of opts.tools) {
@@ -125,6 +117,7 @@ export function mockMcp(opts: { name: string; tools: ToolDef[]; trace?: Trace })
 		mocks.set(def.name, fn);
 	}
 
+	const sessions = new Map<string, McpSession>();
 	const stalled = new Set<ServerResponse>();
 	/** Hold the response open: the caller sees a hang, not a dropped connection. Released when it disconnects. */
 	const stall = (res: ServerResponse): void => {
@@ -132,72 +125,121 @@ export function mockMcp(opts: { name: string; tools: ToolDef[]; trace?: Trace })
 		res.on("close", () => stalled.delete(res));
 	};
 
-	const call = (req: IncomingMessage, res: ServerResponse, rpc: Rpc): void => {
+	const call = async (req: IncomingMessage, res: ServerResponse, rpc: Rpc): Promise<void> => {
 		const name = typeof rpc.params?.name === "string" ? rpc.params.name : "";
 		// Identity: explicit headers win; otherwise the agent whose model asked for this tool most recently.
-		const asked = trace.events.findLast((e) => e.kind === "model_tool_call" && e.name === namespaced(opts.name, name));
-		const agent = hdr(req, "x-testkit-agent") ?? asked?.agent ?? "main";
-		const span = hdr(req, "x-testkit-span") ?? (hdr(req, "x-testkit-agent") ? agent : (asked?.span ?? agent));
+		const asked = trace.events.findLast((e) => e.kind === "model_tool_call" && e.name === mcpToolName(opts.name, name));
+		const agent = header(req, "x-testkit-agent") ?? asked?.agent ?? "main";
+		const span = header(req, "x-testkit-span") ?? (header(req, "x-testkit-agent") ? agent : (asked?.span ?? agent));
 		const args = (rpc.params?.arguments ?? {}) as Record<string, unknown>;
 		const def = defs.get(name);
-		const result = (t: string, isError: boolean): void =>
-			send(res, { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: t }], isError } });
+		const result = (t: string, isError: boolean, structured?: Record<string, unknown>): void =>
+			send(res, {
+				jsonrpc: "2.0",
+				id: rpc.id,
+				result: {
+					content: [{ type: "text", text: t }],
+					...(structured ? { structuredContent: structured } : {}),
+					isError,
+				},
+			});
 		const base = { agent, span, name, args, server: opts.name } as const;
+		const blocked = checkGuards(opts.guards, { name, args, agent, server: opts.name }, serverCalls(trace, opts.name));
+		if (blocked) {
+			trace.cut = true;
+			trace.record({ kind: "guard", ...base, data: { reason: blocked, by: `mcp:${opts.name}` } });
+			return result(`blocked: ${blocked}`, true);
+		}
 		if (!def) {
 			trace.record({ kind: "tool_error", ...base, data: "unknown-tool" });
 			return result(`unknown tool ${name}`, true);
 		}
-		const bad = validate(def, args);
+		const bad = schemaError(def.inputSchema, args);
 		if (bad) {
 			trace.record({ kind: "tool_error", ...base, data: { reason: "invalid-args", message: bad } });
 			return result(`invalid arguments: ${bad}`, true);
 		}
+		let value: unknown;
 		try {
-			const value = mocks.get(name)!(args);
-			trace.record({ kind: "tool_exec", ...base, data: value });
-			result(text(value), false);
+			value = await Promise.resolve(mocks.get(name)!(args));
 		} catch (e) {
 			const kind = (e as { kind?: string }).kind ?? "error";
 			const message = e instanceof Error ? e.message : String(e);
 			trace.record({ kind: "tool_error", ...base, data: { reason: kind, message } });
 			if (kind === "timeout") stall(res);
 			else result(message, true);
+			return;
 		}
+		const structured = def.outputSchema && isObject(value) ? value : undefined;
+		const badOutput = structured && schemaError(def.outputSchema, structured);
+		if (badOutput) {
+			trace.record({ kind: "tool_error", ...base, data: { reason: "invalid-output", message: badOutput } });
+			return result(`invalid output: ${badOutput}`, true);
+		}
+		trace.record({ kind: "tool_exec", ...base, data: value });
+		result(text(value), false, structured);
+	};
+
+	const answer = async (rpc: Rpc): Promise<unknown> => {
+		if (rpc.method === "initialize")
+			return {
+				protocolVersion: typeof rpc.params?.protocolVersion === "string" ? rpc.params.protocolVersion : "2025-06-18",
+				capabilities: { tools: {}, ...content.capabilities },
+				serverInfo: { name: opts.name, version: "0.0.0" },
+			};
+		if (rpc.method === "ping") return {};
+		if (rpc.method === "tools/list")
+			return {
+				tools: opts.tools.map(({ name, description, inputSchema, outputSchema }) => ({
+					name,
+					description,
+					inputSchema,
+					...(outputSchema ? { outputSchema } : {}),
+				})),
+			};
+		const handled = content.handle(rpc);
+		if (handled) return handled;
+		throw new RpcFailure(RPC_ERROR.noMethod, `no method ${rpc.method}`);
+	};
+
+	const dispatch = async (req: IncomingMessage, res: ServerResponse, raw: string): Promise<void> => {
+		const msg = parseMessage(raw);
+		if (msg.kind === "invalid") return send(res, rpcError(null, msg.code, msg.message), 400);
+		if (msg.kind === "accepted") return void res.writeHead(202).end();
+		const { rpc } = msg;
+		if (rpc.method === "tools/call") return call(req, res, rpc);
+		let result: unknown;
+		try {
+			result = await answer(rpc);
+		} catch (e) {
+			const code = e instanceof RpcFailure ? e.code : RPC_ERROR.internal;
+			return send(res, rpcError(rpc.id, code, e instanceof Error ? e.message : String(e)));
+		}
+		if (rpc.method !== "initialize") return send(res, { jsonrpc: "2.0", id: rpc.id, result });
+		const id = randomUUID();
+		sessions.set(id, { id, requests: 0, closed: false });
+		send(res, { jsonrpc: "2.0", id: rpc.id, result }, 200, { "mcp-session-id": id });
 	};
 
 	const server = createServer((req, res) => {
-		if (req.method !== "POST") {
-			res.writeHead(req.method === "DELETE" ? 200 : 405).end();
-			return;
+		// A session id the mock never issued, or one the client ended, gets 404 (MCP Streamable HTTP); no id is accepted.
+		const sid = header(req, "mcp-session-id");
+		const session = sid === undefined ? undefined : sessions.get(sid);
+		if (sid !== undefined && (!session || session.closed))
+			return send(res, rpcError(null, RPC_ERROR.sessionNotFound, `session ${sid} not found`), 404);
+		if (req.method === "DELETE") {
+			if (session) session.closed = true;
+			return void res.writeHead(200).end();
 		}
+		if (req.method !== "POST") return void res.writeHead(405).end();
+		if (session) session.requests++;
 		readBody(req)
-			.then((raw) => {
-				const rpc = JSON.parse(raw) as Rpc;
-				if (rpc.id === undefined) return void res.writeHead(202).end();
-				if (rpc.method === "initialize")
-					return send(res, {
-						jsonrpc: "2.0",
-						id: rpc.id,
-						result: {
-							protocolVersion:
-								typeof rpc.params?.protocolVersion === "string" ? rpc.params.protocolVersion : "2025-06-18",
-							capabilities: { tools: {} },
-							serverInfo: { name: opts.name, version: "0.0.0" },
-						},
-					});
-				if (rpc.method === "ping") return send(res, { jsonrpc: "2.0", id: rpc.id, result: {} });
-				if (rpc.method === "tools/list")
-					return send(res, {
-						jsonrpc: "2.0",
-						id: rpc.id,
-						result: {
-							tools: opts.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-						},
-					});
-				if (rpc.method === "tools/call") return call(req, res, rpc);
-				send(res, { jsonrpc: "2.0", id: rpc.id, error: { code: -32601, message: `no method ${rpc.method}` } });
-			})
-			.catch(() => void res.writeHead(400).end());
+			.then((raw) => dispatch(req, res, raw))
+			.catch((e: unknown): void => {
+				// A bug in the mock or a guard: answer it with its message, never an empty 400.
+				if (res.headersSent) return void res.destroy();
+				send(res, rpcError(null, RPC_ERROR.internal, e instanceof Error ? e.message : String(e)), 500);
+			});
 	});
 
 	let url: string | undefined;
@@ -211,11 +253,15 @@ export function mockMcp(opts: { name: string; tools: ToolDef[]; trace?: Trace })
 	return {
 		name: opts.name,
 		trace,
+		defs: opts.tools,
 		tool(name) {
 			const m = mocks.get(name);
 			if (!m) throw new Error(`mockMcp ${opts.name}: no tool ${name}`);
 			return m;
 		},
+		resource: (uri) => content.resource(uri),
+		prompt: (name) => content.prompt(name),
+		sessions: () => Array.from(sessions.values(), (s) => ({ ...s })),
 		listen,
 		stalledCalls: () => stalled.size,
 		client: (identity = {}) => httpMcpClient(opts.name, listen, identity),
@@ -227,53 +273,5 @@ export function mockMcp(opts: { name: string; tools: ToolDef[]; trace?: Trace })
 				server.closeAllConnections();
 				server.close(() => resolve());
 			}),
-	};
-}
-
-/** Minimal JSON-RPC client: initialize, notifications/initialized, tools/list, tools/call. */
-function httpMcpClient(server: string, listen: () => Promise<string>, identity: ClientIdentity): McpClient {
-	let id = 0;
-	let ready: Promise<void> | undefined;
-	const post = async (body: unknown): Promise<{ result?: unknown; error?: { message: string } }> => {
-		const r = await fetch(await listen(), {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				accept: "application/json, text/event-stream",
-				"x-testkit-agent": identity.agent ?? "main",
-				"x-testkit-span": identity.span ?? identity.agent ?? "main",
-			},
-			body: JSON.stringify(body),
-			signal: AbortSignal.timeout(identity.timeoutMs ?? 30_000),
-		});
-		const raw = await r.text();
-		return raw ? JSON.parse(raw) : {};
-	};
-	const rpc = async (method: string, params?: unknown): Promise<unknown> => {
-		ready ??= post({
-			jsonrpc: "2.0",
-			id: ++id,
-			method: "initialize",
-			params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "testkit", version: "0" } },
-		}).then(async () => {
-			await post({ jsonrpc: "2.0", method: "notifications/initialized" });
-		});
-		await ready;
-		const out = await post({ jsonrpc: "2.0", id: ++id, method, params });
-		if (out.error) throw new Error(out.error.message);
-		return out.result;
-	};
-	return {
-		server,
-		async listTools() {
-			return ((await rpc("tools/list")) as { tools: McpToolInfo[] }).tools;
-		},
-		async callTool(name, args) {
-			const r = (await rpc("tools/call", { name, arguments: args })) as {
-				content?: { text?: string }[];
-				isError?: boolean;
-			};
-			return { isError: r.isError === true, text: (r.content ?? []).map((c) => c.text ?? "").join("\n") };
-		},
 	};
 }

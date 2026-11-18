@@ -49,48 +49,16 @@ export function groupNodes(nodes: FlatSessionNode[], mode: GroupMode, now: Date 
 	return { nodes: ordered, labels };
 }
 
-/** A line of the list: a group label (one line) or a session (`rowHeight` lines). */
-export type ListItem = { label: string } | { row: number };
-
-const ROW_HEIGHT = 2;
-
-export function listItems(count: number, labels: ReadonlyMap<number, string>): ListItem[] {
-	const items: ListItem[] = [];
-	for (let row = 0; row < count; row++) {
-		const label = labels.get(row);
-		if (label !== undefined) items.push({ label });
-		items.push({ row });
-	}
-	return items;
+/** One list item: a session node, and the group label drawn above it when it starts a group. */
+export interface SessionRow {
+	node: FlatSessionNode;
+	label?: string;
 }
 
-const heightOf = (item: ListItem): number => ("row" in item ? ROW_HEIGHT : 1);
-
-/**
- * The first item to draw so the selected row, with the label above it, fits in `height` lines. `top` is where the
- * last draw began: the window moves only as far as the selection needs.
- */
-export function scrollTop(items: readonly ListItem[], top: number, selectedRow: number, height: number): number {
-	const at = items.findIndex((item) => "row" in item && item.row === selectedRow);
-	if (at < 0) return 0;
-	const head = at > 0 && "label" in items[at - 1] ? at - 1 : at;
-	let next = Math.min(top, head);
-	let used = 0;
-	for (let i = next; i <= at; i++) used += heightOf(items[i]);
-	while (used > height && next < at) used -= heightOf(items[next++]);
-	return next;
-}
-
-/** The items from `top` that fit in `height` lines. A label is never drawn last: its row would be cut. */
-export function visibleItems(items: readonly ListItem[], top: number, height: number): ListItem[] {
-	const shown: ListItem[] = [];
-	let used = 0;
-	for (let i = top; i < items.length; i++) {
-		const item = items[i];
-		const need = heightOf(item) + ("label" in item ? ROW_HEIGHT : 0);
-		if (used + need > height) break;
-		shown.push(item);
-		used += heightOf(item);
-	}
-	return shown;
+/** The nodes as list items, each carrying the label that starts its group. */
+export function sessionRows(grouped: GroupedNodes): SessionRow[] {
+	return grouped.nodes.map((node, index) => {
+		const label = grouped.labels.get(index);
+		return label === undefined ? { node } : { node, label };
+	});
 }

@@ -1,8 +1,20 @@
 /**
- * Component for displaying bash command execution with streaming output.
+ * The row of a user `!` command, in the tool-row grammar: `✓ ! cmd · you · 4.2s`, then `  ⎿  exit 0 · 4 lines` and the
+ * output hanging under the gutter. No frame: the mark and the outcome words carry the state.
  */
 
-import { Container, Loader, Spacer, Text, type TUI, truncateToVisualLines } from "@octocodeai/octocode-tui";
+import {
+	Container,
+	GLYPH,
+	linkPath,
+	Loader,
+	MouseRegion,
+	renderChanged,
+	Spacer,
+	Text,
+	trackRenderChanges,
+	type TUI,
+} from "@octocodeai/octocode-tui";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -13,14 +25,17 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { styleShellLines } from "../../../theme/output-style.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
-import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { foldHint, hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
+import { OutputPreview, outcomeParts } from "./bash-execution-parts.ts";
+import { hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { expandHint } from "../../../octocode/shared/text.ts";
 
 // Last lines of a user `!` command shown while collapsed: more than an agent's tool row, since the user asked for this
 // output and reads it directly.
 const PREVIEW_LINES = 20;
+/** The `⎿` gutter that leads the outcome row; the output hangs under it at the same width. */
+const GUTTER = `  ${GLYPH.gutter}  `;
+const HANG = " ".repeat(GUTTER.length);
 
 export class BashExecutionComponent extends Container {
 	private command: string;
@@ -45,8 +60,8 @@ export class BashExecutionComponent extends Container {
 	private readonly colorKey: "dim" | "bashMode";
 	private readonly excludeFromContext: boolean;
 	private outputPad: number;
-	private readonly topBorder: DynamicBorder;
-	private readonly bottomBorder: DynamicBorder;
+	/** Whether the output has lines the preview hides (or is open): only then does a click toggle it. */
+	private expandable = false;
 	/** Output arrived since the last layout: rebuilt once per frame in render(), not once per streamed chunk. */
 	private layoutStale = false;
 
@@ -56,15 +71,17 @@ export class BashExecutionComponent extends Container {
 		this.colorKey = excludeFromContext ? "dim" : "bashMode";
 		this.excludeFromContext = excludeFromContext;
 		this.outputPad = outputPad;
-		const borderColor = (str: string) => theme.fg(this.frameKey(), str);
 
 		this.addChild(new Spacer(1));
 
-		this.topBorder = new DynamicBorder(borderColor);
-		this.addChild(this.topBorder);
-
 		this.contentContainer = new Container();
-		this.addChild(this.contentContainer);
+		this.addChild(
+			new MouseRegion(this.contentContainer, (event) => {
+				if (event.type !== "click" || event.button !== "left" || !this.expandable) return undefined;
+				this.setExpanded(!this.expanded);
+				return { handled: true };
+			}),
+		);
 
 		this.loader = new Loader(
 			ui,
@@ -72,9 +89,6 @@ export class BashExecutionComponent extends Container {
 			(text) => theme.fg("muted", text),
 			`Running… · ${hintText([[interruptKey(), "cancel"]])}`, // Plain text for loader
 		);
-
-		this.bottomBorder = new DynamicBorder(borderColor);
-		this.addChild(this.bottomBorder);
 
 		this.updateDisplay();
 	}
@@ -128,6 +142,7 @@ export class BashExecutionComponent extends Container {
 		}
 		this.trimTail();
 		this.layoutStale = true;
+		renderChanged(this);
 	}
 
 	/** Show `output` as the whole output, in place of the streamed tail. */
@@ -140,7 +155,7 @@ export class BashExecutionComponent extends Container {
 		this.appendOutput(output);
 	}
 
-	/** The executor strips colors from its stream, but an extension's result and a stored (possibly imported) session
+	/** The executor strips colors from its stream, but a feature's result and a stored (possibly imported) session
 	 * message arrive raw. Every control goes per piece, so a sequence split across chunks cannot rejoin. */
 	private writeToCurrentLine(piece: string): void {
 		const lastCarriageReturn = piece.lastIndexOf("\r");
@@ -205,17 +220,8 @@ export class BashExecutionComponent extends Container {
 		}
 	}
 
-	/** Neutral while running; green only once it succeeded, red once it failed. A `!!` command keeps its own neutral frame. */
-	private frameKey(): "dim" | "bashMode" | (typeof STATE_COLOR)[UiState] {
-		const state = this.finishedState();
-		return state && !this.excludeFromContext ? STATE_COLOR[state] : this.colorKey;
-	}
-
 	private updateDisplay(): void {
 		this.layoutStale = false;
-		// The borders cache their line per width; the frame colour follows the outcome.
-		this.topBorder.invalidate();
-		this.bottomBorder.invalidate();
 		// Apply truncation for LLM context limits (same limits as bash tool)
 		const fullOutput = this.getOutput();
 		const contextTruncation = truncateTail(fullOutput, {
@@ -225,29 +231,43 @@ export class BashExecutionComponent extends Container {
 
 		// Get the lines to potentially display (after context truncation)
 		const availableLines = contextTruncation.content ? contextTruncation.content.split("\n") : [];
+		// Output that ends with a newline has no last line to draw.
+		while (availableLines.at(-1) === "") availableLines.pop();
 
 		const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
 		const hiddenLineCount = this.droppedLines + availableLines.length - previewLogicalLines.length;
 
 		this.contentContainer.clear();
+		this.expandable = this.expanded || hiddenLineCount > 0;
 
-		// Command header
-		// The mark carries the outcome even where the frame's tint is lost (256-colour terminals).
 		const state = this.finishedState();
+		const pad = this.outputPad;
+		const ended = this.header ? outcomeParts(sanitizeTerminalText(this.header)) : undefined;
+		// `<mark> ! cmd · you · 4.2s`: the mark carries the outcome; the time shows here once, from 1s on.
 		const mark = state ? `${stateMark(theme, state)} ` : "";
-		// Without a result header, the outcome joins the command line: `✗ $ cmd · exit 1`.
-		const outcome = !this.header && state === "failed" ? theme.fg("error", ` · exit ${this.exitCode}`) : "";
-		const cancelled = !this.header && state === "stopped" ? theme.fg(STOPPED_COLOR, " · interrupted") : "";
-		const header = new Text(
-			mark + theme.fg(this.colorKey, theme.bold(`$ ${sanitizeTerminalText(this.command)}`)) + outcome + cancelled,
-			this.outputPad,
-			0,
-		);
-		this.contentContainer.addChild(header);
-		if (this.header && this.status !== "running") {
-			const headerColor = state === "failed" ? "error" : "muted";
+		const prompt = `${this.excludeFromContext ? "!!" : "!"} ${sanitizeTerminalText(this.command)}`;
+		const meta = theme.fg("dim", [" · you", ended?.time ? ` · ${ended.time}` : ""].join(""));
+		this.contentContainer.addChild(new Text(mark + theme.fg(this.colorKey, theme.bold(prompt)) + meta, pad, 0));
+
+		// The outcome in words under the gutter: the result header's, else the exit code or the interruption.
+		if (state) {
+			const words =
+				ended?.text ??
+				(state === "stopped"
+					? "interrupted"
+					: this.exitCode === undefined || this.exitCode === null
+						? "done"
+						: `exit ${this.exitCode}`);
+			const color = state === "failed" ? "error" : state === "stopped" ? STOPPED_COLOR : "muted";
+			const linked = ended?.path ? words.replace(ended.path, linkPath(ended.path, ended.path)) : words;
+			this.contentContainer.addChild(new Text(theme.fg("dim", GUTTER) + theme.fg(color, linked), pad, 0));
+		}
+
+		// Collapsed, the count of hidden lines leads the tail, as on a tool row.
+		if (!this.expanded && hiddenLineCount > 0 && this.status !== "running") {
+			const earlier = `… +${hiddenLineCount} earlier ${hiddenLineCount === 1 ? "line" : "lines"}`;
 			this.contentContainer.addChild(
-				new Text(theme.fg(headerColor, sanitizeTerminalText(this.header)), this.outputPad, 0),
+				new Text(theme.fg("dim", [earlier, expandHint()].filter(Boolean).join(" ")), pad + HANG.length, 0),
 			);
 		}
 
@@ -256,59 +276,29 @@ export class BashExecutionComponent extends Container {
 		if (availableLines.length > 0) {
 			if (this.expanded) {
 				const displayText = styleShellLines(theme, availableLines, outputColor).join("\n");
-				this.contentContainer.addChild(new Text(`\n${displayText}`, this.outputPad, 0));
+				this.contentContainer.addChild(new Text(displayText, pad + HANG.length, 0));
 			} else {
-				// Use shared visual truncation utility with width-aware caching
 				const styledOutput = styleShellLines(theme, previewLogicalLines, outputColor).join("\n");
-				const styledInput = `\n${styledOutput}`;
-				let cachedWidth: number | undefined;
-				let cachedLines: string[] | undefined;
-				this.contentContainer.addChild({
-					render: (width: number) => {
-						if (cachedLines === undefined || cachedWidth !== width) {
-							const result = truncateToVisualLines(styledInput, PREVIEW_LINES, width, this.outputPad);
-							cachedLines = result.visualLines;
-							cachedWidth = width;
-						}
-						return cachedLines ?? [];
-					},
-					invalidate: () => {
-						cachedWidth = undefined;
-						cachedLines = undefined;
-					},
-				});
+				this.contentContainer.addChild(new OutputPreview(styledOutput, PREVIEW_LINES, pad + HANG.length));
 			}
 		}
 
 		if (this.status === "running") {
 			this.contentContainer.addChild(this.loader);
-		} else {
-			const statusParts: string[] = [];
-
-			if (hiddenLineCount > 0) {
-				if (this.expanded) {
-					const hint = expandHint("collapse");
-					if (hint) statusParts.push(theme.fg("dim", hint));
-				} else {
-					statusParts.push(foldHint(hiddenLineCount, true));
-				}
-			}
-
-			// With a header, it already says how the command ended and where the full output is; without one, the
-			// command line above says it.
-
-			// Add truncation warning (context truncation, not preview truncation)
-			const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;
-			if (!this.header && wasTruncated && this.fullOutputPath) {
-				statusParts.push(
-					theme.fg("warning", `Output truncated. Full output: ${sanitizeTerminalText(this.fullOutputPath)}`),
-				);
-			}
-
-			if (statusParts.length > 0) {
-				this.contentContainer.addChild(new Text(`\n${statusParts.join("\n")}`, this.outputPad, 0));
-			}
+			return;
 		}
+		const notes: string[] = [];
+		if (this.expanded && hiddenLineCount > 0) {
+			const hint = expandHint("collapse");
+			if (hint) notes.push(theme.fg("dim", hint));
+		}
+		// Without a result header nothing above names the full output, so a truncated one says where it is.
+		const wasTruncated = this.truncationResult?.truncated || contextTruncation.truncated;
+		if (!this.header && wasTruncated && this.fullOutputPath) {
+			const path = sanitizeTerminalText(this.fullOutputPath);
+			notes.push(theme.fg("warning", `Output truncated. Full output: ${linkPath(path, path)}`));
+		}
+		if (notes.length > 0) this.contentContainer.addChild(new Text(notes.join("\n"), pad + HANG.length, 0));
 	}
 
 	/** The retained output: all of it for a normal command, the newest part of a very long stream. */
@@ -323,3 +313,4 @@ export class BashExecutionComponent extends Container {
 		return this.command;
 	}
 }
+trackRenderChanges(BashExecutionComponent.prototype);

@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir, getLegacyConfigDirs, getModelsPath, getOctocodeHome, getSessionsDir } from "../src/config.ts";
 import { ModelConfig } from "../src/core/model-config.ts";
@@ -9,6 +9,7 @@ import { createModelRegistry } from "./model-runtime-test-utils.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { globalPaths } from "../src/octocode/shared/home.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 let home: string;
 let cwd: string;
@@ -140,7 +141,6 @@ describe("Octocode home and Pi configuration fallback", () => {
 			terminal: { showImages: false },
 			defaultProjectTrust: "always",
 			sessionDir: "/old-sessions",
-			extensions: ["./custom.ts"],
 		});
 		write(legacy, content);
 		write(join(getAgentDir(), "settings.json"), JSON.stringify({ defaultModel: "native" }));
@@ -149,72 +149,11 @@ describe("Octocode home and Pi configuration fallback", () => {
 		expect(settings.getShowImages()).toBe(false);
 		expect((settings.getGlobalSettings() as Record<string, unknown>).defaultProjectTrust).toBeUndefined();
 		expect(settings.getSessionDir()).toBeUndefined();
-		expect(settings.getExtensionPaths()).toEqual([]);
 		settings.setDefaultModel("updated");
 		await settings.flush();
 		expect(settings.drainErrors()).toEqual([]);
 		expect(JSON.parse(readFileSync(join(getAgentDir(), "settings.json"), "utf8")).defaultModel).toBe("updated");
 		expect(readFileSync(legacy, "utf8")).toBe(content);
-	});
-
-	it("lists legacy extensions and package manifests as not loaded, native files win, and nothing runs", async () => {
-		const legacy = join(home, ".pi", "agent");
-		const marker = join(home, "executed");
-		const extension = (name: string) =>
-			`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, ${JSON.stringify(name)}); export default function(api) { api.registerCommand(${JSON.stringify(name)}, { handler: async () => {} }); }`;
-		write(join(legacy, "extensions", "only.ts"), extension("legacy-only"));
-		write(join(legacy, "extensions", "same.ts"), extension("legacy-shadowed"));
-		write(join(getAgentDir(), "extensions", "same.ts"), extension("native-winner"));
-		write(join(getAgentDir(), "extensions", "native-folder", "index.ts"), extension("native-folder"));
-		write(join(legacy, "extensions", "legacy-folder", "index.ts"), extension("legacy-folder"));
-		write(join(home, ".pi", "extensions", "root.ts"), extension("legacy-root"));
-		write(join(legacy, "custom.ts"), extension("legacy-configured"));
-		write(
-			join(legacy, "plugin", "package.json"),
-			JSON.stringify({ name: "local-fixture", pi: { extensions: ["./entry.ts"] } }),
-		);
-		write(join(legacy, "plugin", "entry.ts"), extension("legacy-package"));
-		write(join(legacy, "settings.json"), JSON.stringify({ extensions: ["./custom.ts"], packages: ["./plugin"] }));
-		write(join(cwd, ".octocode", "extensions", "untrusted.ts"), extension("untrusted-project"));
-		const loader = new DefaultResourceLoader({
-			cwd,
-			agentDir: getAgentDir(),
-			nativeFeatures: false,
-			settingsManager: SettingsManager.create(cwd, getAgentDir(), { projectTrusted: false }),
-		});
-		await loader.reload();
-		expect(loader.getExtensions().errors).toEqual([]);
-		expect(loader.getExtensions().extensions).toEqual([]);
-		const notLoaded = () =>
-			(loader.getExtensions().warnings ?? [])
-				.map((warning) => relative(home, warning.path).split(sep).join("/"))
-				.sort();
-		const expected = [
-			".octocode/octocodecode/extensions/native-folder/index.ts",
-			".octocode/octocodecode/extensions/same.ts",
-			".pi/agent/custom.ts",
-			".pi/agent/extensions/legacy-folder/index.ts",
-			".pi/agent/extensions/only.ts",
-			// A package's `pi` manifest key is not read: the package is listed by its folder, its declared entry unopened.
-			".pi/agent/plugin",
-			".pi/extensions/root.ts",
-		];
-		expect(notLoaded()).toEqual(expected);
-		// Pi's files carry the Pi label and the conversion hint; the untrusted project folder is not read at all.
-		const piWarning = loader.getExtensions().warnings?.find((warning) => warning.path.endsWith("only.ts"));
-		expect(piWarning?.warning).toContain("Pi extension, not loaded");
-		await loader.reload();
-		expect(notLoaded()).toEqual(expected);
-		expect(existsSync(marker)).toBe(false);
-		const disabled = new DefaultResourceLoader({
-			cwd,
-			agentDir: getAgentDir(),
-			nativeFeatures: false,
-			disabledFeatures: ["mcp", "llama.cpp"],
-		});
-		await disabled.reload();
-		expect(disabled.getExtensions().extensions).toEqual([]);
-		expect(existsSync(join(legacy, "npm"))).toBe(false);
 	});
 
 	it("does not load the legacy Octocode extension alongside native features", async () => {
@@ -225,39 +164,9 @@ describe("Octocode home and Pi configuration fallback", () => {
 		);
 		write(join(legacy, "old-octocode", "entry.ts"), 'throw new Error("duplicate Octocode extension executed");');
 		write(join(legacy, "settings.json"), JSON.stringify({ packages: ["./old-octocode"] }));
-		const loader = new DefaultResourceLoader({ cwd, agentDir: getAgentDir() });
+		const loader = new DefaultResourceLoader({ cwd, agentDir: getAgentDir(), nativeFeatures: nativeFeatureSet() });
 		await loader.reload();
-		expect(loader.getExtensions().errors).toEqual([]);
-		expect(loader.getExtensions().extensions.some((extension) => extension.path === "<inline:octocode>")).toBe(true);
-	});
-
-	it("lists only the native installation of a package, not the legacy copy, as not loaded", async () => {
-		for (const [dir, command] of [
-			[getAgentDir(), "native-package"],
-			[join(home, ".pi", "agent"), "legacy-package"],
-		]) {
-			write(
-				join(dir, "plugin", "package.json"),
-				JSON.stringify({
-					name: "same-package",
-					octocode: { extensions: ["./entry.ts"] },
-					pi: { extensions: ["./wrong.ts"] },
-				}),
-			);
-			write(
-				join(dir, "plugin", "entry.ts"),
-				`export default function(api) { api.registerCommand(${JSON.stringify(command)}, {handler: async () => {}}); }`,
-			);
-			write(join(dir, "plugin", "wrong.ts"), 'throw new Error("Pi manifest overrode Octocode manifest");');
-			write(join(dir, "settings.json"), JSON.stringify({ packages: ["./plugin"] }));
-		}
-		const loader = new DefaultResourceLoader({ cwd, agentDir: getAgentDir(), nativeFeatures: false });
-		await loader.reload();
-		expect(loader.getExtensions().errors).toEqual([]);
-		expect(loader.getExtensions().extensions).toEqual([]);
-		// The native copy's entry is the one listed, and the Pi manifest key never overrides the Octocode one.
-		expect((loader.getExtensions().warnings ?? []).map((warning) => warning.path)).toEqual([
-			join(getAgentDir(), "plugin", "entry.ts"),
-		]);
+		expect(loader.getFeatures().errors).toEqual([]);
+		expect(loader.getFeatures().features.some((feature) => feature.path === "<inline:octocode>")).toBe(true);
 	});
 });

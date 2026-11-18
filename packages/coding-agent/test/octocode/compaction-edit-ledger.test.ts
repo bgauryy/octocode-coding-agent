@@ -82,6 +82,25 @@ describe("the compaction's modified-file ledger", () => {
 		]);
 	});
 
+	it("names every subagent with its count of changed files but only its first paths, while the list keeps them all", async () => {
+		const preparation = prepare([
+			{ role: "user", content: "go", timestamp: 500 },
+			result("1", "agent", false, { id: "busy", profile: "worker", startedAt: 600 }),
+			result("2", "agent", false, { id: "light", profile: "worker", startedAt: 700 }),
+		]);
+		const many = Array.from({ length: 40 }, (_, i) => `/repo/src/deep/folder/file-${i}.ts`);
+		const lines = await addLedgerEdits(preparation, "/repo", (agent) => (agent === "busy" ? many : ["/repo/one.ts"]));
+		expect(preparation.fileOps.edited.size).toBe(41);
+		expect(lines).toHaveLength(1);
+		const [line] = lines;
+		expect(line).toContain("busy:");
+		expect(line).toContain("src/deep/folder/file-0.ts");
+		expect(line).toContain("40 files");
+		expect(line).toContain("light: one.ts");
+		expect(line).not.toContain("file-39.ts");
+		expect(line.length).toBeLessThan(600);
+	});
+
 	it("says nothing when no file changed, and the file tool part still works alone", async () => {
 		const preparation = prepare([bash("1", "ls src"), result("1", "bash")]);
 		expect(await addLedgerEdits(preparation, "/repo", () => [])).toEqual([]);

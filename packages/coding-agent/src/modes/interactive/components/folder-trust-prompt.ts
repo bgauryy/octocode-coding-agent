@@ -30,8 +30,9 @@ function found(files: string[]): string {
 
 /**
  * The trust question for a folder nobody has decided on, shown before any session, model call or project file read.
- * One screen: the folder, what trust allows, the project file names found, and the choices. The narrowest grant (this
- * folder) is the recommended default; wider grants name the folder they would cover.
+ * One screen: the folder, what trust allows, the project file names found, and the answers. `Not now` comes first and
+ * starts selected, so a bare Enter grants nothing; the narrowest grant (this folder) is the recommended one, and wider
+ * grants name the folder they would cover.
  */
 export function folderTrustPrompt(
 	input: TrustPromptInput,
@@ -40,27 +41,23 @@ export function folderTrustPrompt(
 	armDelayMs?: number,
 ): TrustPromptComponent<TrustChoice> {
 	const rows: TrustPromptRow<TrustChoice>[] = [
-		{ key: "1", label: "Trust this folder", note: "(recommended)", value: "folder" },
+		{ label: "Not now", note: "exit; ask again next time", value: "not-now" },
+		{ label: "Trust this folder", note: "(recommended)", value: "folder" },
 	];
 	if (input.parent !== undefined) {
 		rows.push({
-			key: "2",
 			label: `Trust parent ${name(input.parent)}`,
 			note: `everything under ${shown(input.parent, home)}`,
 			value: "parent",
 		});
 		if (input.grandparent !== undefined)
 			rows.push({
-				key: "3",
 				label: `Trust grandparent ${name(input.grandparent)}`,
 				note: `everything under ${shown(input.grandparent, home)}`,
 				value: "grandparent",
 			});
 	}
-	rows.push(
-		{ key: "n", label: "Not now", note: "exit; ask again next time", value: "not-now" },
-		{ key: "d", label: "Do not trust", note: "exit; remember this choice", value: "refuse" },
-	);
+	rows.push({ label: "Do not trust", note: "exit; remember this choice", value: "refuse" });
 	return new TrustPromptComponent<TrustChoice>({
 		title: "Do you trust this folder?",
 		subject: input.path,
@@ -73,7 +70,6 @@ export function folderTrustPrompt(
 			? { footnote: "Folders above this one (your home folder or the filesystem root) cannot be trusted." }
 			: {}),
 		rows,
-		defaultIndex: 0,
 		onChoose: done,
 		onCancel: () => done("not-now"),
 		...(armDelayMs === undefined ? {} : { armDelayMs }),
@@ -82,7 +78,8 @@ export function folderTrustPrompt(
 
 /**
  * "Trust new worktree <path> (from <repo>)?": asked once, when Octocode creates a worktree. When the repository it is
- * made from is not trusted either, the question says so, no answer is recommended and No is the default.
+ * made from is not trusted either, the question says so and no answer is recommended. `No` comes first and starts
+ * selected.
  */
 export function worktreeTrustPrompt(
 	input: { path: string; from: string; originTrusted?: boolean },
@@ -102,16 +99,9 @@ export function worktreeTrustPrompt(
 				: []),
 		],
 		rows: [
-			{
-				key: "y",
-				label: "Yes, trust this worktree",
-				...(originUntrusted ? {} : { note: "(recommended)" }),
-				value: true,
-			},
-			{ key: "n", label: "No", note: "do not create the worktree", value: false },
+			{ label: "No", note: "do not create the worktree", value: false },
+			{ label: "Trust this worktree", ...(originUntrusted ? {} : { note: "(recommended)" }), value: true },
 		],
-		defaultIndex: originUntrusted ? 1 : 0,
-		cancelLabel: "no",
 		onChoose: done,
 		onCancel: () => done(false),
 		...(armDelayMs === undefined ? {} : { armDelayMs }),

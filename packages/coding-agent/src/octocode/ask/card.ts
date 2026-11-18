@@ -1,3 +1,4 @@
+import type { TuiMouseEvent } from "@octocodeai/octocode-tui";
 import { GLYPH, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { DialogTheme } from "./dialog/theme.ts";
@@ -17,10 +18,58 @@ export interface CardState {
 	/** The answer given so far (a multi-question askUser). */
 	answer?: string;
 	warning?: string;
+	/** The line saying what is taken when askUser's timeout runs out, e.g. `auto: Yes in 18s`; absent once an interaction stopped it. */
+	countdown?: string;
 	/** The write-in editor's rendered lines while the user types in it. */
 	editor?: string[];
 	/** Draw no option rows (a free-text question while its editor is open). */
 	hideRows?: boolean;
+	/**
+	 * Filled by `renderAskCard`: the card line each option's first row is drawn on, by option index, then the line after
+	 * the last option. Empty when no option rows are drawn. The mouse reads it to find the option under the pointer.
+	 */
+	rowLines?: number[];
+}
+
+/** The safe answers a confirmation lists first (`confirmAction`, `ui.confirm`, trust prompts). */
+const SAFE_ANSWERS: readonly string[] = ["Cancel", "No", "Not now"];
+
+/** Whether a click may confirm this dialog's answers: never in a confirmation or a destructive dialog. */
+export function clickMayConfirm(options: readonly string[], destructive = false): boolean {
+	return !destructive && !SAFE_ANSWERS.includes(options[0] ?? "");
+}
+
+/**
+ * The mouse on an ask card's options, as every list takes it: the wheel moves the cursor one option without wrapping,
+ * a press selects the option under the pointer, and a click on the option that was already selected confirms it when
+ * `mayConfirm` allows. `y` is the event's line in the card; `rows` the `rowLines` its last render filled.
+ */
+export class CardPointer {
+	private press: { index: number; wasSelected: boolean } | undefined;
+
+	/** The cursor after `event` and whether it confirms, or undefined when the event is not the card's. */
+	handle(
+		event: TuiMouseEvent,
+		y: number,
+		rows: readonly number[],
+		cursor: number,
+		mayConfirm: boolean,
+	): { cursor: number; confirm: boolean } | undefined {
+		const count = rows.length - 1;
+		if (count <= 0) return undefined;
+		if (event.type === "wheel" && event.wheelDelta)
+			return { cursor: Math.max(0, Math.min(count - 1, cursor + (event.wheelDelta < 0 ? -1 : 1))), confirm: false };
+		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
+		const index = rows.findIndex((start, at) => at < count && y >= start && y < rows[at + 1]);
+		if (index < 0) return undefined;
+		if (event.type === "press") {
+			this.press = { index, wasSelected: index === cursor };
+			return { cursor: index, confirm: false };
+		}
+		const press = this.press ?? { index, wasSelected: index === cursor };
+		this.press = undefined;
+		return { cursor: press.index, confirm: mayConfirm && press.wasSelected };
+	}
 }
 
 const WHY = "why it asks: ";
@@ -118,10 +167,13 @@ export function renderAskCard(view: AskView, state: CardState, theme: CardTheme,
 		);
 	}
 	if (state.answer) add(" ", theme.fg("success", `Current answer: ${sanitizeTerminalText(state.answer)}`));
+	if (state.countdown) add(" ", theme.fg("warning", sanitizeTerminalText(state.countdown)));
+	state.rowLines?.splice(0);
 	if (!state.hideRows) {
 		if (!compact) lines.push("");
 		const write = writeInRow(view);
 		view.options.forEach((option, index) => {
+			state.rowLines?.push(lines.length);
 			const selected = index === state.cursor;
 			const action = write >= 0 && index >= write;
 			const box = view.multiSelect && !action ? (state.toggled?.has(index) ? "[x] " : "[ ] ") : "";
@@ -141,6 +193,7 @@ export function renderAskCard(view: AskView, state: CardState, theme: CardTheme,
 			add(lead, row);
 			if (description) add("     ", theme.fg("muted", description));
 		});
+		if (view.options.length) state.rowLines?.push(lines.length);
 	}
 	if (state.warning) {
 		lines.push("");

@@ -11,7 +11,7 @@ import { displayRenderers } from "../../src/modes/interactive/components/tool-ex
 import { installMcpUiPort } from "../../src/modes/interactive/mcp-ui.ts";
 import { installMcpRenderPort } from "../../src/octocode/mcp-host/render.ts";
 import { renderBashResult } from "../../src/octocode/files/render.ts";
-import { createShellRenderers } from "../../src/core/tools/renderers/bash.ts";
+import { withBuiltInRenderers } from "../../src/octocode/files/built-in-renderers.ts";
 import { renderDiff } from "../../src/theme/diff.ts";
 import { getMarkdownTheme, highlightCode, initTheme, theme } from "../../src/theme/theme.ts";
 import { resolveLanguage } from "../../src/utils/syntax-highlight.ts";
@@ -195,7 +195,7 @@ describe("shell output", () => {
 
 	it("colours error and warning lines and path heads in the bash tool row", () => {
 		const context = { isPartial: false, isError: false, showImages: false, durationMs: 5, state: {}, expanded: true };
-		const row = createShellRenderers("$").renderResult!(
+		const row = withBuiltInRenderers("bash", undefined)!.renderResult!(
 			{ content: [{ type: "text", text: OUTPUT }], details: {} },
 			{ expanded: true, isPartial: false },
 			theme,

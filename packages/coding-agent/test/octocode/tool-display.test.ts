@@ -1,11 +1,15 @@
 import type { JsonValue } from "@octocodeai/octocode-ai";
-import { describe, expect, it } from "vitest";
+import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
+import { afterEach, describe, expect, it } from "vitest";
 import { toolDisplayText, type ToolDisplay } from "@octocodeai/octocode-contracts";
 import { buildToolDisplay } from "../../src/core/application/transcript-display.ts";
 import { displayCallHtml, displayResultHtml } from "../../src/core/export-html/display-html.ts";
+import { displayRenderers } from "../../src/modes/interactive/components/tool-execution/display.ts";
 import { createToolDisplayAttacher } from "../../src/modes/rpc/tool-display.ts";
 import { bashDisplay, fileDisplay } from "../../src/octocode/files/display.ts";
 import { octocodeToolDisplay } from "../../src/octocode/ui/tool-display.ts";
+import { initTheme, theme } from "../../src/theme/theme.ts";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 
 const text = (value: string) => ({ content: [{ type: "text" as const, text: value }] });
 
@@ -147,5 +151,51 @@ describe("tool displays", () => {
 		} as never) as { display?: ToolDisplay };
 		expect(end.display?.summary).toBe("ls");
 		expect(toolDisplayText(end.display!)).toContain("exit 0 · 1 line");
+	});
+
+	describe("diff heads", () => {
+		afterEach(() => setCapabilityOverrides({}));
+		const display: ToolDisplay = {
+			title: "File",
+			outcome: { text: "Applied 2 changes" },
+			blocks: [
+				{
+					type: "diff",
+					text: "modify src/a.ts +2 -1\nmove src/b.ts -> src/c.ts",
+					files: [
+						{ path: "src/a.ts", operation: "modify", additions: 2, removals: 1, patch: "" },
+						{ path: "src/c.ts", from: "src/b.ts", operation: "move", additions: 0, removals: 0, patch: "" },
+					],
+				},
+			],
+		};
+		const draw = () =>
+			displayRenderers({ display: () => display } as never, () => display)!.renderResult!(
+				{ content: [], details: undefined },
+				{ expanded: true, isPartial: false },
+				theme,
+				{ isPartial: false, isError: false, expanded: true, args: {}, state: {}, cwd: "/work" } as never,
+			)
+				.render(80)
+				.join("\n");
+
+		it("name each file with its operation and counts, and no state mark of their own", () => {
+			initTheme("dark");
+			setCapabilityOverrides({ hyperlinks: false });
+			expect(
+				stripAnsi(draw())
+					.split("\n")
+					.map((row) => row.trimEnd()),
+			).toEqual(["  ⎿  Applied 2 changes", "     modify src/a.ts +2 -1", "     move src/b.ts → src/c.ts +0"]);
+		});
+
+		it("link each file's path where the terminal supports it", () => {
+			initTheme("dark");
+			setCapabilityOverrides({ hyperlinks: true });
+			const rows = draw();
+			expect(rows).toContain("\x1b]8;;file://");
+			expect(rows).toMatch(/\/work\/src\/a\.ts(?:\x07|\x1b\\)src\/a\.ts\x1b\]8;;(?:\x07|\x1b\\)/);
+			expect(rows).toMatch(/\/work\/src\/c\.ts(?:\x07|\x1b\\)src\/c\.ts\x1b\]8;;(?:\x07|\x1b\\)/);
+		});
 	});
 });

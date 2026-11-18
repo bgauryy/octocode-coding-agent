@@ -14,7 +14,7 @@ import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider
 import { registerClaudeCode } from "../../src/octocode/claude-code/register.ts";
 import { appendedPrompt, CALL_PREFIX, promptText, unseen } from "../../src/octocode/claude-code/transcript.ts";
 import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
-import { fakeHost } from "./fake-host.ts";
+import { fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const PEER = fileURLToPath(new URL("./fixtures/claude-code-peer.mjs", import.meta.url));
@@ -65,7 +65,7 @@ describe("when the claude-code models are offered", () => {
 		vi.stubEnv("PATH", binaries());
 		const host = fakeHost();
 		const registered: unknown[] = [];
-		const api = { ...host.api, registerProvider: (provider: unknown) => registered.push(provider) } as never;
+		const api = asSetup({ ...host.api, registerProvider: (provider: unknown) => registered.push(provider) }) as never;
 		registerClaudeCode(api, []);
 		expect(registered).toEqual([]);
 		registerClaudeCode(api, [state(PLAN)]);

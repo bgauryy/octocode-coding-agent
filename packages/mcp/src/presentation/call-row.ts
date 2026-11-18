@@ -40,13 +40,27 @@ function callSummary(args: unknown): string {
 		.slice(0, SUMMARY_CHARS);
 }
 
-/** The call row of an MCP tool labeled `server/tool`: the shared tool header, with the arguments below it when expanded. */
+/** A `server/tool` label as a row names it: the tool is the title, the server its metadata; another label is the title. */
+export function labelParts(label: string): { title: string; server?: string } {
+	const slash = label.lastIndexOf("/");
+	if (slash <= 0 || slash === label.length - 1) return { title: label };
+	return { title: label.slice(slash + 1), server: label.slice(0, slash) };
+}
+
+/**
+ * The call row of an MCP tool labeled `server/tool`: the shared tool header, `localSearch(…) · octocode`, with the
+ * arguments below it when expanded.
+ */
 export function renderMcpCall(label: string): NonNullable<McpToolRenderers["renderCall"]> {
+	const { title, server } = labelParts(label);
 	return (args, theme, context) => {
 		const shown = callArguments(args);
 		const detail = context.expanded
 			? hostRender().formatToolCallWithArgs("", shown, theme, true).split("\n").slice(1)
 			: [];
-		return hostRender().toolHeader(theme, context, label, callSummary(shown), { lines: detail });
+		return hostRender().toolHeader(theme, context, title, callSummary(shown), {
+			lines: detail,
+			...(server ? { meta: server } : {}),
+		});
 	};
 }

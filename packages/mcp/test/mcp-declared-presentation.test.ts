@@ -22,7 +22,7 @@ const host = (servers?: McpServerEntry[], options: Parameters<typeof mcpHost>[0]
 		prepareLaunch: (entry) => ({ ...entry, config: { ...entry.config, command: process.execPath, args: [echo] } }),
 		...options,
 	});
-	result.api.getActiveTools = () =>
+	result.api.tools.getActive = () =>
 		[...result.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 	hosts.push(result);
 	return { h: result, agentDir };
@@ -64,7 +64,6 @@ describe("declared MCP presentation", () => {
 			expect(declared.validationParameters).toBeUndefined();
 		}
 		expect(mcps).toContain("Echo test server.");
-		expect(mcps).toContain("Its tools are declared with their own descriptions and input schemas");
 		for (const tool of server.tools) expect(mcps).not.toContain(tool.description!.trim());
 		expect(mcps).not.toContain("Input schema");
 		expect(mcps).not.toContain("declare namespace");

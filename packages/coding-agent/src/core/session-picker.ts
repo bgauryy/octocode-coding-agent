@@ -51,7 +51,7 @@ export interface SessionPickerPorts {
 	viewportRows?(): number;
 }
 
-/** Options of `ExtensionUIContext.pickSession`. */
+/** Options of `SessionUI.pickSession`. */
 export interface SessionPickerOptions extends SessionPickerPorts {
 	/** Scope, query and sort the picker opens with (default: this folder, empty, recent). */
 	initialScope?: SessionScope;

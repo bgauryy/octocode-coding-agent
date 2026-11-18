@@ -20,7 +20,7 @@ import { withheldSkills } from "../skill-review.ts";
 import { skillCategory } from "../skills/category.ts";
 import { findSourceInfoForPath, getDefaultSourceInfoForPath, type ResourceRoots } from "./source-info.ts";
 import { dedupePrompts, dedupeThemes, loadThemes } from "./themes.ts";
-import type { DefaultResourceLoaderOptions, ResourceExtensionPaths } from "./types.ts";
+import type { DefaultResourceLoaderOptions, ResourceFeaturePaths } from "./types.ts";
 
 /** The loader options and settings that decide which skills, prompt templates and themes load. */
 export interface ResourceCollectionsConfig extends Pick<
@@ -50,20 +50,20 @@ export class ResourceCollections {
 	private lastSkillPaths: string[] = [];
 	private lastPromptPaths: string[] = [];
 	private lastThemePaths: string[] = [];
-	private extensionSkillSourceInfos = new Map<string, SourceInfo>();
-	private extensionPromptSourceInfos = new Map<string, SourceInfo>();
-	private extensionThemeSourceInfos = new Map<string, SourceInfo>();
+	private featureSkillSourceInfos = new Map<string, SourceInfo>();
+	private featurePromptSourceInfos = new Map<string, SourceInfo>();
+	private featureThemeSourceInfos = new Map<string, SourceInfo>();
 	private readonly config: ResourceCollectionsConfig;
 
 	constructor(config: ResourceCollectionsConfig) {
 		this.config = config;
 	}
 
-	/** Forget the source info of extension-supplied paths before a reload. */
-	resetExtensionSourceInfos(): void {
-		this.extensionSkillSourceInfos = new Map();
-		this.extensionPromptSourceInfos = new Map();
-		this.extensionThemeSourceInfos = new Map();
+	/** Forget the source info of feature-supplied paths before a reload. */
+	resetFeatureSourceInfos(): void {
+		this.featureSkillSourceInfos = new Map();
+		this.featurePromptSourceInfos = new Map();
+		this.featureThemeSourceInfos = new Map();
 	}
 
 	/** Load every collection from the enabled resources, reporting missing paths that were named for this run. */
@@ -127,20 +127,20 @@ export class ResourceCollections {
 		}
 	}
 
-	/** Add extension-supplied paths to the loaded collections and reload the collections they change. */
-	extend(paths: ResourceExtensionPaths, metadataByPath: Map<string, PathMetadata>): void {
-		const skillPaths = this.config.noSkills ? [] : this.normalizeExtensionPaths(paths.skillPaths ?? []);
-		const promptPaths = this.normalizeExtensionPaths(paths.promptPaths ?? []);
-		const themePaths = this.normalizeExtensionPaths(paths.themePaths ?? []);
+	/** Add feature-supplied paths to the loaded collections and reload the collections they change. */
+	extend(paths: ResourceFeaturePaths, metadataByPath: Map<string, PathMetadata>): void {
+		const skillPaths = this.config.noSkills ? [] : this.normalizeFeaturePaths(paths.skillPaths ?? []);
+		const promptPaths = this.normalizeFeaturePaths(paths.promptPaths ?? []);
+		const themePaths = this.normalizeFeaturePaths(paths.themePaths ?? []);
 
 		for (const entry of skillPaths) {
-			this.extensionSkillSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
+			this.featureSkillSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
 		}
 		for (const entry of promptPaths) {
-			this.extensionPromptSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
+			this.featurePromptSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
 		}
 		for (const entry of themePaths) {
-			this.extensionThemeSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
+			this.featureThemeSourceInfos.set(entry.path, createSourceInfo(entry.path, entry.metadata));
 		}
 
 		if (skillPaths.length > 0) {
@@ -168,7 +168,7 @@ export class ResourceCollections {
 		}
 	}
 
-	private normalizeExtensionPaths(
+	private normalizeFeaturePaths(
 		entries: Array<{ path: string; metadata: PathMetadata }>,
 	): Array<{ path: string; metadata: PathMetadata }> {
 		return entries.map((entry) => {
@@ -209,7 +209,7 @@ export class ResourceCollections {
 				precedence: (path) =>
 					skillPathPrecedence(path, {
 						metadataByPath,
-						extensionPaths: new Set([...this.extensionSkillSourceInfos.keys()].map((key) => resolve(key))),
+						featurePaths: new Set([...this.featureSkillSourceInfos.keys()].map((key) => resolve(key))),
 						agentDir: this.config.agentDir,
 					}),
 			});
@@ -257,11 +257,11 @@ export class ResourceCollections {
 		const skills = resolvedSkills.skills.map((skill) => ({
 			...skill,
 			sourceInfo:
-				this.findSourceInfoForPath(skill.filePath, this.extensionSkillSourceInfos, metadataByPath) ??
+				this.findSourceInfoForPath(skill.filePath, this.featureSkillSourceInfos, metadataByPath) ??
 				skill.sourceInfo ??
 				this.getDefaultSourceInfoForPath(skill.filePath),
 		}));
-		// The extension guard: a skill Octocode did not ship stays off until the user approved its exact files.
+		// The feature guard: a skill Octocode did not ship stays off until the user approved its exact files.
 		const reviewed = skills.map((skill) => ({
 			name: skill.name,
 			filePath: skill.filePath,
@@ -311,7 +311,7 @@ export class ResourceCollections {
 		this.prompts = resolvedPrompts.prompts.map((prompt) => ({
 			...prompt,
 			sourceInfo:
-				this.findSourceInfoForPath(prompt.filePath, this.extensionPromptSourceInfos, metadataByPath) ??
+				this.findSourceInfoForPath(prompt.filePath, this.featurePromptSourceInfos, metadataByPath) ??
 				prompt.sourceInfo ??
 				this.getDefaultSourceInfoForPath(prompt.filePath),
 		}));
@@ -339,7 +339,7 @@ export class ResourceCollections {
 		this.themes = resolvedThemes.themes.map((theme) => {
 			const sourcePath = theme.sourcePath;
 			theme.sourceInfo = sourcePath
-				? (this.findSourceInfoForPath(sourcePath, this.extensionThemeSourceInfos, metadataByPath) ??
+				? (this.findSourceInfoForPath(sourcePath, this.featureThemeSourceInfos, metadataByPath) ??
 					theme.sourceInfo ??
 					this.getDefaultSourceInfoForPath(sourcePath))
 				: theme.sourceInfo;
@@ -349,7 +349,7 @@ export class ResourceCollections {
 	}
 
 	/**
-	 * Extension-supplied skill paths with the `skills` setting applied, as it is to auto-discovered skills. Without
+	 * Feature-supplied skill paths with the `skills` setting applied, as it is to auto-discovered skills. Without
 	 * exclusion entries the paths pass unchanged; otherwise folders are expanded to their skill files and each is checked.
 	 */
 	private skillFilesEnabledBySettings(paths: string[]): string[] {

@@ -42,7 +42,7 @@ describe("invalid settings warning", () => {
 			void startup.run(createFakeHost(context));
 
 			await vi.waitFor(() => {
-				expect(render(chatContainer)).toContain("⚠ Invalid settings file /tmp/settings.json: malformed JSON");
+				expect(render(chatContainer)).toContain("⚠ 🦀 Invalid settings file /tmp/settings.json: malformed JSON");
 			});
 		} finally {
 			if (previousOffline === undefined) delete process.env.OCTOCODE_OFFLINE;

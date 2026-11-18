@@ -1,13 +1,13 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import type { ToolResultMessage } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { TEXT_MAX_CHARS, TURN_MAX_CHARS } from "../../utils/output-budget.ts";
 import { capResultText, saveFullOutput } from "../shared/spill.ts";
 /** Space reserved for the recovery pointer when a turn exhausts its text budget. */
 const RECOVERY_CHARS = 1024;
 /** What a result after the budget ran out shows: its text is in the archive the first omitted result names. */
-const omittedText = (): string => renderInstruction("notices/turn-budget-omitted.md");
+const omittedText = (): string => renderPrompt("notices/turn-budget-omitted.md");
 
 /** Bounds one assistant message's tool text; overflow records remain recoverable from the first omitted result's archive. */
 export class TurnBudget {
@@ -40,7 +40,7 @@ export class TurnBudget {
 			}
 			const file = saveFullOutput(record, "turn-overflow");
 			if (!file) throw new Error("Could not save tool output beyond the turn budget");
-			const note = `\n${renderInstruction("notices/turn-budget-reached.md", { file })}`;
+			const note = `\n${renderPrompt("notices/turn-budget-reached.md", { file })}`;
 			const gap = "\n[…]\n";
 			const available = Math.min(
 				text.length,
@@ -84,9 +84,9 @@ export function budgetToolResult(budget: TurnBudget, message: ToolResultMessage)
  * order: the same calls always keep and lose the same text, and the cached prefix does not change with timing. Each
  * tool keeps its own cap; the budget bounds only their sum (results within it are unchanged). A new turn starts it again.
  */
-export function registerTurnBudget(api: ExtensionAPI, budget = new TurnBudget()): TurnBudget {
-	api.on("turn_start", async () => budget.reset());
-	api.on("message_end", async (event) => {
+export function registerTurnBudget(api: FeatureSetup, budget = new TurnBudget()): TurnBudget {
+	api.bus.on("turn_start", async () => budget.reset());
+	api.bus.on("message_end", async (event) => {
 		if (event.message.role !== "toolResult") return undefined;
 		const bounded = budgetToolResult(budget, event.message);
 		return bounded ? { message: bounded } : undefined;

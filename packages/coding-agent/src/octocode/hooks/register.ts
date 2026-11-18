@@ -1,5 +1,5 @@
 import { registerBackgroundHooks } from "./background.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { envFlag, PARENT_SESSION_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { sessionHookMode } from "../shared/hook-mode.ts";
 import { commandsFor, hookCalls } from "./config/calls.ts";
@@ -16,6 +16,8 @@ import {
 	registerSessionEndHook,
 } from "./register/events.ts";
 import { registerAgentHooks } from "./register/agents.ts";
+import { registerBacklogHooks } from "./register/backlog.ts";
+import { registerMonitorHooks } from "./register/monitor.ts";
 import { notificationHook, registerMessageHooks } from "./register/messages.ts";
 import { registerPostToolUseHook } from "./register/post-tool-use.ts";
 import { permissionRequestHook } from "./register/permission-request.ts";
@@ -56,7 +58,7 @@ const NO_BACKGROUND: ReturnType<typeof registerBackgroundHooks> = { reset: async
  * times out fails open as in a main session, unless it is `failClosed`.
  */
 function registerDecisionHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	view: HooksView,
 	session: HookSession,
 	patches: Map<string, string>,
@@ -84,14 +86,14 @@ function registerDecisionHooks(
 		true,
 	);
 	view.suspend = () => runner.stop();
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		patches.clear();
 		loadSessionHooks(api, session, ctx, options.home, true);
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		patches.clear();
 	});
-	api.on("turn_end", async () => {
+	api.bus.on("turn_end", async () => {
 		patches.clear();
 	});
 	view.hasPreToolUse = preToolUseMatcher(session, paused);
@@ -131,7 +133,7 @@ interface HooksOptions {
 	projectEdit?: EditProjector;
 }
 
-export function registerHooks(api: ExtensionAPI, options: HooksOptions = {}): HooksView {
+export function registerHooks(api: FeatureSetup, options: HooksOptions = {}): HooksView {
 	const { env = process.env, home, onFailure, metadata, paused, projectEdit } = options;
 	const session: HookSession = { config: emptyHooks(), errors: [], root: undefined };
 	const mode = sessionHookMode(env);
@@ -155,6 +157,7 @@ export function registerHooks(api: ExtensionAPI, options: HooksOptions = {}): Ho
 		notification: () => undefined,
 		messageSend: async () => undefined,
 		messageReceive: async () => undefined,
+		taskCompleted: async () => undefined,
 	};
 	// Registered even when hooks are off: a resumed session may hold Stop feedback from an earlier run.
 	registerStopRenderer(api);
@@ -185,13 +188,13 @@ export function registerHooks(api: ExtensionAPI, options: HooksOptions = {}): Ho
 	registerStopHook(api, session, runner.dispatch, child);
 	registerSessionStartHooks(api, session, runner, home, child);
 	if (child) registerSubagentHooks(api, session, runner.dispatch, env, metadata);
-	api.on("session_start", async () => {
+	api.bus.on("session_start", async () => {
 		patches.clear();
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		patches.clear();
 	});
-	api.on("turn_end", async () => {
+	api.bus.on("turn_end", async () => {
 		patches.clear();
 	});
 	view.hasPreToolUse = preToolUseMatcher(session, paused);
@@ -218,6 +221,8 @@ export function registerHooks(api: ExtensionAPI, options: HooksOptions = {}): Ho
 	registerPostCompactHook(api, runner.dispatch);
 	registerPostToolBatchHook(api, runner.dispatch);
 	registerAgentHooks(api, session, runner);
+	view.taskCompleted = registerBacklogHooks(api, session, runner);
+	registerMonitorHooks(api, session, runner);
 	registerSessionEndHook(api, session, runner.dispatch, env);
 	return view;
 }

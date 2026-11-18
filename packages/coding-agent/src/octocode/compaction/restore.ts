@@ -1,9 +1,9 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { estimateProjectedContextTokens } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { firstGap, type LineRange, lineCount } from "../files/coverage.ts";
 import { contextReads, RESTORED_FILES_TYPE, seenFiles, type WorkedFile } from "../files/reads.ts";
 import type { FileGuard } from "../files/tool/guard.ts";
@@ -18,6 +18,7 @@ import { restoreLimits, type RestoreLimits, RESTORE_TOTAL_CHARS } from "./restor
 import { reserveTokensFor } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "@octocodeai/octocode-common/text";
+import { RESTORE_MAX_BYTES, sameStamp, type Stamp, textOf } from "./restore-read.ts";
 
 /**
  * After a compaction, the files the agent was working on are read again from disk and put back in its context: the summary names them, but editing one would otherwise need a fresh `read` first (the file guard
@@ -34,8 +35,6 @@ export * from "./restore-limits.ts";
 export const RESTORE_MIN_FILE_CHARS = 2_000;
 /** At most this many candidates that cannot be read back (binary, too large, missing, not UTF-8) are tried: a run of them must not stall the compaction. */
 export const RESTORE_MAX_SKIPPED = 20;
-/** Files larger than this are never read back (a generated or data file is no working context, and reading it costs time). */
-const RESTORE_MAX_BYTES = 2_000_000;
 
 type Preparation = Pick<SessionBeforeCompactEvent["preparation"], "messagesToSummarize" | "turnPrefixMessages">;
 
@@ -45,6 +44,7 @@ type Preparation = Pick<SessionBeforeCompactEvent["preparation"], "messagesToSum
  * was read back, so it does not keep coming back ahead of newer work.
  */
 export function recentFiles(preparation: Preparation, cwd: string): WorkedFile[] {
+	// The order and lines `restoreFiles` uses; `restore-picks.ts` marks the files only read.
 	const messages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages].map((message, index) => ({
 		id: String(index),
 		message,
@@ -56,66 +56,6 @@ export function recentFiles(preparation: Preparation, cwd: string): WorkedFile[]
 			...(workedAt === undefined ? {} : { workedAt }),
 			...(line ? { line } : {}),
 		}));
-}
-
-/** How much of a file is looked at before the rest is read: binary data shows in its first bytes. */
-const SNIFF_BYTES = 8_192;
-
-/**
- * The text of `file` when it is a small UTF-8 text file, else undefined. The first `SNIFF_BYTES` are checked (no NUL,
- * valid UTF-8) before the whole file is read, so a large binary file costs one small read.
- */
-function textOf(file: string): { text: string; stamp: Stamp } | undefined {
-	try {
-		// `stat` first: opening a FIFO or device would block.
-		const stat = fs.statSync(file);
-		if (!stat.isFile() || stat.size > RESTORE_MAX_BYTES) return undefined;
-		const fd = fs.openSync(file, "r");
-		try {
-			const head = Buffer.alloc(Math.min(stat.size, SNIFF_BYTES));
-			const read = fs.readSync(fd, head, 0, head.length, 0);
-			const sniffed = head.subarray(0, read);
-			// `stream`: a character cut by the end of the sniffed bytes is not an error.
-			if (sniffed.includes(0) || !isUtf8(sniffed)) return undefined;
-			const text = fs.readFileSync(fd, "utf8");
-			return text.includes("\uFFFD") ? undefined : { text, stamp: stampOf(stat) };
-		} finally {
-			fs.closeSync(fd);
-		}
-	} catch {
-		return undefined;
-	}
-}
-
-/** Whether `head`, the start of a file, is UTF-8 up to a character cut by its end. */
-function isUtf8(head: Uint8Array): boolean {
-	try {
-		new TextDecoder("utf-8", { fatal: true }).decode(head, { stream: true });
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-/** What a file was on disk when it was read back: a later stat that differs means the model's copy is stale. */
-interface Stamp {
-	mtimeMs: number;
-	ctimeMs: number;
-	size: number;
-	ino: number;
-}
-
-const stampOf = ({ mtimeMs, ctimeMs, size, ino }: Stamp): Stamp => ({ mtimeMs, ctimeMs, size, ino });
-
-function sameStamp(file: string, stamp: Stamp): boolean {
-	try {
-		const now = fs.statSync(file);
-		return (
-			now.mtimeMs === stamp.mtimeMs && now.ctimeMs === stamp.ctimeMs && now.size === stamp.size && now.ino === stamp.ino
-		);
-	} catch {
-		return false;
-	}
 }
 
 /** A path as an XML attribute value: a file name cannot close the attribute or the tag. */
@@ -158,6 +98,11 @@ function windowOf(text: string, max: number, line = 1): Window {
 	return { text: lines.slice(first, last).join(""), first: first + 1, last, total, cut: true };
 }
 
+/** A file to read back: `onlyRead` when the summarized span read it without changing it (`restore-picks.ts`). */
+export interface RestoreCandidate extends WorkedFile {
+	onlyRead?: boolean;
+}
+
 interface Restored {
 	/** The message body: each file in a `<file>` block. */
 	content: string;
@@ -195,10 +140,11 @@ export function heldFiles(
  * Reads back up to `limits.maxFiles` of `candidates` (most recent first) except those in `held` (`heldFiles`: the
  * context has their current content), within the budgets, and gives up after `RESTORE_MAX_SKIPPED` candidates that
  * cannot be read back. A cut window of a file that `shown` (`shownRanges`) already covers is not read back either.
- * Undefined when none qualifies.
+ * A candidate marked `onlyRead` shows only its outline, and none when it has no declaration to list. Undefined when
+ * none qualifies.
  */
 export function restoreFiles(
-	candidates: readonly WorkedFile[],
+	candidates: readonly RestoreCandidate[],
 	held: ReadonlySet<string>,
 	cwd: string,
 	total = RESTORE_TOTAL_CHARS,
@@ -208,7 +154,7 @@ export function restoreFiles(
 	const blocks: string[] = [];
 	const files: Restored["files"] = [];
 	const worked: WorkedFile[] = [];
-	const intro = renderInstruction("notices/compaction/restored-files.md");
+	const intro = renderPrompt("notices/compaction/restored-files.md");
 	let used = intro.length + 2;
 	let skipped = 0;
 	// One file read by two paths (a symlink and its target) comes back once.
@@ -228,16 +174,19 @@ export function restoreFiles(
 		}
 		const { text } = read;
 		// A file over the whole-file size shows its outline when it has declarations, else a window of whole lines.
-		const viewOf = (chars: number): Window => {
+		// A file only read shows its outline or nothing: a read brings it back whole when the work returns to it.
+		const viewOf = (chars: number): Window | undefined => {
 			const outline =
-				text.length > limits.fileChars
+				text.length > limits.fileChars || candidate.onlyRead
 					? outlineOf(text, Math.min(chars, limits.outlineChars), candidate.line)
 					: undefined;
-			if (!outline) return windowOf(text, chars, candidate.line);
+			if (!outline) return candidate.onlyRead ? undefined : windowOf(text, chars, candidate.line);
 			const lines = text.match(/[^\n]*\n|[^\n]+$/g)?.length ?? 0;
 			return { text: outline.text, first: 1, last: lines, total: lines, cut: true, outline };
 		};
-		let view = viewOf(room);
+		const first = viewOf(room);
+		if (first === undefined) continue;
+		let view = first;
 		if (view.text.length === 0 && text.length > 0) {
 			skipped++;
 			continue;
@@ -246,14 +195,14 @@ export function restoreFiles(
 		const display = relative.startsWith("..") ? file : relative;
 		const render = (window: Window): string => {
 			const note = window.outline
-				? `\n${renderInstruction("notices/compaction/restored-outline.md", {
+				? `\n${renderPrompt("notices/compaction/restored-outline.md", {
 						shown: window.outline.shown,
 						count: window.outline.count,
 						total: window.total,
 						fromLast: window.outline.marked,
 					})}`
 				: window.cut
-					? `\n${renderInstruction("notices/compaction/restored-cut.md", {
+					? `\n${renderPrompt("notices/compaction/restored-cut.md", {
 							first: window.first,
 							last: window.last,
 							total: window.total,
@@ -269,7 +218,9 @@ export function restoreFiles(
 		while (block.length > available && room >= RESTORE_MIN_FILE_CHARS) {
 			room -= block.length - available;
 			if (room < RESTORE_MIN_FILE_CHARS) break;
-			view = viewOf(room);
+			const smaller = viewOf(room);
+			if (smaller === undefined) break;
+			view = smaller;
 			block = render(view);
 		}
 		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) break;
@@ -282,7 +233,8 @@ export function restoreFiles(
 				? { file, whole: false, stamp: read.stamp }
 				: { file, whole: true, sha256: sha256(text), size: Buffer.byteLength(text), stamp: read.stamp },
 		);
-		worked.push(candidate);
+		const { onlyRead: _onlyRead, ...work } = candidate;
+		worked.push(work);
 		used += separator + block.length;
 	}
 	if (files.length === 0) return undefined;
@@ -301,9 +253,9 @@ export interface PendingRestore {
  * record once the message is delivered.
  */
 export function deliverRestoredFiles(
-	api: Pick<ExtensionAPI, "sendMessage">,
+	api: SetupPick<"session", "sendMessage">,
 	pending: readonly WorkedFile[],
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager"> & Partial<Pick<ExtensionContext, "model">>,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager"> & Partial<Pick<FeatureContext, "model">>,
 	budget: number,
 	thinking?: CompactionThinking,
 	contextHeld: ReadonlySet<string> = new Set(),
@@ -357,7 +309,7 @@ export function deliverRestoredFiles(
 			...(partial.length > 0 ? { partial } : {}),
 			worked: restored.worked,
 		};
-		void api.sendMessage(
+		void api.session.sendMessage(
 			{ customType: RESTORED_FILES_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
@@ -100,7 +100,6 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 			".octocode/agents/tmp/evil.md",
 			".octocode/prompts/p.md",
 			".octocode/themes/t.md",
-			".octocode/extensions/e.md",
 			".octocode/SYSTEM.md",
 			".octocode/APPEND_SYSTEM.md",
 			".octocode/settings.json",
@@ -214,6 +213,23 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		expect(read("src/a.ts")).toBe("original");
 	});
 
+	it("refuses a reader whose program a variable may swap, and runs readers given values of their own", async () => {
+		const { attempt, cwd } = child(mode);
+		const planted = path.join(cwd, "planted");
+		fs.mkdirSync(planted);
+		for (const command of [
+			`PATH=${planted} cat src/a.ts`,
+			`PATH=${planted}; cat src/a.ts`,
+			"export X=1; cat src/a.ts",
+			"LD_PRELOAD=/tmp/x.so cat src/a.ts",
+			"[[ -v 'a[$(touch src/p.ts)]' ]] && cat src/a.ts",
+		])
+			expect(await attempt("bash", { command }), command).toMatch(/may run a program it does not name/);
+		for (const command of ['f=src/a.ts; cat "$f"', "LC_ALL=C sort src/a.ts", `D=${planted}; ls "$D"`])
+			expect(await attempt("bash", { command }), command).toBeUndefined();
+		expect(fs.existsSync(path.join(cwd, "src/p.ts"))).toBe(false);
+	});
+
 	it("resolves relative shell writes after a literal cd, and refuses what resolves outside the allowed paths", async () => {
 		const { attempt, read, cwd } = child(mode);
 		expect(
@@ -295,6 +311,33 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 			/join it with/,
 		);
 		expect(await attempt("bash", { command: `cd ${cwd}/.octocode/code/temp && echo x > note.txt` })).toBeUndefined();
+	});
+
+	it("shows the exact `&&` rewrite for `cd x; cmd > ../../.octocode/tmp/f` and the rewrite runs", async () => {
+		const { attempt, cwd } = child(mode);
+		fs.mkdirSync(path.join(cwd, "packages/x"), { recursive: true });
+		fs.mkdirSync(path.join(cwd, ".octocode/tmp"), { recursive: true });
+		const reason = await attempt("bash", { command: "cd packages/x; echo x > ../../.octocode/tmp/f" });
+		expect(reason).toContain("Run exactly: cd packages/x && echo x > ../../.octocode/tmp/f");
+		expect(await attempt("bash", { command: "cd packages/x && echo x > ../../.octocode/tmp/f" })).toBeUndefined();
+		// A rewrite that would still be refused is not offered.
+		const bad = await attempt("bash", { command: "cd packages/x; echo x > ../../src/a.ts" });
+		expect(bad).toMatch(/join it with `&&`\)/);
+		expect(bad).not.toContain("Run exactly");
+	});
+
+	it("follows an absolute `cd` joined by `&&` to a scratch target reached through `..`", async () => {
+		const { attempt, cwd } = child(mode);
+		fs.mkdirSync(path.join(cwd, ".octocode/rework"), { recursive: true });
+		const cases = [
+			`cd ${cwd}/.octocode/rework && echo x > ../code/temp/k.txt`,
+			`cd ${cwd}/.octocode/rework && mkdir -p ../code/temp/k && echo x > ../code/temp/k/out.txt`,
+			`cd ${cwd}/.octocode/rework && python3 - <<'E' > ../code/temp/k.txt\nprint(1)\nE`,
+		];
+		for (const command of cases) expect(await attempt("bash", { command }), command).toBeUndefined();
+		expect(await attempt("bash", { command: `cd ${cwd}/.octocode/rework && echo x > ../../src/a.ts` })).toMatch(
+			/Changing \S*\/src\/a\.ts from the shell/,
+		);
 	});
 
 	it("names what the guard could not resolve, or what the command changes, so the command can be rewritten", async () => {

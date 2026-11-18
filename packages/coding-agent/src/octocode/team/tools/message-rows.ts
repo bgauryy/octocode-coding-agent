@@ -6,12 +6,19 @@ import { entityOfRole } from "../../shared/entity.ts";
 import { formatClock } from "../../shared/format.ts";
 import { USER_SENDER } from "../../shared/messages.ts";
 import { clip, plural } from "../../shared/text.ts";
+import type { Endpoint } from "@octocodeai/octocode-contracts/team";
+import { endpointMarks, endpointName } from "../endpoint.ts";
 import type { MailDetails } from "../model.ts";
 
 /**
  * Agent mail as the transcript draws it, outgoing and incoming alike: `sender → recipient`, the message number and its
- * kind (request, FYI, reply to #N, interrupt), then the body. "you" is the agent whose transcript this is.
+ * kind (request, FYI, reply to #N, interrupt), then the body. A delivered message names its real recipient (the agent whose
+ * transcript this is) with role and, when `endpoints` resolves them, worktree and tmux marks; an entry without a recipient
+ * (a team notice, an old entry) names the sender only.
  */
+
+/** Resolves an agent id to its endpoint at render time (live row, else the row it left); absent: ids and recorded roles only. */
+export type EndpointResolver = (id: string) => Endpoint;
 
 /** Columns of the sent text shown on the collapsed result row. */
 const PREVIEW_CHARS = 60;
@@ -74,11 +81,30 @@ export function sendPreview(message: string): string {
 
 const KIND_COLOR = { request: "warning", interrupt: "error", FYI: "dim" } as const;
 
-/** One delivered message: `✉ 🐙 ink → you · #51 · request · 16:05:00`, then its body (previewed while collapsed). */
-function mailEntry(theme: Theme, entry: Record<string, unknown>, expanded: boolean): Component[] {
+/** One delivered message: `✉ 🐙 ink(main) [worktree fix] → you(main) · #51 · request · 16:05:00`, then its body (previewed while collapsed). */
+function mailEntry(
+	theme: Theme,
+	entry: Record<string, unknown>,
+	expanded: boolean,
+	resolve: EndpointResolver | undefined,
+): Component[] {
 	const from = clip(text(entry.from) || "agent", 64);
-	const role = asRecord(entry.sender).role;
-	const mark = typeof role === "string" && from !== USER_SENDER ? `${entityOfRole(role)} ` : "";
+	const recorded = asRecord(entry.sender).role;
+	const isUser = from === USER_SENDER;
+	const known: Endpoint = (!isUser && resolve?.(from)) || { id: from };
+	// The resolver knows live and departed agents; a sender it cannot place keeps the role its message recorded.
+	const sender: Endpoint = {
+		...known,
+		...(known.role === undefined && typeof recorded === "string" && !isUser ? { role: recorded } : {}),
+	};
+	const mark = sender.role !== undefined && !isUser ? `${entityOfRole(sender.role)} ` : "";
+	const toId = text(entry.to) ? clip(text(entry.to), 64) : undefined;
+	const recipient: Endpoint | undefined = toId ? (resolve?.(toId) ?? { id: toId }) : undefined;
+	/** `ink(main) [worktree fix, tmux %2]`: the name, then where the agent works when that is known. */
+	const shown = (end: Endpoint): string => {
+		const marks = endpointMarks(end);
+		return marks.length ? `${endpointName(end)} [${marks.join(", ")}]` : endpointName(end);
+	};
 	const kind = kinds(entry).map((word) =>
 		theme.fg(word in KIND_COLOR ? KIND_COLOR[word as keyof typeof KIND_COLOR] : "success", word),
 	);
@@ -90,7 +116,9 @@ function mailEntry(theme: Theme, entry: Record<string, unknown>, expanded: boole
 		by ? theme.fg("dim", `forwarded by ${by}`) : "",
 		theme.fg("dim", formatClock(typeof entry.at === "number" ? entry.at : Date.now())),
 	].filter(Boolean);
-	const header = `${theme.fg("accent", "✉")} ${mark}${theme.fg("toolTitle", theme.bold(from))} ${theme.fg("dim", "→ you")}${dot}${meta.join(dot)}`;
+	const who = theme.fg("toolTitle", theme.bold(shown(sender)));
+	const to = recipient ? ` ${theme.fg("dim", "→")} ${theme.fg("toolTitle", shown(recipient))}` : "";
+	const header = `${theme.fg("accent", "✉")} ${mark}${who}${to}${dot}${meta.join(dot)}`;
 	const note = by && entry.note !== undefined ? `${by}: ${text(entry.note)}\n` : "";
 	const lines = `${note}${text(entry.text)}`.split("\n");
 	// Collapsed, the first lines and how many more; the kit shows a short body whole, so the preview is cut here.
@@ -110,7 +138,7 @@ function mailEntry(theme: Theme, entry: Record<string, unknown>, expanded: boole
 /** Delivered team mail: one header and body per message of the batch. */
 export function mailRows(
 	message: { content?: unknown; details?: unknown },
-	options: { expanded?: boolean; outputPad?: number },
+	options: { expanded?: boolean; outputPad?: number; endpoints?: EndpointResolver },
 	theme: Theme,
 ): Component {
 	const mail = (message.details as Partial<MailDetails> | undefined)?.messages;
@@ -118,6 +146,7 @@ export function mailRows(
 	// Details are another process's data: anything but a batch shows the text the model got.
 	const entries: unknown[] = Array.isArray(mail) ? mail : [{ from: "agent", text: text(message.content) }];
 	for (const entry of entries)
-		for (const row of mailEntry(theme, asRecord(entry), options.expanded === true)) box.addChild(row);
+		for (const row of mailEntry(theme, asRecord(entry), options.expanded === true, options.endpoints))
+			box.addChild(row);
 	return box;
 }

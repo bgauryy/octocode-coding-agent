@@ -6,14 +6,23 @@
  * from the bundle entry, and other workspaces use the `exports` of this package.
  */
 
-// Extension, host ports and the `octocode mcp` command.
-export { defaultMcpExtension } from "./default.ts";
-export { hostTrust, installMcpHost, type McpAuthBackend, type McpHostPorts, type McpResearchRoots } from "./host.ts";
+// Feature, host ports and the `octocode mcp` command.
+export { defaultMcpFeature } from "./default.ts";
+export {
+	hostTrust,
+	installMcpHost,
+	type McpAuthBackend,
+	type McpHostPorts,
+	type McpResearchRoots,
+	type McpToolSwitchRow,
+	type McpToolSwitchView,
+	type McpToolWriteScope,
+} from "./host.ts";
+export { getMcpToolsPage } from "./tools-page.ts";
 export { loadMcpCommand } from "./cli.lazy.ts";
 export { MCP_COMMANDS } from "./cli/commands.ts";
 export { parseMcpAddArgs } from "./cli/edit.ts";
 export { saveMcpDefinition, McpAddError } from "./add.ts";
-export { withPluginServers } from "./cli/plugins.ts";
 
 // Configuration, presets and server records.
 export {
@@ -34,7 +43,6 @@ export { isEnabled } from "./server.ts";
 export { mcpEntryRowInput, mcpRowFacts, mcpRowSummary } from "./row.ts";
 export { MCP_EXPOSURES, McpServerRegistry, validateMcpServerConfig } from "./servers.ts";
 export { mcpLaunchIdentity } from "./launch-identity.ts";
-export { generatedDir, readGenerated } from "./compact/index.ts";
 
 // Session state the host reads: status, reloads, roles, tool states and subagent hand-offs.
 export { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "./status.ts";

@@ -1,7 +1,9 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { envFlag, ownNonce, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { interactive } from "../../shared/interactive.ts";
-import { checkInConfig } from "../check-in.ts";
+import { type AgentName, agentNameOf } from "../../shared/agent-name.ts";
+import { checkInConfig } from "../../monitor/attention/check-in.ts";
+import { monitorLedgerOf } from "../../monitor/ledger.ts";
 import { Delivery } from "../delivery.ts";
 import { HeldLeases } from "../held.ts";
 import { modelRoute } from "../identity.ts";
@@ -11,6 +13,7 @@ import { Relays } from "../relay.ts";
 import { Activity, HEARTBEAT_MS } from "./activity.ts";
 import { ChildLeases } from "./child-leases.ts";
 import { TeamDatabase } from "./database.ts";
+import { IdleAgents } from "./idle.ts";
 import { PeerHolder } from "./peer-holder.ts";
 import { SessionTeamName } from "./rejoin.ts";
 import type { ReservationHost } from "./reservations.ts";
@@ -20,9 +23,7 @@ import { Vouches } from "./vouches.ts";
 import { WaitingApprovals } from "./approvals.ts";
 import { TeamTicker } from "../ticker.ts";
 import { WakePace } from "../wake-pace.ts";
-import { SilenceWatch } from "../silence-watch.ts";
-import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
-import { AGENT_ID_ENV, PARENT_ID_ENV } from "../store/env.ts";
+import { AGENT_ID_ENV, PARENT_ID_ENV, PARENT_WAITS_ENV } from "../store/env.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const RECENT_FINISHED_LIMIT = 128;
@@ -33,7 +34,7 @@ const RECENT_FINISHED_LIMIT = 128;
  */
 export abstract class TeamState {
 	protected me: Member | undefined;
-	protected ctx: ExtensionContext | undefined;
+	protected ctx: FeatureContext | undefined;
 	/** The team database, opened on first use (`session/database.ts`). */
 	protected readonly database = new TeamDatabase({ ctx: () => this.ctx, env: () => this.env }, () =>
 		this.ticker.sync(),
@@ -112,22 +113,32 @@ export abstract class TeamState {
 	abstract deliverMail(stepEnded?: boolean): void;
 	protected readonly env: NodeJS.ProcessEnv;
 	protected readonly name: SessionTeamName;
-	constructor(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env) {
+	/** The name this session holds on the team, for the terminal title (`shared/agent-name.ts`). */
+	protected readonly shownName: AgentName;
+	/** The session's feature API: monitor nudges are told through it (`monitor/attention/attend.ts`). */
+	protected readonly api: FeatureSetup;
+	constructor(api: FeatureSetup, env: NodeJS.ProcessEnv = process.env) {
+		this.api = api;
 		this.env = env;
-		this.database.forwardTo(api.events);
+		this.shownName = agentNameOf(api);
+		this.database.forwardTo(api.channels);
 		this.name = new SessionTeamName(api, env);
 		this.mail = new Mail(api, () => ownNonce(this.env));
-		this.silenceMs = () => {
-			const minutes = api.getSettings?.()?.subagents?.silenceMinutes;
-			const valid = typeof minutes === "number" && Number.isFinite(minutes) && minutes >= 0;
-			return (valid ? minutes : SETTINGS_DEFAULTS.subagents.silenceMinutes) * 60_000;
-		};
+		this.idle = new IdleAgents(api, {
+			me: () => this.me,
+			parentId: () => this.parentId,
+			ctx: () => this.ctx,
+			children: () => [...(this.running?.keys() ?? [])],
+			members: () => this.database.read().members,
+			approvals: this.approvals,
+			wakePace: this.wakePace,
+		});
 		this.activity = new Activity({
 			me: () => this.me,
 			db: () => this.database.current,
 			held: this.held,
 			mail: this.mail,
-			route: () => modelRoute(this.ctx?.model, api.getThinkingLevel()),
+			route: () => modelRoute(this.ctx?.model, api.models.getThinkingLevel()),
 			renewChildren: (db, now) => this.childLeases.renew(db, now),
 		});
 		this.delivery = new Delivery(
@@ -143,16 +154,15 @@ export abstract class TeamState {
 					child: this.finished.has(id) || this.vouches.has(id) || this.running?.has(id) === true,
 					reported: this.finished.has(id),
 				}),
-				checkIn: () => checkInConfig(api.getSettings().subagents, this.env, api),
+				checkIn: () => checkInConfig(api.settings.get(), this.env[PARENT_WAITS_ENV] === "1", api),
+				attention: (attention, delivered) => monitorLedgerOf(api).record(attention, delivered),
 			},
 			this.mail,
 			this.wakePace,
 		);
 	}
-	/** Which running children went silent (`silence-watch.ts`); checked on the ticker, no timer of its own. */
-	protected readonly silence = new SilenceWatch();
-	/** `subagents.silenceMinutes` in milliseconds, read on each tick so a settings change applies at once. */
-	protected silenceMs: () => number = () => 0;
+	/** The idle-agent rule for this agent's running children and, in a main session, itself; checked on the ticker, no timer of its own. */
+	readonly idle: IdleAgents;
 	protected readonly vouches = new Vouches();
 	readonly approvals = new WaitingApprovals();
 	/** Registers the secret given to subagent `id` (its `PERMISSION_NONCE_FILE_ENV` file), so the user's messages to it are signed; returns what ends that. */

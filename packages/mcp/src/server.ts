@@ -6,7 +6,7 @@ import type { McpServerConnection } from "./runtime.ts";
 export interface McpServer {
 	entry: McpServerEntry;
 	connection?: McpServerConnection;
-	/** For servers extensions registered: the config as registered, to detect re-registrations. */
+	/** For servers features registered: the config as registered, to detect re-registrations. */
 	registeredConfig?: string;
 	/** Result of the last `/mcp` action that failed, shown in the manager. */
 	message?: string;

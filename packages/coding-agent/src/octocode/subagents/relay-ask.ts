@@ -1,6 +1,6 @@
 import { checkedReplies, type Question, type Reply } from "@octocodeai/octocode-contracts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionUIContext } from "../../core/features/index.ts";
+import type { SessionUI } from "../../core/features/index.ts";
 import { ask } from "../ask/ask.ts";
 import { checkedQuestions as checked } from "../ask/check.ts";
 import { foldLines } from "../permission/effect.ts";
@@ -14,7 +14,7 @@ import { type PermissionHeader, redactNonce, splitHeader } from "../permission/h
  * nonce redacted first, as a select title does; ids are never drawn, so they stay as sent (replies name them).
  */
 
-type RelayAskUi = Pick<ExtensionUIContext, "select" | "confirm" | "input" | "notify" | "ask">;
+type RelayAskUi = Pick<SessionUI, "select" | "confirm" | "input" | "notify" | "ask">;
 
 const redacted = (value: unknown, nonce: string): unknown =>
 	typeof value === "string"
@@ -82,7 +82,7 @@ export async function relayAsk(
 ): Promise<Record<string, unknown>> {
 	if (opts.signal.aborted) return { cancelled: true };
 	// `ui` is the parent's own UI; `ask` needs only the dialog methods and `ask` itself.
-	const replies = await ask({ hasUI: true, ui: ui as ExtensionUIContext }, questions, {
+	const replies = await ask({ hasUI: true, ui: ui as SessionUI }, questions, {
 		signal: opts.signal,
 		blocking: true,
 		...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),

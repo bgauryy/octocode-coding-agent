@@ -16,7 +16,7 @@ import { readTemplateScript } from "./template-script.ts";
 
 /**
  * Interface for rendering custom tools to HTML.
- * Used by agent-session to pre-render extension tool output.
+ * Used by agent-session to pre-render feature tool output.
  */
 export interface ToolHtmlRenderer {
 	/** Render a tool call to HTML. Returns undefined if tool has no custom renderer. */

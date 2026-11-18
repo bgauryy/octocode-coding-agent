@@ -1,6 +1,10 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
 import { RETENTION_DEFAULTS } from "../storage/retention.ts";
 import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
+import { MONITOR_DEFAULTS } from "./settings-schema/monitor.ts";
+
+/** `sandbox.mode`: never, in every permission mode but `bypass`, or always. */
+export type SandboxMode = "off" | "auto" | "on";
 
 /** Tokens kept free for the reply when compacting or summarizing a branch. */
 export const DEFAULT_RESERVE_TOKENS = 16384;
@@ -52,11 +56,14 @@ export const SETTINGS_DEFAULTS = {
 		deliberateMaxSeconds: 600,
 		longCommandPatterns: [] as string[],
 	},
+	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
 	subagents: {
-		checkInSeconds: 300,
-		silenceMinutes: 10,
+		/** Deprecated fallback of `monitor.checkInSeconds`; `subagents.silenceMinutes` has no default of its own (`monitor.idleAgentMinutes` has). */
+		checkInSeconds: MONITOR_DEFAULTS.checkInSeconds,
 		wakeHoldSeconds: 0,
+		peerOverlapWake: true,
 	},
+	monitor: MONITOR_DEFAULTS,
 	externalAgents: false,
 	sessionApi: true,
 	sessionApiTurnPermission: "session",

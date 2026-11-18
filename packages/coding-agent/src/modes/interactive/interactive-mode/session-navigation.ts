@@ -7,7 +7,7 @@ import path from "node:path";
 import { Spacer } from "@octocodeai/octocode-tui";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
-import type { ExtensionCommandContext } from "../../../core/features/index.ts";
+import type { CommandContext } from "../../../core/features/index.ts";
 import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { hasTornTail, SessionManager } from "../../../core/session-manager.ts";
 import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
@@ -60,9 +60,9 @@ type SessionNavigationHost = Pick<
 	| "settingsManager"
 	| "showError"
 	| "showWarning"
-	| "showExtensionConfirm"
-	| "showExtensionEditor"
-	| "showExtensionSelector"
+	| "showConfirmDialog"
+	| "showEditorDialog"
+	| "showSelectorDialog"
 	| "showSelector"
 	| "showStatus"
 	| "showStatusIndicator"
@@ -165,7 +165,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 				// Check if we should skip the prompt (user preference to always default to no summary)
 				if (!host.settingsManager.getBranchSummarySkipPrompt()) {
 					while (true) {
-						const summaryChoice = await host.showExtensionSelector("Summarize branch?", [
+						const summaryChoice = await host.showSelectorDialog("Summarize branch?", [
 							"No summary",
 							"Summarize",
 							"Summarize with custom prompt",
@@ -180,7 +180,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 						wantsSummary = summaryChoice !== "No summary";
 
 						if (summaryChoice === "Summarize with custom prompt") {
-							customInstructions = await host.showExtensionEditor("Custom summarization instructions");
+							customInstructions = await host.showEditorDialog("Custom summarization instructions");
 							if (customInstructions === undefined) {
 								// User cancelled - loop back to summary selector
 								continue;
@@ -332,7 +332,7 @@ export async function offerForkOfTornSession(
 export async function handleResumeSession(
 	host: SessionNavigationHost,
 	sessionPath: string,
-	options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
+	options?: Parameters<CommandContext["switchSession"]>[1],
 ): Promise<{ cancelled: boolean }> {
 	const currentFile = host.sessionManager.getSessionFile();
 	if (currentFile && path.resolve(currentFile) === path.resolve(sessionPath)) {
@@ -342,7 +342,7 @@ export async function handleResumeSession(
 	const runningPid = await sessionFileRunningPid(sessionPath);
 	if (
 		runningPid !== undefined &&
-		!(await host.showExtensionConfirm(
+		!(await host.showConfirmDialog(
 			"Session is running",
 			`Another Octocode process (pid ${runningPid}) has this session open. Resume it here as well?`,
 		))

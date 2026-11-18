@@ -3,7 +3,8 @@ import type { ParsedCommand, ParsedShell } from "../../shared/shell-commands.ts"
 import { misreadHerestring } from "../bash-herestring.ts";
 import { initializeBashSyntax, parseBash, staticWord, translatedString } from "../bash-syntax.ts";
 import { hiddenArithmetic } from "./arithmetic.ts";
-import { gitProgram, programSetting } from "./git-programs.ts";
+import { programSwap, settingRisk } from "./environment.ts";
+import { gitProgram } from "./git-programs.ts";
 import { runInput } from "./input-runners.ts";
 import { computedOption, inputMayWrite } from "./read-only.ts";
 import { SHELLS, base, splitString, wrappedCommand } from "./words.ts";
@@ -197,8 +198,8 @@ function add(
 		entry.opaque = true;
 		entry.opaqueBecause ??= because;
 	};
-	// A variable set in front (`GIT_SSH_COMMAND=… git fetch`, `env GIT_PAGER=… make`) through which git, run by any program, runs another.
-	for (let at = 0; at < (real ?? literals.length); at++) runsProgram(programSetting(literals[at] ?? words[at] ?? ""));
+	// A variable set in front (`PATH=/tmp/x cat`, `GIT_SSH_COMMAND=… git fetch`, `env GIT_PAGER=… make`) that swaps the program run.
+	for (let at = 0; at < (real ?? literals.length); at++) runsProgram(settingRisk(literals[at] ?? words[at] ?? ""));
 	const nest = (script: string | undefined): void => {
 		if (script === undefined || depth >= MAX_NESTING) {
 			entry.opaque = true;
@@ -320,13 +321,6 @@ function walk(root: Node, depth: number): Collected | undefined {
 			opaque: true,
 			opaqueBecause: `the arithmetic \`${arithmetic.trim()}\` names a variable whose value the line does not show, and bash evaluates that value as an expression that can run a command; give the variable a number in the line (\`S=0\`, \`S=$(date +%s)\`)`,
 		});
-	// A variable set outside a command (`export GIT_SSH_COMMAND=…; git fetch`, `GIT_PAGER=x; git log`) reaches the commands after it.
-	for (const assignment of root.descendantsOfType("variable_assignment")) {
-		const because = assignment?.parent?.type === "command" ? undefined : programSetting(assignment?.text ?? "");
-		if (because !== undefined)
-			// Named `git`, the program it reaches: an entry of assignments only is no command to the team gate.
-			out.commands.push({ words: ["git"], literals: [undefined], redirects: [], opaque: true, opaqueBecause: because });
-	}
 	// A bare `exec` with input redirections changes standard input for the rest of the script.
 	let inherited: Stdin | undefined;
 	for (const command of commands) {
@@ -342,6 +336,13 @@ function walk(root: Node, depth: number): Collected | undefined {
 			inherited = ownStdin(command) ?? inherited;
 		if (out.count > MAX_COMMANDS) return undefined;
 	}
+	// A variable set outside a command (`PATH=/tmp/x; cat f`, `export GIT_SSH_COMMAND=…`, `unset PATH`) reaches the commands
+	// after it, and `[[ -v 'a[$(cmd)]' ]]` runs what its subscript names (`environment.ts`, `arithmetic.ts`). Listed after
+	// the real commands, so an interpreter run keeps its own refusal.
+	const because = programSwap(root, false);
+	if (because !== undefined)
+		// Named `git`, the program it reaches: an entry of assignments only is no command to the team gate.
+		out.commands.push({ words: ["git"], literals: [undefined], redirects: [], opaque: true, opaqueBecause: because });
 	for (const definition of root.descendantsOfType("function_definition")) {
 		const name = definition?.childForFieldName("name")?.text;
 		if (name) out.functions.push(name);

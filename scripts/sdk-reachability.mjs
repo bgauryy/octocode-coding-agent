@@ -14,7 +14,7 @@ export const SDK_ENTRIES = [
 	"coding-agent/src/core/agent-session-services.ts",
 ];
 /** Interactive layers a headless session must not load: these packages and the terminal modes folder. */
-export const SDK_FORBIDDEN_PACKAGES = ["tui", "webview"];
+export const SDK_FORBIDDEN_PACKAGES = ["tui", "tui-ink", "webview"];
 /** Subpaths of a forbidden package that import nothing interactive, so a headless consumer may load them. */
 export const SDK_HEADLESS_SUBPATHS = [
 	"@octocodeai/octocode-tui/ansi",

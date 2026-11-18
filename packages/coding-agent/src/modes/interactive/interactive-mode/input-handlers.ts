@@ -11,7 +11,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { readClipboardFilePaths, readClipboardText } from "../../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../../utils/clipboard-image.ts";
 import { editInExternalEditor } from "../external-editor.ts";
-import { bindEditorHandlers } from "./extension-chrome.ts";
+import { bindEditorHandlers } from "./feature-chrome.ts";
 import { quoteIfNeeded } from "./helpers.ts";
 import { rewritePastedImagePaths } from "./paste-image-paths.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -37,6 +37,7 @@ type InputHandlersHost = Pick<
 	| "loadEarlierFromKey"
 	| "lastEscapeTime"
 	| "escapeQuietUntil"
+	| "escapeAbortedRun"
 	| "renderer"
 	| "restoreQueuedMessagesToEditor"
 	| "session"
@@ -73,6 +74,7 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 		const now = Date.now();
 		if (host.session.isStreaming) {
 			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
+			host.escapeAbortedRun = true;
 			host.restoreQueuedMessagesToEditor({ abort: true });
 		} else if (host.session.isBashRunning) {
 			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
@@ -138,7 +140,7 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 			try {
 				listener(text);
 			} catch {
-				// A failing extension listener must not break typing.
+				// A failing feature listener must not break typing.
 			}
 		}
 	};

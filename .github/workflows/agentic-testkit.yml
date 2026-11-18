@@ -1,0 +1,57 @@
+# The agentic testkit's free suite, lint, build and consumer check, on the Node versions it supports.
+# coding-agent links packages from the sibling octocode repository (`link:../../../octocode/...`), so both repositories
+# are checked out side by side, as on a developer machine.
+name: agentic-testkit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/octocode-agentic-testkit/**"
+      - "yarn.lock"
+      - ".oxlintrc.json"
+      - ".github/workflows/agentic-testkit.yml"
+  pull_request:
+    paths:
+      - "packages/octocode-agentic-testkit/**"
+      - "yarn.lock"
+      - ".oxlintrc.json"
+      - ".github/workflows/agentic-testkit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  testkit:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS runs the OS sandbox tests; Linux skips them with a reason (the sandbox is macOS-only).
+        os: [ubuntu-latest, macos-latest]
+        node: [24, 26]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: octocodecode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: octocodecode
+      - uses: actions/checkout@v4
+        with:
+          repository: bgauryy/octocode
+          path: octocode
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn workspace @octocodeai/octocode-agentic-testkit run typecheck
+      - run: yarn oxlint packages/octocode-agentic-testkit
+      - run: yarn workspace @octocodeai/octocode-agentic-testkit run test
+      - run: yarn workspace @octocodeai/octocode-agentic-testkit run build
+      - run: yarn workspace @octocodeai/octocode-agentic-testkit run check:consumer
+      - name: npm pack (dry run)
+        working-directory: octocodecode/packages/octocode-agentic-testkit
+        run: npm pack --dry-run

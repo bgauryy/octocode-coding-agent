@@ -17,12 +17,12 @@ describe("agent keeps timer", () => {
 	it("declares timer as the agent tool's companion in a delegating session", async () => {
 		delete process.env.OCTOCODE_SUBAGENT;
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const tools = fake.api.getAllTools() as { name: string; companionTools?: readonly string[] }[];
+		const tools = fake.api.tools.getAll() as { name: string; companionTools?: readonly string[] }[];
 		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toEqual(["wait"]);
 		expect(tools.some((tool) => tool.name === "wait")).toBe(true);
 	});
@@ -31,9 +31,9 @@ describe("agent keeps timer", () => {
 		process.env.OCTOCODE_SUBAGENT = "1";
 		process.env.OCTOCODE_LEAN = "1";
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
-		const tools = fake.api.getAllTools() as { name: string; companionTools?: readonly string[] }[];
+		const tools = fake.api.tools.getAll() as { name: string; companionTools?: readonly string[] }[];
 		expect(tools.some((tool) => tool.name === "agent")).toBe(true);
 		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toBeUndefined();
 	});

@@ -33,8 +33,7 @@ const EMPTY_USAGE: Usage = {
 type RenderSessionContextThis = {
 	pendingTools: Map<string, ToolExecutionComponent>;
 	chatContainer: Container;
-	footer: { invalidate(): void };
-	programStatus: { handleEvent(): void };
+	programStatus: { handleEvent(): void; setPhase(): void };
 	ui: TUI;
 	settingsManager: {
 		getShowImages(): boolean;
@@ -56,8 +55,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 	return {
 		pendingTools: new Map<string, ToolExecutionComponent>(),
 		chatContainer,
-		footer: { invalidate: vi.fn() },
-		programStatus: { handleEvent: vi.fn() },
+		programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 		ui: { requestRender: vi.fn() } as unknown as TUI,
 		settingsManager: {
 			getShowImages: () => false,

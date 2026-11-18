@@ -14,7 +14,7 @@ import { isBuiltin } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rolldown } from "rolldown";
-import { copyInstructions } from "./copy-instructions.mjs";
+import { copyNative } from "./copy-native.mjs";
 import { readWorkspacePackages, sourceWorkspaceGroups } from "./source-workspaces.mjs";
 import { stageBashParser } from "./stage-bash-parser.mjs";
 import { renderThirdPartyNotices } from "./third-party-notices.mjs";
@@ -56,6 +56,21 @@ const httpsProxyAgentNamedExportPlugin = {
 	},
 };
 
+const INK_DEVTOOLS = "\0ink-devtools-disabled";
+
+// Ink loads React devtools (`./devtools.js`, which statically imports the optional react-devtools-core) when DEV=true.
+// Bundled, that import would load at startup and fail when the package is absent, so the bundle ships no devtools.
+const inkDevtoolsPlugin = {
+	name: "ink-devtools-disabled",
+	resolveId(source, importer) {
+		if (source === "./devtools.js" && importer?.replaceAll("\\", "/").includes("/node_modules/ink/build/"))
+			return INK_DEVTOOLS;
+	},
+	load(id) {
+		if (id === INK_DEVTOOLS) return { code: "export {};", moduleType: "js" };
+	},
+};
+
 // The AI package hides Node-only code behind variable-specifier imports so browser bundles cannot follow them. Here they
 // become literal dynamic imports: Rolldown puts that code in the one file and still runs it only on first use.
 const LAZY_LOADER = /packages\/ai\/dist\/(?:auth\/oauth\/load|api\/bedrock-converse-stream\.lazy)\.js$/;
@@ -84,7 +99,7 @@ async function bundle(input, output, unresolved) {
 		// installed npm package. Relative imports (including the private source workspaces) need no configuration.
 		tsconfig: false,
 		transform: { target: "node24", define: { OCTOCODE_BUNDLED_NODE: "true" } },
-		plugins: [httpsProxyAgentNamedExportPlugin, inlineLazyImportsPlugin],
+		plugins: [httpsProxyAgentNamedExportPlugin, inlineLazyImportsPlugin, inkDevtoolsPlugin],
 		onLog(level, log, defaultHandler) {
 			if (log.code === "UNRESOLVED_IMPORT" && log.exporter) {
 				unresolved.add(log.exporter);
@@ -120,6 +135,12 @@ const DB_WRITER_WORKER = {
 	entry: join(repoRoot, "packages", "db", "src", "writer", "worker-entry.ts"),
 };
 
+/** The archive-index worker (`history/index/client.ts` starts it by this name beside the bundle), separate for the same reason. */
+const ARCHIVE_INDEX_WORKER = {
+	name: "archive-index-worker",
+	entry: join(src, "octocode", "history", "index", "worker-entry.ts"),
+};
+
 /** The one bundle file and its launchers, which turn on the compile cache before loading it, and the writer's worker. */
 async function buildBundle() {
 	const unresolved = new Set();
@@ -135,6 +156,12 @@ async function buildBundle() {
 		unresolved,
 	);
 	if (worker.length !== 1) throw new Error(`Expected one database writer worker file, got ${worker.length}`);
+	const indexWorker = await bundle(
+		{ [ARCHIVE_INDEX_WORKER.name]: ARCHIVE_INDEX_WORKER.entry },
+		{ dir: bundleDir, entryFileNames: "[name].js", codeSplitting: false },
+		unresolved,
+	);
+	if (indexWorker.length !== 1) throw new Error(`Expected one archive index worker file, got ${indexWorker.length}`);
 
 	const unexpected = [...unresolved].filter((path) => !isBuiltin(path) && !allowedExternalPackages.has(path));
 	if (unexpected.length > 0)
@@ -156,11 +183,15 @@ async function buildBundle() {
 	}
 
 	mkdirSync(join(dist, "licenses"), { recursive: true });
-	const notices = renderThirdPartyNotices([...chunks[0].moduleIds, ...worker[0].moduleIds]);
+	const notices = renderThirdPartyNotices([
+		...chunks[0].moduleIds,
+		...worker[0].moduleIds,
+		...indexWorker[0].moduleIds,
+	]);
 	writeFileSync(join(dist, "licenses", "THIRD_PARTY_NOTICES.md"), notices.text);
 	const size = (Buffer.byteLength(chunks[0].code) / (1024 * 1024)).toFixed(1);
 	const workerSize = (Buffer.byteLength(worker[0].code) / 1024).toFixed(0);
-	return `${relative(repoRoot, join(bundleDir, chunks[0].fileName))} (${size} MiB, ${notices.count} third-party packages), ${worker[0].fileName} (${workerSize} KiB)`;
+	return `${relative(repoRoot, join(bundleDir, chunks[0].fileName))} (${size} MiB, ${notices.count} third-party packages), ${worker[0].fileName} (${workerSize} KiB), ${indexWorker[0].fileName}`;
 }
 
 /** Files the bundle reads by path at run time, and the licenses of code compiled into it. */
@@ -175,9 +206,8 @@ function copyAssets(hostedWorkspaces) {
 	copyMatching("core/export-html", "core/export-html", /^template\.(html|css)$/);
 	copyMatching("core/export-html/script", "core/export-html/script", /\.js$/);
 	copyMatching("core/export-html/vendor", "core/export-html/vendor", /\.js$/);
-	copyInstructions(join(src, "octocode", "instructions"), join(dist, "octocode", "instructions"));
-	// Every core skill ships: `getNativeSkillsDir` reads the whole folder.
-	copy("octocode/native-skills", "octocode/native-skills");
+	// Prompt Markdown and every core skill (`getNativeDir`).
+	copyNative(join(src, "octocode", "native"), join(dist, "octocode", "native"));
 	copyMatching("octocode/tool-input/codex-patch", "licenses/codex-patch", /^(LICENSE|NOTICE)$/);
 	for (const { directory, mount } of hostedWorkspaces) {
 		const licenses = join(directory, "LICENSES");

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { applyEditsToNormalizedContent, normalizeToLF } from "../../src/core/tools/edit-diff.ts";
 import { resolveAnchoredEdits } from "../../src/octocode/files/tool/anchored.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { fakeCtx, fakePermission, fakeHost } from "./fake-host.ts";
 

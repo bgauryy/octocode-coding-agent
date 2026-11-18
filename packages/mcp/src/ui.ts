@@ -63,6 +63,10 @@ export interface McpUi {
 	input?(title: string, value: string, hint: string): Promise<string | undefined>;
 }
 
+/** The key hints of a one-field form: Enter submits, Escape cancels, joined like every page footer. */
+const formHints = (): string =>
+	`${hostUi().keyHint("tui.select.confirm", "submit")} · ${hostUi().keyHint("tui.select.cancel", "cancel")}`;
+
 export class McpManagerView implements McpUi, Component, Focusable {
 	private readonly tui: TUI;
 	private readonly theme: McpTheme;
@@ -209,12 +213,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 				input,
 			];
 			this.setContent(
-				hostUi().frame(
-					this.theme,
-					title,
-					body,
-					`${hostUi().keyHint("tui.select.confirm", "submit")} • ${hostUi().keyHint("tui.select.cancel", "cancel")}`,
-				),
+				hostUi().frame(this.theme, title, body, formHints()),
 				(data) => {
 					if (this.keybindings.matches(data, "tui.select.confirm")) {
 						const value = input.getValue().trim();
@@ -248,12 +247,7 @@ export class McpManagerView implements McpUi, Component, Focusable {
 			const cancel = () => finish(undefined);
 			this.pending.add(cancel);
 			this.setContent(
-				hostUi().frame(
-					this.theme,
-					title,
-					[new Text(hint, 1, 1), input],
-					`${hostUi().keyHint("tui.select.confirm", "next")} • ${hostUi().keyHint("tui.select.cancel", "cancel")}`,
-				),
+				hostUi().frame(this.theme, title, [new Text(hint, 1, 1), input], formHints()),
 				(data) => {
 					if (this.keybindings.matches(data, "tui.select.confirm")) finish(input.getValue());
 					else if (this.keybindings.matches(data, "tui.select.cancel")) cancel();

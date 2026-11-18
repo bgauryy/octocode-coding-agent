@@ -15,7 +15,7 @@ import {
 	generateSummaryWithUsage,
 	projectAfterCompaction,
 } from "../src/core/compaction/index.ts";
-import { renderInstruction } from "../src/core/prompt-template.ts";
+import { renderPrompt } from "../src/core/prompt-template.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 
 const model: Model<"anthropic-messages"> = {
@@ -101,7 +101,7 @@ describe("compaction review fixes", () => {
 		const dropped = entries.length - shown;
 		expect(dropped).toBeGreaterThan(0);
 		expect(prompt).toContain(
-			JSON.stringify(renderInstruction("workflows/compaction/dropped-messages.md", { dropped })).slice(1, -1).trim(),
+			JSON.stringify(renderPrompt("workflows/compaction/dropped-messages.md", { dropped })).slice(1, -1).trim(),
 		);
 	});
 

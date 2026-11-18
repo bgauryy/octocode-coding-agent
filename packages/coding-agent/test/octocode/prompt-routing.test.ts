@@ -41,19 +41,19 @@ describe("registerTurnSetup routing and child trim", () => {
 		const researchTools = [RESEARCH.search, RESEARCH.reader, RESEARCH.readOnly, RESEARCH.other];
 		const fake = fakeHost();
 		for (const name of [...natives, ...researchTools]) fake.tools.set(name, { name, exposure: "direct" });
-		fake.api.events = createEventBus();
+		Object.assign(fake.api, { channels: createEventBus() });
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const status = (state: string, toolCount: number) => [
 			{ name: RESEARCH.server, enabled: true, state, toolCount, source: "default", exposure: "direct" as const },
 		];
-		setMcpSessionStatus(fake.api.events, status("connecting", 0));
+		setMcpSessionStatus(fake.api.channels, status("connecting", 0));
 		const before = await run(fake, natives);
-		setMcpSessionStatus(fake.api.events, status("connected", 4));
+		setMcpSessionStatus(fake.api.channels, status("connected", 4));
 		const connected = await run(fake, [...natives, ...researchTools]);
 		expect(connected.research).toBe(before.research);
 		expect(connected.delegation).toBe(before.delegation);
 		expect(connected.work).toBe(before.work);
-		setMcpSessionStatus(fake.api.events, status("failed", 0));
+		setMcpSessionStatus(fake.api.channels, status("failed", 0));
 		const failed = await run(fake, natives);
 		expect(failed.research).toBe(before.research);
 	});
@@ -85,5 +85,7 @@ describe("registerTurnSetup routing and child trim", () => {
 		});
 		expect(prompt).toMatch(/<skill name="research" location="[^"]+">Instructions for research\.<\/skill>/);
 		expect(childSkills([skill("x")])[0].description).toBe(skill("x").description);
+		// A coordinator-only skill (delegation, filing items) is left out of a subagent's listing.
+		expect(childSkills([skill("x"), { ...skill("lead"), audience: "coordinator" }]).map((s) => s.name)).toEqual(["x"]);
 	});
 });

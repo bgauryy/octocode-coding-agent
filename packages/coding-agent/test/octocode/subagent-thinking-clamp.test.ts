@@ -6,10 +6,10 @@ import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
 import { planRun } from "../../src/octocode/subagents/claim.ts";
 import { clampNote, type ModelRef, routeSummary } from "../../src/octocode/subagents/model.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
-import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
-import { meteredBilling } from "./fake-host.ts";
+import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
+import { meteredBilling, asSetup } from "./fake-host.ts";
 
 const model = (id: string, input: number, extra: object = {}): ModelRef =>
 	({
@@ -70,7 +70,7 @@ describe("the models tool", () => {
 	const register = () => {
 		const tools: ToolDefinition[] = [];
 		registerModelsTool(
-			{ registerTool: (definition: ToolDefinition) => void tools.push(definition) } as never,
+			asSetup({ registerTool: (definition: ToolDefinition) => void tools.push(definition) }) as never,
 			() => new Map(),
 		);
 		return tools[0];

@@ -10,7 +10,7 @@ import { buildToolDisplay } from "../../../../core/application/transcript-displa
 import type { ToolDefinition, ToolRenderers } from "../../../../core/features/types.ts";
 import { displayText } from "../../../../octocode/render/display.ts";
 import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
-import { clip, INDENT } from "../../../../octocode/shared/text.ts";
+import { clip, INDENT, linkPath } from "../../../../octocode/shared/text.ts";
 import type { RenderContext } from "../../../../octocode/render/types.ts";
 import { outputLanguage } from "../../../../theme/output-style.ts";
 import { stateMark } from "../../../../theme/status.ts";
@@ -29,8 +29,12 @@ const TONE: Record<Tone, ThemeColor> = {
 /** The spaces the markdown layout pads a line with, before the style resets that end it. */
 const PADDING = / +((?:\x1b\[[0-9;]*m)*)$/;
 
-/** A block as styled terminal lines; a block this version does not know shows its text. */
-function blockLines(theme: Theme, block: ToolDisplayBlock, width: number): string[] {
+/**
+ * A block as styled terminal lines; a block this version does not know shows its text. A diff file head is
+ * `operation path +A -R` with the path linked to the file (resolved against `cwd`); it carries no state mark: the
+ * contract has no per-file outcome, and the row's own mark and `⎿` outcome already say how the call ended.
+ */
+function blockLines(theme: Theme, block: ToolDisplayBlock, width: number, cwd: string | undefined): string[] {
 	const known = knownToolDisplayBlock(block);
 	const plain = (text: string, color: ThemeColor = "toolOutput") =>
 		sanitizeTerminalText(text)
@@ -40,7 +44,9 @@ function blockLines(theme: Theme, block: ToolDisplayBlock, width: number): strin
 		case "diff":
 			return known.files.flatMap((file) => {
 				const counts = `${file.additions > 0 || file.removals === 0 ? ` ${theme.fg("toolDiffAdded", `+${file.additions}`)}` : ""}${file.removals > 0 ? ` ${theme.fg("toolDiffRemoved", `-${file.removals}`)}` : ""}`;
-				const target = `${stateMark(theme, "done")} ${clip(file.operation, 20)} ${theme.fg("mdCode", clip(file.from ? `${file.from} ${GLYPH.arrow} ${file.path}` : file.path, 200))}${counts}`;
+				const path = linkPath(clip(file.path, 200), file.path, cwd);
+				const from = file.from ? `${clip(file.from, 200)} ${GLYPH.arrow} ` : "";
+				const target = `${clip(file.operation, 20)} ${theme.fg("mdCode", `${from}${path}`)}${counts}`;
 				return [
 					target,
 					...(file.patch ? renderDiff(sanitizeTerminalText(file.patch), { filePath: file.path }).split("\n") : []),
@@ -105,7 +111,7 @@ function renderDisplayResult(display: ToolDisplay, theme: Theme, context: Render
 		});
 	}
 	const rows = (width: number) => {
-		const lines = shown.flatMap((block) => blockLines(theme, block, width));
+		const lines = shown.flatMap((block) => blockLines(theme, block, width, context.cwd));
 		return resultBlock(theme, context, { ...common, ...(lines.length ? { lines } : { max: 0 }) });
 	};
 	// Markdown depends on the width: the rows are built when the width is known. Other blocks do not.

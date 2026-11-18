@@ -2,10 +2,10 @@ import { Container } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { CustomEntry } from "../src/core/session-manager.ts";
 import { CustomEntryComponent } from "../src/modes/interactive/components/custom-entry.ts";
-import { FooterComponent } from "../src/modes/interactive/components/footer.ts";
 import { WorkingStatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import * as agentEvents from "../src/modes/interactive/interactive-mode/agent-events.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { footerLines } from "../src/octocode/ui/footer/rows.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 const HOSTILE = "go\u001b]0;pwned\u0007 \u001b]8;;https://evil\u001b\\link\u001b]8;;\u001b\\ \u009b2J\u202eend";
@@ -33,32 +33,14 @@ describe("one-line rows drawn from extension and model text", () => {
 	});
 
 	test("footer statuses keep their colours and one line but drop other controls", () => {
-		const session = {
-			state: { model: undefined },
-			sessionManager: {
-				getEntryCount: () => 0,
-				getSessionId: () => "s",
-				getLeafId: () => null,
-				getEntries: () => [],
-				getBranch: () => [],
-				getCwd: () => "/tmp",
-				getSessionName: () => undefined,
-			},
-			getContextUsage: () => undefined,
-			modelRuntime: {},
-		};
-		const footerData = {
-			getGitBranch: () => null,
-			getExtensionStatuses: () =>
-				new Map([
-					["a", `${HOSTILE}\nsecond\u2028line`],
-					["b", "\u001b[32mgreen\u001b[39m"],
-				]),
-			getAvailableProviderCount: () => 0,
-			onBranchChange: () => () => {},
-		};
-		const lines = new FooterComponent(session as never, footerData).render(400);
-		const status = lines.at(-1) ?? "";
+		const statuses = new Map([
+			["a", { text: `${HOSTILE}\nsecond\u2028line` }],
+			["b", { text: "\u001b[32mgreen\u001b[39m" }],
+		]);
+		const usage = { input: 0, output: 0, cacheRead: 0, cost: 0, unpriced: false };
+		const lines = footerLines({ usage, cwd: "/tmp" }, null, statuses, theme, 400);
+		// Other features' statuses are line 2's details.
+		const status = lines[1] ?? "";
 		expectClean(status);
 		expect(status).toContain("second line");
 		expect(status).toContain("\u001b[32mgreen\u001b[39m");
@@ -80,8 +62,7 @@ describe("compaction end", () => {
 		const handleEvent = agentEvents.handleEvent as (host: object, event: object) => Promise<void>;
 		const host = {
 			isInitialized: true,
-			footer: { invalidate: vi.fn() },
-			programStatus: { handleEvent: vi.fn() },
+			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			autoCompactionEscapeHandler: undefined,
 			defaultEditor: {},
 			chatContainer: new Container(),

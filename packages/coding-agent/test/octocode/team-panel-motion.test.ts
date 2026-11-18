@@ -1,10 +1,12 @@
 import { animationClock, GLYPH, MOTION, SPINNER } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
+import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
-import { AgentsView, widgetLines } from "../../src/octocode/team/panel.ts";
+import { AgentsView } from "../../src/octocode/team/panel.ts";
+import { WAIT_PULSE_MS } from "../../src/theme/status.ts";
+import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -48,18 +50,19 @@ describe("panel state", () => {
 			member("rest-bbbb", { parentId: "main-aaaaaa" }),
 		];
 		const rows = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
-		expect(rows[1]).toMatch(new RegExp(`^ ├ ${frame} 🐙 busy-aaaa`));
-		// Each agent takes two lines: the name line, then its stats.
-		expect(rows[3]).toMatch(/^ └ ○ 🐙 rest-bbbb/);
-		expect(rows[2]).toMatch(/^ │ +working/);
-		expect(rows[4]).toMatch(/^ +idle/);
+		// The mark alone says the state: no state word, and no stats line for an agent without stats.
+		expect(rows).toEqual([
+			" 🦑 main-aaaaaa ○ · general · 1m",
+			` ├ ${frame} busy-aaaa    · general · 1m`,
+			" └ ○ rest-bbbb    · general · 1m",
+		]);
 		const tree = [
 			{ member: team[1], depth: 0 },
 			{ member: team[2], depth: 0 },
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
-		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 3));
-		expect(compact).toEqual([` ${frame} `, " ○ ", " ○ "]);
+		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 5));
+		expect(compact).toEqual([` ├ ${frame} `, " ├ ○ ", " └ ○ "]);
 	});
 
 	it("freezes the spinner on its first frame in reduced motion", () => {
@@ -68,7 +71,7 @@ describe("panel state", () => {
 		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.running);
 	});
 
-	it("says how many agents work and have left in the root row", () => {
+	it("keeps the root row free of a tally: each agent's mark says it works, and `left` is on the ↳ line", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("a-1111", { parentId: "main-aaaaaa", status: "working" }),
@@ -76,7 +79,13 @@ describe("panel state", () => {
 		];
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
-		expect(lines[0]).toBe(" 🦑 main-aaaaaa  general  2 working · 1 left");
+		expect(lines).toEqual([
+			" 🦑 main-aaaaaa ○ · general ·  1m",
+			" ├ ⠋ a-1111       · general ·  1m",
+			" ├ ⠋ b-2222       · general ·  1m",
+			" └ ○ c-3333       · general · 59s",
+			"     ↳ left",
+		]);
 	});
 });
 
@@ -176,6 +185,44 @@ describe("AgentsView motion", () => {
 		members = [members[0], peer("idle")];
 		vi.advanceTimersByTime(1_000);
 		expect(animationClock.isRunning()).toBe(false);
+		requestRender.mockClear();
+		vi.advanceTimersByTime(500);
+		expect(requestRender).not.toHaveBeenCalled();
+		view.stop(ctx);
+	});
+
+	it("breathes a waiting agent's mark for WAIT_PULSE_MS from when it began to wait, then stops requesting frames", () => {
+		vi.useFakeTimers();
+		const now = Date.now();
+		const members = [
+			member("me-0001", { updatedAt: now }),
+			member("asker-1a2b", { parentId: "me-0001", status: "working", waiting: "approval", joinedAt: now - 20_000 }),
+		];
+		const team = {
+			id: "me-0001",
+			get view() {
+				return { members: members.map((entry) => ({ ...entry, updatedAt: Date.now() })), traffic: [] };
+			},
+			watch(listener: () => void) {
+				const timer = setInterval(listener, 1_000);
+				listener();
+				return () => clearInterval(timer);
+			},
+		};
+		const view = new AgentsView(team as never);
+		const ctx = fakeCtx({ cwd: tmp() });
+		view.start(ctx);
+		const factory = ctx.ui.widgets.get("octocode-agents") as (tui: unknown, theme: unknown) => unknown;
+		const requestRender = vi.fn();
+		factory({ requestRender }, theme);
+		expect(animationClock.isRunning()).toBe(true);
+		vi.advanceTimersByTime(WAIT_PULSE_MS - 1_000);
+		expect(animationClock.isRunning()).toBe(true);
+		// Past the pulse the mark holds still while the agent keeps waiting: no clock, no frames.
+		vi.advanceTimersByTime(2_000);
+		expect(animationClock.isRunning()).toBe(false);
+		// Between data refreshes (each second) nothing repaints.
+		vi.advanceTimersByTime(1_000 - ((Date.now() - now) % 1_000) + 10);
 		requestRender.mockClear();
 		vi.advanceTimersByTime(500);
 		expect(requestRender).not.toHaveBeenCalled();

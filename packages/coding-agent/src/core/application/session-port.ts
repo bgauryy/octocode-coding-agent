@@ -63,7 +63,7 @@ export type ApplicationOperations = Pick<AgentSessionApi, (typeof APPLICATION_OP
 export type ApplicationSession = ApplicationOperations &
 	Pick<
 		AgentSessionApi,
-		"sessionId" | "messages" | "isStreaming" | "model" | "sessionManager" | "subscribe" | "answerDialog"
+		"sessionId" | "messages" | "isStreaming" | "model" | "sessionManager" | "subscribe" | "answerDialog" | "holdDialog"
 	> &
 	// Optional so a session without tools (a fixture) still projects; its calls then use the generic display.
 	Partial<Pick<AgentSessionApi, "getToolRenderers">>;

@@ -4,13 +4,19 @@ import type {
 	ProfileAgents,
 	ProfileInsights,
 	ProfileMessage,
+	ProfileMessages,
 	ProfileRequests,
 	ProfileTimeline,
+	ProfileTranscript,
 	ProfileUpdate,
 } from "@octocodeai/octocode-contracts/profiler";
-import type { Traffic } from "@octocodeai/octocode-contracts/team";
+import type { FeedCursor, Traffic } from "@octocodeai/octocode-contracts/team";
+import type { EndpointDirectory } from "../team/endpoint.ts";
 import { deriveInsights } from "./insights.ts";
 import { allEvents, deriveTimeline, type Lane } from "./timeline.ts";
+import { profileMessages } from "./messages.ts";
+import { sessionIdOf } from "./notices.ts";
+import { readTranscript } from "./transcript-read.ts";
 import { toChromeTrace, type ChromeTrace } from "./trace.ts";
 import { agentRow, deriveRequests, type ProfilerMember } from "./derive.ts";
 import { withContext, type AgentContext } from "./context.ts";
@@ -28,6 +34,10 @@ export interface ProfilerPort {
 	timeline(since?: number): ProfileTimeline;
 	insights(): ProfileInsights;
 	trace(): ChromeTrace;
+	/** A page of this session's team messages older than `before` whatever their age (`timeline` holds only the recent ones); the first page adds the internal notices. */
+	messages(limit: number, before?: FeedCursor): ProfileMessages;
+	/** The transcript entries around `entry` of a listed agent, in its session `sessionId` when given; undefined for an agent that is not listed or a session without a transcript. */
+	transcript(agentId: string, entry: number, sessionId?: string): ProfileTranscript | undefined;
 }
 
 export type { ProfilerMember };
@@ -41,6 +51,12 @@ export interface ProfilerSource {
 	members(): ProfilerMember[];
 	/** The team's messages that involve this session or its agents. */
 	traffic(): Traffic[];
+	/** `limit` messages older than `before` that involve the session, newest first (`workspace/team-history.ts`); absent: `traffic` is all there is. */
+	history?(limit: number, before?: FeedCursor): { traffic: Traffic[]; next?: FeedCursor };
+	/** The transcript file of session `sessionId`, which an agent that was resumed or compacted may have besides its current one. */
+	sessionTranscript?(sessionId: string): string | undefined;
+	/** Who message senders and recipients are (role, worktree, tmux pane); absent: messages carry no endpoints. */
+	endpoints?(): EndpointDirectory;
 	/** The transcript of a listed agent: the session file its team row resolves to; undefined when none can be read. */
 	transcript(agentId: string): string | undefined;
 	/**
@@ -163,6 +179,7 @@ export function createProfiler(
 		sessionId: source.sessionId,
 		lanes: lanes(listed()),
 		traffic: source.traffic(),
+		endpoints: source.endpoints?.(),
 		now: Date.now(),
 	});
 
@@ -174,6 +191,7 @@ export function createProfiler(
 			sessionId: source.sessionId,
 			lanes: lanes(rows),
 			traffic,
+			endpoints: source.endpoints?.(),
 			now,
 		});
 		const freshEvents = events.filter((event) => !knownEvents.has(event.id));
@@ -266,6 +284,26 @@ export function createProfiler(
 			return { agentId, requests, hasMore: next < prepared.requests.length };
 		},
 		timeline: (since) => deriveTimeline(timelineInput(), since),
+		messages: (limit, before) => {
+			const page = source.history ? source.history(limit, before) : { traffic: before ? [] : source.traffic() };
+			const context = { lanes: lanes(listed()), ...(source.endpoints ? { endpoints: source.endpoints() } : {}) };
+			// Notices come from the transcripts, which no cursor pages: the first page carries all of them.
+			const messages = profileMessages(page.traffic, context).filter((message) => !before || !message.internal);
+			return { messages, ...(page.next ? { next: page.next } : {}) };
+		},
+		transcript: (agentId, entry, sessionId) => {
+			const self = source.self();
+			const base = self?.id === agentId ? self : source.members().find((member) => member.id === agentId);
+			if (!base) return undefined;
+			const file = self?.id === agentId ? source.coordinatorFile() : source.transcript(agentId);
+			const current = file ? cache.load(file) : undefined;
+			if (!sessionId || (current && sessionIdOf(current) === sessionId))
+				return current ? readTranscript(agentId, current, entry) : { agentId, entry, entries: [] };
+			// Entry indexes are per session file: another session's file, or nothing, never the current file's entries.
+			const other = source.sessionTranscript?.(sessionId);
+			const prepared = other ? cache.load(other) : undefined;
+			return prepared && sessionIdOf(prepared) === sessionId ? readTranscript(agentId, prepared, entry) : undefined;
+		},
 		insights: () => {
 			const input = timelineInput();
 			const { events, messages } = allEvents(input);

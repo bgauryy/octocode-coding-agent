@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import type * as BashRun from "../../src/octocode/files/bash-run.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { CLAMP_NOTE, foregroundFailure } from "../../src/octocode/files/bash/results.ts";

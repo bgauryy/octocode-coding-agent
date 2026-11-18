@@ -20,7 +20,7 @@ import { readRepositoryDiff, readUntrackedDiff } from "../utils/repository-diff.
  * documented on `AgentSessionApi` (`./agent-session/api.ts`). The members that only read or forward
  * to a collaborator sit in the base classes `AgentSessionState` (state, tools, models) and
  * `AgentSessionControl` (prompting, queues, compaction, retry, bash); this class holds the
- * constructor, lifecycle, session management, export and the extension system.
+ * constructor, lifecycle, session management, export and the feature system.
  */
 
 import type { AgentEvent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
@@ -30,11 +30,11 @@ import {
 	type Model,
 	type RetryCallbacks,
 } from "@octocodeai/octocode-ai/compat";
-import { emitExtensionEvent, handleAgentEvent } from "./agent-session/agent-events.ts";
+import { emitFeatureEvent, handleAgentEvent } from "./agent-session/agent-events.ts";
 import type { AgentSessionApi } from "./agent-session/api.ts";
 import { checkCompaction } from "./agent-session/compaction-check.ts";
 import { runDefaultCompaction } from "./agent-session/default-compaction.ts";
-import { buildExtensionRuntime, reloadExtensionRuntime } from "./agent-session/extension-runtime.ts";
+import { buildFeatureRuntime, reloadFeatureRuntime } from "./agent-session/feature-host.ts";
 import type { SessionInternals } from "./agent-session/host.ts";
 import { AgentSessionControl } from "./agent-session/session-control.ts";
 import { exportToHtml, getUserMessagesForForking } from "./agent-session/reports.ts";
@@ -49,14 +49,14 @@ import {
 import type {
 	AgentSessionConfig,
 	AgentSessionEventListener,
-	ExtensionBindings,
+	ModeBindingOptions,
 	PendingUserInput,
 } from "./agent-session/types.ts";
 import type { BashResult } from "./bash-executor.ts";
 import { runUserBash, type UserBashOptions } from "./agent-session/user-bash.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
 import type { CompactionPreparation, CompactionResult, SummaryRequestPolicy } from "./compaction/index.ts";
-import type { ExtensionRunner, ReplacedSessionContext } from "./features/index.ts";
+import type { FeatureHost, ReplacedSessionContext } from "./features/index.ts";
 import type { BeforeAgentStartTrigger } from "./features/runner.ts";
 import type { CompactionReason } from "./session-compaction.ts";
 import type { SessionNameSource } from "./session-manager.ts";
@@ -105,23 +105,23 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			prepareRun: (...args) => this._prepareRun(...args),
 			checkCompaction: (...args) => this._checkCompaction(...args),
 			runAutoCompaction: (...args) => this._runAutoCompaction(...args),
-			emitExtensionEvent: (event) => this._emitExtensionEvent(event),
+			emitFeatureEvent: (event) => this._emitFeatureEvent(event),
 			waitForIdle: () => this.waitForIdle(),
-			setExtensionRunner: (runner) => {
-				this._extensionRunner = runner;
+			setFeatureHost: (runner) => {
+				this._featureHost = runner;
 			},
 		});
 		this._c = c;
 
 		// Always subscribe to agent events for internal handling
-		// (session persistence, extensions, auto-compaction, retry logic)
+		// (session persistence, features, auto-compaction, retry logic)
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		installSessionAgentHooks(c);
 		c.models.applyContextBudget();
 
-		buildExtensionRuntime(c.runtime, {
+		buildFeatureRuntime(c.runtime, {
 			activeToolNames: config.initialActiveToolNames,
-			includeAllExtensionTools: true,
+			includeAllFeatureTools: true,
 		});
 		if (c.runtime.usesDefaultTools) c.tools.restoreFromTranscript(c.runtime.defaultToolModifiers);
 		else if (config.allowedToolNames) {
@@ -142,8 +142,8 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		await handleAgentEvent(this._c.agentEvents, event, signal);
 	};
 
-	private async _emitExtensionEvent(event: AgentEvent): Promise<void> {
-		await emitExtensionEvent(this._c.agentEvents, event);
+	private async _emitFeatureEvent(event: AgentEvent): Promise<void> {
+		await emitFeatureEvent(this._c.agentEvents, event);
 	}
 
 	/** Prepare a run and return its starting messages (see `SessionRunLoop.prepareRun`). */
@@ -230,8 +230,8 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			// Dispose must succeed even if an abort hook throws.
 		}
 
-		this._extensionRunner.invalidate(
-			"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
+		this._featureHost.invalidate(
+			"This feature ctx is stale after session replacement or reload. Do not use a captured api or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		// Disconnect from agent events.
 		this._unsubscribeAgent?.();
@@ -248,7 +248,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		this._c.boundaries.refreshFinalizedContext();
 	}
 
-	// Shell, session management, export and the extension system
+	// Shell, session management, export and the feature system
 
 	async executeBash(
 		command: string,
@@ -271,7 +271,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 			...(nameSource ? { source: nameSource } : {}),
 		} as const;
 		this._emit(event);
-		void this._extensionRunner.emit(event);
+		void this._featureHost.emit(event);
 	}
 	async navigateTree(targetId: string, options: NavigateTreeOptions = {}): Promise<NavigateTreeResult> {
 		clearSideQuestions(this);
@@ -290,7 +290,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	}
 	async controlPlan(options: PlanOptions) {
 		getApplicationPort(this);
-		const command = this.extensionRunner
+		const command = this.featureHost
 			.getRegisteredCommands()
 			.find((command) => command.name === "plan" && command.sourceInfo.owner === "native");
 		if (!command) throw new Error("Planning controls require native features.");
@@ -305,7 +305,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 					: options.action === "approve"
 						? `--approve ${options.revision}`
 						: "";
-		await command.handler(args, this.extensionRunner.createCommandContext());
+		await command.handler(args, this.featureHost.createCommandContext());
 		return readPlan(this.sessionManager.getBranch());
 	}
 	getContextReport() {
@@ -344,39 +344,43 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	getLastAssistantText(): string | undefined {
 		return lastAssistantText(this.messages);
 	}
-	async bindExtensions(bindings: ExtensionBindings): Promise<void> {
+	async bindFeatures(bindings: ModeBindingOptions): Promise<void> {
 		this._c.bindings.update(bindings);
-		this._c.bindings.apply(this._extensionRunner);
-		await this._extensionRunner.emit(this._sessionStartEvent);
-		this._extensionRunner.reportUnhandledMcpServers();
-		await this._c.bindings.extendResourcesFromExtensions(
+		this._c.bindings.apply(this._featureHost);
+		await this._featureHost.emit(this._sessionStartEvent);
+		this._featureHost.reportUnhandledMcpServers();
+		await this._c.bindings.extendResourcesFromFeatures(
 			this._sessionStartEvent.reason === "reload" ? "reload" : "startup",
 		);
 	}
 	async reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void> {
 		clearSideQuestions(this);
-		await reloadExtensionRuntime(this._c.runtime, options);
+		await reloadFeatureRuntime(this._c.runtime, options);
 	}
 	createReplacedSessionContext(): ReplacedSessionContext {
 		const context = Object.defineProperties(
 			{},
-			Object.getOwnPropertyDescriptors(this._extensionRunner.createCommandContext()),
+			Object.getOwnPropertyDescriptors(this._featureHost.createCommandContext()),
 		) as ReplacedSessionContext;
 		context.sendMessage = (message, options) => this.sendCustomMessage(message, options);
 		context.sendUserMessage = (content, options) => this.sendUserMessage(content, options);
 		return context;
 	}
-	hasExtensionHandlers(eventType: string): boolean {
-		return this._extensionRunner.hasHandlers(eventType);
+	hasFeatureHandlers(eventType: string): boolean {
+		return this._featureHost.hasHandlers(eventType);
 	}
 	/** Answer the dialog a run is blocked on (`awaiting.id`) for a client other than this mode's UI. */
 	answerDialog(
 		id: string,
 		answer: { choice?: string; text?: string; replies?: unknown },
 	): { ok: true } | { ok: false; reason: string } {
-		return this._extensionRunner.answerDialog(id, answer);
+		return this._featureHost.answerDialog(id, answer);
 	}
-	get extensionRunner(): ExtensionRunner {
-		return this._extensionRunner;
+	/** A client started answering the dialog `id`: stop the countdown over it. */
+	holdDialog(id: string): { ok: true } | { ok: false; reason: string } {
+		return this._featureHost.holdDialog(id);
+	}
+	get featureHost(): FeatureHost {
+		return this._featureHost;
 	}
 }

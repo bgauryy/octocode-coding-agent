@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import path from "node:path";
 import { AGENT_ID_ENV, AGENT_RUN_ID_ENV, PARENT_PID_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
@@ -31,7 +31,7 @@ export function saveParentGoneReport(
 	const dir = path.join(sessionDir(parentSession, env, sessionWorkspace(process.cwd(), env)), "reports", "pending");
 	const summary = last.summary ?? `Stopped (${id} · parent process ended)`;
 	return savePendingReport(dir, id, {
-		content: renderInstruction("notices/subagents/parent-gone.md", {
+		content: renderPrompt("notices/subagents/parent-gone.md", {
 			id,
 			summary,
 			transcript: last.transcript ? ` Its transcript: ${homeTilde(last.transcript)}.` : "",

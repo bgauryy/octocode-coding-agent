@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import { afterEach, expect, it } from "vitest";
 import { liveStdioServerPids } from "../../../mcp/src/client/transports/stdio.ts";
 import { AgentSessionRuntime, type CreateAgentSessionRuntimeFactory } from "../../src/core/agent-session-runtime.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -22,6 +22,8 @@ import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { nativeCall } from "./e2e-calls.ts";
 import { trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /** A request's sections, with `mcps` holding its head and every `mcps:<server>` block. */
 function mcpSections(messages: Parameters<typeof getCurrentSystemMessage>[0]): Record<string, string> {
@@ -95,8 +97,8 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -116,7 +118,8 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -141,7 +144,7 @@ it("exposes an external workspace MCP server by default, runs a call and returns
 		else process.env.OCTOCODE_PERMISSION = saved.permission;
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 
 	const requests: TranscriptContext[] = [];
@@ -238,8 +241,8 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -258,7 +261,8 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -283,7 +287,7 @@ async function startMultiToolSession(serverConfig: Record<string, unknown>, scri
 		else process.env.OCTOCODE_PERMISSION = saved.permission;
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 	const requests: TranscriptContext[] = [];
 	const step = (response: ReturnType<typeof fauxAssistantMessage>) => (context: TranscriptContext) => {

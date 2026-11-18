@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.ts";
-import type { ExtensionToolContext } from "../src/core/features/types.ts";
+import type { ToolContext } from "../src/core/features/types.ts";
 import {
 	type BashOperations,
 	createBashTool,
@@ -472,8 +472,8 @@ describe("Coding Agent Tools", () => {
 	});
 });
 
-function fakeCtx(cwd: string): ExtensionToolContext {
-	return { cwd } as ExtensionToolContext;
+function fakeCtx(cwd: string): ToolContext {
+	return { cwd } as ToolContext;
 }
 
 describe("tool cwd resolution", () => {

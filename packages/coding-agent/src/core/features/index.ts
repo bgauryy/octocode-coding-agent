@@ -2,15 +2,14 @@
  * Feature registration: lifecycle events, tools and commands that native features register.
  */
 
-export { createExtensionRuntime } from "./runtime.ts";
-export type { ExtensionErrorListener, ShutdownHandler } from "./runner.ts";
-export { ExtensionRunner } from "./runner.ts";
+export { createFeatureRuntime } from "./runtime.ts";
+export type { FeatureErrorListener, ShutdownHandler } from "./runner.ts";
+export { FeatureHost } from "./runner.ts";
 export { readsMessagesOnly } from "./runner/clone-messages.ts";
 export type {
 	AgentActivityOutcome,
 	AgentToolResult,
 	AutocompleteProviderFactory,
-	BashToolResultEvent,
 	BeforeAgentStartEvent,
 	BoundaryContextPreview,
 	BuildSystemPromptOptions,
@@ -18,27 +17,24 @@ export type {
 	CacheWarmingDecisionEventResult,
 	ContextEditEntryDraft,
 	ContextUsage,
-	CustomToolResultEvent,
 	EditorFactory,
-	ExecResult,
 	ExecuteToolOptions,
-	Extension,
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionCommandContextActions,
-	ExtensionContext,
-	ExtensionFactory,
-	ExtensionMode,
-	ExtensionToolContext,
+	FeatureRecord,
+	FeatureSetup,
+	SetupPick,
+	CommandContext,
+	CommandActions,
+	FeatureContext,
+	FeatureRegister,
+	UiMode,
+	ToolContext,
 	ToolInvocation,
-	ExtensionUIContext,
-	ExtensionUIDialogOptions,
-	ExtensionWidgetOptions,
-	InlineExtension,
+	SessionUI,
+	DialogOptions,
+	WidgetOptions,
 	InputEvent,
-	InputEventResult,
 	InputSource,
-	LoadExtensionsResult,
+	LoadedFeatures,
 	MarkdownTransformer,
 	MessageEndEvent,
 	MessageRenderer,
@@ -75,5 +71,4 @@ export type {
 	UserBashEventResult,
 	WorkingIndicatorOptions,
 } from "./types.ts";
-export { isBashToolResult } from "./types.ts";
 export { wrapRegisteredTools } from "./wrapper.ts";

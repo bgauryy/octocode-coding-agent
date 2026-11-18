@@ -5,7 +5,8 @@ import {
 	lastNoticedBand,
 	noticeBand,
 	noticeContextUsage,
-} from "../../src/octocode/compaction/context-notice.ts";
+} from "../../src/octocode/monitor/attention/context.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = { provider: "anthropic", id: "claude-x", contextWindow: 200_000 };
 
@@ -15,14 +16,14 @@ describe("context usage notice", () => {
 		(details) => {
 			const sent: Array<Record<string, unknown>> = [];
 			const entries = [{ message: { role: "custom", customType: CONTEXT_NOTICE_TYPE, details } }];
-			const api = {
+			const api = asSetup({
 				sendMessage: (message: Record<string, unknown>) => {
 					sent.push(message);
 					return Promise.resolve();
 				},
-			};
+			});
 			const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
-			noticeContextUsage(api as never, ctx as never, entries, undefined, false, "new-checkpoint");
+			noticeContextUsage(api, ctx as never, entries, undefined, false, "new-checkpoint");
 			expect(sent).toHaveLength(1);
 			expect(sent[0]).toMatchObject({ details: { band: 0.5, compactionId: "new-checkpoint" } });
 		},
@@ -54,30 +55,30 @@ describe("context usage notice", () => {
 	it("sends one notice per band crossed, hidden from the transcript view, without starting a turn", () => {
 		const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
 		const entries: Array<{ message: unknown }> = [];
-		const api = {
+		const api = asSetup({
 			sendMessage: (message: Record<string, unknown>, options: unknown) => {
 				sent.push({ message, options });
 				entries.push({ message: { role: "custom", ...message } });
 				return Promise.resolve();
 			},
-		};
+		});
 		let tokens = 100_000;
 		const ctx = { model, getContextUsage: () => ({ tokens, contextWindow: 200_000, percent: 50 }) };
-		noticeContextUsage(api as never, ctx as never, entries);
-		noticeContextUsage(api as never, ctx as never, entries);
+		noticeContextUsage(api, ctx as never, entries);
+		noticeContextUsage(api, ctx as never, entries);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({ customType: CONTEXT_NOTICE_TYPE, display: false, details: { band: 0.5 } });
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		tokens = 175_000;
-		noticeContextUsage(api as never, ctx as never, entries);
+		noticeContextUsage(api, ctx as never, entries);
 		expect(sent.map((entry) => (entry.message.details as { band: number }).band)).toEqual([0.5, 0.9]);
 	});
 
 	it("stays quiet when usage is unknown or the model has no window", () => {
 		const sent: unknown[] = [];
-		const api = { sendMessage: (message: unknown) => sent.push(message) };
-		noticeContextUsage(api as never, { model, getContextUsage: () => ({ tokens: null }) } as never, []);
-		noticeContextUsage(api as never, { model: undefined, getContextUsage: () => ({ tokens: 1 }) } as never, []);
+		const api = asSetup({ sendMessage: (message: unknown) => sent.push(message) });
+		noticeContextUsage(api, { model, getContextUsage: () => ({ tokens: null }) } as never, []);
+		noticeContextUsage(api, { model: undefined, getContextUsage: () => ({ tokens: 1 }) } as never, []);
 		expect(sent).toEqual([]);
 	});
 });
@@ -85,15 +86,15 @@ describe("context usage notice", () => {
 describe("compact hint", () => {
 	it("is in the first notice, at half, so it names the tool the `compact` description says to use then", () => {
 		const sent: Array<{ content: string }> = [];
-		const api = { sendMessage: (message: { content: string }) => sent.push(message) };
+		const api = asSetup({ sendMessage: (message: { content: string }) => sent.push(message) });
 		const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
-		noticeContextUsage(api as never, ctx as never, [], undefined, true);
+		noticeContextUsage(api, ctx as never, [], undefined, true);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].content).toMatch(/\(5\d%\).*At a task boundary, `compact` can summarize sooner\.$/);
 		// Without the tool the notice does not offer it.
 		const bare: Array<{ content: string }> = [];
 		noticeContextUsage(
-			{ sendMessage: (message: { content: string }) => bare.push(message) } as never,
+			asSetup({ sendMessage: (message: { content: string }) => bare.push(message) }) as never,
 			ctx as never,
 			[],
 			undefined,

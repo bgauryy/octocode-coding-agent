@@ -35,6 +35,7 @@ import { initTheme, stopThemeWatcher } from "../theme/theme.ts";
 import { isTruthyEnvFlag } from "../utils/env-flag.ts";
 import { drainStdio } from "./drain-stdio.ts";
 import { applyRunConfigurationOrExit } from "./run-configuration.ts";
+import type { NativeFeatureSet } from "../core/resource-loader/types.ts";
 import { createCliRuntimeFactory } from "./runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./session-manager.ts";
 import {
@@ -55,9 +56,14 @@ interface SessionRunContext {
 	agentDir: string;
 	/** `--offline` or its environment variable: no catalog refresh. */
 	offlineMode: boolean;
+	/** The native feature set every session of this run registers. */
+	nativeFeatures: NativeFeatureSet;
 }
 
-export async function runSession(args: string[], { cwd, agentDir, offlineMode }: SessionRunContext): Promise<void> {
+export async function runSession(
+	args: string[],
+	{ cwd, agentDir, offlineMode, nativeFeatures }: SessionRunContext,
+): Promise<void> {
 	const parsed = parseArgs(args);
 	const skillSnapshotFile = process.env[SKILL_SNAPSHOT_FILE_ENV];
 	const skillResourceSnapshot =
@@ -184,6 +190,7 @@ export async function runSession(args: string[], { cwd, agentDir, offlineMode }:
 		// Read before RPC mode clears it, so a session the worker switches to later still knows.
 		acpWorker: envFlag(process.env, ACP_WORKER_ENV),
 		skillResourceSnapshot,
+		nativeFeatures,
 	});
 	time("createRuntime");
 	const runtime = await createAgentSessionRuntime(createRuntime, {

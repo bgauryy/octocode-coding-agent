@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { registerCheckpoints } from "../../src/octocode/files/checkpoint-command.ts";
 import { inheritCheckpoints, sessionIdOf } from "../../src/octocode/files/checkpoint-store.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sessionDir } from "../../src/octocode/shared/home.ts";
-import { fakePermission } from "./fake-host.ts";
+import { fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /** One change through the checkpoint protocol the file tool uses. */
@@ -495,7 +495,7 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 	const commands = new Subcommands();
 	let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 	const sent: Array<{ message: { customType: string; content: string; display: boolean }; options: unknown }> = [];
-	const api = {
+	const api = asSetup({
 		on: (name: string, handler: (event: unknown, ctx: unknown) => Promise<unknown>) => handlers.set(name, handler),
 		registerTool: (definition: typeof tool) => {
 			tool = definition;
@@ -504,7 +504,7 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 		sendMessage: (message: (typeof sent)[number]["message"], options: unknown) => sent.push({ message, options }),
 		setLabel: (id: string, label: string | undefined) =>
 			label === undefined ? labels.delete(id) : labels.set(id, label),
-	} as never;
+	}) as never;
 	const labels = new Map<string, string>();
 	const guard = new FileGuard();
 	// These tests are about checkpoints: the agent has read the workspace files it changes (the guard requires it).
@@ -535,12 +535,15 @@ function host(cwd: string, sessionId = "session/1", header?: { parentSession?: s
 		},
 		ui: {
 			notify: (text: string) => notices.push(text),
-			// /rewind asks before restoring files: these tests accept.
-			confirm: async () => true,
 			select: async (title: string, options: string[]) => {
+				// The prompts list the safe answer first and the named action after it; these tests accept.
+				if (title.startsWith("Rewind file changes?")) {
+					expect(options).toEqual(["Cancel", "Rewind"]);
+					return "Rewind";
+				}
 				selects.push(title);
-				// The offer lists No first and Yes second; these tests accept.
-				return options.find((option) => option.startsWith("Yes")) ?? options[0];
+				expect(options).toEqual(["Keep current files", "Restore files"]);
+				return "Restore files";
 			},
 		},
 	};
@@ -604,7 +607,7 @@ describe("/rewind and the fork offer", () => {
 			{ id: "u2", type: "message", message: { role: "user" } },
 		);
 		// A run woken by a team message or job report is not a turn of its own; the user's next prompt is.
-		await handlers.get("input")!({ source: "extension", text: "report" }, ctx);
+		await handlers.get("input")!({ source: "feature", text: "report" }, ctx);
 		await handlers.get("agent_start")!({}, ctx);
 		await handlers.get("input")!({ source: "interactive", text: "next" }, ctx);
 		await handlers.get("agent_start")!({}, ctx);

@@ -1,11 +1,14 @@
 import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
 import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import octocode from "../../src/octocode/index.ts";
 import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
+import { captureAll, type AgentContext } from "./agent-context/capture.ts";
+import { isMcpTool } from "./agent-context/analyze.ts";
+import { systemText } from "./agent-context/render.ts";
 
 // Measured as shipped: the research CLI resolves and agent shells run it, whatever this host has.
 vi.mock("../../src/octocode/cli/shim.ts", async (original) => ({
@@ -71,12 +74,12 @@ async function promptSize(options: {
 	if (options.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
 	// Every tool declared in full, as once used in this folder: the deferred declaration (`mcpExposure: "recent"`) is smaller.
 	const fake = fakeHost({ mcpExposure: "direct" });
-	Object.assign(fake.api, { getSessionName: () => undefined });
+	Object.assign(fake.api.session, { getName: () => undefined });
 	await octocode(fake.api);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: !options.subagent });
 	Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 	await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-	const active = fake.api.getActiveTools().filter((name) => !options.exclude?.includes(name));
+	const active = fake.api.tools.getActive().filter((name) => !options.exclude?.includes(name));
 	const sections: Record<string, string> = {};
 	await fake.fire(
 		"before_agent_start",
@@ -89,7 +92,7 @@ async function promptSize(options: {
 	);
 	const perTool: Record<string, number> = {};
 	let backlogEntities = 0;
-	for (const tool of fake.api.getAllTools().filter((candidate) => active.includes(candidate.name))) {
+	for (const tool of fake.api.tools.getAll().filter((candidate) => active.includes(candidate.name))) {
 		const { description, parameters, promptGuidelines } = tool as {
 			description: string;
 			parameters: unknown;
@@ -134,17 +137,34 @@ const BACKLOG_ENTITIES_CEILING = 1_750;
  * Main policy and tool surfaces, excluding entity fields; tightened after instruction and description compression.
  * Raised from 36_950 for the user-requested rules: self versus delegate, worktree children beside other sessions, teams,
  * tmux use and grooming the backlog after a close (measured 37_373). Then 37_475 for the coordinate guideline that has every
- * agent check `coordinate` `list` before merges and repository-wide actions too (measured 37_448).
+ * agent check `coordinate` `list` before merges and repository-wide actions too (measured 37_448). Lowered to 36_800 (measured 36_410, 1.1% over) after the `agent` task-field descriptions were shortened. Lowered to 33_500
+ * (measured 33_129, 1.1% over) after the efficiency pass that folded duplicated policy lines into the MCP block and tools.
  */
-const MAIN_CEILING = 37_475;
+const MAIN_CEILING = 33_500;
 /**
  * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`. Raised from 21_050 for the rules that make every specialist
  * release the processes, timers and servers it starts and spend context on the next decision (measured 21_371).
  * Raised from 21_400 for the user-requested tmux rule: when to use a private tmux server and how to drive it safely
- * (measured 21_651). Then 21_755 for the same coordinate guideline as the main ceiling (measured 21_726).
+ * (measured 21_651). Then 21_755 for the same coordinate guideline as the main ceiling (measured 21_726). Then 22_000
+ * (user-approved) for the user's coding rules: modular code for parallel work, clean architecture and code, strict lint,
+ * scripts that condense output, and an item done only when its tasks are done and its resources released (measured 21_962).
+ * Then 22_450 (user-approved; measured 22_373): the user's testing rule (edge cases, the real path, outcomes over
+ * internals), `wait`'s cron fields (+207) and `bash`'s `sandbox` parameter (+155), less the child ask line that now
+ * defers to the escalation rule (-136).
  */
-const SPECIALIST_CEILING = 21_755;
+const SPECIALIST_CEILING = 22_450;
+
+/**
+ * Measured 19,346 (MCP 11,750 + skills 7,596); 0.8% over. Raised from 19,500 (user-approved) for the user-requested
+ * research, classify and maintenance skills, with octocode-research hidden on this host (measured 20,103).
+ */
+const MCP_SKILLS_MAIN = 20_300;
+/**
+ * Measured 12,904 at most (reviewer: MCP 11,750 + a 2-skill catalog 1,154; researcher 12,838); 3.8% over. Raised from 12,600
+ * because the bundled octocode-mcp tool text grew from 10,724 to 11,750, which Octocode may not rewrite.
+ */
+const MCP_SKILLS_FILTERED = 13_400;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -204,5 +224,64 @@ describe("prompt size", () => {
 		console.log(`${name}: ${scoped.total} chars`);
 		for (const tool of ["file", "bash", "agent", "archive", "memory", "skill"])
 			expect(scoped.perTool[tool]).toBeGreaterThan(0);
+	});
+});
+
+/*
+ * The shipped heads, captured from real sessions on a scripted model (the same capture `generate:prompts` writes). Server
+ * text is the sibling's, so this caps what a role pays for it on every request instead of trimming it.
+ */
+describe("declared MCP tools and skills catalog", () => {
+	let contexts: AgentContext[] = [];
+	beforeAll(async () => {
+		contexts = await captureAll();
+	}, 600_000);
+	const named = (name: string) => contexts.find((context) => context.name === name)!;
+	const bytes = (value: string) => Buffer.byteLength(value);
+	/** Bytes of every declared MCP tool plus the system prompt's skill catalogs (own and bundled Octocode skills). */
+	const mcpAndSkills = (context: AgentContext) => {
+		const text = systemText(context);
+		const catalogs = [...text.matchAll(/<(?:octocode_)?skills>[\s\S]*?<\/(?:octocode_)?skills>/g)].map(([block]) =>
+			bytes(block),
+		);
+		const mcp = context.tools
+			.filter((tool) => isMcpTool(tool.name))
+			.reduce((sum, tool) => sum + bytes(tool.name + tool.description + JSON.stringify(tool.parameters)), 0);
+		return { mcp, skills: catalogs.reduce((sum, size) => sum + size, 0) };
+	};
+
+	// Each ceiling is at most 5% over its measured reading; a role with a smaller catalog (B503) gets a lower one.
+	const CEILINGS: Record<string, number> = {
+		main: MCP_SKILLS_MAIN,
+		general: MCP_SKILLS_MAIN,
+		implementer: MCP_SKILLS_MAIN,
+		researcher: MCP_SKILLS_FILTERED,
+		reviewer: MCP_SKILLS_FILTERED,
+	};
+	it.each(Object.keys(CEILINGS))("%s stays under its MCP plus skills ceiling", (name) => {
+		const { mcp, skills } = mcpAndSkills(named(name));
+		console.log(`${name}: mcp ${mcp}, skills ${skills}`);
+		expect(mcp).toBeGreaterThan(0);
+		expect(skills).toBeGreaterThan(0);
+		expect(mcp + skills, `MCP declarations ${mcp} + skills catalog ${skills}`).toBeLessThanOrEqual(CEILINGS[name]);
+	});
+
+	// Every role declares the shared core; what it does not use stays on demand (listed in `<tools>`, declared when used).
+	const CORE = ["bash", "file", "mcp", "wait", "memory", "agent", "skill"];
+	const ON_DEMAND = ["archive", "models", "browser", "graphQuery", "graphBuild"];
+	it.each(["general", "implementer", "researcher", "reviewer"])(
+		"%s declares its core tools and leaves the rest on demand",
+		(name) => {
+			const declared = named(name).tools.map((tool) => tool.name);
+			for (const tool of CORE) expect(declared).toContain(tool);
+			for (const tool of ON_DEMAND) expect(declared).not.toContain(tool);
+			expect(declared.some(isMcpTool)).toBe(true);
+		},
+	);
+
+	it("the main session adds the coordinator tools to the same core", () => {
+		const declared = named("main").tools.map((tool) => tool.name);
+		for (const tool of [...CORE, "backlog", "backlogPlan", "askUser"]) expect(declared).toContain(tool);
+		for (const tool of ON_DEMAND) expect(declared).not.toContain(tool);
 	});
 });

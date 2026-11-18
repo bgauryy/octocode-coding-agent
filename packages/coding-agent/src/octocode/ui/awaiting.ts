@@ -1,7 +1,7 @@
 import type { ApplicationAwaiting, Question } from "@octocodeai/octocode-contracts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import type { ExtensionUIAskView } from "../../core/features/types.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import type { AskView } from "../../core/features/types.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { clipText, firstLine } from "../shared/util.ts";
 import { promptTitle } from "../shared/locks.ts";
@@ -19,7 +19,7 @@ export function awaitingFor(event: {
 	options?: string[];
 	allowsText?: boolean;
 	approval?: boolean;
-	ask?: ExtensionUIAskView;
+	ask?: AskView;
 	questions?: Question[];
 }): ApplicationAwaiting {
 	const title = promptTitle(event);
@@ -85,7 +85,7 @@ function redactedQuestion(q: Question): Question {
  * The ask card's content for the browser, from the dialog's own view: every string redacted and bounded, the option
  * descriptions aligned with the dialog's options (a view whose options differ from them is not drawn).
  */
-function cardFields(ask: ExtensionUIAskView, optionCount: number): Partial<ApplicationAwaiting> {
+function cardFields(ask: AskView, optionCount: number): Partial<ApplicationAwaiting> {
 	const meta = (ask.meta ?? []).slice(0, 12).map((line) => text(line, 400));
 	const body = ask.body && {
 		text: text(ask.body.text, 20_000),
@@ -108,6 +108,7 @@ function cardFields(ask: ExtensionUIAskView, optionCount: number): Partial<Appli
 		...(details.length ? { details } : {}),
 		...(optionInfo.some((info) => Object.keys(info).length) ? { optionInfo } : {}),
 		...(aligned && ask.writeIn ? { writeIn: text(ask.writeIn.label, 200) } : {}),
+		...(aligned && ask.timeoutSeconds ? { timeoutSeconds: ask.timeoutSeconds } : {}),
 	};
 }
 
@@ -127,32 +128,32 @@ interface OpenDialog {
  * a select) are reported too, so the client always sees the dialog that is actually open. Open dialogs are tracked by
  * the broker's id: a close removes its own dialog, whatever order dialogs close in.
  */
-export function registerAwaiting(api: ExtensionAPI): void {
-	const publish = (ctx: ExtensionContext, awaiting?: ApplicationAwaiting) =>
+export function registerAwaiting(api: FeatureSetup): void {
+	const publish = (ctx: FeatureContext, awaiting?: ApplicationAwaiting) =>
 		getApplicationPortForSession(ctx.sessionManager.getSessionId())?.publishDomain({
 			type: "session.awaiting",
 			...(awaiting ? { awaiting } : {}),
 		});
 	// Dialogs can stack (an approval over a question); the newest open one is shown until all close.
 	let open: OpenDialog[] = [];
-	api.on("session_start", async () => {
+	api.bus.on("session_start", async () => {
 		open = [];
 	});
-	api.on("ui_prompt_start", async (event, ctx) => {
+	api.bus.on("ui_prompt_start", async (event, ctx) => {
 		const blocking = event.blocking === true;
 		if (ctx.isIdle() && !blocking) return;
 		const awaiting = awaitingFor(event);
 		open.push({ id: event.id, awaiting, blocking });
 		publish(ctx, awaiting);
 	});
-	api.on("ui_prompt_end", async (event, ctx) => {
+	api.bus.on("ui_prompt_end", async (event, ctx) => {
 		const index = open.findIndex((dialog) => dialog.id === event.id);
 		if (index < 0) return;
 		open.splice(index, 1);
 		publish(ctx, open.at(-1)?.awaiting);
 	});
 	// /new or /resume replaces the session and disposes its application service: tell the page the dialog is gone first.
-	api.on("session_shutdown", async (_event, ctx) => {
+	api.bus.on("session_shutdown", async (_event, ctx) => {
 		if (open.length === 0) return;
 		open = [];
 		try {
@@ -162,7 +163,7 @@ export function registerAwaiting(api: ExtensionAPI): void {
 		}
 	});
 	// The run is over: what it waited on is not a wait any more, but a relayed subagent dialog still is.
-	api.on("agent_settled", async (_event, ctx) => {
+	api.bus.on("agent_settled", async (_event, ctx) => {
 		const kept = open.filter((dialog) => dialog.blocking);
 		if (kept.length === open.length) return;
 		open = kept;

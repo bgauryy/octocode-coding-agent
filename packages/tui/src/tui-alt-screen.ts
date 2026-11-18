@@ -6,6 +6,7 @@ import { detachScrollViews } from "./layout/detach.ts";
 import type { Terminal } from "./terminal.ts";
 import { registerTerminalRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT, OSC133_ZONE_PREFIX } from "./terminal/sequences.ts";
+import { setPointerClicksActive } from "./tui/pointer-clicks.ts";
 import { clipLinesToWidth } from "./tui/clip.ts";
 import { readChildren } from "./tui/container-state.ts";
 import {
@@ -224,6 +225,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	protected override beforeTerminalStart(): void {
 		this.stopPointerGestures();
 		this.altScreenActive = true;
+		setPointerClicksActive(this.mouseEnabled);
 		this.disposeExitRestore = registerTerminalRestore(this.terminal, buildAltScreenForcedExit(this.mouseEnabled));
 		if (this.images.start()) this.invalidate();
 		this.lastDocument = [];
@@ -276,6 +278,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	protected override afterTerminalStop(options: TuiStopOptions): void {
 		if (!this.altScreenActive) return;
 		this.altScreenActive = false;
+		setPointerClicksActive(false);
 		if (options.preserveScreen) {
 			this.terminal.write(`${BEGIN_SYNCHRONIZED_OUTPUT}${EXIT_ALT_SCREEN}\x1b[?25h${END_SYNCHRONIZED_OUTPUT}`);
 		} else {

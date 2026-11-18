@@ -14,6 +14,7 @@ import {
 	script,
 	session,
 	type Session,
+	sessionIdle,
 	settledRuns,
 } from "./e2e-a2a-helpers.ts";
 import {
@@ -34,12 +35,11 @@ beforeAll(async () => {
 	endpoint = await startEndpoint();
 });
 afterAll(async () => {
+	await killEverything();
 	await endpoint?.close();
 });
-afterEach(async (context) => {
+afterEach((context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	await killEverything();
-	endpoint.requests.length = 0;
 });
 
 const ONCE = "Allow once";
@@ -67,10 +67,18 @@ async function send(from: Session, to: Session, steps: string, text = "Please lo
 const reached = (steps: string) => requestsOf(endpoint, steps).length > 0;
 
 describe("in manual mode", () => {
+	// One manual receiver and one sender serve every case: each case counts dialogs from where the last one left off.
+	let box: Sandbox;
+	let receiver: Session;
+	let sender: Session;
+	beforeAll(async () => {
+		box = sandbox(endpoint);
+		receiver = await manualSession(box);
+		sender = await session(box);
+	});
+	const dialogsShown = () => dialogs(receiver.run).length;
+
 	it("the dialog names the process, its request and that it is external; once holds for one message; tools still ask", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await manualSession(box);
-		const sender = await session(box);
 		const marker = path.join(box.root, "ran");
 		const first = script([
 			{ tool: "bash", args: { command: `echo ran > ${JSON.stringify(marker)}` } },
@@ -114,18 +122,16 @@ describe("in manual mode", () => {
 		await until(() => dialogs(receiver.run).length === 3, "the next message's dialog");
 		answer(receiver.run, dialogs(receiver.run)[2].id, ONCE);
 		await until(() => reached(second), "the second message");
-		await close(receiver, sender);
+		await until(() => settledRuns(receiver.run) === 2, "the receiver's second run to settle");
 	});
 
 	it("a deny reaches the sender: its model is told later, and a waiting CLI gets the refusal", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await manualSession(box);
-		const sender = await session(box);
+		const shownBefore = dialogsShown();
 		const never = script([{ text: "never" }]);
 		const sending = script([message(receiver.name, `Please. ${never}`), { text: "sent" }]);
 		prompt(sender.run, "go", sending);
-		await until(() => dialogs(receiver.run).length === 1, "the dialog");
-		answer(receiver.run, dialogs(receiver.run)[0].id, "Deny");
+		await until(() => dialogsShown() === shownBefore + 1, "the dialog");
+		answer(receiver.run, dialogs(receiver.run)[shownBefore].id, "Deny");
 		await until(
 			() =>
 				requestsOf(endpoint, sending).some((request) =>
@@ -143,10 +149,10 @@ describe("in manual mode", () => {
 		expect(reached(never)).toBe(false);
 
 		const waiting = octocodeApi(box, ["send", "--to", receiver.name, "--from", "ci", "--wait", "--", "From a script."]);
-		await until(() => dialogs(receiver.run).length === 2, "the script's dialog");
+		await until(() => dialogsShown() === shownBefore + 2, "the script's dialog");
 		// A caller that names no running process has no process grant to be offered.
-		expect(dialogs(receiver.run)[1].options).toEqual([ONCE, ALL, "Deny", expect.any(String)]);
-		answer(receiver.run, dialogs(receiver.run)[1].id, "Deny");
+		expect(dialogs(receiver.run)[shownBefore + 1].options).toEqual([ONCE, ALL, "Deny", expect.any(String)]);
+		answer(receiver.run, dialogs(receiver.run)[shownBefore + 1].id, "Deny");
 		const refused = await waiting;
 		expect(refused.code).toBe(1);
 		expect(refused.stderr).toContain(`The user of ${receiver.name} denied this message`);
@@ -166,19 +172,20 @@ describe("in manual mode", () => {
 		// A key that was refused stays refused; a new key asks again.
 		const keyed = await octocodeApi(box, ["send", "--to", receiver.name, "--key", "k1", "--", "With a key."]);
 		expect(JSON.parse(keyed.stdout).queued).toBe("waiting-for-user");
-		await until(() => dialogs(receiver.run).length === 4, "the keyed dialog");
-		answer(receiver.run, dialogs(receiver.run)[3].id, "Deny");
+		await until(() => dialogsShown() === shownBefore + 4, "the keyed dialog");
+		answer(receiver.run, dialogs(receiver.run)[shownBefore + 3].id, "Deny");
 		await new Promise((resolve) => setTimeout(resolve, 500));
 		const retry = await octocodeApi(box, ["send", "--to", receiver.name, "--key", "k1", "--", "With a key."]);
 		expect(retry.code).toBe(1);
 		expect(retry.stderr).toContain("denied this message");
-		expect(dialogs(receiver.run)).toHaveLength(4);
-		await close(receiver, sender);
+		expect(dialogs(receiver.run)).toHaveLength(shownBefore + 4);
+		await sessionIdle(sender);
 	});
 
 	it("the sender's own timeout bounds the wait, and an external approval cannot answer the dialog", async () => {
-		const box = sandbox(endpoint);
-		const receiver = await manualSession(box);
+		// Earlier cases' model requests are done: only this case's requests count below.
+		await sessionIdle(sender);
+		endpoint.requests.length = 0;
 		const timed = await octocodeApi(box, [
 			"send",
 			"--to",
@@ -206,6 +213,7 @@ describe("in manual mode", () => {
 		expect(reached(pending)).toBe(false);
 		answer(receiver.run, shown?.id, ONCE);
 		await until(() => reached(pending), "the message after a real answer");
-		await close(receiver);
+		await close(receiver, sender);
+		expect(box.survivors()).toEqual([]);
 	});
 });

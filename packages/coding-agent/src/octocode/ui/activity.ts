@@ -1,4 +1,5 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { animationClock } from "@octocodeai/octocode-tui";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { beginRun, resetRun, settleRun } from "../../utils/run-clock.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
 import { setRowsAnimate } from "./chrome.ts";
@@ -19,7 +20,7 @@ interface ActivityControl {
 }
 
 /** Whether `ctx` still belongs to a live session: its getters throw once the runner is invalidated. */
-function isLive(ctx: ExtensionContext): boolean {
+function isLive(ctx: FeatureContext): boolean {
 	try {
 		void ctx.hasUI;
 		return true;
@@ -30,18 +31,19 @@ function isLive(ctx: ExtensionContext): boolean {
 }
 
 export function registerActivity(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: { onChange?: (line: string | undefined) => void; workingLine: boolean },
 ): ActivityControl {
 	const activity = new Activity();
-	let ctx: ExtensionContext | undefined;
+	let ctx: FeatureContext | undefined;
 	let shown: string | undefined;
 	let reported: string | undefined;
 	/** Repaints when interactions queue behind an open dialog; held per session. */
 	let unsubscribe: (() => void) | undefined;
-	let heartbeat: ReturnType<typeof setInterval> | undefined;
+	/** Unsubscribes the 1 s elapsed-time tick from the shared animation clock. */
+	let heartbeat: (() => void) | undefined;
 	const clearHeartbeat = () => {
-		clearInterval(heartbeat);
+		heartbeat?.();
 		heartbeat = undefined;
 	};
 
@@ -80,7 +82,7 @@ export function registerActivity(
 		paint();
 	};
 
-	api.on("session_start", async (_event, next) => {
+	api.bus.on("session_start", async (_event, next) => {
 		ctx = next;
 		shown = undefined;
 		unsubscribe?.();
@@ -88,58 +90,57 @@ export function registerActivity(
 		if (options.workingLine) resetRun();
 		stop();
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		unsubscribe?.();
 		unsubscribe = undefined;
 		if (options.workingLine) resetRun();
 		stop();
 		ctx = undefined;
 	});
-	api.on("agent_start", async (_event, next) => {
+	api.bus.on("agent_start", async (_event, next) => {
 		ctx = next;
 
 		const now = Date.now();
 		activity.start(now);
 		clearHeartbeat();
 		if (options.workingLine && next.hasUI && next.mode === "tui") {
-			heartbeat = setInterval(paint, 1000);
-			heartbeat.unref();
+			heartbeat = animationClock.subscribe(() => paint(), { everyMs: 1000, kind: "info" });
 		}
 		if (options.workingLine) beginRun(now);
 		paint();
 	});
-	api.on("message_update", async (event) => {
+	api.bus.on("message_update", async (event) => {
 		if (event.message.role !== "assistant" || !activity.ticking()) return;
 		const update = event.assistantMessageEvent;
 		if (activity.stream(update.type, Date.now(), update.type === "thinking_delta" ? update.delta : undefined)) paint();
 	});
-	api.on("message_end", async (event) => {
+	api.bus.on("message_end", async (event) => {
 		if (!activity.ticking()) return;
 		if (event.message.role === "assistant") activity.messageDone(Date.now());
 		paint();
 	});
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("tool_execution_start", async (event) => {
 		if (event.parentToolCallId) return;
 		activity.toolStart(event.toolCallId, event.toolName, event.args, Date.now());
 		paint();
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		if (event.parentToolCallId) return;
 		activity.toolEnd(event.toolCallId, Date.now());
 		paint();
 	});
 	// A dialog over another (an input after "type my own") is one wait, not two.
-	api.on("ui_prompt_start", async (event) => {
+	api.bus.on("ui_prompt_start", async (event) => {
 		if (event.nested) return;
 		activity.promptStart(promptTitle(event), Date.now());
 		paint();
 	});
-	api.on("ui_prompt_end", async (event) => {
+	api.bus.on("ui_prompt_end", async (event) => {
 		if (event.nested) return;
 		activity.promptEnd();
 		paint();
 	});
-	api.on("agent_settled", async (event, next) => {
+	api.bus.on("agent_settled", async (event, next) => {
 		// A queued message continues the run: the working line resumes on the same clock.
 		if (options.workingLine) settleRun(Date.now(), next.hasPendingMessages() && !event.aborted);
 		stop();

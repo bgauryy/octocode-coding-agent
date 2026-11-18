@@ -18,7 +18,7 @@ import type {
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
-import type { ExtensionUIAskView, ExtensionUIPermissionRequest } from "../../core/features/types.ts";
+import type { AskView, PermissionPrompt } from "../../core/features/types.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
@@ -50,7 +50,7 @@ export interface RpcSlashCommand {
 	/** Command name (without leading slash) */
 	name: string;
 	description?: string;
-	/** Usage of the arguments, such as `[all|<query>]` (extension commands) */
+	/** Usage of the arguments, such as `[all|<query>]` (feature commands) */
 	argumentHint?: string;
 	/** What kind of command this is */
 	source: "extension" | "prompt" | "skill";
@@ -228,9 +228,9 @@ export type RpcResponse =
 			authRequired?: true;
 	  };
 
-// Extension UI Events (stdout)
+// Feature UI Events (stdout)
 
-/** Emitted when an extension needs user input */
+/** Emitted when a feature needs user input */
 export type RpcExtensionUIRequest =
 	| {
 			type: "extension_ui_request";
@@ -240,11 +240,11 @@ export type RpcExtensionUIRequest =
 			options: string[];
 			timeout?: number;
 			/** A permission prompt sent to a client without `--rpc-ask`: the identity of the call and which `options` allow it once or refuse it. */
-			permission?: ExtensionUIPermissionRequest;
+			permission?: PermissionPrompt;
 			/** The dialog decides whether to allow an action: show it as an approval. Set on a permission prompt sent to a client without `--rpc-ask`. */
 			approval?: boolean;
 			/** The permission prompt's card, a terminal may draw it; its labels are `options`. Clients may ignore it. */
-			ask?: ExtensionUIAskView;
+			ask?: AskView;
 	  }
 	| {
 			type: "extension_ui_request";
@@ -315,7 +315,7 @@ export interface RpcExtensionUIDismiss {
 	id: string;
 }
 
-// Extension UI Commands (stdin)
+// Feature UI Commands (stdin)
 
 export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; value: string }
@@ -323,8 +323,8 @@ export type RpcExtensionUIResponse =
 	| { type: "extension_ui_response"; id: string; replies: Reply[] }
 	| { type: "extension_ui_response"; id: string; cancelled: true };
 
-/** Extension failure already emitted on the RPC wire alongside session events. */
-export interface RpcExtensionErrorEvent {
+/** Feature failure already emitted on the RPC wire alongside session events. */
+export interface RpcFeatureErrorEvent {
 	type: "extension_error";
 	extensionPath: string;
 	event: string;

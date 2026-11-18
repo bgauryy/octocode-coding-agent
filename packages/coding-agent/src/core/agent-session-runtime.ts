@@ -87,7 +87,7 @@ export class AgentSessionRuntime {
 	 * but before the current session is invalidated.
 	 *
 	 * This is for host-owned UI teardown that must not yield to the event loop,
-	 * such as detaching extension-provided TUI components before the old extension
+	 * such as detaching feature-provided TUI components before the old feature
 	 * context becomes stale.
 	 */
 	setBeforeSessionInvalidate(beforeSessionInvalidate?: () => void): void {
@@ -98,7 +98,7 @@ export class AgentSessionRuntime {
 		reason: "new" | "resume",
 		targetSessionFile?: string,
 	): Promise<{ cancelled: boolean }> {
-		const runner = this.session.extensionRunner;
+		const runner = this.session.featureHost;
 		if (!runner.hasHandlers("session_before_switch")) {
 			return { cancelled: false };
 		}
@@ -115,7 +115,7 @@ export class AgentSessionRuntime {
 		entryId: string,
 		options: { position: "before" | "at" },
 	): Promise<{ cancelled: boolean }> {
-		const runner = this.session.extensionRunner;
+		const runner = this.session.featureHost;
 		if (!runner.hasHandlers("session_before_fork")) {
 			return { cancelled: false };
 		}

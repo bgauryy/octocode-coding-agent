@@ -71,12 +71,19 @@ export function catalogPrices(model: Model<Api> | undefined, ttlMs: number): Cac
  * Requests expected to re-send the context's old results: as many as the context has seen so far (`requests`: the
  * replies since it started or was last compacted, never the ones kept from before a compaction; a session that has run k requests is about as likely to run k more), capped by the
  * requests left before the context (`contextTokens`) fills `contextWindow` (the compaction threshold) at its average growth per request so far,
- * when a compaction summarizes the old results anyway.
+ * when a compaction summarizes the old results anyway. Growth counts from `startTokens`, the prompt the first of those
+ * requests sent (the fixed prefix, and after a compaction its summary and kept tail), or from zero when it is unknown.
  */
-export function expectedRemainingRequests(requests: number, contextTokens: number, contextWindow?: number): number {
+export function expectedRemainingRequests(
+	requests: number,
+	contextTokens: number,
+	contextWindow?: number,
+	startTokens = 0,
+): number {
 	if (requests <= 0) return 0;
 	if (contextWindow === undefined || contextWindow <= 0 || contextTokens <= 0) return requests;
-	const growthPerRequest = contextTokens / requests;
+	const growthPerRequest = (contextTokens - Math.min(startTokens, contextTokens)) / requests;
+	if (growthPerRequest <= 0) return requests;
 	return Math.max(0, Math.min(requests, (contextWindow - contextTokens) / growthPerRequest));
 }
 
@@ -90,9 +97,15 @@ export interface ClearingCost {
 	rewriteAnyway: boolean;
 }
 
+/** What clearing saves in the unit of `prices`: `T_old × R × N − S_after × W`, with no write when the cache is rewritten anyway. */
+export function clearingSaving(cost: ClearingCost): number {
+	const saved = cost.oldTokens * cost.prices.read * cost.remainingRequests;
+	return cost.rewriteAnyway ? saved : saved - cost.suffixTokensAfter * cost.prices.write;
+}
+
 /** Whether clearing pays: `T_old × R × N > S_after × W`, or any saving when the cache is rewritten anyway. */
 export function clearingPays(cost: ClearingCost): boolean {
 	if (cost.oldTokens <= 0) return false;
 	if (cost.rewriteAnyway) return true;
-	return cost.oldTokens * cost.prices.read * cost.remainingRequests > cost.suffixTokensAfter * cost.prices.write;
+	return clearingSaving(cost) > 0;
 }

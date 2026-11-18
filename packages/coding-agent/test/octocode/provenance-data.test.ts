@@ -51,7 +51,6 @@ describe("provenance: untrusted text saved as data", () => {
 		for (const target of [
 			".claude/settings.json",
 			".git/hooks/pre-commit",
-			".octocode/extensions/x.ts",
 			"scripts/setup.sh",
 			"bin/tool",
 			"tools/run.ps1",

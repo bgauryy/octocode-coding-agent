@@ -19,7 +19,7 @@ function setup() {
 	fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
 	vi.stubEnv("CLAUDE_CONFIG_DIR", path.join(home, ".claude"));
 	const fake = fakeHost();
-	nativeHost(fake.api).setToolPolicy = vi.fn();
+	nativeHost(fake.api).tools.setPolicy = vi.fn();
 	const owner = registerSourcePolicy(fake.api, { home });
 	const ctx = fakeCtx({ cwd, hasUI: false });
 	return {
@@ -60,7 +60,7 @@ it("refreshes same-sized settings changes and reinstates tool visibility", async
 	const f = setup();
 	fs.writeFileSync(f.user, JSON.stringify({ permissions: { deny: ["Bash"] } }));
 	await f.owner.refresh(f.ctx);
-	const setter = vi.mocked(nativeHost(f.fake.api).setToolPolicy!);
+	const setter = vi.mocked(nativeHost(f.fake.api).tools.setPolicy!);
 	expect(setter.mock.calls.at(-1)![0]("bash")).toBe(false);
 	fs.writeFileSync(f.user, JSON.stringify({ permissions: { deny: ["Read"] } }));
 	await f.owner.refresh(f.ctx);

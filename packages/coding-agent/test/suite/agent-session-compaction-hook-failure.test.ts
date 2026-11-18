@@ -15,7 +15,7 @@ async function harnessWhoseHookReturns(result: { cancel: true; failure?: string 
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_before_compact", async () => {
+				api.bus.on("session_before_compact", async () => {
 					calls.push(calls.length);
 					return result;
 				});

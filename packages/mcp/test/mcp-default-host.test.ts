@@ -75,19 +75,19 @@ describe("default MCP in the shared host", () => {
 			presets: [{ name: "note-kit", config: { command: process.execPath, args: [echo] } }],
 			prepareLaunch: (entry) => entry,
 		});
-		let registered: ReturnType<typeof h.api.getMcpServers> = [
+		let registered: ReturnType<typeof h.api.mcpServers.list> = [
 			{
 				name: "note_kit",
-				extensionPath: "extension",
-				config: { command: process.execPath, args: [echo], env: { ECHO_INSTRUCTIONS: "EXTENSION" } },
+				source: "feature",
+				config: { command: process.execPath, args: [echo], env: { ECHO_INSTRUCTIONS: "FEATURE" } },
 			},
 		];
-		h.api.getMcpServers = () => registered;
+		h.api.mcpServers.list = () => registered;
 		await h.start();
 		await h.prompt();
 		expect(h.state.servers).toHaveLength(1);
-		expect(h.state.servers[0].entry.scope).toBe("extension");
-		expect(h.state.servers[0].connection?.instructions).toBe("EXTENSION");
+		expect(h.state.servers[0].entry.scope).toBe("feature");
+		expect(h.state.servers[0].connection?.instructions).toBe("FEATURE");
 		registered = [];
 		await h.fire("mcp_servers_change", {}, h.ctx);
 		expect(h.state.servers).toHaveLength(1);
@@ -96,7 +96,7 @@ describe("default MCP in the shared host", () => {
 		registered = [
 			{
 				name: "note_kit",
-				extensionPath: "extension",
+				source: "feature",
 				config: { command: process.execPath, args: [echo], env: { ECHO_INSTRUCTIONS: "NEW" } },
 			},
 		];
@@ -136,12 +136,12 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		const name = "mcp__octocode__localFetch";
 		const definition = { ...h.tools.get(name), sourceInfo: { path: "builtin:mcp", owner: "builtin" as const } };
-		const status = getMcpSessionStatus(h.api.events);
+		const status = getMcpSessionStatus(h.api.channels);
 		expect(planningRefusal({ toolName: name, input: {} }, definition, status)).toBeUndefined();
 		expect(
 			planningRefusal(
 				{ toolName: name, input: {} },
-				{ ...definition, sourceInfo: { path: "extension" } } as never,
+				{ ...definition, sourceInfo: { path: "feature" } } as never,
 				status,
 			),
 		).toContain("blocks");
@@ -164,13 +164,13 @@ describe("default MCP in the shared host", () => {
 			const refusal = planningRefusal(
 				{ toolName: name, input: {} },
 				definition,
-				getMcpSessionStatus(configured.api.events),
+				getMcpSessionStatus(configured.api.channels),
 			);
 			if (roles) expect(refusal).toContain("blocks");
 			else expect(refusal).toBeUndefined();
 		}
 		await h.call("mcp", { intent: "stop", server: "octocode" });
-		expect(planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(h.api.events))).toContain(
+		expect(planningRefusal({ toolName: name, input: {} }, definition, getMcpSessionStatus(h.api.channels))).toContain(
 			"blocks",
 		);
 	});
@@ -219,7 +219,7 @@ describe("default MCP in the shared host", () => {
 		await h.start();
 		await h.prompt();
 		expect(await h.call("mcp", { intent: "stop", server: "octocode" })).not.toMatchObject({ isError: true });
-		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", state: "stopped" }]);
+		expect(getMcpSessionStatus(h.api.channels)).toMatchObject([{ name: "octocode", state: "stopped" }]);
 		const stopped = await h.prompt();
 		// The block keeps its contract; the stop goes to the status section only.
 		expect(stopped.mcps).toContain('<mcp name="octocode" tools="mcp__octocode__*">');
@@ -255,7 +255,9 @@ describe("default MCP in the shared host", () => {
 		await h.prompt();
 		expect(h.transports).toHaveLength(0);
 		expect(h.tools.has("mcp__octocode__localFetch")).toBe(false);
-		expect(getMcpSessionStatus(h.api.events)).toMatchObject([{ name: "octocode", enabled: false, state: "disabled" }]);
+		expect(getMcpSessionStatus(h.api.channels)).toMatchObject([
+			{ name: "octocode", enabled: false, state: "disabled" },
+		]);
 	});
 	it("names only switched-on servers the review holds back as awaiting approval in mcp_status", async () => {
 		const entry = (name: string, enabled: boolean) => ({

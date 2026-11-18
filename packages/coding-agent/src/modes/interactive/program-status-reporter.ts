@@ -1,3 +1,4 @@
+import { isPendingApplicationPhase, type ApplicationPhase } from "@octocodeai/octocode-contracts";
 import type { ProgramStatus, Terminal } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../config.ts";
 import type { AgentSessionEvent } from "../../core/agent-session.ts";
@@ -11,7 +12,8 @@ function firstLine(text: string | undefined): string {
 /**
  * Reports interactive-mode state to the terminal (OSC 7501): `working` during agent runs and
  * compaction, `blocked` while a dialog waits for the user, then `done`, `error`, or `idle` once the run
- * settles. Messages are limited to the session name, dialog titles, and the first line of errors; prompts
+ * settles, except while the session's phase is waiting, resuming or scheduled: background work or a wake continues the
+ * job, so it stays `working` until the phase is final. Messages are limited to the session name, dialog titles, and the first line of errors; prompts
  * and assistant output are never reported.
  */
 export class SessionStatusReporter {
@@ -25,6 +27,8 @@ export class SessionStatusReporter {
 	private restingStatus: ProgramStatus = { state: "idle" };
 	/** Open dialogs by source, in the order they opened. The most recent one is reported. */
 	private readonly blocked = new Map<string, BlockedStatus>();
+	/** The session's job goes on without a run (background agents, a wake, a timer). */
+	private phasePending = false;
 	private lastReport: string | undefined;
 
 	constructor(getTerminal: () => Terminal, getSessionName: () => string | undefined) {
@@ -83,10 +87,17 @@ export class SessionStatusReporter {
 		this.report();
 	}
 
+	/** The session's phase from the application state; undefined forgets it. */
+	setPhase(phase: ApplicationPhase | undefined): void {
+		this.phasePending = phase !== undefined && isPendingApplicationPhase(phase);
+		this.report();
+	}
+
 	/** Forget the previous session's run, for example after switching sessions. */
 	reset(): void {
 		this.runActive = false;
 		this.compacting = false;
+		this.phasePending = false;
 		this.runResult = { state: "done" };
 		this.restingStatus = { state: "idle" };
 		this.report();
@@ -104,7 +115,7 @@ export class SessionStatusReporter {
 		const blocked = [...this.blocked.values()].at(-1);
 		if (blocked) return { state: "blocked", ...blocked };
 		if (this.compacting) return { state: "working", message: "Compacting context" };
-		const status = this.runActive ? { state: "working" as const } : this.restingStatus;
+		const status = this.runActive || this.phasePending ? { state: "working" as const } : this.restingStatus;
 		if (status.state === "working" || status.state === "done") return { ...status, message: this.getSessionName() };
 		return status;
 	}

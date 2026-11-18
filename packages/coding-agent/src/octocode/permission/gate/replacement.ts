@@ -5,7 +5,7 @@ import { isolatedTreeRefusal } from "../isolated-tree.ts";
 import { readOnlyRoleRefusal } from "../read-only-role.ts";
 import { commandWriteTargets } from "../shell/write-targets.ts";
 import { captureToolInvocation } from "../../../core/tools/tool-invocation.ts";
-import type { ExtensionContext, ToolCallEvent } from "../../../core/features/index.ts";
+import type { FeatureContext, ToolCallEvent } from "../../../core/features/index.ts";
 import type { SourceDecision } from "../source-policy/rules.ts";
 import type { Permission } from "../ask.ts";
 import type { PrepareReplacement } from "../ask/types.ts";
@@ -19,8 +19,8 @@ import { classify } from "./classify.ts";
 /** What validates and re-checks a command a user's answer replaced (`Permission.checkWithReplacement`). */
 export interface ReplacementOwner {
 	definition: (name: string) => Tool | undefined;
-	refresh: (ctx: ExtensionContext) => Promise<void>;
-	reserved: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>;
+	refresh: (ctx: FeatureContext) => Promise<void>;
+	reserved: (event: ToolCallEvent, ctx: FeatureContext) => Promise<GateVerdict | undefined>;
 }
 
 interface ReplacementDeps {
@@ -35,7 +35,7 @@ interface ReplacementDeps {
 	};
 	allowedSource: AllowedSource;
 	env?: NodeJS.ProcessEnv;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	originalEvent: ToolCallEvent;
 	prior?: GateVerdict;
 	/** False once the gate's call ended: a replacement made after that is cancelled. */

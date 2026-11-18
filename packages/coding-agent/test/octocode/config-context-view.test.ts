@@ -18,6 +18,7 @@ import { LoadedRow, loadedColumns } from "../../src/modes/interactive/interactiv
 import { initTheme } from "../../src/theme/theme.ts";
 import { type Sandbox, createSandbox, skillFile, write } from "../discovery/fixtures.ts";
 import { createTestSession } from "../helpers/session.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 // The fixture counts its own skills; the Octocode skill collection installed on this machine stays out, as
 // `OCTOCODE_MCP=0` keeps the default server out.
@@ -37,7 +38,7 @@ beforeEach(() => {
 });
 afterEach(() => box.cleanup());
 
-/** Octocode and Pi items that shadow each other, an ignored Pi extension and an untrusted project folder. */
+/** Octocode and Pi items that shadow each other, an ignored Pi hook and an untrusted project folder. */
 function populate(): void {
 	write(path.join(box.agentDir, "AGENTS.md"), "octocode instructions\n");
 	skillFile(path.join(box.agentDir, "skills"), "shared");
@@ -46,7 +47,7 @@ function populate(): void {
 	write(path.join(box.piAgentDir, "AGENTS.md"), "pi instructions\n");
 	skillFile(path.join(box.piAgentDir, "skills"), "shared");
 	skillFile(path.join(box.piAgentDir, "skills"), "pi-only");
-	write(path.join(box.piAgentDir, "extensions", "legacy.ts"), "export default () => {};\n");
+	write(path.join(box.piAgentDir, "hooks", "legacy.ts"), "export default () => {};\n");
 	skillFile(path.join(box.cwd, ".octocode", "skills"), "project-skill");
 }
 
@@ -100,7 +101,7 @@ describe("startup context rows", () => {
 		expect(text).toMatch(/octocode global\n\s+alpha\s+.*skills\/alpha\/SKILL\.md/);
 		expect(text).toContain("duplicate of octocode global");
 		expect(text).toContain("AGENTS.md");
-		expect(text).toMatch(/legacy\.ts\s+.*\(Pi extension, not\s+loaded\)/);
+		expect(text).toMatch(/legacy\.ts\s+.*\(Pi hook, not\s+loaded\)/);
 		expect(text).toMatch(/project-skill[\s\S]*?\(folder not\s+trusted\)/);
 		expect(warningTexts(false)).toContain("1 project item not loaded: folder not trusted; run /trust");
 	});
@@ -136,7 +137,12 @@ describe("/harness config", () => {
 	it("prints the same snapshot as text through the command entry point, with an Octocode and a Pi home", async () => {
 		populate();
 		const settingsManager = SettingsManager.inMemory();
-		const resourceLoader = new DefaultResourceLoader({ cwd: box.cwd, agentDir: box.agentDir, settingsManager });
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: box.cwd,
+			agentDir: box.agentDir,
+			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
+		});
 		await resourceLoader.reload();
 		const { session } = await createTestSession({
 			cwd: box.cwd,
@@ -162,26 +168,24 @@ describe("/harness config", () => {
 		expect(text).toMatch(/pi global: AGENTS\.md \(duplicate of octocode global\)\n {4}~\/\.pi\/agent\/AGENTS\.md/);
 		expect(text).toMatch(/pi global: shared \(duplicate of octocode global\)/);
 		expect(text).toMatch(/pi global: pi-only/);
-		expect(text).toMatch(
-			/pi global: legacy\.ts \(Pi extension, not loaded\)\n\s+~\/\.pi\/agent\/extensions\/legacy\.ts/,
-		);
+		expect(text).toMatch(/pi global: legacy\.ts \(Pi hook, not loaded\)\n\s+~\/\.pi\/agent\/hooks\/legacy\.ts/);
 		expect(text).toContain("convert to hooks.json or a plugin");
 	});
 });
 
 describe("one message per problem", () => {
-	it("says a Pi extension is not loaded once: in the Not loaded row, not in a warning or the notice", () => {
+	it("says a Pi hook is not loaded once: in the Not loaded row, not in a warning or the notice", () => {
 		const lines = plain(render(false, 100, false));
 		expect(lines.filter((line) => line.includes("legacy.ts"))).toHaveLength(1);
 		const warnings = startupWarnings(view(false), [], []).warnings;
 		expect(warnings.map((warning) => warning.text).join("\n")).not.toMatch(/Pi code|not loaded: convert|legacy/);
 		// Expanded, the file is listed under Not loaded, not again in a warning's details.
 		expect(warnings.flatMap((warning) => warning.details).join("\n")).not.toContain("legacy.ts");
-		expect(takePiNotice(view(false), box.agentDir)).not.toMatch(/extension/);
+		expect(takePiNotice(view(false), box.agentDir)).not.toMatch(/hook/);
 	});
 
 	it("has no Pi notice when the only Pi item is code that is not loaded (its row says so)", () => {
-		write(path.join(box.piAgentDir, "extensions", "legacy.ts"), "export default () => {};\n");
+		write(path.join(box.piAgentDir, "hooks", "legacy.ts"), "export default () => {};\n");
 		const found = collectContextView({
 			cwd: box.cwd,
 			agentDir: box.agentDir,
@@ -196,11 +200,12 @@ describe("one message per problem", () => {
 			cwd: box.cwd,
 			agentDir: box.agentDir,
 			settingsManager: SettingsManager.inMemory(),
+			nativeFeatures: nativeFeatureSet(),
 		});
 		await loader.reload();
-		const warnings = loader.getExtensions().warnings ?? [];
+		const warnings = loader.getFeatures().warnings ?? [];
 		const legacy = warnings.find((warning) => warning.path.endsWith("legacy.ts"));
-		expect(legacy?.warning).toContain("Pi extension, not loaded");
+		expect(legacy?.warning).toContain("Pi hook, not loaded");
 		expect(legacy?.listedInContext).toBe(true);
 		expect(warningsBesideListing(warnings)).toEqual(warnings.filter((warning) => !warning.listedInContext));
 		expect(warningsBesideListing(warnings).map((warning) => warning.path)).not.toContain(legacy?.path);
@@ -227,7 +232,7 @@ describe("source labels", () => {
 		expect(sourceInfoLabel({ source: "local", scope: "temporary" })).toBe("settings path");
 		// A built-in extension has the `builtin` source.
 		expect(sourceInfoLabel({ source: "builtin", scope: "user" })).toBe("builtin");
-		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: "<builtin:llama.cpp>" })).toBe("builtin");
+		expect(sourceInfoLabel({ source: "builtin", scope: "user", path: "<builtin:mcp>" })).toBe("builtin");
 		expect(sourceInfoLabel({ source: "local", scope: "user" })).toBe("octocode global");
 		expect(sourceInfoLabel({ source: "npm:kit", scope: "project" })).toBe("package npm:kit");
 	});

@@ -39,15 +39,15 @@ it.each(cases)(
 			],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("user_input", (event) => {
+					api.bus.on("user_input", (event) => {
 						if (event.text === "direction queued during late compaction")
 							return cancel ? { block: true } : { additionalContext: ["late input passed the gate"] };
 						return {};
 					});
-					api.on("turn_prompt", (event) => {
+					api.bus.on("turn_prompt", (event) => {
 						if (refreshSection) event.systemPromptOptions.sections.request_status = large;
 					});
-					api.on("session_before_compact", async (event) => {
+					api.bus.on("session_before_compact", async (event) => {
 						order.push("compaction");
 						tokensBeforeCompaction = event.preparation.tokensBefore;
 						if (pauseCompaction) {

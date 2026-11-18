@@ -30,10 +30,9 @@ import type { SessionManager } from "../../../core/session-manager.ts";
 import type { AssistantMessageComponent } from "../components/assistant-message.ts";
 import type { BashExecutionComponent } from "../components/bash-execution.ts";
 import type { CustomEditor } from "../../../theme/custom-editor.ts";
-import type { ExtensionEditorComponent } from "../components/extension-editor.ts";
-import type { ExtensionInputComponent } from "../components/extension-input.ts";
-import type { ExtensionSelectorComponent } from "../components/extension-selector.ts";
-import type { FooterComponent } from "../components/footer.ts";
+import type { DialogEditorComponent } from "../components/dialog-editor.ts";
+import type { DialogInputComponent } from "../components/dialog-input.ts";
+import type { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import type { IdleStatus, StatusIndicator } from "../components/status-indicator.ts";
 import type { ToolExecutionComponent } from "../components/tool-execution.ts";
 import type { SessionStatusReporter } from "../program-status-reporter.ts";
@@ -50,7 +49,7 @@ export interface InteractiveModeState {
 	autoCompactionEscapeHandler: (() => void) | undefined;
 	autocompleteProvider: AutocompleteProvider | undefined;
 	autocompleteProviderWrappers: AutocompleteProviderFactory[];
-	/** Extension listeners for editor text changes (`ui.onEditorChange`), called after Octocode's own handler. */
+	/** Feature listeners for editor text changes (`ui.onEditorChange`), called after Octocode's own handler. */
 	editorChangeListeners: Set<(text: string) => void>;
 	bashComponent: BashExecutionComponent | undefined;
 	bugReportHintShown: boolean;
@@ -60,7 +59,6 @@ export interface InteractiveModeState {
 	customFooter: (Component & { dispose?(): void }) | undefined;
 	customHeader: (Component & { dispose?(): void }) | undefined;
 	readonly defaultEditor: CustomEditor;
-	readonly defaultHiddenThinkingLabel: string;
 	readonly defaultWorkingMessage: string;
 	readonly documentContainer: Container;
 	editor: ActiveEditor;
@@ -68,22 +66,20 @@ export interface InteractiveModeState {
 	readonly editorContainer: Container;
 	/** Entries a transcript rebuild already drew; their `entry_appended` announcement, which can follow it, draws nothing. */
 	readonly entriesRenderedByRebuild: Set<string>;
-	extensionEditor: ExtensionEditorComponent | undefined;
-	extensionInput: ExtensionInputComponent | undefined;
-	extensionSelector: ExtensionSelectorComponent | undefined;
-	readonly extensionTerminalInputSubscriptions: Set<{
+	editorDialog: DialogEditorComponent | undefined;
+	inputDialog: DialogInputComponent | undefined;
+	selectorDialog: DialogSelectorComponent | undefined;
+	readonly featureTerminalInputSubscriptions: Set<{
 		handler: (data: string) => { consume?: boolean; data?: string } | undefined;
 		unsubscribe: () => void;
 	}>;
-	readonly extensionWidgetsAbove: Map<string, Component & { dispose?(): void }>;
-	readonly extensionWidgetsBelow: Map<string, Component & { dispose?(): void }>;
+	readonly featureWidgetsAbove: Map<string, Component & { dispose?(): void }>;
+	readonly featureWidgetsBelow: Map<string, Component & { dispose?(): void }>;
 	fdPath: string | undefined;
-	readonly footer: FooterComponent;
 	readonly footerContainer: Container;
 	readonly footerDataProvider: FooterDataProvider;
 	fullscreenLayoutRoot: Component | undefined;
 	readonly headerContainer: Container;
-	hiddenThinkingLabel: string;
 	readonly idleStatus: IdleStatus;
 	installChangeWarningShown: boolean;
 	isInitialized: boolean;
@@ -92,6 +88,8 @@ export interface InteractiveModeState {
 	lastEscapeTime: number;
 	/** Esc presses before this time (ms epoch) are part of the burst that aborted something and never open the tree. */
 	escapeQuietUntil: number;
+	/** Esc aborted the run that is processing the submitted prompt (reset at each submit). */
+	escapeAbortedRun: boolean;
 	lastSigintTime: number;
 	lastStatusSpacer: Spacer | undefined;
 	lastStatusText: ThemedText | undefined;
@@ -131,5 +129,4 @@ export interface InteractiveModeState {
 	readonly widgetContainerBelow: Container;
 	workingIndicatorOptions: WorkingIndicatorOptions | undefined;
 	workingMessage: string | undefined;
-	workingVisible: boolean;
 }

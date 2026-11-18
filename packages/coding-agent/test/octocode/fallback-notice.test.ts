@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerFallbackNotice } from "../../src/octocode/ui/footer/notices.ts";
+import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<void>;
 
 function setup() {
 	let handler: Handler | undefined;
-	registerFallbackNotice({ on: (_name: string, h: Handler) => void (handler = h) } as never);
+	registerFallbackNotice(asSetup({ on: (_name: string, h: Handler) => void (handler = h) }) as never);
 	const notify = vi.fn();
 	const ctx = { hasUI: true, ui: { notify } };
 	const model = { provider: "anthropic", id: "b" };

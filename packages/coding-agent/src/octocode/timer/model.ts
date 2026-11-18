@@ -1,3 +1,4 @@
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { NewTimer, TimerRow } from "../../../../db/src/api.ts";
 import {
 	conditionTiming,
@@ -5,10 +6,12 @@ import {
 	describeCondition,
 	encodeCondition,
 	parseUntil,
+	storedKind,
 } from "./conditions/index.ts";
 import { formatSpan } from "../shared/format.ts";
 import type { AgentEvent } from "../wake/catalog.ts";
 import { removedStored } from "./conditions/removed.ts";
+import { cronFields, cronOf, cronSummary, cronWakeText } from "./cron.ts";
 import { CHECK_CAPS } from "./judge.ts";
 import type { CheckOutcome, TimerCondition } from "./conditions/types.ts";
 
@@ -36,6 +39,9 @@ export interface TimerSetInput {
 	deadline?: number;
 	/** With `until`: `false` keeps listening after a wake, up to `maxRuns` (default 20) wakes or the deadline. */
 	once?: boolean;
+	/** A schedule of five cron fields, in local time or `tz` (`cron.ts`). */
+	cron?: string;
+	tz?: string;
 }
 
 /** The longest wait or interval one timer takes: a larger number is a typo, and past 2^53 ms it would not store as an integer. */
@@ -56,7 +62,14 @@ const seconds = (value: number | undefined, name: string): number | undefined =>
 export function timerFields(
 	input: TimerSetInput,
 	now: number,
-	owner: { workspaceId: string; sessionId: string; agent?: string; toolCallId?: string; cwd: string },
+	owner: {
+		workspaceId: string;
+		sessionId: string;
+		agent?: string;
+		toolCallId?: string;
+		cwd: string;
+		sessionUsd?: number;
+	},
 ): NewTimer {
 	const note = input.note?.trim();
 	if (!note) throw new Error("set needs a note: what to do when the wait wakes you.");
@@ -74,6 +87,8 @@ export function timerFields(
 		note,
 		at: now,
 	};
+	if (input.cron !== undefined || input.tz !== undefined)
+		return cronFields(input, now, deadline, base, owner.sessionUsd ?? 0);
 	if (!condition && input.once !== undefined) throw new Error("once belongs to on: set wakes by time.");
 	if (condition) {
 		if (input.maxRuns !== undefined && input.once !== false)
@@ -88,7 +103,7 @@ export function timerFields(
 			dueAt: Math.min(now + (after ?? 0) * 1000, deadlineAt),
 			intervalMs: interval * 1000,
 			condition: {
-				kind: condition.kind,
+				kind: storedKind(condition),
 				value: encodeCondition(condition),
 				cwd: owner.cwd,
 				...(input.once === false ? { baseline: persistState(false, 0) } : {}),
@@ -186,8 +201,22 @@ const describeRow = (row: TimerRow) => {
 		: `${row.condition_kind ?? "condition"} (not readable by this version)`;
 };
 
-/** Why a wake happened, in a few words: the headline of the notice and of the model's message. */
-function wakeReason(row: TimerRow): string {
+/** Characters of the last check's output a wake text keeps: the end of the output, credentials removed. */
+const WAKE_OUTPUT_TAIL = 600;
+
+/** The last check's output as a wake text shows it: trimmed, redacted, and cut to its tail. */
+function lastOutputTail(row: TimerRow): string {
+	const output = redactSecrets(row.last_output?.trim() ?? "");
+	if (!output) return "(no output)";
+	return output.length > WAKE_OUTPUT_TAIL ? `…${output.slice(-WAKE_OUTPUT_TAIL)}` : output;
+}
+
+/**
+ * Why a wake happened, in a few words: the headline of the notice and of the model's message. `condition` names what
+ * the wait listened for: the notice shows it, the model's message leaves it out (the model wrote it in the call).
+ */
+function wakeReason(row: TimerRow, condition: boolean): string {
+	const listened = () => (condition ? describeRow(row) : "the condition");
 	if (row.kind === "once") return "time is up";
 	if (row.kind === "every") {
 		const run = `run ${row.runs}${row.max_runs !== null ? ` of ${row.max_runs}` : ""}`;
@@ -197,10 +226,13 @@ function wakeReason(row: TimerRow): string {
 	}
 	if (row.max_runs !== null && row.stop_reason !== "deadline") {
 		const wake = `wake ${persistOf(row).wakes} of ${row.max_runs}`;
-		return `condition met: ${describeRow(row)} (${wake}${row.stop_reason === "maxRuns" ? ", the last" : ""})`;
+		return `condition met${condition ? `: ${describeRow(row)}` : ""} (${wake}${row.stop_reason === "maxRuns" ? ", the last" : ""})`;
 	}
-	if (row.stop_reason === "met") return `condition met: ${describeRow(row)}`;
-	if (row.stop_reason === "deadline") return `deadline reached before ${describeRow(row)}`;
+	if (row.stop_reason === "met") return condition ? `condition met: ${describeRow(row)}` : "condition met";
+	if (row.stop_reason === "deadline") {
+		const last = row.last_exit !== null ? `; last check exit ${row.last_exit}` : "";
+		return `deadline reached before ${listened()}${last}`;
+	}
 	return `stopped: ${row.stop_reason ?? "condition could not be checked"}`;
 }
 
@@ -226,7 +258,7 @@ export function wakeDetails(row: TimerRow): TimerWakeDetails {
 		id: row.id,
 		kind: row.kind,
 		status: row.status,
-		reason: wakeReason(row),
+		reason: wakeReason(row, true),
 		note: row.note,
 		runs: row.runs,
 		maxRuns: row.max_runs,
@@ -240,14 +272,16 @@ export function wakeDetails(row: TimerRow): TimerWakeDetails {
 
 /** What the model reads on wake: the timer, why it fired, its note, and the last check's result. */
 export function wakeText(row: TimerRow): string {
+	const cron = cronOf(row);
+	if (cron) return cronWakeText(row, cron);
 	const ended = row.status === "active" ? "" : ` (wait ${row.status})`;
-	const lines = [`Wait ${row.id} fired: ${wakeReason(row)}${ended}.`, `Note: ${row.note}`];
+	const lines = [`Wait ${row.id} fired: ${wakeReason(row, false)}${ended}.`, `Note: ${row.note}`];
 	if (row.status === "active" && (row.kind === "every" || row.max_runs !== null))
 		lines.push(`It repeats: off id ${row.id} to stop it.`);
-	if (row.last_output !== null || row.last_exit !== null)
-		lines.push(
-			`Last check${row.last_exit !== null ? ` (exit ${row.last_exit})` : ""}: ${row.last_output?.trim() || "(no output)"}`,
-		);
+	// A condition that held with nothing to show says no more than "condition met".
+	const checkSaid = Boolean(row.last_output?.trim()) || (row.last_exit !== null && row.last_exit !== 0);
+	if (checkSaid)
+		lines.push(`Last check${row.last_exit !== null ? ` (exit ${row.last_exit})` : ""}: ${lastOutputTail(row)}`);
 	if (row.condition_kind === "check" && row.checks > 0)
 		lines.push(
 			`A small model judged this (${row.checks} judgment${row.checks === 1 ? "" : "s"}, $${row.spent_usd.toFixed(4)}): verify before relying on it.`,
@@ -301,12 +335,15 @@ export function timerLine(row: TimerRow, now: number): string {
 			: row.kind === "until"
 				? `${untilMode(row)}${within(row, now)}`
 				: `next wake in ${Math.max(0, Math.round((row.due_at - now) / 1000))}s`;
+	const cron = cronOf(row);
 	const schedule =
 		row.kind === "once"
 			? "once"
-			: row.kind === "every"
-				? `every ${row.interval_ms! / 1000}s, ${row.runs}/${row.max_runs ?? "∞"} runs`
-				: `${row.max_runs !== null ? "on" : "until"} ${describeRow(row)}${wakes}`;
+			: cron
+				? cronSummary(row, cron)
+				: row.kind === "every"
+					? `every ${row.interval_ms! / 1000}s, ${row.runs}/${row.max_runs ?? "∞"} runs`
+					: `${row.max_runs !== null ? "on" : "until"} ${describeRow(row)}${wakes}`;
 	return `${row.id} · ${schedule} · ${when} · ${row.note}`;
 }
 

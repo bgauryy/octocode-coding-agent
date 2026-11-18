@@ -1,5 +1,5 @@
-// The default resource loader is the composition that installs the native feature set, its export rows included.
-import "../../src/core/resource-loader.ts";
+// The native feature set's module installs the host ports where it is composed, its export rows included.
+import "../../src/main/native-features.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

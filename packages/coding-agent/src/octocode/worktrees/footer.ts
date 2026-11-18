@@ -1,5 +1,6 @@
+import { plural } from "@octocodeai/octocode-common/clip";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { memberWorktree } from "../worktree-paths/member-worktree.ts";
 import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 
@@ -12,8 +13,6 @@ export interface WorktreeTeam {
 
 /** The footer key `ctx.ui.setStatus` is given. */
 const WORKTREE_STATUS = "worktree";
-
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /**
  * The footer text: `worktree <name>` in a linked worktree (`linked`, the folder name), and `+N agents in M worktrees` for the
@@ -35,14 +34,14 @@ export function worktreeFooterText(
 /**
  * The footer reads the same checkout discovery as the workspace catalog, then updates when the team view changes.
  */
-export function registerWorktreeFooter(api: ExtensionAPI, team: Pick<WorktreeTeam, "watch" | "view">): void {
+export function registerWorktreeFooter(api: FeatureSetup, team: Pick<WorktreeTeam, "watch" | "view">): void {
 	let stop: (() => void) | undefined;
 	const end = () => {
 		stop?.();
 		stop = undefined;
 	};
-	api.on("session_shutdown", async () => end());
-	api.on("session_start", async (_event, ctx: ExtensionContext) => {
+	api.bus.on("session_shutdown", async () => end());
+	api.bus.on("session_start", async (_event, ctx: FeatureContext) => {
 		end();
 		// Only a session with a terminal UI has a footer: a headless session, a subagent or an RPC worker has no `ui` to write.
 		if (!ctx.hasUI) return;

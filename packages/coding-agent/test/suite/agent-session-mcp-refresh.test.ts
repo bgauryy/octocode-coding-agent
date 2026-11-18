@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "../../../mcp/src/client/index.ts";
 import { createInMemoryTransportPair } from "../../../mcp/src/client/testing/index.ts";
 import type { McpServerEntry } from "../../../mcp/src/config.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { MCP_STATUS_SECTION, MCPS_SECTION } from "../../../mcp/src/section.ts";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, createTestUiContext, type Harness, getToolResult } from "./harness.ts";
 
@@ -72,10 +72,12 @@ const appendedChars = (updates: SystemMessage[]) =>
 		0,
 	);
 
-/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head), joined. */
+/** The server blocks of a section patch or state (`mcps:<server>`, the family's members without its head and closer), joined. */
 const serverBlocks = (sections: Record<string, string | null> = {}) =>
 	Object.entries(sections)
-		.flatMap(([name, text]) => (text !== null && name.startsWith(`${MCPS_SECTION}:`) ? [text] : []))
+		.flatMap(([name, text]) =>
+			text !== null && name.startsWith(`${MCPS_SECTION}:`) && name !== `${MCPS_SECTION}:/` ? [text] : [],
+		)
 		.join("\n\n");
 
 const mcpsPatches = (updates: SystemMessage[]) =>
@@ -111,8 +113,8 @@ describe("AgentSession MCP contract refresh", () => {
 			compactionPolicy: { enabled: false, keepRecentTokens: 1 },
 			sessionManager: options.sessionManager,
 			builtinCompactionFactories: [
-				(api: ExtensionAPI) => {
-					api.on("session_before_compact", async ({ preparation }) => ({
+				(api: FeatureSetup) => {
+					api.bus.on("session_before_compact", async ({ preparation }) => ({
 						compaction: {
 							summary: options.compactionSummary ?? "Looked up the docs.",
 							firstKeptEntryId: preparation.firstKeptEntryId,
@@ -120,7 +122,7 @@ describe("AgentSession MCP contract refresh", () => {
 						},
 					}));
 				},
-				createMcpExtension({
+				createMcpFeature({
 					loadConfig: () => ({ servers, errors: [] }),
 					startupWaitMs: 10,
 					// These cases pin the thin-declaration presentation; `declared`, the default, is covered in
@@ -140,7 +142,7 @@ describe("AgentSession MCP contract refresh", () => {
 		// A resumed session starts from its transcript, like `createTestSession` does.
 		if (options.sessionManager)
 			harness.session.agent.state.messages = options.sessionManager.buildSessionContext().messages;
-		await harness.session.bindExtensions({ uiContext: createTestUiContext() });
+		await harness.session.bindFeatures({ uiContext: createTestUiContext() });
 		const callable = () => harness.session.getCallableToolNames();
 		await vi.waitFor(() => expect(callable()).toContain("mcp__docs__search"));
 		const listChanged = async () => {
@@ -271,10 +273,9 @@ describe("AgentSession MCP contract refresh", () => {
 		await harness.session.prompt("call fail");
 		const updates = systemMessages(harness, from);
 		expect(mcpsPatches(updates)).toEqual([]);
-		expect(updates.flatMap((update) => update.toolsRemoved ?? []).map((tool) => tool.name)).toEqual([
-			"mcp__docs__fail",
-		]);
-		expect(updates.find((update) => update.toolsRemoved)?.sections?.[MCP_STATUS_SECTION]).toContain(
+		// The scripted model's transport cannot remove a tool in place: the declaration is held to the next span.
+		expect(updates.flatMap((update) => update.toolsRemoved ?? [])).toEqual([]);
+		expect(updates.find((update) => update.sections?.[MCP_STATUS_SECTION])?.sections?.[MCP_STATUS_SECTION]).toContain(
 			"- docs: connected; not declared: fail",
 		);
 		expect(newestMcps(harness.session.messages)).toBe(block);
@@ -288,7 +289,8 @@ describe("AgentSession MCP contract refresh", () => {
 			late: { instructions: "Late rules.", tools: [{ ...SEARCH, description: "Search late docs." }] },
 		});
 		const first = newestMcps(await turn("start"));
-		expect(first).toContain("Not connected yet");
+		expect(first).toContain("late");
+		expect(first).not.toContain("Late rules.");
 		await vi.waitFor(() => expect(callable()).toContain("mcp__late__search"));
 		const updates = await turn("after connect");
 		const patches = mcpsPatches(updates);

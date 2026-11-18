@@ -3,15 +3,14 @@
  * description and schema, in one block of the system prompt (`describe`). Every server takes the same path. The
  * notation is a generated TypeScript file per server (see `../compact`), rendered when the server's catalog changes and
  * stored under `<agentDir>/context-optimization/mcp/` (a workspace-defined server: the project's folder,
- * `serverGeneratedDir`); only overrides the user stored for the server (`octocode mcp compact apply`) change its wording:
- * Octocode ships none, so without them the model reads the server's own text. A tool whose block fails the fidelity
+ * `serverGeneratedDir`). The server's description, schema and instructions are never rewritten: the model reads the
+ * server's own text. A tool whose block fails the fidelity
  * check (`checkToolBlock`: a part the renderer cannot express), and every tool when the mode is `json`, is described
  * in plain form instead: the server's description and JSON Schema as sent (`jsonToolBlock`). Providers get thin tool
  * declarations in both forms; calls are still validated against the server's own JSON Schema.
  *
  * In `declared` mode (the default) no file is rendered: a tool is declared with the server's own description and full
- * input schema, and the block holds the server's instructions (plus an index line per deferred tool). Stored
- * overrides do not apply there; the server's text reaches the model verbatim.
+ * input schema, and the block holds the server's instructions (plus an index line per deferred tool).
  *
  * Two copies of a server's file exist per session. The `latest` one follows the server (validation hints read it). The
  * `described` one is what the system prompt's block says of the server (`describe`): taken when the prompt first
@@ -31,7 +30,6 @@ import type { Tool as McpTool } from "../client/index.ts";
 import {
 	checkToolBlock,
 	type CompactServerInput,
-	type DescriptionOverrides,
 	functionNames,
 	generatedDir,
 	resolveServerFile,
@@ -39,7 +37,7 @@ import {
 } from "../compact/index.ts";
 import { deferredLine, type McpDeferral } from "../deferral.ts";
 import { firstSentence } from "./declaration.ts";
-import { authoredTrigger, instructionsHead, onDemandTrigger, residentBlock } from "./deferred.ts";
+import { instructionsHead, onDemandTrigger, residentBlock } from "./deferred.ts";
 import { changedContract, sameCatalog, sameContract, shownDescription } from "./contract.ts";
 import { contractText, declaredContract } from "./contract-text.ts";
 import type { Described, DescribedServer, GeneratedServer } from "./types.ts";
@@ -81,7 +79,7 @@ export class McpPresentation {
 
 	/**
 	 * Bring the server's catalog up to date: in `compact` mode its file (`resolveServerFile`): the stored file while it
-	 * matches, else a new render that keeps the overrides of unchanged tools. `name` is the configured server name,
+	 * matches, else a new render. `name` is the configured server name,
 	 * `callName` what tool names carry after `mcp__`, `names` the registered tool name of each tool. Never throws:
 	 * without a catalog the server keeps its full JSON declarations.
 	 */
@@ -121,7 +119,6 @@ export class McpPresentation {
 			const functions = new Map([...names].map(([tool, { fn }]) => [tool, fn]));
 			const calls = new Map([...names].map(([tool, { call }]) => [tool, call]));
 			let text = "";
-			let overrides: DescriptionOverrides | undefined;
 			const blocks = new Map<string, string>();
 			if (this.enabled) {
 				// The stored files are a cache for the next session and for tooling; this session reads the text from memory,
@@ -129,7 +126,6 @@ export class McpPresentation {
 				const dir = this.#options.dir?.(name) ?? generatedDir(this.#options.agentDir());
 				const file = resolveServerFile(dir, name, input);
 				text = file.text;
-				overrides = file.meta.overrides;
 				// The plain render is checked too: a tool it cannot express is described in plain form (see `describe`).
 				for (const tool of input.tools) {
 					const block = toolBlock(text, functions.get(tool.name) ?? tool.name);
@@ -139,7 +135,6 @@ export class McpPresentation {
 			const generated: GeneratedServer = {
 				callName,
 				text,
-				overrides,
 				instructions,
 				tools: new Map(tools.map((tool) => [tool.name, tool])),
 				blocks,
@@ -275,10 +270,7 @@ export class McpPresentation {
 				// `declared`: the tool's declaration already carries its whole description.
 				if (declared) return deferredLine(call, undefined);
 				const shown = shownDescription(generated.tools.get(tool) as McpTool);
-				return deferredLine(
-					call,
-					authoredTrigger(generated.overrides, tool) ?? (shown ? firstSentence(shown) : undefined),
-				);
+				return deferredLine(call, shown ? firstSentence(shown) : undefined);
 			},
 		});
 	}
@@ -292,15 +284,6 @@ export class McpPresentation {
 		if (this.declared ? full : !described.contract) return false;
 		const before = described.generated?.tools.get(tool.name);
 		return before !== undefined && sameContract(before, tool);
-	}
-
-	/**
-	 * The description of a thin declaration of the tool, from the frozen file: the trigger the user stored for it, else
-	 * the first sentence of the description the user stored. Undefined without either; the declaration then uses the first
-	 * sentence of the server's description.
-	 */
-	summary(name: string, tool: string): string | undefined {
-		return authoredTrigger(this.#frozen.get(name)?.generated?.overrides, tool);
 	}
 
 	/** Whether the prompt's block lists the tool by name and trigger without declaring it (`on-demand.ts`). */

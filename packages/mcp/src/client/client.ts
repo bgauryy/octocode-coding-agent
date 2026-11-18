@@ -30,8 +30,8 @@ import {
 import { SUPPORTED_PROTOCOL_VERSIONS, type InitializeResult, type Tool } from "./protocol/types.ts";
 import type { McpTransport } from "./transports/transport.ts";
 
-// Extension methods are application-defined. The tool/content projection below remains the host's trust boundary.
-const extensionResult: StandardSchemaV1<unknown, unknown> = {
+// Feature methods are application-defined. The tool/content projection below remains the host's trust boundary.
+const featureResult: StandardSchemaV1<unknown, unknown> = {
 	"~standard": { version: 1, vendor: "octocode", validate: (value) => ({ value }) },
 };
 // The SDK always arms an idle timer; its longest non-overflowing platform delay preserves disabled/very long settings.
@@ -166,7 +166,7 @@ export class McpClient {
 		try {
 			return (await this.sdk.request(
 				{ method, ...(params === undefined ? {} : { params }) },
-				extensionResult,
+				featureResult,
 				this.requestOptions({ ...options, signal }),
 			)) as Result;
 		} catch (error) {

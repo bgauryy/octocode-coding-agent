@@ -11,6 +11,7 @@ import {
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
+import { asSetup } from "./fake-host.ts";
 
 const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 
@@ -92,7 +93,7 @@ type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 function session(env: NodeJS.ProcessEnv) {
 	const branch: Array<{ type: string; customType?: string; data?: unknown }> = [];
 	const handlers = new Map<string, Handler>();
-	const api = {
+	const api = asSetup({
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		appendEntry: (customType: string, data: unknown) => branch.push({ type: "custom", customType, data }),
 		getActiveTools: () => ["bash"],
@@ -100,8 +101,8 @@ function session(env: NodeJS.ProcessEnv) {
 			{ name: "bash", description: "run", parameters: {} },
 			{ name: "file", description: "edit", parameters: {} },
 		],
-	};
-	registerCacheGroup(api as never, env);
+	});
+	registerCacheGroup(api, env);
 	const ctx = { sessionManager: { getBranch: () => branch } };
 	return { branch, start: (systemPrompt: string) => handlers.get("before_agent_start")?.({ systemPrompt }, ctx) };
 }

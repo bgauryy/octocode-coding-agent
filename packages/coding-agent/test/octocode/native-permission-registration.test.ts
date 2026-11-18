@@ -16,10 +16,10 @@ it("rejects an unreviewed native registration before activation, even with a rea
 		parameters: Type.Object({}),
 		execute: async () => ({ content: [], details: {} }),
 	};
-	expect(() => api.registerTool(tool)).toThrow("has no permission owner");
+	expect(() => api.tools.register(tool)).toThrow("has no permission owner");
 	expect(fake.tools.size).toBe(0);
-	api.registerTool({ ...tool, name: "file" });
-	expect(() => api.registerTool({ ...tool, name: "mcp__octocode__localFetch" })).toThrow("has no permission owner");
+	api.tools.register({ ...tool, name: "file" });
+	expect(() => api.tools.register({ ...tool, name: "mcp__octocode__localFetch" })).toThrow("has no permission owner");
 	expect([...fake.tools.keys()]).toEqual(["file"]);
 });
 

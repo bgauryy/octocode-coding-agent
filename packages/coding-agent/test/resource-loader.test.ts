@@ -5,8 +5,8 @@ import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { ExtensionRunner } from "../src/core/features/runner.ts";
-import type { ExtensionFactory, Feature } from "../src/core/features/types.ts";
+import { FeatureHost } from "../src/core/features/runner.ts";
+import type { FeatureRegister, Feature } from "../src/core/features/types.ts";
 import { DefaultResourceLoader, loadProjectContextFiles } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -16,9 +16,10 @@ import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
 import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
 import { knownReviews } from "../src/octocode/guard/registry.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 /** A hidden built-in feature, as `defaultFeatures` lists them. */
-const builtin = (id: string, register: ExtensionFactory): Feature => ({ id, owner: "builtin", hidden: true, register });
+const builtin = (id: string, register: FeatureRegister): Feature => ({ id, owner: "builtin", hidden: true, register });
 
 describe("DefaultResourceLoader", () => {
 	let tempDir: string;
@@ -41,85 +42,14 @@ describe("DefaultResourceLoader", () => {
 		it("should initialize with empty results before reload", () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
 
-			expect(loader.getExtensions().extensions).toEqual([]);
+			expect(loader.getFeatures().features).toEqual([]);
 			expect(loader.getSkills().skills).toEqual([]);
 			expect(loader.getPrompts().prompts).toEqual([]);
 			expect(loader.getThemes().themes).toEqual([]);
-		});
-
-		it("should not attribute a project extension file to the project manifest", async () => {
-			const extensionsDir = join(cwd, ".octocode", "extensions");
-			mkdirSync(extensionsDir, { recursive: true });
-			writeFileSync(
-				join(cwd, "package.json"),
-				JSON.stringify({ dependencies: { "@octocodeai/octocodecode": "1.0.0" } }),
-			);
-			writeFileSync(join(extensionsDir, "project-extension.ts"), "export default function() {}");
-
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-			});
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions).toHaveLength(0);
-			expect(loader.getExtensions().warnings).toHaveLength(1);
-			expect(loader.getExtensions().warnings?.[0]?.warning).not.toContain("shipped by package");
-		});
-
-		it("should name the package that ships an ignored extension", async () => {
-			const packageRoot = join(tempDir, "extension-package");
-			const extensionsDir = join(packageRoot, "extensions");
-			mkdirSync(extensionsDir, { recursive: true });
-			writeFileSync(
-				join(packageRoot, "package.json"),
-				JSON.stringify({ dependencies: { "@octocodeai/octocodecode": "1.0.0" } }),
-			);
-			writeFileSync(join(extensionsDir, "package-extension.ts"), "export default function() {}");
-
-			const loader = new DefaultResourceLoader({
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }, { projectTrusted: true }),
-			});
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions).toHaveLength(0);
-			expect(loader.getExtensions().warnings).toEqual([
-				{
-					path: join(packageRoot, "extensions", "package-extension.ts"),
-					warning: `Ignored extension shipped by package ${packageRoot}. User code extensions are not supported; use plugins and hooks (see docs/plugins.md).`,
-				},
-			]);
-		});
-
-		it("should ignore, not load or parse, an extension package whose manifest is invalid", async () => {
-			const packageRoot = join(tempDir, "invalid-extension-package");
-			const extensionsDir = join(packageRoot, "extensions");
-			mkdirSync(extensionsDir, { recursive: true });
-			writeFileSync(join(packageRoot, "package.json"), "{");
-			writeFileSync(join(extensionsDir, "package-extension.ts"), "export default function() {}");
-
-			const loader = new DefaultResourceLoader({
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				settingsManager: SettingsManager.inMemory({ packages: [packageRoot] }, { projectTrusted: true }),
-			});
-
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions).toHaveLength(0);
-			expect(loader.getExtensions().errors).toEqual([]);
-			expect(loader.getExtensions().warnings).toHaveLength(1);
 		});
 
 		it("should discover skills from agentDir", async () => {
@@ -140,7 +70,6 @@ Skill content here.`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -169,7 +98,6 @@ Skill content here.`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -193,7 +121,6 @@ Prompt content.`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -212,7 +139,6 @@ Prompt content.`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -286,7 +212,6 @@ Project skill`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -302,79 +227,40 @@ Project skill`,
 			expect(theme?.sourcePath).toBe(projectThemePath);
 		});
 
-		it("should list symlinked user and project extension files once as ignored", async () => {
-			const sharedExtDir = join(tempDir, "shared-extensions");
-			mkdirSync(sharedExtDir, { recursive: true });
-			writeFileSync(
-				join(sharedExtDir, "shared.ts"),
-				`export default function(api) {
-	api.registerCommand("shared", {
-		description: "shared command",
-		handler: async () => {},
-	});
-}`,
-			);
-
-			mkdirSync(agentDir, { recursive: true });
-			mkdirSync(join(cwd, ".octocode"), { recursive: true });
-			symlinkSync(sharedExtDir, join(agentDir, "extensions"), "dir");
-			symlinkSync(sharedExtDir, join(cwd, ".octocode", "extensions"), "dir");
-
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-			});
-			await loader.reload();
-
-			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions).toHaveLength(0);
-			expect(extensionsResult.errors).toEqual([]);
-
-			// mergePaths processes project paths before user paths, so the project
-			// alias is the one reported.
-			expect(extensionsResult.warnings?.map((warning) => warning.path)).toEqual([
-				join(cwd, ".octocode", "extensions", "shared.ts"),
-			]);
-			expect(extensionsResult.warnings?.[0]?.warning).toContain("Ignored extension");
-		});
-
 		it("should keep both features loaded when command names collide", async () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [
+				features: testFeatures([
 					{
 						name: "project",
 						factory: (api) => {
-							api.registerCommand("deploy", { description: "project deploy", handler: async () => {} });
-							api.registerCommand("project-only", { description: "project only", handler: async () => {} });
+							api.commands.register("deploy", { description: "project deploy", handler: async () => {} });
+							api.commands.register("project-only", { description: "project only", handler: async () => {} });
 						},
 					},
 					{
 						name: "user",
 						factory: (api) => {
-							api.registerCommand("deploy", { description: "user deploy", handler: async () => {} });
-							api.registerCommand("user-only", { description: "user only", handler: async () => {} });
+							api.commands.register("deploy", { description: "user deploy", handler: async () => {} });
+							api.commands.register("user-only", { description: "user only", handler: async () => {} });
 						},
 					},
-				],
+				]),
 			});
 			await loader.reload();
 
-			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions).toHaveLength(2);
-			expect(extensionsResult.errors.some((e) => e.error.includes('Command "/deploy" conflicts'))).toBe(false);
+			const featuresResult = loader.getFeatures();
+			expect(featuresResult.features).toHaveLength(2);
+			expect(featuresResult.errors.some((e) => e.error.includes('Command "/deploy" conflicts'))).toBe(false);
 
 			const sessionManager = SessionManager.inMemory();
 			const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 			const modelRegistry = await createModelRegistry(authStorage);
-			const runner = new ExtensionRunner(
-				extensionsResult.extensions,
-				extensionsResult.runtime,
+			const runner = new FeatureHost(
+				featuresResult.features,
+				featuresResult.runtime,
 				cwd,
 				sessionManager,
 				modelRegistry,
@@ -396,14 +282,9 @@ Project skill`,
 
 		it("should honor overrides for auto-discovered resources", async () => {
 			const settingsManager = SettingsManager.inMemory({}, { projectTrusted: true });
-			settingsManager.setExtensionPaths(["-extensions/disabled.ts"]);
 			settingsManager.setSkillPaths(["-skills/skip-skill"]);
 			settingsManager.setPromptTemplatePaths(["-prompts/skip.md"]);
 			settingsManager.setThemePaths(["-themes/skip.json"]);
-
-			const extensionsDir = join(agentDir, "extensions");
-			mkdirSync(extensionsDir, { recursive: true });
-			writeFileSync(join(extensionsDir, "disabled.ts"), "export default function() {}");
 
 			const skillDir = join(agentDir, "skills", "skip-skill");
 			mkdirSync(skillDir, { recursive: true });
@@ -424,15 +305,13 @@ Content`,
 			mkdirSync(themesDir, { recursive: true });
 			writeFileSync(join(themesDir, "skip.json"), "{}");
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir, settingsManager });
+			const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
 			await loader.reload();
 
-			const { extensions } = loader.getExtensions();
 			const { skills } = loader.getSkills();
 			const { prompts } = loader.getPrompts();
 			const { themes } = loader.getThemes();
 
-			expect(extensions.some((e) => e.path.endsWith("disabled.ts"))).toBe(false);
 			expect(skills.some((s) => s.name === "skip-skill")).toBe(false);
 			expect(prompts.some((p) => p.name === "skip")).toBe(false);
 			expect(themes.some((t) => t.sourcePath?.endsWith("skip.json"))).toBe(false);
@@ -443,7 +322,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -464,7 +342,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(nestedCwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd: nestedCwd,
 				agentDir,
 			});
@@ -485,7 +362,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -505,7 +381,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				noContextFiles: true,
@@ -523,7 +398,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -534,11 +408,11 @@ Content`,
 
 		it("should skip project resources that require trust when project is not trusted", async () => {
 			const octocodeDir = join(cwd, ".octocode");
-			const extensionsDir = join(octocodeDir, "extensions");
+			const featuresDir = join(octocodeDir, "extensions");
 			const skillDir = join(octocodeDir, "skills", "project-skill");
 			const promptsDir = join(octocodeDir, "prompts");
 			const themesDir = join(octocodeDir, "themes");
-			mkdirSync(extensionsDir, { recursive: true });
+			mkdirSync(featuresDir, { recursive: true });
 			mkdirSync(skillDir, { recursive: true });
 			mkdirSync(promptsDir, { recursive: true });
 			mkdirSync(themesDir, { recursive: true });
@@ -546,7 +420,7 @@ Content`,
 			writeFileSync(join(agentDir, "SYSTEM.md"), "Global system prompt.");
 			writeFileSync(join(agentDir, "AGENTS.md"), "Global instructions");
 			writeFileSync(join(cwd, "AGENTS.md"), "Project instructions");
-			writeFileSync(join(extensionsDir, "project.ts"), `throw new Error("should not load");`);
+			writeFileSync(join(featuresDir, "project.ts"), `throw new Error("should not load");`);
 			writeFileSync(
 				join(skillDir, "SKILL.md"),
 				`---
@@ -563,14 +437,14 @@ Project skill content`,
 			writeFileSync(join(themesDir, "project.json"), JSON.stringify(themeData, null, 2));
 			const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 
-			const loader = new DefaultResourceLoader({ nativeFeatures: false, cwd, agentDir, settingsManager });
+			const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
 			await loader.reload();
 
 			expect(loader.getSystemPrompt()).toBe("Global system prompt.");
 			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(true);
 			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(true);
-			expect(loader.getExtensions().extensions).toHaveLength(0);
-			expect(loader.getExtensions().errors).toEqual([]);
+			expect(loader.getFeatures().features).toHaveLength(0);
+			expect(loader.getFeatures().errors).toEqual([]);
 			expect(loader.getSkills().skills.some((skill) => skill.name === "project-skill")).toBe(false);
 			expect(loader.getPrompts().prompts.some((prompt) => prompt.name === "project")).toBe(false);
 			expect(loader.getThemes().themes.some((theme) => theme.name === "project-theme")).toBe(false);
@@ -583,7 +457,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -602,7 +475,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -618,7 +490,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -631,7 +502,6 @@ Project skill content`,
 		it("does not expose literal system prompt text as a source", async () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				systemPrompt: "Literal system prompt.",
@@ -648,7 +518,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				systemPrompt: systemPromptPath,
@@ -667,7 +536,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -680,7 +548,6 @@ Project skill content`,
 		it("does not expose literal append system prompt text as a source", async () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				appendSystemPrompt: ["Literal append prompt."],
@@ -697,7 +564,6 @@ Project skill content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				appendSystemPrompt: [appendSystemPromptPath, "Literal append prompt."],
@@ -720,7 +586,6 @@ Project skill content`,
 			approveFixtureSkillFiles([{ name: "kept", filePath: join(host, "kept", "SKILL.md"), category: "global" }], cwd);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -749,7 +614,6 @@ Project skill content`,
 			approveFixtureSkillFiles([{ name: "explicit", filePath: explicit, category: "global" }], cwd);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				noSkills: true,
@@ -806,7 +670,6 @@ Extra prompt content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -866,7 +729,6 @@ Extra content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});
@@ -928,15 +790,15 @@ Package prompt content`,
 				JSON.stringify({ ...baseTheme, name: "package-theme" }),
 			);
 
-			const extensionResourceDir = join(tempDir, "extension-resources");
-			const extensionSkillDir = join(extensionResourceDir, "extension-skill");
-			const extensionPromptsDir = join(extensionResourceDir, "prompts");
-			const extensionThemesDir = join(extensionResourceDir, "themes");
-			mkdirSync(extensionSkillDir, { recursive: true });
-			mkdirSync(extensionPromptsDir, { recursive: true });
-			mkdirSync(extensionThemesDir, { recursive: true });
+			const featureResourceDir = join(tempDir, "extension-resources");
+			const featureSkillDir = join(featureResourceDir, "extension-skill");
+			const featurePromptsDir = join(featureResourceDir, "prompts");
+			const featureThemesDir = join(featureResourceDir, "themes");
+			mkdirSync(featureSkillDir, { recursive: true });
+			mkdirSync(featurePromptsDir, { recursive: true });
+			mkdirSync(featureThemesDir, { recursive: true });
 			writeFileSync(
-				join(extensionSkillDir, "SKILL.md"),
+				join(featureSkillDir, "SKILL.md"),
 				`---
 name: extension-skill
 description: Extension skill
@@ -944,26 +806,25 @@ description: Extension skill
 Extension skill content`,
 			);
 			writeFileSync(
-				join(extensionPromptsDir, "extension-prompt.md"),
+				join(featurePromptsDir, "extension-prompt.md"),
 				`---
 description: Extension prompt
 ---
 Extension prompt content`,
 			);
 			writeFileSync(
-				join(extensionThemesDir, "extension.json"),
+				join(featureThemesDir, "extension.json"),
 				JSON.stringify({ ...baseTheme, name: "extension-theme" }),
 			);
 
 			const loader = new DefaultResourceLoader({
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				settingsManager: SettingsManager.inMemory({ packages: ["npm:metadata-pkg"] }, { projectTrusted: true }),
 			});
 			await loader.reload();
 
-			const extensionMetadata = {
+			const featureMetadata = {
 				source: "extension:discovery",
 				scope: "temporary",
 				origin: "top-level",
@@ -971,14 +832,14 @@ Extension prompt content`,
 			approveFixtureSkillFiles(
 				[
 					{ name: "package-skill", filePath: join(packageSkillDir, "SKILL.md"), category: "global" },
-					{ name: "extension-skill", filePath: join(extensionSkillDir, "SKILL.md"), category: "global" },
+					{ name: "extension-skill", filePath: join(featureSkillDir, "SKILL.md"), category: "global" },
 				],
 				cwd,
 			);
 			loader.extendResources({
-				skillPaths: [{ path: extensionSkillDir, metadata: extensionMetadata }],
-				promptPaths: [{ path: extensionPromptsDir, metadata: extensionMetadata }],
-				themePaths: [{ path: extensionThemesDir, metadata: extensionMetadata }],
+				skillPaths: [{ path: featureSkillDir, metadata: featureMetadata }],
+				promptPaths: [{ path: featurePromptsDir, metadata: featureMetadata }],
+				themePaths: [{ path: featureThemesDir, metadata: featureMetadata }],
 			});
 
 			const packageSourceInfo = { source: "npm:metadata-pkg", scope: "user", origin: "package" };
@@ -993,13 +854,13 @@ Extension prompt content`,
 			);
 
 			expect(loader.getSkills().skills.find((skill) => skill.name === "extension-skill")?.sourceInfo).toMatchObject(
-				extensionMetadata,
+				featureMetadata,
 			);
 			expect(
 				loader.getPrompts().prompts.find((prompt) => prompt.name === "extension-prompt")?.sourceInfo,
-			).toMatchObject(extensionMetadata);
+			).toMatchObject(featureMetadata);
 			expect(loader.getThemes().themes.find((theme) => theme.name === "extension-theme")?.sourceInfo).toMatchObject(
-				extensionMetadata,
+				featureMetadata,
 			);
 		});
 	});
@@ -1022,7 +883,6 @@ Extension prompt content`,
 			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				additionalSkillPaths: [explicit],
@@ -1054,7 +914,6 @@ Extension prompt content`,
 			);
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(sub, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd: sub,
 				agentDir,
 			});
@@ -1080,7 +939,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				noSkills: true,
@@ -1109,7 +967,6 @@ Content`,
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				noSkills: true,
@@ -1139,7 +996,6 @@ Content`,
 			};
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				skillsOverride: () => ({
@@ -1157,7 +1013,6 @@ Content`,
 		it("should apply systemPromptOverride", async () => {
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				systemPromptOverride: () => "Custom system prompt",
@@ -1171,9 +1026,9 @@ Content`,
 	describe("extension conflict detection", () => {
 		it("should detect tool conflicts between features", async () => {
 			const duplicate =
-				(description: string): ExtensionFactory =>
+				(description: string): FeatureRegister =>
 				(api) =>
-					api.registerTool({
+					api.tools.register({
 						name: "duplicate-tool",
 						label: "duplicate-tool",
 						description,
@@ -1182,17 +1037,16 @@ Content`,
 					});
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [
+				features: testFeatures([
 					{ name: "one", factory: duplicate("First") },
 					{ name: "two", factory: duplicate("Second") },
-				],
+				]),
 			});
 			await loader.reload();
 
-			const { errors } = loader.getExtensions();
+			const { errors } = loader.getFeatures();
 			expect(errors.some((e) => e.error.includes("duplicate-tool") && e.error.includes("conflicts"))).toBe(true);
 			// The error names both owners.
 			expect(errors[0]?.error).toContain("<inline:one>");
@@ -1201,39 +1055,38 @@ Content`,
 
 		it("should keep the first registered feature's tool and number colliding commands in registration order", async () => {
 			const feature =
-				(label: string): ExtensionFactory =>
+				(label: string): FeatureRegister =>
 				(api) => {
-					api.registerTool({
+					api.tools.register({
 						name: "duplicate-tool",
 						label: "duplicate-tool",
 						description: `${label} tool`,
 						parameters: Type.Object({}),
 						execute: async () => ({ content: [], details: {} }),
 					});
-					api.registerCommand("deploy", { description: `${label} command`, handler: async () => {} });
+					api.commands.register("deploy", { description: `${label} command`, handler: async () => {} });
 				};
 
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
-				extensionFactories: [
+				features: testFeatures([
 					{ name: "explicit", factory: feature("explicit") },
 					{ name: "global", factory: feature("global") },
-				],
+				]),
 			});
 			await loader.reload();
 
-			const extensionsResult = loader.getExtensions();
-			expect(extensionsResult.extensions[0]?.path).toBe("<inline:explicit>");
+			const featuresResult = loader.getFeatures();
+			expect(featuresResult.features[0]?.path).toBe("<inline:explicit>");
 
 			const sessionManager = SessionManager.inMemory();
 			const authStorage = AuthStorage.create(join(tempDir, "auth-explicit.json"));
 			const modelRegistry = await createModelRegistry(authStorage);
-			const runner = new ExtensionRunner(
-				extensionsResult.extensions,
-				extensionsResult.runtime,
+			const runner = new FeatureHost(
+				featuresResult.features,
+				featuresResult.runtime,
 				cwd,
 				sessionManager,
 				modelRegistry,
@@ -1244,118 +1097,25 @@ Content`,
 			expect(runner.getToolDefinition("duplicate-tool")?.description).toBe("explicit tool");
 		});
 
-		it("should skip built-in extensions disabled in settings", async () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:llama"] }));
-			const loaded: string[] = [];
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				builtinFeatures: [
-					builtin("mcp", () => void loaded.push("mcp")),
-					builtin("llama", () => void loaded.push("llama")),
-				],
-			});
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
-			expect(loader.getExtensions().extensions[0].sourceInfo).toMatchObject({
-				path: "builtin:mcp",
-				source: "builtin",
-			});
-			expect(loader.getExtensions().extensions[0].hidden).toBe(true);
-			expect(loaded).toEqual(["mcp"]);
-		});
-
-		it("should skip disabledFeatures even when settings enable them", async () => {
+		it("should skip disabledFeatures even when an old extensions setting names them", async () => {
 			mkdirSync(join(cwd, ".octocode"), { recursive: true });
 			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 				disabledFeatures: ["mcp"],
 				builtinFeatures: [
 					builtin("mcp", () => void loaded.push("mcp")),
-					builtin("llama", () => void loaded.push("llama")),
+					builtin("other", () => void loaded.push("other")),
 				],
 			});
 			await loader.reload();
 
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:llama"]);
-			expect(loader.getExtensions().errors).toEqual([]);
-			expect(loaded).toEqual(["llama"]);
-		});
-
-		it("should load a built-in once per reload and only warn about extension files", async () => {
-			const userExtDir = join(agentDir, "extensions");
-			mkdirSync(userExtDir, { recursive: true });
-			writeFileSync(join(userExtDir, "user.ts"), "export default function() {}");
-			mkdirSync(join(cwd, ".octocode"), { recursive: true });
-			// A project override gives the built-in project scope, which must not move it ahead.
-			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				builtinFeatures: [builtin("mcp", () => {})],
-			});
-
-			for (let round = 0; round < 2; round++) {
-				await loader.reload();
-				expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
-				expect(loader.getExtensions().errors).toEqual([]);
-				expect(loader.getExtensions().warnings?.map((warning) => warning.path)).toEqual([join(userExtDir, "user.ts")]);
-			}
-		});
-
-		it("should ignore a settings entry for an unknown built-in", async () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:missing"] }));
-			const loaded: string[] = [];
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				builtinFeatures: [builtin("mcp", () => void loaded.push("mcp"))],
-			});
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual(["builtin:mcp"]);
-			expect(loader.getExtensions().errors).toEqual([]);
-			expect(loaded).toEqual(["mcp"]);
-		});
-
-		it("should apply project built-in extension overrides over user settings", async () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
-			mkdirSync(join(cwd, ".octocode"), { recursive: true });
-			writeFileSync(
-				join(cwd, ".octocode", "settings.json"),
-				JSON.stringify({ extensions: ["+builtin:mcp", "-builtin:llama"] }),
-			);
-			const loaded: string[] = [];
-			const loader = new DefaultResourceLoader({
-				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
-				cwd,
-				agentDir,
-				builtinFeatures: [
-					builtin("mcp", () => void loaded.push("mcp")),
-					builtin("llama", () => void loaded.push("llama")),
-				],
-				extensionFactories: [{ name: "plain", factory: () => void loaded.push("plain") }],
-			});
-			await loader.reload();
-
-			expect(loader.getExtensions().extensions.map((extension) => extension.path)).toEqual([
-				"builtin:mcp",
-				"<inline:plain>",
-			]);
-			expect(loaded).toEqual(["mcp", "plain"]);
+			expect(loader.getFeatures().features.map((feature) => feature.path)).toEqual(["builtin:other"]);
+			expect(loader.getFeatures().errors).toEqual([]);
+			expect(loaded).toEqual(["other"]);
 		});
 	});
 
@@ -1602,7 +1362,6 @@ describe("Pi harness switch on Pi's instruction files", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ toggles }));
 			const loader = new DefaultResourceLoader({
 				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
-				nativeFeatures: false,
 				cwd,
 				agentDir,
 			});

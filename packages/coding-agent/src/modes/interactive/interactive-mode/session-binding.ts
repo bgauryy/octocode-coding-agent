@@ -1,5 +1,5 @@
 /**
- * Binding the terminal UI to the current session: extension bindings and command actions, runtime settings, and
+ * Binding the terminal UI to the current session: feature bindings and command actions, runtime settings, and
  * re-rendering after the session is replaced.
  */
 
@@ -19,15 +19,14 @@ type SessionBindingHost = Pick<
 	| "activeStatusIndicator"
 	| "applyFullscreenScrollbarSetting"
 	| "applyRuntimeSettings"
-	| "bindCurrentSessionExtensions"
+	| "bindCurrentSessionFeatures"
 	| "chatContainer"
 	| "clearStatusIndicator"
-	| "createExtensionUIContext"
+	| "createSessionUI"
 	| "defaultEditor"
 	| "editor"
 	| "ensurePngTranscoder"
 	| "flushCompactionQueue"
-	| "footer"
 	| "footerDataProvider"
 	| "handleFatalRuntimeError"
 	| "handleReloadCommand"
@@ -48,8 +47,7 @@ type SessionBindingHost = Pick<
 	| "sessionManager"
 	| "settingsManager"
 	| "setupAutocompleteProvider"
-	| "setupExtensionShortcuts"
-	| "showExtensionError"
+	| "showFeatureError"
 	| "showLoadedResources"
 	| "showStartupNoticesIfNeeded"
 	| "showStatus"
@@ -67,11 +65,11 @@ type SessionBindingHost = Pick<
 >;
 
 /**
- * Initialize the extension system with TUI-based UI context.
+ * Initialize the feature system with TUI-based UI context.
  */
-export async function bindCurrentSessionExtensions(host: SessionBindingHost): Promise<void> {
-	const uiContext = host.createExtensionUIContext();
-	await host.session.bindExtensions({
+export async function bindCurrentSessionFeatures(host: SessionBindingHost): Promise<void> {
+	const uiContext = host.createSessionUI();
+	await host.session.bindFeatures({
 		uiContext,
 		mode: "tui",
 		abortHandler: () => {
@@ -128,15 +126,13 @@ export async function bindCurrentSessionExtensions(host: SessionBindingHost): Pr
 			}
 		},
 		onError: (error) => {
-			host.showExtensionError(error.extensionPath, error.error, error.stack);
+			host.showFeatureError(error.source, error.error, error.stack);
 		},
 	});
 
 	setRegisteredThemes(host.session.resourceLoader.getThemes().themes);
 	host.setupAutocompleteProvider();
 
-	const extensionRunner = host.session.extensionRunner;
-	host.setupExtensionShortcuts(extensionRunner);
 	// Built once per binding: the listing's MCP row follows server status itself.
 	host.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
 	host.showStartupNoticesIfNeeded();
@@ -153,8 +149,6 @@ export function applyRuntimeSettings(host: SessionBindingHost): void {
 		host.renderer.setWheelScrollLines(host.settingsManager.getFullscreenWheelScrollLines());
 		host.renderer.setFrameOutputCap(host.settingsManager.getFullscreenFrameQueueLimitBytes());
 	}
-	host.footer.setSession(host.session);
-	host.footer.setAutoCompactEnabled(host.session.autoCompactionEnabled);
 	host.footerDataProvider.setCwd(host.sessionManager.getCwd());
 	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
 	host.outputPad = host.settingsManager.getOutputPad();
@@ -190,7 +184,7 @@ export async function rebindCurrentSession(
 		host.subscribeToAgent();
 	}
 
-	await host.bindCurrentSessionExtensions();
+	await host.bindCurrentSessionFeatures();
 
 	if (host.session !== session) {
 		return;

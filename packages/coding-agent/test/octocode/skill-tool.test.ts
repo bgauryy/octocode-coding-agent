@@ -8,9 +8,10 @@ import { loadSkillsFromDir } from "../../src/core/skills.ts";
 import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { closeNames, editDistance } from "../../src/octocode/skill/catalog.ts";
 import { skillLoadSummary } from "../../src/octocode/skill/render.ts";
-import { registerSkillTool } from "../../src/octocode/skill/tool.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { registerSkillTool } from "../../src/octocode/native/tools/skill/tool.ts";
 import { createHarness, getToolResult, type Harness } from "../suite/harness.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -38,7 +39,7 @@ function fixtures() {
 
 function setup(snapshot: () => unknown) {
 	const fp = fakeHost();
-	(fp.api as unknown as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = snapshot;
+	(fp.api.resources as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = snapshot;
 	registerSkillTool(withNativePermissionOwners(fp.api));
 	const tool = fp.tools.get("skill");
 	const cwd = tmp("skill-cwd-");
@@ -70,7 +71,7 @@ describe("skill tool", () => {
 		const result = await call("alpha");
 		const text = result.content[0].text;
 		expect(text).toContain(`<skill name="alpha" location="${path.join(f.alpha, "SKILL.md")}">`);
-		expect(text).toContain(`References are relative to ${f.alpha}.`);
+		expect(text).toContain(renderPrompt("system/skill-references.md", { dir: f.alpha }).trim());
 		expect(text).toContain("BODY_alpha");
 		expect(text).not.toContain("description: Use for alpha");
 		expect(result.details).toMatchObject({ name: "alpha", baseDir: f.alpha, lines: 4 });
@@ -175,12 +176,12 @@ describe("skill tool", () => {
 	});
 
 	describe("rendering", () => {
-		it("draws the call as `Skill: <name>` and the result as one compact, expandable line", async () => {
+		it("draws the call as `Skill(<name>)` and the result as one compact, expandable line", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toMatch(
-				/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Skill: alpha/,
+				/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Skill\(alpha\)/,
 			);
-			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill: alpha");
+			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill(alpha)");
 			const result = await call("alpha");
 			const collapsed = rendered(tool.renderResult(result, { expanded: false }, theme, context()));
 			expect(collapsed).toContain("Global skill · 4 lines");
@@ -259,7 +260,8 @@ describe("skill tool", () => {
 			const { tool, call } = setup(fixtures().snapshot);
 			void call;
 			tool.renderCall({ name: "alpha" }, recording, context());
-			expect(new Set(colors)).toEqual(new Set(["success", "toolTitle"]));
+			// The mark, the title and the key argument in its parentheses, as on every tool row.
+			expect(new Set(colors)).toEqual(new Set(["success", "toolTitle", "muted"]));
 		});
 	});
 });
@@ -288,7 +290,7 @@ describe("a session with skills", () => {
 	afterEach(() => harness?.cleanup());
 
 	async function start(skills = env.loaded.skills) {
-		const extensionsResult = await createTestExtensionsResult(
+		const featuresResult = await createTestFeaturesResult(
 			[
 				{
 					owner: "native",
@@ -302,7 +304,7 @@ describe("a session with skills", () => {
 			env.root,
 		);
 		const loader = {
-			...createTestResourceLoader({ extensionsResult }),
+			...createTestResourceLoader({ featuresResult }),
 			getSkills: () => ({ skills, diagnostics: [], explicitSkills: env.loaded.explicitSkills }),
 		};
 		harness = await createHarness({ resourceLoader: loader, cwd: env.root });
@@ -323,7 +325,9 @@ describe("a session with skills", () => {
 		const result = getToolResult(h, "skill");
 		expect(result.isError).toBe(false);
 		expect(JSON.stringify(result.content)).toContain("BODY_alpha");
-		expect(JSON.stringify(result.content)).toContain(`References are relative to ${env.alpha}`);
+		expect(JSON.stringify(result.content)).toContain(
+			renderPrompt("system/skill-references.md", { dir: env.alpha }).trim(),
+		);
 	});
 
 	it("keeps the tool and its prompt hint out of a session without a model-invocable skill", async () => {

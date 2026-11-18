@@ -28,6 +28,11 @@ import {
 	windowBudget,
 	writeSummary,
 } from "../../src/octocode/compaction/summary.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { asSetup } from "./fake-host.ts";
+
+/** What every "complete text saved at <file>" pointer starts with, taken from the notice itself. */
+const POINTER = renderPrompt("notices/compaction/text-saved.md", { file: "\u0000" }).split("\u0000")[0];
 
 const fileOps = () => ({ read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() });
 
@@ -81,13 +86,13 @@ describe("compaction summary", () => {
 
 	it("leaves the summary to Octocode without a model, after an abort, or when the call fails, and records why in the session", async () => {
 		const notes: unknown[] = [];
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			createUsageRecorder: () => () => {},
 			appendEntry: (customType: string, data: unknown) => notes.push({ customType, data }),
-		} as never;
+		}) as never;
 		const event = (aborted = false) =>
 			({
 				preparation: {
@@ -192,7 +197,7 @@ describe("compaction summary", () => {
 	it("keeps user messages whole or saves the complete collection and a reference", () => {
 		const long = `HEAD${"x".repeat(USER_MESSAGE_CHARS * 2)}TAIL`;
 		const section = userMessagesSection([], 0, [long]);
-		expect(section).toContain("Complete text saved at");
+		expect(section).toContain(POINTER);
 		expect(savedTexts.at(-1)).toContain(long);
 		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS - 10)}`);
 		const kept = userMessagesSection(["older kept"], 4, many);
@@ -216,7 +221,7 @@ describe("compaction summary", () => {
 		const view = summarizerView(messages);
 		const text = (view[0].content as Array<{ type: string; text?: string }>)[0].text!;
 		expect(text.length).toBeLessThanOrEqual(SUMMARIZER_RESULT_CHARS);
-		expect(text).toContain("Complete text saved at");
+		expect(text).toContain(POINTER);
 		expect(savedTexts.at(-1)).toBe(log);
 		expect(view[0].content).toContainEqual(image);
 		expect(view[1]).toBe(messages[1]);
@@ -227,7 +232,7 @@ describe("compaction summary", () => {
 	it("preserves the existing archive provenance when replacing a collection with a durable reference", () => {
 		const many = Array.from({ length: 20 }, (_, i) => `${i}:${"y".repeat(USER_MESSAGE_CHARS - 10)}`);
 		const section = userMessagesSection([], 2, many, { total: USER_MESSAGES_CHARS, perMessage: USER_MESSAGE_CHARS }, 4);
-		expect(section).toContain("Complete text saved at");
+		expect(section).toContain(POINTER);
 		expect(savedTexts.at(-1)).toContain("the archive (segment 4 and earlier) has them");
 		for (const message of many) expect(savedTexts.at(-1)).toContain(message);
 	});
@@ -271,7 +276,7 @@ describe("compaction summary robustness", () => {
 		const small = windowBudget(64_000, 16_384, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS);
 		const section = userMessagesSection([], 0, many, { total: small, perMessage: USER_MESSAGE_CHARS });
 		expect(section.length).toBeLessThan(small + 2_000);
-		expect(section).toContain("Complete text saved at");
+		expect(section).toContain(POINTER);
 		for (const message of many) expect(savedTexts.at(-1)).toContain(message);
 	});
 });
@@ -320,14 +325,14 @@ describe("words kept beside the user's messages", () => {
 	it("puts them in the checkpoint's user messages with the user's own, in order and within the same budget", async () => {
 		const sent: Array<{ content: string }> = [];
 		const fallback = new FallbackContinuity();
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			getActiveTools: () => [],
 			getSettings: () => ({}),
 			createUsageRecorder: () => () => {},
 			appendEntry: () => {},
 			sendMessage: (message: { content: string }) => sent.push(message),
-		} as never;
+		}) as never;
 		const messages = [
 			{ role: "user", content: "refactor the parser" },
 			answerResult({ cancelled: false, answers: [{ question: "Keep v1?", answer: "No", custom: false }] }),

@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ChildProcess from "node:child_process";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import type * as Resolve from "../../src/octocode/cli/resolve.ts";
 import { foregroundChildActive } from "../../src/utils/foreground-child.ts";
 
@@ -73,7 +73,7 @@ function terminal(options: { slotTaken?: boolean; drainOutput?: () => Promise<bo
 			return () => inputs.splice(inputs.indexOf(handler), 1);
 		},
 	};
-	const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as ExtensionCommandContext;
+	const ctx = { hasUI: true, cwd: process.cwd(), ui } as unknown as CommandContext;
 	return { ctx, tui, notify, inputs };
 }
 

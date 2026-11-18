@@ -1,5 +1,5 @@
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { type AgentDb, backlog, workspaces } from "../../../../db/src/api.ts";
 import { clip } from "../shared/text.ts";
 import { priorityName } from "./item.ts";
@@ -63,7 +63,7 @@ export function backlogIndex(agent: AgentDb, repo: string, session: string, item
 		.map((row) => entry(row, session, false) + (row === active ? activeDetail(agent, repo, row) : ""));
 	const shownOpen = open.slice(0, Math.max(0, MAX_REFS - shownOngoing.length)).map((row) => entry(row, session, true));
 	const rest = snap.items.length - shownOngoing.length - shownOpen.length;
-	return renderInstruction("notices/backlog-digest.md", {
+	return renderPrompt("notices/backlog-digest.md", {
 		todo: snap.items.filter((row) => row.state === "todo").length,
 		proposed: snap.items.filter((row) => row.state === "backlog").length,
 		ongoing: shownOngoing.join("; "),

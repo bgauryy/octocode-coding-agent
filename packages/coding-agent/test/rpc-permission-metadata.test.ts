@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionContext } from "../src/core/features/types.ts";
-import { createExtensionUIContext, type PendingExtensionRequests } from "../src/modes/rpc/rpc-mode/ui-context.ts";
+import type { FeatureContext } from "../src/core/features/types.ts";
+import { createSessionUI, type PendingUiRequests } from "../src/modes/rpc/rpc-mode/ui-context.ts";
 import type { RpcExtensionUIRequest } from "../src/modes/rpc/rpc-types.ts";
 import { askReview } from "../src/octocode/files/review.ts";
 import { externalPermissionDialog } from "../src/octocode/external/permission-dialog.ts";
 import { selectAnswer } from "../src/octocode/permission/ask/text.ts";
 
 function fixture() {
-	const pending: PendingExtensionRequests = new Map();
+	const pending: PendingUiRequests = new Map();
 	const requests: RpcExtensionUIRequest[] = [];
-	const ui = createExtensionUIContext((value) => {
+	const ui = createSessionUI((value) => {
 		if ("type" in value && value.type === "extension_ui_request") requests.push(value);
 	}, pending);
 	const select = () => {
@@ -133,7 +133,7 @@ describe("permission metadata over RPC UI", () => {
 
 	it("maps nested external approvals back to the advertised single-use option identity", async () => {
 		const f = fixture();
-		const decision = externalPermissionDialog(f.ctx as ExtensionContext)(
+		const decision = externalPermissionDialog(f.ctx as FeatureContext)(
 			{
 				sessionId: "external-session",
 				toolCall: { toolCallId: "external-call", title: "Run external task" },

@@ -1,5 +1,5 @@
 /**
- * The extension guard: what a session loads that Octocode did not ship (a hook, an MCP server, a skill) stays off until
+ * The feature guard: what a session loads that Octocode did not ship (a hook, an MCP server, a skill) stays off until
  * the user has checked it and approved its exact content. The user-facing name is "security" (`/security`,
  * `octocode security`); this folder keeps the internal name.
  */

@@ -1,5 +1,13 @@
 import type { Component, Terminal, TUI, WheelScrollLines } from "@octocodeai/octocode-tui";
-import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@octocodeai/octocode-tui";
+import {
+	Container,
+	getKeybindings,
+	isViewportTUI,
+	pointerClicksActive,
+	ScrollView,
+	setKeybindings,
+	Text,
+} from "@octocodeai/octocode-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
@@ -142,12 +150,11 @@ describe("createInteractiveTui", () => {
 			fullscreenLayoutRoot: Component;
 			options: { tuiMode?: TuiMode };
 			themeController: { rebindTui: () => void };
-			extensionTerminalInputSubscriptions: Set<never>;
+			featureTerminalInputSubscriptions: Set<never>;
 			chatContainer: Container;
 		};
 		// A message nested in a group: only the fullscreen renderer reports clicks on its reasoning stub.
 		const message = new AssistantMessageComponent();
-		const setMouseHint = vi.spyOn(message, "setMouseHint");
 		const group = new Container();
 		group.addChild(message);
 		const chatContainer = new Container();
@@ -163,7 +170,7 @@ describe("createInteractiveTui", () => {
 			fullscreenLayoutRoot: component,
 			options: { tuiMode: "regular" },
 			themeController: { rebindTui: () => {} },
-			extensionTerminalInputSubscriptions: new Set<never>(),
+			featureTerminalInputSubscriptions: new Set<never>(),
 			chatContainer,
 		};
 		const stableUi: TUI = createInteractiveTuiReference(() => context.renderer);
@@ -180,13 +187,14 @@ describe("createInteractiveTui", () => {
 		expect(context.renderer.getFocusedComponent()).toBe(component);
 		expect(component.focused).toBe(true);
 		expect(invalidatedModes).toEqual(["fullscreen"]);
-		expect(setMouseHint).toHaveBeenCalledExactlyOnceWith(true);
+		expect(pointerClicksActive()).toBe(true);
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 1]);
 
 		stopInteractiveTui(host, "resume-hint");
 
 		expect(stableUi.mode).toBe("fullscreen");
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 2]);
+		expect(pointerClicksActive()).toBe(false);
 	});
 });
 

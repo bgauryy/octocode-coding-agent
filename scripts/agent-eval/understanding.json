@@ -382,7 +382,7 @@
 			"id": "close-after-edits",
 			"agents": ["main"],
 			"question": "You finished a task that changed three files and ran the tests. How do you end your reply, and how long is that ending?",
-			"expect": ["TL;DR|summary|close", "(2|two)\\s*(to|-|–)\\s*(4|four)|short|brief"],
+			"expect": ["check|verif|test", "short|brief|one[- ]line|open|unblock"],
 			"forbid": ["every file[^\\n]{0,40}(paragraph|section)"]
 		},
 		{

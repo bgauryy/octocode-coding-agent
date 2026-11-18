@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext, ReplacedSessionContext } from "../../src/core/features/index.ts";
+import type { CommandContext, ReplacedSessionContext } from "../../src/core/features/index.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import type { TmuxRunner } from "../../src/octocode/terminal-launch/tmux.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
@@ -13,7 +13,7 @@ let notices: Array<{ text: string; level: string }>;
 const text = () => notices.map((n) => n.text).join("\n");
 const invocation = () => ({ command: "/bin/octocode", prefix: [] as string[] });
 
-type NewSession = ExtensionCommandContext["newSession"];
+type NewSession = CommandContext["newSession"];
 
 function contextAt(cwd: string, options: { idle?: boolean; newSession?: NewSession } = {}) {
 	const say = (note: string, level = "info") => void notices.push({ text: note, level });
@@ -23,7 +23,7 @@ function contextAt(cwd: string, options: { idle?: boolean; newSession?: NewSessi
 		ui: { notify: say },
 		isIdle: () => options.idle ?? true,
 		newSession: options.newSession ?? (async () => ({ cancelled: false })),
-	} as unknown as ExtensionCommandContext;
+	} as unknown as CommandContext;
 }
 
 beforeEach(() => {

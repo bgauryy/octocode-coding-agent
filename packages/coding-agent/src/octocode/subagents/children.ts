@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -90,7 +90,7 @@ export const FORK_NOTE_TYPE = "octocode-agent-fork";
 export function forkNote(entries: readonly unknown[]): string | undefined {
 	const stopped = sessionChildren(entries).filter((child) => child.status === "background");
 	if (stopped.length === 0) return undefined;
-	return renderInstruction("notices/subagents/children-forked.md", { children: stopped.map(describeChild).join("; ") });
+	return renderPrompt("notices/subagents/children-forked.md", { children: stopped.map(describeChild).join("; ") });
 }
 
 /**
@@ -127,7 +127,7 @@ export function resumedChildren(
 
 /** The note naming children that ended with the previous process (`endedChildren`). */
 const endedNote = (gone: readonly SessionChild[]): string =>
-	renderInstruction("notices/subagents/children-ended.md", { children: gone.map(describeChild).join("; ") });
+	renderPrompt("notices/subagents/children-ended.md", { children: gone.map(describeChild).join("; ") });
 
 /** The children `resumeNote` names: started without a report, not running, not still exiting, no report waiting, not named before. */
 function endedChildren(
@@ -285,7 +285,7 @@ export function resumedTask<T extends { profile?: string; headless?: boolean; mo
 export function resumeText(resumed: { restart?: string } | undefined, task: string): { text: string; prefix: string } {
 	if (!resumed) return { text: task, prefix: "" };
 	const { restart } = resumed;
-	const followUp = `${renderInstruction("notices/subagents/follow-up.md")}\n`;
+	const followUp = `${renderPrompt("notices/subagents/follow-up.md")}\n`;
 	if (restart === undefined) return { text: task, prefix: followUp };
 	const more = task.trim() && task.trim() !== restart.trim() ? `\n\n${followUp}${task}` : "";
 	return { text: `${restart}${more}`, prefix: "" };

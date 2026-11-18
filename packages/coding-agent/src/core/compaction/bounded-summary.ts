@@ -6,11 +6,11 @@ import type { AgentMessage, StreamFn, ThinkingLevel } from "@octocodeai/octocode
 import { contentText, type RetryCallbacks, type RetryPolicy } from "@octocodeai/octocode-ai";
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import { completeBounded, createSummarizationOptions, getSummarizationFailure } from "./summarization.ts";
 import { serializeMessages } from "./utils.ts";
 
-const TURN_PREFIX_SUMMARIZATION_PROMPT = renderInstruction("workflows/compaction/turn-prefix.md");
+const TURN_PREFIX_SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/turn-prefix.md");
 
 /**
  * Generate a summary for a turn prefix (when splitting a turn).

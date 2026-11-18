@@ -15,7 +15,7 @@ import type { AppKeybinding } from "../../../core/keybindings.ts";
 import { formatSessionReport } from "../../../octocode/shared/session-report.ts";
 import { getChangelogPath, normalizeChangelogLinks, parseChangelog } from "../../../utils/changelog.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { formatKeyText, keyText } from "../../../theme/theme-tui-helpers.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
 import { formatResumeCommand } from "./helpers.ts";
@@ -153,7 +153,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 	const dequeue = host.getAppKeyDisplay("app.message.dequeue");
 	const pasteImage = host.getAppKeyDisplay("app.clipboard.pasteImage");
 
-	let hotkeys = `
+	const hotkeys = `
 **Navigation**
 | Key | Action |
 |-----|--------|
@@ -200,21 +200,6 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 | \`!\` | Run bash command |
 | \`!!\` | Run bash command (excluded from context) |
 `;
-
-	const extensionRunner = host.session.extensionRunner;
-	const shortcuts = extensionRunner.getShortcuts(host.keybindings.getEffectiveConfig());
-	if (shortcuts.size > 0) {
-		hotkeys += `
-**Extensions**
-| Key | Action |
-|-----|--------|
-`;
-		for (const [key, shortcut] of shortcuts) {
-			const description = shortcut.description ?? shortcut.extensionPath;
-			const keyDisplay = formatKeyText(key);
-			hotkeys += `| \`${keyDisplay}\` | ${description} |\n`;
-		}
-	}
 
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(new DynamicBorder());

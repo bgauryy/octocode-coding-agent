@@ -147,7 +147,7 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		const session = live?.find((server) => server.server === entry.name);
 		const pins = entry.config.toolExposure ?? {};
 		const rows = (session?.tools ?? []).map((tool): ToolExposureRow => {
-			const pin = pins[tool.name] === undefined ? undefined : toolExposureState(pins[tool.name]);
+			const pin = pins[tool.name];
 			return {
 				name: tool.name,
 				...(pin ? { pin } : {}),
@@ -159,8 +159,9 @@ function mcpGroups(ctx: ConfigContext, live: LiveMcpStates | undefined): ToolExp
 		const ordered = sortByAudit(rows);
 		const listed = new Set(rows.map((row) => row.name));
 		for (const [name, pinned] of Object.entries(pins)) {
-			const pin = toolExposureState(pinned);
-			if (!name.includes("*") && !listed.has(name)) ordered.push({ name, pin, state: pin, decidedBy: "pin" });
+			if (!name.includes("*") && !listed.has(name)) {
+				ordered.push({ name, pin: pinned, state: toolExposureState(pinned), decidedBy: "pin" });
+			}
 		}
 		const note = !live
 			? "No session is running here, so only pinned tools are listed. Open this page from a session (/web) to see every tool."

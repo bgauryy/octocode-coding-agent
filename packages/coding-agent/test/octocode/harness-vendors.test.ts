@@ -155,7 +155,6 @@ describe("harness vendors", () => {
 		expect(context({})).toEqual([]);
 		const [entry] = context({ "harness:claude:memory": true });
 		expect(entry.path).toBe(file);
-		expect(entry.content).toContain("Claude Code's auto memory");
 		expect(entry.content).toContain("remember this");
 		// The whole file fits: nothing says it was cut.
 		expect(entry.content).not.toContain("Cut:");

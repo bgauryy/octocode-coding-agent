@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { withDialog } from "../shared/locks.ts";
 import { plural } from "../shared/text.ts";
@@ -12,7 +12,7 @@ import type { PermissionMode } from "./mode.ts";
 export function stopConfirmation(
 	running: () => readonly string[],
 	isSubagent: boolean,
-): (ctx: ExtensionContext, mode: PermissionMode) => Promise<boolean> {
+): (ctx: FeatureContext, mode: PermissionMode) => Promise<boolean> {
 	return async (ctx, mode) => {
 		const names = running();
 		if (names.length === 0 || !interactive(ctx, isSubagent)) return true;

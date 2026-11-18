@@ -42,14 +42,16 @@ function libraryRankedText(lines: readonly string[]): string[] {
 }
 
 /** A segment's `lines`: the values of its `SEGMENT_RANKED_LABELS` fields, then its messages (`rankedMessageText`). */
-function segmentRankedText(lines: readonly string[]): string[] {
+function segmentRankedText(lines: readonly string[], openers?: Array<string | undefined>): string[] {
 	const body = lines.indexOf(MESSAGES_HEADING);
-	if (body < 0) return rankedMessageText(lines);
+	if (body < 0) return rankedMessageText(lines, openers);
 	const header = lines.slice(0, body).map((line) => {
+		openers?.push(undefined);
 		const field = fieldOf(line);
 		return field && SEGMENT_RANKED_LABELS.has(field.label) ? field.value : "";
 	});
-	return [...header, "", ...rankedMessageText(lines.slice(body + 1))];
+	openers?.push(undefined);
+	return [...header, "", ...rankedMessageText(lines.slice(body + 1), openers)];
 }
 
 /**
@@ -61,4 +63,60 @@ export function archiveRankedText(file: string, lines: readonly string[]): reado
 	if (name === RECORD_FILE) return recordRankedText(lines);
 	if (name === LIBRARY_FILE) return libraryRankedText(lines);
 	return isSegmentFile(name) ? segmentRankedText(lines) : lines;
+}
+
+/**
+ * What the ranked text of a line depends on before it, as lines to read around a window of the file: the window's
+ * ranked text is that of `[...before, ...window, ...after]`, cut to the window (`archiveRankedWindow`). Undefined when
+ * the window reads the same on its own.
+ */
+export interface RankedContext {
+	before: string[];
+	after: string[];
+}
+
+/** `archiveRankedText` of `lines`, and the context a window starting at a line needs to read the same. */
+export function archiveRankedLines(
+	file: string,
+	lines: readonly string[],
+): { ranked: readonly string[]; context(start: number): RankedContext | undefined } {
+	const name = path.basename(file);
+	const openers: Array<string | undefined> = [];
+	const open = (at: number) => (openers[at] === undefined ? [] : [openers[at]]);
+	if (name === RECORD_FILE) {
+		const ranked = recordRankedText(lines, openers);
+		const body = lines.findIndex((line) => line.startsWith("## "));
+		return {
+			ranked,
+			context: (start) => (body >= 0 && start > body ? { before: ["## ", ...open(start)], after: [] } : undefined),
+		};
+	}
+	if (name === LIBRARY_FILE) {
+		const table = lines.indexOf(LIBRARY_SEPARATOR);
+		return {
+			ranked: libraryRankedText(lines),
+			context: (start) => (table >= 0 && start > table ? { before: [LIBRARY_SEPARATOR], after: [] } : undefined),
+		};
+	}
+	if (!isSegmentFile(name)) return { ranked: lines, context: () => undefined };
+	const ranked = segmentRankedText(lines, openers);
+	const body = lines.indexOf(MESSAGES_HEADING);
+	return {
+		ranked,
+		context: (start) =>
+			body >= 0 && start <= body
+				? { before: [], after: [MESSAGES_HEADING] }
+				: { before: [MESSAGES_HEADING, ...open(start)], after: [] },
+	};
+}
+
+/** The ranked text of `window`, lines of archive `file` that start where `context` was taken (`archiveRankedLines`). */
+export function archiveRankedWindow(
+	file: string,
+	window: readonly string[],
+	context: RankedContext | undefined,
+): readonly string[] {
+	if (!context) return archiveRankedText(file, window);
+	const ranked = archiveRankedText(file, [...context.before, ...window, ...context.after]);
+	return ranked.slice(context.before.length, context.before.length + window.length);
 }

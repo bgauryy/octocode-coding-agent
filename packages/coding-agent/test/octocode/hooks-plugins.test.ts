@@ -29,7 +29,7 @@ describe("plugin hooks through session registration", () => {
 			);
 			const entry = { path: plugin, protocol };
 			const f = fakeHost();
-			f.api.getSettings = () => ({ plugins: [entry] });
+			f.api.settings.get = () => ({ plugins: [entry] });
 			const hooks = registerHooks(f.api, { env: {}, home });
 			const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 			const event = { toolName: "bash", toolCallId: "plugin-call", input: { command: "true" } };

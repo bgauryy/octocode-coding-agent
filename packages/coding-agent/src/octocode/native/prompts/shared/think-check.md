@@ -1,0 +1,1 @@
+- Set a goal and its check (an outcome, not activity); act, verify, then keep, adjust or revert. Before acting, check current state, not memory: what it touches, who holds it, how to undo it; scale checks to risk.

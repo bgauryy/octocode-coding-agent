@@ -40,9 +40,9 @@ it("delivers compact and clear MCP context once through the registered owner", a
 		JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "mcp_tool", server: "policy", tool: "context" }] }] } }),
 	);
 	const fake = fakeHost(HOOK_SETTINGS);
-	fake.api.events = createEventBus();
+	Object.assign(fake.api, { channels: createEventBus() });
 	const call = vi.fn(async () => ({ content: [{ type: "text" as const, text: "MCP session guidance" }] }));
-	const unregister = registerMcpHookCaller(fake.api.events, call);
+	const unregister = registerMcpHookCaller(fake.api.channels, call);
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
 	registerHooks(fake.api, { env: {}, home });
 	await fake.fire("session_start", { reason: "startup" }, ctx);
@@ -76,9 +76,9 @@ it.each(["claude", "codex"] as const)(
 			}),
 		);
 		const fake = fakeHost(HOOK_SETTINGS);
-		fake.api.events = createEventBus();
+		Object.assign(fake.api, { channels: createEventBus() });
 		const call = vi.fn(async () => ({ content: [] }));
-		const unregister = registerMcpHookCaller(fake.api.events, call);
+		const unregister = registerMcpHookCaller(fake.api.channels, call);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: false, model: { id: "fixture-model" } });
 		registerHooks(fake.api, { env: {}, home });
 		try {

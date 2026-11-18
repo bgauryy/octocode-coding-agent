@@ -1,5 +1,5 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import { Box, Container, Spacer, Text } from "@octocodeai/octocode-tui";
+import { Box, Container, Spacer, Text, trackRenderChanges } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { EntryRenderer } from "../../../core/features/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
@@ -7,7 +7,7 @@ import { theme } from "../../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
- * Component that renders a custom session entry from extensions.
+ * Component that renders a custom session entry from features.
  * The host owns transcript spacing; renderer output should provide only its content.
  */
 export class CustomEntryComponent extends Container {
@@ -81,3 +81,6 @@ export class CustomEntryComponent extends Container {
 		this.addChild(component);
 	}
 }
+
+// Every state change rebuilds the children, and the container signals each edit.
+trackRenderChanges(CustomEntryComponent.prototype);

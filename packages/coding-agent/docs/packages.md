@@ -12,10 +12,10 @@ octocode install git:github.com/example/octocode-tools@v1
 octocode install ./local-package --local
 octocode list
 octocode remove npm:@example/octocode-tools
-octocode update --extensions
+octocode update --packages
 ```
 
-`octocode update --extensions` reconciles package installations; [Command line](cli.md) lists every option.
+`octocode update --packages` reconciles package installations (`octocode update --package <source>` updates one); [Command line](cli.md) lists every option.
 
 | Source | Example                                     | Behavior                                                                     |
 | ------ | ------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -27,7 +27,7 @@ octocode update --extensions
 - Personal installs go to `~/.octocode/octocodecode/settings.json`. `--local` (`-l`) writes `.octocode/settings.json`, which loads only in a trusted project.
 - Relative local paths resolve from the settings file that holds them.
 - Packages can carry skills that tell the model to run programs. Read third-party source before installing it, and project package declarations before trusting a project.
-- Package code is never run: user code extensions are unsupported, so extension code in a package is ignored with a warning; its skills, prompts and themes still load. Built-in features are switched with `octocode configuration` (`enable extension:<name>`), not a CLI flag. See [changing configuration](configuration.md#changing-configuration).
+- Package code is never run: a package contributes skills, prompts and themes only, and a folder of code in it is not a resource. See [changing configuration](configuration.md#changing-configuration).
 
 ## Create a package
 

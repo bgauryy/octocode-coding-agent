@@ -3,7 +3,7 @@
 import { promptListing, promptText, resourceListing } from "./catalog-requests.ts";
 import type { McpCommandContext } from "./host/types.ts";
 import { say } from "./notice.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 export const CATALOG_ACTIONS = ["resources", "prompts", "prompt"] as const;
 export const CATALOG_USAGE = "/mcp resources <server>, /mcp prompts <server>, /mcp prompt <server> <name> [args]";
@@ -22,7 +22,7 @@ export function commandWords(text: string): string[] {
  * Runs a catalog subcommand from the text after `/mcp`. A prompt's messages are sent as the user's next message (shown
  * instead when the host cannot send one); listings are shown.
  */
-export async function catalogCommand(state: McpExtensionState, args: string, ctx: McpCommandContext): Promise<void> {
+export async function catalogCommand(state: McpFeatureState, args: string, ctx: McpCommandContext): Promise<void> {
 	const [action, server, prompt, ...rest] = commandWords(args);
 	if (!server || (action === "prompt" ? !prompt : prompt !== undefined))
 		return say(ctx, `Usage: ${CATALOG_USAGE}`, "warning");
@@ -32,7 +32,7 @@ export async function catalogCommand(state: McpExtensionState, args: string, ctx
 		if (action === "resources") return say(ctx, await resourceListing(state, server), "info");
 		if (action === "prompts") return say(ctx, await promptListing(state, server), "info");
 		const text = await promptText(state, server, prompt, rest);
-		if (state.api.sendUserMessage) state.api.sendUserMessage(text);
+		if (state.api.session.sendUserMessage) state.api.session.sendUserMessage(text);
 		else say(ctx, text, "info");
 	} catch (error) {
 		say(ctx, error instanceof Error ? error.message : String(error), "error");

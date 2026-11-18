@@ -22,6 +22,7 @@ import { SessionManager, type SessionEntry } from "../src/core/session-manager.t
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
 import { createTestResourceLoader } from "./utilities.ts";
+import { asSetup } from "./octocode/fake-host.ts";
 
 const model: Model<"anthropic-messages"> = {
 	id: "m",
@@ -214,14 +215,14 @@ describe("early summary requests", () => {
 			reasoning: false,
 		};
 		const seen: SimpleStreamOptions[] = [];
-		const api = {
+		const api = asSetup({
 			getThinkingLevel: () => "off",
 			createUsageRecorder: () => () => undefined,
 			getActiveTools: () => [],
 			getHiddenDeclarations: () => [],
 			getSettings: () => ({}),
 			appendEntry: () => undefined,
-		} as never;
+		}) as never;
 		const sessionManager = {
 			getSessionId: () => "sid",
 			getHeader: () => null,

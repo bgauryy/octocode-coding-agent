@@ -1,6 +1,6 @@
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { ApiClient } from "../api/client.ts";
 import { issueTicket, ownInstance } from "../api/identity.ts";
 import { probeInstances } from "../api/probe.ts";
@@ -9,6 +9,7 @@ import { ticketTarget } from "../api/registry-integrity.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
+import { ReadWatch } from "./read-watch.ts";
 import { canonical, locateRepo } from "../worktrees/repo.ts";
 
 /** The `to` of a worktree session's merge request: the session in the repository's main checkout. */
@@ -22,14 +23,61 @@ interface PeerPolicy {
 	authorize(
 		target: { name: string; cwd: string },
 		text: string,
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal?: AbortSignal,
 	): Promise<void>;
 	notice(text: string): void;
+	/** A notice the model reads at its next step, without starting a turn; `notice` stands in when absent. */
+	quiet?(text: string): void;
+	/** This session's team name, sent with each message as the sender's claim. */
+	ownName?(): string | undefined;
+	/** The live members of this session's team and the process each runs, so a team name addresses that process. */
+	members?(): ReadonlyArray<{ id: string; pid: number }>;
 }
 
 /** A refusal before anything reached the other session. */
 const notSent = (message: string): Error => Object.assign(new Error(message), { execution: "not-sent" });
+
+/** The running instance `to` names; none or several is a refusal before anything was sent. */
+function pick(instances: readonly InstanceRecord[], to: string): InstanceRecord {
+	try {
+		return selectInstance(instances, to);
+	} catch (error) {
+		throw Object.assign(new Error(errorMessage(error), { cause: error }), { execution: "not-sent" });
+	}
+}
+
+/**
+ * What a failed `message.send` tells the sender. `execution: "not-sent"` (with the client's `reason` when it has one):
+ * nothing arrived, so sending again cannot duplicate it, and the text says when to. `execution: "unknown"`: the call
+ * failed after the request may have been read, so the message may have arrived.
+ */
+function sendFailure(name: string, error: unknown): Error {
+	const data = isRecord(error) && isRecord(error.data) ? error.data : {};
+	const tags = isRecord(error) ? error : {};
+	const said = errorMessage(error);
+	if ((data.execution ?? tags.execution) !== "not-sent")
+		return Object.assign(
+			new Error(`${name} did not take this message: ${said} It may have arrived; check before sending it again.`, {
+				cause: error,
+			}),
+			{ execution: "unknown" },
+		);
+	const reason = data.reason ?? tags.reason;
+	const retryAfterMs = typeof data.retryAfterMs === "number" ? data.retryAfterMs : undefined;
+	const when =
+		reason === "overloaded"
+			? ` ${name} has too many connections open; send it again in a few seconds.`
+			: reason === "unreachable"
+				? ` ${name} is not running or does not answer on its socket; check that it still runs before sending again.`
+				: "";
+	const nothing = /nothing was sent/i.test(said) ? "" : " Nothing was sent.";
+	return Object.assign(new Error(`${name} did not take this message: ${said}${nothing}${when}`, { cause: error }), {
+		execution: "not-sent",
+		...(typeof reason === "string" ? { reason } : {}),
+		...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+	});
+}
 
 /** The running instances of this repository's main checkout, and whether the session at `cwd` sits in a linked worktree. */
 async function placeInRepository(
@@ -60,19 +108,41 @@ export class Peers {
 
 	private readonly policy: PeerPolicy;
 	private readonly env: NodeJS.ProcessEnv;
+	/** Messages other sessions queued and have not read yet. */
+	private readonly unread: ReadWatch;
 	constructor(policy: PeerPolicy, env: NodeJS.ProcessEnv = process.env) {
 		this.policy = policy;
 		this.env = env;
+		this.unread = new ReadWatch((text) => (policy.quiet ? policy.quiet(text) : policy.notice(text)));
 	}
 
 	private instances(): InstanceRecord[] {
 		return listInstances(apiDir(this.env));
 	}
 
+	/** The live team member `to` names that runs another process; none when `to` is not a team name. */
+	private member(to: string): { id: string; pid: number } | undefined {
+		return this.policy.members?.().find((member) => member.id === to && member.pid !== process.pid);
+	}
+
+	/** The instance a team name's process runs; a name with no session API, or with several records, is a refusal saying what to do. */
+	private byTeamName(member: { id: string; pid: number }, instances: readonly InstanceRecord[]): InstanceRecord {
+		const found = instances.filter((entry) => entry.pid === member.pid);
+		if (found.length === 1) return found[0];
+		if (found.length === 0)
+			throw notSent(
+				`${member.id} is a live team member (pid ${member.pid}) whose session API is off, so it cannot be reached from here. Nothing was sent; ask the user to turn /api on there.`,
+			);
+		throw notSent(
+			`Several instances run as ${member.id} (pid ${member.pid}): ${found.map(describeInstance).join("; ")}. Nothing was sent; use an instance id.`,
+		);
+	}
+
 	/** Whether `to` names another session rather than a teammate. */
 	addresses(to: string): boolean {
 		return (
 			to === COORDINATOR ||
+			this.member(to) !== undefined ||
 			PROCESS_NAME.test(to) ||
 			this.instances().some((entry) => entry.name === to || entry.id === to || entry.session === to)
 		);
@@ -130,11 +200,18 @@ export class Peers {
 		to: string,
 		text: string,
 		options: { replyRequired?: boolean },
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal?: AbortSignal,
 	): Promise<{ text: string; details: Record<string, unknown> }> {
 		const instances = this.instances();
-		const chosen = to === COORDINATOR ? await this.coordinator(ctx.cwd, instances) : selectInstance(instances, to);
+		// A live team member's name comes first: it is that name's own process; any other name is a process name or id.
+		const member = to === COORDINATOR ? undefined : this.member(to);
+		const chosen =
+			to === COORDINATOR
+				? await this.coordinator(ctx.cwd, instances)
+				: member
+					? this.byTeamName(member, instances)
+					: pick(instances, to);
 		const name = chosen.name ?? chosen.id;
 		if (chosen.pid === process.pid) throw notSent(`${name} is this session; name another.`);
 		// The ticket below lets the receiver confirm this call: only the record in its target's own file, repeated by no other, gets one.
@@ -154,6 +231,7 @@ export class Peers {
 			// The same name the reader answers to: the sender's own process name.
 			from: own?.name ?? process.title,
 			caller: {
+				...(this.policy.ownName?.() ? { team: this.policy.ownName?.() } : {}),
 				pid: process.pid,
 				cwd: own?.cwd ?? ctx.cwd,
 				...(own ? { name: own.name, instanceId: own.id, ticket: ticket.ticket } : {}),
@@ -171,14 +249,11 @@ export class Peers {
 			});
 		} catch (error) {
 			ticket.release();
-			const execution = isRecord(error) && isRecord(error.data) ? error.data.execution : undefined;
-			const notDelivered = execution === "not-sent" || (isRecord(error) && error.execution === "not-sent");
-			throw new Error(
-				`${name} did not take this message: ${errorMessage(error)}${notDelivered ? " Nothing was sent." : " It may have arrived; check before sending it again."}`,
-				{ cause: error },
-			);
+			throw sendFailure(name, error);
 		}
 		const queued = isRecord(receipt) ? receipt.queued : undefined;
+		// A queued message lives only in the receiver's memory until its model reads it: watch for the receiver exiting first.
+		if (queued === "steer" || queued === "followUp") this.unread.track({ name, text, target });
 		// A follow-up repeats the same params (and ticket) until the receiver's user decides.
 		if (queued === WAITING_FOR_USER && isRecord(receipt))
 			void this.follow(client, name, { ...params, key: receipt.key }).finally(ticket.release);
@@ -213,6 +288,7 @@ export class Peers {
 
 	/** The session ended: nobody is left to tell. */
 	reset(): void {
+		this.unread.stop();
 		this.lifetime.abort();
 		this.lifetime = new AbortController();
 	}

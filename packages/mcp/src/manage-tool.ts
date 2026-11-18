@@ -51,7 +51,7 @@ export interface ManagedMcpServer {
 	source?: string;
 }
 
-/** What the `mcp` tool does to servers; the MCP extension owns the servers and supplies these. */
+/** What the `mcp` tool does to servers; the MCP feature owns the servers and supplies these. */
 export interface McpManageOperations {
 	servers(): ManagedMcpServer[];
 	/** Read the current catalog without connecting or executing a server. */

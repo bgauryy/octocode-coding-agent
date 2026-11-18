@@ -11,15 +11,14 @@ import { formatMcpConfigLocations, formatMcpTool } from "./inspection.ts";
 import { manage, signInWithUi, toolCatalog } from "./manager.ts";
 import { formatStatus } from "./report.ts";
 import { describeState, type McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import { getMcpSessionStatus } from "./status.ts";
+import { registerMcpToolsPage } from "./tools-page.ts";
 import { showMcpManager } from "./ui.ts";
 
-/** `/mcp assign` and `/mcp exposure` moved to /harness mcp. */
+/** `/mcp assign` and `/mcp exposure` moved to the server's tools page in the manager. */
 const switchMoved = (action: string, name: string): string =>
-	action === "assign"
-		? `Moved: open /harness mcp, select ${name || "<server>"}, then Available to`
-		: `Moved: open /harness mcp, select ${name || "<server>"}, then Default for tools`;
+	`Moved: open /mcp, select ${name || "<server>"}, then Tools › ${action === "assign" ? "Available to" : "Default for tools"}`;
 
 /** `/mcp enable|disable` moved to the one configuration command. */
 const enableMoved = (action: string, name: string, extra: readonly string[]): string =>
@@ -29,7 +28,7 @@ const MCP_USAGE = `Usage: /mcp [list|config|add], /mcp tools [server] [tool], /m
 
 /** Resolve the server for a subcommand, asking when the name is omitted and ambiguous. */
 async function pickServer(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	name: string | undefined,
 	ctx: McpCommandContext,
 	options: { eligible: (server: McpServer) => boolean; preferred: (server: McpServer) => boolean; none: string },
@@ -62,7 +61,7 @@ const oauthPick = {
 	none: "No enabled MCP server uses OAuth. Only HTTP servers without an Authorization header do.",
 };
 
-async function loginCommand(state: McpExtensionState, server: McpServer, ctx: McpCommandContext): Promise<void> {
+async function loginCommand(state: McpFeatureState, server: McpServer, ctx: McpCommandContext): Promise<void> {
 	const { name } = server.entry;
 	if (!ctx.hasUI) {
 		say(ctx, `Signing in to MCP server "${name}" requires interactive mode.`, "error");
@@ -97,7 +96,7 @@ async function loginCommand(state: McpExtensionState, server: McpServer, ctx: Mc
 	say(ctx, `Signed in to MCP server "${name}" (${server.connection?.tools.length ?? 0} tools).`, "info");
 }
 
-function getArgumentCompletions(state: McpExtensionState, prefix: string) {
+function getArgumentCompletions(state: McpFeatureState, prefix: string) {
 	const { api } = state;
 	const words = prefix.trimStart().split(/\s+/);
 	const [action = "", name = "", value = ""] = words;
@@ -115,7 +114,7 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 					description: firstLine(tool.description ?? ""),
 				}));
 		if (words.length === 2)
-			return getMcpSessionStatus(api.events)
+			return getMcpSessionStatus(api.channels)
 				.filter((server) => server.name.startsWith(name))
 				.map((server) => ({ value: `tools ${server.name} `, label: server.name, description: server.state }));
 		return null;
@@ -133,12 +132,12 @@ function getArgumentCompletions(state: McpExtensionState, prefix: string) {
 		}));
 }
 
-function showToolsCommand(state: McpExtensionState, name: string, extra: string[], ctx: McpCommandContext): void {
+function showToolsCommand(state: McpFeatureState, name: string, extra: string[], ctx: McpCommandContext): void {
 	if (extra.length > 1) {
 		say(ctx, MCP_USAGE, "warning");
 		return;
 	}
-	const snapshot = getMcpSessionStatus(state.api.events).filter((server) => !name || server.name === name);
+	const snapshot = getMcpSessionStatus(state.api.channels).filter((server) => !name || server.name === name);
 	if (name && snapshot.length === 0) {
 		say(ctx, `No MCP server named "${name}".`, "warning");
 		return;
@@ -167,7 +166,7 @@ function showToolsCommand(state: McpExtensionState, name: string, extra: string[
 		);
 }
 
-async function reconnectCommand(state: McpExtensionState, name: string, ctx: McpCommandContext): Promise<void> {
+async function reconnectCommand(state: McpFeatureState, name: string, ctx: McpCommandContext): Promise<void> {
 	if (name === "all") {
 		const targets = state.servers
 			.filter((server) => server.connection)
@@ -200,8 +199,9 @@ async function reconnectCommand(state: McpExtensionState, name: string, ctx: Mcp
 	}
 }
 
-export function registerMcpCommand(state: McpExtensionState): void {
-	state.api.registerCommand("mcp", {
+export function registerMcpCommand(state: McpFeatureState): void {
+	registerMcpToolsPage(state.api.channels, state);
+	state.api.commands.register("mcp", {
 		description: "Manage MCP servers and their tools",
 		argumentHint: "[list|add|tools|login|logout|reconnect|config]",
 		getArgumentCompletions: (prefix) => getArgumentCompletions(state, prefix),

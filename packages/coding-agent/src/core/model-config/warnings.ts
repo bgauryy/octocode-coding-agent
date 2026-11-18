@@ -46,7 +46,7 @@ export function modelsJsonWarnings(parsed: Entry, path: string, fields: ModelsJs
 	const unknownApi = (entry: Entry, at: string) => {
 		if (typeof entry.api !== "string" || Object.hasOwn(BUILTIN_APIS, entry.api)) return;
 		found.push(
-			`${at}.api "${entry.api}" is not a built-in API; requests fail unless an extension provides it.${suggestion(entry.api, BUILTIN_API_NAMES)}`,
+			`${at}.api "${entry.api}" is not a built-in API; requests fail unless a feature provides it.${suggestion(entry.api, BUILTIN_API_NAMES)}`,
 		);
 	};
 	unknownFields(parsed, fields.root, "(top level)");

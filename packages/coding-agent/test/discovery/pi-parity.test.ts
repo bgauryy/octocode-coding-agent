@@ -154,32 +154,32 @@ describe("Pi keybindings", () => {
 });
 
 describe("Pi code is not loaded", () => {
-	it("reports a Pi extension and a Pi hook as not loaded and never runs them", async () => {
+	it("reports a Pi hook as not loaded, never runs it and ignores a Pi extensions folder", async () => {
 		const marker = join(sandbox.home, "executed");
 		const code = `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "ran"); export default function () {}`;
-		const extension = write(join(sandbox.piAgentDir, "extensions", "ext.ts"), code);
+		write(join(sandbox.piAgentDir, "extensions", "ext.ts"), code);
 		const hook = write(join(sandbox.piAgentDir, "hooks", "hook.ts"), code);
-		const projectExtension = write(join(sandbox.cwd, ".pi", "extensions", "project.ts"), code);
+		write(join(sandbox.cwd, ".pi", "extensions", "project.ts"), code);
 		const untrusted = createLoader(sandbox, false);
 		await untrusted.reload();
-		const warnings = (loader: typeof untrusted) => loader.getExtensions().warnings ?? [];
+		const warnings = (loader: typeof untrusted) => loader.getFeatures().warnings ?? [];
 		expect(
 			warnings(untrusted)
 				.map((warning) => warning.path)
 				.sort(byText),
-		).toEqual([extension, hook].sort(byText));
+		).toEqual([hook]);
 		const trusted = createLoader(sandbox, true);
 		await trusted.reload();
 		expect(
 			warnings(trusted)
 				.map((warning) => warning.path)
 				.sort(byText),
-		).toEqual([extension, hook, projectExtension].sort(byText));
+		).toEqual([hook]);
 		for (const warning of warnings(trusted)) {
-			expect(warning.warning).toContain("Pi extension, not loaded");
+			expect(warning.warning).toContain("Pi hook, not loaded");
 			expect(warning.warning).toContain("hooks.json");
 		}
-		expect(trusted.getExtensions().extensions).toEqual([]);
+		expect(trusted.getFeatures().features).toEqual([]);
 		expect(existsSync(marker)).toBe(false);
 	});
 });
@@ -196,6 +196,6 @@ describe("explicit homes keep Pi off", () => {
 		expect(skillNames(loader)).toEqual([]);
 		expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
 		expect(loader.getSystemPrompt()).toBeUndefined();
-		expect(loader.getExtensions().warnings ?? []).toEqual([]);
+		expect(loader.getFeatures().warnings ?? []).toEqual([]);
 	});
 });

@@ -3,6 +3,7 @@ import { type SubmitEvent, useId, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
+import { AutoCountdown } from "./AutoCountdown.tsx";
 import { DialogAnswerCard } from "./DialogAnswerCard.tsx";
 import { QuestionsAnswer } from "./QuestionsAnswer.tsx";
 import { useLive } from "./session.tsx";
@@ -14,6 +15,8 @@ type Awaiting = NonNullable<ApplicationSnapshot["awaiting"]>;
  * words), and a text field where the dialog accepts text. The host takes the first answer, from here or the terminal.
  * The host accepts a command before the dialog's broker looks at it, so the page follows the command's receipt in the
  * session until it is completed or failed, and shows the refusal (already answered, not an offered choice) when it fails.
+ * The host's askUser countdown stops at the first click, key or input on a timed card: the page tells the host (`hold`)
+ * and drops its own countdown, so nothing is taken for the person afterwards.
  */
 export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sessionId: string }) {
 	const { session: sessionStore } = useLive();
@@ -24,6 +27,8 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 	// The answer in flight: its command id, and the button (or "text") that sent it.
 	const [sent, setSent] = useState<{ id: string; key: string } | undefined>(undefined);
 	const [status, setStatus] = useState("");
+	// The dialog whose countdown the person stopped.
+	const [held, setHeld] = useState<string | undefined>(undefined);
 	const receipt = useStore(sessionStore, (state) =>
 		sent ? state.application?.receipts.find((item) => item.id === sent.id) : undefined,
 	);
@@ -33,6 +38,24 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 	const refusal = receipt?.status === "failed" ? (receipt.message ?? "The answer was not taken.") : "";
 	if (!awaiting.id || !connection) return null;
 	const dialogId = awaiting.id;
+	const timed = awaiting.questions
+		? awaiting.questions.some((q) => q.timeoutSeconds && (q.options ?? []).some((option) => option.recommended))
+		: Boolean(awaiting.timeoutSeconds && awaiting.optionInfo?.some((info) => info.recommended));
+	const counting = timed && held !== dialogId;
+	const hold = () => {
+		if (!counting) return;
+		setHeld(dialogId);
+		const failed = (message: string) => {
+			setHeld(undefined);
+			setStatus(message);
+		};
+		connection
+			.execute({ id: crypto.randomUUID(), sessionId, action: "hold", dialogId })
+			.then((receipt) => {
+				if (receipt.status === "failed") failed(receipt.message ?? "The countdown was not stopped.");
+			})
+			.catch((error: unknown) => failed(errorMessage(error)));
+	};
 	const send = async (answer: { choice: string } | { text: string } | { replies: Reply[] }) => {
 		if (pending) return;
 		const id = crypto.randomUUID();
@@ -61,7 +84,11 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 		if (text.trim()) void send({ text });
 	};
 	return (
+		// oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- only observes the controls inside: a click, key or input anywhere on the card is the person taking over from the timer
 		<section
+			onPointerDown={hold}
+			onKeyDown={hold}
+			onInput={hold}
 			className="dialog-answer"
 			aria-label={awaiting.title ? undefined : "Answer the agent's question"}
 			aria-labelledby={awaiting.title ? titleId : undefined}
@@ -76,11 +103,18 @@ export function DialogAnswer({ awaiting, sessionId }: { awaiting: Awaiting; sess
 					questions={awaiting.questions}
 					disabled={!connected || pending !== undefined}
 					loading={pending === "replies"}
+					counting={counting}
 					onSubmit={(replies) => void send({ replies })}
 				/>
 			) : (
 				<DialogAnswerCard awaiting={awaiting} />
 			)}
+			{counting && !awaiting.questions && awaiting.timeoutSeconds ? (
+				<AutoCountdown
+					seconds={awaiting.timeoutSeconds}
+					labels={(awaiting.options ?? []).filter((_, index) => awaiting.optionInfo?.[index]?.recommended).slice(0, 1)}
+				/>
+			) : null}
 			{!awaiting.questions && awaiting.options?.length ? (
 				<div className="dialog-answer-options">
 					{awaiting.options.map((option, index) => {

@@ -15,21 +15,21 @@ afterEach(() => harness?.cleanup());
 async function setup() {
 	harness = await createHarness();
 	const chatContainer = new Container();
-	const showExtensionCustom = vi.fn();
+	const showCustomDialog = vi.fn();
 	const showStatus = vi.fn();
 	const showWarning = vi.fn();
 	const host = createFakeHost({
 		session: harness.session,
 		chatContainer,
 		getMarkdownThemeWithSettings: () => getMarkdownTheme(),
-		showExtensionCustom,
-		showExtensionSelector: vi.fn(),
+		showCustomDialog,
+		showSelectorDialog: vi.fn(),
 		showStatus,
 		showWarning,
 		ui: { requestRender: vi.fn() },
 	});
 	const text = () => stripVTControlCharacters(chatContainer.render(100).join("\n"));
-	return { host, chatContainer, showExtensionCustom, showStatus, showWarning, text };
+	return { host, chatContainer, showCustomDialog, showStatus, showWarning, text };
 }
 
 function streamAnswers(answer: string) {
@@ -50,26 +50,26 @@ function streamAnswers(answer: string) {
 
 describe("workflow commands render in the message list", () => {
 	it("adds /context and /context all to the chat without opening an overlay", async () => {
-		const { host, chatContainer, showExtensionCustom, text } = await setup();
+		const { host, chatContainer, showCustomDialog, text } = await setup();
 		await handleWorkflowCommand(host, "context", "");
 		expect(chatContainer.children.length).toBeGreaterThan(0);
 		expect(text()).toContain("Context");
 		const before = chatContainer.children.length;
 		await handleWorkflowCommand(host, "context", "all");
 		expect(chatContainer.children.length).toBeGreaterThan(before);
-		expect(showExtensionCustom).not.toHaveBeenCalled();
+		expect(showCustomDialog).not.toHaveBeenCalled();
 	});
 
 	it("shows usage for a bare /btw with no side thread", async () => {
-		const { host, showExtensionCustom, showWarning, text } = await setup();
+		const { host, showCustomDialog, showWarning, text } = await setup();
 		await handleWorkflowCommand(host, "btw", "");
 		expect(showWarning).toHaveBeenCalledWith(expect.stringContaining("/btw --cancel"));
 		expect(text()).not.toContain("Side thread");
-		expect(showExtensionCustom).not.toHaveBeenCalled();
+		expect(showCustomDialog).not.toHaveBeenCalled();
 	});
 
 	it("updates a /btw question in place and later shows the whole thread for bare /btw", async () => {
-		const { host, text, showExtensionCustom } = await setup();
+		const { host, text, showCustomDialog } = await setup();
 		const release = streamAnswers("private answer");
 		await handleWorkflowCommand(host, "btw", "first question");
 		expect(text()).toContain("first question");
@@ -80,7 +80,7 @@ describe("workflow commands render in the message list", () => {
 		expect(text()).not.toContain("Answering…");
 		await handleWorkflowCommand(host, "btw", "");
 		expect(text().match(/first question/g)).toHaveLength(2);
-		expect(showExtensionCustom).not.toHaveBeenCalled();
+		expect(showCustomDialog).not.toHaveBeenCalled();
 	});
 
 	it("cancels a running /btw question with --cancel and reports it in that question's block", async () => {
@@ -133,7 +133,7 @@ describe("workflow commands render in the message list", () => {
 	});
 
 	it("shows /diff progress, then replaces it with the changes", async () => {
-		const { host, text, showExtensionCustom } = await setup();
+		const { host, text, showCustomDialog } = await setup();
 		let finish!: (value: Awaited<ReturnType<Harness["session"]["getRepositoryDiff"]>>) => void;
 		vi.spyOn(harness.session, "getRepositoryDiff").mockReturnValue(
 			new Promise((resolve) => {
@@ -146,7 +146,7 @@ describe("workflow commands render in the message list", () => {
 		await running;
 		expect(text()).toContain("+changed line");
 		expect(text()).not.toContain("Reading repository changes…");
-		expect(showExtensionCustom).not.toHaveBeenCalled();
+		expect(showCustomDialog).not.toHaveBeenCalled();
 	});
 
 	it("reports a failed /diff in the chat", async () => {

@@ -1,6 +1,13 @@
-import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	MouseRegion,
+	renderChanged,
+	trackRenderChanges,
+	truncateToWidth,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { WAKE_TYPE, type WakeLine } from "../wake/gate.ts";
 
 const MARK = "\u26A1 woke";
@@ -29,13 +36,23 @@ export function collapsedWakeRow(lines: readonly WakeLine[], width: number): str
 /** One dim row per woken batch; expanded, one line per event. Never part of the model's context. */
 class WakeRow implements Component {
 	private readonly lines: readonly WakeLine[];
-	private readonly expanded: boolean;
+	private expanded: boolean;
 	private readonly dim: (text: string) => string;
 
 	constructor(lines: readonly WakeLine[], expanded: boolean, dim: (text: string) => string) {
 		this.lines = lines;
 		this.expanded = expanded;
 		this.dim = dim;
+	}
+
+	isExpanded(): boolean {
+		return this.expanded;
+	}
+
+	setExpanded(expanded: boolean): void {
+		if (this.expanded === expanded) return;
+		this.expanded = expanded;
+		renderChanged(this);
 	}
 
 	render(width: number): string[] {
@@ -46,13 +63,27 @@ class WakeRow implements Component {
 		return rows.map((row) => ` ${this.dim(row)}`);
 	}
 
-	invalidate(): void {}
+	/** A theme change repaints the row in the new colors. */
+	invalidate(): void {
+		renderChanged(this);
+	}
+}
+trackRenderChanges(WakeRow.prototype);
+
+/** The row as the transcript shows it: a left click flips this row, whatever the host's expand-all state was. */
+function wakeRowComponent(lines: readonly WakeLine[], expanded: boolean, dim: (text: string) => string): Component {
+	const row = new WakeRow(lines, expanded, dim);
+	return new MouseRegion(row, (event) => {
+		if (event.type !== "click" || event.button !== "left") return undefined;
+		row.setExpanded(!row.isExpanded());
+		return { handled: true };
+	});
 }
 
 /** Draws the `octocode-wake` entries the wake gate writes (`wake/gate.ts`). */
-export function registerWakeRow(api: ExtensionAPI): void {
-	api.registerEntryRenderer(WAKE_TYPE, (entry, options, theme) => {
+export function registerWakeRow(api: FeatureSetup): void {
+	api.renderers.entry(WAKE_TYPE, (entry, options, theme) => {
 		const lines = wakeLines(entry.data);
-		return lines.length > 0 ? new WakeRow(lines, options.expanded, (text) => theme.fg("dim", text)) : undefined;
+		return lines.length > 0 ? wakeRowComponent(lines, options.expanded, (text) => theme.fg("dim", text)) : undefined;
 	});
 }

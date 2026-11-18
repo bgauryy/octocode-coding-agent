@@ -5,11 +5,12 @@ import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { childHookMode, type HookMode, sessionHookMode } from "../../src/octocode/shared/hook-mode.ts";
-import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
+import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
 import { type AgentRuns, claimRun, type RunPlan, Slots } from "../../src/octocode/subagents/claim.ts";
 import { type CacheChoice, defaultTaskCache, subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { type AgentProfile, parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
 const ROUTE = `${model.provider}/${model.id}`;
@@ -28,7 +29,7 @@ function start(
 	} = {},
 ) {
 	const runs = {
-		api: { getSettings: () => options.settings ?? {} },
+		api: asSetup({ getSettings: () => options.settings ?? {} }),
 		team: { join: () => ({ id: "parent" }), newName: () => "kid", rememberFinished: () => {} },
 		running: new Map(),
 		items: new Map(),

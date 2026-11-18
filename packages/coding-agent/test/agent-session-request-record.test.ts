@@ -15,6 +15,8 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager, type SessionMessageEntry } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createTestSession } from "./helpers/session.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 /** A scripted Anthropic-API provider: it hands the payload it would send to `onPayload`, then answers from a script. */
 function scriptedProvider(
@@ -97,7 +99,8 @@ describe("AgentSession records requests, input origin and interrupts", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [(api) => api.registerProvider(scriptedProvider(model, hooks))],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([(api) => api.providers.register(scriptedProvider(model, hooks))]),
 		});
 		await resourceLoader.reload();
 		const sessionManager = SessionManager.inMemory();

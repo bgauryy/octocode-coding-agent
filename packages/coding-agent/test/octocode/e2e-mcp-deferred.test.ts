@@ -11,13 +11,15 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { sectionFamilyText } from "../../src/core/system-prompt-spec.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A workspace MCP server with `exposure: "deferred"` on a scripted model: the first request lists the server's purpose
@@ -65,8 +67,8 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -85,7 +87,8 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -109,7 +112,7 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 		else process.env.OCTOCODE_PERMISSION = saved.permission;
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 
 	const requests: TranscriptContext[] = [];

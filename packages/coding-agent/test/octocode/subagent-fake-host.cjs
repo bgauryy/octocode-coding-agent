@@ -633,7 +633,7 @@ async function scenario() {
 		emit({ type: "message_end", message: { role: "custom", content: "Background bash job finished" } });
 		emit(say("That job was my coverage rerun; findings unchanged."));
 	} else if (task.startsWith("job follow-up")) {
-		// The child reported, then its own background bash job ended and woke it (`octocode-bash-job`, as files/bash.ts sends it).
+		// The child reported, then its own background bash job ended and woke it (`octocode-bash-job`, as native/tools/bash/tool.ts sends it).
 		emit(say("done: build started and checks pass"));
 		emit({
 			type: "message_end",

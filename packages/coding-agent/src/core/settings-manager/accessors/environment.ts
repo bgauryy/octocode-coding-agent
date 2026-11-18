@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { normalizePath } from "@octocodeai/octocode-common/paths";
-import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
+import { SETTINGS_DEFAULTS, type SandboxMode } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
 import type { EnvironmentSettingsApi } from "../api/environment.ts";
 import { RuntimeSettingsAccessors } from "./runtime.ts";
@@ -120,6 +120,16 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 
 	getBashInheritProviderKeys(): boolean {
 		return this.settings.bash?.inheritProviderKeys === true;
+	}
+
+	getSandboxMode(): SandboxMode {
+		const mode = this.settings.sandbox?.mode;
+		return mode === "on" || mode === "auto" ? mode : SETTINGS_DEFAULTS.sandbox.mode;
+	}
+
+	getSandboxAllowUnsandboxed(): boolean {
+		const allow = this.settings.sandbox?.allowUnsandboxed;
+		return typeof allow === "boolean" ? allow : SETTINGS_DEFAULTS.sandbox.allowUnsandboxed;
 	}
 
 	getBashSpillMaxBytes(): number {

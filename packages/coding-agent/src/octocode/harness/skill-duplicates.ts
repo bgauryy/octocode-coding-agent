@@ -17,7 +17,7 @@ export function markLosingSkills(items: InventoryItem[], agentDir: string): Inve
 		const rank = item.resource
 			? skillPathPrecedence(item.resource.path, {
 					metadataByPath: new Map([[path.resolve(item.resource.path), item.resource.metadata]]),
-					extensionPaths: new Set(),
+					featurePaths: new Set(),
 					agentDir,
 				})
 			: "replaceable";

@@ -1,10 +1,7 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { octocodecodeAdapter } from "../../src/adapters/octocodecode/index.ts";
 
 /** One provider as the probe runs it: the upstream base URL, the API, one model entry copied from a `models.json`. */
 export interface ProbeProvider {
@@ -260,81 +257,18 @@ export async function runAgent(opts: {
 	/** Extra environment for the agent process, e.g. `OCTOCODE_CACHE_RETENTION`. Never a key. */
 	env?: Record<string, string>;
 }): Promise<AgentRun> {
-	const root = mkdtempSync(join(tmpdir(), "testkit-live-cache-"));
-	const home = join(root, "home");
-	const agentHome = join(home, ".octocode", "octocodecode");
-	const workspace = join(root, "workspace");
-	for (const d of [agentHome, workspace, join(root, "tmp")]) mkdirSync(d, { recursive: true });
 	const p = opts.provider;
-	writeFileSync(
-		join(agentHome, "models.json"),
-		JSON.stringify({
-			providers: { [p.id]: { baseUrl: opts.baseUrl, api: p.api, apiKey: "$PROBE_API_KEY", models: [p.model] } },
-		}),
-	);
-	const servers = Object.entries(opts.mcpServers ?? {});
-	if (servers.length)
-		writeFileSync(
-			join(agentHome, "mcp.json"),
-			JSON.stringify({ mcpServers: Object.fromEntries(servers.map(([n, url]) => [n, { url }])) }),
-		);
-	const args = ["--mode", "json", "--offline", "--trust", "--model", `${p.id}/${p.model.id}`];
-	if (opts.thinking) args.push("--thinking", opts.thinking);
+	const session = await octocodecodeAdapter({
+		bundle: opts.bundle,
+		provider: { id: p.id, api: p.api, model: p.model, baseUrl: opts.baseUrl, key: p.key },
+		thinking: opts.thinking,
+		persistSession: true,
+	}).start({ gatewayUrl: opts.baseUrl, mcpUrls: opts.mcpServers, env: opts.env });
 	try {
-		return await new Promise<AgentRun>((done, fail) => {
-			const child = spawn(process.execPath, [opts.bundle, ...args, ...opts.prompts], {
-				cwd: workspace,
-				stdio: ["ignore", "pipe", "pipe"],
-				detached: true,
-				env: {
-					PATH: process.env.PATH ?? "",
-					HOME: home,
-					USERPROFILE: home,
-					OCTOCODE_HOME: agentHome,
-					TMPDIR: join(root, "tmp"),
-					NO_COLOR: "1",
-					CI: "1",
-					PROBE_API_KEY: p.key,
-					...opts.env,
-				},
-			});
-			let stdout = "";
-			let stderr = "";
-			let timedOut = false;
-			child.stdout.on("data", (c: Buffer) => (stdout += c.toString("utf8")));
-			child.stderr.on("data", (c: Buffer) => (stderr += c.toString("utf8")));
-			const killGroup = (): void => {
-				try {
-					process.kill(-child.pid!, "SIGKILL");
-				} catch {
-					// already gone
-				}
-			};
-			const timer = setTimeout(() => {
-				timedOut = true;
-				killGroup();
-			}, opts.timeoutMs ?? 240_000);
-			child.on("error", (e) => {
-				clearTimeout(timer);
-				fail(e);
-			});
-			child.on("close", (exitCode) => {
-				clearTimeout(timer);
-				killGroup();
-				const events: Record<string, unknown>[] = [];
-				for (const line of stdout.split("\n")) {
-					try {
-						const v = JSON.parse(line) as unknown;
-						if (v && typeof v === "object") events.push(v as Record<string, unknown>);
-					} catch {
-						// not a JSON line
-					}
-				}
-				done({ exitCode, timedOut, stderr: stderr.replaceAll(p.key, "<key>"), events });
-			});
-		});
+		const r = await session.run({ prompts: opts.prompts, timeoutMs: opts.timeoutMs ?? 240_000 });
+		return { exitCode: r.exitCode, timedOut: r.timedOut, stderr: r.stderr, events: r.events };
 	} finally {
-		rmSync(root, { recursive: true, force: true });
+		await session.close();
 	}
 }
 

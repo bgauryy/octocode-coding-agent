@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACP_MCP_MANIFEST_ENV, ACP_WORKER_ENV } from "../../../common/src/env.ts";
 import { registerAcpClientMcpServers } from "../../../mcp/src/acp-session-servers.ts";
 import { registerFeature } from "../../../coding-agent/src/core/features/register.ts";
-import { createExtensionRuntime } from "../../../coding-agent/src/core/features/runtime.ts";
-import type { ExtensionRuntime } from "../../../coding-agent/src/core/features/types.ts";
+import { createFeatureRuntime } from "../../../coding-agent/src/core/features/runtime.ts";
+import type { FeatureRuntime } from "../../../coding-agent/src/core/features/types.ts";
 import { createDefaultTransport } from "../../../mcp/src/runtime/transport.ts";
 import { acpServerHost } from "../../../coding-agent/src/main/acp-host.ts";
 import { type AcpMcpServers, prepareAcpMcpServers } from "../../src/server/mcp.ts";
@@ -46,16 +46,15 @@ describe("ACP session MCP servers", () => {
 	/** What the worker's MCP host does with the environment the broker gave it, through the feature registration API. */
 	async function registerInWorker(
 		entry: AcpMcpServers,
-		runtime: ExtensionRuntime = createExtensionRuntime(),
+		runtime: FeatureRuntime = createFeatureRuntime(),
 		env: NodeJS.ProcessEnv = { ...entry.env, [ACP_WORKER_ENV]: "1" },
 	) {
-		const extension = await registerFeature(
+		const feature = await registerFeature(
 			{ id: "acp-client-mcp", owner: "builtin", register: (api) => registerAcpClientMcpServers(api, env) },
 			createEventBus(),
 			runtime,
-			workspace,
 		);
-		return { extension, runtime };
+		return { feature, runtime };
 	}
 
 	it("registers through the MCP host's manifest path, carries literal env and arguments through an MCP round trip, and cleans up", async () => {
@@ -86,7 +85,7 @@ for await (const line of createInterface({input: process.stdin})) {
 		expect(registered).toHaveLength(1);
 		expect(registered[0].name).toMatch(/^acp_[a-f0-9]{16}$/);
 		expect(registered[0].config.description).toContain("client server / ü");
-		for (const handler of loaded.extension.handlers.get("session_start") ?? [])
+		for (const handler of loaded.feature.handlers.get("session_start") ?? [])
 			await handler({ type: "session_start" }, {});
 		await entry.verify();
 		const config = registered[0].config;

@@ -46,7 +46,7 @@ describe("/resume session picker displaced by another view", () => {
 			editorContainer,
 			keybindings,
 			programStatus: { setBlocked: vi.fn() },
-			extensionSelector: undefined,
+			selectorDialog: undefined,
 			uiStore: createUiStore(),
 			activeSelectorDispose: undefined,
 			sessionManager: {
@@ -70,13 +70,13 @@ describe("/resume session picker displaced by another view", () => {
 			expect(allSignal?.aborted).toBe(false);
 
 			// An extension dialog takes the editor slot.
-			const answer = host.showExtensionSelector("Extension question", ["yes", "no"]);
+			const answer = host.showSelectorDialog("Extension question", ["yes", "no"]);
 			await terminal.waitForRender();
 			expect(terminal.getViewport().join("\n")).toContain("Extension question");
 
 			expect(allSignal?.aborted).toBe(true);
 			expect(cleared).toHaveBeenCalledWith(armed[0]);
-			host.hideExtensionSelector();
+			host.hideSelectorDialog();
 			await answer;
 		} finally {
 			ui.stop();

@@ -8,12 +8,14 @@ import {
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A headless Octocode session (no UI, as print and JSON mode run) in a fresh git repository, driven by a scripted model.
@@ -24,7 +26,7 @@ const ENTRY =
 	process.env.OCTOCODE_E2E_ENTRY === "dist"
 		? path.join(HERE, "..", "..", "dist", "index.js")
 		: path.join(HERE, "..", "..", "src", "index.ts");
-const octocode = (await import(ENTRY)).default as ExtensionFactory;
+const octocode = (await import(ENTRY)).default as FeatureRegister;
 
 export type ToolResult = { toolName: string; isError: boolean; text: string };
 type Reply = (context: TranscriptContext, options?: SimpleStreamOptions) => ReturnType<typeof fauxAssistantMessage>;
@@ -108,8 +110,8 @@ export async function headless(options: HeadlessOptions = {}) {
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -123,10 +125,11 @@ export async function headless(options: HeadlessOptions = {}) {
 		cwd,
 		agentDir: path.join(root, "agent"),
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "faux-provider", factory: provider },
 			{ name: "octocode", factory: octocode },
-		],
+		]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: !options.resources?.contextFiles,
@@ -141,7 +144,7 @@ export async function headless(options: HeadlessOptions = {}) {
 		sessionManager: SessionManager.inMemory(cwd),
 	});
 	sessions.push(session);
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 
 	const turns: ToolResult[][] = [];

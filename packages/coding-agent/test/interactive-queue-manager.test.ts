@@ -67,8 +67,8 @@ function fixture(
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		showWarning: vi.fn(),
-		showExtensionSelector: vi.fn(),
-		showExtensionEditor: vi.fn(),
+		showSelectorDialog: vi.fn(),
+		showEditorDialog: vi.fn(),
 		ui: { requestRender: vi.fn() },
 	};
 	return { ui, host: createFakeHost(ui), session, editorText };
@@ -77,13 +77,13 @@ function fixture(
 describe("queue item list", () => {
 	test("orders next-turn messages before follow-ups, session before compaction, and marks extension messages", () => {
 		const { host } = fixture(
-			[{ text: "after", mode: "followUp" }, { text: "first" }, { text: "ext", source: "extension" }],
+			[{ text: "after", mode: "followUp" }, { text: "first" }, { text: "ext", source: "feature" }],
 			[
 				{ text: "late follow", mode: "followUp" },
 				{ text: "late steer", mode: "steer" },
 			],
 		);
-		expect(listQueueItems(host).map((item) => [item.mode, item.text, item.extension])).toEqual([
+		expect(listQueueItems(host).map((item) => [item.mode, item.text, item.feature])).toEqual([
 			["steer", "first", false],
 			["steer", "ext", true],
 			["steer", "late steer", false],
@@ -149,7 +149,7 @@ describe("recalling the last queued message (Alt+Up)", () => {
 	});
 
 	test("recalls an extension-sent message like any other", () => {
-		const { host, editorText } = fixture([{ text: "from ext", source: "extension" }]);
+		const { host, editorText } = fixture([{ text: "from ext", source: "feature" }]);
 		handleDequeue(host);
 		expect(editorText.value).toBe("from ext");
 	});

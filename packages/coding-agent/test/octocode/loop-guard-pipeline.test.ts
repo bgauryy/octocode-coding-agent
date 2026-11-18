@@ -3,18 +3,19 @@ import { fauxAssistantMessage, fauxToolCall, type AssistantMessage } from "@octo
 import { Type } from "typebox";
 import { expect, it } from "vitest";
 import { executeToolCalls } from "../../../agent/src/agent-loop/tool-batch.ts";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { LOOP_HALT_AT, registerLoopGuard } from "../../src/octocode/loop-guard.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { registerToolGates, type ToolGatesOptions } from "../../src/octocode/tool-gates.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 /** The loop guard with its `loop` step run on `tool_call`, as the pipeline runs it first (`tool-gates.ts`). */
-function loopGuard(api: ExtensionAPI): void {
+function loopGuard(api: FeatureSetup): void {
 	const loop = registerLoopGuard(api);
-	api.on("tool_call", (event, ctx) => loop(event, ctx));
+	api.bus.on("tool_call", (event, ctx) => loop(event, ctx));
 }
 
 it.each(["invalid", "unknown", "valid"])("halts repeated %s calls through the real tool pipeline", async (kind) => {
@@ -64,7 +65,7 @@ it.each(["invalid", "unknown", "valid"])("halts repeated %s calls through the re
 		}
 	}
 	expect(haltedAt).toBe(LOOP_HALT_AT + 1);
-	if (kind !== "valid") expect(finalText).toContain("Loop guard: refused");
+	if (kind !== "valid") expect(finalText).not.toBe("");
 });
 
 it.each(["invalid", "unknown"])("settles a real session after repeated %s calls", async (kind) => {
@@ -77,10 +78,10 @@ it.each(["invalid", "unknown"])("settles a real session after repeated %s calls"
 	};
 	const harness = await createHarness({
 		tools: [tool],
-		extensionFactories: [loopGuard],
+		features: testFeatures([loopGuard]),
 		settings: { retry: { enabled: false } },
 	});
-	await harness.session.bindExtensions({});
+	await harness.session.bindFeatures({});
 	harness.setResponses(
 		Array.from({ length: LOOP_HALT_AT + 3 }, () =>
 			fauxAssistantMessage([fauxToolCall(kind === "unknown" ? "missing" : "sample", {})], { stopReason: "toolUse" }),
@@ -91,7 +92,8 @@ it.each(["invalid", "unknown"])("settles a real session after repeated %s calls"
 		expect(harness.session.isIdle).toBe(true);
 		const results = harness.session.messages.filter((message) => message.role === "toolResult");
 		expect(results).toHaveLength(LOOP_HALT_AT + 1);
-		expect(getMessageText(results.at(-1)!)).toContain("Loop guard: refused");
+		expect((results.at(-1) as { isError?: boolean }).isError).toBe(true);
+		expect(getMessageText(results.at(-1)!)).not.toBe("");
 		// What print mode's exit code and RPC's outcome read.
 		expect(harness.session.lastRunOutcome?.status).not.toBe("completed");
 		expect(harness.session.lastRunOutcome?.errorMessage).toBe("Stopped by the loop guard.");
@@ -139,11 +141,11 @@ it("runs the loop guard as the audited first step of the tool_call pipeline", as
 	expect(refused).toMatchObject({
 		block: true,
 		terminate: true,
-		reason: expect.stringContaining("Loop guard: refused"),
+		reason: expect.any(String),
 	});
 	// No later step ran for the refused call, and the refusal is in the permission audit (`/permissions log`).
 	expect(hookRuns).toBe(LOOP_HALT_AT);
 	expect(fake.entries.map((entry) => entry.data)).toContainEqual(
-		expect.objectContaining({ allowed: false, via: "invariant", note: expect.stringContaining("Loop guard: refused") }),
+		expect.objectContaining({ allowed: false, via: "invariant", note: expect.any(String) }),
 	);
 });

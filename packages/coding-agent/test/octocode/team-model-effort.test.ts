@@ -1,9 +1,9 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { widgetLines } from "../../src/octocode/team/panel.ts";
+import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -17,7 +17,7 @@ const PLAIN = { provider: "openai", id: "gpt-4o", reasoning: false };
 function mainAgent(model: typeof OPUS | typeof PLAIN, level: string) {
 	const fake = fakeHost();
 	const state = { level, model };
-	(fake.api as { getThinkingLevel: () => string }).getThinkingLevel = () => state.level;
+	(fake.api.models as { getThinkingLevel: () => string }).getThinkingLevel = () => state.level;
 	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 	registerCollab(fake.api, team);
 	const ctx = fakeCtx({ cwd: tmp(), model });
@@ -120,7 +120,7 @@ describe("the /agents panel row keeps the effort", () => {
 		...(parentId ? { parentId } : {}),
 	});
 
-	it("shows the main session's and a child's route without its provider, level included", () => {
+	it("shows the main session's effort on its row and a child's route without its provider, level included", () => {
 		const lines = widgetLines(
 			[row("salty-squid", "anthropic/claude-opus-5-5:high"), row("inky-kraken", "openai/gpt-5.5:low", "salty-squid")],
 			"salty-squid",
@@ -128,8 +128,39 @@ describe("the /agents panel row keeps the effort", () => {
 			theme,
 			150,
 		);
-		expect(lines.join("\n")).toContain("claude-opus-5-5:high");
-		expect(lines.join("\n")).toContain("gpt-5.5:low");
+		// The root row says `role:effort`; its model is the footer's. A child's full route is on its stats line.
+		expect(lines).toEqual([
+			" 🦑 salty-squid ○ · main:high · 1m",
+			" └ ○ inky-kraken  · main:low  · 1m",
+			"     gpt-5.5:low",
+		]);
+		expect(lines.join("\n")).not.toMatch(/anthropic\/|openai\//);
+	});
+
+	it("draws each agent's effort after its role, and the role alone when the effort is unknown", () => {
+		const child = (id: string, extra: Partial<Member>): Member => ({
+			...row(id, "", "salty-squid"),
+			role: "implementer",
+			...extra,
+		});
+		const text = widgetLines(
+			[
+				row("salty-squid", "anthropic/claude-opus-5-5:high"),
+				child("inky-kraken", { model: "openai/gpt-5.5:low" }),
+				// Held: reserved, no model yet.
+				child("held-otter", { model: undefined }),
+				// A runner owns its effort: a level-like suffix in its model says nothing, and the cell shows `?`.
+				child("codex-heron", { model: "codex/gpt-5:high", mailbox: "pull" }),
+			],
+			"salty-squid",
+			NOW,
+			theme,
+			150,
+		);
+		const head = (id: string) => text.find((line) => line.includes(id))!.replace(/ +/g, " ");
+		expect(head("inky-kraken")).toContain("inky-kraken · implementer:low ·");
+		expect(head("held-otter")).toMatch(/held-otter · implementer(?!:)/);
+		expect(head("codex-heron")).toContain("codex-heron · implementer:? ·");
 	});
 
 	it("cuts a long model id, never its level", () => {

@@ -75,6 +75,11 @@ function numericSubstitution(value: Node): boolean {
 	return last?.type === "command" && NUMERIC_COMMAND.test(last.text.trim().replace(/\s+/g, " "));
 }
 
+/** Whether an assignment's `value` is a number: a literal, arithmetic, or `$(…)` of a numeric command (`S=$(date +%s)`). */
+export function numericValue(value: Node | null | undefined): boolean {
+	return !!value && (value.type === "number" || value.type === "arithmetic_expansion" || numericSubstitution(value));
+}
+
 /** Names this line gives only numbers or arithmetic: `i=0`, `i=$((i+1))`, `S=$(date +%s)`, `for ((i=0; …; i++))`, `((n++))`. */
 function numericNames(root: Node): Set<string> {
 	const numeric = new Set<string>();
@@ -83,8 +88,7 @@ function numericNames(root: Node): Set<string> {
 		const name = assignment?.childForFieldName("name")?.text;
 		const value = assignment?.childForFieldName("value");
 		if (!name) continue;
-		if (value && (value.type === "number" || value.type === "arithmetic_expansion" || numericSubstitution(value)))
-			numeric.add(name);
+		if (numericValue(value)) numeric.add(name);
 		else other.add(name);
 	}
 	for (const loop of root.descendantsOfType("for_statement")) {
@@ -101,6 +105,40 @@ function numericNames(root: Node): Set<string> {
 			numeric.add(match[1]);
 	for (const name of other) numeric.delete(name);
 	return numeric;
+}
+
+/** A variable name, alone or with a number, `@` or `*` subscript: what `-v` tests without evaluating anything. */
+const PLAIN_VARIABLE = /^[A-Za-z_]\w*(?:\[(?:\d+|[@*])\])?$/;
+
+/** The value of `text` as written when it expands nothing: a bare word, `'…'`, or `"…"` without `$`, backticks or backslashes. */
+const unquoted = (text: string): string | undefined =>
+	/^(?:'([^']*)'|"([^"$`\\]*)"|([^'"$`\\\s]*))$/
+		.exec(text)
+		?.slice(1)
+		.find((part) => part !== undefined);
+
+/**
+ * The first `-v` operand of `[[ … ]]`, `[ … ]` or `test` that is not a plain variable name: bash expands and evaluates
+ * a subscript in the operand, quoted or not, so `[[ -v 'a[$(cmd)]' ]]` runs `cmd`. Undefined when every operand is plain.
+ */
+export function hiddenVariableTest(root: Node): string | undefined {
+	for (const node of root.descendantsOfType(["unary_expression", "command"])) {
+		if (!node) continue;
+		let operand: string | undefined;
+		if (node.type === "unary_expression") {
+			if (node.childForFieldName("operator")?.text !== "-v") continue;
+			operand = node.namedChildren.find((child) => child?.type !== "test_operator")?.text ?? "";
+		} else {
+			const name = node.childForFieldName("name")?.text;
+			if (name !== "[" && name !== "test") continue;
+			const args = node.childrenForFieldName("argument").map((arg) => arg?.text ?? "");
+			const at = args.indexOf("-v");
+			if (at < 0) continue;
+			operand = args[at + 1] ?? "";
+		}
+		if (!PLAIN_VARIABLE.test(unquoted(operand) ?? "")) return `-v ${operand}`;
+	}
+	return undefined;
 }
 
 /** The first arithmetic context of `root` that names a variable whose value this line does not show; undefined when none does. */

@@ -1,13 +1,12 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Static, Type } from "typebox";
 import { getShellEnv } from "../../utils/shell.ts";
-import type { ExtensionContext, ToolDefinition } from "../features/types.ts";
+import type { FeatureContext, ToolDefinition } from "../features/types.ts";
 import { createLocalBashOperations } from "./bash/local-operations.ts";
 import { bashSchema } from "./bash/schema.ts";
 import type { BashOperations } from "./bash/types.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
-import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { BASH_MAX_BYTES, BASH_MAX_LINES, bashBudget } from "./bash/budget.ts";
 import { type BashEnd, formatBashHeader } from "./bash/header.ts";
@@ -21,7 +20,7 @@ export { type BashToolDetails } from "./bash/outcome.ts";
 
 export const bashToolSystemPromptContribution = {
 	get snippet(): string {
-		return renderInstruction("tools/bash/core-snippet.md");
+		return renderPrompt("tools/bash/core-snippet.md");
 	},
 	guidelines: [],
 } as const;
@@ -54,7 +53,7 @@ type BashSpawnHook = (context: BashSpawnContext) => BashSpawnContext;
  * The environment a bash command runs with: the shell environment, with the OCTOCODE_* session variables set from `ctx`
  * and never inherited from the parent process.
  */
-export function bashSessionEnv(ctx: ExtensionContext | undefined): NodeJS.ProcessEnv {
+export function bashSessionEnv(ctx: FeatureContext | undefined): NodeJS.ProcessEnv {
 	const env = { ...getShellEnv() };
 	delete env.OCTOCODE_SESSION_ID;
 	delete env.OCTOCODE_SESSION_FILE;
@@ -78,7 +77,7 @@ function resolveSpawnContext(
 	cwd: string,
 	spawnHook: BashSpawnHook | undefined,
 	exposeSessionEnvironment: boolean,
-	ctx: ExtensionContext | undefined,
+	ctx: FeatureContext | undefined,
 ): BashSpawnContext {
 	const env = bashSessionEnv(exposeSessionEnvironment ? ctx : undefined);
 	const baseContext: BashSpawnContext = { command, cwd, env };
@@ -102,17 +101,13 @@ export interface BashToolOptions {
 	spillMaxBytes?: number;
 }
 
-export type BashRenderState = {
-	startedAt: number | undefined;
-	endedAt: number | undefined;
-	interval: NodeJS.Timeout | undefined;
-};
+/** A running command sends its output to the row and the session at most once per this many milliseconds. */
+export const BASH_UPDATE_THROTTLE_MS = 100;
 
 interface ShellToolConfig {
 	name: string;
 	label: string;
 	shellName: string;
-	prompt: string;
 	promptSnippet: string;
 	promptGuidelines?: readonly string[];
 	tempFilePrefix: string;
@@ -122,7 +117,7 @@ function createShellToolDefinition(
 	cwd: string,
 	config: ShellToolConfig,
 	options?: BashToolOptions,
-): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> {
+): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
 	const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
 	const commandPrefix = options?.commandPrefix;
 	const exposeSessionEnvironment = options?.exposeSessionEnvironment ?? true;
@@ -130,7 +125,7 @@ function createShellToolDefinition(
 	return {
 		name: config.name,
 		label: config.label,
-		description: `Run a ${config.shellName} command in the working directory; return stdout and stderr. Each result starts with exit code, duration and output size. Over-budget output (default ${BASH_MAX_BYTES / 1000}KB or ${BASH_MAX_LINES} lines; maxOutputTokens lowers it) keeps the first 20%, last 80% and up to 20 middle error lines with line numbers; the result header names the full output file. Carriage-return redraws show only their final state; consecutive identical lines show once with a count. timeout is in seconds.`,
+		description: `Run a ${config.shellName} command in the working directory; return stdout and stderr. Each result starts with exit code, duration and output size. Over-budget output (default ${BASH_MAX_BYTES / 1000}KB or ${BASH_MAX_LINES} lines; maxOutputTokens can only lower it) keeps the first 20%, last 80% and up to 20 middle error lines with line numbers; the result header names the full output file. Carriage-return redraws show only their final state; consecutive identical lines show once with a count. timeout is in seconds.`,
 		promptSnippet: config.promptSnippet,
 		promptGuidelines: exposeSessionEnvironment && config.promptGuidelines ? [...config.promptGuidelines] : undefined,
 		parameters: bashSchema,
@@ -141,7 +136,7 @@ function createShellToolDefinition(
 			{ command, timeout, maxOutputTokens }: { command: string; timeout?: number; maxOutputTokens?: number },
 			signal?: AbortSignal,
 			onUpdate?,
-			ctx?: ExtensionContext,
+			ctx?: FeatureContext,
 		) {
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(
@@ -319,7 +314,6 @@ function createShellToolDefinition(
 				clearUpdateTimer();
 			}
 		},
-		...createShellRenderers(config.prompt),
 	};
 }
 
@@ -327,7 +321,6 @@ const bashToolConfig: ShellToolConfig = {
 	name: "bash",
 	label: "bash",
 	shellName: "bash",
-	prompt: "$",
 	get promptSnippet(): string {
 		return bashToolSystemPromptContribution.snippet;
 	},
@@ -338,7 +331,7 @@ const bashToolConfig: ShellToolConfig = {
 export function createBashToolDefinition(
 	cwd: string,
 	options?: BashToolOptions,
-): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState> {
+): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
 	return createShellToolDefinition(cwd, bashToolConfig, options);
 }
 

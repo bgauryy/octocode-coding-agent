@@ -1,21 +1,22 @@
-import type { Component } from "@octocodeai/octocode-tui";
+import type { Component, TuiMouseEvent } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import { notify } from "../shared/commands.ts";
 import { type QueuedWork, RunningWork, type WorkRow, workCounts } from "../shared/running-work.ts";
 import { ENTITY } from "../shared/entity.ts";
 import { STATUS } from "../shared/status.ts";
+import { publishLiveAgents } from "../shared/team-spend.ts";
 import { needsYou } from "./panel/attention.ts";
 import { FINISHED_MS, safe } from "./panel/compact.ts";
 import { FinishedTracker } from "./panel/finished.ts";
-import { widgetLines } from "./panel/layout.ts";
-import { teamTotalsText } from "./panel/rows.ts";
+import { widgetLines, widgetRows } from "./panel/layout.ts";
 import { type Moving, PanelMotion } from "./panel/motion.ts";
 import { nextMinuteDelay } from "./panel/work.ts";
 import { TeamOutage } from "./panel/outage.ts";
-import { descendants, liveMembers, roster } from "./panel/roster.ts";
-import { panelState } from "./panel/state.ts";
+import { descendants, liveMembers, peers, roster } from "./panel/roster.ts";
+import { markSince, panelState } from "./panel/state.ts";
+import { withEndpoints } from "./endpoint.ts";
 import { trafficRow } from "./panel/traffic.ts";
 import type { Team } from "./session.ts";
 
@@ -40,22 +41,19 @@ export class AgentsView {
 	/** Says a team database failure and its recovery in the messages list; the footer keeps only the short state. */
 	private readonly outage = new TeamOutage();
 	private shown = false;
+	/** When each agent was first seen waiting on a dialog: its waiting mark breathes from then, a few seconds only. */
+	private readonly waitSeen = new Map<string, number>();
+	/** Agents whose detail line is open (a left click on any of their rows toggles it). */
+	private readonly expanded = new Set<string>();
+	/** The agent each line drawn last belongs to, for a click. */
+	private owners: Array<string | undefined> = [];
 	/** Last footer text sent: an unchanged one is not sent again on every tick. */
 	private status: string | undefined;
 	private render: (() => void) | undefined;
 	/** Repaints on the animation clock while an agent works or just finished or any work row runs, and not otherwise. */
 	private readonly motion = new PanelMotion(
 		(now) => [
-			...roster(
-				this.members,
-				this.team.id,
-				now,
-				this.finished.finished,
-				needsYou(this.members, this.traffic, this.team.id),
-			).tree.map((entry) => ({
-				...panelState(entry, now),
-				...(entry.doneAt === undefined ? {} : { since: entry.doneAt }),
-			})),
+			...this.teamMarks(now),
 			// Running work moves too: its spinner and second clock show it is alive while the main agent idles.
 			...this.workItems()
 				.filter((row) => !row.mark)
@@ -65,13 +63,34 @@ export class AgentsView {
 		// With no mark moving, still-running work repaints once a minute, on the oldest row's boundary.
 		(now) => nextMinuteDelay(this.workItems(), now),
 	);
+	/** The marks the team rows draw at `now`: each agent's, and while there are agents, this session's and its peers'. */
+	private teamMarks(now: number): Moving[] {
+		const { tree } = roster(
+			this.members,
+			this.team.id,
+			now,
+			this.finished.finished,
+			needsYou(this.members, this.traffic, this.team.id, this.waitSeen, now),
+		);
+		if (tree.length === 0) return [];
+		const self = this.members.filter((member) => member.id === this.team.id);
+		return [
+			...tree.map((entry): Moving => {
+				const since = markSince(entry);
+				return { ...panelState(entry, now), ...(since === undefined ? {} : { since }) };
+			}),
+			...[...self, ...peers(this.members, this.team.id, now)].map((member): Moving =>
+				panelState({ member, depth: 0 }, now),
+			),
+		];
+	}
+
 	/** This session's live subagents as of the last team read. */
 	private liveIds = new Set<string>();
 	/** The footer's typed counts last sent. */
 	private runningStatus: string | undefined;
-	private totalsStatus: string | undefined;
 	private unwork: (() => void) | undefined;
-	private ctx: ExtensionContext | undefined;
+	private ctx: FeatureContext | undefined;
 
 	private readonly team: Team;
 	private readonly work: RunningWork;
@@ -81,7 +100,7 @@ export class AgentsView {
 		this.finished = new FinishedTracker((id) => team.approvals?.endOf(id));
 	}
 
-	start(ctx: ExtensionContext): void {
+	start(ctx: FeatureContext): void {
 		if (!ctx.hasUI) return;
 		this.stop(ctx);
 		this.ctx = ctx;
@@ -135,7 +154,7 @@ export class AgentsView {
 	}
 
 	/** The footer's typed counts: live subagents (and unlisted background ones), bash jobs, timers. */
-	private showRunning(ctx: ExtensionContext, teamShown = false): void {
+	private showRunning(ctx: FeatureContext, teamShown = false): void {
 		const agents = this.liveIds.size + this.unlisted().filter((row) => !row.mark).length;
 		// The tab title counts the same agents.
 		this.work.setAgents(agents);
@@ -150,7 +169,7 @@ export class AgentsView {
 		}
 	}
 
-	stop(ctx?: ExtensionContext): void {
+	stop(ctx?: FeatureContext): void {
 		this.unwatch?.();
 		this.unwatch = undefined;
 		this.unwork?.();
@@ -158,6 +177,7 @@ export class AgentsView {
 		this.motion.dispose();
 		this.ctx = undefined;
 		this.liveIds = new Set();
+		publishLiveAgents([]);
 		this.work.setAgents(undefined);
 		if (ctx && this.runningStatus !== undefined) {
 			this.runningStatus = undefined;
@@ -172,44 +192,33 @@ export class AgentsView {
 		this.members = [];
 		this.traffic = [];
 		this.finished.clear();
+		this.expanded.clear();
+		this.waitSeen.clear();
+		this.owners = [];
 		this.outage.reset();
 	}
 
-	/** `Σ team 17.7M tok · 97% cached · ≈$22.36`: this session and its agents together, for the footer's last line. */
-	private showTotals(ctx: ExtensionContext, members: Member[]): void {
-		const text = members.length > 1 ? teamTotalsText(members) : undefined;
-		if (text === this.totalsStatus) return;
-		this.totalsStatus = text;
-		try {
-			ctx.ui.setStatus(STATUS.teamTotals, text, "muted");
-		} catch {
-			// The session was replaced.
-		}
-	}
-
-	private setStatus(ctx: ExtensionContext, text: string | undefined, tone?: StatusTone): void {
+	private setStatus(ctx: FeatureContext, text: string | undefined, tone?: StatusTone): void {
 		const shown = text === undefined ? undefined : `${tone ?? ""}\0${text}`;
 		if (shown === this.status) return;
 		this.status = shown;
 		ctx.ui.setStatus(STATUS.team, text, tone);
 	}
 
-	private clear(ctx: ExtensionContext): void {
+	private clear(ctx: FeatureContext): void {
 		this.shown = false;
 		this.motion.dispose();
 		this.status = undefined;
 		try {
 			ctx.ui.setWidget(WIDGET_KEY, undefined);
 			ctx.ui.setStatus(STATUS.team, undefined);
-			if (this.totalsStatus !== undefined) ctx.ui.setStatus(STATUS.teamTotals, undefined);
-			this.totalsStatus = undefined;
 		} catch {
 			// The session was replaced.
 		}
 	}
 
 	/** Mounts the widget when it is not shown; true when this call mounted it. */
-	private mount(ctx: ExtensionContext): boolean {
+	private mount(ctx: FeatureContext): boolean {
 		if (this.shown) return false;
 		this.shown = true;
 		ctx.ui.setWidget(
@@ -217,8 +226,8 @@ export class AgentsView {
 			(tui, theme): Component => {
 				this.render = () => tui.requestRender();
 				return {
-					render: (width: number) =>
-						widgetLines(
+					render: (width: number) => {
+						const drawn = widgetRows(
 							this.members,
 							this.team.id,
 							Date.now(),
@@ -229,7 +238,13 @@ export class AgentsView {
 							this.finished.finished,
 							this.workItems(),
 							this.motion.precise,
-						),
+							this.expanded,
+							this.waitSeen,
+						);
+						this.owners = drawn.owners;
+						return drawn.lines;
+					},
+					handleMouse: (event: TuiMouseEvent) => this.click(event),
 					invalidate: () => undefined,
 				};
 			},
@@ -238,24 +253,37 @@ export class AgentsView {
 		return true;
 	}
 
+	/** A left click on an agent's row opens or closes its detail line. */
+	private click(event: TuiMouseEvent): { handled: true } | undefined {
+		if (event.type !== "click" || event.button !== "left") return undefined;
+		const id = this.owners[event.y];
+		if (id === undefined) return undefined;
+		if (!this.expanded.delete(id)) this.expanded.add(id);
+		this.render?.();
+		return { handled: true };
+	}
+
 	/** `force`: the work rows changed, so repaint even when the team shows nothing new. */
-	private paint(ctx: ExtensionContext, force = false): void {
+	private paint(ctx: FeatureContext, force = false): void {
 		try {
 			const { members, traffic, error, retrying } = this.team.view;
 			const said = this.outage.next(error, retrying);
 			if (said) notify(ctx.ui, said.text, said.level);
 			this.members = members;
-			this.traffic = traffic;
 			const self = this.team.id;
+			const root = members.find((member) => member.id === self)?.checkout;
+			// Each message names its recipients with role and marks (live members only: the panel never reads the database).
+			this.traffic = traffic.map((message) => withEndpoints(message, { members, ...(root ? { root } : {}) }));
 			// The same liveness filter as widgetLines: a widget with no rows is never mounted.
 			const now = Date.now();
 			const live = descendants(liveMembers(this.members, now), self);
 			this.liveIds = new Set(live.map((member) => member.id));
+			// The footer's one total adds what these agents spent until their results reach this session's ledger.
+			if (!error) publishLiveAgents(live);
 			if (!error) this.finished.update(self, this.members, live, now);
 			const teamVisible = live.length > 0 || this.finished.finished.some((entry) => now - entry.at <= FINISHED_MS);
 			const hasWork = this.workItems().length > 0;
 			this.showRunning(ctx, teamVisible);
-			this.showTotals(ctx, teamVisible ? [...live, ...this.members.filter((member) => member.id === self)] : []);
 			if (error) {
 				// A foreign database turns the team off for this session; a locked one is retried on the next tick.
 				// Either way the widget keeps its state, and mounts once a read succeeds. The footer shows the state; the

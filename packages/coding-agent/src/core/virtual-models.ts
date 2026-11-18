@@ -43,9 +43,9 @@ const THINKING_LEVELS: readonly ModelThinkingLevel[] = ["off", "minimal", "low",
 /**
  * Why a request is being routed.
  * - `user`: first request after a message the user wrote (prompt, steering, or follow-up)
- * - `continuation`: any other request in the agent loop, e.g. after tool results or extension messages
+ * - `continuation`: any other request in the agent loop, e.g. after tool results or feature messages
  * - `retry`: automatic retry after a failed request, including after compaction for a context overflow
- * - `direct`: a request outside the agent loop, e.g. a compaction summary or an extension call
+ * - `direct`: a request outside the agent loop, e.g. a compaction summary or a feature call
  */
 export type ModelRouteReason = "user" | "continuation" | "retry" | "direct";
 

@@ -12,6 +12,7 @@ import {
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 describe("fork before the first message", () => {
 	const cleanups: Array<() => Promise<void> | void> = [];
@@ -53,7 +54,12 @@ describe("fork before the first message", () => {
 			agentDir: tempDir,
 			modelRuntime,
 			model: faux.getModel(),
-			resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true },
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
 		};
 		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 			const services = await createAgentSessionServices({ ...runtimeOptions, cwd });
@@ -73,7 +79,7 @@ describe("fork before the first message", () => {
 			agentDir: tempDir,
 			sessionManager: SessionManager.create(tempDir),
 		});
-		await runtimeHost.session.bindExtensions({});
+		await runtimeHost.session.bindFeatures({});
 		cleanups.push(async () => {
 			await runtimeHost.dispose();
 			faux.unregister();

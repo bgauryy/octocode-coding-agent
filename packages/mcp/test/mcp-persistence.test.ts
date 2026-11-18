@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { applyMcpServerPatch, getMcpToolExposure, type McpServerEntry, updateMcpServerConfig } from "../src/config.ts";
 import { saveConfig } from "../src/persistence.ts";
 import type { McpServer } from "../src/server.ts";
-import type { McpExtensionState } from "../src/state.ts";
+import type { McpFeatureState } from "../src/state.ts";
 
 describe("saveConfig", () => {
 	const dirs: string[] = [];
@@ -35,7 +35,7 @@ describe("saveConfig", () => {
 				updateMcpServerConfig(found.override ?? found.source, found.name, patch, {
 					override: found.override !== undefined,
 				}),
-		} as unknown as McpExtensionState;
+		} as unknown as McpFeatureState;
 		return { server, state, file };
 	}
 

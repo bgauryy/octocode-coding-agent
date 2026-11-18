@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { type Injection, MEMORY_HEADER, MEMORY_HEADER_AGAIN, quotedLine } from "./inject.ts";
 import { NOTE_CHARS, sessionBudget } from "./limits.ts";
 import { noteLabel, notesOutOfContext, type NoteFold, type SessionNote } from "./session-notes.ts";
@@ -37,7 +37,7 @@ export function sessionNoteLead(
 	}
 	const heldBack = missing.length - notes.length;
 	if (heldBack > 0)
-		lines.push(renderInstruction("notices/memory-session-held-back.md", { count: heldBack, several: heldBack !== 1 }));
+		lines.push(renderPrompt("notices/memory-session-held-back.md", { count: heldBack, several: heldBack !== 1 }));
 	return { lines: notes.length > 0 ? lines : [], notes };
 }
 

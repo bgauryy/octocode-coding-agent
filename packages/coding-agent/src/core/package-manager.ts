@@ -23,7 +23,7 @@ import {
 	installNpm,
 	uninstallNpm,
 } from "./package-manager/npm.ts";
-import { installParsedSource, resolveExtensionSources, resolvePackages } from "./package-manager/resolve.ts";
+import { installParsedSource, resolvePackages, resolveSources } from "./package-manager/resolve.ts";
 import { addSourceToSettings, getInstalledPath, removeSourceFromSettings } from "./package-manager/settings-sources.ts";
 import {
 	assertProjectTrustedForScope,
@@ -66,7 +66,6 @@ export class DefaultPackageManager implements PackageManager {
 	private cwd: string;
 	private agentDir: string;
 	private settingsManager: SettingsManager;
-	private builtinExtensions: string[];
 	private readonly globalNpmRootCache: GlobalNpmRootCache = {};
 	private progressCallback: ProgressCallback | undefined;
 	private readonly host: PackageManagerHost;
@@ -75,12 +74,10 @@ export class DefaultPackageManager implements PackageManager {
 		this.cwd = resolvePath(options.cwd);
 		this.agentDir = resolvePath(options.agentDir);
 		this.settingsManager = options.settingsManager;
-		this.builtinExtensions = options.builtinExtensions ?? [];
 		this.host = {
 			cwd: this.cwd,
 			agentDir: this.agentDir,
 			settingsManager: this.settingsManager,
-			builtinExtensions: this.builtinExtensions,
 			builtinSkillsDir: options.builtinSkillsDir,
 			withProgress: (...args) => this.withProgress(...args),
 			installParsedSource: (...args) => this.installParsedSource(...args),
@@ -135,11 +132,8 @@ export class DefaultPackageManager implements PackageManager {
 		return resolvePackages(this.host, onMissing);
 	}
 
-	async resolveExtensionSources(
-		sources: string[],
-		options?: { local?: boolean; temporary?: boolean },
-	): Promise<ResolvedPaths> {
-		return resolveExtensionSources(this.host, sources, options);
+	async resolveSources(sources: string[], options?: { local?: boolean; temporary?: boolean }): Promise<ResolvedPaths> {
+		return resolveSources(this.host, sources, options);
 	}
 
 	listConfiguredPackages(): ConfiguredPackage[] {

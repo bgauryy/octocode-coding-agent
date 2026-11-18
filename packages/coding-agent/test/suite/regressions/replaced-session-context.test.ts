@@ -13,7 +13,9 @@ import {
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { ModelRuntime } from "../../../src/core/model-runtime.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureSetup, CommandContext, FeatureRegister } from "../../../src/core/features/index.ts";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 function getText(message: AgentSession["messages"][number]): string {
 	if (!("content" in message)) {
@@ -33,7 +35,7 @@ describe("replaced session callbacks", () => {
 		}
 	});
 
-	async function createRuntimeForTest(extensionFactory: ExtensionFactory, responses: string[]) {
+	async function createRuntimeForTest(featureFactory: FeatureRegister, responses: string[]) {
 		const tempDir = join(tmpdir(), `octocode-2860-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 
@@ -55,9 +57,10 @@ describe("replaced session callbacks", () => {
 				agentDir: tempDir,
 				modelRuntime,
 				resourceLoaderOptions: {
-					extensionFactories: [
-						(api: ExtensionAPI) => {
-							api.registerProvider(faux.getModel().provider, {
+					nativeFeatures: nativeFeatureSet(),
+					features: testFeatures([
+						(api: FeatureSetup) => {
+							api.providers.register(faux.getModel().provider, {
 								baseUrl: faux.getModel().baseUrl,
 								apiKey: "faux-key",
 								api: faux.api,
@@ -72,9 +75,9 @@ describe("replaced session callbacks", () => {
 									maxTokens: registeredModel.maxTokens,
 								})),
 							});
-							extensionFactory(api);
+							featureFactory(api);
 						},
-					],
+					]),
 					// The default MCP host declares the octocode tool contracts directly; they would fill the context
 					// and trigger usage notices that this session-replacement test does not measure.
 					disabledFeatures: ["mcp"],
@@ -103,7 +106,7 @@ describe("replaced session callbacks", () => {
 
 		const rebindSession = async (): Promise<void> => {
 			const session = runtime.session;
-			await session.bindExtensions({
+			await session.bindFeatures({
 				commandContextActions: {
 					waitForIdle: () => session.agent.waitForIdle(),
 					newSession: async (options) => runtime.newSession(options),
@@ -146,8 +149,8 @@ describe("replaced session callbacks", () => {
 
 	it("rebinds before withSession, targets the replacement session, and invalidates stale api/ctx", async () => {
 		const events: string[] = [];
-		let oldCtx: ExtensionCommandContext | undefined;
-		let oldApi: ExtensionAPI | undefined;
+		let oldCtx: CommandContext | undefined;
+		let oldApi: FeatureSetup | undefined;
 		let oldSessionFile: string | undefined;
 		let staleCtxThrows = false;
 		let staleApiThrows = false;
@@ -156,13 +159,13 @@ describe("replaced session callbacks", () => {
 		const { runtime } = await createRuntimeForTest(
 			(api) => {
 				const currentInstance = ++instanceId;
-				api.on("session_start", () => {
+				api.bus.on("session_start", () => {
 					events.push(`start:${currentInstance}`);
 				});
-				api.on("session_shutdown", () => {
+				api.bus.on("session_shutdown", () => {
 					events.push(`shutdown:${currentInstance}`);
 				});
-				api.registerCommand("repro", {
+				api.commands.register("repro", {
 					description: "repro",
 					handler: async (_args, ctx) => {
 						oldCtx = ctx;
@@ -179,7 +182,7 @@ describe("replaced session callbacks", () => {
 									staleCtxThrows = true;
 								}
 								try {
-									oldApi?.sendUserMessage("stale message");
+									oldApi?.session.sendUserMessage("stale message");
 								} catch {
 									staleApiThrows = true;
 								}
@@ -211,7 +214,7 @@ describe("replaced session callbacks", () => {
 	it("supports withSession for fork", async () => {
 		const { runtime } = await createRuntimeForTest(
 			(api) => {
-				api.registerCommand("fork-it", {
+				api.commands.register("fork-it", {
 					description: "fork-it",
 					handler: async (_args, ctx) => {
 						const leafId = ctx.sessionManager.getLeafId();
@@ -244,7 +247,7 @@ describe("replaced session callbacks", () => {
 		let targetSessionPath = "";
 		const { runtime } = await createRuntimeForTest(
 			(api) => {
-				api.registerCommand("switch-it", {
+				api.commands.register("switch-it", {
 					description: "switch-it",
 					handler: async (_args, ctx) => {
 						await ctx.switchSession(targetSessionPath, {

@@ -1,5 +1,5 @@
 /**
- * MCP server configuration and the servers extensions register with `api.registerMcpServer()`: plain data shared by
+ * MCP server configuration and the servers features register with `api.registerMcpServer()`: plain data shared by
  * the session core and the MCP workspace.
  */
 
@@ -138,16 +138,14 @@ export interface McpHttpServerConfig extends McpServerConfigBase {
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
-/** A server an extension registered with `api.registerMcpServer()`. */
+/** A server a feature registered with `api.registerMcpServer()`. */
 export interface RegisteredMcpServer {
 	name: string;
 	config: McpServerConfig;
-	/** Path of the extension that registered the server. */
-	extensionPath: string;
-	/** Handed over by the parent session: a fallback that any other extension's registration of the name replaces. */
+	/** Path of the feature that registered the server. */
+	source: string;
+	/** Handed over by the parent session: a fallback that any other feature's registration of the name replaces. */
 	inherited?: true;
 }
 
-export type McpServerChange =
-	| { type: "register"; server: RegisteredMcpServer }
-	| { type: "unregister"; name: string; extensionPath: string };
+export type McpServerChange = { type: "register"; server: RegisteredMcpServer };

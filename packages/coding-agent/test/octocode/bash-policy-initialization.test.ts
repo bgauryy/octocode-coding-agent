@@ -33,7 +33,7 @@ function fixture() {
 	const file = path.join(home, ".claude/settings.json");
 	const write = (permissions: unknown) => fs.writeFileSync(file, JSON.stringify({ permissions }));
 	const fake = fakeHost();
-	nativeHost(fake.api).setToolPolicy = vi.fn();
+	nativeHost(fake.api).tools.setPolicy = vi.fn();
 	const owner = registerSourcePolicy(fake.api, { home });
 	return { owner, write, ctx: fakeCtx({ cwd: root, hasUI: false }), fake };
 }
@@ -67,7 +67,7 @@ it("holds concurrent refreshes behind initialization and captures changed bytes 
 	});
 	await Promise.resolve();
 	expect(settled).toBe(false);
-	expect(nativeHost(f.fake.api).setToolPolicy).not.toHaveBeenCalled();
+	expect(nativeHost(f.fake.api).tools.setPolicy).not.toHaveBeenCalled();
 	f.write({ deny: ["Bash"] });
 	release();
 	await Promise.all([first, second]);

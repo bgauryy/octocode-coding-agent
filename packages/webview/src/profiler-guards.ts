@@ -3,12 +3,14 @@ import {
 	PROFILE_CACHE_STATES,
 	PROFILE_EVENT_KINDS,
 	PROFILE_FINDING_KINDS,
+	type FeedCursor,
 	PROFILE_LAYER_KINDS,
 	type ProfileAgent,
 	type ProfileEvent,
 	type ProfileFinding,
 	type ProfileMessage,
 	type ProfileRequest,
+	type ProfileTranscriptEntry,
 	type ProfileUpdate,
 } from "@octocodeai/octocode-contracts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -144,6 +146,41 @@ export function isProfileEvent(value: unknown): value is ProfileEvent {
 	);
 }
 
+function isEndpoint(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		typeof value.id === "string" &&
+		optional(value.role, isString) &&
+		optional(value.worktree, isString) &&
+		optional(value.branch, isString) &&
+		optional(value.tmuxPane, isString) &&
+		(value.departed === undefined || value.departed === true)
+	);
+}
+
+const isDelivery = (value: unknown): boolean =>
+	isRecord(value) && typeof value.recipient === "string" && MESSAGE_STATES.includes(value.state as string);
+
+const isTranscriptRef = (value: unknown): boolean =>
+	isRecord(value) && typeof value.agentId === "string" && finite(value.entry);
+
+const TRANSCRIPT_ROLES = ["assistant", "user", "toolResult", "notice", "other"];
+
+export const isFeedCursor = (value: unknown): value is FeedCursor =>
+	isRecord(value) && finite(value.at) && typeof value.key === "string";
+
+export function isProfileTranscriptEntry(value: unknown): value is ProfileTranscriptEntry {
+	return (
+		isRecord(value) &&
+		finite(value.entry) &&
+		TRANSCRIPT_ROLES.includes(value.role as string) &&
+		finite(value.at) &&
+		optional(value.text, isString) &&
+		optional(value.thinking, isString) &&
+		optional(value.tools, (tools) => Array.isArray(tools) && tools.every(isString))
+	);
+}
+
 export function isProfileMessage(value: unknown): value is ProfileMessage {
 	return (
 		isRecord(value) &&
@@ -157,7 +194,13 @@ export function isProfileMessage(value: unknown): value is ProfileMessage {
 		typeof value.preview === "string" &&
 		optional(value.text, isString) &&
 		optional(value.deliveredMs, finite) &&
-		optional(value.answeredMs, finite)
+		optional(value.answeredMs, finite) &&
+		optional(value.fromEndpoint, isEndpoint) &&
+		optional(value.toEndpoints, (list) => Array.isArray(list) && list.every(isEndpoint)) &&
+		optional(value.deliveries, (list) => Array.isArray(list) && list.every(isDelivery)) &&
+		(value.internal === undefined || value.internal === true) &&
+		optional(value.label, isString) &&
+		optional(value.transcript, isTranscriptRef)
 	);
 }
 

@@ -20,7 +20,7 @@ vi.mock("../../src/utils/windows/winhelper.ts", () => ({
 // The setup file already loaded these modules (through the MCP host ports); reload them under the mocks above.
 vi.resetModules();
 const { createLocalBashOperations } = await import("../../src/core/tools/bash/local-operations.ts");
-const { registerBashTool } = await import("../../src/octocode/files/bash.ts");
+const { registerBashTool } = await import("../../src/octocode/native/tools/bash/tool.ts");
 const { BashJobs } = await import("../../src/octocode/files/bash-jobs.ts");
 const { Subcommands } = await import("../../src/octocode/shared/commands.ts");
 

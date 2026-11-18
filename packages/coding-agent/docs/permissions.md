@@ -168,13 +168,13 @@ flowchart TD
   D -- no --> F[Refused with the reason]
 ```
 
-| Case | Result |
-| --- | --- |
+| Case                                                                                     | Result                                                                                       |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | The parent's mode or a kind you allowed ("Allow all shell commands") covers every action | allowed without a dialog; external messages, worktree merges and cookies never pass this way |
-| No dialog (print mode, `--no-dialogs`) | refused: nobody can confirm; the subagent reports what it needs |
-| Its earlier ask still open | refused until that one is answered |
-| More than 10 asks in a minute | the rest of that minute is refused |
-| You leave an ask unanswered for 10 minutes | refused; the parent agent is told what waits, so it can ask you |
+| No dialog (print mode, `--no-dialogs`)                                                   | refused: nobody can confirm; the subagent reports what it needs                              |
+| Its earlier ask still open                                                               | refused until that one is answered                                                           |
+| More than 10 asks in a minute                                                            | the rest of that minute is refused                                                           |
+| You leave an ask unanswered for 10 minutes                                               | refused; the parent agent is told what waits, so it can ask you                              |
 
 An external agent (ACP) asks the same way: in `full` and `bypass` it proceeds once and is logged; with nobody to ask it is told you refused.
 
@@ -230,7 +230,7 @@ A subagent whose profile sets `readOnly: true` (bundled `reviewer`, `researcher`
 | Tool                    | The role may                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `file`, `edit`, `write` | Change only its scratch folder, `.octocode/code/temp/`, `.octocode/<topic>/tmp/` and Markdown under `.octocode/`, except files a later session loads (`skills/`, `agents/`, `prompts/`, `hooks.json`, `settings.json`, `mcp.json`, `SYSTEM.md`, `AGENTS.md`) and `.octocode/code/` outside `temp/`                                                              |
-| `bash`                  | Run commands that write nothing outside those places; refused when a write is seen or cannot be placed (`sqlite3` open for writing, awk with its own output or `system()`)                                                                                                                                                                                      |
+| `bash`                  | Run commands that write nothing outside those places; refused when a write is seen or cannot be placed (`sqlite3` open for writing, awk with its own output or `system()`), or when a variable may swap the program run (`PATH=/tmp/x cat f`, `export X=1`, `[[ -v 'a[$(cmd)]' ]]`, as in the reservation table below)                                          |
 | `git`                   | Read only: `status`, `log`, `diff`, `show`, `blame`, `grep`, `ls-files`, `ls-tree`, `rev-parse`, `rev-list`, `describe`, `shortlog`, `cat-file`, `show-ref`, `format-patch --stdout`; `branch`, `tag`, `remote`, `stash`, `worktree`, `notes` only to list. No `-c`, `--git-dir`, `--work-tree`, program-setting variables, or words that may expand to options |
 | `octocode`              | Nothing: any run is refused (plan mode too)                                                                                                                                                                                                                                                                                                                     |
 | MCP tools               | Only tools their server declares read-only, plus the browser's                                                                                                                                                                                                                                                                                                  |
@@ -257,16 +257,18 @@ flowchart LR
     Q -->|yes| X["Refused: reservation named"]
 ```
 
-| Refused while a reservation is held                        | Examples                                        | Fix                                 |
-| ---------------------------------------------------------- | ----------------------------------------------- | ----------------------------------- |
-| Inline interpreter code                                    | `python -c`, `node -e`, `perl -e`, `ruby -e`    | Confined Node (below), or wait      |
-| Code the parse cannot read                                 | `bash -c "$X"`, `eval $X`, `source <(…)`        | Spell the command out               |
-| Computed program name, unreadable wrapper                  | `$PY -c …`, `timeout $T make`                   | Spell the program                   |
-| `xargs`/`parallel` whose input could pick the written file | `ls \| xargs tee a.ts`                          | Name program and files              |
-| Arithmetic on a value the line does not show               | `echo $((x))`, `let`, `declare -i`              | Use literals                        |
-| Reader with a writing option and a computed word           | `sort $X in`, `rg "$PAT" src`                   | Start with a literal, or `--` first |
-| Git line that names a program                              | `--upload-pack`, `rebase -x`, `GIT_SSH_COMMAND` | Harmless values (`color.*`) run     |
-| PowerShell                                                 | Unless read-only                                | —                                   |
+| Refused while a reservation is held                                          | Examples                                                           | Fix                                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| Inline interpreter code                                                      | `python -c`, `node -e`, `perl -e`, `ruby -e`                       | Confined Node (below), or wait                     |
+| Code the parse cannot read                                                   | `bash -c "$X"`, `eval $X`, `source <(…)`                           | Spell the command out                              |
+| Computed program name, unreadable wrapper                                    | `$PY -c …`, `timeout $T make`                                      | Spell the program                                  |
+| `xargs`/`parallel` whose input could pick the written file                   | `ls \| xargs tee a.ts`                                             | Name program and files                             |
+| Arithmetic on a value the line does not show                                 | `echo $((x))`, `let`, `declare -i`                                 | Use literals                                       |
+| A variable the shell or programs read, or one already exported, set anywhere | `PATH=/tmp/x; cat f`, `export X=1`, `unset PATH`, `NODE_OPTIONS=…` | Use a name of your own (`D=/tmp/out`), or a number |
+| A `-v` test of a subscript the line does not spell out                       | `[[ -v 'a[$(cmd)]' ]]`, `[ -v a[$i] ]`                             | Test a plain name (`-v a[0]`)                      |
+| Reader with a writing option and a computed word                             | `sort $X in`, `rg "$PAT" src`                                      | Start with a literal, or `--` first                |
+| Git line that names a program                                                | `--upload-pack`, `rebase -x`, `GIT_SSH_COMMAND`                    | Harmless values (`color.*`) run                    |
+| PowerShell                                                                   | Unless read-only                                                   | —                                                  |
 
 The line is read as the shell reads it: groups, functions, `if`/`while`/`for`/`case` bodies, subshells, substitutions, `bash -c`/`sh -c`/`eval`/`trap` (four levels), `find -exec`, code piped or redirected into an interpreter, through wrappers (`sudo`, `ionice`, `flock`, `uv run`, `npx`…). Not detected: `su -c`, other runtimes (`bun -e`, `php -r`, `lua -e`), an interpreter started by another program (`ssh`, `make`, a saved script). Outside reservations, `workspace` mode asks for none of these.
 

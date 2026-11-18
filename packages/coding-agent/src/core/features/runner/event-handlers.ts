@@ -2,7 +2,7 @@
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { getCurrentSystemMessage } from "@octocodeai/octocode-ai";
-import type { Extension, ExtensionError, ExtensionEvent, ExtensionRuntime, UserBashEventResult } from "../types.ts";
+import type { FeatureError, FeatureRuntime, UserBashEventResult } from "../types.ts";
 
 export function isUserBashEventResult(value: unknown): value is UserBashEventResult {
 	if (typeof value !== "object" || value === null) return false;
@@ -28,10 +28,6 @@ export function isUserBashEventResult(value: unknown): value is UserBashEventRes
 		typeof resultRecord.truncated === "boolean" &&
 		(resultRecord.fullOutputPath === undefined || typeof resultRecord.fullOutputPath === "string")
 	);
-}
-
-export function snapshotEventHandlers(extensions: Extension[], event: ExtensionEvent["type"]) {
-	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
 }
 
 /** The same message objects in the same order. */
@@ -114,19 +110,19 @@ export function restoreSystemMessages(
 	return restored;
 }
 
-/** Report each registered MCP server once as unconnected; see `ExtensionRunner.reportUnhandledMcpServers()`. */
+/** Report each registered MCP server once as unconnected; see `FeatureHost.reportUnhandledMcpServers()`. */
 export function reportMcpServersOnce(
-	runtime: ExtensionRuntime,
+	runtime: FeatureRuntime,
 	reported: Set<string>,
-	emitError: (error: ExtensionError) => void,
+	emitError: (error: FeatureError) => void,
 ): void {
 	for (const server of runtime.mcpServers.list()) {
 		if (reported.has(server.name)) continue;
 		reported.add(server.name);
 		emitError({
-			extensionPath: server.extensionPath,
+			source: server.source,
 			event: "register_mcp_server",
-			error: `MCP server "${server.name}" is registered, but no loaded extension connects MCP servers; another extension may have replaced the built-in MCP support`,
+			error: `MCP server "${server.name}" is registered, but no loaded feature connects MCP servers; another feature may have replaced the built-in MCP support`,
 		});
 	}
 }

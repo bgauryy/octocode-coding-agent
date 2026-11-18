@@ -11,7 +11,7 @@ export interface McpServerStatus {
 	defaultActive?: boolean;
 	toolCount: number;
 	source: string;
-	scope?: "global" | "project" | "extension" | "default";
+	scope?: "global" | "project" | "feature" | "default";
 	/** The listing group (`mcpServerGroup`): core, workspace or global, as skills are grouped. */
 	group?: McpServerGroup;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import { formatStatus } from "../src/report.ts";
 import type { McpServer } from "../src/server.ts";
-import type { McpExtensionState } from "../src/state.ts";
+import type { McpFeatureState } from "../src/state.ts";
 import { getMcpSessionStatus, setMcpSessionStatus, type McpServerStatus } from "../src/status.ts";
 
 const server = (name: string): McpServerStatus => ({
@@ -50,7 +50,7 @@ describe("formatStatus", () => {
 		source: "test",
 	});
 	const status = (servers: Partial<McpServer>[]) =>
-		formatStatus({ servers, configErrors: [], overridden: [] } as unknown as McpExtensionState);
+		formatStatus({ servers, configErrors: [], overridden: [] } as unknown as McpFeatureState);
 
 	it("names each server's state, so an unselected server does not read as starting", () => {
 		const connection = (state: string, more = {}) => ({ state, tools: [{ name: "a" }], ...more }) as never;

@@ -102,7 +102,7 @@ describe("interactive render errors", () => {
 			},
 			themeController: { rebindTui: () => {} },
 			fullscreenLayoutRoot: screen.chatContainer,
-			extensionTerminalInputSubscriptions: new Set(),
+			featureTerminalInputSubscriptions: new Set(),
 			mountInteractiveTui: (tui: TUI, components: Component[]) => {
 				for (const component of components) tui.addChild(component);
 			},

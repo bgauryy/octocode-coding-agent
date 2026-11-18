@@ -7,6 +7,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { WindowsHelper, windowsTree } from "../../src/utils/windows/winhelper.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -22,7 +23,8 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 			cwd,
 			agentDir: path.join(cwd, "agent"),
 			settingsManager,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -36,7 +38,7 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 			resourceLoader,
 			sessionManager: SessionManager.inMemory(cwd),
 		});
-		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined });
+		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined });
 		return session;
 	};
 	const first = await start();
@@ -60,7 +62,7 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 		expect(helper.owns(4242)).toBe(true);
 		await expect(coordinate(second, "join")).resolves.toBeDefined();
 		await coordinate(first, "join");
-		await first.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await first.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		first.dispose();
 		expect(helper.owns(4242)).toBe(true);
 		await expect(coordinate(second, "join")).resolves.toBeDefined();
@@ -70,7 +72,7 @@ it("keeps another native SDK session's team usable after shutdown and reload", a
 		await second.reload();
 		await expect(coordinate(second, "join")).resolves.toBeDefined();
 	} finally {
-		await second.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await second.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		second.dispose();
 		stopHelper.mockRestore();
 		await helper.stopAll();

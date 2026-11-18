@@ -1,15 +1,13 @@
 import { existsSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import type { PackageSource } from "../settings-manager.ts";
-import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 import { addAutoDiscoveredResources } from "./auto-discovery.ts";
 import { collectSkillEntries } from "./discovery.ts";
 import { applyAutoloadDisabledPatterns, getOverridePatterns, isEnabledByOverrides } from "./patterns.ts";
 import { getGitInstallPath, installGit } from "./git.ts";
 import { getNpmInstallPath, installedNpmMatchesConfiguredVersion, installNpm } from "./npm.ts";
-import { builtinEnablement } from "./builtin-state.ts";
 import {
 	addResource,
 	collectPackageResources,
@@ -100,30 +98,17 @@ export async function resolvePackages(
 			);
 	}
 
-	// Built-in extensions are on unless the `extensions` setting excludes them (see `builtinEnablement`).
-	for (const name of host.builtinExtensions) {
-		const path = `${BUILTIN_PATH_PREFIX}${name}`;
-		const { enabled, scope } = builtinEnablement(path, globalSettings, projectSettings, globalBaseDir, projectBaseDir);
-		addResource(accumulator.extensions, path, { source: "builtin", scope, origin: "top-level" }, enabled);
-	}
-
 	return toResolvedPaths(accumulator);
 }
 
-export async function resolveExtensionSources(
+export async function resolveSources(
 	host: PackageManagerHost,
 	sources: string[],
 	options?: { local?: boolean; temporary?: boolean },
 ): Promise<ResolvedPaths> {
 	const accumulator = createAccumulator();
 	const scope: SourceScope = options?.temporary ? "temporary" : options?.local ? "project" : "user";
-	// `-e builtin:<name>` loads a built-in extension; the resource loader reports unknown names.
-	for (const source of sources.filter((source) => source.startsWith(BUILTIN_PATH_PREFIX))) {
-		addResource(accumulator.extensions, source, { source: "builtin", scope, origin: "top-level" }, true);
-	}
-	const packageSources = sources
-		.filter((source) => !source.startsWith(BUILTIN_PATH_PREFIX))
-		.map((source) => ({ pkg: source as PackageSource, scope }));
+	const packageSources = sources.map((source) => ({ pkg: source as PackageSource, scope }));
 	await resolvePackageSources(host, packageSources, accumulator);
 	return toResolvedPaths(accumulator);
 }
@@ -145,7 +130,7 @@ async function resolvePackageSources(
 
 		if (parsed.type === "local") {
 			const baseDir = getBaseDirForScope(host, resolvedScope);
-			resolveLocalExtensionSource(parsed, accumulator, filter, metadata, baseDir);
+			resolveLocalPackageSource(parsed, accumulator, filter, metadata, baseDir);
 			continue;
 		}
 
@@ -207,7 +192,7 @@ function findAutoloadDeltaBase(
 	return userEntry ? { source: getPackageSourceString(userEntry.pkg), scope: "user" } : undefined;
 }
 
-function resolveLocalExtensionSource(
+function resolveLocalPackageSource(
 	source: LocalSource,
 	accumulator: ResourceAccumulator,
 	filter: PackageFilter | undefined,
@@ -221,18 +206,10 @@ function resolveLocalExtensionSource(
 
 	try {
 		const stats = statSync(resolved);
-		if (stats.isFile()) {
-			metadata.baseDir = dirname(resolved);
-			addResource(accumulator.extensions, resolved, metadata, true);
-			return;
-		}
 		if (stats.isDirectory()) {
 			metadata.baseDir = resolved;
 			metadata.packageRoot = resolved;
-			const resources = collectPackageResources(resolved, accumulator, filter, metadata);
-			if (!resources) {
-				addResource(accumulator.extensions, resolved, metadata, true);
-			}
+			collectPackageResources(resolved, accumulator, filter, metadata);
 		}
 	} catch {
 		// An unreadable local source adds no resources.

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -13,7 +13,7 @@ export const runningApiInstances = (): InstanceRecord[] => listInstances(apiDir(
 
 /** Wire the external API into Octocode: event publishing, lifecycle and `/api`. Subagents never expose one. */
 export function registerApi(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	commands: Subcommands,
 	agents: AgentDirectory,
 	version: () => string | undefined,

@@ -34,8 +34,9 @@ it("offers the sent prompt in the selector and confirms the fork when it is chos
 
 	// Not `submit`: it dismisses a selector with Escape, and this one is answered with Enter.
 	const opened = Promise.resolve(t.host.defaultEditor.onSubmit?.("/fork"));
-	await expect.poll(() => screen(t.host), { timeout: 10_000 }).toContain("Fork from Message");
-	expect(screen(t.host)).toContain(prompt);
+	await expect.poll(() => screen(t.host), { timeout: 10_000 }).toContain("\n Fork from a message");
+	expect(screen(t.host)).toContain("\n Copies the conversation up to the chosen message into a new session");
+	expect(screen(t.host)).toMatch(new RegExp(`\\n› ${prompt}\\s*\\n  Message 1 of 1`));
 	t.host.renderer.getFocusedComponent()?.handleInput?.("\r");
 	await opened;
 

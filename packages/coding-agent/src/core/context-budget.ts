@@ -22,12 +22,7 @@ export function mcpInstructionSizes(mcpsSection: string): Array<{ server: string
 	}));
 }
 
-/** The size of the instructions in a server's generated file (`octocode mcp compact`), which holds its typed functions too. */
-export function generatedInstructionChars(text: string): number {
-	return text.includes("declare namespace ") ? instructionChars(text) : 0;
-}
-
-/** The `<project_context>` blocks of a rendered system prompt (its head and one per file): the context files as the model reads them. */
+/** The `<project_context>` block of a rendered system prompt (its head and every file): the context files as the model reads them. */
 export function projectContextOf(systemPrompt: string): string | undefined {
 	const pattern = /^<project_context>$[\s\S]*?^<\/project_context>$/gm;
 	const blocks: string[] = [];
@@ -71,7 +66,7 @@ export function contextSizeWarnings(input: {
 			.sort((a, b) => b.chars - a.chars)
 			.map(
 				(server) =>
-					`MCP server ${server.server} instructions too long: ${over(server.chars)} · fix: octocode mcp compact --help`,
+					`MCP server ${server.server} instructions too long: ${over(server.chars)} · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions`,
 			),
 		...(input.contextFilesChars > budget
 			? [`Context files too long: ${over(input.contextFilesChars)} · move rarely needed rules into linked files`]

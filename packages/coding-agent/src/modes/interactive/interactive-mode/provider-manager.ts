@@ -164,7 +164,7 @@ export async function showProviderManager(
 			else if (choice.id === EXTERNAL_ROW) {
 				const entries = externalAgentSignIns();
 				const labels = entries.map((entry) => `${entry.name} — ${entry.detail}`);
-				const picked = await host.showExtensionSelector("Add an external agent CLI", labels);
+				const picked = await host.showSelectorDialog("Add an external agent CLI", labels);
 				const entry = picked ? entries[labels.indexOf(picked)] : undefined;
 				if (entry) result = await openRunner(entry.id);
 			} else if (choice.id === ADVANCED_ROW)

@@ -133,7 +133,8 @@ describe("the subagent check-in", () => {
 
 	it("sends nothing when the setting is 0", async () => {
 		const box = withInterval(0);
-		const child: Step[] = [sleep, sleep, { text: "done: nothing else to do" }];
+		// One sleep outlasts the 1 s interval: a ping would join the request after it.
+		const child: Step[] = [sleep, { text: "done: nothing else to do" }];
 		const parent: Step[] = [
 			{ tool: "agent", args: { type: "task", goal: "leave me alone", task: script(child) } },
 			{ text: "read its report" },
@@ -146,7 +147,7 @@ describe("the subagent check-in", () => {
 
 	it("sends nothing in the top-level session, which has no parent", async () => {
 		const box = withInterval(1);
-		const steps: Step[] = [sleep, sleep, { text: "done" }];
+		const steps: Step[] = [sleep, { text: "done" }];
 		const { code } = await box.start(["-p", script(steps)]).exited;
 		expect(code).toBe(0);
 		expect(requestsOf(steps).filter(pinged)).toEqual([]);

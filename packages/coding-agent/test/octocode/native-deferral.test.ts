@@ -24,7 +24,7 @@ const tool = (name: string) => ({
 	}),
 	execute: vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }], details: {} })),
 });
-const api = (settings: object) => ({ getSettings: () => settings }) as never;
+const api = (settings: object) => ({ settings: { get: () => settings } }) as never;
 const agentDir = () => {
 	const dir = tmp();
 	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", dir);
@@ -94,11 +94,13 @@ describe("native tool deferral", () => {
 		function host(settings: object | undefined) {
 			const registered: Array<{ name: string; parameters: unknown }> = [];
 			const loaded = {
-				getSettings: () => {
-					if (!settings) throw new Error("not initialized");
-					return settings;
+				settings: {
+					get: () => {
+						if (!settings) throw new Error("not initialized");
+						return settings;
+					},
 				},
-				registerTool: (definition: { name: string; parameters: unknown }) => registered.push(definition),
+				tools: { register: (definition: { name: string; parameters: unknown }) => registered.push(definition) },
 			};
 			const ctx = (declared: Array<{ name: string; parameters: unknown }> | Error) => ({
 				sessionManager: {
@@ -143,7 +145,7 @@ describe("native tool deferral", () => {
 			agentDir();
 			const settings: { current: object | undefined } = { current: undefined };
 			const at = host(undefined);
-			const api = { ...at.api, getSettings: () => settings.current ?? at.api.getSettings() };
+			const api = { ...at.api, settings: { get: () => settings.current ?? at.api.settings.get() } };
 			withNativeDeferral(api as never, tool("web") as never);
 			withNativeDeferral(api as never, tool("archive") as never);
 			// Registered deferred; the session declared both direct; `web` is pinned deferred, the setting is not `recent`.

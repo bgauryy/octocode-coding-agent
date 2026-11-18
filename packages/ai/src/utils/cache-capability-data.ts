@@ -6,7 +6,7 @@
  * the compat flag itself (models.json `compat`).
  */
 
-/** OpenAI ids (dated snapshots included) that take `prompt_cache_options` instead of `prompt_cache_retention`. Verified 2026-11-08: https://developers.openai.com/api/docs/guides/prompt-caching */
+/** OpenAI ids (dated snapshots included) that take `prompt_cache_options` instead of `prompt_cache_retention`. Verified 2026-11-18: https://developers.openai.com/api/docs/guides/prompt-caching */
 export const OPENAI_EXPLICIT_CACHE_MODELS: ReadonlySet<string> = new Set([
 	"gpt-5.6-sol",
 	"gpt-5.6-terra",
@@ -17,6 +17,8 @@ export const OPENAI_EXPLICIT_CACHE_MODELS: ReadonlySet<string> = new Set([
 	"gpt-6-luna",
 	"gpt-6.1-sol",
 	"gpt-6.1-terra",
+	"gpt-6.2-astra",
+	"gpt-6.2-sol",
 	"gpt-daybreak-blue-latest",
 	"gpt-daybreak-red-latest",
 ]);

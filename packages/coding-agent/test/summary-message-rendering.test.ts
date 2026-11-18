@@ -1,4 +1,4 @@
-import type { Box } from "@octocodeai/octocode-tui";
+import type { Container } from "@octocodeai/octocode-tui";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BranchSummaryMessageComponent } from "../src/modes/interactive/components/branch-summary-message.ts";
@@ -9,7 +9,7 @@ import { transcriptNote } from "../src/octocode/compaction/summary.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
-function lines(component: Box, width: number): string[] {
+function lines(component: Container, width: number): string[] {
 	return component.render(width).map((line) => stripAnsi(line).trimEnd());
 }
 
@@ -52,7 +52,7 @@ describe("summary messages", () => {
 			const out = lines(compaction(), width);
 			// A narrow width wraps the text over lines: compare it as one run of words.
 			const text = out.join(" ").replace(/\s+/g, " ");
-			expect(text).toContain("[compaction] Compacted 84,000 tokens into a ~");
+			expect(text).toMatch(/\[compaction\] 84k tokens → \d+-token summary/);
 			expect(text).toContain("archive: segment 3");
 			expect(text).not.toContain("transcript:");
 			expect(text).toContain("to expand)");
@@ -86,13 +86,13 @@ describe("summary messages", () => {
 			timestamp: Date.now(),
 		});
 		const collapsed = lines(component, 80).join("\n");
-		expect(collapsed).toContain("Compacted 1,234 tokens");
+		expect(collapsed).toContain("[compaction] 1.2k tokens → 6-token summary (ctrl+o to expand)");
 		expect(collapsed).not.toContain("archive:");
 		component.setExpanded(true);
 		expect(lines(component, 80).join("\n")).toContain("Plain summary text");
 	});
 
-	test("a branch summary has its title, then the expand hint on its own row", () => {
+	test("a branch summary has its title and the expand hint on one row where it fits, else the hint on its own row", () => {
 		const component = new BranchSummaryMessageComponent({
 			role: "branchSummary",
 			summary: "branch details",
@@ -100,8 +100,12 @@ describe("summary messages", () => {
 			timestamp: Date.now(),
 		});
 		expect(lines(component, 80).filter(Boolean)).toEqual([
-			expect.stringContaining("[branch] Summary of the branch you left"),
-			expect.stringContaining("(ctrl+o to expand)"),
+			" [branch] Summary of the branch you left (ctrl+o to expand)",
+		]);
+		// Never wrapped mid-phrase: the hint moves whole.
+		expect(lines(component, 50).filter(Boolean)).toEqual([
+			" [branch] Summary of the branch you left",
+			" (ctrl+o to expand)",
 		]);
 	});
 
@@ -116,6 +120,10 @@ describe("summary messages", () => {
 		expect(collapsed).toContain("[skill] demo-review \u00b7 3 lines");
 		expect(collapsed).toContain("/skills/demo-review/SKILL.md");
 		expect(collapsed).not.toContain("Read the diff");
+		// One row where it fits: the label, the size, the file and the hint.
+		expect(lines(component, 120).filter(Boolean)).toEqual([
+			" [skill] demo-review \u00b7 3 lines \u00b7 /skills/demo-review/SKILL.md (ctrl+o to expand)",
+		]);
 		component.setExpanded(true);
 		const expanded = lines(component, width).join(" ");
 		expect(expanded).toContain("Read the diff");

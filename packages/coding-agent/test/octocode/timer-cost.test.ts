@@ -3,9 +3,9 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, openDatabase, timers } from "../../../db/src/api.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
-import { createExtensionRuntime } from "../helpers/features.ts";
-import { ExtensionRunner } from "../../src/core/features/runner.ts";
-import type { ExtensionActions, ExtensionContext, ExtensionContextActions } from "../../src/core/features/types.ts";
+import { createFeatureRuntime } from "../helpers/features.ts";
+import { FeatureHost } from "../../src/core/features/runner.ts";
+import type { SessionActions, FeatureContext, ContextActions } from "../../src/core/features/types.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { addUsageToTotals, createUsageTotals, entryUsage } from "../../src/core/usage-totals.ts";
@@ -44,15 +44,15 @@ const model = (id: string, input: number) => ({
 /** A judge whose recordUsage is the real runtime port bound to a real session manager. */
 async function session(reply: string) {
 	const sessionManager = SessionManager.inMemory();
-	const runtime = createExtensionRuntime();
-	const runner = new ExtensionRunner(
+	const runtime = createFeatureRuntime();
+	const runner = new FeatureHost(
 		[],
 		runtime,
 		root,
 		sessionManager,
 		await createInMemoryModelRegistry(AuthStorage.inMemory()),
 	);
-	runner.bindCore({} as ExtensionActions, {} as ExtensionContextActions);
+	runner.bindCore({} as SessionActions, {} as ContextActions);
 	const parent = model("big", 15);
 	const ctx = {
 		model: parent,
@@ -60,7 +60,7 @@ async function session(reply: string) {
 			getAvailable: () => [parent, model("cheap", 1)],
 			getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }),
 		},
-	} as unknown as ExtensionContext;
+	} as unknown as FeatureContext;
 	const complete = vi.fn(async () => {
 		const message = fauxAssistantMessage(reply);
 		message.usage = { ...message.usage, cost: { ...message.usage.cost, total: COST } };

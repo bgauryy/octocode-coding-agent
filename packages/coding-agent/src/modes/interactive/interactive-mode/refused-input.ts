@@ -6,6 +6,7 @@
 
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getApplicationPort } from "../../../core/application/index.ts";
+import { prependToEditorDraft } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** What refused input needs from the interactive mode; `refusedInput` builds it from the host. */
@@ -107,4 +108,23 @@ async function sendAsMessage(input: RefusedInput, text: string): Promise<void> {
 		if (!accepted) restoreRefused(editor, text);
 		input.error(`${accepted ? "Message failed" : "Message was not sent; restored to editor"}: ${errorMessage(error)}`);
 	}
+}
+
+/**
+ * Sends the submitted prompt and waits for its run. When Esc stopped the run before the prompt reached the transcript
+ * (while it was still preparing: compaction check, `before_agent_start`), nothing was recorded, so the text returns to
+ * the editor, ahead of any new draft, and a warning says it was not sent. Slash commands are not prompts and are left alone.
+ */
+export async function submitPrompt(
+	host: Pick<InteractiveModeHost, "editor" | "escapeAbortedRun" | "session" | "showWarning">,
+	text: string,
+): Promise<void> {
+	const { session } = host;
+	const before = session.messages.length;
+	host.escapeAbortedRun = false;
+	await getApplicationPort(session).invoke("prompt", text, { attachImagePaths: true });
+	if (!host.escapeAbortedRun || text.trimStart().startsWith("/")) return;
+	if (session.messages.slice(before).some((message) => message.role === "user")) return;
+	prependToEditorDraft(host.editor, text);
+	host.showWarning("Cancelled before it reached the model: the prompt is back in the editor");
 }

@@ -1,11 +1,11 @@
-import type { ExtensionContext } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureContext } from "../../coding-agent/src/core/features/types.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { InMemoryAuthStorageBackend } from "../../coding-agent/src/core/auth-storage.ts";
 import { registerMcpHost } from "../src/index.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { defaultPreset } from "./mcp-default-preset.ts";
-import type { McpExtensionOptions } from "../src/state.ts";
+import type { McpFeatureOptions } from "../src/state.ts";
 import { StdioTransport } from "../src/client/index.ts";
 import { createDefaultTransport } from "../src/runtime.ts";
 import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
@@ -13,13 +13,13 @@ import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 
 /** Runs the production host's lifecycle and tool registry against isolated stdio fixtures. */
 export function mcpHost(
-	options: McpExtensionOptions & { cwd?: string; servers?: McpServerEntry[]; hasUI?: boolean } = {},
+	options: McpFeatureOptions & { cwd?: string; servers?: McpServerEntry[]; hasUI?: boolean } = {},
 ) {
 	const fake = fakeHost();
-	fake.api.events = createEventBus();
-	fake.api.getMcpServers = () => [];
-	fake.api.registerToolRenderer = () => {};
-	fake.api.getActiveTools = () =>
+	Object.assign(fake.api, { channels: createEventBus() });
+	fake.api.mcpServers.list = () => [];
+	fake.api.renderers.tool = () => {};
+	fake.api.tools.getActive = () =>
 		[...fake.tools.values()]
 			.filter((tool) => tool.exposure !== "hidden" && tool.defaultActive !== false)
 			.map((tool) => tool.name);
@@ -38,11 +38,11 @@ export function mcpHost(
 		...options,
 	});
 	// As the host does: `session_start`, then resource discovery, which lets the startup connections launch.
-	const start = async (context: ExtensionContext = ctx) => {
+	const start = async (context: FeatureContext = ctx) => {
 		await fake.fire("session_start", {}, context);
 		await fake.fire("resources_discover", { type: "resources_discover", cwd: context.cwd, reason: "startup" }, context);
 	};
-	const prompt = async (context: ExtensionContext = ctx) => {
+	const prompt = async (context: FeatureContext = ctx) => {
 		const event = {
 			systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} as Record<string, string> },
 		};

@@ -3,13 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import octocode from "../../src/octocode/index.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * `/optimize` and the prompt hook through a real session, the native extension and a scripted main model. The helper
@@ -75,7 +77,7 @@ const lastUserText = (context: TranscriptContext): string => {
 		: message.content.map((part) => part.text ?? "").join("");
 };
 
-async function prompt(text: string, options?: { source?: "interactive" | "rpc" | "extension" }): Promise<void> {
+async function prompt(text: string, options?: { source?: "interactive" | "rpc" | "feature" }): Promise<void> {
 	faux.setResponses([
 		(context: TranscriptContext) => {
 			sent.push(lastUserText(context));
@@ -113,8 +115,8 @@ beforeAll(async () => {
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -128,10 +130,11 @@ beforeAll(async () => {
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "faux-provider", factory: provider },
 			{ name: "octocode", factory: octocode },
-		],
+		]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -144,7 +147,7 @@ beforeAll(async () => {
 		settingsManager,
 		sessionManager: SessionManager.inMemory(cwd),
 	}));
-	await session.bindExtensions({ uiContext: ui, mode: "tui", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ uiContext: ui, mode: "tui", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 }, 60_000);
 
@@ -162,7 +165,7 @@ beforeEach(() => {
 
 describe("/optimize command", () => {
 	it("is a registered command with a short description, a hint and completions", async () => {
-		const command = session.extensionRunner.getRegisteredCommands().find((each) => each.name === "optimize");
+		const command = session.featureHost.getRegisteredCommands().find((each) => each.name === "optimize");
 		expect(command?.argumentHint).toBe("[on|off]");
 		expect(command?.description?.length).toBeLessThanOrEqual(50);
 		expect((await command?.getArgumentCompletions?.("o"))?.map((item) => item.value)).toEqual(["on", "off"]);
@@ -276,7 +279,7 @@ describe("prompt optimization on submit", () => {
 		await prompt("/optimize");
 		await prompt("!ls -la");
 		await prompt("fix the login bug", { source: "rpc" });
-		await prompt("fix the login bug", { source: "extension" });
+		await prompt("fix the login bug", { source: "feature" });
 		await prompt("   ");
 		expect(helper).not.toHaveBeenCalled();
 		expect(screen.selects.map((each) => each.title)).toEqual([expect.stringContaining("Prompt optimization is on")]);

@@ -68,8 +68,7 @@ it("treats resource overrides as authoritative without resurrecting name collisi
 			cwd: root,
 			agentDir: root,
 			settingsManager: SettingsManager.inMemory({}),
-			nativeFeatures: false,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noThemes: true,
 			noPromptTemplates: true,
 			noSkills: true,
@@ -112,8 +111,7 @@ it("passthrough overrides preserve portable limits and captured canonical target
 		settingsManager: SettingsManager.inMemory({
 			plugins: [{ path: root, protocol: "codex" }],
 		}),
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		noThemes: true,
 		noPromptTemplates: true,
 		skillsOverride: (base) => {

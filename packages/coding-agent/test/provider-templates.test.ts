@@ -284,10 +284,10 @@ describe("/providers → Add from a template", () => {
 					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 				},
 			},
-			showExtensionSelector: vi.fn(async (_title: string, options: string[]) =>
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) =>
 				options.find((option) => option.startsWith(label("hyperbolic")) || option.startsWith("Save a key")),
 			),
-			showExtensionInput: vi.fn(async () => "moonshotai/Kimi-K2-Instruct, Qwen/Qwen3-Coder-480B-A35B-Instruct"),
+			showInputDialog: vi.fn(async () => "moonshotai/Kimi-K2-Instruct, Qwen/Qwen3-Coder-480B-A35B-Instruct"),
 			showApiKeyLoginDialog: vi.fn(async () => {}),
 			updateAvailableProviderCount: vi.fn(),
 			showStatus: vi.fn(),
@@ -315,7 +315,7 @@ describe("/providers → Add from a template", () => {
 			session: {
 				modelRuntime: { getBuiltinProvider: () => undefined, getConfigurationDirectory: () => sandbox.agentDir },
 			},
-			showExtensionSelector: vi.fn(async () => undefined),
+			showSelectorDialog: vi.fn(async () => undefined),
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 		};
@@ -336,10 +336,10 @@ describe("/providers → Add from a template", () => {
 					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 				},
 			},
-			showExtensionSelector: vi.fn(async (_title: string, options: string[]) =>
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) =>
 				options.find((option) => option.startsWith("OpenAI API gateway") || option.startsWith("Read an environment")),
 			),
-			showExtensionInput: vi.fn(async () => answers.shift()),
+			showInputDialog: vi.fn(async () => answers.shift()),
 			showApiKeyLoginDialog: vi.fn(async () => {}),
 			updateAvailableProviderCount: vi.fn(),
 			showStatus: vi.fn(),

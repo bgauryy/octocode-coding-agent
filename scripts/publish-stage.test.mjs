@@ -39,6 +39,7 @@ const fitPackage = {
 	"README.md": "# x",
 	"dist/bundle/octocode.js": "export {};",
 	"dist/bundle/db-writer-worker.js": `export {};${" ".repeat(2000)}`,
+	"dist/bundle/archive-index-worker.js": `export {};${" ".repeat(2000)}`,
 	"dist/bundle/cli.js": 'await import("./octocode.js");',
 	"dist/licenses/THIRD_PARTY_NOTICES.md": "# notices",
 	"docs/project/FEATURES.md": "# features",

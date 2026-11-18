@@ -1,7 +1,7 @@
 import { sameSecret } from "@octocodeai/octocode-common/env";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
-/** The extension event a parent's relay publishes when a child reports what it read (`ChildExposure`). */
+/** The feature event a parent's relay publishes when a child reports what it read (`ChildExposure`). */
 export const CHILD_EXPOSURE_EVENT = "octocode:child-exposure";
 
 /** What that event carries: the child's name, from the process the message arrived on, and what the child said. */

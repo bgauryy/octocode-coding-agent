@@ -9,7 +9,7 @@ import { getUsageCostBreakdown } from "../../src/core/usage-totals.ts";
 import { formatCost, formatTokenUsage } from "../../src/octocode/shared/format.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerFooter } from "../../src/octocode/ui/footer.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -81,7 +81,7 @@ async function footerText(sm: SessionManager, events: Array<[string, unknown]> =
 	await fake.emit("session_start", {}, ctx);
 	const component = ctx.ui.footer({ requestRender: () => undefined }, theme, {
 		getGitBranch: () => null,
-		getExtensionStatuses: () => new Map(),
+		getFeatureStatuses: () => new Map(),
 		onBranchChange: () => () => undefined,
 	});
 	for (const [name, payload] of events) await fake.emit(name, payload, ctx);
@@ -112,8 +112,8 @@ describe("session spend is the same on every surface", () => {
 
 	it("the footer's replay counts the compaction summary request and the cache refresh, as /session does", async () => {
 		const text = await footerText(mixedSession());
-		// ↑ = input + cache writes = 3110 + 8000; cached = 19940; ↓ = 656; tokens = ↑ + ↓.
-		expect(text).toContain("11.8k tokens (↑11.1k +19.9k cached ↓656)");
+		// ↑ = input + cache writes = 3110 + 8000; ↓ = 656; tokens = ↑ + ↓; the 19940 cache reads show only as their share.
+		expect(text).toContain("11.8k tok (↑11.1k ↓656) · 64% cached");
 		expect(text).toContain("≈$0.48");
 	});
 
@@ -128,7 +128,7 @@ describe("session spend is the same on every surface", () => {
 		await fake.emit("session_start", {}, ctx);
 		const component = ctx.ui.footer({ requestRender: () => undefined }, theme, {
 			getGitBranch: () => null,
-			getExtensionStatuses: () => new Map(),
+			getFeatureStatuses: () => new Map(),
 			onBranchChange: () => () => undefined,
 		});
 		// The default compaction records its request as a `usage` entry and the compaction entry carries none.
@@ -214,7 +214,7 @@ describe("an agent's row in the agent list", () => {
 			sessionManager: { getSessionId: () => "s1", getSessionFile: () => undefined },
 		} as never;
 		const team = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			env,
 		);
 		team.start(ctx);

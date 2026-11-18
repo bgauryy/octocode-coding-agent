@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import { MCP_SESSION_SERVERS_FILE_ENV } from "@octocodeai/octocode-common/env";
-import { McpExtensionState } from "../../../mcp/src/state.ts";
+import { McpFeatureState } from "../../../mcp/src/state.ts";
 import {
 	parseMcpSessionServers,
 	registerInheritedMcpServers,
@@ -14,7 +14,7 @@ import {
 } from "../../../mcp/src/session-servers.ts";
 import { getToolListError } from "../../src/core/settings-manager.ts";
 import { isDefaultActive } from "../../../mcp/src/exposure.ts";
-import { agentToolSpec } from "../../src/octocode/subagents/agent-tool.ts";
+import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { resolveTaskServers } from "../../src/octocode/subagents/task-servers.ts";
 
@@ -36,7 +36,7 @@ function childLeavesOut(only: readonly string[] | undefined, name: string): bool
 		taskServers: parsed.only ? new Set(parsed.only) : undefined,
 		api: {},
 	};
-	return McpExtensionState.prototype.leavesOut.call(state, name);
+	return McpFeatureState.prototype.leavesOut.call(state, name);
 }
 
 describe("T6: per-task MCP servers (agent task `mcp`)", () => {
@@ -124,7 +124,7 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-task-servers-"));
 		const file = path.join(dir, "servers.json");
 		fs.writeFileSync(file, serializeMcpSessionServers({}, [], [])!);
-		const api = { registerMcpServer: vi.fn() } as unknown as ExtensionAPI;
+		const api = { registerMcpServer: vi.fn() } as unknown as FeatureSetup;
 		expect(registerInheritedMcpServers(api, { OCTOCODE_SUBAGENT: "1", [MCP_SESSION_SERVERS_FILE_ENV]: file })).toEqual({
 			stopped: [],
 			only: [],

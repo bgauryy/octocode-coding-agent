@@ -1,5 +1,6 @@
 import type { TimerResult } from "../../../../../db/src/api.ts";
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
+import type { BacklogChange } from "../../shared/backlog-change.ts";
 
 /** Characters of a check's output kept on the row and shown on wake. */
 export const OUTPUT_CAP = 2000;
@@ -8,7 +9,9 @@ export const OUTPUT_CAP = 2000;
 export type BaseCondition =
 	| { kind: "command"; command: string }
 	| { kind: "unlocked"; path: string }
-	| { kind: "item"; ref: string; state: string }
+	| { kind: "item"; ref: string; state: string; since?: number }
+	| { kind: "changed"; ref?: string; epic?: string; path?: string; change?: string; since?: number }
+	| { kind: "landed"; ref: string; path?: string; agent?: string; since?: number }
 	| { kind: "agent"; name: string };
 
 /** A fuzzy condition: `on` is the deterministic trigger, and the small model judges `question` only after `on` fires. */
@@ -19,12 +22,40 @@ export type TimerCondition = BaseCondition | CheckCondition;
 /** A check of a condition: met, not yet, or not possible (refused or unrunnable: the timer fails). */
 export type CheckOutcome = TimerResult & { met: boolean; refused?: string };
 
+/** A backlog item as the backlog waits read it. */
+interface ItemDetail {
+	/** `closed` for an item closed without completion. */
+	state: string;
+	assignee: string | null;
+	paths: string[];
+}
+
+/** What the backlog waits read of the audit log and the board. Absent from a host without a backlog: those waits then refuse. */
+export interface BacklogDeps {
+	/** The workspace's newest audit id: the cursor a wait stores when it starts. */
+	head(): number;
+	/** The classified audit changes after `since`, oldest first; `resync` when rows were pruned before they were read. */
+	since(since: number): { changes: BacklogChange[]; resync: boolean };
+	/** The refs of the items under epic `epic` at any depth and in any state, or undefined without that epic. */
+	under(epic: string): string[] | undefined;
+	detail(ref: string): ItemDetail | undefined;
+	/** Whether this session or agent wrote the change by actor `by`. */
+	own(by: string): boolean;
+	/**
+	 * The change feed: calls `listener` for every change any process makes, returns the unsubscribe. Absent where the host
+	 * runs no feed (a subagent): its waits poke from the database file instead.
+	 */
+	subscribe?(listener: (change: BacklogChange) => void): () => void;
+}
+
 /** What a condition may read from the host. */
 export interface ConditionDeps {
+	/** The backlog's audit log and change feed, for `item`, `changed` and `landed`. */
+	backlog?: BacklogDeps;
 	/** Why `absolute` may not be changed now (another agent's reservation), or undefined: the team's own check. */
 	reservation(absolute: string, display: string): string | undefined;
 	/** The session the check runs for: its plan mode and project trust apply. */
-	context(): ExtensionContext | undefined;
+	context(): FeatureContext | undefined;
 	/** The state of backlog item `ref` in the session's workspace (`closed` for an item closed without completion), or undefined. */
 	item(ref: string): string | undefined;
 	/** The `dependsOn` items of backlog item `ref` that are missing or not done (closed counts as done). */
@@ -40,6 +71,8 @@ export interface ConditionDeps {
 /** One check's surroundings: where it runs, and the host. */
 export interface RunEnv {
 	cwd: string;
+	/** The wait is at its deadline: this check is the last, so a not-met result may say what to do next. */
+	expiring?: boolean;
 	signal?: AbortSignal;
 	deps: ConditionDeps;
 	/** The timer row, for a `check`'s budget. */

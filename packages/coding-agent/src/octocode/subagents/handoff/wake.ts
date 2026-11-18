@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { FeatureSetup } from "../../../core/features/index.ts";
 import { AGENT_RESULT_TYPE } from "../../shared/messages.ts";
 import { wakeGateOf } from "../../wake/gate.ts";
 import type { Report } from "./pending.ts";
@@ -8,7 +8,7 @@ import type { Report } from "./pending.ts";
  * the report's `wake`, so every report of a waking batch is listed.
  */
 export function sendAgentReport(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	report: Report,
 	details: object,
 	item: string | undefined,

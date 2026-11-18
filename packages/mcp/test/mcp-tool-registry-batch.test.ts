@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import type { McpServerConnection } from "../src/runtime.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 import { hideTools, registerTools } from "../src/tool-registry.ts";
+import { asSetup } from "../../coding-agent/test/octocode/fake-host.ts";
 
 function setup(toolCount: number, withBatchApi = true) {
 	const batches: string[][] = [];
 	const single: string[] = [];
-	const api = {
+	const api = asSetup({
+		getSettings: () => ({}),
 		getAllTools: () => [],
 		getActiveTools: () => [],
 		setActiveTools: vi.fn(),
@@ -17,8 +19,8 @@ function setup(toolCount: number, withBatchApi = true) {
 		...(withBatchApi && {
 			registerTools: (definitions: Array<{ name: string }>) => batches.push(definitions.map((entry) => entry.name)),
 		}),
-	} as unknown as ExtensionAPI;
-	const state = new McpExtensionState(api, {});
+	}) as unknown as FeatureSetup;
+	const state = new McpFeatureState(api, {});
 	const entry: McpServerEntry = { name: "srv", config: { command: "fixture", exposure: "direct" }, source: "test" };
 	const tools = Array.from({ length: toolCount }, (_, index) => ({
 		name: `tool${index}`,

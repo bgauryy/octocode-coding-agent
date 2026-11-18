@@ -1,0 +1,1 @@
+cron runs a model turn each time with nobody attending, which spends money: it is off here. The user can turn it on with the global setting timer.cron.enabled, or set it from a session with a screen. Nothing was set.

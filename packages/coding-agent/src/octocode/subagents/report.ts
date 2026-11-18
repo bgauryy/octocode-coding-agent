@@ -1,7 +1,7 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
+import { REPORT_MAX_BYTES, REPORT_STATUSES, type ReportStatus } from "../native/prompts/report.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { JOB_TYPE } from "../shared/messages.ts";
@@ -29,7 +29,7 @@ const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_L
 
 /**
  * The child's own background bash job report, read from its message (`shared/messages.ts` `JOB_TYPE`): its `Background
- * bash …` line (else its first line), and `quiet` when it was recorded without starting a turn (`files/bash.ts`: every job
+ * bash …` line (else its first line), and `quiet` when it was recorded without starting a turn (`native/tools/bash/tool.ts`: every job
  * of a subagent), with the log path the parent can read.
  */
 export function jobNotice(message: { customType?: unknown; content?: unknown; details?: unknown }): {
@@ -61,6 +61,11 @@ export class ReportTracker {
 	private sectionStart = 0;
 	/** The only section is a waiting line kept because a report with nothing in it is no answer; a later answer replaces it. */
 	private waitOnly = false;
+	/**
+	 * The latest final text of a child that still had a job or timer pending and named no outcome: it says the child waits,
+	 * so it is no report. A later final answer replaces it; a failure, or the run ending first, makes it the report.
+	 */
+	private held: string | undefined;
 	private fresh = true;
 	private failure: string | undefined;
 	private outcome: { status: ReportStatus; source: OutcomeSource } | undefined;
@@ -89,7 +94,12 @@ export class ReportTracker {
 
 	/** At least one answer is in: the report exists, however its follow-ups end. */
 	get hasReport(): boolean {
-		return this.sections > 0;
+		return this.sections > 0 || this.held !== undefined;
+	}
+
+	/** The child's latest text only says it waits on pending work: no section of the report exists for it yet. */
+	get holdsWait(): boolean {
+		return this.held !== undefined;
 	}
 
 	/** A finished report that names no outcome, in a run that was not asked for one yet. */
@@ -104,7 +114,7 @@ export class ReportTracker {
 	askOutcome(): string {
 		this.outcomeAsk = "pending";
 		const words = REPORT_STATUSES.join(", ").replace(/, ([^,]*)$/, " or $1");
-		return renderInstruction("notices/subagents/outcome-ask.md", { outcomes: words });
+		return renderPrompt("notices/subagents/outcome-ask.md", { outcomes: words });
 	}
 
 	/**
@@ -131,7 +141,8 @@ export class ReportTracker {
 	}
 
 	/**
-	 * `waiting`: the child still has a background job or timer pending, so a waiting-only text is not its report.
+	 * `waiting`: the child still has a background job, timer or requested reply pending, so a text that names no outcome
+	 * is not its report: it is held until the child's next final answer, a failure or the end of the run.
 	 * `reminder`: its own timer woke this turn and no tool ran, so after a report its text only echoes the reminder.
 	 */
 	answer(
@@ -148,10 +159,30 @@ export class ReportTracker {
 			this.outcome = { status: named ?? "partial", source: "asked" };
 			return;
 		}
+		this.accept(answerText, stopReason, errorMessage, waiting, reminder);
+	}
+
+	/** Gives the held waiting text its place as the report (or as a follow-up to the report already given). */
+	private release(): void {
+		const text = this.held;
+		this.held = undefined;
+		// A waiting line after a report only repeats that the child waits; any other text is the child's last word.
+		if (text !== undefined && (this.sections === 0 || !isWaitingLine(text))) this.accept(text, "stop");
+	}
+
+	private accept(
+		answerText: string | undefined,
+		stopReason: unknown,
+		errorMessage?: unknown,
+		waiting = false,
+		reminder = false,
+	): void {
 		// The child's answer and failure reach the parent model and the saved report: a credential it quotes (an error body, a
 		// file it read) is removed here, so the preview, the scratch files and the structured result all hold clean text.
 		const raw = answerText === undefined ? undefined : redactSecrets(answerText);
 		const failed = stopReason === "error" || stopReason === "aborted" || stopReason === "length";
+		if (failed) this.release();
+		else if (stopReason !== "toolUse") this.held = undefined;
 		this.failure = failed
 			? redactSecrets(
 					visibleControls(
@@ -164,8 +195,11 @@ export class ReportTracker {
 			: undefined;
 		// Ignored reminder/wait text leaves the current report and its validation together. A new task has already
 		// invalidated its predecessor in incoming(); a timer that starts real tool work invalidates it below.
-		if (!failed && stopReason !== "toolUse" && this.sections > 0)
-			if (reminder || (waiting && raw && isWaitingLine(visibleControls(raw)))) return;
+		if (!failed && stopReason !== "toolUse" && this.sections > 0 && reminder) return;
+		if (!failed && stopReason !== "toolUse" && waiting && raw && !reportOutcome(visibleControls(raw))) {
+			this.held = raw;
+			return;
+		}
 		if (this.resultContract)
 			this.structured =
 				failed || !raw || stopReason === "toolUse"
@@ -285,9 +319,10 @@ export class ReportTracker {
 		structured?: StructuredResultV1;
 		reportArtifact?: ReportArtifact;
 	} {
+		this.release();
 		if (this.sections === 0) {
 			const pointer = this.partialFile
-				? renderInstruction("notices/subagents/report-pointer.md", {
+				? renderPrompt("notices/subagents/report-pointer.md", {
 						partial: true,
 						file: shortPath(this.partialFile),
 					})
@@ -320,7 +355,7 @@ export class ReportTracker {
 		// A failed follow-up's current answer includes the failure notice, not only the older saved report.
 		const artifact = this.failure ? { sha256: sha256(body) } : this.artifact;
 		const pointer = artifact.path
-			? renderInstruction("notices/subagents/report-pointer.md", { partial: false, file: shortPath(artifact.path) })
+			? renderPrompt("notices/subagents/report-pointer.md", { partial: false, file: shortPath(artifact.path) })
 			: undefined;
 		return {
 			text: `${body}${pointer ? `\n${pointer}` : ""}`,

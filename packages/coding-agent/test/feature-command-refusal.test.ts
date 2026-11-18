@@ -1,21 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionRunner } from "../src/core/features/index.ts";
-import { tryExecuteExtensionCommand } from "../src/core/agent-session/prompt-expansion.ts";
+import type { FeatureHost } from "../src/core/features/index.ts";
+import { tryExecuteFeatureCommand } from "../src/core/agent-session/prompt-expansion.ts";
 
-const runnerWith = (commands: Record<string, unknown> = {}): ExtensionRunner =>
+const runnerWith = (commands: Record<string, unknown> = {}): FeatureHost =>
 	({
 		getCommand: (name: string) => commands[name],
 		createCommandContext: () => ({}),
 		emitError: () => undefined,
-	}) as unknown as ExtensionRunner;
+	}) as unknown as FeatureHost;
 
 describe("a command of a built-in feature that is off", () => {
 	it("is refused, not sent to the model", async () => {
-		await expect(tryExecuteExtensionCommand(runnerWith(), "/mcp tools")).rejects.toThrow(
+		await expect(tryExecuteFeatureCommand(runnerWith(), "/mcp tools")).rejects.toThrow(
 			"/mcp is unavailable: the mcp feature is off.",
-		);
-		await expect(tryExecuteExtensionCommand(runnerWith(), "/llama")).rejects.toThrow(
-			"/llama is unavailable: the llama.cpp feature is off.",
 		);
 	});
 
@@ -24,8 +21,8 @@ describe("a command of a built-in feature that is off", () => {
 		const handler = async (args: string) => {
 			ran = args;
 		};
-		expect(await tryExecuteExtensionCommand(runnerWith({ mcp: { handler } }), "/mcp tools")).toBe(true);
+		expect(await tryExecuteFeatureCommand(runnerWith({ mcp: { handler } }), "/mcp tools")).toBe(true);
 		expect(ran).toBe("tools");
-		expect(await tryExecuteExtensionCommand(runnerWith(), "/nosuch")).toBe(false);
+		expect(await tryExecuteFeatureCommand(runnerWith(), "/nosuch")).toBe(false);
 	});
 });

@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { CheckpointPersistenceError } from "../../core/compaction/checkpoint.ts";
 import { clipWithMarker } from "../../core/compaction/inline.ts";
 import { USER_HEADING } from "../../core/compaction/summary-view.ts";
@@ -36,7 +36,7 @@ function inertUserText(text: string): string {
 function savedReference(text: string, save: SaveText): string {
 	const file = save(text);
 	if (!file) throw new CheckpointPersistenceError("Cannot persist complete compaction content.");
-	return renderInstruction("notices/compaction/text-saved.md", { file });
+	return renderPrompt("notices/compaction/text-saved.md", { file });
 }
 
 /** What the section may hold: `total` for all of it, `perMessage` for one message. */

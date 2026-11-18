@@ -88,8 +88,11 @@ describe("consecutive requests of an Octocode session share their prefix", () =>
 		await s.run("second", [say("two")]);
 		s.session.setActiveToolsByName(names);
 		await s.run("third", [say("three")]);
-		// Not vacuous: the removal is a system message after the first request's messages.
-		expect(serialized(s.contexts[1]).slice(serialized(s.contexts[0]).length)).toContain("toolsRemoved");
+		// Not vacuous: the scripted transport cannot remove a tool in place, so the change is an announcement after the
+		// first request's messages, and the declaration stays.
+		const appended = serialized(s.contexts[1]).slice(serialized(s.contexts[0]).length);
+		expect(appended).toContain("tools_off");
+		expect(appended).not.toContain("toolsRemoved");
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
 		expect(extendsPrefix(s.contexts[1], s.contexts[2])).toBe(true);
 	});

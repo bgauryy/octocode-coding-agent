@@ -7,9 +7,9 @@ import {
 } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal.ts";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/extension-selector.ts";
+import { DialogSelectorComponent } from "../../src/modes/interactive/components/dialog-selector.ts";
 import { CustomEditor } from "../../src/theme/custom-editor.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import {
@@ -24,7 +24,7 @@ import {
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const identity = (text: string): string => text;
-type EditorFactory = NonNullable<ReturnType<ExtensionContext["ui"]["getEditorComponent"]>>;
+type EditorFactory = NonNullable<ReturnType<FeatureContext["ui"]["getEditorComponent"]>>;
 const editorTheme: EditorTheme = {
 	borderColor: identity,
 	selectList: {
@@ -102,7 +102,6 @@ describe("permission shortcut in the Octocode editor", () => {
 		expect(complete).toHaveBeenCalled();
 		input("\x0c");
 		expect(model).toHaveBeenCalledOnce();
-		expect(fake.shortcuts.size).toBe(0);
 		keys.setUserBindings({ "app.permission.cycle": "ctrl+y" });
 		input("\x1b[Z");
 		expect(cycle).toHaveBeenCalledTimes(2);
@@ -122,7 +121,7 @@ describe("permission shortcut in the Octocode editor", () => {
 		const editor = ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
 		const selected = vi.fn();
 		const cancelled = vi.fn();
-		const selector = new ExtensionSelectorComponent("Approve?", ["Allow once", "Deny"], selected, cancelled);
+		const selector = new DialogSelectorComponent("Approve?", ["Allow once", "Deny"], selected, cancelled);
 		tui.setFocus(selector);
 		input("\x1b[Z");
 		input("\t");
@@ -237,7 +236,7 @@ describe("permission shortcut in the Octocode editor", () => {
 
 	it("keeps the installed factory across session changes and uses the latest context", async () => {
 		const fake = fakeHost();
-		const cycle = vi.fn<(ctx: ExtensionContext) => void>();
+		const cycle = vi.fn<(ctx: FeatureContext) => void>();
 		const ctx = fakeCtx({ cwd: "/private/tmp/first" });
 		registerEditor(fake.api, { cycle });
 		await fake.fire("session_start", {}, ctx);

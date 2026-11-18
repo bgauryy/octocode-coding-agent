@@ -33,7 +33,7 @@ test("allows the API, the package exports, the workspace itself and the bundle's
 			'import { getMcpSessionStatus, type McpServerStatus } from "../../../mcp/src/api.ts";',
 		),
 		at("acp/src/server/mcp.ts", 'import { loadMcpConfig } from "@octocodeai/octocode-mcp/config";'),
-		at("mcp/src/events.ts", 'import { McpExtensionState } from "./state.ts";'),
+		at("mcp/src/events.ts", 'import { McpFeatureState } from "./state.ts";'),
 		at("mcp/src/cli.lazy.ts", 'export const load = () => import("../../mcp/src/cli.ts");'),
 		at(
 			"coding-agent/src/bundle.ts",

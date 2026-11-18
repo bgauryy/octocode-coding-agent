@@ -7,7 +7,7 @@ import { addUsage, finiteNumber } from "../shared/util.ts";
 export interface Compactions {
 	/** Compactions that produced a summary. */
 	done: number;
-	/** Compactions stopped before they finished (the child was aborted, or an extension cancelled it). */
+	/** Compactions stopped before they finished (the child was aborted, or a feature cancelled it). */
 	aborted: number;
 	/** Compactions that failed; `error` is the latest message. */
 	failed: number;

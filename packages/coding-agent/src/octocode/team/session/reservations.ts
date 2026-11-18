@@ -1,6 +1,7 @@
 import { USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { HeldLeases } from "../held.ts";
+import type { LeaseKind } from "../lease-key.ts";
 import type { Lease, LeaseConflict, LeaseRequest } from "../model.ts";
 import type { PeerLease, PeerLeases } from "../peer-leases.ts";
 import { dbFailure, leaseAge, resolveLockPath } from "../routing.ts";
@@ -124,15 +125,18 @@ export function reservationText(
 		: describeReservation(checkReservation(host, absolute), display);
 }
 
-/** Whether anyone, this agent included, holds a live reservation covering `absolute`: its work is taken, not free. */
-export function isReserved(host: ReservationHost, absolute: string): boolean {
+/**
+ * Whether anyone, this agent included, holds a live reservation covering `absolute`: its work is taken, not free. With
+ * kind `tree`, a reservation of anything inside `absolute` counts too.
+ */
+export function isReserved(host: ReservationHost, absolute: string, kind: LeaseKind = "file"): boolean {
 	try {
 		const db = host.existing();
-		if (db?.conflict(absolute, "")) return true;
+		if (db?.conflict(absolute, "", kind)) return true;
 	} catch {
 		// An unreadable team database says nothing about this path; the peer database below may still.
 	}
-	return host.peerLeases().conflict(absolute) !== undefined;
+	return host.peerLeases().conflict(absolute, kind) !== undefined;
 }
 
 function anyReservationText(host: ReservationHost): string | undefined {

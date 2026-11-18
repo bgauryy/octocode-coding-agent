@@ -1,5 +1,5 @@
 /**
- * The session's handling of Agent events: extension dispatch, listener notification, session
+ * The session's handling of Agent events: feature dispatch, listener notification, session
  * persistence and per-turn bookkeeping, in that order.
  */
 
@@ -28,8 +28,8 @@ export interface AgentEventsHost extends Pick<SessionInternals, "session" | "run
 	readonly retry: SessionRetry;
 	readonly boundaries: SessionBoundaries;
 	readonly toolCalls: SessionToolCalls;
-	/** The session's `_emitExtensionEvent`. */
-	emitExtensionEvent(event: AgentEvent): Promise<void>;
+	/** The session's `_emitFeatureEvent`. */
+	emitFeatureEvent(event: AgentEvent): Promise<void>;
 	observeContextCapacity(message: AssistantMessage): void;
 }
 
@@ -58,8 +58,8 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 
 	if (event.type === "message_end" && event.message.role === "assistant" && !signal?.aborted)
 		host.observeContextCapacity(event.message);
-	// Emit to extensions first, then notify public listeners.
-	await host.emitExtensionEvent(event);
+	// Emit to features first, then notify public listeners.
+	await host.emitFeatureEvent(event);
 	// After an abort the agent stops waiting for a streaming delta's delivery, so this one may resume after its run
 	// ended, even during the next run. Its final state comes with message_end or tool_execution_end: drop it.
 	if (signal?.aborted && (event.type === "message_update" || event.type === "tool_execution_update")) return;
@@ -111,59 +111,59 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// A turn ends after its assistant message and every tool result has been appended,
 	// so this is the first point in the run where a context-only custom message can be
 	// inserted without landing between a tool call and its result. Flushing after the
-	// extension and listener dispatch above also picks up messages that turn_end
+	// feature and listener dispatch above also picks up messages that turn_end
 	// handlers queued.
 	if (event.type === "turn_end") {
 		host.inputs.flushDuringRun(run.outcome);
 	}
 }
 
-export async function emitExtensionEvent(
+export async function emitFeatureEvent(
 	host: Pick<AgentEventsHost, "session" | "run" | "boundaries">,
 	event: AgentEvent,
 ): Promise<void> {
 	const { session, run } = host;
 	if (event.type === "agent_start") {
 		run.turnIndex = 0;
-		await session.extensionRunner.emit({ type: "agent_start" });
+		await session.featureHost.emit({ type: "agent_start" });
 	} else if (event.type === "agent_end") {
-		await session.extensionRunner.emit({
+		await session.featureHost.emit({
 			type: "agent_end",
 			messages: event.messages,
 		});
 	} else if (event.type === "turn_start") {
-		const extensionEvent: TurnStartEvent = {
+		const featureEvent: TurnStartEvent = {
 			type: "turn_start",
 			turnIndex: run.turnIndex,
 			timestamp: Date.now(),
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	} else if (event.type === "turn_end") {
 		if (event.message.role === "assistant" && !host.boundaries.takeDispatched(event.message)) {
 			await host.boundaries.dispatchTurnEnd(event.message, event.toolResults);
 		}
 		run.turnIndex++;
 	} else if (event.type === "message_start") {
-		const extensionEvent: MessageStartEvent = {
+		const featureEvent: MessageStartEvent = {
 			type: "message_start",
 			message: event.message,
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	} else if (event.type === "message_update") {
-		const extensionEvent: MessageUpdateEvent = {
+		const featureEvent: MessageUpdateEvent = {
 			type: "message_update",
 			message: event.message,
 			assistantMessageEvent: event.assistantMessageEvent,
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	} else if (event.type === "message_end") {
-		const extensionEvent: MessageEndEvent = {
+		const featureEvent: MessageEndEvent = {
 			type: "message_end",
 			message: event.message,
 		};
-		const replacement = await session.extensionRunner.emitMessageEnd(extensionEvent);
+		const replacement = await session.featureHost.emitMessageEnd(featureEvent);
 		if (replacement) {
-			// Untyped extension handlers can return messages with null/missing content;
+			// Untyped feature handlers can return messages with null/missing content;
 			// normalize so it never enters agent state or session history.
 			const normalized =
 				(replacement.role === "user" ||
@@ -176,24 +176,24 @@ export async function emitExtensionEvent(
 			replaceMessageInPlace(event.message, normalized);
 		}
 	} else if (event.type === "tool_execution_start") {
-		const extensionEvent: ToolExecutionStartEvent = {
+		const featureEvent: ToolExecutionStartEvent = {
 			type: "tool_execution_start",
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
 			args: event.args,
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	} else if (event.type === "tool_execution_update") {
-		const extensionEvent: ToolExecutionUpdateEvent = {
+		const featureEvent: ToolExecutionUpdateEvent = {
 			type: "tool_execution_update",
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
 			args: event.args,
 			partialResult: event.partialResult,
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	} else if (event.type === "tool_execution_end") {
-		const extensionEvent: ToolExecutionEndEvent = {
+		const featureEvent: ToolExecutionEndEvent = {
 			type: "tool_execution_end",
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
@@ -201,6 +201,6 @@ export async function emitExtensionEvent(
 			isError: event.isError,
 			...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
 		};
-		await session.extensionRunner.emit(extensionEvent);
+		await session.featureHost.emit(featureEvent);
 	}
 }

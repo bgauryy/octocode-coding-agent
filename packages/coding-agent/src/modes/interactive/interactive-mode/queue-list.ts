@@ -5,7 +5,7 @@
  */
 
 import { plural } from "../../../octocode/shared/text.ts";
-import { ExtensionEditorComponent } from "../components/extension-editor.ts";
+import { DialogEditorComponent } from "../components/dialog-editor.ts";
 import { type QueueListAction, QueueListComponent, type QueueListRow } from "../components/queue-list.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import {
@@ -34,7 +34,7 @@ const itemKey = (item: QueueItem): unknown => item.session?.id ?? item.compactio
 const MODE_LABEL = { steer: "Next turn", followUp: "After run" } as const;
 
 function toRow(item: QueueItem): QueueListRow {
-	const notes = [item.imageCount ? plural(item.imageCount, "attachment") : "", item.extension ? "extension" : ""];
+	const notes = [item.imageCount ? plural(item.imageCount, "attachment") : "", item.feature ? "feature" : ""];
 	return { mode: item.mode, text: item.text, notes: notes.filter(Boolean) };
 }
 
@@ -88,7 +88,7 @@ export function showQueueManager(host: QueueListHost, focus: "first" | "last" = 
 				return;
 			}
 			held = taken;
-			const editor = new ExtensionEditorComponent(
+			const editor = new DialogEditorComponent(
 				host.ui,
 				host.keybindings,
 				`Edit queued message ${number} · ${MODE_LABEL[item.mode]}`,

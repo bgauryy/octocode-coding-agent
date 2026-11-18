@@ -1,7 +1,7 @@
 import { resultPurposeData, type ToolDisplay } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { genericToolDisplay } from "../../core/application/transcript-display.ts";
-import type { ExtensionAPI, ToolDisplayFunction, ToolDisplayInput } from "../../core/features/types.ts";
+import type { FeatureSetup, ToolDisplayFunction, ToolDisplayInput } from "../../core/features/types.ts";
 import { callReasonText } from "./call-reason.ts";
 import { displayText } from "../render/display.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
@@ -20,8 +20,8 @@ export function octocodeToolDisplay(toolName: string, own?: ToolDisplayFunction)
 }
 
 /** Every registered tool gets a display; a call to an unknown tool keeps the host's generic one. */
-export function registerToolDisplays(api: ExtensionAPI): void {
-	api.registerToolRenderer((toolName, next) => {
+export function registerToolDisplays(api: FeatureSetup): void {
+	api.renderers.tool((toolName, next) => {
 		const base = next();
 		return base ? { ...base, display: octocodeToolDisplay(toolName, base.display?.bind(base)) } : undefined;
 	});

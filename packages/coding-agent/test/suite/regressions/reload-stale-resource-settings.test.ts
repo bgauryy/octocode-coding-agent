@@ -12,6 +12,8 @@ import {
 import { AuthStorage } from "../../../src/core/auth-storage.ts";
 import { ModelRuntime } from "../../../src/core/model-runtime.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 describe("reload stale resource settings", () => {
 	const cleanups: Array<() => void> = [];
@@ -45,9 +47,10 @@ describe("reload stale resource settings", () => {
 				agentDir,
 				modelRuntime,
 				resourceLoaderOptions: {
-					extensionFactories: [
+					nativeFeatures: nativeFeatureSet(),
+					features: testFeatures([
 						(api) => {
-							api.registerProvider(faux.getModel().provider, {
+							api.providers.register(faux.getModel().provider, {
 								baseUrl: faux.getModel().baseUrl,
 								apiKey: "faux-key",
 								api: faux.api,
@@ -63,7 +66,7 @@ describe("reload stale resource settings", () => {
 								})),
 							});
 						},
-					],
+					]),
 					noSkills: true,
 					noThemes: true,
 				},

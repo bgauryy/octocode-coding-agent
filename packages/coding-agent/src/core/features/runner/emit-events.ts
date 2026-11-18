@@ -1,4 +1,4 @@
-/** Dispatch of session, message and tool events to extension handlers. */
+/** Dispatch of session, message and tool events to feature handlers. */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { CacheWarmingAction } from "../../cache-warmer.ts";
@@ -17,7 +17,8 @@ import type {
 	UserBashEvent,
 	UserBashEventResult,
 } from "../types.ts";
-import { isUserBashEventResult, snapshotEventHandlers } from "./event-handlers.ts";
+import { EVENT_KINDS } from "../bus/events.ts";
+import { isUserBashEventResult } from "./event-handlers.ts";
 import type {
 	BoundaryBaseEvent,
 	BoundaryDispatchResult,
@@ -39,7 +40,7 @@ export async function dispatchBoundary(
 	let context = await buildContext(entries);
 	let valid = true;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, baseEvent.type)) {
+	for (const { feature: ext, handlers } of host.bus.snapshot(baseEvent.type)) {
 		for (const handler of handlers) {
 			const event = {
 				...baseEvent,
@@ -53,7 +54,7 @@ export async function dispatchBoundary(
 				if (handlerResult?.continue !== undefined) shouldContinue = handlerResult.continue;
 			} catch (err) {
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: baseEvent.type,
 					error: err instanceof Error ? err.message : String(err),
 					stack: err instanceof Error ? err.stack : undefined,
@@ -66,7 +67,7 @@ export async function dispatchBoundary(
 			} catch (err) {
 				valid = false;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: baseEvent.type,
 					error: `Invalid boundary entries: ${err instanceof Error ? err.message : String(err)}`,
 					stack: err instanceof Error ? err.stack : undefined,
@@ -81,13 +82,8 @@ export async function dispatchBoundary(
 }
 
 function isSessionBeforeEvent(event: RunnerEmitEvent): event is SessionBeforeEvent {
-	return (
-		event.type === "session_before_switch" ||
-		event.type === "session_before_fork" ||
-		event.type === "session_before_quit" ||
-		event.type === "session_before_compact" ||
-		event.type === "session_before_tree"
-	);
+	const kind = EVENT_KINDS[event.type];
+	return kind === "cancel" || kind === "observe-clone";
 }
 
 export async function dispatchEvent<TEvent extends RunnerEmitEvent>(
@@ -97,12 +93,12 @@ export async function dispatchEvent<TEvent extends RunnerEmitEvent>(
 	const ctx = host.createContext();
 	let result: SessionBeforeEventResult | undefined;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, event.type)) {
+	for (const { feature: ext, handlers } of host.bus.snapshot(event.type)) {
 		for (const handler of handlers) {
 			try {
-				const nativeCompaction = event.type === "session_before_compact" && ext.owner === "native";
+				const observing = EVENT_KINDS[event.type] === "observe-clone" && ext.owner !== "native";
 				const observedEvent =
-					event.type === "session_before_compact" && !nativeCompaction
+					event.type === "session_before_compact" && observing
 						? {
 								...event,
 								preparation: structuredClone(event.preparation),
@@ -110,7 +106,7 @@ export async function dispatchEvent<TEvent extends RunnerEmitEvent>(
 							}
 						: event;
 				const handlerResult = await handler(observedEvent, ctx);
-				if (event.type === "session_before_compact" && !nativeCompaction) continue;
+				if (observing) continue;
 
 				if (isSessionBeforeEvent(event) && handlerResult) {
 					result = handlerResult;
@@ -122,7 +118,7 @@ export async function dispatchEvent<TEvent extends RunnerEmitEvent>(
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: event.type,
 					error: message,
 					stack,
@@ -142,14 +138,14 @@ export async function dispatchCacheWarmingDecision(
 	const ctx = host.createContext();
 	let action = event.action;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, event.type)) {
+	for (const { feature: ext, handlers } of host.bus.snapshot(event.type)) {
 		for (const handler of handlers) {
 			try {
 				const result = (await handler(event, ctx)) as CacheWarmingDecisionEventResult | undefined;
 				if (result?.action !== undefined) action = result.action;
 			} catch (err) {
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: event.type,
 					error: err instanceof Error ? err.message : String(err),
 					stack: err instanceof Error ? err.stack : undefined,
@@ -166,7 +162,7 @@ export async function dispatchMessageEnd(host: RunnerHost, event: MessageEndEven
 	let currentMessage = event.message;
 	let modified = false;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "message_end")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("message_end")) {
 		for (const handler of handlers) {
 			try {
 				const currentEvent: MessageEndEvent = { ...event, message: currentMessage };
@@ -175,7 +171,7 @@ export async function dispatchMessageEnd(host: RunnerHost, event: MessageEndEven
 
 				if (handlerResult.message.role !== currentMessage.role) {
 					host.emitError({
-						extensionPath: ext.path,
+						source: ext.path,
 						event: "message_end",
 						error: "message_end handlers must return a message with the same role",
 					});
@@ -188,7 +184,7 @@ export async function dispatchMessageEnd(host: RunnerHost, event: MessageEndEven
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "message_end",
 					error: message,
 					stack,
@@ -208,7 +204,7 @@ export async function dispatchToolResult(
 	const currentEvent: ToolResultEvent = { ...event };
 	let modified = false;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "tool_result")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("tool_result")) {
 		for (const handler of handlers) {
 			try {
 				const handlerResult = (await handler(currentEvent, ctx)) as ToolResultEventResult | undefined;
@@ -240,7 +236,7 @@ export async function dispatchToolResult(
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "tool_result",
 					error: message,
 					stack,
@@ -280,7 +276,7 @@ export async function dispatchToolCall(
 	// The last result wins as before, but every execute-time check stays: a later handler must not drop a gate's recheck.
 	const checks: NonNullable<ToolCallEventResult["revalidate"]>[] = [];
 
-	for (const { handlers } of snapshotEventHandlers(host.extensions, "tool_call")) {
+	for (const { handlers } of host.bus.snapshot("tool_call")) {
 		for (const handler of handlers) {
 			const handlerResult = (await handler(event, ctx)) as ToolCallEventResult | undefined;
 
@@ -314,7 +310,7 @@ export async function dispatchUserBash(
 ): Promise<UserBashEventResult | undefined> {
 	const ctx = host.createContext();
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "user_bash")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("user_bash")) {
 		for (const handler of handlers) {
 			try {
 				const handlerResult = await handler(event, ctx);
@@ -329,7 +325,7 @@ export async function dispatchUserBash(
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "user_bash",
 					error: message,
 					stack,

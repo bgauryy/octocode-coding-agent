@@ -82,7 +82,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 	const rebindSession = async (): Promise<void> => {
 		session = runtimeHost.session;
-		await session.bindExtensions({
+		await session.bindFeatures({
 			mode: mode === "json" ? "json" : "print",
 			commandContextActions: {
 				...headlessCommandActions(() => session),
@@ -99,8 +99,8 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 				// A command that failed is what this run was asked to do; a feature's handler failing on an event fails open.
 				if (err.event === "command") {
 					exitCode = 1;
-					console.error(`Command ${err.extensionPath.replace(/^command:/, "/")} failed: ${err.error}`);
-				} else console.error(`Feature error (${err.extensionPath}): ${err.error}`);
+					console.error(`Command ${err.source.replace(/^command:/, "/")} failed: ${err.error}`);
+				} else console.error(`Feature error (${err.source}): ${err.error}`);
 			},
 		});
 

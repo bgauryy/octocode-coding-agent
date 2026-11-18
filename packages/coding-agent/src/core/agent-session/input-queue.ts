@@ -233,7 +233,7 @@ export class SessionInputQueue {
 	}
 
 	/**
-	 * Queue a steering or follow-up message (already expanded, no extension command check).
+	 * Queue a steering or follow-up message (already expanded, no feature command check).
 	 */
 	async queue(
 		mode: "steer" | "followUp",

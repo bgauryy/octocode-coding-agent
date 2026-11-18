@@ -10,7 +10,7 @@ const DEVELOPMENT_FIELDS = ["devDependencies", "scripts", "overrides", "octocode
 /** Where the repository's `docs/` go in the package, beside the package's own docs. */
 const PROJECT_DOCS = "docs/project";
 /** The bundle's code files; every other `.js` beside them is a launcher (`build-coding-agent.mjs`). */
-const BUNDLE_CODE_FILES = new Set(["octocode.js", "db-writer-worker.js"]);
+const BUNDLE_CODE_FILES = new Set(["octocode.js", "db-writer-worker.js", "archive-index-worker.js"]);
 /** Dated reviews, evidence and RFCs: a record of how the project got here, not guidance for someone who installed it. */
 const INTERNAL_DOC = /^(?:RFC_.+|.+_(?:REVIEW|AUDIT|VALIDATION|COVERAGE|ASSESSMENT|CONFORMANCE|ROLLOUT))\.md$/;
 
@@ -166,6 +166,7 @@ export function findPackageProblems(packageDirectory) {
 		PROJECT_DOCS,
 		"dist/bundle/octocode.js",
 		"dist/bundle/db-writer-worker.js",
+		"dist/bundle/archive-index-worker.js",
 		"dist/licenses/THIRD_PARTY_NOTICES.md",
 	]) {
 		if (!existsSync(join(packageDirectory, required))) problems.push(`missing ${required}`);

@@ -11,8 +11,8 @@ import { tmp } from "./helpers.ts";
 function recordMessages(f: ReturnType<typeof fakeHost>, ctx: ReturnType<typeof fakeCtx>): void {
 	const session = SessionManager.inMemory();
 	ctx.sessionManager.getEntries = () => session.getEntries();
-	const send = f.api.sendMessage;
-	f.api.sendMessage = (message, options) => {
+	const send = f.api.session.sendMessage;
+	f.api.session.sendMessage = (message, options) => {
 		session.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
 		send(message, options);
 	};

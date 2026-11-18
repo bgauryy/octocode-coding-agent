@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader, type DefaultResourceLoaderOptions } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * The feature host through the resource loader, the entry every session (terminal, RPC, ACP, print) registers its
@@ -25,6 +27,7 @@ async function load(
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -32,11 +35,11 @@ async function load(
 		...loaderOptions,
 	});
 	await loader.reload();
-	return { loader, cwd, agentDir, result: loader.getExtensions() };
+	return { loader, cwd, agentDir, result: loader.getFeatures() };
 }
 
-const tool = (name: string) => (api: ExtensionAPI) =>
-	api.registerTool({
+const tool = (name: string) => (api: FeatureSetup) =>
+	api.tools.register({
 		name,
 		label: name,
 		description: "Entry-point fixture tool",
@@ -44,15 +47,15 @@ const tool = (name: string) => (api: ExtensionAPI) =>
 		execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
 	});
 
-const ids = (result: { extensions: Array<{ id: string }> }) => result.extensions.map((extension) => extension.id);
+const ids = (result: { features: Array<{ id: string }> }) => result.features.map((feature) => feature.id);
 
 describe("duplicate registrations", () => {
 	it("names both features when two register the same tool, and keeps the first", async () => {
 		const { result } = await load({
-			extensionFactories: [
+			features: testFeatures([
 				{ name: "first", factory: tool("shared") },
 				{ name: "second", factory: tool("shared") },
-			],
+			]),
 		});
 		expect(result.errors).toEqual([
 			{
@@ -60,14 +63,12 @@ describe("duplicate registrations", () => {
 				error: 'Tool "shared" registered by <inline:second> (builtin) conflicts with <inline:first> (builtin)',
 			},
 		]);
-		const owners = result.extensions
-			.filter((extension) => extension.tools.has("shared"))
-			.map((extension) => extension.id);
+		const owners = result.features.filter((feature) => feature.tools.has("shared")).map((feature) => feature.id);
 		expect(owners).toContain("first");
 	});
 
 	it("names the native owner when a feature takes a native tool name", async () => {
-		const { result } = await load({ extensionFactories: [{ name: "thief", factory: tool("archive") }] });
+		const { result } = await load({ features: testFeatures([{ name: "thief", factory: tool("archive") }]) });
 		const conflict = result.errors.find((error) => error.error.includes('Tool "archive"'));
 		expect(conflict?.error).toMatch(
 			/^Tool "archive" registered by <inline:thief> \(builtin\) conflicts with .* \(native\)$/,
@@ -76,7 +77,7 @@ describe("duplicate registrations", () => {
 
 	it("reports a feature whose registration throws and registers the rest", async () => {
 		const { result } = await load({
-			extensionFactories: [
+			features: testFeatures([
 				{
 					name: "broken",
 					factory: () => {
@@ -84,7 +85,7 @@ describe("duplicate registrations", () => {
 					},
 				},
 				{ name: "fine", factory: tool("fine_tool") },
-			],
+			]),
 		});
 		expect(result.errors).toEqual([{ path: "<inline:broken>", error: expect.stringContaining("boom") }]);
 		expect(ids(result)).toContain("fine");
@@ -95,9 +96,8 @@ describe("built-in features", () => {
 	it("registers the native feature set and every built-in by default", async () => {
 		const { result } = await load();
 		expect(result.errors).toEqual([]);
-		expect(ids(result)).toEqual(["llama.cpp", "mcp", "octocode"]);
-		expect(Object.fromEntries(result.extensions.map((extension) => [extension.id, extension.owner]))).toEqual({
-			"llama.cpp": "builtin",
+		expect(ids(result)).toEqual(["mcp", "octocode"]);
+		expect(Object.fromEntries(result.features.map((feature) => [feature.id, feature.owner]))).toEqual({
 			mcp: "builtin",
 			octocode: "native",
 		});
@@ -106,35 +106,27 @@ describe("built-in features", () => {
 	it("keeps MCP on when settings name -builtin:mcp: MCP is core, switched only by MCP configuration or --no-mcp", async () => {
 		const { result } = await load({ settings: { extensions: ["-builtin:mcp"] } });
 		expect(result.errors).toEqual([]);
-		expect(ids(result)).toEqual(["llama.cpp", "mcp", "octocode"]);
+		expect(ids(result)).toEqual(["mcp", "octocode"]);
 	});
 
-	it.each([
-		{
-			how: "a -builtin:llama.cpp settings entry",
-			options: { settings: { extensions: ["-builtin:llama.cpp"] } },
-			off: "llama.cpp",
-		},
-		{ how: "disabledFeatures (--no-mcp)", options: { disabledFeatures: ["mcp"] }, off: "mcp" },
-	])("switches one built-in off with $how and keeps the rest", async ({ options, off }) => {
-		const { result } = await load(options);
+	it("switches MCP off with disabledFeatures (--no-mcp) and keeps the native set", async () => {
+		const { result } = await load({ disabledFeatures: ["mcp"] });
 		expect(result.errors).toEqual([]);
 		expect(result.warnings ?? []).toEqual([]);
-		const expected = ["llama.cpp", "mcp", "octocode"].filter((id) => id !== off);
-		expect(ids(result)).toEqual(expected);
+		expect(ids(result)).toEqual(["octocode"]);
 	});
 
 	it("registers only the features a host supplies", async () => {
 		const { result } = await load({
-			nativeFeatures: false,
-			extensionFactories: [{ name: "host", factory: tool("host_tool") }],
+			nativeFeatures: undefined,
+			features: testFeatures([{ name: "host", factory: tool("host_tool") }]),
 		});
 		expect(ids(result)).toEqual(["host"]);
 	});
 });
 
-describe("extension files in settings and discovery directories", () => {
-	it("warns for a code file named in settings and does not import it", async () => {
+describe("code files in the old extensions setting and directories", () => {
+	it("never imports a code file named in the old extensions setting", async () => {
 		const root = fs.realpathSync(tmp("octocode-feature-host-code-"));
 		const ran = path.join(root, "ran.txt");
 		const file = path.join(root, "ext.ts");
@@ -143,9 +135,7 @@ describe("extension files in settings and discovery directories", () => {
 			`import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(ran)}, "x"); export default () => {};`,
 		);
 		const { result } = await load({ settings: { extensions: [file] } });
-		expect(result.warnings).toEqual([
-			{ path: file, warning: expect.stringMatching(/^Ignored extension\. .*docs\/plugins\.md\)\.$/) },
-		]);
+		expect(result.warnings ?? []).toEqual([]);
 		expect(result.errors).toEqual([]);
 		expect(fs.existsSync(ran)).toBe(false);
 	});
@@ -170,27 +160,25 @@ describe("extension files in settings and discovery directories", () => {
 			cwd,
 			agentDir,
 			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
 		});
 		await loader.reload();
-		const result = loader.getExtensions();
+		const result = loader.getFeatures();
 		return { result, userFile, projectFile, ran };
 	}
 
-	it("warns about extension files found in the user and the trusted project directories, and runs none", async () => {
-		const { result, userFile, projectFile, ran } = await discover(true);
-		expect((result.warnings ?? []).map((warning) => warning.path).sort()).toEqual([projectFile, userFile].sort());
-		for (const warning of result.warnings ?? []) expect(warning.warning).toMatch(/^Ignored extension\./);
-		expect(result.errors).toEqual([]);
-		expect(fs.existsSync(ran)).toBe(false);
-	});
-
-	it("does not even list a project extension file while the project is untrusted", async () => {
-		const { result, userFile, ran } = await discover(false);
-		expect((result.warnings ?? []).map((warning) => warning.path)).toEqual([userFile]);
-		expect(fs.existsSync(ran)).toBe(false);
-	});
+	it.each([true, false])(
+		"runs no code file in the user or project extensions directories (project trusted: %s)",
+		async (trusted) => {
+			const { result, ran } = await discover(trusted);
+			expect(result.warnings ?? []).toEqual([]);
+			expect(result.errors).toEqual([]);
+			expect(ids(result)).toEqual(["mcp", "octocode"]);
+			expect(fs.existsSync(ran)).toBe(false);
+		},
+	);
 });

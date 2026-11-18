@@ -3,8 +3,8 @@ import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import { OCTOCODE_DIR } from "../shared/home.ts";
 
 /**
- * Hints a main session can receive: enough to reach the model, too few to become noise beside the user's own steering.
- * A subagent has no user steering it, and after a capped hint it went back to bash for three reads in four, so its hints are unlimited.
+ * Hints a session can receive, a subagent too: enough to reach the model, too few to become noise. A subagent that got
+ * every read hint ignored nearly all of them, so more hints only add context.
  */
 export const READ_HINT_LIMIT = 3;
 
@@ -212,13 +212,12 @@ const hintText = (tools: readonly string[]): string =>
 	`Hint: for code research and checks, use ${tools.map((tool) => `\`${tool}\``).join(" or ")}. Bash suits builds, tests, scripts, git and command output.`;
 
 /**
- * One line for a tool result after a successful read, at most `limit` times per session and only while the research
+ * One line for a tool result after a successful read, at most `READ_HINT_LIMIT` times per session and only while the research
  * server's tools for that read (by their roles) are declared. It lands in the conversation, never in the cached prompt,
  * and it never blocks the read.
  */
 export function createReadHint(
 	active: () => readonly string[],
-	limit = READ_HINT_LIMIT,
 ): (command: string, cwd: string, session: string) => string | undefined {
 	let current = "";
 	let given = 0;
@@ -227,7 +226,7 @@ export function createReadHint(
 			current = session;
 			given = 0;
 		}
-		if (given >= limit) return undefined;
+		if (given >= READ_HINT_LIMIT) return undefined;
 		const role = codeReadTool(command, cwd);
 		const tools = role ? researchTools(role, active()) : [];
 		if (tools.length === 0) return undefined;

@@ -1,4 +1,4 @@
-import { REPORT_STATUSES, type ReportStatus } from "../instructions/report.ts";
+import { REPORT_STATUSES, type ReportStatus } from "../native/prompts/report.ts";
 
 /** One label a report may put before its outcome word: `Report: partial`, `**Status:** done`, `Outcome: blocked`. */
 export const OUTCOME_LABEL = /^[^\p{L}\p{N}]*(?:report|status|outcome)[^\p{L}\p{N}:]*:[^\p{L}\p{N}]*/iu;

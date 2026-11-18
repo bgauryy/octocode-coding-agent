@@ -5,7 +5,6 @@ import { type FooterState, footerLines } from "../../src/octocode/ui/footer/rows
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as never;
 const state: FooterState = {
 	model: "model-x",
-	provider: "provider",
 	thinking: "high",
 	context: { percent: 42, limit: 200_000 },
 	usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },

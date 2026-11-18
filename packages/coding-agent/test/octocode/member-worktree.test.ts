@@ -10,7 +10,8 @@ import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { describeChild } from "../../src/octocode/subagents/children.ts";
 import { renderAgentCall, renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import { agentDetailText } from "../../src/octocode/subagents/run-text.ts";
-import { collapsedRows } from "../../src/octocode/team/panel/compact.ts";
+import { collapsedRows, gridRows } from "../../src/octocode/team/panel/rows.ts";
+import { detailLine } from "../../src/octocode/team/panel/grid.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { GIT_TEST_ENV, makeRepo } from "./worktree-fixture.ts";
 
@@ -134,8 +135,11 @@ describe("worktree root and compact rows", () => {
 			repo.cleanup();
 		}
 	});
-	it("collapsed panel rows name the folder", () => {
-		const [row] = collapsedRows([{ member: isolated, depth: 0, isolated: { folder: isolated.cwd! } }], 10, theme, 120);
-		expect(row).toContain("worktree iso-1");
+	it("collapsed panel rows mark the worktree; the opened stats line names the folder", () => {
+		const entry = { member: isolated, depth: 0, isolated: { folder: isolated.cwd! } };
+		const [row] = collapsedRows([entry], 10, theme, 120);
+		expect(row).toBe(" └ ⠋ iso-1 · general · 0s · worktree");
+		const { agents } = gridRows(main, "main", [entry], [], 10, theme);
+		expect(detailLine(theme, agents[0], 120)).toBe("     worktree iso-1");
 	});
 });

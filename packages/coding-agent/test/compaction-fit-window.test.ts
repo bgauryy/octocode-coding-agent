@@ -132,7 +132,7 @@ describe("a switch from a 200k-window model to a 16k one", () => {
 		const run = runCompaction(
 			{
 				sessionManager,
-				extensionRunner: { hasHandlers: () => true, emit } as never,
+				featureHost: { hasHandlers: () => true, emit } as never,
 				summarize,
 				refreshContext: vi.fn(),
 			},
@@ -146,7 +146,7 @@ describe("a switch from a 200k-window model to a 16k one", () => {
 				branchEntries: branch,
 				signal: new AbortController().signal,
 				checkAbort: () => {},
-				outcome: { fromExtension: false, cancelledByExtension: false },
+				outcome: { fromFeature: false, cancelledByFeature: false },
 			},
 		);
 		await expect(run).rejects.toBeInstanceOf(CompactionFitError);

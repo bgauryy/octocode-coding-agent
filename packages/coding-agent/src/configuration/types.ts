@@ -97,7 +97,7 @@ export interface ConfigLiveHooks {
 	mcpStatus?: () => McpServerStatus[];
 	/** Applies a settings key to the running terminal at once (theme, TUI mode, paddings); true when it did. */
 	applySetting?: (key: string, value: unknown) => boolean;
-	/** The names of the tools the running session has registered, extension tools included. */
+	/** The names of the tools the running session has registered, feature tools included. */
 	toolNames?: () => readonly string[];
 }
 

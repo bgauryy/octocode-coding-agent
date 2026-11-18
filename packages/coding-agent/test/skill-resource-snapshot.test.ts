@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionAPI } from "../src/core/features/types.ts";
+import type { FeatureSetup } from "../src/core/features/types.ts";
 import {
 	captureSkillResourceSnapshot,
 	adoptSkillResourceSnapshot,
@@ -12,6 +12,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { loadedSkillDirectories, loadSkills, type Skill } from "../src/core/skills.ts";
 import { createHarness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 function selectSkillResourceSnapshot(
 	snapshot: Parameters<typeof adoptSkillResourceSnapshot>[0],
@@ -304,8 +305,7 @@ it("adopts snapshot skills authoritatively without default paths or skill overri
 		cwd: root,
 		agentDir: path.join(root, "agent"),
 		settingsManager: SettingsManager.inMemory({}),
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		additionalSkillPaths: [extra.filePath],
 		skillResourceSnapshot: captureSkillResourceSnapshot({
 			skills: [skill],
@@ -340,13 +340,13 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 	const { make } = fixture();
 	const good = make("good"),
 		bad = { ...make("bad"), filePath: "<inline:bad>" };
-	let api: ExtensionAPI | undefined;
+	let api: FeatureSetup | undefined;
 	const h = await createHarness({
-		extensionFactories: [
+		features: testFeatures([
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
 		h.session.resourceLoader.getSkills = () => ({
@@ -354,10 +354,10 @@ it("the bound extension API selects healthy resources without inspecting unrelat
 			explicitSkills: [],
 			diagnostics: [],
 		});
-		await h.session.bindExtensions({});
-		expect(api!.getSkillResourceSnapshot([]).resources).toEqual([]);
-		expect(api!.getSkillResourceSnapshot(["good"]).resources.map((r) => r.skill.name)).toEqual(["good"]);
-		expect(() => api!.getSkillResourceSnapshot()).toThrow(/Synthetic/);
+		await h.session.bindFeatures({});
+		expect(api!.resources.getSkillResourceSnapshot([]).resources).toEqual([]);
+		expect(api!.resources.getSkillResourceSnapshot(["good"]).resources.map((r) => r.skill.name)).toEqual(["good"]);
+		expect(() => api!.resources.getSkillResourceSnapshot()).toThrow(/Synthetic/);
 	} finally {
 		h.cleanup();
 	}
@@ -402,8 +402,7 @@ it("recaptures an override's changed file path without inheriting the old canoni
 		cwd: root,
 		agentDir: path.join(root, "agent"),
 		settingsManager: SettingsManager.inMemory({}),
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		additionalSkillPaths: [original.filePath],
 		skillsOverride: (base) => ({
 			...base,

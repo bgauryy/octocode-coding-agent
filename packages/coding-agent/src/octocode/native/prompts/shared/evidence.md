@@ -1,0 +1,1 @@
+- Cite what you read or ran (path:line, command, URL); separate observations, inferences and unknowns, and name unchecked scope. Never invent names, paths, APIs, versions, tool parameters or results. Give units, label estimates, ground confidence in evidence. Check changing facts in current sources; today is <environment>'s date.

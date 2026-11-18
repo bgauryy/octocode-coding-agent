@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { reportContract } from "../../src/octocode/instructions/report.ts";
-import { identityBlock } from "../../src/octocode/instructions/task.ts";
+import { reportContract } from "../../src/octocode/native/prompts/report.ts";
+import { identityBlock } from "../../src/octocode/native/prompts/task.ts";
 import { shortPath } from "../../src/utils/display-path.ts";
 import { IDENTITY_ENTRY } from "../../src/octocode/subagents/identity-reminder.ts";
 import type { Identity } from "../../src/octocode/subagents/process/env.ts";

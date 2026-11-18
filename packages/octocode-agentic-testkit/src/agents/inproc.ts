@@ -51,9 +51,11 @@ const schema = (props: Record<string, unknown>) => ({
 	required: Object.keys(props),
 });
 
-export async function runInproc(opts: InprocOptions, prompt: string): Promise<InprocResult> {
+/** Runs one user turn; with `prior` (an earlier result's `messages`) the turn continues that conversation. */
+export async function runInproc(opts: InprocOptions, prompt: string, prior?: ChatMessage[]): Promise<InprocResult> {
+	opts.trace.observe("events");
 	const counters = { spans: 0, system: 0 };
-	return loop(opts, prompt, opts.role ?? "main", undefined, counters, 0);
+	return loop(opts, prompt, opts.role ?? "main", undefined, counters, 0, prior);
 }
 
 interface Counters {
@@ -79,6 +81,7 @@ async function loop(
 	parent: string | undefined,
 	counters: Counters,
 	depth: number,
+	prior: ChatMessage[] = [],
 ): Promise<InprocResult> {
 	const { trace } = opts;
 	const spanId = parent === undefined ? role : `${role}#${++counters.spans}`;
@@ -86,6 +89,7 @@ async function loop(
 	const mcpTools = new Map<string, McpClient>();
 	const defs: { name: string; description: string; parameters: unknown }[] = [];
 	for (const c of opts.mcp ?? []) {
+		// oxlint-disable-next-line no-await-in-loop -- one MCP server at a time, so MCP requests keep a fixed order
 		for (const t of await c.listTools()) {
 			mcpTools.set(t.name, c);
 			defs.push({ name: t.name, description: t.description, parameters: t.inputSchema });
@@ -174,7 +178,7 @@ async function loop(
 		defs.push({ name: t.def.name, description: t.def.description, parameters: t.def.parameters });
 
 	const messages: ChatMessage[] = [
-		{ role: "system", content: systemText(opts, role) },
+		...(prior.length ? prior : [{ role: "system" as const, content: systemText(opts, role) }]),
 		{ role: "user", content: prompt },
 	];
 	const post = async (agent: string, msgs: ChatMessage[], withTools: boolean) => {
@@ -209,6 +213,7 @@ async function loop(
 			Buffer.byteLength(JSON.stringify(messages)) > opts.compactAt
 		) {
 			const from = Buffer.byteLength(JSON.stringify(messages));
+			// oxlint-disable-next-line no-await-in-loop -- agent loop: each model call needs the previous step's messages
 			const summary = await post(
 				`${role}:compactor`,
 				[
@@ -231,6 +236,7 @@ async function loop(
 		}
 		if (opts.unstableSystem)
 			messages[0] = { role: "system", content: systemText(opts, role, ++counters.system + Date.now()) };
+		// oxlint-disable-next-line no-await-in-loop -- agent loop: each model call needs the previous step's messages
 		const msg = await post(role, messages, true);
 		if (!msg.tool_calls?.length) {
 			const answer = msg.content ?? "";
@@ -249,10 +255,12 @@ async function loop(
 				const name = call.function.name;
 				const remote = mcpTools.get(name);
 				if (remote) {
+					// oxlint-disable-next-line no-await-in-loop -- tool calls run in the order the model sent them, so their side effects and trace events keep that order
 					const r = await remote.callTool(name, args);
 					out = r.isError ? `Error: ${r.text}` : r.text;
 				} else if (local.has(name)) {
 					log("tool_exec", name, args);
+					// oxlint-disable-next-line no-await-in-loop -- tool calls run in the order the model sent them, so their side effects and trace events keep that order
 					out = await local.get(name)!.run(args);
 				} else {
 					log("tool_error", name, args, "unknown-tool");

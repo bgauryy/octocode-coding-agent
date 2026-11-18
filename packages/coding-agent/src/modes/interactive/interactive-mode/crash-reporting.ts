@@ -1,16 +1,16 @@
 import { ThemedText } from "@octocodeai/octocode-tui";
 /**
- * Fatal errors and crashes: the crash record, extension hints, the /bug suggestion after errors, and the warning
+ * Fatal errors and crashes: the crash record, feature hints, the /bug suggestion after errors, and the warning
  * when the installation changed while the session ran.
  */
 
 import { type AssistantMessage, isRetryableAssistantError } from "@octocodeai/octocode-ai/compat";
 import { APP_NAME, detectInstallChange, VERSION } from "../../../config.ts";
-import { findExtensionStackMatches, recordCrash as writeCrashRecord } from "../../../core/crash-log.ts";
+import { findFeatureStackMatches, recordCrash as writeCrashRecord } from "../../../core/crash-log.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { endIfStalled } from "../../../utils/stall-guard.ts";
 import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
-import { isDeadTerminalError, formatCrashExtensionHint, formatResumeCommand } from "./helpers.ts";
+import { isDeadTerminalError, formatCrashFeatureHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -22,7 +22,7 @@ type CrashReportingHost = Pick<
 	| "uncaughtCrash"
 	| "crashReportInstructions"
 	| "emergencyTerminalExit"
-	| "getCrashExtensionHint"
+	| "getCrashFeatureHint"
 	| "installChangeWarningShown"
 	| "isShuttingDown"
 	| "maybeShowInstallChangeWarning"
@@ -45,9 +45,9 @@ export async function handleFatalRuntimeError(
 ): Promise<never> {
 	const message = errorMessage(error);
 	host.showError(`${prefix}: ${message}`);
-	const extensionHint = host.getCrashExtensionHint(error);
-	if (extensionHint) {
-		host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", extensionHint), host.outputPad, 0));
+	const featureHint = host.getCrashFeatureHint(error);
+	if (featureHint) {
+		host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", featureHint), host.outputPad, 0));
 	}
 	if (host.recordCrash("fatal_error", error)) {
 		const instructions = host.crashReportInstructions();
@@ -58,12 +58,12 @@ export async function handleFatalRuntimeError(
 	process.exit(1);
 }
 
-export function getCrashExtensionHint(host: CrashReportingHost, error: unknown): string | undefined {
+export function getCrashFeatureHint(host: CrashReportingHost, error: unknown): string | undefined {
 	try {
-		return formatCrashExtensionHint(
-			findExtensionStackMatches(
+		return formatCrashFeatureHint(
+			findFeatureStackMatches(
 				error instanceof Error ? error.stack : undefined,
-				host.session.resourceLoader.getExtensions().extensions,
+				host.session.resourceLoader.getFeatures().features,
 			),
 		);
 	} catch {
@@ -144,7 +144,7 @@ export function emergencyTerminalExit(host: CrashReportingHost): never {
 	host.unregisterSignalHandlers();
 	killTrackedDetachedChildren();
 	// The terminal is gone. Do not run normal shutdown because TUI and
-	// extension cleanup can write restore sequences and re-trigger EIO.
+	// feature cleanup can write restore sequences and re-trigger EIO.
 	process.exit(129);
 }
 
@@ -194,7 +194,7 @@ export function backgroundError(
 /**
  * Last-resort handler for uncaught exceptions. The TUI puts stdin into raw
  * mode and hides the cursor; without this handler, an uncaught throw from
- * anywhere (e.g. an extension's async `ChildProcess.on("exit")` callback)
+ * anywhere (e.g. a feature's async `ChildProcess.on("exit")` callback)
  * tears down the process while leaving the terminal in raw mode with no
  * cursor, requiring `stty sane && reset` to recover.
  *
@@ -229,8 +229,8 @@ export function uncaughtCrash(host: CrashReportingHost, error: Error): never {
 	}
 	console.error(`${APP_NAME} exiting due to uncaughtException:`);
 	console.error(error);
-	const extensionHint = host.getCrashExtensionHint(error);
-	if (extensionHint) console.error(`\n${extensionHint}`);
+	const featureHint = host.getCrashFeatureHint(error);
+	if (featureHint) console.error(`\n${featureHint}`);
 	if (host.recordCrash("uncaught_exception", error)) {
 		console.error(`\n${host.crashReportInstructions()}`);
 	}

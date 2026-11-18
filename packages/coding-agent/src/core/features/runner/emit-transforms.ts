@@ -13,7 +13,7 @@ import type {
 	BeforeAgentStartEventResult,
 	ContextEvent,
 	ContextEventResult,
-	ExtensionContext,
+	FeatureContext,
 	InputEvent,
 	InputEventResult,
 	InputSource,
@@ -23,8 +23,7 @@ import type {
 	UserInputEventResult,
 } from "../types.ts";
 import { cloneMessages, onlyReadsMessages } from "./clone-messages.ts";
-import { restoreSystemMessages, sameMessages, snapshotEventHandlers } from "./event-handlers.ts";
-import { hasEventHandlers } from "./registrations.ts";
+import { restoreSystemMessages, sameMessages } from "./event-handlers.ts";
 import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHost } from "./types.ts";
 
 /** Run the `context` handlers: they see the conversation only, and Octocode restores the prompt and tool state after each. */
@@ -32,14 +31,14 @@ export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]
 	// A handler may edit the messages in place, so one that may gets an isolated copy, made once per request before the
 	// first such handler runs; every handler after it sees that copy too. A handler declared with `readsMessagesOnly` is
 	// handed the messages themselves, so a request whose handlers only read copies nothing (images included).
-	if (!hasEventHandlers(host.extensions, "context")) {
+	if (!host.bus.has("context")) {
 		return messages.slice();
 	}
 	const ctx = host.createContext();
 	let currentMessages = messages.slice();
 	let isolated = false;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "context")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("context")) {
 		for (const handler of handlers) {
 			if (!isolated && !onlyReadsMessages(handler)) {
 				currentMessages = cloneMessages(currentMessages);
@@ -64,7 +63,7 @@ export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "context",
 					error: message,
 					stack,
@@ -83,14 +82,14 @@ export async function dispatchBeforeAgentStart(
 ): Promise<BeforeAgentStartCombinedResult> {
 	const currentOptions = normalizeBuildSystemPromptOptions(systemPromptOptions);
 	const renderCurrentSystemPrompt = (): string => buildSystemPrompt(currentOptions);
-	const ctx = Object.defineProperties({}, Object.getOwnPropertyDescriptors(host.createContext())) as ExtensionContext;
+	const ctx = Object.defineProperties({}, Object.getOwnPropertyDescriptors(host.createContext())) as FeatureContext;
 	ctx.getSystemPrompt = () => {
 		host.assertActive();
 		return renderCurrentSystemPrompt();
 	};
 	const messages: NonNullable<BeforeAgentStartEventResult["message"]>[] = [];
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "before_agent_start")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("before_agent_start")) {
 		for (const handler of handlers) {
 			try {
 				const event: BeforeAgentStartEvent = {
@@ -114,7 +113,7 @@ export async function dispatchBeforeAgentStart(
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "before_agent_start",
 					error: message,
 					stack,
@@ -133,16 +132,16 @@ export async function dispatchResourcesDiscover(
 	cwd: string,
 	reason: ResourcesDiscoverEvent["reason"],
 ): Promise<{
-	skillPaths: Array<{ path: string; extensionPath: string }>;
-	promptPaths: Array<{ path: string; extensionPath: string }>;
-	themePaths: Array<{ path: string; extensionPath: string }>;
+	skillPaths: Array<{ path: string; source: string }>;
+	promptPaths: Array<{ path: string; source: string }>;
+	themePaths: Array<{ path: string; source: string }>;
 }> {
 	const ctx = host.createContext();
-	const skillPaths: Array<{ path: string; extensionPath: string }> = [];
-	const promptPaths: Array<{ path: string; extensionPath: string }> = [];
-	const themePaths: Array<{ path: string; extensionPath: string }> = [];
+	const skillPaths: Array<{ path: string; source: string }> = [];
+	const promptPaths: Array<{ path: string; source: string }> = [];
+	const themePaths: Array<{ path: string; source: string }> = [];
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "resources_discover")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("resources_discover")) {
 		for (const handler of handlers) {
 			try {
 				const event: ResourcesDiscoverEvent = { type: "resources_discover", cwd, reason };
@@ -150,19 +149,19 @@ export async function dispatchResourcesDiscover(
 				const result = handlerResult as ResourcesDiscoverResult | undefined;
 
 				if (result?.skillPaths?.length) {
-					skillPaths.push(...result.skillPaths.map((path) => ({ path, extensionPath: ext.path })));
+					skillPaths.push(...result.skillPaths.map((path) => ({ path, source: ext.path })));
 				}
 				if (result?.promptPaths?.length) {
-					promptPaths.push(...result.promptPaths.map((path) => ({ path, extensionPath: ext.path })));
+					promptPaths.push(...result.promptPaths.map((path) => ({ path, source: ext.path })));
 				}
 				if (result?.themePaths?.length) {
-					themePaths.push(...result.themePaths.map((path) => ({ path, extensionPath: ext.path })));
+					themePaths.push(...result.themePaths.map((path) => ({ path, source: ext.path })));
 				}
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				const stack = err instanceof Error ? err.stack : undefined;
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "resources_discover",
 					error: message,
 					stack,
@@ -177,7 +176,7 @@ export async function dispatchResourcesDiscover(
 export async function dispatchUserInput(host: RunnerHost, event: UserInputEvent): Promise<UserInputEventResult> {
 	const ctx = host.createContext();
 	const combined: UserInputEventResult = { additionalContext: [] };
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "user_input")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("user_input")) {
 		for (const handler of handlers) {
 			if (ctx.signal?.aborted) return combined;
 			try {
@@ -186,7 +185,7 @@ export async function dispatchUserInput(host: RunnerHost, event: UserInputEvent)
 				combined.additionalContext!.push(...(result?.additionalContext ?? []));
 			} catch (error) {
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "user_input",
 					error: error instanceof Error ? error.message : String(error),
 				});
@@ -208,7 +207,7 @@ export async function dispatchInput(
 	let currentText = text;
 	let currentImages = images;
 
-	for (const { ext, handlers } of snapshotEventHandlers(host.extensions, "input")) {
+	for (const { feature: ext, handlers } of host.bus.snapshot("input")) {
 		for (const handler of handlers) {
 			try {
 				const event: InputEvent = {
@@ -226,7 +225,7 @@ export async function dispatchInput(
 				}
 			} catch (err) {
 				host.emitError({
-					extensionPath: ext.path,
+					source: ext.path,
 					event: "input",
 					error: err instanceof Error ? err.message : String(err),
 					stack: err instanceof Error ? err.stack : undefined,

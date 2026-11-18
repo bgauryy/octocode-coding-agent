@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
-import { renderInstruction } from "../core/prompt-template.ts";
-import { agentOperation } from "./agent-tool.ts";
+import type { FeatureSetup, ToolAnnotations, ToolCallEvent } from "../core/features/index.ts";
+import { renderPrompt } from "../core/prompt-template.ts";
+import { agentOperation } from "./native/tools/agent/tool.ts";
 import type { Permission } from "./permission/ask.ts";
 import { permissionGate } from "./permission/gate.ts";
 import { classify } from "./permission/gate/classify.ts";
@@ -22,7 +22,7 @@ import { untilCommand } from "./shared/until-command.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 import { protectedBranch } from "./worktrees/default-branch.ts";
 
-import type { registerCollab } from "./team/tools.ts";
+import type { registerCollab } from "./native/tools/coordinate/tool.ts";
 import type { registerActivity } from "./ui/activity.ts";
 
 /** What the tool-call pipeline needs from the features `index.ts` composed before it. */
@@ -71,13 +71,13 @@ const asBash =
 		const verdict = await gate(bash, ctx, prior);
 		if (verdict?.block) return verdict;
 		return verdict?.rewritten || bash.input.command !== command
-			? { block: true, reason: renderInstruction("notices/timer/rewrite-refused.md") }
+			? { block: true, reason: renderPrompt("notices/timer/rewrite-refused.md") }
 			: verdict;
 	};
 
 /** Registers, in this order, the `tool_call` pipeline, its `tool_execution_end` cleanup and the `user_bash` gate. */
 export function registerToolGates(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	{
 		loop,
 		permission,
@@ -109,7 +109,7 @@ export function registerToolGates(
 			return verdict;
 		};
 	// A registered tool by name, and a tool's annotations (the option's, else the registered tool's own).
-	const toolDefinition = (name: string) => api.getAllTools().find((tool) => tool.name === name);
+	const toolDefinition = (name: string) => api.tools.getAll().find((tool) => tool.name === name);
 	const annotationsOf = annotations ?? ((name: string) => toolDefinition(name)?.annotations);
 	// Only an isolated run's parent hands its child the team workspace (`subagents/tool.ts` `Isolation`): its cwd is a private worktree.
 	const scope = env ?? process.env;
@@ -166,7 +166,7 @@ export function registerToolGates(
 	// A Notification hook fires for the ask this gate raises; its own MCP call would ask and notify again without end, so a
 	// call made while a hook call is being decided is refused.
 	const deciding = new AsyncLocalStorage<true>();
-	registerHookMcpGate(api.events, async (call, ctx) => {
+	registerHookMcpGate(api.channels, async (call, ctx) => {
 		if (deciding.getStore()) return "a hook MCP call made while another is being decided is refused";
 		await sourcePolicy.refresh(ctx);
 		const event: ToolCallEvent = {
@@ -190,7 +190,7 @@ export function registerToolGates(
 		);
 		return verdict?.block ? (verdict.reason ?? "blocked") : undefined;
 	});
-	api.on("tool_call", async (event, ctx) => {
+	api.bus.on("tool_call", async (event, ctx) => {
 		const started = Date.now();
 		await sourcePolicy.refresh(ctx);
 		activity.checking(event.toolCallId, true);
@@ -224,7 +224,7 @@ export function registerToolGates(
 			activity.checking(event.toolCallId, false);
 		}
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		forgetCheck(event.toolCallId);
 		// The early call was committed (its message ended and the batch ran it): its audit entries are written now.
 		for (const record of parked.get(event.toolCallId) ?? []) record();
@@ -236,7 +236,7 @@ export function registerToolGates(
 	// own `readOnlyHint`) and that the current mode allows without asking, so no dialog opens while the reply streams and a
 	// discarded call changed nothing. Plan mode keeps its own verdict. A call a PreToolUse hook matches waits for its message
 	// to end: the hook then runs once, and never for a call that is discarded.
-	api.on("tool_call_early_start", (call, ctx) => {
+	api.bus.on("tool_call_early_start", (call, ctx) => {
 		const event = { type: "tool_call" as const, ...call } as ToolCallEvent;
 		if (planning?.gate(event)) return false;
 		if (hooks.hasPreToolUse(call.toolName, call.input, ctx.cwd)) return false;
@@ -250,14 +250,14 @@ export function registerToolGates(
 		return decide(permission.mode, action) === "allow";
 	});
 	// A discarded early call never runs: drop what its checks recorded, so no receipt or timing is credited to it.
-	api.on("tool_call_discarded", ({ toolCallId }) => {
+	api.bus.on("tool_call_discarded", ({ toolCallId }) => {
 		parked.delete(toolCallId);
 		localReads.delete(toolCallId);
 		forgetCheck(toolCallId);
 	});
 
 	// The user's own `!cmd`: the hooks and the permission check decide, as for an agent's `bash` call (`permission/user-bash`).
-	api.on("user_bash", async (event, ctx) => {
+	api.bus.on("user_bash", async (event, ctx) => {
 		await sourcePolicy.refresh(ctx);
 		return userBashGate({
 			permission,

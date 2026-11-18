@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
-import { approveFetch } from "../../src/octocode/web/web.ts";
+import { approveFetch } from "../../src/octocode/native/tools/web/tool.ts";
 import { pageFetcher } from "../../src/octocode/web/fetch.ts";
 import type { HostLookup } from "@octocodeai/octocode-common/web-guard";
 
-const ctx = { cwd: "/tmp" } as ExtensionContext;
+const ctx = { cwd: "/tmp" } as FeatureContext;
 const allowing = (): Permission =>
 	({ check: async () => ({ allowed: true }), refused: () => undefined }) as unknown as Permission;
 

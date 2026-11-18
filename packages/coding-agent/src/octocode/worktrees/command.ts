@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hasTmuxSession } from "@octocodeai/octocode-tui";
 import { type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
@@ -29,7 +29,7 @@ export interface WorktreeCommandDependencies extends OpenDependencies {
 	/** The session's folder, for completing names: the process directory does not follow `switch` or `/resume`. */
 	cwd?: () => string | undefined;
 	/** Lands a linked worktree's branch in the main checkout: the user typed it, so nothing asks again. */
-	merge?: (branch: string, ctx: ExtensionCommandContext) => Promise<{ ok: boolean; text: string }>;
+	merge?: (branch: string, ctx: CommandContext) => Promise<{ ok: boolean; text: string }>;
 }
 
 /** `agents: …; tmux: …` for one worktree's occupants, in the words `list` uses; undefined when nobody is there. */
@@ -47,7 +47,7 @@ function occupantsText(
 	return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-async function list(ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
+async function list(ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
 	const { main, statuses, members, lines } = await worktreeLines(ctx.cwd, deps);
 	lines.unshift(`Worktrees of ${main}:`);
 	if (!statuses.some((status) => status.name)) lines.push("  No worktrees yet: /worktree new <name> creates one.");
@@ -65,11 +65,11 @@ const launch = (
 	name: string,
 	folder: string,
 	placement: OpenPlacement,
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	deps: WorktreeCommandDependencies,
 ) => openInTmux(name, folder, placement, ctx, { ...deps, inTmux: hasTmuxSession(deps.env ?? process.env) });
 
-async function create(name: string, ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
+async function create(name: string, ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
 	const info = await ensureWorktree(
 		ctx.cwd,
 		name,
@@ -86,7 +86,7 @@ async function create(name: string, ctx: ExtensionCommandContext, deps: Worktree
 }
 
 /** `/worktree open <name> [pane [right|down]|window]`: Octocode in an existing worktree, in a new tmux window or pane. */
-async function open(rest: string[], ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
+async function open(rest: string[], ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
 	const [name, ...where] = rest;
 	const placement = parsePlacement(where);
 	if (!name || !placement) return say(ctx, USAGE, "warning");
@@ -94,7 +94,7 @@ async function open(rest: string[], ctx: ExtensionCommandContext, deps: Worktree
 	await launch(name, folder, placement, ctx, deps);
 }
 
-async function remove(rest: string[], ctx: ExtensionCommandContext, deps: WorktreeCommandDependencies): Promise<void> {
+async function remove(rest: string[], ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
 	const force = rest.includes("--force");
 	const names = rest.filter((word) => word !== "--force");
 	if (names.length !== 1 || names[0]?.startsWith("-")) return say(ctx, USAGE, "warning");

@@ -111,7 +111,14 @@ describe("a tool without a renderer", () => {
 		component.updateResult({ content: [{ type: "text", text: "first\nsecond" }], isError: false, durationMs: 1200 });
 		const lines = draw(component, width).filter((line) => line.trim() !== "");
 		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-		expect(lines[0]).toMatch(/^ ?✓ mcp__server/);
+		// The title is the tool word and its server is meta, which drops whole before the argument is cut.
+		expect(lines[0].trim()).toBe(
+			width === 20
+				? "✓ lookup · 1.2s"
+				: width === 40
+					? "✓ lookup(needle in src/very/l…) · 1.2s"
+					: "✓ lookup(needle in src/very/long/path) · server · 1.2s",
+		);
 		expect(lines[0]).not.toContain("query=");
 		expect(lines.slice(1).join("\n")).toContain("⎿");
 		expect(lines.join("\n")).not.toContain("()");

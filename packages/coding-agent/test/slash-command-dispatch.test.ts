@@ -17,6 +17,7 @@ function mode(commands: any[] = []) {
 		showError: vi.fn(),
 		showWarning: vi.fn(),
 		flushPendingBashComponents: vi.fn(),
+		showWorkingStatusIndicator: vi.fn(),
 		prompts,
 		session: {
 			isStreaming: false,
@@ -24,7 +25,7 @@ function mode(commands: any[] = []) {
 				options?.preflightResult?.("started");
 				prompts.push([text, options]);
 			},
-			extensionRunner: {
+			featureHost: {
 				getRegisteredCommands: () => commands,
 				getCommand: (name: string) => commands.find((command) => command.name === name),
 				createCommandContext: () => ({}),
@@ -194,6 +195,8 @@ describe("built-in slash commands", () => {
 		expect(instance.prompts).toEqual([]);
 		expect(instance.showWarning).toHaveBeenCalledTimes(2);
 		expect(instance.onInputCallback).toHaveBeenCalledWith("/harness List");
+		// Input handed to the run shows it is working from Enter on.
+		expect(instance.showWorkingStatusIndicator).toHaveBeenCalled();
 	});
 
 	it("preserves file path arguments when importing and exporting sessions", async () => {
@@ -243,7 +246,7 @@ describe("built-in slash commands", () => {
 		const resume = vi.fn();
 		const foreign = vi.fn();
 		const context = {};
-		instance.session.extensionRunner = {
+		instance.session.featureHost = {
 			createCommandContext: () => context,
 			getRegisteredCommands: () => [
 				{ name: "status", sourceInfo: { owner: "builtin", path: "builtin:foreign" }, handler: foreign },
@@ -283,15 +286,15 @@ describe("built-in slash commands", () => {
 	it("keeps model cycling and the catalog reachable from the same manager", async () => {
 		const instance = mode();
 		instance.showModelsSelector = vi.fn();
-		instance.showExtensionSelector = vi
+		instance.showSelectorDialog = vi
 			.fn()
 			.mockResolvedValueOnce("Model shortcuts — choose models for keyboard cycling")
 			.mockResolvedValueOnce("Model catalog — prices, capabilities and agent routing");
 		const catalog = vi.fn();
-		instance.session.extensionRunner.getRegisteredCommands = () => [
+		instance.session.featureHost.getRegisteredCommands = () => [
 			{ name: "modelsettings", sourceInfo: { owner: "native", path: "<inline:octocode>" }, handler: catalog },
 		];
-		instance.session.extensionRunner.getCommand = () => undefined;
+		instance.session.featureHost.getCommand = () => undefined;
 		await instance.defaultEditor.onSubmit("/modelsettings");
 		await instance.defaultEditor.onSubmit("/modelsettings");
 		expect(instance.showModelsSelector).toHaveBeenCalledOnce();
@@ -332,7 +335,7 @@ it("keeps native resume hints visible in the TUI", () => {
 	Object.defineProperty(instance, "session", {
 		value: {
 			promptTemplates: [],
-			extensionRunner: {
+			featureHost: {
 				getRegisteredCommands: () => [{ name: "resume", invocationName: "resume", getArgumentCompletions: complete }],
 			},
 		},

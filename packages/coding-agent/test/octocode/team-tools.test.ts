@@ -9,7 +9,7 @@ import { type AgentControl, registerAgentTool } from "../../src/octocode/subagen
 import { AgentsView } from "../../src/octocode/team/panel.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { registerActivity } from "../../src/octocode/ui/activity.ts";
 import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -353,6 +353,7 @@ describe("team tools on a fake Octocode", () => {
 					{
 						id: 133,
 						from: "reviewer-1a2b",
+						to: a.team.id,
 						sender: { role: "reviewer", goal: "audit auth token refresh" },
 						text: "first\nsecond",
 						replyRequired: true,
@@ -362,7 +363,12 @@ describe("team tools on a fake Octocode", () => {
 			},
 		};
 		const collapsed = rendered(renderer(message, { expanded: false }, theme));
-		expect(collapsed).toMatch(/^ ✉ 🐙 reviewer-1a2b → you · #133 · request · \d\d:\d\d(:\d\d)?$/m);
+		expect(collapsed).toMatch(
+			new RegExp(
+				`^ ✉ 🐙 reviewer-1a2b\\(reviewer\\) → ${a.team.id}\\(main\\)( \\[[^\\]]*\\])? · #133 · request · \\d\\d:\\d\\d(:\\d\\d)?$`,
+				"m",
+			),
+		);
 		// The sender's role and goal are on its Agent row, not repeated here.
 		expect(collapsed).not.toContain("audit auth token refresh");
 		expect(collapsed).not.toContain("from ");
@@ -373,7 +379,7 @@ describe("team tools on a fake Octocode", () => {
 				renderer({ details: { messages: [{ from: "x", text: "bad\u001b[31mred" }] } }, { expanded: false }, theme),
 			),
 		).toContain("badred");
-		expect(rendered(renderer({}, { expanded: false }, theme))).toContain("agent → you");
+		expect(rendered(renderer({}, { expanded: false }, theme))).toContain("✉ agent");
 		// Details that are not a batch (another writer, a damaged entry) show the text the model got.
 		expect(rendered(renderer({ content: "plain text", details: { from: "x" } }, { expanded: false }, theme))).toContain(
 			"plain text",
@@ -589,8 +595,11 @@ describe("AgentsView", () => {
 			const widget = factory({ requestRender }, theme);
 			widget.invalidate();
 			const lines = widget.render(120).join("\n");
-			expect(lines).toContain("1 working · 1 idle");
-			expect(lines).toContain("reviewer-1a2b");
+			// No summary line: each agent's mark says its state (⠼ working, ○ idle).
+			// The elapsed time counts from `now`, taken when the suite started; the spinner frame follows the clock.
+			expect(lines).toMatch(/\n ├ [\u2800-\u28ff] reviewer-1a2b · \d+s · review the parser › localSearch foo\n/);
+			expect(lines).toMatch(/\n └ ○ tester-3c4d   · \d+s · review the parser$/);
+			expect(lines).not.toContain("1 working · 1 idle");
 			// Only traffic between subagents: this session's own messages are already in its transcript.
 			expect(lines).toContain("#3");
 			expect(lines).not.toContain("#2");
@@ -607,9 +616,10 @@ describe("AgentsView", () => {
 			vi.advanceTimersByTime(1_000);
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
-			expect(done).toContain("2 left");
-			expect(done).toMatch(/reviewer-1a2b[^\n]*\n[^\n]* left +\d/);
-			expect(done).toMatch(/tester-3c4d[^\n]*\n[^\n]* left +\d/);
+			// No summary line: each row turns idle (○) and says `left` on its own ↳ line.
+			expect(done).toMatch(/\n ├ ○ reviewer-1a2b · \d+s · review the parser\n │   ↳ left\n/);
+			expect(done).toMatch(/\n └ ○ tester-3c4d   · \d+s · review the parser\n     ↳ left$/);
+			expect(done).not.toContain("2 left");
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
 			// Finished rows stay FINISHED_MS (30 s) so their outcome can be read.

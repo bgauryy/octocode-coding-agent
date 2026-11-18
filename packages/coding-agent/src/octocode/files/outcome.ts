@@ -16,11 +16,21 @@ export interface BashDetails extends BashToolDetails {
 	moved?: boolean;
 }
 
+/** The status line the core bash tool puts first: `[exit 1 · 0.4s · 12 lines · 3 KB]`, `[timed out after 5s · no output]`. */
+const BASH_HEADER = /^\[(exit -?\d+|timed out after [^·\]]+|aborted|terminated \(no exit code\))(?: · [^\]]*)?\]$/;
+
 const BASH_STATUS =
 	/^Command (?:exited with code (-?\d+)|timed out after (\d+) seconds|aborted|(terminated without an exit code))\.?$/;
 const TRUNCATION_NOTICE = /^\[Showing .*Full output: .+\]$/;
 /** How the bash tool's hint after a timeout starts; the renderer drops it from the output lines. */
 export const RERUN_HINT = "If it needs longer, rerun it";
+
+/** The output's line count a core status line states (`12 lines`, `no output`); undefined when it states none. */
+function headerLines(header: string): number | undefined {
+	if (header.includes("· no output")) return 0;
+	const count = / · ([\d,]+) lines? · /.exec(header)?.[1];
+	return count === undefined ? undefined : Number(count.replace(/,/g, ""));
+}
 
 /** A line Octocode or the bash tool added around the output (status, truncation notice, rerun hint), not command output. */
 function noticeLine(trimmed: string): boolean {
@@ -62,7 +72,15 @@ export function bashOutcome(
 	facts?: BashToolDetails,
 ): { summary: string; body: string; lines?: number; spill?: string } {
 	const structured = typeof facts?.output === "string";
-	const text = structured ? facts.output! : output;
+	const firstBreak = output.indexOf("\n");
+	const header = structured
+		? null
+		: BASH_HEADER.exec(output.slice(0, firstBreak === -1 ? undefined : firstBreak).trim());
+	const text = structured
+		? facts.output!
+		: header
+			? output.slice(firstBreak === -1 ? output.length : firstBreak + 1)
+			: output;
 	let status =
 		facts?.termination === "timeout"
 			? `timed out after ${formatDuration((facts.timeoutSeconds ?? 0) * 1000)}`
@@ -73,7 +91,8 @@ export function bashOutcome(
 					: facts?.exitCode !== undefined && facts.exitCode !== null
 						? `exit ${facts.exitCode}`
 						: undefined;
-	let total = facts?.truncation?.totalLines;
+	if (header) status ??= header[1].trim();
+	let total = facts?.truncation?.totalLines ?? (header ? headerLines(header[0]) : undefined);
 	let spill = facts?.fullOutputPath;
 	// An error's message is its first line, so only a status-bearing result is read from its tail.
 	const cut = keep !== undefined && (!isError || structured) ? tailCut(text, keep, structured) : 0;

@@ -1,9 +1,9 @@
-import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
+import type { Member, Traffic, TrafficDelivery } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../../../../db/src/api.ts";
 import { optionalString } from "../shared/util.ts";
 import type { Ask } from "./asks.ts";
 
-/** The team's records as the rest of the extension sees them, and how they are read from database rows. */
+/** The team's records as the rest of the feature sees them, and how they are read from database rows. */
 
 export interface Message {
 	id: number;
@@ -157,6 +157,14 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 					? "answered"
 					: "awaiting reply"
 				: "delivered";
+	const perRecipient = deliveries.map((d): TrafficDelivery => {
+		const delivered = typeof d.delivered_at === "number" ? { deliveredAt: d.delivered_at } : {};
+		if (d.dead_at !== null)
+			return { recipient: String(d.recipient), state: "dead-lettered", ...delivered, read: d.delivered_at !== null };
+		if (d.delivered_at === null) return { recipient: String(d.recipient), state: "queued" };
+		const state = row.reply_required !== 1 ? "delivered" : d.completed_at !== null ? "answered" : "awaiting reply";
+		return { recipient: String(d.recipient), state, ...delivered };
+	});
 	const replyTo = row.reply_to;
 	const deliveredAt = Math.min(
 		...deliveries.map((d) => (typeof d.delivered_at === "number" ? d.delivered_at : Infinity)),
@@ -172,9 +180,11 @@ export function toTraffic(row: Row, deliveries: Row[]): Traffic {
 		text: String(row.body),
 		at: num(row.created_at),
 		...(typeof replyTo === "number" ? { replyTo } : {}),
+		...(row.reply_required === 1 ? { replyRequired: true as const } : {}),
 		...(Number.isFinite(deliveredAt) ? { deliveredAt } : {}),
 		state,
 		...(dropped.length > 0 ? { dropped } : {}),
+		...(perRecipient.length > 0 ? { deliveries: perRecipient } : {}),
 	};
 }
 

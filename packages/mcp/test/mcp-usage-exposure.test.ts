@@ -38,7 +38,7 @@ async function session(dirs: { agent: string; cwd: string }, options: Parameters
 		cwd: dirs.cwd,
 		...options,
 	});
-	h.api.getActiveTools = () =>
+	h.api.tools.getActive = () =>
 		[...h.tools.values()].filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name);
 	hosts.push(h);
 	await h.start();

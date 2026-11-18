@@ -26,7 +26,7 @@ const harnesses: HarnessStatus[] = [
 
 /**
  * The `Harnesses:` line tells the main session which harnesses exist and that the user switches them with /harness.
- * Its prose lives in instructions/system/harnesses.md (AGENTS.md: prose only in instructions), and a subagent, which
+ * Its prose lives in native/prompts/system/harnesses.md (AGENTS.md: prose only in Markdown), and a subagent, which
  * cannot run /harness, does not get it.
  */
 describe("harnesses prompt line", () => {

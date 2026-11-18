@@ -3,13 +3,15 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 describe("native Octocode subagent completion", () => {
 	it.each(["answer", "tool", "completed"] as const)("respects native settlement after %s", async (boundary) => {
@@ -21,8 +23,8 @@ describe("native Octocode subagent completion", () => {
 			provider: "faux",
 			models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4096 }],
 		});
-		const provider: ExtensionFactory = (api) =>
-			api.registerProvider("faux", {
+		const provider: FeatureRegister = (api) =>
+			api.providers.register("faux", {
 				name: "Faux",
 				api: faux.api,
 				baseUrl: "http://127.0.0.1:0",
@@ -35,8 +37,9 @@ describe("native Octocode subagent completion", () => {
 			cwd,
 			agentDir,
 			settingsManager,
-			extensionFactories: [{ name: "faux", factory: provider }],
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([{ name: "faux", factory: provider }]),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -57,7 +60,7 @@ describe("native Octocode subagent completion", () => {
 		let cancellation: Promise<void> | undefined;
 		const oldScript = process.argv[1];
 		try {
-			await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+			await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 			await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 			faux.setResponses(
 				boundary === "tool"

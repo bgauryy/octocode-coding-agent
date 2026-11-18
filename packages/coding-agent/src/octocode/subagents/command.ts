@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { agentDetailText, recentRunsText } from "./run-text.ts";
 import { cancelledText, type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { USER_SENDER } from "../shared/messages.ts";
@@ -79,7 +79,7 @@ export function agentsCommand(
 			),
 		);
 	const running = () => [...background.keys(), ...foreground.keys()];
-	const tell = async (args: string, ctx: ExtensionCommandContext, interrupt = false) => {
+	const tell = async (args: string, ctx: CommandContext, interrupt = false) => {
 		const to = args.split(/\s+/, 1)[0] ?? "";
 		const rest = args.slice(to.length).trim();
 		// `#12 …` answers message 12: that closes the agent's question.
@@ -109,7 +109,7 @@ export function agentsCommand(
 			say(ctx, errorMessage(error), "warning");
 		}
 	};
-	const kill = async (id: string, ctx: ExtensionCommandContext) => {
+	const kill = async (id: string, ctx: CommandContext) => {
 		const ids = running();
 		// The report that follows says the run ended; what the stop cost it cannot be undone, so someone at the keyboard is asked.
 		if (
@@ -127,7 +127,7 @@ export function agentsCommand(
 					: `No running subagent "${id}". Running: ${ids.join(", ")}`;
 		say(ctx, refused ?? `Stopping ${id}…`, refused ? "warning" : "info");
 	};
-	const merge = async (id: string, ctx: ExtensionCommandContext) => {
+	const merge = async (id: string, ctx: CommandContext) => {
 		if (!id) {
 			const ids = await pendingRefs(ctx.cwd);
 			return say(
@@ -146,7 +146,7 @@ export function agentsCommand(
 			say(ctx, errorMessage(error), "error");
 		}
 	};
-	const discard = async (id: string, ctx: ExtensionCommandContext) => {
+	const discard = async (id: string, ctx: CommandContext) => {
 		if (!id) {
 			const ids = await pendingRefs(ctx.cwd);
 			return say(

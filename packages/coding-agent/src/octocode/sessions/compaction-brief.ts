@@ -1,7 +1,7 @@
 import { archivedSummary } from "../../core/compaction/checkpoint.ts";
 import { clipWithMarker } from "../../core/compaction/inline.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { CompactionEntry } from "../../core/session-manager.ts";
 import { summaryMethodOf } from "../shared/summary-method.ts";
 import { flatLine } from "./store.ts";
@@ -23,7 +23,7 @@ export function runningWorkBrief(entries: readonly unknown[], since: number, sou
 	});
 	const count = Math.max(0, work.length - MAX_WORK);
 	if (count > 0 || (shortened && source))
-		lines.push(renderInstruction("notices/compaction/work-more.md", { count, source }).trim());
+		lines.push(renderPrompt("notices/compaction/work-more.md", { count, source }).trim());
 	return lines;
 }
 
@@ -56,8 +56,8 @@ export function compactionRequestBrief(
 	)
 		return undefined;
 	return request.length <= REQUEST_CHARS
-		? renderInstruction("notices/compaction/latest-request.md", { request })
-		: renderInstruction("notices/compaction/request-cut.md", {
+		? renderPrompt("notices/compaction/latest-request.md", { request })
+		: renderPrompt("notices/compaction/request-cut.md", {
 				request: clipWithMarker(request, REQUEST_CHARS, source !== undefined),
 				source,
 			});

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "../src/providers/faux.ts";
+import { clearsWithWaiting, isTerminalProviderLimitError } from "../src/utils/retry-classes.ts";
 import {
 	isRateLimitedText,
 	isRetryableAssistantError,
@@ -169,6 +170,48 @@ describe("provider retry classification", () => {
 		expect(
 			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 quota exceeded" })),
 		).toBe(false);
+	});
+
+	it.each([
+		// A gateway's mid-stream drop relayed as an Anthropic-style `api_error` event.
+		'{"type":"error","error":{"type":"api_error","message":"Connection closed."}}',
+		// A gateway relaying a dropped upstream Anthropic stream.
+		"Claude Code's stream from Anthropic was cut short after the reply had begun",
+		// A proxy around the Codex CLI relaying its mid-stream disconnect.
+		"stream disconnected before completion: stream closed before response.completed",
+		// The Codex WebSocket lifetime limit; a retry opens a fresh connection.
+		"websocket_connection_limit_reached: Responses websocket connection limit reached",
+		// Transports that report only the Node socket error code.
+		"write EPIPE",
+		"connect ETIMEDOUT 1.2.3.4:443",
+		"read ECONNABORTED",
+		"connect ECONNREFUSED 127.0.0.1:443",
+		"read: connection reset by peer",
+	])("retries a dropped connection or stream: %s", (errorMessage) => {
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+		expect(clearsWithWaiting(errorMessage)).toBe(true);
+	});
+
+	it("does not read a socket code inside a longer identifier as a dropped connection", () => {
+		const errorMessage = "400 tool 'EPIPE_handler' has an invalid schema";
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
+	});
+
+	it.each([
+		// Zhipu/Z.ai: the plan's usage limit, sent as HTTP 429; it resets after hours.
+		'429 {"error":{"code":"1308","message":"Usage limit reached for 5 hour. Your limit will reset at 2026-11-18 06:00:00"}}',
+		'{"code": 1308, "message": "Usage limit reached"}',
+		// ChatGPT Business: a per-user limit the workspace admin set.
+		'OpenAI API error (429): {"code":"subscription_sharing_workplace_individual_usage_limit_exceeded"}',
+	])("treats an account usage limit as final: %s", (errorMessage) => {
+		expect(isTerminalProviderLimitError(errorMessage)).toBe(true);
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
+	});
+
+	it("still retries a 429 whose code only starts with 1308", () => {
+		const errorMessage = '429 {"code":"13080","message":"rate limited"}';
+		expect(isTerminalProviderLimitError(errorMessage)).toBe(false);
+		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
 	});
 
 	it("keeps the ChatGPT subscription usage limit non-retryable", () => {

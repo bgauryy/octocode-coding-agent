@@ -1,7 +1,7 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { envFlag, PERMISSION_RELAY_ENV, takeNonce } from "@octocodeai/octocode-common/env";
 import { interactive } from "../shared/interactive.ts";
@@ -46,7 +46,7 @@ import type {
  * Every call that reaches a check, and every refusal an invariant makes, is audited.
  */
 export class Permission {
-	readonly #api: ExtensionAPI;
+	readonly #api: FeatureSetup;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #isSubagent: boolean;
 	/** A subagent whose parent can ask a person: its dialogs are relayed to the parent (RPC) instead of denied. */
@@ -111,7 +111,7 @@ export class Permission {
 	readonly #host: CheckHost;
 
 	constructor(options: {
-		api: ExtensionAPI;
+		api: FeatureSetup;
 		env?: NodeJS.ProcessEnv;
 		isSubagent: boolean;
 		agent?: () => string | undefined;
@@ -177,7 +177,7 @@ export class Permission {
 	 * Session start: settles the mode (`sessionStartMode`; a `reason` says a replaced runtime came before this one), drops
 	 * the grants and the tallies, and, in a run with no UI, says on stderr that full mode runs everything and where the record is.
 	 */
-	start(ctx: ExtensionContext, reason?: Parameters<typeof sessionStartMode>[2]): void {
+	start(ctx: FeatureContext, reason?: Parameters<typeof sessionStartMode>[2]): void {
 		const { mode, reverted, warning } = sessionStartMode(this.#env, this.#started ? this.#mode : undefined, reason);
 		this.#started = true;
 		this.#mode = mode;
@@ -197,7 +197,7 @@ export class Permission {
 	}
 
 	/** Session end: writes the rollup of unlogged entries, tells a subagent's parent whether it was `exposed`, and, in a run with no UI, prints what full mode did to stderr. */
-	shutdown(ctx: Pick<ExtensionContext, "hasUI">, exposed?: boolean): void {
+	shutdown(ctx: Pick<FeatureContext, "hasUI">, exposed?: boolean): void {
 		this.#trail.flush(exposed);
 		const summary = !ctx.hasUI && !this.#isSubagent && runsUnasked(this.#mode) ? this.#trail.summary() : undefined;
 		if (summary) this.#stderr(`${summary}\n`);
@@ -208,9 +208,9 @@ export class Permission {
 		this.#trail.flush();
 	}
 
-	#confirmStop?: (ctx: ExtensionContext, mode: PermissionMode) => Promise<boolean>;
+	#confirmStop?: (ctx: FeatureContext, mode: PermissionMode) => Promise<boolean>;
 	/** Asked before a user's mode change that clears the grants, which stops every delegated run (`stop-confirm.ts`). */
-	setConfirmStop(confirm: (ctx: ExtensionContext, mode: PermissionMode) => Promise<boolean>): void {
+	setConfirmStop(confirm: (ctx: FeatureContext, mode: PermissionMode) => Promise<boolean>): void {
 		this.#confirmStop = confirm;
 	}
 
@@ -220,7 +220,7 @@ export class Permission {
 	}
 
 	/** The user's mode change (command or editor shortcut): a narrowing one asks `confirmStop` first; false when declined (the mode stays). */
-	async chooseMode(mode: PermissionMode, ctx: ExtensionContext): Promise<boolean> {
+	async chooseMode(mode: PermissionMode, ctx: FeatureContext): Promise<boolean> {
 		if (mode !== this.#mode && this.#narrows(mode) && this.#confirmStop && !(await this.#confirmStop(ctx, mode))) {
 			this.paint(ctx);
 			return false;
@@ -230,7 +230,7 @@ export class Permission {
 	}
 
 	/** Changes the mode at once, without `confirmStop` (`chooseMode` is the user's path). */
-	setMode(mode: PermissionMode, ctx: ExtensionContext): void {
+	setMode(mode: PermissionMode, ctx: FeatureContext): void {
 		if (mode === this.#mode) {
 			this.paint(ctx);
 			return;
@@ -247,10 +247,10 @@ export class Permission {
 			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, runsUnasked(mode) ? "warning" : "info");
 		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
 		const summary = modeSummary(mode);
-		void this.#api.sendMessage(
+		void this.#api.session.sendMessage(
 			{
 				customType: PERMISSION_ID,
-				content: renderInstruction("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
+				content: renderPrompt("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
 				display: false,
 				details: { mode },
 			},
@@ -259,7 +259,7 @@ export class Permission {
 	}
 
 	/** The editor shortcut: the next mode in `PERMISSION_CYCLE`, wrapping to the first, through `chooseMode`. */
-	cycle(ctx: ExtensionContext): Promise<boolean> {
+	cycle(ctx: FeatureContext): Promise<boolean> {
 		return this.chooseMode(PERMISSION_CYCLE[(PERMISSION_CYCLE.indexOf(this.#mode) + 1) % PERMISSION_CYCLE.length], ctx);
 	}
 
@@ -368,7 +368,7 @@ export class Permission {
 	}
 
 	/** Paints the footer chip (Octocode keeps the plain text over RPC). */
-	paint(ctx: Pick<ExtensionContext, "hasUI" | "ui" | "mode">): undefined {
+	paint(ctx: Pick<FeatureContext, "hasUI" | "ui" | "mode">): undefined {
 		return this.#trail.paint(ctx);
 	}
 

@@ -5,8 +5,8 @@ import { fauxAssistantMessage, validateToolArguments } from "@octocodeai/octocod
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
 import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
@@ -46,7 +46,7 @@ describe("the required reason on native tools", () => {
 	it("adds a required reason to a native tool and strips it before the tool runs", async () => {
 		const fake = fakeHost();
 		const execute = vi.fn(empty);
-		withNativePermissionOwners(fake.api).registerTool(tool("bash", execute));
+		withNativePermissionOwners(fake.api).tools.register(tool("bash", execute));
 		const registered = fake.tools.get("bash");
 		expect(registered.parameters.required).toEqual(["command", "reason"]);
 		expect(JSON.parse(JSON.stringify(registered.parameters.properties.reason))).toEqual({ type: "string" });
@@ -63,7 +63,7 @@ describe("the required reason on native tools", () => {
 		const fake = fakeHost();
 		const api = withNativePermissionOwners(fake.api);
 		for (const name of ["mcp__octocode__localSearch", "mcp__other__thing", "unreviewed"]) {
-			expect(() => api.registerTool(tool(name))).toThrow("no permission owner");
+			expect(() => api.tools.register(tool(name))).toThrow("no permission owner");
 			expect(fake.tools.has(name)).toBe(false);
 			expect(isNativeTool(name)).toBe(false);
 		}
@@ -81,7 +81,7 @@ describe("the required reason on native tools", () => {
 			prepareArguments,
 			renderCall,
 		};
-		withNativePermissionOwners(fake.api).registerTool(own as never);
+		withNativePermissionOwners(fake.api).tools.register(own as never);
 		const registered = fake.tools.get("file");
 		expect(registered.parameters.properties).toEqual(own.parameters.properties);
 		expect(registered.parameters.required).toEqual(["reason"]);
@@ -97,7 +97,7 @@ describe("the required reason on native tools", () => {
 		const prepared = { command: "prepared" };
 		const prepareArguments = vi.fn(() => prepared as never);
 		const renderCall = vi.fn();
-		withNativePermissionOwners(fake.api).registerTool({ ...tool("web"), prepareArguments, renderCall } as never);
+		withNativePermissionOwners(fake.api).tools.register({ ...tool("web"), prepareArguments, renderCall } as never);
 		const registered = fake.tools.get("web");
 		// The tool's own preparation runs first; the reason is settled on its result.
 		expect(registered.prepareArguments({ command: "raw" })).toEqual({ command: "prepared", reason: "web prepared" });

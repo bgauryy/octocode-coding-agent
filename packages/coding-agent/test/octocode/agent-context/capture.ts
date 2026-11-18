@@ -14,10 +14,11 @@ import {
 import { resolveJsonSchemaStrictSampling } from "@octocodeai/octocode-ai/api/constrained-sampling";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
-import type { ExtensionFactory } from "../../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { createTestSession } from "../../helpers/session.ts";
 import { trustFolder } from "../helpers.ts";
+import { installFreellamaReplay, SERVED_PROJECT_INSTRUCTIONS, SERVED_RECENT_TOOLS, writeRecentUse } from "./served.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
 import {
 	adoptSkillResourceSnapshot,
@@ -28,8 +29,8 @@ import {
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { getSkillCommands } from "../../../src/core/skill-commands.ts";
 import type { SlashCommandInfo } from "../../../src/core/slash-commands.ts";
-import { writeRolePrompt } from "../../../src/octocode/instructions/role.ts";
-import { withIdentity } from "../../../src/octocode/instructions/task.ts";
+import { writeRolePrompt } from "../../../src/octocode/native/prompts/role.ts";
+import { withIdentity } from "../../../src/octocode/native/prompts/task.ts";
 import { shortPath } from "../../../src/utils/display-path.ts";
 import { bundledSkillDirs } from "../../../src/octocode/skills.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
@@ -37,6 +38,8 @@ import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
 import { taskSkillPlan, taskSkillText, withRoleSkills } from "../../../src/octocode/subagents/task-skills.ts";
 import { childTaskInput } from "../../../src/octocode/subagents/task-text.ts";
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 export const PACKAGE_DIR = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/$/, "");
 
@@ -87,9 +90,11 @@ export interface Fixture {
 	octocodeHome: string;
 	scratch: string;
 	replacements: Array<[string, string]>;
+	/** The first request as a user's home serves it (`served.ts`), not the machine-independent fixture. */
+	served: boolean;
 }
 
-export function fixture(): Fixture {
+export function fixture(served = false): Fixture {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-context-"));
 	const dir = (name: string) => {
 		const made = path.join(root, name);
@@ -123,7 +128,12 @@ export function fixture(): Fixture {
 		// The Octocode skill collection lives in the installed research CLI package, wherever this machine has it.
 		...(octocodeSkills ? [[octocodeSkills, "<octocode skills>"] as [string, string]] : []),
 	].sort((a, b) => b[0].length - a[0].length);
-	const fx = { root, cwd, home, agentDir, octocodeHome, scratch, replacements };
+	const fx = { root, cwd, home, agentDir, octocodeHome, scratch, replacements, served };
+	if (served) {
+		installFreellamaReplay(agentDir);
+		writeRecentUse(agentDir, [cwd, fs.realpathSync(cwd)]);
+		fs.writeFileSync(path.join(cwd, "AGENTS.md"), SERVED_PROJECT_INSTRUCTIONS);
+	}
 	// The user trusted this project: the child processes read the agent database under this Octocode home.
 	trustFolder(cwd, baseEnv(fx));
 	return fx;
@@ -143,8 +153,10 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		OCTOCODE_MODELS_DEV: "0",
 		// The default follows the machine, and the rendered tool descriptions must not.
 		OCTOCODE_MAX_SUBAGENTS: "6",
-		// The FreeLlama server is on only where `ollama` is on PATH: off, so the capture is the same on every machine.
-		OCTOCODE_MCP_FREELLAMA: "0",
+		// The FreeLlama server is on only where `ollama` is on PATH: the fixture capture turns it off, so it is the same on
+		// every machine; a served capture turns it on and replays its recorded listing (`served.ts`).
+		OCTOCODE_MCP_FREELLAMA: fx.served ? "1" : "0",
+		...(fx.served ? { OCTOCODE_MCP_RECENT_TOOLS: JSON.stringify(SERVED_RECENT_TOOLS) } : {}),
 		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the
 		// fixture home is empty. A real session declares both: opt in so the capture lists the same tools. The listing
 		// makes no call; the API host is a placeholder that is never contacted.
@@ -195,8 +207,8 @@ export async function scriptedSession(
 		api: "anthropic-messages",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -205,7 +217,7 @@ export async function scriptedSession(
 				...model,
 				promptCache: { short: 300, long: 3600 },
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
+				compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: !fx.served },
 			})),
 			streamSimple: faux.streamSimple,
 		} as never);
@@ -216,7 +228,8 @@ export async function scriptedSession(
 		cwd: fx.cwd,
 		agentDir: fx.agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		disabledFeatures: shape.noMcp ? ["mcp"] : undefined,
 		noSkills: shape.noSkills,
 		skillResourceSnapshot: shape.skillResourceSnapshot,
@@ -234,7 +247,7 @@ export async function scriptedSession(
 		...(shape.excludeTools ? { excludeTools: shape.excludeTools } : {}),
 	});
 	try {
-		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 	} catch (error) {
 		session.dispose?.();
@@ -327,8 +340,8 @@ function describeRequest(
 }
 
 /** The main session as the user starts it: native tools, the Octocode MCP server, bundled skills and a project AGENTS.md. */
-export async function captureMain(settings?: Record<string, unknown>): Promise<AgentContext> {
-	const fx = fixture();
+export async function captureMain(settings?: Record<string, unknown>, served = false): Promise<AgentContext> {
+	const fx = fixture(served);
 	try {
 		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, { settings }, MAIN_REQUEST));
 		return describeRequest("main", "main", undefined, context, normalizer(fx));
@@ -356,9 +369,15 @@ export async function captureChild(
 		isolated = false,
 		settings,
 		parentSkills,
-	}: { isolated?: boolean; settings?: Record<string, unknown>; parentSkills?: ParentSkillCatalog } = {},
+		served = false,
+	}: {
+		isolated?: boolean;
+		settings?: Record<string, unknown>;
+		parentSkills?: ParentSkillCatalog;
+		served?: boolean;
+	} = {},
 ): Promise<AgentContext> {
-	const fx = fixture();
+	const fx = fixture(served);
 	try {
 		const worktree = isolated ? path.join(fx.root, "worktrees", "child-example") : undefined;
 		if (worktree) {
@@ -378,14 +397,15 @@ export async function captureChild(
 					cwd: fx.cwd,
 					agentDir: fx.agentDir,
 					settingsManager: SettingsManager.inMemory({}),
-					disabledFeatures: ["mcp", "llama.cpp"],
+					nativeFeatures: nativeFeatureSet(),
+					disabledFeatures: ["mcp"],
 					// The core skills a real parent gets from the Octocode extension (`registerSkills`), so a role can name one.
 					additionalSkillPaths: bundledSkillDirs(),
 					noPromptTemplates: true,
 					noThemes: true,
 				});
 				await parent.reload();
-				// Named skills resolve through the parent's skill commands, as `extension-bindings.ts` supplies them at runtime.
+				// Named skills resolve through the parent's skill commands, as `mode-bindings.ts` supplies them at runtime.
 				const commands: SlashCommandInfo[] = getSkillCommands(parent.getSkills().skills).map(({ skill, name }) => ({
 					name,
 					description: skill.description,
@@ -469,13 +489,13 @@ export const AGENTS: Array<{ name: string; role?: string; kind: AgentContext["ki
  * Starts every agent in turn (the process environment is swapped for each) and returns what its first request holds.
  * `settings` apply to every agent's session over the defaults.
  */
-export async function captureAll(settings?: Record<string, unknown>): Promise<AgentContext[]> {
+export async function captureAll(settings?: Record<string, unknown>, served = false): Promise<AgentContext[]> {
 	const contexts: AgentContext[] = [];
 	for (const agent of AGENTS)
 		contexts.push(
 			agent.kind === "main"
-				? await captureMain(settings)
-				: await captureChild(agent.name, agent.role, undefined, { settings }),
+				? await captureMain(settings, served)
+				: await captureChild(agent.name, agent.role, undefined, { settings, served }),
 		);
 	return contexts;
 }

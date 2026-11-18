@@ -18,6 +18,8 @@ export function applicationSnapshot(
 		errors: cloneDisplay(state.errors),
 		status: state.status,
 		...(state.awaiting ? { awaiting: { ...state.awaiting } } : {}),
+		...(state.phase ? { phase: structuredClone(state.phase) } : {}),
+		...(state.jobStartedAt === undefined ? {} : { jobStartedAt: state.jobStartedAt }),
 		...(state.runId === undefined ? {} : { runId: state.runId }),
 		streaming: state.streaming,
 		steering: [...state.steering],

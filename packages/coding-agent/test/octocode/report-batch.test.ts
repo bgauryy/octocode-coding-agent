@@ -32,8 +32,8 @@ class Step {
 function queueWith(reporting: Step) {
 	const f = fakeHost();
 	const at: number[] = [];
-	const send = f.api.sendMessage;
-	f.api.sendMessage = (...args: Parameters<typeof send>) => {
+	const send = f.api.session.sendMessage;
+	f.api.session.sendMessage = (...args: Parameters<typeof send>) => {
 		at.push(Date.now());
 		return send(...args);
 	};

@@ -1,4 +1,4 @@
-import type { RpcCommand, RpcExtensionErrorEvent } from "../rpc-types.ts";
+import type { RpcCommand, RpcFeatureErrorEvent } from "../rpc-types.ts";
 import type { JsonAgentSessionEvent } from "../../json-event.ts";
 import type { RpcReady } from "../session-identity.ts";
 
@@ -14,7 +14,7 @@ export interface RpcClientOptions {
 	onReady?: (ready: RpcReady) => void;
 	/** Called with a failure the agent could not tie to a command; without this, it goes to stderr. */
 	onProtocolError?: (message: string) => void;
-	/** @internal Canonical identity announced by an ACP-owned worker before extension startup. */
+	/** @internal Canonical identity announced by an ACP-owned worker before feature startup. */
 	onSessionIdentity?: (sessionId: string) => void;
 	/** Called with the id of a dialog the agent closed without this host's response (`extension_ui_dismiss`); close it. */
 	onExtensionUIDismiss?: (id: string) => void;
@@ -40,5 +40,5 @@ export interface ModelInfo {
 	interactiveOnly?: true;
 }
 
-export type RpcEvent = JsonAgentSessionEvent | RpcExtensionErrorEvent;
+export type RpcEvent = JsonAgentSessionEvent | RpcFeatureErrorEvent;
 export type RpcEventListener = (event: RpcEvent) => void;

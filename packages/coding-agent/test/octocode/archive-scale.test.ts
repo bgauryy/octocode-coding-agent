@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import { type Segment, setSessionLineage, writeSegment } from "../../src/octocode/history/archive.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";

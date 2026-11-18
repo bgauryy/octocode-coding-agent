@@ -36,10 +36,10 @@ describe("local model template setup", () => {
 		const runtime = await createRuntime();
 		const host = createFakeHost({
 			session: { modelRuntime: runtime },
-			showExtensionSelector: vi.fn(async (_title: string, options: string[]) =>
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) =>
 				options.find((option) => option.startsWith("Ollama —") || option.startsWith("No key")),
 			),
-			showExtensionInput: vi.fn(async () => answers.shift()),
+			showInputDialog: vi.fn(async () => answers.shift()),
 			showApiKeyLoginDialog: vi.fn(async () => {}),
 			updateAvailableProviderCount: vi.fn(),
 			showStatus: vi.fn(),

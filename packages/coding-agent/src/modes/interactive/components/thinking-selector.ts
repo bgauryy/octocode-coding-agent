@@ -1,24 +1,9 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import {
-	Container,
-	type Focusable,
-	fuzzyFilter,
-	getKeybindings,
-	Input,
-	type SelectItem,
-	SelectList,
-	type SelectListLayoutOptions,
-	Spacer,
-	Text,
-} from "@octocodeai/octocode-tui";
-import { getSelectListTheme } from "../../../theme/theme.ts";
+import { Container, getKeybindings, ListView, Spacer, Text } from "@octocodeai/octocode-tui";
+import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
-
-const THINKING_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
-	minPrimaryColumnWidth: 12,
-	maxPrimaryColumnWidth: 32,
-};
+import { columnRow, listTheme } from "./list-kit.ts";
 
 const LEVEL_DESCRIPTIONS: Record<ThinkingLevel, string> = {
 	off: "No reasoning",
@@ -30,27 +15,19 @@ const LEVEL_DESCRIPTIONS: Record<ThinkingLevel, string> = {
 	max: "Maximum reasoning",
 };
 
+interface LevelItem {
+	level: ThinkingLevel;
+	label: string;
+	description: string;
+}
+
 /**
- * Component that renders a thinking level selector with borders
+ * The thinking-level picker (/effort): a short list with no search line (it never holds more than seven levels), the
+ * current level ticked, Enter for this chat and the save key for the default.
  */
-export class ThinkingSelectorComponent extends Container implements Focusable {
-	private searchInput: Input;
-	private selectList: SelectList;
-	private selectListChildIndex: number;
-	private allItems: SelectItem[];
-	private onSelect: (level: ThinkingLevel) => void;
-	private onCancel: () => void;
-	private onSelectAsDefault?: (level: ThinkingLevel) => void;
-	private _focused = false;
-
-	get focused(): boolean {
-		return this._focused;
-	}
-
-	set focused(value: boolean) {
-		this._focused = value;
-		this.searchInput.focused = value;
-	}
+export class ThinkingSelectorComponent extends Container {
+	private readonly list: ListView<LevelItem>;
+	private readonly onSelectAsDefault?: (level: ThinkingLevel) => void;
 
 	constructor(
 		currentLevel: ThinkingLevel,
@@ -61,12 +38,9 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		defaultThinkingLevel?: ThinkingLevel,
 	) {
 		super();
-		this.onSelect = onSelect;
-		this.onCancel = onCancel;
 		this.onSelectAsDefault = onSelectAsDefault;
-
-		this.allItems = availableLevels.map((level) => ({
-			value: level,
+		const items = availableLevels.map((level) => ({
+			level,
 			label: `${level === currentLevel ? "✓ " : "  "}${level}`,
 			description:
 				level === defaultThinkingLevel ? `${LEVEL_DESCRIPTIONS[level]} · default` : LEVEL_DESCRIPTIONS[level],
@@ -74,76 +48,44 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
-		this.addChild(new Text("Thinking Level", 0, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(`${keyText("app.thinking.cycle")} cycles thinking levels in-session`, 0, 0));
-		this.addChild(new Spacer(1));
-
-		this.searchInput = new Input();
-		this.searchInput.onSubmit = () => this.selectList.handleInput("\r");
-		this.addChild(this.searchInput);
+		this.addChild(new Text(theme.fg("accent", theme.bold("Thinking level")), 1, 0));
+		this.addChild(new Text(theme.fg("muted", `${keyText("app.thinking.cycle")} cycles levels in this chat`), 1, 0));
 		this.addChild(new Spacer(1));
 
-		this.selectList = this.buildSelectList(this.allItems, currentLevel);
-		this.selectListChildIndex = this.children.length;
-		this.addChild(this.selectList);
+		this.list = new ListView<LevelItem>({
+			items,
+			maxRows: Math.max(1, items.length),
+			theme: listTheme(),
+			empty: { message: "No thinking levels for this model" },
+			row: (item, { selected, width }) =>
+				`${item.label.slice(0, 2)}${columnRow(item.level, item.description, { selected, width: Math.max(1, width - 2) }, 10)}`,
+		});
+		this.list.setSelectedIndex(Math.max(0, availableLevels.indexOf(currentLevel)));
+		this.list.onSelect = (item) => onSelect(item.level);
+		this.list.onCancel = onCancel;
+		this.addChild(this.list);
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new HintBar([
-				moveHint(3),
+				moveHint(1),
 				[keyText("tui.select.confirm"), "select", 1],
-				[keyText("app.thinking.save"), "set as default", 2],
+				...(onSelectAsDefault ? [[keyText("app.thinking.save"), "set as default", 2] as const] : []),
 				[keyText("tui.select.cancel"), "cancel", 0],
 			]),
 		);
-
 		this.addChild(new DynamicBorder());
 	}
 
-	private buildSelectList(items: SelectItem[], preselect?: ThinkingLevel): SelectList {
-		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme(), THINKING_SELECT_LIST_LAYOUT);
-		const currentIndex = items.findIndex((item) => item.value === preselect);
-		if (currentIndex !== -1) {
-			list.setSelectedIndex(currentIndex);
-		}
-		list.onSelect = (item) => this.onSelect(item.value as ThinkingLevel);
-		list.onCancel = () => this.onCancel();
-		return list;
-	}
-
-	private applyFilter(query: string): void {
-		const filtered = query
-			? fuzzyFilter(this.allItems, query, (item) => `${item.value} ${item.description ?? ""}`)
-			: this.allItems;
-		const selectedValue = this.selectList.getSelectedItem()?.value as ThinkingLevel | undefined;
-		const newList = this.buildSelectList(filtered, selectedValue);
-		this.children[this.selectListChildIndex] = newList;
-		this.selectList = newList;
-	}
-
 	handleInput(keyData: string): void {
-		const kb = getKeybindings();
-		if (kb.matches(keyData, "app.thinking.save") && this.onSelectAsDefault) {
-			const item = this.selectList.getSelectedItem();
-			if (item) this.onSelectAsDefault(item.value as ThinkingLevel);
+		if (getKeybindings().matches(keyData, "app.thinking.save") && this.onSelectAsDefault) {
+			const item = this.list.getSelectedItem();
+			if (item) this.onSelectAsDefault(item.level);
 			return;
 		}
-
-		const isNav =
-			kb.matches(keyData, "tui.select.up") ||
-			kb.matches(keyData, "tui.select.down") ||
-			kb.matches(keyData, "tui.select.confirm") ||
-			kb.matches(keyData, "tui.select.cancel");
-		if (isNav) {
-			this.selectList.handleInput(keyData);
-			return;
-		}
-
-		this.searchInput.handleInput(keyData);
-		this.applyFilter(this.searchInput.getValue());
+		this.list.handleInput(keyData);
 	}
 
-	getSelectList(): SelectList {
-		return this.selectList;
+	getList(): ListView<LevelItem> {
+		return this.list;
 	}
 }

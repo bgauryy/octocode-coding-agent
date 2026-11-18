@@ -1,5 +1,4 @@
 import { isNativeModifierPressed, warmNativeModifiers } from "./native-modifiers.ts";
-import { getNativePlatformHelper } from "./native-platform.ts";
 import type { ProgramStatus } from "./program-status.ts";
 import { hasTmuxSession } from "./multiplexer.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
@@ -8,7 +7,8 @@ import { BracketedPasteRearm, DISABLE_BRACKETED_PASTE, ENABLE_BRACKETED_PASTE } 
 import { DEVICE_ATTRIBUTES_QUERY } from "./terminal/device-attributes.ts";
 import { registerExitRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import {
-	isAppleTerminalSession,
+	detectsNativeShiftEnter,
+	enableWindowsVTInput,
 	normalizeNativeShiftEnterInput,
 	refreshTerminalDimensions,
 	resolveEscapeTimeoutMs,
@@ -23,6 +23,14 @@ import { SynchronizedOutputProbe } from "./terminal/synchronized-output.ts";
 import { readTypedLines, typedAheadInput } from "./terminal/typeahead.ts";
 import type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
 import { KittyGraphicsProbe } from "./terminal-image/probe.ts";
+import {
+	CLEAR_FROM_CURSOR,
+	CLEAR_LINE,
+	CLEAR_SCREEN,
+	HIDE_CURSOR,
+	moveRowsSequence,
+	SHOW_CURSOR,
+} from "./terminal/cursor.ts";
 
 export {
 	isAppleTerminalSession,
@@ -32,11 +40,6 @@ export {
 	resolvePasteTimeoutMs,
 } from "./terminal/environment.ts";
 export type { OutputKind, OutputTelemetry, Terminal } from "./terminal/types.ts";
-
-/** Terminals whose Return cannot carry Shift, so Enter asks the OS whether Shift is held. */
-function detectsNativeShiftEnter(): boolean {
-	return isAppleTerminalSession() || process.platform === "win32";
-}
 
 /**
  * Real terminal using process.stdin/stdout
@@ -145,7 +148,7 @@ export class ProcessTerminal implements Terminal {
 		// VT escape sequences (e.g. \x1b[Z for Shift+Tab) instead of raw console
 		// events that lose modifier information. Must run AFTER setRawMode(true)
 		// since that resets console mode flags.
-		this.enableWindowsVTInput();
+		enableWindowsVTInput();
 
 		// Query Kitty keyboard protocol and fall back to modifyOtherKeys when DA confirms no Kitty response.
 		this.queryAndEnableKittyProtocol();
@@ -235,21 +238,6 @@ export class ProcessTerminal implements Terminal {
 			shouldDetectNativeShiftEnter && isNativeModifierPressed("shift"),
 		);
 		this.dispatchInput(input);
-	}
-
-	/**
-	 * On Windows, add ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200) to the stdin
-	 * console handle so the terminal sends VT sequences for modified keys
-	 * (e.g. \x1b[Z for Shift+Tab). Without this, libuv's ReadConsoleInputW
-	 * discards modifier state and Shift+Tab arrives as plain \t.
-	 */
-	private enableWindowsVTInput(): void {
-		if (process.platform !== "win32") return;
-		try {
-			getNativePlatformHelper()?.enableVirtualTerminalInput?.();
-		} catch {
-			// Native helper not available — Shift+Tab won't be distinguishable from Tab.
-		}
 	}
 
 	async drainInput(maxMs = 1000, idleMs = 50): Promise<void> {
@@ -357,33 +345,30 @@ export class ProcessTerminal implements Terminal {
 		return process.stdout.rows || Number(process.env.LINES) || 24;
 	}
 
+	// Cursor and clear sequences go through the output queue, so they land after the frames written before them.
 	moveBy(lines: number): void {
-		if (lines > 0) {
-			process.stdout.write(`\x1b[${lines}B`);
-		} else if (lines < 0) {
-			process.stdout.write(`\x1b[${-lines}A`);
-		}
-		// lines === 0: no movement
+		const sequence = moveRowsSequence(lines);
+		if (sequence) this.output.write(sequence);
 	}
 
 	hideCursor(): void {
-		process.stdout.write("\x1b[?25l");
+		this.output.write(HIDE_CURSOR);
 	}
 
 	showCursor(): void {
-		process.stdout.write("\x1b[?25h");
+		this.output.write(SHOW_CURSOR);
 	}
 
 	clearLine(): void {
-		process.stdout.write("\x1b[K");
+		this.output.write(CLEAR_LINE);
 	}
 
 	clearFromCursor(): void {
-		process.stdout.write("\x1b[J");
+		this.output.write(CLEAR_FROM_CURSOR);
 	}
 
 	clearScreen(): void {
-		process.stdout.write("\x1b[2J\x1b[H"); // Clear screen and move to home (1,1)
+		this.output.write(CLEAR_SCREEN);
 	}
 
 	setTitle(title: string): void {

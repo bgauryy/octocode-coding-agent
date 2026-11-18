@@ -93,7 +93,7 @@ export class SessionTreeNavigation {
 			targetId,
 		);
 
-		// Prepare event data - mutable so extensions can override
+		// Prepare event data - mutable so features can override
 		let customInstructions = options.customInstructions;
 		let replaceInstructions = options.replaceInstructions;
 		let label = options.label;
@@ -113,11 +113,11 @@ export class SessionTreeNavigation {
 		this._branchSummaryAbortController = new AbortController();
 
 		try {
-			let extensionSummary: { summary: string; details?: unknown; usage?: Usage } | undefined;
-			let fromExtension = false;
+			let featureSummary: { summary: string; details?: unknown; usage?: Usage } | undefined;
+			let fromFeature = false;
 
-			if (session.extensionRunner.hasHandlers("session_before_tree")) {
-				const result = await session.extensionRunner.emit({
+			if (session.featureHost.hasHandlers("session_before_tree")) {
+				const result = await session.featureHost.emit({
 					type: "session_before_tree",
 					preparation,
 					signal: this._branchSummaryAbortController.signal,
@@ -128,11 +128,11 @@ export class SessionTreeNavigation {
 				}
 
 				if (result?.summary && options.summarize) {
-					extensionSummary = result.summary;
-					fromExtension = true;
+					featureSummary = result.summary;
+					fromFeature = true;
 				}
 
-				// Allow extensions to override instructions and label
+				// Allow features to override instructions and label
 				if (result?.customInstructions !== undefined) {
 					customInstructions = result.customInstructions;
 				}
@@ -148,7 +148,7 @@ export class SessionTreeNavigation {
 			let summaryText: string | undefined;
 			let summaryDetails: unknown;
 			let summaryUsage: Usage | undefined;
-			if (options.summarize && entriesToSummarize.length > 0 && !extensionSummary) {
+			if (options.summarize && entriesToSummarize.length > 0 && !featureSummary) {
 				const signal = this._branchSummaryAbortController.signal;
 				const branchSummarySettings = session.settingsManager.getBranchSummarySettings();
 				const result = await generateBranchSummary(entriesToSummarize, {
@@ -175,10 +175,10 @@ export class SessionTreeNavigation {
 					readFiles: result.readFiles ?? [],
 					modifiedFiles: result.modifiedFiles ?? [],
 				};
-			} else if (extensionSummary) {
-				summaryText = extensionSummary.summary;
-				summaryDetails = extensionSummary.details;
-				summaryUsage = extensionSummary.usage;
+			} else if (featureSummary) {
+				summaryText = featureSummary.summary;
+				summaryDetails = featureSummary.details;
+				summaryUsage = featureSummary.usage;
 			}
 
 			// Determine the new leaf position based on target type
@@ -207,7 +207,7 @@ export class SessionTreeNavigation {
 					newLeafId,
 					summaryText,
 					summaryDetails,
-					fromExtension,
+					fromFeature,
 					summaryUsage,
 				);
 				summaryEntry = sessionManager.getEntry(summaryId) as BranchSummaryEntry;
@@ -234,12 +234,12 @@ export class SessionTreeNavigation {
 			this.host.restoreToolsFromTranscript();
 
 			// Emit session_tree event
-			await session.extensionRunner.emit({
+			await session.featureHost.emit({
 				type: "session_tree",
 				newLeafId: sessionManager.getLeafId(),
 				oldLeafId,
 				summaryEntry,
-				fromExtension: summaryText ? fromExtension : undefined,
+				fromFeature: summaryText ? fromFeature : undefined,
 			});
 
 			// Emit to custom tools

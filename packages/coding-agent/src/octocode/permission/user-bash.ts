@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { captureToolInvocation } from "../../core/tools/tool-invocation.ts";
-import type { ExtensionContext, ToolCallEvent, UserBashEvent, UserBashEventResult } from "../../core/features/index.ts";
+import type { FeatureContext, ToolCallEvent, UserBashEvent, UserBashEventResult } from "../../core/features/index.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { Permission } from "./ask.ts";
 import type { GateVerdict } from "./gate.ts";
@@ -9,7 +9,7 @@ import { catastrophicCommand } from "./shell/destructive.ts";
 interface UserBashGateOptions {
 	permission: Pick<Permission, "check" | "refused" | "typed" | "sourceDecision">;
 	/** The PreToolUse hook step of the `tool_call` pipeline; it sees the `!cmd` as a `bash` call. */
-	preToolUse: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<GateVerdict | undefined>;
+	preToolUse: (event: ToolCallEvent, ctx: FeatureContext) => Promise<GateVerdict | undefined>;
 }
 
 /**
@@ -21,7 +21,7 @@ interface UserBashGateOptions {
  * tool's), so the bash rules classify it.
  */
 export function userBashGate({ permission, preToolUse }: UserBashGateOptions) {
-	return async (event: UserBashEvent, ctx: ExtensionContext): Promise<UserBashEventResult | undefined> => {
+	return async (event: UserBashEvent, ctx: FeatureContext): Promise<UserBashEventResult | undefined> => {
 		const call = {
 			type: "tool_call",
 			toolCallId: randomUUID(),

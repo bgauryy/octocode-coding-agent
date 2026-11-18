@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { clipText, contentText } from "../shared/util.ts";
 import { NOTE_CHARS, pinnedBudget, totalBudget } from "./limits.ts";
@@ -17,9 +17,9 @@ import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 export const MEMORY_MESSAGE_TYPE = "octocode-memory";
 /** The `memory` tool's name, whose save results count as shown memories (`savedResult`). */
 export const MEMORY_TOOL_NAME = "memory";
-export const MEMORY_HEADER = renderInstruction("notices/memory-header.md", { again: false });
+export const MEMORY_HEADER = renderPrompt("notices/memory-header.md", { again: false });
 /** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
-export const MEMORY_HEADER_AGAIN = renderInstruction("notices/memory-header.md", { again: true });
+export const MEMORY_HEADER_AGAIN = renderPrompt("notices/memory-header.md", { again: true });
 
 /** Characters of pinned memory lines per injection, and of the whole injected message (header and notes included), for a window of the floor size; `selectInjection` grows both with its `contextWindow`. */
 export const PINNED_BUDGET = pinnedBudget();
@@ -239,9 +239,7 @@ export function selectInjection(
 		heldBack = store.count(options.scope, unseen) - ids.length;
 	}
 	const note =
-		heldBack > 0
-			? [renderInstruction("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })]
-			: [];
+		heldBack > 0 ? [renderPrompt("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })] : [];
 	for (const line of note) used += line.length + 1;
 	const words = terms(options.query, MAX_QUERY_TERMS, MIN_TERM_LENGTH);
 	const stems = new Set(words.map(stem));

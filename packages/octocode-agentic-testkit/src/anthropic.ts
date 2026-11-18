@@ -5,6 +5,8 @@ import { textOf, type ChatMessage, type ToolCall } from "./trace.ts";
 type Block = {
 	type?: string;
 	text?: string;
+	thinking?: string;
+	signature?: string;
 	id?: string;
 	name?: string;
 	input?: unknown;
@@ -62,7 +64,9 @@ function usage(r: Reply): Record<string, number> {
 	};
 }
 
-const stop = (r: Reply): string => (r.toolCalls.length ? "tool_use" : "end_turn");
+const stop = (r: Reply): string =>
+	(r.raw?.wire === "anthropic" ? r.raw.stopReason : undefined) ??
+	(r.stop === "max_tokens" ? "max_tokens" : (r.stop ?? (r.toolCalls.length ? "tool_use" : "end_turn")));
 const parse = (s: string): unknown => {
 	try {
 		return JSON.parse(s);
@@ -72,16 +76,16 @@ const parse = (s: string): unknown => {
 };
 
 function content(r: Reply): unknown[] {
-	return r.toolCalls.length
-		? r.toolCalls.map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: parse(c.arguments) }))
-		: [{ type: "text", text: r.text }];
+	if (r.raw?.wire === "anthropic") return r.raw.content;
+	const calls = r.toolCalls.map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: parse(c.arguments) }));
+	return r.text || !calls.length ? [{ type: "text", text: r.text }, ...calls] : calls;
 }
 
 export function sendAnthropicJson(res: ServerResponse, model: string, r: Reply): void {
 	res.writeHead(200, { "content-type": "application/json" });
 	res.end(
 		JSON.stringify({
-			id: "msg_testkit",
+			id: `msg_testkit_${r.id ?? "0"}`,
 			type: "message",
 			role: "assistant",
 			model,
@@ -93,6 +97,10 @@ export function sendAnthropicJson(res: ServerResponse, model: string, r: Reply):
 	);
 }
 
+/** `text` in pieces of `size` characters. */
+const split = (text: string, size: number): string[] =>
+	Array.from({ length: Math.ceil(text.length / size) }, (_, i) => text.slice(i * size, (i + 1) * size));
+
 export function sendAnthropicSse(res: ServerResponse, model: string, r: Reply): void {
 	res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
 	const ev = (type: string, data: Record<string, unknown>): void => {
@@ -101,7 +109,7 @@ export function sendAnthropicSse(res: ServerResponse, model: string, r: Reply): 
 	const u = usage(r);
 	ev("message_start", {
 		message: {
-			id: "msg_testkit",
+			id: `msg_testkit_${r.id ?? "0"}`,
 			type: "message",
 			role: "assistant",
 			model,
@@ -111,20 +119,27 @@ export function sendAnthropicSse(res: ServerResponse, model: string, r: Reply): 
 			usage: { ...u, output_tokens: 1 },
 		},
 	});
-	if (r.toolCalls.length) {
-		r.toolCalls.forEach((c, index) => {
-			ev("content_block_start", { index, content_block: { type: "tool_use", id: c.id, name: c.name, input: {} } });
-			const half = Math.ceil(c.arguments.length / 2);
-			for (const part of [c.arguments.slice(0, half), c.arguments.slice(half)])
-				if (part) ev("content_block_delta", { index, delta: { type: "input_json_delta", partial_json: part } });
-			ev("content_block_stop", { index });
-		});
-	} else {
-		ev("content_block_start", { index: 0, content_block: { type: "text", text: "" } });
-		for (let i = 0; i < r.text.length; i += 24)
-			ev("content_block_delta", { index: 0, delta: { type: "text_delta", text: r.text.slice(i, i + 24) } });
-		ev("content_block_stop", { index: 0 });
-	}
+	(content(r) as Block[]).forEach((block, index) => {
+		if (block.type === "text") {
+			ev("content_block_start", { index, content_block: { type: "text", text: "" } });
+			for (const part of split(block.text ?? "", 24))
+				ev("content_block_delta", { index, delta: { type: "text_delta", text: part } });
+		} else if (block.type === "tool_use") {
+			ev("content_block_start", { index, content_block: { ...block, input: {} } });
+			// A scripted call keeps its argument text as written, malformed JSON included.
+			const own = r.raw ? undefined : r.toolCalls.find((c) => c.id === block.id)?.arguments;
+			const args = own ?? JSON.stringify(block.input ?? {});
+			for (const part of split(args, Math.ceil(args.length / 2) || 1))
+				ev("content_block_delta", { index, delta: { type: "input_json_delta", partial_json: part } });
+		} else if (block.type === "thinking") {
+			ev("content_block_start", { index, content_block: { type: "thinking", thinking: "" } });
+			for (const part of split(block.thinking ?? "", 64))
+				ev("content_block_delta", { index, delta: { type: "thinking_delta", thinking: part } });
+			if (block.signature)
+				ev("content_block_delta", { index, delta: { type: "signature_delta", signature: block.signature } });
+		} else ev("content_block_start", { index, content_block: block });
+		ev("content_block_stop", { index });
+	});
 	ev("message_delta", { delta: { stop_reason: stop(r), stop_sequence: null }, usage: u });
 	ev("message_stop", {});
 	res.end();
@@ -191,6 +206,7 @@ export function toAnthropicRequest(body: Record<string, unknown>, model: string)
 /** Anthropic Messages response -> Reply; usage is the provider's own (`estimated: false`). */
 export function fromAnthropicResponse(data: {
 	content?: Block[];
+	stop_reason?: string;
 	usage?: {
 		input_tokens?: number;
 		output_tokens?: number;
@@ -219,5 +235,36 @@ export function fromAnthropicResponse(data: {
 			completionTokens: u.output_tokens ?? 0,
 			estimated: false,
 		},
+		...(data.stop_reason === "max_tokens" || data.stop_reason === "refusal" ? { stop: data.stop_reason } : {}),
+		raw: {
+			wire: "anthropic",
+			content: blocks,
+			...(data.stop_reason ? { stopReason: data.stop_reason } : {}),
+		},
 	};
+}
+
+type AnthropicTool = { name?: string; description?: string; input_schema?: unknown; type?: string };
+
+/**
+ * Anthropic Messages request -> OpenAI chat body, for forwarding an Anthropic client to an OpenAI-compatible
+ * upstream. System blocks, text, tool calls and tool results carry over; thinking, images and server tools do not.
+ */
+export function anthropicToChatBody(body: Record<string, unknown>): Record<string, unknown> {
+	const messages = anthropicMessages(body).map(({ blocks: _blocks, ...m }) => m);
+	const out: Record<string, unknown> = { model: body.model, messages };
+	if (typeof body.max_tokens === "number") out.max_tokens = body.max_tokens;
+	for (const k of ["temperature", "top_p"]) if (typeof body[k] === "number") out[k] = body[k];
+	if (Array.isArray(body.stop_sequences)) out.stop = body.stop_sequences;
+	const tools = ((Array.isArray(body.tools) ? body.tools : []) as AnthropicTool[]).filter((t) => t.input_schema);
+	if (tools.length)
+		out.tools = tools.map((t) => ({
+			type: "function",
+			function: { name: t.name ?? "", description: t.description ?? "", parameters: t.input_schema },
+		}));
+	const tc = body.tool_choice as { type?: string; name?: string } | undefined;
+	if (tc?.type === "any") out.tool_choice = "required";
+	else if (tc?.type === "auto" || tc?.type === "none") out.tool_choice = tc.type;
+	else if (tc?.type === "tool" && tc.name) out.tool_choice = { type: "function", function: { name: tc.name } };
+	return out;
 }

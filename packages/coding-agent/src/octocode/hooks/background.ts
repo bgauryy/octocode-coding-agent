@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { HookEvent } from "./catalog.ts";
@@ -41,7 +41,7 @@ function backgroundContext(stdout: string): string | undefined {
 }
 
 /** Own background processes and pending context for one live session, independently of a foreground turn. */
-export function registerBackgroundHooks(api: ExtensionAPI) {
+export function registerBackgroundHooks(api: FeatureSetup) {
 	let controller = new AbortController();
 	let closed = false;
 	const active = new Set<Promise<void>>();
@@ -59,22 +59,20 @@ export function registerBackgroundHooks(api: ExtensionAPI) {
 			closed = false;
 		}
 	};
-	api.on("session_start", async () => reset(false));
-	api.on("session_shutdown", async () => reset(true));
+	api.bus.on("session_start", async () => reset(false));
+	api.bus.on("session_shutdown", async () => reset(true));
 	const takeContext = () => {
 		if (!pending.length) return undefined;
-		const content = capContext(
-			renderInstruction("notices/hooks/context.md", { source: "background", text: pending.join("\n\n") }),
-		);
+		const content = capContext(renderPrompt("hooks/context.md", { source: "background", text: pending.join("\n\n") }));
 		pending = [];
 		return { customType: "octocode-hook-context", content, display: false };
 	};
-	api.on("before_agent_start", async (_event, ctx) => {
+	api.bus.on("before_agent_start", async (_event, ctx) => {
 		if (ctx.signal?.aborted) return;
 		const message = takeContext();
 		return message ? { message } : undefined;
 	});
-	api.on("turn_end", async (event, ctx) => {
+	api.bus.on("turn_end", async (event, ctx) => {
 		if (
 			ctx.signal?.aborted ||
 			!event.toolResults?.length ||

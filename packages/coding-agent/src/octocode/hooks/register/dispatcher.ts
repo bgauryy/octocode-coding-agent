@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../../utils/git-repository.ts";
@@ -29,7 +29,7 @@ import {
 
 /** The shared hook runner: `dispatch` runs the hooks of one event, `reportFailure` says once per event that a dispatch itself failed. */
 export function createDispatcher(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	timings: Map<string, HookTiming>,
 	onFailure: HookFailureSink | undefined,
@@ -47,7 +47,7 @@ export function createDispatcher(
 	/** Commands already reported as slow, so each is reported once per Octocode process. */
 	const slowWarned = new Set<string>();
 	const timeHook = async (
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		event: HookEvent,
 		hook: HookHandler,
 		run: () => ReturnType<typeof runHook>,
@@ -85,7 +85,7 @@ export function createDispatcher(
 	 * A PermissionRequest prompt answer never decides the approval (docs/hooks.md): a malformed one is a hook failure, so
 	 * `failClosed` denies, and the reason of an `ok: false` is shown, once per hook and reason, instead of being dropped.
 	 */
-	const observePermissionPrompt = (ctx: ExtensionContext, hook: HookHandler, observed: HookVerdict): HookVerdict => {
+	const observePermissionPrompt = (ctx: FeatureContext, hook: HookHandler, observed: HookVerdict): HookVerdict => {
 		if (observed.error) return { error: observed.error };
 		if (observed.block) {
 			const reason = clipText(redactSecrets(observed.block), 200);
@@ -102,7 +102,7 @@ export function createDispatcher(
 	 * way the user sees a warning (once per hook, with a UI) and the audit records it. Returns the block reason when failing closed.
 	 */
 	const hookFailed = (
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		hook: HookHandler,
 		failure: string,
 		target: string,
@@ -212,7 +212,7 @@ export function createDispatcher(
 						ctx.cwd,
 						env,
 						signal,
-						boundMcpHookCaller(api.events, ctx, event),
+						boundMcpHookCaller(api.channels, ctx, event),
 						hook.type === "prompt" ? createPromptEvaluator(ctx) : undefined,
 					),
 				),

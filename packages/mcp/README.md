@@ -16,7 +16,7 @@ The official SDK owns JSON-RPC validation, serialization, handshake, dispatch an
 
 The low-level client does not discover the coding agent's `mcp.json` files or implement its `/mcp` manager. Those belong to the host integration. See [configuration](../coding-agent/docs/configuration.md#where-each-configuration-belongs) for global/workspace locations and the [MCP guide](../coding-agent/docs/mcp.md) for enable/disable, tool inspection, exposure, authentication and caching.
 
-How tools reach the model (`declared`, `compact`, `json`), exposure and assignment are documented for users in the [MCP guide](../coding-agent/docs/mcp.md) and [MCP reference](../coding-agent/docs/mcp-reference.md#presentation-modes). Octocode ships no description overrides: the model reads each server's own text. In `compact` mode a user can store overrides for their own servers (`octocode mcp compact apply`, the `octocode-context-optimization` skill); each is keyed on the hash of the upstream text it replaces, applies only while that text is unchanged and otherwise fails open to the server's text (`resolveServerFile`).
+How tools reach the model (`declared`, `compact`, `json`), exposure and assignment are documented for users in the [MCP guide](../coding-agent/docs/mcp.md) and [MCP reference](../coding-agent/docs/mcp-reference.md#presentation-modes). The model reads each server's own text; descriptions, schemas and instructions are never rewritten.
 
 ## Usage
 

@@ -4,18 +4,19 @@ import {
 	type Focusable,
 	fuzzyFilter,
 	getKeybindings,
-	Input,
+	ListView,
 	Spacer,
 	Text,
 	TruncatedText,
 	type TUI,
 } from "@octocodeai/octocode-tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
+import { providerAccessLabel } from "../../../core/provider-label.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyHint } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyHint, keyText, moveHint, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
 import {
 	type DefaultModelReference,
 	type DefaultModelContext,
@@ -29,31 +30,32 @@ import {
 } from "./model-selector/model-items.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { filterByProvider, providerLine, providersOf, stepProvider } from "./model-selector/provider-filter.ts";
-import { updateModelList } from "./model-selector/list-view.ts";
-import { ModelPickerHints } from "./model-selector/picker-hints.ts";
+import { ModelDetailPanel } from "./model-selector/detail-panel.ts";
+import { emptyModelListText } from "./model-selector/empty-state.ts";
+import { modelRowLines } from "./model-selector/rows.ts";
 import { type SwitchChoice, SwitchChoiceSlot } from "./model-selector/switch-choice.ts";
+import { listRows, listTheme } from "./list-kit.ts";
+
+/** Lines around the list: borders, title, default, scope and provider lines, the panel, hints. */
+const CHROME_ROWS = 18;
+/** Model rows while the full details show under the list. */
+const DETAIL_LIST_ROWS = 3;
 
 /**
- * Component that renders a model selector with search
+ * The /model picker: a `⌕` search line over the models grouped by provider, the highlighted model's facts under it,
+ * and the switch question after Enter when a default can be saved. Printable keys always search (a bare `d` too).
  */
 export class ModelSelectorComponent extends Container implements Focusable {
-	private searchInput: Input;
-
-	// Focusable implementation - propagate to searchInput for IME cursor positioning
-	private _focused = false;
+	private readonly list: ListView<ModelItem>;
 	get focused(): boolean {
-		return this._focused;
+		return this.list.focused;
 	}
 	set focused(value: boolean) {
-		this._focused = value;
-		this.searchInput.focused = value;
+		this.list.focused = value;
 	}
-	private listContainer: Container;
 	private allModels: ModelItem[] = [];
 	private scopedModelItems: ModelItem[] = [];
 	private activeModels: ModelItem[] = [];
-	private filteredModels: ModelItem[] = [];
-	private selectedIndex: number = 0;
 	private currentModel?: Model<any>;
 	private modelRuntime: ModelRuntime;
 	private onSelectCallback: (model: Model<any>) => void;
@@ -74,8 +76,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private refreshTimeout?: ReturnType<typeof setTimeout>;
 	private closed = false;
 	private details = false;
-	private detailOffset = 0;
-	private layoutWidth = 80;
+	private readonly panel: ModelDetailPanel;
+	private readonly hints = new HintBar([]);
 	private choiceSlot = new SwitchChoiceSlot();
 
 	constructor(
@@ -102,56 +104,96 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.onSelectAsDefaultCallback = onSelectAsDefault;
 		this.onCancelCallback = onCancel;
 
-		this.addChild(new DynamicBorder());
+		this.list = new ListView<ModelItem>({
+			items: [],
+			maxRows: this.listRowBudget(),
+			theme: listTheme(),
+			mark: false,
+			search: {
+				text: (item) => this.searchText(item),
+				filter: (items, query) => this.filter(items, query),
+				placeholder: "type to search",
+			},
+			row: (item, state) => this.row(item, state),
+		});
+		this.list.onSelect = (item) => this.handleSelect(item.model);
+		this.list.onCancel = () => {
+			this.dispose();
+			this.onCancelCallback();
+		};
+		this.panel = new ModelDetailPanel(() => ({
+			selected: this.list.getSelectedItem(),
+			runtime: this.modelRuntime,
+			details: this.details,
+			error: this.errorMessage,
+			refresh: this.refreshStatusMessage,
+			refreshed: this.refreshStatusSuccess,
+		}));
 
-		this.addChild(new Text(theme.fg("accent", theme.bold("Choose a model for this chat")), 0, 0));
-		this.addChild(
-			new TruncatedText(
-				theme.fg(
-					"muted",
-					defaultModel
-						? `Startup default (${defaultContext?.source ?? "global"}): ${defaultModel.provider}/${defaultModel.id}`
-						: "Startup default: automatic",
-				),
-				0,
-				0,
-			),
-		);
+		this.addChild(new DynamicBorder());
+		this.addChild(new Text(theme.fg("accent", theme.bold("Choose a model for this chat")), 1, 0));
+		const startup = defaultModel
+			? `Startup default (${defaultContext?.source ?? "global"}): ${defaultModel.provider}/${defaultModel.id}`
+			: "Startup default: automatic";
+		this.addChild(new TruncatedText(theme.fg("muted", startup), 1, 0));
 		if (scopedModels.length > 0) {
-			this.scopeText = new Text(this.getScopeText(), 0, 0);
+			this.scopeText = new Text(this.getScopeText(), 1, 0);
 			this.addChild(this.scopeText);
 		}
-		this.providerText = new Text(providerLine(undefined), 0, 0);
+		this.providerText = new Text(providerLine(undefined), 1, 0);
 		this.addChild(this.providerText);
-		if (scopedModels.length === 0) this.addChild(new Spacer(1));
-
-		this.searchInput = new Input();
-		if (initialSearchInput) {
-			this.searchInput.setValue(initialSearchInput);
-		}
-		this.searchInput.onSubmit = () => {
-			// Enter on search input selects the first filtered item
-			if (this.filteredModels[this.selectedIndex]) {
-				this.handleSelect(this.filteredModels[this.selectedIndex].model);
-			}
-		};
-		this.addChild(this.searchInput);
-
 		this.addChild(new Spacer(1));
-
-		this.listContainer = new Container();
-		this.addChild(this.listContainer);
+		this.addChild(this.list);
+		this.addChild(this.panel);
 		this.addChild(this.choiceSlot);
-		this.addChild(new ModelPickerHints(Boolean(this.onSelectAsDefaultCallback)));
-
+		this.addChild(this.hints);
 		this.addChild(new DynamicBorder());
 
 		// Render the current snapshot immediately, then refresh in the background.
 		this.loadModelsFromSnapshot();
-		if (initialSearchInput) this.filterModels(initialSearchInput);
-		else this.updateList();
+		this.showModels();
+		if (initialSearchInput) this.list.setQuery(initialSearchInput);
+		else this.selectModel(this.currentModel);
+		this.syncChrome();
 		this.tui.requestRender();
 		void this.refreshModels();
+	}
+
+	private listRowBudget(): number {
+		if (this.details) return DETAIL_LIST_ROWS;
+		return listRows((this.tui as Partial<TUI>).terminal?.rows, CHROME_ROWS, 10);
+	}
+
+	private searchText(item: ModelItem): string {
+		const defaultText = this.isDefaultModel(item.model) ? " default" : "";
+		return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
+	}
+
+	/** Fuzzy search; `provider/` keeps one provider, and a prefix of `default` lists the default model first. */
+	private filter(items: readonly ModelItem[], query: string): ModelItem[] {
+		const candidates = query.endsWith("/") ? items.filter((item) => item.provider === query.slice(0, -1)) : [...items];
+		const filtered = fuzzyFilter(candidates, query, (item) => this.searchText(item));
+		if (isDefaultSearch(query)) {
+			const defaults = items.filter((item) => this.isDefaultModel(item.model));
+			return [...defaults, ...filtered.filter((item) => !defaults.includes(item))];
+		}
+		return this.scope === "all" ? groupModelItems(filtered) : filtered;
+	}
+
+	/** A provider heading where the provider changes or the window starts, then the model row. */
+	private row(item: ModelItem, state: { selected: boolean; width: number }): string[] {
+		const items = this.list.getItems();
+		const index = items.indexOf(item);
+		const heading = index === this.list.visibleRange().start || items[index - 1]?.provider !== item.provider;
+		return modelRowLines(
+			item,
+			{ ...state, heading },
+			{
+				current: modelsAreEqual(this.currentModel, item.model),
+				isDefault: this.isDefaultModel(item.model),
+				kind: providerAccessLabel(this.modelRuntime, item.provider),
+			},
+		);
 	}
 
 	private loadModelsFromSnapshot(): void {
@@ -173,10 +215,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				model: scoped.model,
 			}));
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
-		this.filteredModels = this.activeModels;
-		const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-		this.selectedIndex =
-			currentIndex >= 0 ? currentIndex : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 	}
 
 	private async refreshModels(): Promise<void> {
@@ -203,9 +241,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					this.refreshStatusSuccess = true;
 				}
 			}
-			const selected = this.filteredModels[this.selectedIndex]?.model;
+			// Catalog refresh keeps the browsed model when it remains available.
+			const selected = this.list.getSelectedItem()?.model;
 			this.loadModelsFromSnapshot();
-			this.filterModels(this.searchInput.getValue(), selected);
+			this.showModels();
+			this.selectModel(selected);
+			this.syncChrome();
 			this.tui.requestRender();
 		} catch (error) {
 			if (this.closed) return;
@@ -213,7 +254,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.errorMessage = timedOut
 				? "Model refresh timed out; showing cached models."
 				: `Could not refresh model catalogs: ${errorMessage(error)}`;
-			this.updateList();
 			this.tui.requestRender();
 		} finally {
 			if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
@@ -237,73 +277,55 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		return isDefaultModel(this.defaultModel, model);
 	}
 
+	/** Hands the list the active scope's models from the shown provider; the cursor keeps its index, clamped. */
+	private showModels(): void {
+		const shown = filterByProvider(this.activeModels, this.providerFilter);
+		this.providerFilter = shown.filter;
+		this.providerText.setText(providerLine(shown.filter));
+		this.list.setItems(shown.items);
+	}
+
+	private selectModel(model: Model<any> | undefined): void {
+		if (!model) return;
+		const index = this.list.getItems().findIndex((item) => modelsAreEqual(model, item.model));
+		if (index >= 0) this.list.setSelectedIndex(index);
+	}
+
 	private setScope(scope: ModelScope): void {
 		if (this.scope === scope) return;
 		this.scope = scope;
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
-		const currentIndex = this.activeModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-		this.selectedIndex = currentIndex >= 0 ? currentIndex : 0;
-		this.filterModels(this.searchInput.getValue());
-		if (this.scopeText) {
-			this.scopeText.setText(this.getScopeText());
-		}
+		this.list.setSelectedIndex(0);
+		this.showModels();
+		this.selectModel(this.currentModel);
+		this.scopeText?.setText(this.getScopeText());
 	}
 
-	private filterModels(query: string, selected?: Model<any>): void {
-		const shown = filterByProvider(this.activeModels, this.providerFilter);
-		this.providerFilter = shown.filter;
-		this.providerText.setText(providerLine(shown.filter));
-		const pool = shown.items;
-		if (query) {
-			const candidates = query.endsWith("/") ? pool.filter((item) => item.provider === query.slice(0, -1)) : pool;
-			const filtered = fuzzyFilter(candidates, query, (item) => {
-				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
-				return `${getModelSelectorSearchText({ id: item.id, provider: item.provider, name: item.model.name })}${defaultText}`;
+	/** The empty line names its recovery key, and the hints keep only the keys that act on what is shown. */
+	private syncChrome(): void {
+		const query = this.list.getQuery();
+		const empty = this.list.getItems().length === 0;
+		if (!empty) this.list.setEmpty(undefined);
+		else if (query.trim()) this.list.setEmpty({ message: emptyModelListText(this.modelRuntime, query) });
+		else if (this.scope === "scoped")
+			this.list.setEmpty({
+				message: "No available scoped shortcuts",
+				recover: [keyText("tui.input.tab"), "all models"],
 			});
-			if (isDefaultSearch(query)) {
-				const defaultItems = pool.filter((item) => this.isDefaultModel(item.model));
-				const defaultKeys = new Set(defaultItems.map((item) => `${item.provider}\0${item.id}`));
-				this.filteredModels = [
-					...defaultItems,
-					...filtered.filter((item) => !defaultKeys.has(`${item.provider}\0${item.id}`)),
-				];
-			} else {
-				this.filteredModels = this.scope === "all" ? groupModelItems(filtered) : filtered;
-			}
-		} else {
-			this.filteredModels = pool;
+		else this.list.setEmpty({ message: emptyModelListText(this.modelRuntime) });
+		const hints: RankedHint[] = [];
+		if (!empty) {
+			// A narrow line keeps the save key over Enter: it is the one key the picker cannot be used without knowing.
+			hints.push(moveHint(1), [keyText("tui.select.confirm"), "select", 1]);
+			if (this.onSelectAsDefaultCallback) hints.push([keyText("app.models.save"), "set default", 0]);
+			hints.push([keyText("app.models.details"), this.details ? "hide details" : "details", 2]);
 		}
-		// Catalog refresh keeps the browsed model when it remains available. A changed
-		// query selects its best match; clearing it keeps the current position clamped.
-		const retained = selected ? this.filteredModels.findIndex((item) => modelsAreEqual(selected, item.model)) : -1;
-		this.selectedIndex =
-			retained >= 0 ? retained : query ? 0 : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
-		this.updateList();
-	}
-
-	private updateList(): void {
-		this.detailOffset = updateModelList(this.listContainer, {
-			items: this.filteredModels,
-			selectedIndex: this.selectedIndex,
-			currentModel: this.currentModel,
-			defaultModel: this.defaultModel,
-			runtime: this.modelRuntime,
-			width: this.layoutWidth,
-			details: this.details,
-			detailOffset: this.detailOffset,
-			searched: this.searchInput.getValue().trim() !== "",
-			scoped: this.scope === "scoped",
-			error: this.errorMessage,
-			refresh: this.refreshStatusMessage,
-			refreshed: this.refreshStatusSuccess,
-		});
+		hints.push([keyText("tui.select.cancel"), "cancel", 0]);
+		this.hints.setHints(hints);
 	}
 
 	override render(width: number): string[] {
-		if (this.layoutWidth !== width) {
-			this.layoutWidth = width;
-			this.updateList();
-		}
+		this.list.setMaxRows(this.listRowBudget());
 		return super.render(width);
 	}
 
@@ -314,70 +336,32 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			return this.tui.requestRender();
 		}
 		const kb = getKeybindings();
-		if (this.details && (kb.matches(keyData, "tui.select.pageUp") || kb.matches(keyData, "tui.select.pageDown"))) {
-			this.detailOffset += kb.matches(keyData, "tui.select.pageUp") ? -5 : 5;
-			this.updateList();
-			return;
-		}
-		if (kb.matches(keyData, "tui.select.pageUp") || kb.matches(keyData, "tui.select.pageDown")) {
-			const step = kb.matches(keyData, "tui.select.pageUp") ? -3 : 3;
-			this.selectedIndex = Math.max(0, Math.min(this.filteredModels.length - 1, this.selectedIndex + step));
-			this.updateList();
+		const pageUp = kb.matches(keyData, "tui.select.pageUp");
+		if (this.details && (pageUp || kb.matches(keyData, "tui.select.pageDown"))) {
+			this.panel.scroll(pageUp ? -5 : 5);
 			return;
 		}
 		if (kb.matches(keyData, "app.models.details")) {
 			this.details = !this.details;
-			this.detailOffset = 0;
-			this.updateList();
-			return;
-		}
-		if (kb.matches(keyData, "tui.input.tab")) {
-			if (this.scopedModels.length > 0) {
-				const nextScope: ModelScope = this.scope === "all" ? "scoped" : "all";
-				this.setScope(nextScope);
-			}
-			return;
-		}
-		if (kb.matches(keyData, "tui.editor.cursorLeft") || kb.matches(keyData, "tui.editor.cursorRight")) {
+			this.panel.reset();
+		} else if (kb.matches(keyData, "tui.input.tab")) {
+			if (this.scopedModels.length > 0) this.setScope(this.scope === "all" ? "scoped" : "all");
+		} else if (kb.matches(keyData, "tui.editor.cursorLeft") || kb.matches(keyData, "tui.editor.cursorRight")) {
 			const step = kb.matches(keyData, "tui.editor.cursorLeft") ? -1 : 1;
 			this.providerFilter = stepProvider(providersOf(this.activeModels), this.providerFilter, step);
-			this.selectedIndex = 0;
-			this.filterModels(this.searchInput.getValue());
-			return;
-		}
-		// Up arrow - wrap to bottom when at top
-		if (kb.matches(keyData, "tui.select.up")) {
-			if (this.filteredModels.length === 0) return;
-			this.selectedIndex = this.selectedIndex === 0 ? this.filteredModels.length - 1 : this.selectedIndex - 1;
-			this.updateList();
-		}
-		// Down arrow - wrap to top when at bottom
-		else if (kb.matches(keyData, "tui.select.down")) {
-			if (this.filteredModels.length === 0) return;
-			this.selectedIndex = this.selectedIndex === this.filteredModels.length - 1 ? 0 : this.selectedIndex + 1;
-			this.updateList();
-		} else if (kb.matches(keyData, "tui.select.confirm")) {
-			const selectedModel = this.filteredModels[this.selectedIndex];
-			if (selectedModel) {
-				this.handleSelect(selectedModel.model);
-			}
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
-			this.dispose();
-			this.onCancelCallback();
-		} else if (
-			this.onSelectAsDefaultCallback &&
-			(kb.matches(keyData, "app.models.save") || (keyData === "d" && this.searchInput.getValue() === ""))
-		) {
-			const selectedModel = this.filteredModels[this.selectedIndex];
-			if (selectedModel) {
+			this.list.setSelectedIndex(0);
+			this.showModels();
+		} else if (this.onSelectAsDefaultCallback && kb.matches(keyData, "app.models.save")) {
+			const selected = this.list.getSelectedItem();
+			if (selected) {
 				this.dispose();
-				this.onSelectAsDefaultCallback(selectedModel.model);
+				this.onSelectAsDefaultCallback(selected.model);
 			}
+			return;
 		} else {
-			const query = this.searchInput.getValue();
-			this.searchInput.handleInput(keyData);
-			if (this.searchInput.getValue() !== query) this.filterModels(this.searchInput.getValue());
+			this.list.handleInput(keyData);
 		}
+		if (!this.closed) this.syncChrome();
 	}
 
 	/** Enter: ask what to do when a default can be saved, otherwise switch this chat. */
@@ -394,7 +378,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		if (choice !== "chat") this.onSelectAsDefaultCallback?.(model);
 	}
 
-	getSearchInput(): Input {
-		return this.searchInput;
+	/** The search text the list filters by. */
+	getQuery(): string {
+		return this.list.getQuery();
 	}
 }

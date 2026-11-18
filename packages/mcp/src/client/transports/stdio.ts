@@ -134,7 +134,9 @@ export interface StdioTransportOptions {
 export class StdioTransport extends TransportEvents implements McpTransport {
 	readonly options: Readonly<StdioTransportOptions>;
 	private child: ChildProcess | undefined;
-	private stdoutBuffer = Buffer.alloc(0);
+	/** Bytes of the message being read, as they arrived: none of them holds a newline. */
+	private stdoutChunks: Buffer[] = [];
+	private stdoutBytes = 0;
 	/** Set after an oversized message was dropped before its newline: the bytes up to that newline still belong to it. */
 	private discardingLine = false;
 	private stderrBuffer = Buffer.alloc(0);
@@ -254,10 +256,11 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 
 	/** No more messages will count: report a message cut short, then tell the client. */
 	private endStream(): void {
-		if (this.stdoutBuffer.toString("utf8").trim()) {
+		if (Buffer.concat(this.stdoutChunks).toString("utf8").trim()) {
 			this.emitError(new Error("MCP stdio server closed with an incomplete JSON-RPC message"));
 		}
-		this.stdoutBuffer = Buffer.alloc(0);
+		this.stdoutChunks = [];
+		this.stdoutBytes = 0;
 		this.discardingLine = false;
 		this.outstanding.clear();
 		this.emitClose();
@@ -302,45 +305,56 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		});
 	}
 
+	/**
+	 * Splits stdout into newline-terminated messages. Only the new chunk is scanned, and a message is joined once when its
+	 * newline arrives, so a large message costs time in proportion to its size, not to its size times its chunk count.
+	 */
 	private handleStdout(chunk: Buffer | string): void {
-		this.stdoutBuffer = Buffer.concat([this.stdoutBuffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+		const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 		const maxMessageBytes = this.options.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
-		while (true) {
-			const newline = this.stdoutBuffer.indexOf(0x0a);
-			if (newline < 0) {
-				if (this.discardingLine) this.stdoutBuffer = Buffer.alloc(0);
-				else if (this.stdoutBuffer.length > maxMessageBytes) {
-					const head = this.stdoutBuffer.subarray(0, OVERSIZE_PROBE_BYTES);
-					this.stdoutBuffer = Buffer.alloc(0);
-					this.discardingLine = true;
-					this.rejectOversized(head, undefined, maxMessageBytes);
-				}
-				return;
-			}
-			const line = this.stdoutBuffer.subarray(0, newline);
-			this.stdoutBuffer = this.stdoutBuffer.subarray(newline + 1);
+		let start = 0;
+		for (let newline = data.indexOf(0x0a); newline >= 0; newline = data.indexOf(0x0a, start)) {
+			const part = data.subarray(start, newline);
+			start = newline + 1;
+			const pending = this.stdoutChunks;
+			this.stdoutChunks = [];
+			this.stdoutBytes = 0;
 			if (this.discardingLine) {
 				this.discardingLine = false;
 				continue;
 			}
-			if (line.length > maxMessageBytes) {
-				this.rejectOversized(
-					line.subarray(0, OVERSIZE_PROBE_BYTES),
-					line.subarray(-OVERSIZE_PROBE_BYTES),
-					maxMessageBytes,
-				);
-				continue;
-			}
-			const text = line.toString("utf8").replace(/\r$/, "");
-			if (!text.trim()) continue;
-			try {
-				// One error for every malformed frame (unparsable JSON or a non-message), not the validator's issue list.
-				const message = parseJsonRpcMessage(parseFrame(text));
-				if (!("method" in message)) this.outstanding.delete(message.id);
-				this.emitMessage(message);
-			} catch (error) {
-				this.emitError(error);
-			}
+			this.handleLine(pending.length > 0 ? Buffer.concat([...pending, part]) : part, maxMessageBytes);
+		}
+		const rest = data.subarray(start);
+		if (this.discardingLine || rest.length === 0) return;
+		this.stdoutChunks.push(rest);
+		this.stdoutBytes += rest.length;
+		if (this.stdoutBytes <= maxMessageBytes) return;
+		const head = Buffer.concat(this.stdoutChunks, Math.min(OVERSIZE_PROBE_BYTES, this.stdoutBytes));
+		this.stdoutChunks = [];
+		this.stdoutBytes = 0;
+		this.discardingLine = true;
+		this.rejectOversized(head, undefined, maxMessageBytes);
+	}
+
+	private handleLine(line: Buffer, maxMessageBytes: number): void {
+		if (line.length > maxMessageBytes) {
+			this.rejectOversized(
+				line.subarray(0, OVERSIZE_PROBE_BYTES),
+				line.subarray(-OVERSIZE_PROBE_BYTES),
+				maxMessageBytes,
+			);
+			return;
+		}
+		const text = line.toString("utf8").replace(/\r$/, "");
+		if (!text.trim()) return;
+		try {
+			// One error for every malformed frame (unparsable JSON or a non-message), not the validator's issue list.
+			const message = parseJsonRpcMessage(parseFrame(text));
+			if (!("method" in message)) this.outstanding.delete(message.id);
+			this.emitMessage(message);
+		} catch (error) {
+			this.emitError(error);
 		}
 	}
 

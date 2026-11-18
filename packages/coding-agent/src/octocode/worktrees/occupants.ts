@@ -1,5 +1,6 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TmuxPane } from "../terminal-launch/tmux.ts";
+import { tmuxMark } from "../shared/tmux-mark.ts";
 import { canonical } from "./repo.ts";
 import { insideWorktree } from "./status.ts";
 
@@ -13,10 +14,7 @@ export interface WorktreeOccupants {
 export function agentLabel(member: Member, panes: readonly TmuxPane[]): string {
 	const parts = [member.parentId ? `${member.role} under ${member.parentId}` : member.role, member.status];
 	parts.push(`pid ${member.pid}`);
-	if (member.tmuxPane) {
-		const pane = panes.find((candidate) => candidate.id === member.tmuxPane);
-		parts.push(pane ? `tmux ${pane.label}` : `tmux pane ${member.tmuxPane}`);
-	}
+	if (member.tmuxPane) parts.push(tmuxMark(member.tmuxPane, panes));
 	return `${member.id} (${parts.join(", ")})`;
 }
 

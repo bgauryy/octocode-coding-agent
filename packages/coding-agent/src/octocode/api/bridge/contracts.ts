@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 
 /** What the API needs from the team (kept as an interface so the API domain stays independent of it). */
@@ -39,10 +39,10 @@ export interface ExternalAdmission {
 export type TurnCeiling = "workspace";
 
 export interface ApiOperations {
-	messageSend?(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
+	messageSend?(message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal): Promise<void>;
 	/** Whether this message may reach the session (a permission check); throws what the sender reads. `onAsk`: it waits for the user. */
-	admit?(claim: ExternalAdmission, ctx: ExtensionContext, signal?: AbortSignal, onAsk?: () => void): Promise<void>;
+	admit?(claim: ExternalAdmission, ctx: FeatureContext, signal?: AbortSignal, onAsk?: () => void): Promise<void>;
 	/** Holds the session's tool calls to `ceiling` until it is called with `undefined`: the turn an API client started. */
 	capTurn?(ceiling: TurnCeiling | undefined): void;
-	externalCall?(params: unknown, ctx: ExtensionContext): Promise<unknown>;
+	externalCall?(params: unknown, ctx: FeatureContext): Promise<unknown>;
 }

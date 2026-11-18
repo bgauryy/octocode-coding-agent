@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ExtensionAPI, ToolDefinition } from "../src/core/features/types.ts";
+import type { FeatureSetup, ToolDefinition } from "../src/core/features/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 const tool = (name: string, exposure: ToolDefinition["exposure"] = "direct"): ToolDefinition => ({
 	name,
@@ -31,13 +33,14 @@ describe("AgentSession tool registration", () => {
 
 	afterEach(() => rmSync(tempDir, { recursive: true, force: true }));
 
-	async function session(register: (api: ExtensionAPI) => void) {
+	async function session(register: (api: FeatureSetup) => void) {
 		const settingsManager = SettingsManager.create(tempDir, agentDir);
 		const resourceLoader = new DefaultResourceLoader({
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories: [register],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([register]),
 		});
 		await resourceLoader.reload();
 		const { session } = await createTestSession({
@@ -48,17 +51,17 @@ describe("AgentSession tool registration", () => {
 			sessionManager: SessionManager.create(tempDir, join(agentDir, "sessions"), { id: "registration" }),
 			resourceLoader,
 		});
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 		return session;
 	}
 
 	it("registerTools makes every tool of a catalog available with one registry refresh", async () => {
-		let host: ExtensionAPI | undefined;
+		let host: FeatureSetup | undefined;
 		let refreshes = 0;
 		const live = await session((api) => {
 			host = api;
 			// Every registry refresh rebuilds the loadout, which runs each active tool's public `prepareLoadout` hook once.
-			api.registerTool({
+			api.tools.register({
 				...tool("loadout_probe"),
 				prepareLoadout: () => {
 					refreshes++;
@@ -68,22 +71,22 @@ describe("AgentSession tool registration", () => {
 		});
 		refreshes = 0;
 
-		host!.registerTools(Array.from({ length: 25 }, (_, index) => tool(`catalog_${index}`)));
+		host!.tools.registerAll(Array.from({ length: 25 }, (_, index) => tool(`catalog_${index}`)));
 
 		expect(refreshes).toBe(1);
 		for (let index = 0; index < 25; index++) expect(live.getActiveToolNames()).toContain(`catalog_${index}`);
-		host!.registerTools([]);
+		host!.tools.registerAll([]);
 		expect(refreshes).toBe(1);
 	});
 
 	it("registerTools stores nothing when one definition is invalid", async () => {
-		let host: ExtensionAPI | undefined;
+		let host: FeatureSetup | undefined;
 		const live = await session((api) => {
 			host = api;
 		});
 		const bad = { ...tool("bad_tool"), parameters: undefined } as unknown as ToolDefinition;
 
-		expect(() => host!.registerTools([tool("good_tool"), bad])).toThrow(/object parameter schema/);
+		expect(() => host!.tools.registerAll([tool("good_tool"), bad])).toThrow(/object parameter schema/);
 
 		expect(live.getAllTools().map((entry) => entry.name)).not.toContain("good_tool");
 	});
@@ -96,19 +99,19 @@ describe("AgentSession tool registration", () => {
 		["plain_tool", "direct"],
 	] as const) {
 		it(`keeps a deselected ${exposure} tool ${name} inactive when it is withdrawn (hidden) and registered again`, async () => {
-			let host: ExtensionAPI | undefined;
+			let host: FeatureSetup | undefined;
 			const live = await session((api) => {
 				host = api;
-				api.registerTool(tool(name, exposure));
-				api.registerTool(tool("mcp__srv__b"));
+				api.tools.register(tool(name, exposure));
+				api.tools.register(tool("mcp__srv__b"));
 			});
 			expect(live.getActiveToolNames()).toContain(name);
 
 			live.setActiveToolsByName(live.getActiveToolNames().filter((active) => active !== name));
 			expect(live.getActiveToolNames()).not.toContain(name);
 
-			host!.registerTool(tool(name, "hidden"));
-			host!.registerTool(tool(name, exposure));
+			host!.tools.register(tool(name, "hidden"));
+			host!.tools.register(tool(name, exposure));
 
 			expect(live.getActiveToolNames()).toContain("mcp__srv__b");
 			expect(live.getActiveToolNames()).not.toContain(name);
@@ -120,14 +123,14 @@ describe("AgentSession tool registration", () => {
 	}
 
 	it("reactivates a tool the user kept when its server withdraws and re-offers it", async () => {
-		let host: ExtensionAPI | undefined;
+		let host: FeatureSetup | undefined;
 		const live = await session((api) => {
 			host = api;
-			api.registerTool(tool("mcp__srv__a"));
+			api.tools.register(tool("mcp__srv__a"));
 		});
-		host!.registerTool(tool("mcp__srv__a", "hidden"));
+		host!.tools.register(tool("mcp__srv__a", "hidden"));
 		expect(live.getActiveToolNames()).not.toContain("mcp__srv__a");
-		host!.registerTool(tool("mcp__srv__a", "direct"));
+		host!.tools.register(tool("mcp__srv__a", "direct"));
 		expect(live.getActiveToolNames()).toContain("mcp__srv__a");
 	});
 });

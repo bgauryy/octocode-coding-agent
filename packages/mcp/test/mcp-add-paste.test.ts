@@ -125,7 +125,7 @@ async function started(servers: McpServerEntry[] = [], trusted = false) {
 const registryEntry = (name: string): McpServerEntry => ({
 	name,
 	source: "test",
-	scope: "extension",
+	scope: "feature",
 	config: { command: "node", args: [], enabled: false },
 });
 

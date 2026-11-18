@@ -41,64 +41,76 @@ describe("the folder trust prompt", () => {
 		expect(shown).toContain("run commands");
 		expect(shown).toContain("Nothing here has been read or run yet.");
 		expect(shown).toContain("Found here: AGENTS.md, .octocode/settings.json, .mcp.json");
-		expect(shown).toContain("[1] Trust this folder");
-		expect(shown).toContain("(recommended)");
+		expect(shown).toMatch(/^› 1\. Not now {2}exit; ask again next time$/m);
+		expect(shown).toMatch(/^ {2}2\. Trust this folder {2}\(recommended\)$/m);
+		expect(shown).toMatch(/^ {2}5\. Do not trust/m);
 		expect(shown).toContain("Trust parent packages");
 		expect(shown).toContain("everything under ~/code/app/packages");
 	});
 
 	it.each([
-		["1", "folder"],
-		["2", "parent"],
-		["3", "grandparent"],
-		["n", "not-now"],
-		["d", "refuse"],
-		["D", "refuse"],
-		[ESC, "not-now"],
-	] as const)("key %j chooses %s", (key, expected) => {
+		["1", "not-now"],
+		["2", "folder"],
+		["3", "parent"],
+		["4", "grandparent"],
+		["5", "refuse"],
+	] as const)("number key %j moves to %s and Enter confirms it", (key, expected) => {
 		const { prompt, done } = open();
 		prompt.handleInput(key);
+		expect(done).not.toHaveBeenCalled();
+		prompt.handleInput(ENTER);
 		expect(done).toHaveBeenCalledExactlyOnceWith(expected);
 	});
 
-	it("highlights the narrowest grant, so Enter trusts this folder only", () => {
+	it("Esc answers Not now", () => {
 		const { prompt, done } = open();
-		prompt.handleInput(ENTER);
-		expect(done).toHaveBeenCalledExactlyOnceWith("folder");
+		prompt.handleInput(ESC);
+		expect(done).toHaveBeenCalledExactlyOnceWith("not-now");
 	});
 
-	it("moves with the arrow keys and confirms the highlighted row", () => {
+	it("starts on Not now, so a bare Enter grants nothing", () => {
 		const { prompt, done } = open();
+		prompt.handleInput(ENTER);
+		expect(done).toHaveBeenCalledExactlyOnceWith("not-now");
+	});
+
+	it("moves with the arrow keys, stops at the ends and confirms the highlighted row", () => {
+		const { prompt, done } = open();
+		prompt.handleInput("\x1b[A");
 		prompt.handleInput(DOWN);
 		prompt.handleInput(DOWN);
 		prompt.handleInput(ENTER);
-		expect(done).toHaveBeenCalledExactlyOnceWith("grandparent");
+		expect(done).toHaveBeenCalledExactlyOnceWith("parent");
 	});
 
 	it("answers once, whatever is pressed after", () => {
 		const { prompt, done } = open();
-		prompt.handleInput("d");
-		prompt.handleInput("1");
+		prompt.handleInput("5");
+		prompt.handleInput(ENTER);
+		prompt.handleInput("2");
+		prompt.handleInput(ENTER);
 		prompt.handleInput(ESC);
 		expect(done).toHaveBeenCalledExactlyOnceWith("refuse");
 	});
 
-	it("ignores an Enter typed ahead, but not a deliberate letter", () => {
+	it("ignores an Enter typed ahead; number keys still move the cursor", () => {
 		const { prompt, done } = open(input, 60_000);
+		prompt.handleInput("2");
 		prompt.handleInput(ENTER);
 		expect(done).not.toHaveBeenCalled();
-		prompt.handleInput("1");
-		expect(done).toHaveBeenCalledExactlyOnceWith("folder");
+		expect(prompt.getSelected()).toBe("folder");
 	});
 
 	it("offers no parent rows when the parent is the home folder or the root, and says why", () => {
 		const { prompt, done, text } = open({ path: "/Users/ada/app", projectFiles: [] });
 		const shown = text();
-		expect(shown).not.toContain("[2]");
+		expect(shown).not.toContain("Trust parent");
 		expect(shown).toContain("cannot be trusted");
 		expect(shown).toContain("This folder has no project files yet.");
-		prompt.handleInput("2");
-		expect(done).not.toHaveBeenCalled();
+		expect(shown).toMatch(/1\. Not now[\s\S]*2\. Trust this folder[\s\S]*3\. Do not trust/);
+		prompt.handleInput("4");
+		prompt.handleInput(ENTER);
+		expect(done).toHaveBeenCalledExactlyOnceWith("not-now");
 	});
 
 	it("never offers a grandparent without a parent", () => {
@@ -114,22 +126,23 @@ describe("the folder trust prompt", () => {
 });
 
 describe("the worktree trust question", () => {
-	it("names the worktree and its repository, and maps y, n and Esc", () => {
+	it("names the worktree and its repository; No comes first, 2 then Enter trusts", () => {
 		const answers: boolean[] = [];
-		for (const key of ["y", "n", ESC, ENTER]) {
+		for (const keys of [["2", ENTER], ["1", ENTER], [ESC], [ENTER]]) {
 			const prompt = worktreeTrustPrompt(
 				{ path: "/Users/ada/code/app-wt/feat", from: "/Users/ada/code/app" },
 				(v) => answers.push(v),
 				HOME,
 				0,
 			);
-			if (key === "y")
-				expect(stripAnsi(prompt.render(120).join("\n"))).toContain(
-					"Trust new worktree ~/code/app-wt/feat (from ~/code/app)?",
-				);
-			prompt.handleInput(key);
+			if (keys[0] === "2") {
+				const shown = stripAnsi(prompt.render(120).join("\n"));
+				expect(shown).toContain("Trust new worktree ~/code/app-wt/feat (from ~/code/app)?");
+				expect(shown).toMatch(/^› 1\. No {2}do not create the worktree\n {2}2\. Trust this worktree/m);
+			}
+			for (const key of keys) prompt.handleInput(key);
 		}
-		expect(answers).toEqual([true, false, false, true]);
+		expect(answers).toEqual([true, false, false, false]);
 	});
 });
 

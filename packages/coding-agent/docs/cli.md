@@ -112,7 +112,7 @@ flowchart TD
 | `--disable <id>`         | Disable one for this run (repeatable)                                                                                                                      |
 | `--set <key>=<value>`    | Set a settings key for this run (repeatable)                                                                                                               |
 
-`--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](native-features.md#tool-selection-and-migration). User code extensions are not supported: `--extension`, `-e` and `--no-extensions` are unknown. Built-in features switch with the `extensions` setting (`-builtin:llama.cpp`); MCP is always on unless `--no-mcp`.
+`--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](native-features.md#tool-selection-and-migration). Octocode has no extensions: `--extension`, `-e` and `--no-extensions` are unknown. MCP is always on unless `--no-mcp`.
 
 ### Resources and interface
 

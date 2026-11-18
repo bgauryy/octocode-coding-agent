@@ -26,7 +26,7 @@ type ModelControlsHost = Pick<
 	| "session"
 	| "settingsManager"
 	| "showError"
-	| "showExtensionSelector"
+	| "showSelectorDialog"
 	| "showModelSelector"
 	| "showSelector"
 	| "showStatus"

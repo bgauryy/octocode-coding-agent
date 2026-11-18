@@ -1,15 +1,15 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionToolContext } from "../../src/core/features/index.ts";
+import type { ToolContext } from "../../src/core/features/index.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { MemoryStore } from "../../src/octocode/memory/store.ts";
-import { createMemoryTool } from "../../src/octocode/memory/tool.ts";
+import { createMemoryTool } from "../../src/octocode/native/tools/memory/tool.ts";
 import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const fields = { title: "", body: "", kind: "fact" as const, pinned: false };
 
-function toolContext(): ExtensionToolContext {
+function toolContext(): ToolContext {
 	return {
 		...fakeCtx({ cwd: tmp() }),
 		tools: [],

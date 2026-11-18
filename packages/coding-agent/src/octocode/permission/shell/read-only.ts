@@ -1,4 +1,5 @@
-import { bashSyntax } from "../bash-syntax.ts";
+import { bashSyntax, parseBash } from "../bash-syntax.ts";
+import { programSwap } from "./environment.ts";
 import { programSetting } from "./git-programs.ts";
 import { gitInputIndexOnly, runInput, type RunInput } from "./input-runners.ts";
 import { awkWords, WORD_WRITERS } from "./program-forms.ts";
@@ -280,6 +281,7 @@ function maskedReadOnly(command: string): boolean {
 		// `words` drops the wrappers in front: an input runner among them (`xargs sudo`) may run what its input names.
 		const all = segment.trim().split(/\s+/).filter(Boolean).map(unhide);
 		// A variable set in front or alone (`GIT_PAGER=x git log`, `GIT_PAGER=x; git log`) through which git runs a program.
+		// Other variables are judged by the parse (`parsedReadOnly`), which sees their values.
 		if (all.slice(0, all.length - tokens.length).some((word) => programSetting(word) !== undefined)) return false;
 		const input = runInput(all, 0, all.length - tokens.length);
 		if (tokens.length === 0) {
@@ -323,6 +325,8 @@ export function plainReader(command: string): boolean {
 function parsedReadOnly(command: string): boolean {
 	const syntax = bashSyntax(command);
 	if (syntax.incomplete || syntax.targets.some((target) => target.kind === "write")) return false;
+	// `bashSyntax` lists no assignment or `-v` test: a variable set anywhere, `$(…)` and groups included, is read from the tree.
+	if (parseBash(command, (root) => programSwap(root, true) !== undefined) !== false) return false;
 	return syntax.commands.every((part) => {
 		const literals = part.tokens.map((token) => token.literal);
 		const at = wrappedCommand(literals, 0);

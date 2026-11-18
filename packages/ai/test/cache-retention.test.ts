@@ -51,54 +51,50 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 	});
 
 	describe("Anthropic Provider", () => {
-		it.skipIf(!process.env.ANTHROPIC_API_KEY)(
-			"should use default cache TTL (no ttl field) when OCTOCODE_CACHE_RETENTION is not set",
-			async () => {
-				const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
-				let capturedPayload: any = null;
+		it("should use default cache TTL (no ttl field) when OCTOCODE_CACHE_RETENTION is not set", async () => {
+			const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
+			let capturedPayload: any = null;
 
-				const s = stream(model, context, {
-					onPayload: stopAfterPayload((payload) => {
-						capturedPayload = payload;
-					}),
-				});
+			const s = stream(model, context, {
+				apiKey: "fake-key",
+				onPayload: stopAfterPayload((payload) => {
+					capturedPayload = payload;
+				}),
+			});
 
-				// Consume the stream to trigger the request
-				for await (const _ of s) {
-					// Just consume
-				}
+			// Consume the stream to trigger the request
+			for await (const _ of s) {
+				// Just consume
+			}
 
-				expect(capturedPayload).not.toBeNull();
-				// System prompt should have cache_control without ttl
-				expect(capturedPayload.system).toBeDefined();
-				expect(capturedPayload.system[0].cache_control).toEqual({ type: "ephemeral" });
-			},
-		);
+			expect(capturedPayload).not.toBeNull();
+			// System prompt should have cache_control without ttl
+			expect(capturedPayload.system).toBeDefined();
+			expect(capturedPayload.system[0].cache_control).toEqual({ type: "ephemeral" });
+		});
 
-		it.skipIf(!process.env.ANTHROPIC_API_KEY)(
-			"should use 1h cache TTL when OCTOCODE_CACHE_RETENTION=long",
-			async () => {
-				process.env.OCTOCODE_CACHE_RETENTION = "long";
-				const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
-				let capturedPayload: any = null;
+		it("should use 1h cache TTL when OCTOCODE_CACHE_RETENTION=long", async () => {
+			process.env.OCTOCODE_CACHE_RETENTION = "long";
+			const model = getBuiltinModel("anthropic", "claude-haiku-4-5");
+			let capturedPayload: any = null;
 
-				const s = stream(model, context, {
-					onPayload: stopAfterPayload((payload) => {
-						capturedPayload = payload;
-					}),
-				});
+			const s = stream(model, context, {
+				apiKey: "fake-key",
+				onPayload: stopAfterPayload((payload) => {
+					capturedPayload = payload;
+				}),
+			});
 
-				// Consume the stream to trigger the request
-				for await (const _ of s) {
-					// Just consume
-				}
+			// Consume the stream to trigger the request
+			for await (const _ of s) {
+				// Just consume
+			}
 
-				expect(capturedPayload).not.toBeNull();
-				// System prompt should have cache_control with ttl: "1h"
-				expect(capturedPayload.system).toBeDefined();
-				expect(capturedPayload.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-			},
-		);
+			expect(capturedPayload).not.toBeNull();
+			// System prompt should have cache_control with ttl: "1h"
+			expect(capturedPayload.system).toBeDefined();
+			expect(capturedPayload.system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+		});
 
 		it("should omit ttl for a non-api.anthropic.com baseUrl by default (5-minute tier on other hosts)", async () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";
@@ -280,50 +276,25 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 			},
 		);
 
-		it.skipIf(!process.env.OPENAI_API_KEY)(
-			"should not set prompt_cache_retention when OCTOCODE_CACHE_RETENTION is not set",
-			async () => {
-				const model = getBuiltinModel("openai", "gpt-4o-mini");
-				let capturedPayload: any = null;
+		it("should not set prompt_cache_retention when OCTOCODE_CACHE_RETENTION is not set", async () => {
+			const model = getBuiltinModel("openai", "gpt-4o-mini");
+			let capturedPayload: any = null;
 
-				const s = stream(model, context, {
-					onPayload: stopAfterPayload((payload) => {
-						capturedPayload = payload;
-					}),
-				});
+			const s = stream(model, context, {
+				apiKey: "fake-key",
+				onPayload: stopAfterPayload((payload) => {
+					capturedPayload = payload;
+				}),
+			});
 
-				// Consume the stream to trigger the request
-				for await (const _ of s) {
-					// Just consume
-				}
+			// Consume the stream to trigger the request
+			for await (const _ of s) {
+				// Just consume
+			}
 
-				expect(capturedPayload).not.toBeNull();
-				expect(capturedPayload.prompt_cache_retention).toBeUndefined();
-			},
-		);
-
-		it.skipIf(!process.env.OPENAI_API_KEY)(
-			"should set prompt_cache_retention to 24h when OCTOCODE_CACHE_RETENTION=long",
-			async () => {
-				process.env.OCTOCODE_CACHE_RETENTION = "long";
-				const model = getBuiltinModel("openai", "gpt-4.1");
-				let capturedPayload: any = null;
-
-				const s = stream(model, context, {
-					onPayload: stopAfterPayload((payload) => {
-						capturedPayload = payload;
-					}),
-				});
-
-				// Consume the stream to trigger the request
-				for await (const _ of s) {
-					// Just consume
-				}
-
-				expect(capturedPayload).not.toBeNull();
-				expect(capturedPayload.prompt_cache_retention).toBe("24h");
-			},
-		);
+			expect(capturedPayload).not.toBeNull();
+			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
+		});
 
 		it("should set prompt_cache_retention for non-api.openai.com baseUrl by default", async () => {
 			process.env.OCTOCODE_CACHE_RETENTION = "long";

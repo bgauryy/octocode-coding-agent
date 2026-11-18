@@ -9,17 +9,24 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { PolicyRenderError } from "../../src/core/system-prompt-spec.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
-/** The section template that fails to render, as a template naming a value the code does not pass would. */
+/** The section whose chunk fails to render, as a template naming a value the code does not pass would. */
 const broken = vi.hoisted(() => ({ section: undefined as string | undefined }));
+const CHUNK: Record<string, string> = {
+	work: "policy/work.md",
+	safety: "policy/safety.md",
+	communication: "policy/communication.md",
+};
 vi.mock("../../src/core/prompt-template.ts", async (importOriginal) => {
 	const original = await importOriginal<typeof PromptTemplate>();
 	return {
 		...original,
-		renderInstruction: (name: string, values?: Parameters<typeof original.renderInstruction>[1]) => {
-			if (broken.section !== undefined && name === `sections/${broken.section}.md`)
-				throw new Error('Instruction template: unknown name "missing"');
-			return original.renderInstruction(name, values);
+		renderPrompt: (name: string, values?: Parameters<typeof original.renderPrompt>[1]) => {
+			if (broken.section !== undefined && name === CHUNK[broken.section])
+				throw new Error('Prompt template: unknown name "missing"');
+			return original.renderPrompt(name, values);
 		},
 	};
 });
@@ -53,22 +60,23 @@ it("fails the run loudly when a policy section does not render, instead of start
 			cwd: root,
 			agentDir: join(root, ".octocode", "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("before_agent_start", async () => {
+					api.bus.on("before_agent_start", async () => {
 						if (throwOrdinary) throw new Error("an ordinary handler error");
 					});
 				},
-			],
+			]),
 		});
 		await loader.reload();
 		harness = await createHarness({ resourceLoader: loader });
-		await harness.session.bindExtensions({ mode: "rpc", onError: (error) => errors.push(error.error) });
+		await harness.session.bindFeatures({ mode: "rpc", onError: (error) => errors.push(error.error) });
 		harness.session.setActiveToolsByName(["bash", "file", "agent"]);
 		const answer = (text: string) => (context: { messages: Parameters<typeof getCurrentSystemPrompt>[0] }) => {
 			prompts.push(getCurrentSystemPrompt(context.messages));
@@ -107,7 +115,7 @@ it("fails the run loudly when a policy section does not render, instead of start
 		expect(prompts[1]).toContain("<work>");
 	} finally {
 		broken.section = undefined;
-		await harness?.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await harness?.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		harness?.cleanup();
 		vi.unstubAllEnvs();
 		rmSync(root, { recursive: true, force: true });

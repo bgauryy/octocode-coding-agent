@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { RECOVERY_HEADING } from "../../core/compaction/summary-view.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { contentText } from "../shared/util.ts";
@@ -10,13 +10,13 @@ import { SKILL_BLOCK } from "./loaded-skills.ts";
  * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
  * results, recovery pointers) is not asked for.
  */
-export const SUMMARY_FOCUS = renderInstruction("workflows/compaction/focus.md");
+export const SUMMARY_FOCUS = renderPrompt("workflows/compaction/focus.md");
 
 /** The cache-sharing request sends the session's images (`shared-summary.ts`), and the next model will not have them. */
-export const SHARED_IMAGE_FOCUS = renderInstruction("workflows/compaction/focus-images-shared.md");
+export const SHARED_IMAGE_FOCUS = renderPrompt("workflows/compaction/focus-images-shared.md");
 
 /** The standalone request serializes the conversation as text (`serializeConversation`), which leaves images out. */
-export const STANDALONE_IMAGE_FOCUS = renderInstruction("workflows/compaction/focus-images-standalone.md");
+export const STANDALONE_IMAGE_FOCUS = renderPrompt("workflows/compaction/focus-images-standalone.md");
 
 /**
  * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
@@ -34,9 +34,9 @@ export function transcriptNote(
 	const lines = [
 		...archive,
 		...(transcript
-			? [renderInstruction("notices/recovery/transcript.md", { archive: archive.length > 0, transcript })]
+			? [renderPrompt("notices/recovery/transcript.md", { archive: archive.length > 0, transcript })]
 			: []),
-		...(backlog ? [renderInstruction("notices/recovery/backlog.md")] : []),
+		...(backlog ? [renderPrompt("notices/recovery/backlog.md")] : []),
 		...extra,
 	];
 	return lines.length > 0 ? `\n\n${RECOVERY_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}` : "";

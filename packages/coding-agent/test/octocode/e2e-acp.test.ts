@@ -38,55 +38,13 @@ afterEach(async (context) => {
 	endpoint.requests.length = 0;
 });
 
-interface Message {
-	id?: number;
-	method?: string;
-	params?: Record<string, never> & {
-		update?: { sessionUpdate?: string; content?: { text?: string } };
-		options?: Array<{ optionId: string; kind: string }>;
-	};
-	result?: Record<string, unknown>;
-	error?: { message: string };
-}
-
-/** A minimal ACP client on a process's pipes: requests by id, and it allows every permission the agent asks about. */
-function client(run: ReturnType<ReturnType<typeof sandbox>["start"]>) {
-	const updates: NonNullable<Message["params"]>["update"][] = [];
-	const pending = new Map<number, (message: Message) => void>();
-	let buffer = "";
-	let next = 1;
-	const send = (message: Record<string, unknown>) =>
-		run.process.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-	run.process.stdout?.on("data", (chunk: Buffer) => {
-		buffer += chunk.toString();
-		for (let end = buffer.indexOf("\n"); end >= 0; end = buffer.indexOf("\n")) {
-			const message = JSON.parse(buffer.slice(0, end)) as Message;
-			buffer = buffer.slice(end + 1);
-			if (message.method === "session/update") updates.push(message.params?.update);
-			else if (message.method === "session/request_permission") {
-				const allow = message.params?.options?.find((option) => option.kind.startsWith("allow"));
-				send({ id: message.id, result: { outcome: { outcome: "selected", optionId: allow?.optionId } } });
-			} else if (message.id !== undefined) pending.get(message.id)?.(message);
-		}
-	});
-	const request = (method: string, params: Record<string, unknown>) =>
-		new Promise<Record<string, unknown>>((resolve, reject) => {
-			const id = next++;
-			pending.set(id, (message) =>
-				message.error ? reject(new Error(`${method}: ${message.error.message}`)) : resolve(message.result ?? {}),
-			);
-			send({ id, method, params });
-		});
-	return { request, updates };
-}
-
 const agents = [
 	{ name: "the source CLI", cli: undefined },
 	...(fs.existsSync(BUILT) ? [{ name: "the built CLI", cli: BUILT }] : []),
 ];
 
 describe.each(agents)("an ACP client and $name", ({ cli }) => {
-	it("rejects a model change overlapping a prompt and allows it after cancellation", async () => {
+	it("initializes, runs a tool and answers across two prompts, rejects a model change overlapping a prompt and allows it after cancellation, then exits when the client leaves", async () => {
 		const box = sandbox(endpoint);
 		const modelsFile = path.join(box.home, ".octocode", "octocodecode", "models.json");
 		const models = JSON.parse(fs.readFileSync(modelsFile, "utf8")) as {
@@ -98,11 +56,30 @@ describe.each(agents)("an ACP client and $name", ({ cli }) => {
 			name: "alternate",
 		});
 		fs.writeFileSync(modelsFile, JSON.stringify(models));
+		// ACP refuses `--trust`: a session's folder must already be trusted.
 		seedTrust(box);
 		const run = box.start(["--mode", "acp"], { stdin: "pipe", cli, trust: false });
 		const acp = acpClient(run.process);
-		await acp.request("initialize", initialize);
+		const init = await acp.request<{ protocolVersion: number }>("initialize", initialize);
+		expect(init.protocolVersion).toBe(1);
 		const { sessionId } = await acp.request<{ sessionId: string }>("session/new", { cwd: box.project, mcpServers: [] });
+		expect(sessionId).toEqual(expect.any(String));
+
+		const first = await acp.prompt(
+			sessionId,
+			script([{ tool: "bash", args: { command: "echo acp-tool" } }, { text: "first reply" }]),
+		);
+		expect(first.stopReason).toBe("end_turn");
+		expect(acp.updates.some(({ update }) => update.sessionUpdate === "tool_call")).toBe(true);
+		expect(acp.said()).toContain("first reply");
+		// The tool really ran, and its result reached the model.
+		expect(endpoint.requests.at(-1)?.toolResults.join("\n")).toContain("acp-tool");
+		// The agent's instructions rendered: an error there would have replaced them.
+		expect(endpoint.requests.at(-1)?.system).toContain("<work>");
+
+		expect((await acp.prompt(sessionId, script([{ text: "second reply" }]))).stopReason).toBe("end_turn");
+		expect(acp.said()).toContain("second reply");
+
 		const changeParams = { sessionId, configId: "model", value: "scripted/alternate" };
 		// Send both without awaiting: the model setter must recheck ownership after its async work.
 		const hanging = script([{ hang: true }]);
@@ -124,51 +101,9 @@ describe.each(agents)("an ACP client and $name", ({ cli }) => {
 		expect((await acp.prompt(sessionId, script([{ text: "alternate reply" }]))).stopReason).toBe("end_turn");
 		expect(endpoint.requests.at(-1)?.model).toBe("alternate");
 		expect(acp.said()).toContain("alternate reply");
+
 		run.process.stdin?.end();
 		expect((await run.exited).code).toBe(0);
-		expect(box.survivors()).toEqual([]);
-	});
-	it("initializes, opens a session, runs a tool and answers across two prompts, then exits when the client leaves", async () => {
-		const box = sandbox(endpoint);
-		// ACP refuses `--trust`: a session's folder must already be trusted.
-		seedTrust(box);
-		const run = box.start(["--mode", "acp"], { stdin: "pipe", cli, trust: false });
-		const { request, updates } = client(run);
-
-		const init = await request("initialize", { protocolVersion: 1, clientCapabilities: {} });
-		expect(init.protocolVersion).toBe(1);
-		const { sessionId } = (await request("session/new", { cwd: box.project, mcpServers: [] })) as { sessionId: string };
-		expect(sessionId).toEqual(expect.any(String));
-
-		const first = await request("session/prompt", {
-			sessionId,
-			prompt: [
-				{ type: "text", text: script([{ tool: "bash", args: { command: "echo acp-tool" } }, { text: "first reply" }]) },
-			],
-		});
-		expect(first.stopReason).toBe("end_turn");
-		expect(updates.some((update) => update?.sessionUpdate === "tool_call")).toBe(true);
-		const said = () =>
-			updates
-				.filter((update) => update?.sessionUpdate === "agent_message_chunk")
-				.map((update) => update?.content?.text ?? "")
-				.join("");
-		expect(said()).toContain("first reply");
-		// The tool really ran, and its result reached the model.
-		expect(endpoint.requests.at(-1)?.toolResults.join("\n")).toContain("acp-tool");
-		// The agent's instructions rendered: an error there would have replaced them.
-		expect(endpoint.requests.at(-1)?.system).toContain("<work>");
-
-		const second = await request("session/prompt", {
-			sessionId,
-			prompt: [{ type: "text", text: script([{ text: "second reply" }]) }],
-		});
-		expect(second.stopReason).toBe("end_turn");
-		expect(said()).toContain("second reply");
-
-		run.process.stdin?.end();
-		const { code } = await run.exited;
-		expect(code).toBe(0);
 		expect(box.survivors()).toEqual([]);
 	});
 });

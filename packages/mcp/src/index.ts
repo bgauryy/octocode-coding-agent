@@ -3,29 +3,29 @@
  * and those with declared tools are awaited before the first prompt.
  */
 
-import type { McpExtensionApi, McpExtensionFactory } from "./host/types.ts";
+import type { McpFeatureApi, McpFeatureFactory } from "./host/types.ts";
 import { registerMcpCommand } from "./command.ts";
 import { registerSessionEvents } from "./events.ts";
 import { registerMcpManageTool } from "./manage-tool-wiring.ts";
 import { registerAcpClientMcpServers } from "./acp-session-servers.ts";
 import { registerInheritedMcpServers } from "./session-servers.ts";
-import { McpExtensionState, type McpExtensionOptions } from "./state.ts";
+import { McpFeatureState, type McpFeatureOptions } from "./state.ts";
 import { createMcpToolRenderers } from "./tool-definition.ts";
 import { mcpToolStates, publishMcpToolStates } from "./tool-states.ts";
 
 export type { McpTransportFactory } from "./runtime.ts";
-export type { McpExtensionOptions } from "./state.ts";
+export type { McpFeatureOptions } from "./state.ts";
 export { currentToolRoles, resolveToolRoles, roleOf, type ResolvedRoles, type RoleEntry } from "./roles.ts";
 export type { McpInstallConfig, McpToolRolesConfig } from "@octocodeai/octocode-contracts/mcp-server";
 
-export function createMcpExtension(options: McpExtensionOptions = {}): McpExtensionFactory {
-	return (api: McpExtensionApi) => {
+export function createMcpFeature(options: McpFeatureOptions = {}): McpFeatureFactory {
+	return (api: McpFeatureApi) => {
 		registerMcpHost(api, options);
 	};
 }
 
-export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptions = {}): McpExtensionState {
-	const state = new McpExtensionState(api, options);
+export function registerMcpHost(api: McpFeatureApi, options: McpFeatureOptions = {}): McpFeatureState {
+	const state = new McpFeatureState(api, options);
 	const inherited = registerInheritedMcpServers(api);
 	state.parentStopped = new Set(inherited.stopped);
 	state.taskServers = inherited.only ? new Set(inherited.only) : undefined;
@@ -33,7 +33,7 @@ export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptio
 	registerAcpClientMcpServers(api);
 
 	// A resumed session renders calls to MCP tools before their server connected, if it ever does.
-	api.registerToolRenderer((toolName, next) => {
+	api.renderers.tool((toolName, next) => {
 		const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
 		return next() ?? (match ? createMcpToolRenderers(`${match[1]}/${match[2]}`) : undefined);
 	});
@@ -51,7 +51,7 @@ export function registerMcpHost(api: McpExtensionApi, options: McpExtensionOptio
 				: [
 						...new Set([
 							...state.servers.map((server) => server.entry.name),
-							...api.getMcpServers().map((server) => server.name),
+							...api.mcpServers.list().map((server) => server.name),
 						]),
 					],
 	);

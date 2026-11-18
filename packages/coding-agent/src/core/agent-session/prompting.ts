@@ -19,8 +19,8 @@ import { attachPromptPathImages, type PathImagesHost } from "./prompt-image-path
 import {
 	expandSkillInput,
 	runInputHandlers,
-	throwIfExtensionCommand,
-	tryExecuteExtensionCommand,
+	throwIfFeatureCommand,
+	tryExecuteFeatureCommand,
 } from "./prompt-expansion.ts";
 import type { SessionRunLoop } from "./run-loop.ts";
 import type { PendingUserInput, PromptOptions, QueuedInputDisposition, QueuedInputOptions } from "./types.ts";
@@ -42,15 +42,15 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	}
 	const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 	const preflightResult = options?.preflightResult;
-	// Handle extension commands first (execute immediately, even during streaming)
-	// Extension commands manage their own LLM interaction via api.sendMessage()
+	// Handle feature commands first (execute immediately, even during streaming)
+	// Feature commands manage their own LLM interaction via api.session.sendMessage()
 	if (expandPromptTemplates && text.startsWith("/")) {
 		let commandFailure: string | undefined;
-		const handled = await tryExecuteExtensionCommand(session.extensionRunner, text, (message) => {
+		const handled = await tryExecuteFeatureCommand(session.featureHost, text, (message) => {
 			commandFailure = message;
 		});
 		if (handled) {
-			// Extension command executed, no prompt to send
+			// Feature command executed, no prompt to send
 			preflightResult?.("handled", commandFailure);
 			return;
 		}
@@ -61,9 +61,9 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 	const holding = session.isStreaming || host.compaction.isManualRunning;
 	const behavior = options?.streamingBehavior ?? (host.compaction.isManualRunning ? "followUp" : undefined);
 
-	// Emit input event for extension interception (before skill/template expansion)
+	// Emit input event for feature interception (before skill/template expansion)
 	const processedInput = await runInputHandlers(
-		session.extensionRunner,
+		session.featureHost,
 		text,
 		options?.images,
 		options?.source ?? "interactive",
@@ -163,11 +163,11 @@ export async function queueUserInput(
 	const { session } = host;
 	const source = options?.source ?? "interactive";
 	if (text.startsWith("/")) {
-		throwIfExtensionCommand(session.extensionRunner, text);
+		throwIfFeatureCommand(session.featureHost, text);
 	}
 
 	const processedInput = await runInputHandlers(
-		session.extensionRunner,
+		session.featureHost,
 		text,
 		images,
 		source,
@@ -199,7 +199,7 @@ export async function sendCustomMessage<T = unknown>(
 	const appMessage = {
 		role: "custom" as const,
 		customType: message.customType,
-		// Untyped extensions can pass null/missing content; normalize at ingestion.
+		// Untyped features can pass null/missing content; normalize at ingestion.
 		content: message.content ?? [],
 		display: message.display,
 		details: message.details,

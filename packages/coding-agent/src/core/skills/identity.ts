@@ -20,6 +20,8 @@ export interface Skill {
 	baseDir: string;
 	sourceInfo: SourceInfo;
 	disableModelInvocation: boolean;
+	/** `coordinator`: listed only for the session that answers the user (`metadata.audience`), never for a subagent. */
+	audience?: "coordinator";
 	userInvocable?: boolean;
 	argumentStyle?: "claude";
 	claudePluginRoot?: string;

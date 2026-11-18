@@ -1,9 +1,9 @@
-import type { ExtensionAPI } from "../../../core/features/index.ts";
+import type { SetupPick } from "../../../core/features/index.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_ID_ENV } from "../store/env.ts";
 
-/** The session entry (`api.appendEntry`, never sent to the model) that records the team name a top-level session joined as. */
+/** The session entry (`api.session.appendEntry`, never sent to the model) that records the team name a top-level session joined as. */
 export const TEAM_ENTRY = "octocode-team";
 /** A name as `agentName` draws them; anything else in a session file (edited, foreign) is not claimed. */
 const NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -31,9 +31,9 @@ export function teamNameToResume(
  */
 export class SessionTeamName {
 	private last: string | undefined;
-	private readonly api: Pick<ExtensionAPI, "appendEntry">;
+	private readonly api: SetupPick<"session", "appendEntry">;
 	private readonly env: NodeJS.ProcessEnv;
-	constructor(api: Pick<ExtensionAPI, "appendEntry">, env: NodeJS.ProcessEnv) {
+	constructor(api: SetupPick<"session", "appendEntry">, env: NodeJS.ProcessEnv) {
 		this.api = api;
 		this.env = env;
 	}
@@ -53,6 +53,6 @@ export class SessionTeamName {
 	joined(id: string): void {
 		if (this.env[AGENT_ID_ENV] || id === this.last) return;
 		this.last = id;
-		this.api.appendEntry(TEAM_ENTRY, { version: 1, id });
+		this.api.session.appendEntry(TEAM_ENTRY, { version: 1, id });
 	}
 }

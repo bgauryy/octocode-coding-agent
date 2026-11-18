@@ -7,8 +7,9 @@ import {
 	SUBAGENT_ASSIGNMENT_ENV,
 } from "../../src/octocode/subagents/identity-reminder.ts";
 import { childTaskInput } from "../../src/octocode/subagents/task-text.ts";
-import { identityBlock, withIdentity } from "../../src/octocode/instructions/task.ts";
+import { identityBlock, withIdentity } from "../../src/octocode/native/prompts/task.ts";
 import { AGENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
+import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
@@ -17,15 +18,15 @@ function child(env: NodeJS.ProcessEnv, sendError?: Error) {
 	const branch: Array<{ type: string; customType?: string; data?: unknown }> = [];
 	const handlers = new Map<string, Handler>();
 	const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
-	const api = {
+	const api = asSetup({
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		appendEntry: (customType: string, data: unknown) => branch.push({ type: "custom", customType, data }),
 		sendMessage: (message: Record<string, unknown>, options: unknown) => {
 			if (sendError) throw sendError;
 			sent.push({ message, options });
 		},
-	};
-	registerIdentityReminder(api as never, env);
+	});
+	registerIdentityReminder(api, env);
 	const ctx = { sessionManager: { getBranch: () => branch } };
 	return {
 		branch,

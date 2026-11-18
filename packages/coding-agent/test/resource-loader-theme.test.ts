@@ -7,6 +7,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { setThemeJsonValidator } from "../src/theme/theme.ts";
 import { validateThemeJson } from "../src/theme/theme-schema.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 setThemeJsonValidator(validateThemeJson);
 
@@ -68,8 +69,9 @@ describe("DefaultResourceLoader theme color mode", () => {
 				cwd,
 				agentDir,
 				settingsManager: SettingsManager.inMemory({ terminal: { trueColor: setting } }),
+				nativeFeatures: nativeFeatureSet(),
 				additionalThemePaths: [themePath],
-				disabledFeatures: ["mcp", "llama.cpp"],
+				disabledFeatures: ["mcp"],
 				noSkills: true,
 				noPromptTemplates: true,
 				noContextFiles: true,
@@ -93,8 +95,9 @@ describe("DefaultResourceLoader theme color mode", () => {
 			cwd,
 			agentDir,
 			settingsManager,
+			nativeFeatures: nativeFeatureSet(),
 			additionalThemePaths: [themePath],
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noContextFiles: true,
@@ -114,8 +117,9 @@ describe("DefaultResourceLoader theme color mode", () => {
 			cwd,
 			agentDir,
 			settingsManager: SettingsManager.inMemory(),
+			nativeFeatures: nativeFeatureSet(),
 			additionalThemePaths: [themePath],
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noContextFiles: true,

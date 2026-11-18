@@ -18,6 +18,7 @@ import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
 import { companionFloor, toolsToActivate, toToolInfo, withCompanions } from "./tool-loadout/activation.ts";
+import { heldToolsFor, spanOf, withToolsOffNotice } from "./tool-loadout/held-tools.ts";
 import { runPrepareLoadoutHooks } from "./tool-loadout/prepare-hooks.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 import type { RequestSystemOverride } from "../forced-system-prompt.ts";
@@ -32,15 +33,16 @@ export interface ToolLoadoutOptions {
 export class SessionToolLoadout {
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
-	/**
-	 * Tools of the restored or reloaded loadout that are not registered yet. They are activated when
-	 * registered, and dropped when `setActiveToolsByName()` deactivates a tool or the next run starts,
-	 * except MCP tools of servers still connecting, which `pendingMcp` keeps until registered or settled.
-	 */
+	/** Restored or reloaded tools not registered yet: activated when registered, dropped by a deactivation (MCP ones stay in `pendingMcp`). */
 	private _pendingToolNames = new Set<string>();
 	/** Tools `setActiveToolsByName()` deactivated since: re-registration (an MCP reconnect) keeps them inactive. */
 	private _deselectedToolNames = new Set<string>();
 	readonly pendingMcp = new PendingMcpTools();
+	/** Tool changes the transport cannot carry in place, held to the next span. */
+	readonly held = heldToolsFor(
+		() => this.host.session,
+		(name) => this._toolDefinitions.get(name)?.definition.namespace?.name,
+	);
 	/** Matches the `--tools` entries: tool names or patterns. */
 	private _allowedTools?: (name: string) => boolean;
 	private readonly _allowedEntries?: readonly string[];
@@ -50,7 +52,7 @@ export class SessionToolLoadout {
 	private readonly _excludedEntries: readonly string[];
 	/** Companions of the selected tools (`ToolDefinition.companionTools`): registered whatever the selection says. */
 	private _companionFloor: ReadonlySet<string> = new Set();
-	// Tool registry for extension getTools/setTools
+	// Tool registry for feature getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
 	/** Declared tools whose declarations requests leave out, from `prepareLoadout` hooks. */
 	private _hiddenDeclarations: ReadonlySet<string> = new Set();
@@ -80,8 +82,9 @@ export class SessionToolLoadout {
 		this._excludedEntries = [...(options.excludedToolNames ?? [])];
 	}
 
-	get hiddenDeclarations(): ReadonlySet<string> {
-		return this._hiddenDeclarations;
+	/** What requests leave out; given a request's `messages`, a compaction in them declares the held late tools. */
+	hiddenDeclarations(messages?: readonly AgentMessage[]): ReadonlySet<string> {
+		return messages ? (this._hiddenDeclarations = this.held.hiddenIn(spanOf(messages))) : this._hiddenDeclarations;
 	}
 
 	/** Current effective system prompt, including changes not yet sent to the model. */
@@ -162,7 +165,7 @@ export class SessionToolLoadout {
 		return policyRequestedTools;
 	}
 
-	/** Keep the active tools pending, so tools registered later by reloaded extensions become active again. */
+	/** Keep the active tools pending, so tools registered later by reloaded features become active again. */
 	markActiveToolsPending(): void {
 		for (const name of this.host.session.getActiveToolNames()) this._pendingToolNames.add(name);
 	}
@@ -174,15 +177,12 @@ export class SessionToolLoadout {
 		this.pendingMcp.retain(() => this._pendingToolNames, this.host.session.resourceLoader.getEventBus?.());
 	}
 
-	/**
-	 * Whether `--tools` and `--exclude-tools` keep the tool registered. An allowlist without `mcp__` entries keeps MCP
-	 * tools registered but never active, so hook calls to a server still find them (see `_isActivatable`).
-	 */
+	/** Whether `--tools` and `--exclude-tools` keep the tool registered (MCP tools stay registered, never active, under an allowlist without `mcp__` entries: `_isActivatable`). */
 	private _isAllowedTool(name: string): boolean {
 		return this._isSelectedTool(name) || (this._companionFloor.has(name) && !this._excludedTools?.(name));
 	}
 
-	/** The companions of a registered native or base tool; an extension or SDK tool's `companionTools` are ignored. */
+	/** The companions of a registered native or base tool; a feature or SDK tool's `companionTools` are ignored. */
 	private _trustedCompanions(name: string): readonly string[] | undefined {
 		const entry = this._toolDefinitions.get(name);
 		if (!entry) return undefined;
@@ -196,7 +196,7 @@ export class SessionToolLoadout {
 		return !this._allowedTools || this._allowedTools(name) || (!this._allowlistFiltersMcp && isMcpToolName(name));
 	}
 
-	/** Whether the tool may be active (declared), including when restored from the transcript or set by extensions. */
+	/** Whether the tool may be active (declared), including when restored from the transcript or set by features. */
 	private _isActivatable(name: string): boolean {
 		if (this._toolPolicy && !this._toolPolicy(name)) return false;
 		return !this._allowedTools || this._allowedTools(name) || !isMcpToolName(name);
@@ -258,14 +258,19 @@ export class SessionToolLoadout {
 				getPromptGuidelines: (name) => this._toolPromptGuidelines.get(name) ?? [],
 			}),
 			(entry, error, stack) =>
-				this.host.session.extensionRunner.emitError({
-					extensionPath: entry.sourceInfo.path,
+				this.host.session.featureHost.emitError({
+					source: entry.sourceInfo.path,
 					event: "prepare_loadout",
 					error,
 					stack,
 				}),
 		);
-		this._hiddenDeclarations = hidden;
+		const active = this.host.session.getActiveToolNames();
+		this._hiddenDeclarations = this.held.apply(
+			active,
+			declared.map((tool) => tool.name),
+			hidden,
+		);
 		this.host.session.agent.state.tools = declared;
 		return declared;
 	}
@@ -278,27 +283,30 @@ export class SessionToolLoadout {
 			this._toolPromptSnippets,
 			this._toolPromptGuidelines,
 			[...this._hiddenDeclarations],
-			[...this._toolDefinitions].filter(([, entry]) => entry.definition.onDemand === true).map(([name]) => name),
+			[
+				...[...this._toolDefinitions].filter(([, entry]) => entry.definition.onDemand === true).map(([name]) => name),
+				...this.held.late,
+			],
 		);
+		const base = this.baseSystemPromptOptions;
+		base.sections = withToolsOffNotice(base.sections, this.held.notice(toolNames));
 	}
 
 	/**
-	 * Apply a prompt and tool loadout for the next request. Sets the executable tools and
-	 * returns a system message patching the prompt sections the model currently has (replayed
-	 * from `messages`), or undefined when the prompt is unchanged. Tool changes are declared by
-	 * the agent loop before the request.
-	 *
-	 * A forced prompt does not affect the transcript: the structured sections are still diffed
-	 * and persisted, and the forced text is projected onto the request by
-	 * `installForcedPromptProjection`.
+	 * Apply a prompt and tool loadout for the next request: sets the executable tools and returns a system message
+	 * patching the sections the model has (replayed from `messages`), or undefined when unchanged. The agent loop
+	 * declares tool changes. A forced prompt is projected onto the request by `installForcedPromptProjection`.
 	 */
 	preparePromptAndToolLoadout(
 		options: NormalizedBuildSystemPromptOptions,
 		messages: AgentMessage[] = this.host.session.agent.state.messages,
 	): SystemMessage | undefined {
+		this.held.beginSpan(spanOf(messages));
 		options.selectedTools = this._applyToolLoadout(options.selectedTools).map((tool) => tool.name);
 		// The tool list and rules must match the declarations the request carries.
 		options.hiddenTools = [...this._hiddenDeclarations];
+		options.onDemandTools = [...new Set([...(options.onDemandTools ?? []), ...this.held.late])];
+		options.sections = withToolsOffNotice(options.sections, this.held.notice(options.selectedTools));
 		const sections = diffSystemPromptSections(
 			getCurrentSystemMessage(messages)?.sections ?? {},
 			buildSystemPromptSections(options),
@@ -307,14 +315,13 @@ export class SessionToolLoadout {
 	}
 
 	/**
-	 * Restore the active tool loadout declared by the session transcript, if it declares one.
-	 * Tools reachable only from other tools are never declared, but they do not depend on the active
-	 * set, so the transcript's declarations are the whole loadout.
+	 * Restore the active tool loadout the session transcript declares, if any: its declarations are the whole loadout.
 	 * @param modifiers `+name`/`-name` entries applied to the restored loadout.
 	 */
 	restoreFromTranscript(modifiers: readonly string[] = []): void {
 		this._pendingToolNames.clear();
 		this._deselectedToolNames.clear();
+		this.held.clear();
 		const current = getCurrentSystemMessage(this.host.session.sessionManager.buildSessionContext().messages);
 		if (!current) return;
 		const names = applyToolModifiers(
@@ -325,7 +332,7 @@ export class SessionToolLoadout {
 		this.setActiveTools(names);
 	}
 
-	refresh(options?: { activeToolNames?: string[]; includeAllExtensionTools?: boolean }): void {
+	refresh(options?: { activeToolNames?: string[]; includeAllFeatureTools?: boolean }): void {
 		// Tools already activated on registration. One whose exposure changes to `direct` or `model-only` (say from
 		// `hidden`) is activated like a new tool, unless deselected.
 		const previousActivatedOnRegistration = new Set(
@@ -333,8 +340,8 @@ export class SessionToolLoadout {
 		);
 		const previousActiveToolNames = this.host.session.getActiveToolNames();
 		const allowedTools = this._allowedTools;
-		const registeredTools = this.host.session.extensionRunner.getAllRegisteredTools();
-		// Only native and base tools may name companions: an extension tool's companions never get past `--tools`.
+		const registeredTools = this.host.session.featureHost.getAllRegisteredTools();
+		// Only native and base tools may name companions: a feature tool's companions never get past `--tools`.
 		this._companionFloor = companionFloor(
 			[
 				...this._baseToolDefinitions.values(),
@@ -352,7 +359,7 @@ export class SessionToolLoadout {
 		this._toolDefinitions = definitions;
 		this._toolPromptSnippets = promptSnippets;
 		this._toolPromptGuidelines = promptGuidelines;
-		const wrappedTools = wrapRegisteredTools([...definitions.values()], this.host.session.extensionRunner);
+		const wrappedTools = wrapRegisteredTools([...definitions.values()], this.host.session.featureHost);
 		this._toolRegistry = new Map(wrappedTools.map((tool) => [tool.name, tool]));
 
 		const nextActiveToolNames = (
@@ -365,7 +372,7 @@ export class SessionToolLoadout {
 			...toolsToActivate({
 				allowedTools,
 				explicitActiveNames: options?.activeToolNames !== undefined,
-				includeAllExtensionTools: options?.includeAllExtensionTools === true,
+				includeAllFeatureTools: options?.includeAllFeatureTools === true,
 				registered: this._toolRegistry.keys(),
 				customTools: allCustomTools,
 				previousActivated: previousActivatedOnRegistration,

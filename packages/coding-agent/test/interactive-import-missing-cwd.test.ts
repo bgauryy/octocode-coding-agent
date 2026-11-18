@@ -8,7 +8,7 @@ function createImportHost(
 ) {
 	return {
 		getPathCommandArgument: () => "/tmp/old.jsonl",
-		showExtensionConfirm: vi.fn(async () => true),
+		showConfirmDialog: vi.fn(async () => true),
 		promptForMissingSessionCwd: vi.fn(async () => "/tmp/fallback"),
 		clearStatusIndicator: vi.fn(),
 		showStatus: vi.fn(),

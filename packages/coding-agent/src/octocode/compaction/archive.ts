@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI, SessionBeforeCompactEvent } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { SetupPick, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { CompactionEntry } from "../../core/session-manager.ts";
 import { GOAL_HEADING, summarySection as section, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import {
@@ -171,7 +171,7 @@ export function archivePointer(current: number): string[] {
 	const forks = sessionLineage().flatMap((id) => {
 		try {
 			return [
-				renderInstruction("notices/recovery/archive-fork.md", {
+				renderPrompt("notices/recovery/archive-fork.md", {
 					id,
 					folder: archiveFolder(id),
 					count: readSegments(id).length,
@@ -182,9 +182,9 @@ export function archivePointer(current: number): string[] {
 		}
 	});
 	return [
-		renderInstruction("notices/recovery/archive-first.md"),
+		renderPrompt("notices/recovery/archive-first.md"),
 		archiveSearch(),
-		renderInstruction("notices/recovery/archive-folder.md", {
+		renderPrompt("notices/recovery/archive-folder.md", {
 			folder,
 			library: LIBRARY_FILE,
 			current,
@@ -193,7 +193,7 @@ export function archivePointer(current: number): string[] {
 		...recent.map((segment) => `${segmentFile(segment.n, segment.entry)} · ${segmentTldr(segment)}`),
 		...(earlier.length > recent.length
 			? [
-					renderInstruction("notices/recovery/archive-more.md", {
+					renderPrompt("notices/recovery/archive-more.md", {
 						count: earlier.length - recent.length,
 						library: LIBRARY_FILE,
 					}),
@@ -207,16 +207,16 @@ export function archivePointer(current: number): string[] {
 export const ARCHIVE_POINTER_TYPE = "octocode-archive";
 
 /**
- * Tells the model where the archive is when the summary is not Octocode's (Octocode's default summary, or another extension's)
+ * Tells the model where the archive is when the summary is not Octocode's (Octocode's default summary, or another feature's)
  * and so has no pointer in its Recovery section: one hidden message after the compaction, which no turn waits for. It
  * rides at the end of the new context, behind the summary and the kept messages, so no cached prefix changes.
  */
-export function deliverArchivePointer(api: Pick<ExtensionAPI, "sendMessage">, current: number): void {
+export function deliverArchivePointer(api: SetupPick<"session", "sendMessage">, current: number): void {
 	try {
-		void api.sendMessage(
+		void api.session.sendMessage(
 			{
 				customType: ARCHIVE_POINTER_TYPE,
-				content: renderInstruction("notices/compaction/archive-pointer.md", {
+				content: renderPrompt("notices/compaction/archive-pointer.md", {
 					lines: archivePointer(current)
 						.map((line) => `- ${line}`)
 						.join("\n"),

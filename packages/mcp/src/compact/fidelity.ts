@@ -1,12 +1,10 @@
 import { conditionallyRequired } from "./applicability.ts";
 import { toolBlock } from "./file.ts";
-import { functionNames, OUTPUT_FIELD_PREFIX, renderServer } from "./render.ts";
+import { functionNames } from "./render.ts";
 import { identifier, inert, literal } from "./schema-nodes.ts";
-import { isShapeless, schemaToTs } from "./schema-to-ts.ts";
-import type { CompactServerInput, CompactToolInput, DescriptionOverrides, JsonSchema } from "./types.ts";
+import { isShapeless } from "./schema-to-ts.ts";
+import type { CompactServerInput, CompactToolInput, JsonSchema } from "./types.ts";
 import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
-
-const URL_PATTERN = /\bhttps?:\/\/\S+/gi;
 
 /** Comments the renderer writes where it could not express the schema. */
 const LOSS_MARKERS = ["/* unresolved $ref */", "/* schema too deep */", "/* unsupported schema shape */"];
@@ -57,12 +55,6 @@ function requiredTokens(schema: JsonSchema | undefined, out: Set<string>, seen =
 		if (value && typeof value === "object") requiredTokens(value as JsonSchema, out, seen);
 }
 
-/** An override must add no URL the source lacks. */
-function checkText(label: string, text: string, source: string, problems: string[]): void {
-	const known = new Set(source.match(URL_PATTERN));
-	for (const url of text.match(URL_PATTERN) ?? []) if (!known.has(url)) problems.push(`${label}: adds URL ${url}`);
-}
-
 /**
  * Problems of one tool's rendered block against its schemas: a property name or enum/const value missing, a required
  * key shown only as optional, a branch-only requirement not stated, a requirement the descriptions state that reads
@@ -96,29 +88,11 @@ export function checkToolBlock(tool: CompactToolInput, block: string): string[] 
 	return problems;
 }
 
-/** Each field path an override may address (`fieldDocs`, `output.`-prefixed for output), and whether it is always required. */
-function fieldPaths(tool: CompactToolInput): Map<string, boolean> {
-	const paths = new Map<string, boolean>();
-	const collect = (schema: JsonSchema, prefix: string) =>
-		schemaToTs(schema, {
-			scope: "F_",
-			onField: (path, required) => paths.set(prefix + path, (paths.get(prefix + path) ?? true) && required),
-		});
-	collect(tool.inputSchema, "");
-	if (tool.outputSchema !== undefined) collect(tool.outputSchema, OUTPUT_FIELD_PREFIX);
-	return paths;
-}
-
 /**
- * Checks a rendered file against its source catalog: every tool present and faithful (`checkToolBlock`), and
- * overrides without URLs the source lacks, naming tools and fields the server has, and not calling a
- * required field optional. Structure comes from the schema, so a failure here means a renderer limit or a bad override.
+ * Checks a rendered file against its source catalog: every tool present and faithful (`checkToolBlock`). Structure
+ * comes from the schema, so a failure here means a renderer limit.
  */
-export function checkFidelity(
-	input: CompactServerInput,
-	text: string,
-	overrides?: DescriptionOverrides,
-): { ok: boolean; problems: string[] } {
+export function checkFidelity(input: CompactServerInput, text: string): { ok: boolean; problems: string[] } {
 	const problems: string[] = [];
 	const names = functionNames(input);
 	for (const tool of input.tools) {
@@ -126,46 +100,5 @@ export function checkFidelity(
 		if (block) problems.push(...checkToolBlock(tool, block));
 		else problems.push(`${tool.name}: missing from file`);
 	}
-	if (overrides?.server !== undefined) checkText("server", overrides.server, input.instructions ?? "", problems);
-	for (const [tool, text] of Object.entries(overrides?.tools ?? {})) {
-		if (!names.has(tool)) problems.push(`override names unknown tool ${tool}`);
-		const source = input.tools.find((candidate) => candidate.name === tool)?.description ?? "";
-		checkText(tool, text, source, problems);
-	}
-	for (const [tool, text] of Object.entries(overrides?.triggers ?? {})) {
-		if (!names.has(tool)) problems.push(`trigger names unknown tool ${tool}`);
-		if (/[\r\n]/.test(text)) problems.push(`${tool} trigger: must be one line`);
-		const source = input.tools.find((candidate) => candidate.name === tool)?.description ?? "";
-		checkText(`${tool} trigger`, text, source, problems);
-	}
-	for (const [tool, fields] of Object.entries(overrides?.fields ?? {})) {
-		const declared = input.tools.find((candidate) => candidate.name === tool);
-		if (!declared) problems.push(`override names unknown tool ${tool}`);
-		const source = JSON.stringify([declared?.inputSchema ?? {}, declared?.outputSchema ?? {}]);
-		const paths = declared ? fieldPaths(declared) : undefined;
-		for (const [field, text] of Object.entries(fields)) {
-			checkText(`${tool}.${field}`, text, source, problems);
-			const required = paths?.get(field);
-			if (paths && required === undefined) problems.push(`${tool}.${field}: no such field`);
-			if (required && /\boptional\b/i.test(text)) problems.push(`${tool}.${field}: calls a required field optional`);
-		}
-	}
 	return { ok: problems.length === 0, problems };
-}
-
-/**
- * The fidelity of `text`, the file rendered with `overrides`, counting only what the overrides could change. A tool the
- * renderer cannot express (a schema with unreachable definitions, say) fails the plain file too: its sessions declare
- * it in full (`McpPresentation`), and it must not void the overrides of the tools that render faithfully. Those
- * problems come back as `inherent`.
- */
-export function checkOverrides(
-	input: CompactServerInput,
-	text: string,
-	overrides: DescriptionOverrides,
-): { ok: boolean; problems: string[]; inherent: string[] } {
-	const plain = new Set(checkFidelity(input, renderServer(input)).problems);
-	const found = checkFidelity(input, text, overrides).problems;
-	const problems = found.filter((problem) => !plain.has(problem));
-	return { ok: problems.length === 0, problems, inherent: found.filter((problem) => plain.has(problem)) };
 }

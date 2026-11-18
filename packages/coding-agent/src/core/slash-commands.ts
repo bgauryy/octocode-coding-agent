@@ -36,6 +36,33 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		argumentHint: "[tell|interrupt|kill|merge|stats|history|external]",
 	},
 	{
+		name: "messages",
+		requiresNative: true,
+		description: "Every agent's mail: who sent what to whom",
+		argumentHint: "[internal]",
+		argumentValues: ["internal"],
+	},
+	{
+		name: "cron",
+		requiresNative: true,
+		description: "List or delete scheduled tasks",
+		argumentHint: "[list|delete <id>]",
+		argumentValues: ["list", "delete"],
+	},
+	{
+		name: "monitor",
+		requiresNative: true,
+		description: "Show every monitor rule with its alert counts",
+		argumentHint: "[text]",
+		argumentValues: ["text"],
+	},
+	{
+		name: "loop",
+		requiresNative: true,
+		description: "Run a prompt on a repeating schedule",
+		argumentHint: "<5m|1h|1d> <prompt>",
+	},
+	{
 		name: "realm",
 		requiresNative: true,
 		description: "See the checkout, worktrees and sessions",
@@ -194,11 +221,13 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"copy",
 	"links",
 	"agents",
+	"messages",
 	"jobs",
 	"worktree",
 	"realm",
 	"backlog",
 	"processes",
+	"monitor",
 	"memory",
 	"archive",
 	"permissions",
@@ -209,7 +238,6 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"trust",
 	"keys",
 	"optimize",
-	"llama",
 	"reload",
 	"web",
 	"remote",
@@ -274,10 +302,7 @@ export function getBuiltinCommand(name: string): BuiltinSlashCommand | undefined
 }
 
 /** The commands a built-in feature registers, by the feature that owns each: with the feature off the name stays known but unavailable. */
-const FEATURE_COMMANDS: ReadonlyMap<string, string> = new Map([
-	["mcp", "mcp"],
-	["llama", "llama.cpp"],
-]);
+const FEATURE_COMMANDS: ReadonlyMap<string, string> = new Map([["mcp", "mcp"]]);
 
 /** The built-in feature that owns slash command `name`, if one does. */
 export const featureOfCommand = (name: string): string | undefined => FEATURE_COMMANDS.get(name);

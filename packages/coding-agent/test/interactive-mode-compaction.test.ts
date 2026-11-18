@@ -136,8 +136,7 @@ describe("InteractiveMode compaction events", () => {
 		};
 		const fakeThis = {
 			isInitialized: true,
-			footer: { invalidate: vi.fn() },
-			programStatus: { handleEvent: vi.fn() },
+			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			autoCompactionEscapeHandler: undefined as (() => void) | undefined,
 			autoCompactionLoader: undefined,
 			defaultEditor: {},
@@ -185,13 +184,11 @@ describe("InteractiveMode compaction events", () => {
 		expect(fakeThis.flushCompactionQueue).toHaveBeenCalledWith({ willRetry: false });
 	});
 
-	test("updates the working state when the same agent run resumes after compaction", async () => {
+	test("shows the working indicator when the same agent run resumes after compaction", async () => {
 		const fakeThis = {
 			isInitialized: true,
-			footer: { invalidate: vi.fn() },
-			programStatus: { handleEvent: vi.fn() },
+			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			activeStatusIndicator: undefined,
-			workingVisible: true,
 			showWorkingStatusIndicator: vi.fn(),
 			clearStatusIndicator: vi.fn(),
 			settingsManager: { getShowTerminalProgress: () => true },
@@ -203,13 +200,6 @@ describe("InteractiveMode compaction events", () => {
 		expect(fakeThis.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
 		expect(fakeThis.clearStatusIndicator).not.toHaveBeenCalled();
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(1);
-
-		fakeThis.workingVisible = false;
-		await handleEvent(createFakeHost(fakeThis), { type: "turn_start" });
-
-		expect(fakeThis.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
-		expect(fakeThis.clearStatusIndicator).toHaveBeenCalledTimes(1);
-		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(2);
 	});
 
 	test("routes interactive response aborts through AgentSession", () => {
@@ -232,7 +222,7 @@ describe("InteractiveMode compaction events", () => {
 				steer: vi.fn().mockResolvedValue(undefined),
 				followUp: vi.fn().mockResolvedValue(undefined),
 			},
-			isExtensionCommand: vi.fn().mockReturnValue(false),
+			isFeatureCommand: vi.fn().mockReturnValue(false),
 			showError: vi.fn(),
 		};
 
@@ -256,7 +246,7 @@ describe("queued message recovery", () => {
 			{ text: "second", mode: "followUp" },
 		]),
 		session: { clearQueue: vi.fn(), prompt: vi.fn().mockResolvedValue(undefined), steer: vi.fn(), followUp: vi.fn() },
-		isExtensionCommand: () => false,
+		isFeatureCommand: () => false,
 		showError: vi.fn(),
 	});
 

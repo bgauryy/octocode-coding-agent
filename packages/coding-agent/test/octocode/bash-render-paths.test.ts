@@ -1,8 +1,10 @@
 import type { TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ToolRenderers } from "../../src/core/features/types.ts";
 import { createBashToolDefinition } from "../../src/core/tools/bash.ts";
 import type { BashExecutionError } from "../../src/core/tools/bash/outcome.ts";
 import { ToolExecutionComponent } from "../../src/modes/interactive/components/tool-execution.ts";
+import { withBuiltInRenderers } from "../../src/octocode/files/built-in-renderers.ts";
 import { renderBashResult, renderJobMessage } from "../../src/octocode/files/render.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
@@ -52,7 +54,8 @@ function coreRow(result: Awaited<ReturnType<typeof run>>, expanded: boolean) {
 		"c1",
 		{ command: "x" },
 		{},
-		createBashToolDefinition(tmp()),
+		// The interactive display fills in the built-in shell renderers; the core definition has none of its own.
+		withBuiltInRenderers("bash", createBashToolDefinition(tmp()) as ToolRenderers),
 		ui,
 		process.cwd(),
 	);
@@ -64,26 +67,34 @@ function coreRow(result: Awaited<ReturnType<typeof run>>, expanded: boolean) {
 describe("bash result rows", () => {
 	beforeAll(() => initTheme("dark"));
 
-	it("show the core header once above a trimmed result, collapsed and expanded, at any width", async () => {
+	it("draw the core row in the native shell grammar once above a trimmed result, collapsed and expanded, at any width", async () => {
 		const result = await run(big, 1);
 		for (const expanded of [false, true]) {
 			for (const width of [40, 100]) {
-				const view = text(coreRow(result, expanded), width);
-				// A narrow terminal wraps the header; the words stay in order and appear once.
-				const flat = view.replace(/\s+/g, " ");
-				expect(flat.match(/\[exit 1/g), `expanded=${expanded} width=${width}`).toHaveLength(1);
-				expect(flat).toContain("trimmed: first 100 + last 398 lines + 1 matched");
-				expect(flat).toContain("line 2999 some padding text here");
+				const rows = text(coreRow(result, expanded), width).split("\n");
+				const at = `expanded=${expanded} width=${width}`;
+				// A blank row above the block, then the marked header and the outcome under the gutter, each once.
+				expect(rows[1]?.trimEnd(), at).toBe(" ✗ Bash(x)");
+				expect(rows[2]?.trimEnd(), at).toBe("   ⎿  Error: exit 1 · 3000 lines");
+				const flat = rows.join(" ").replace(/\s+/g, " ");
+				expect(flat.match(/exit 1/g), at).toHaveLength(1);
+				expect(flat, at).not.toContain("[exit");
+				expect(flat, at).toContain("line 2999 some padding text here");
 			}
 		}
+		expect(text(coreRow(result, false))).toContain("… +495 earlier lines (ctrl+o to expand)");
 		expect(text(coreRow(result, true))).toContain("1501: error: boom in the middle");
 		expect(text(coreRow(result, true))).not.toContain("Full output:");
+		expect(text(coreRow(result, true), 400)).toContain("saved: ");
 	});
 
-	it("show the deadline, abort and kill headers of a command that did not exit", async () => {
-		expect(text(coreRow(await run("partial\n", null, "timeout"), false))).toContain("[timed out after 3s");
-		expect(text(coreRow(await run("partial\n", null, "abort"), true))).toContain("[aborted");
-		expect(text(coreRow(await run("p\n", null), false))).toContain("[terminated (no exit code)");
+	it("show the deadline, abort and kill outcomes of a command that did not exit", async () => {
+		const outcome = (row: string) => row.split("\n")[2]?.trimEnd();
+		expect(outcome(text(coreRow(await run("partial\n", null, "timeout"), false)))).toBe(
+			"   ⎿  Error: timed out after 3s · 1 line",
+		);
+		expect(outcome(text(coreRow(await run("partial\n", null, "abort"), true)))).toMatch(/^ {3}⎿ {2}.*aborted/);
+		expect(outcome(text(coreRow(await run("p\n", null), false)))).toMatch(/^ {3}⎿ {2}.*terminated \(no exit code\)/);
 	});
 
 	it("draw a result recorded before the header existed from its own footer and truncation notice", () => {
@@ -100,10 +111,13 @@ describe("bash result rows", () => {
 			},
 			isError: true,
 		};
+		// The core row draws the native result: same status, same notice, below its own header.
 		const core = text(coreRow(old as never, true));
 		expect(core).toContain("line 2");
-		expect(core).toContain("Full output: /tmp/octocode-bash-1.log");
-		expect(core).toContain("Command exited with code 2");
+		expect(core).toContain("⎿  Error: exit 2 · 900 lines");
+		expect(core).toContain("saved: /tmp/octocode-bash-1.log");
+		expect(core).not.toContain("Command exited with code");
+		expect(core).not.toContain("Showing lines");
 		expect(core).not.toContain("[exit");
 		// The native row has no structured output to read: it takes the status and notice out of the text.
 		const native = text(renderBashResult(old, { expanded: true, isPartial: false }, theme, { isError: true }));

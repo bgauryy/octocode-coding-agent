@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { formatSkillsForPrompt } from "../../core/skills.ts";
 import type { SlashCommandInfo } from "../../core/slash-commands.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
@@ -42,7 +42,7 @@ type SnapshotSkill = ReturnType<typeof adoptSkillResourceSnapshot>["skills"][num
 /** One SKILL.md as a child reads it inlined: its body and where its references resolve. */
 function inlineSkillBlock(skill: SnapshotSkill): string {
 	const text = stripFrontmatter(fs.readFileSync(skill.filePath, "utf8")).trim();
-	return `<skill name="${skill.name}" location="${skill.filePath}">\n${renderInstruction("system/skill-references.md", { dir: skill.baseDir })}\n\n${text}\n</skill>`;
+	return `<skill name="${skill.name}" location="${skill.filePath}">\n${renderPrompt("system/skill-references.md", { dir: skill.baseDir })}\n\n${text}\n</skill>`;
 }
 
 /**
@@ -62,7 +62,7 @@ export function withRoleSkills<T extends AgentProfile | undefined>(
 		return skill ? [inlineSkillBlock(skill)] : [];
 	});
 	if (blocks.length === 0) return profile;
-	const text = renderInstruction("subagent/role-skills.md", { blocks: blocks.join("\n\n") }).trim();
+	const text = renderPrompt("subagent/role-skills.md", { blocks: blocks.join("\n\n") }).trim();
 	return { ...profile, prompt: profile.prompt ? `${profile.prompt}\n\n${text}` : text };
 }
 
@@ -75,11 +75,11 @@ export function taskSkillText(snapshot: SkillResourceSnapshot, inline: boolean):
 	const skills = adoptSkillResourceSnapshot(snapshot).skills.filter((skill) => !skill.disableModelInvocation);
 	if (skills.length === 0) return "";
 	if (!inline)
-		return renderInstruction("subagent/task-skills.md", {
+		return renderPrompt("subagent/task-skills.md", {
 			catalog: formatSkillsForPrompt(skills, "skill"),
 			blocks: "",
 		});
-	return renderInstruction("subagent/task-skills.md", {
+	return renderPrompt("subagent/task-skills.md", {
 		catalog: "",
 		blocks: skills.map(inlineSkillBlock).join("\n\n"),
 	});

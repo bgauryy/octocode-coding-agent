@@ -9,23 +9,23 @@ import type { McpServerConnection } from "./runtime.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { adoptHanded, bindOwner, type ConnectionOwner, type HandedConnection } from "./handover.ts";
 import { describeState, isEnabled, type McpServer } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import { hideTools, registerTools } from "./tool-registry.ts";
 
-function storedTokens(state: McpExtensionState, connection: McpServerConnection): string {
+function storedTokens(state: McpFeatureState, connection: McpServerConnection): string {
 	const url = connection.oauthUrl;
 	const { credentials } = state;
 	return url && credentials ? JSON.stringify(credentials.tokens(connection.name, url) ?? null) : "null";
 }
 
-function onConnectionChange(state: McpExtensionState, connection: McpServerConnection): void {
+function onConnectionChange(state: McpFeatureState, connection: McpServerConnection): void {
 	if (connection.state !== "needs-auth") state.tokensAtSignIn.delete(connection);
 	else if (!state.tokensAtSignIn.has(connection)) state.tokensAtSignIn.set(connection, storedTokens(state, connection));
 	state.emitChange();
 }
 
 /** Reconnect servers that need a sign-in when their credentials were stored since. */
-export async function reconnectSignedIn(state: McpExtensionState): Promise<void> {
+export async function reconnectSignedIn(state: McpFeatureState): Promise<void> {
 	const signedIn = [...state.tokensAtSignIn].filter(
 		([connection, tokens]) => storedTokens(state, connection) !== tokens,
 	);
@@ -35,7 +35,7 @@ export async function reconnectSignedIn(state: McpExtensionState): Promise<void>
 }
 
 /** The connected servers re-register with `connection`'s catalog (`McpServerConnection` reports it through `onTools`). */
-function catalogChanged(state: McpExtensionState, connection: McpServerConnection): void {
+function catalogChanged(state: McpFeatureState, connection: McpServerConnection): void {
 	for (const current of state.connections())
 		if (current === connection || current.state === "connected") registerTools(state, current);
 }
@@ -45,7 +45,7 @@ function catalogChanged(state: McpExtensionState, connection: McpServerConnectio
  * owner, which a later session rebinds when it takes the connection over (`handover.ts`).
  */
 async function createConnection(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	isCurrent: () => boolean,
 ): Promise<McpServerConnection | undefined> {
@@ -82,7 +82,7 @@ async function createConnection(
  * meanwhile. The returned promise rejects when the MCP runtime cannot be loaded.
  */
 export function startConnection(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	after?: Promise<unknown>,
 	/** False for a start that does not choose the server for the session (a hook's call): it stays `unselected`. */
@@ -128,7 +128,7 @@ export function startConnection(
  * attempt had not settled when the wait ended.
  */
 export async function waitForServers(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	waiting: readonly McpServer[],
 	stop: AbortSignal | undefined,
 ): Promise<McpServer[]> {
@@ -159,7 +159,7 @@ export async function waitForServers(
 	}
 }
 
-function isLive(state: McpExtensionState, server: McpServer): boolean {
+function isLive(state: McpFeatureState, server: McpServer): boolean {
 	return isEnabled(server) && state.servers.includes(server);
 }
 
@@ -168,7 +168,7 @@ function isLive(state: McpExtensionState, server: McpServer): boolean {
  * and every session with the same servers starts from the same cached prefix, but not indefinitely: a slow or hanging
  * server must not hold up the prompt.
  */
-export async function waitForDirectServers(state: McpExtensionState, ctx: McpContext): Promise<void> {
+export async function waitForDirectServers(state: McpFeatureState, ctx: McpContext): Promise<void> {
 	if (state.waitedForStartup) return;
 	state.waitedForStartup = true;
 	const ready = state.servers.flatMap((server) =>
@@ -195,7 +195,7 @@ export async function waitForDirectServers(state: McpExtensionState, ctx: McpCon
 
 /** Sign in, then reconnect. Returns an error message on failure. `cancel` or the session's end stops the sign-in. */
 export async function signIn(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	prompt: McpSignInPrompt,
 	cancel?: AbortSignal,
@@ -229,7 +229,7 @@ export async function signIn(
 	return undefined;
 }
 
-export async function signOut(state: McpExtensionState, server: McpServer): Promise<boolean> {
+export async function signOut(state: McpFeatureState, server: McpServer): Promise<boolean> {
 	const connection = server.connection;
 	const url = connection?.oauthUrl;
 	if (!connection || !url) return false;
@@ -259,7 +259,7 @@ export async function reconnect(server: McpServer): Promise<string | undefined> 
 
 /** Returns an error message when the config could not be saved; connection errors show in the state. */
 export async function setEnabled(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	enabled: boolean,
 	inProject = false,

@@ -9,6 +9,7 @@ import { createFakeHost } from "../../interactive-mode-host.ts";
 import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 import { initTheme } from "../../../src/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 type LoadedResourcesResult<T> = { [K in keyof T]: T[K] } & { diagnostics: [] };
 
@@ -31,11 +32,10 @@ type LoadedResourcesContext = {
 			getSkills: () => LoadedResourcesResult<{ skills: [] }>;
 			getPrompts: () => LoadedResourcesResult<{ prompts: [] }>;
 			getThemes: () => LoadedResourcesResult<{ themes: [] }>;
-			getExtensions: () => { extensions: []; errors: [] };
+			getFeatures: () => { features: []; errors: [] };
 		};
-		extensionRunner: {
+		featureHost: {
 			getCommandDiagnostics: () => [];
-			getShortcutDiagnostics: () => [];
 			getRegisteredCommands: () => [];
 		};
 	};
@@ -43,7 +43,7 @@ type LoadedResourcesContext = {
 	shouldShowStartupDetails: () => boolean;
 	formatDisplayPath: (resourcePath: string) => string;
 	formatContextPath: (resourcePath: string) => string;
-	getBuiltInCommandConflictDiagnostics: (extensionRunner: LoadedResourcesContext["session"]["extensionRunner"]) => [];
+	getBuiltInCommandConflictDiagnostics: (featureHost: LoadedResourcesContext["session"]["featureHost"]) => [];
 };
 
 type RebindContext = {
@@ -51,7 +51,7 @@ type RebindContext = {
 	applyRuntimeSettings: () => void;
 	programStatus: { reset(): void };
 	renderCurrentSessionState: () => void;
-	bindCurrentSessionExtensions: () => Promise<void>;
+	bindCurrentSessionFeatures: () => Promise<void>;
 	subscribeToAgent: () => void;
 	updateAvailableProviderCount: () => Promise<void>;
 	updateEditorBorderColor: () => void;
@@ -65,7 +65,7 @@ type ReloadCommandContext = {
 		isCompacting: boolean;
 		reload: (options?: { beforeSessionStart?: () => void | Promise<void> }) => Promise<void>;
 		resourceLoader: { getThemes: () => { themes: [] } };
-		extensionRunner: unknown;
+		featureHost: unknown;
 		modelRegistry: { getError: () => string | undefined };
 	};
 	settingsManager: {
@@ -90,10 +90,9 @@ type ReloadCommandContext = {
 	editor: unknown;
 	defaultEditor: { setPaddingX: (padding: number) => void; setAutocompleteMaxVisible: (maxVisible: number) => void };
 	themeController: { applyFromSettings: () => Promise<void> };
-	resetExtensionUI: () => void;
+	resetFeatureUI: () => void;
 	rebuildChatFromMessages: () => void;
 	setupAutocompleteProvider: () => void;
-	setupExtensionShortcuts: (runner: unknown) => void;
 	showLoadedResources: (options: unknown) => void;
 	maybeSaveImplicitProjectTrustAfterReload: () => boolean;
 	showStatus: (message: string) => void;
@@ -133,7 +132,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 				await options?.beforeSessionStart?.();
 			},
 			resourceLoader: { getThemes: () => ({ themes: [] }) },
-			extensionRunner: {},
+			featureHost: {},
 			modelRegistry: { getError: () => undefined },
 			...overrides.session,
 		},
@@ -161,10 +160,9 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 		themeController: { applyFromSettings: async () => {}, ...overrides.themeController },
 		customHeader: overrides.customHeader,
 		builtInHeader: overrides.builtInHeader,
-		resetExtensionUI: overrides.resetExtensionUI ?? (() => {}),
+		resetFeatureUI: overrides.resetFeatureUI ?? (() => {}),
 		rebuildChatFromMessages: overrides.rebuildChatFromMessages ?? (() => {}),
 		setupAutocompleteProvider: overrides.setupAutocompleteProvider ?? (() => {}),
-		setupExtensionShortcuts: overrides.setupExtensionShortcuts ?? (() => {}),
 		showLoadedResources: overrides.showLoadedResources ?? (() => {}),
 		maybeSaveImplicitProjectTrustAfterReload: overrides.maybeSaveImplicitProjectTrustAfterReload ?? (() => false),
 		showStatus: overrides.showStatus ?? (() => {}),
@@ -203,11 +201,10 @@ function createLoadedResourcesContext(): LoadedResourcesContext {
 				getSkills: () => ({ skills: [], diagnostics: [] }),
 				getPrompts: () => ({ prompts: [], diagnostics: [] }),
 				getThemes: () => ({ themes: [], diagnostics: [] }),
-				getExtensions: () => ({ extensions: [], errors: [] }),
+				getFeatures: () => ({ features: [], errors: [] }),
 			},
-			extensionRunner: {
+			featureHost: {
 				getCommandDiagnostics: () => [],
-				getShortcutDiagnostics: () => [],
 				getRegisteredCommands: () => [],
 			},
 		},
@@ -233,14 +230,14 @@ describe("session_start transient UI", () => {
 
 		const chatRendered = context.chatContainer.render(80).join("\n");
 		expect(chatRendered).toContain("restored message");
-		expect(chatRendered).not.toMatch(/Context\s+\d/);
+		expect(chatRendered).not.toMatch(/Context\s+✓ \d/);
 
 		const rendered = root
 			.render(80)
 			.join("\n")
 			.replace(/\u001b\[[0-9;]*m/g, "");
 		expect(rendered).not.toContain("stale resources");
-		const listingAt = rendered.search(/Context\s+\d/);
+		const listingAt = rendered.search(/Context\s+✓ \d/);
 		expect(listingAt).toBeGreaterThanOrEqual(0);
 		expect(listingAt).toBeLessThan(rendered.indexOf("restored message"));
 	});
@@ -248,13 +245,13 @@ describe("session_start transient UI", () => {
 	it("renders replacement session state before session_start handlers can notify", async () => {
 		const events: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", (_event, ctx) => {
+					api.bus.on("session_start", (_event, ctx) => {
 						ctx.ui.notify("Hello Error", "error");
 					});
 				},
-			],
+			]),
 		});
 
 		try {
@@ -262,9 +259,9 @@ describe("session_start transient UI", () => {
 				applyRuntimeSettings: () => events.push("apply"),
 				programStatus: { reset: () => {} },
 				renderCurrentSessionState: () => events.push("render"),
-				bindCurrentSessionExtensions: async () => {
+				bindCurrentSessionFeatures: async () => {
 					events.push("bind");
-					await harness.session.bindExtensions({
+					await harness.session.bindFeatures({
 						uiContext: createTestUiContext({ notify: (message) => events.push(`notify:${message}`) }),
 						mode: "tui",
 					});
@@ -286,17 +283,17 @@ describe("session_start transient UI", () => {
 	it("subscribes before replacement session_start handlers send messages", async () => {
 		const events: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", () => {
-						api.sendMessage({
+					api.bus.on("session_start", () => {
+						api.session.sendMessage({
 							customType: "session-start",
 							content: "custom from start",
 							display: true,
 						});
 					});
 				},
-			],
+			]),
 		});
 
 		try {
@@ -304,9 +301,9 @@ describe("session_start transient UI", () => {
 				applyRuntimeSettings: () => {},
 				programStatus: { reset: () => {} },
 				renderCurrentSessionState: () => events.push("render"),
-				bindCurrentSessionExtensions: async () => {
+				bindCurrentSessionFeatures: async () => {
 					events.push("bind");
-					await harness.session.bindExtensions({
+					await harness.session.bindFeatures({
 						uiContext: createTestUiContext(),
 						mode: "tui",
 					});
@@ -342,13 +339,13 @@ describe("session_start transient UI", () => {
 	it("subscribes before replacement session_start handlers send user messages", async () => {
 		const events: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", () => {
-						api.sendUserMessage("user from start");
+					api.bus.on("session_start", () => {
+						api.session.sendUserMessage("user from start");
 					});
 				},
-			],
+			]),
 		});
 		harness.setResponses([fauxAssistantMessage("assistant from start")]);
 
@@ -357,9 +354,9 @@ describe("session_start transient UI", () => {
 				applyRuntimeSettings: () => {},
 				programStatus: { reset: () => {} },
 				renderCurrentSessionState: () => events.push("render"),
-				bindCurrentSessionExtensions: async () => {
+				bindCurrentSessionFeatures: async () => {
 					events.push("bind");
-					await harness.session.bindExtensions({
+					await harness.session.bindFeatures({
 						uiContext: createTestUiContext(),
 						mode: "tui",
 					});
@@ -396,18 +393,18 @@ describe("session_start transient UI", () => {
 			events.push("render");
 		});
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", (event, ctx) => {
+					api.bus.on("session_start", (event, ctx) => {
 						events.push(`start:${event.reason}`);
 						ctx.ui.notify(`notify:${event.reason}`, "error");
 					});
 				},
-			],
+			]),
 		});
 
 		try {
-			await harness.session.bindExtensions({
+			await harness.session.bindFeatures({
 				uiContext: createTestUiContext({ notify: (message) => events.push(message) }),
 				mode: "tui",
 			});

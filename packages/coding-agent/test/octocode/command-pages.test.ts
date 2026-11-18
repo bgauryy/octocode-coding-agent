@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { McpManagerView } from "../../../mcp/src/ui.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { installMcpUiPort } from "../../src/modes/interactive/mcp-ui.ts";
 import { memoryDetailPage, memoryListPage } from "../../src/octocode/memory/page.ts";
 import type { Memory } from "../../src/octocode/memory/store.ts";
@@ -73,7 +73,7 @@ describe("/trust page", () => {
 			mode: "tui",
 			ui: t.ui,
 			shutdown: vi.fn(),
-		} as unknown as ExtensionCommandContext;
+		} as unknown as CommandContext;
 		const commands = new Subcommands();
 		registerTrustCommand(commands, options);
 		await commands.get("trust")!.handler("", ctx);
@@ -111,7 +111,7 @@ const memory = (id: number, title: string, extra: Partial<Memory> = {}): Memory 
 describe("/memory pages", () => {
 	it("groups memories by section with an Add row and opens one on Enter", async () => {
 		const t = pages([[KEY.enter]]);
-		const ctx = { ui: t.ui } as unknown as ExtensionCommandContext;
+		const ctx = { ui: t.ui } as unknown as CommandContext;
 		const id = await memoryListPage(
 			ctx,
 			[memory(1, "Pinned one", { pinned: true }), memory(2, "Second")],
@@ -124,7 +124,7 @@ describe("/memory pages", () => {
 
 	it("shows facts above the actions and returns the chosen action", async () => {
 		const t = pages([[KEY.down, KEY.enter]]);
-		const ctx = { ui: t.ui } as unknown as ExtensionCommandContext;
+		const ctx = { ui: t.ui } as unknown as CommandContext;
 		const action = await memoryDetailPage(ctx, memory(3, "Gadgets"), ["Edit", "Pin", "Delete"]);
 		expect(action).toBe("Pin");
 		expect(t.screens[0]).toMatch(/Scope +workspace[\s\S]*Used +2 times[\s\S]*Actions[\s\S]*Edit/);

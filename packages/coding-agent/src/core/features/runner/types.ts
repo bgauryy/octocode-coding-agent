@@ -1,4 +1,5 @@
-/** Types shared by the extension runner and the parts it delegates to. */
+import type { SessionBus } from "../bus/session-bus.ts";
+/** Types shared by the feature runner and the parts it delegates to. */
 
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import type { Model, Provider } from "@octocodeai/octocode-ai";
@@ -7,7 +8,6 @@ import type { ModelRegistry } from "../../model-registry.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
 import type { SessionManager } from "../../session-manager.ts";
 import type { BuildSystemPromptOptions, NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
-import type { VirtualModelDefinition } from "../../virtual-models.ts";
 import type {
 	ForkHandler,
 	NavigateTreeHandler,
@@ -26,14 +26,14 @@ import type {
 	CompactOptions,
 	ContextEvent,
 	ContextUsage,
-	Extension,
-	ExtensionContext,
-	ExtensionContextActions,
-	ExtensionError,
-	ExtensionEvent,
-	ExtensionMode,
-	ExtensionRuntime,
-	ExtensionUIContext,
+	FeatureRecord,
+	FeatureContext,
+	ContextActions,
+	FeatureError,
+	FeatureEvent,
+	UiMode,
+	FeatureRuntime,
+	SessionUI,
 	InputEvent,
 	MessageEndEvent,
 	ProviderConfig,
@@ -65,7 +65,7 @@ export interface BeforeAgentStartCombinedResult {
  * Events with dedicated emitXxx() methods are excluded for stronger type safety.
  */
 export type RunnerEmitEvent = Exclude<
-	ExtensionEvent,
+	FeatureEvent,
 	| ToolCallEvent
 	| ToolResultEvent
 	| UserBashEvent
@@ -110,7 +110,7 @@ export type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends {
 				? SessionBeforeTreeResult | undefined
 				: undefined;
 
-export type ExtensionErrorListener = (error: ExtensionError) => void;
+export type FeatureErrorListener = (error: FeatureError) => void;
 
 export type BoundaryBaseEvent =
 	| Omit<TurnEndEvent, "entries" | "continue" | "context">
@@ -129,9 +129,6 @@ export type ShutdownHandler = () => void;
 export interface RunnerProviderActions {
 	registerProvider?: (name: string, config: ProviderConfig) => void;
 	registerNativeProvider?: (provider: Provider) => void;
-	unregisterProvider?: (name: string) => void;
-	registerVirtualModel?: (definition: VirtualModelDefinition) => void;
-	unregisterVirtualModel?: (provider: string, id: string) => void;
 }
 
 /** Callbacks bound by `bindCore()` and `bindCommandContext()`. Contexts read them at call time. */
@@ -153,7 +150,7 @@ export interface RunnerBindings {
 	compactFn: (options?: CompactOptions) => void;
 	getSystemPromptFn: () => string;
 	getSystemPromptOptionsFn: () => BuildSystemPromptOptions;
-	executeToolFn: ExtensionContextActions["executeTool"];
+	executeToolFn: ContextActions["executeTool"];
 	getCallableToolsFn: () => readonly AgentTool[];
 	newSessionHandler: NewSessionHandler;
 	forkHandler: ForkHandler;
@@ -165,18 +162,20 @@ export interface RunnerBindings {
 
 /** The runner as its delegated parts see it: its state, read at access time, and the methods they call back. */
 export interface RunnerHost {
-	readonly extensions: Extension[];
-	readonly runtime: ExtensionRuntime;
+	readonly features: FeatureRecord[];
+	/** The session's subscriptions, which every dispatch reads. */
+	readonly bus: SessionBus;
+	readonly runtime: FeatureRuntime;
 	readonly cwd: string;
 	readonly sessionManager: SessionManager;
 	readonly modelRegistry: ModelRegistry;
-	readonly uiContext: ExtensionUIContext;
-	readonly mode: ExtensionMode;
+	readonly uiContext: SessionUI;
+	readonly mode: UiMode;
 	readonly bindings: RunnerBindings;
 	hasUI(): boolean;
 	assertActive(): void;
-	createContext(): ExtensionContext;
+	createContext(): FeatureContext;
 	emit(event: RunnerEmitEvent): Promise<unknown>;
-	emitError(error: ExtensionError): void;
+	emitError(error: FeatureError): void;
 	reportUnhandledMcpServers(): void;
 }

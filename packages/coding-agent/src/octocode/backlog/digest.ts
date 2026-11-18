@@ -1,5 +1,5 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { clip } from "../shared/text.ts";
 import { type BacklogOptions, openBacklog } from "./context.ts";
 import { priorityName } from "./item.ts";
@@ -49,7 +49,7 @@ function backlogDigest(store: BacklogStore, session: string, options: BacklogOpt
 	const agent = sharedAgentDb(options.env ?? process.env);
 	const active = activeItem(backlogQueries.snapshot(agent.db, store.repo), session);
 	const detail = active ? `. Active: B${active.seq} v${active.version}${activeDetail(agent, store.repo, active)}` : "";
-	return renderInstruction("notices/backlog-digest.md", {
+	return renderPrompt("notices/backlog-digest.md", {
 		todo,
 		proposed,
 		ongoing: shown.join("; ") + detail,
@@ -61,9 +61,9 @@ function backlogDigest(store: BacklogStore, session: string, options: BacklogOpt
  * Hands the board's orientation to the first prompt of a span of a main session: the digest on a new start or `/new`,
  * the versioned index (`backlogIndex`) on a resume, appended after the restored history.
  */
-export function registerBacklogDigest(api: ExtensionAPI, options: BacklogOptions): void {
+export function registerBacklogDigest(api: FeatureSetup, options: BacklogOptions): void {
 	let pending: string | undefined;
-	api.on("session_start", (event, ctx) => {
+	api.bus.on("session_start", (event, ctx) => {
 		pending = undefined;
 		if (event.reason !== "startup" && event.reason !== "new" && event.reason !== "resume") return;
 		try {
@@ -76,11 +76,11 @@ export function registerBacklogDigest(api: ExtensionAPI, options: BacklogOptions
 			// An unreadable database gives no digest; the backlog tool reports the cause when asked.
 		}
 	});
-	api.on("before_agent_start", () => {
+	api.bus.on("before_agent_start", () => {
 		const content = pending;
 		pending = undefined;
 		// A session run without the tool (`defaultTools: ["-backlog"]`, `/configuration disable tool:backlog`, `octocode --disable tool:backlog`) has no use for the board's orientation.
-		if (!api.getActiveTools().includes("backlog")) return undefined;
+		if (!api.tools.getActive().includes("backlog")) return undefined;
 		return content ? { message: { customType: BACKLOG_DIGEST_TYPE, content, display: false } } : undefined;
 	});
 }

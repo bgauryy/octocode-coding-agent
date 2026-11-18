@@ -14,7 +14,7 @@ import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerEntry } from "./config.ts";
 import { recentToolKey } from "./deferral.ts";
 import { configuredMcpToolExposure } from "./servers.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 interface OnDemandSession {
 	/** The session model's transport adds a declaration without rewriting the cached prefix. */
@@ -23,9 +23,9 @@ interface OnDemandSession {
 	loaded: Set<string>;
 }
 
-const sessions = new WeakMap<McpExtensionState, OnDemandSession>();
+const sessions = new WeakMap<McpFeatureState, OnDemandSession>();
 
-function sessionOf(state: McpExtensionState): OnDemandSession {
+function sessionOf(state: McpFeatureState): OnDemandSession {
 	let session = sessions.get(state);
 	if (!session) sessions.set(state, (session = { capable: false, loaded: new Set() }));
 	return session;
@@ -38,18 +38,18 @@ const configuredOnDemand = (entry: McpServerEntry, tool: string): boolean =>
 	configuredMcpToolExposure(entry.config, tool) === "onDemand";
 
 /** Read the session model's transport: a model switch to one without in-place additions declares every unloaded tool deferred. */
-export function setOnDemandModel(state: McpExtensionState, model: unknown): void {
+export function setOnDemandModel(state: McpFeatureState, model: unknown): void {
 	const valid = typeof model === "object" && model !== null && typeof (model as { api?: unknown }).api === "string";
 	sessionOf(state).capable = valid && supportsNativeToolLoading(model as Model<Api>);
 }
 
-/** A new session or another branch: the transcript says what is declared (`McpExtensionState.declaredBefore`). */
-export function forgetOnDemandLoads(state: McpExtensionState): void {
+/** A new session or another branch: the transcript says what is declared (`McpFeatureState.declaredBefore`). */
+export function forgetOnDemandLoads(state: McpFeatureState): void {
 	sessionOf(state).loaded.clear();
 }
 
 /** Record that an on-demand tool is declared from now on; true when it was not before. */
-export function markOnDemandLoaded(state: McpExtensionState, server: string, tool: string): boolean {
+export function markOnDemandLoaded(state: McpFeatureState, server: string, tool: string): boolean {
 	const { loaded } = sessionOf(state);
 	if (loaded.has(keyOf(server, tool))) return false;
 	loaded.add(keyOf(server, tool));
@@ -57,7 +57,7 @@ export function markOnDemandLoaded(state: McpExtensionState, server: string, too
 }
 
 /** The on-demand tools of the server this session has declared, by the server's tool names. */
-export function loadedOnDemand(state: McpExtensionState, server: string): ReadonlySet<string> {
+export function loadedOnDemand(state: McpFeatureState, server: string): ReadonlySet<string> {
 	const prefix = `${server}\0`;
 	return new Set(
 		[...sessionOf(state).loaded].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length)),
@@ -70,14 +70,14 @@ export function loadedOnDemand(state: McpExtensionState, server: string): Readon
  * activate (a role's `--tools` list that leaves it out keeps it unlisted). A tool the session activated some other way
  * (an explicit `--tools` entry, a call) counts as loaded.
  */
-export function isOnDemand(state: McpExtensionState, entry: McpServerEntry, tool: string, name: string): boolean {
+export function isOnDemand(state: McpFeatureState, entry: McpServerEntry, tool: string, name: string): boolean {
 	if (!configuredOnDemand(entry, tool)) return false;
 	const session = sessionOf(state);
 	if (!session.capable || session.loaded.has(keyOf(entry.name, tool))) return false;
-	const active = state.api.getActiveTools();
+	const active = state.api.tools.getActive();
 	if (!active.includes(MCP_MANAGE_TOOL_NAME) || state.declaredBefore.has(name)) return false;
 	if (state.recentTools()?.has(recentToolKey(entry.name, tool))) return false;
-	if (typeof state.api.selectsTools === "function" && !state.api.selectsTools(name, true)) return false;
+	if (typeof state.api.tools.selects === "function" && !state.api.tools.selects(name, true)) return false;
 	if (active.includes(name)) {
 		session.loaded.add(keyOf(entry.name, tool));
 		return false;

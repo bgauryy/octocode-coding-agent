@@ -7,13 +7,13 @@ it("shuts native activity down before invalidating a live session", async () => 
 		tools: [],
 		extra: {
 			names: [],
-			register: (api) => api.on("session_shutdown", shutdown),
+			register: (api) => api.bus.on("session_shutdown", shutdown),
 		},
 	});
-	const ctx = live.session.extensionRunner.createContext();
+	const ctx = live.session.featureHost.createContext();
 	vi.useFakeTimers();
 	try {
-		await live.session.extensionRunner.emit({ type: "agent_start" });
+		await live.session.featureHost.emit({ type: "agent_start" });
 		// The working line counts the run in its own indicator; activity's timer repaints it each second to say when the
 		// model has gone silent, the tab title's timer moves its busy mark, and closing the session clears both.
 		expect(vi.getTimerCount()).toBe(2);

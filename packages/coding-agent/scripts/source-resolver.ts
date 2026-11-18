@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { registerHooks } from "node:module";
+import { transformSync } from "rolldown/utils";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -58,6 +59,24 @@ registerHooks({
 			throw new Error(`Source runtime could not resolve ${specifier} through tsconfig path ${matchedPattern}`);
 		}
 		return nextResolve(specifier, context);
+	},
+	// Node strips types but does not compile JSX: `.tsx` sources go through the same Oxc transform the bundle uses.
+	load(url, context, nextLoad) {
+		if (!url.startsWith("file:") || !url.endsWith(".tsx")) return nextLoad(url, context);
+		const path = fileURLToPath(url);
+		const result = transformSync(path, readFileSync(path, "utf8"), {
+			lang: "tsx",
+			sourceType: "module",
+			jsx: { runtime: "automatic" },
+			sourcemap: true,
+		});
+		if (result.errors.length > 0) {
+			throw new Error(`Could not compile ${path}: ${result.errors.map((error) => error.message).join("; ")}`);
+		}
+		const map = result.map
+			? `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(result.map)).toString("base64")}`
+			: "";
+		return { format: "module", source: `${result.code}${map}`, shortCircuit: true };
 	},
 });
 

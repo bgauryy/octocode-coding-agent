@@ -9,7 +9,7 @@ import { setEnabled } from "./connections.ts";
 import { saveConfig } from "./persistence.ts";
 import { exposureOf } from "./exposure.ts";
 import { describeState, isEnabled } from "./server.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 
 export interface McpSwitchRequest {
 	name: string;
@@ -28,7 +28,7 @@ export type McpSwitch = (request: McpSwitchRequest) => Promise<McpSwitchResult>;
 const REQUEST_SWITCH = "mcp:switch:request";
 
 /** Persist the switch and open or close the connection now; no reload is needed. */
-export async function switchMcpServer(state: McpExtensionState, request: McpSwitchRequest): Promise<McpSwitchResult> {
+export async function switchMcpServer(state: McpFeatureState, request: McpSwitchRequest): Promise<McpSwitchResult> {
 	const server = state.findServer(request.name);
 	if (!server) return { ok: false, message: `No MCP server named "${request.name}".` };
 	const failure = request.saveOnly
@@ -36,7 +36,7 @@ export async function switchMcpServer(state: McpExtensionState, request: McpSwit
 		: await state.track(setEnabled(state, server, request.enabled, request.inProject));
 	if (failure) return { ok: false, message: failure };
 	// Where the change was written: the override file, the definition file, or nowhere for a session-only server.
-	const saved = server.entry.scope === "extension" ? "this session" : (server.entry.override ?? server.entry.source);
+	const saved = server.entry.scope === "feature" ? "this session" : (server.entry.override ?? server.entry.source);
 	return {
 		ok: true,
 		message: `${request.name}: ${isEnabled(server) ? "enabled" : "disabled"} · ${describeState(server, false)} · ${exposureOf(server.entry)}. Saved to ${saved}.`,

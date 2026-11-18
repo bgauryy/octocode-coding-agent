@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ERR, RpcError } from "../protocol.ts";
@@ -12,7 +12,7 @@ import { recordRead } from "./reads.ts";
 export interface ExternalCallHost {
 	readonly ceilings: TurnCeilings;
 	/** The bound session; throws when there is none. */
-	session(): ExtensionContext;
+	session(): FeatureContext;
 	/** The caller's facts, verified with the instance it names when it names one (`bridge/verify.ts`). */
 	verify(facts: ExternalFacts, params: Record<string, unknown>, connection: Connection): Promise<ExternalFacts>;
 	/** Records what an API client did in the session. */

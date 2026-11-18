@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { UsagePersistenceError } from "../../core/usage-totals.ts";
 import {
 	type Api,
@@ -10,7 +10,7 @@ import {
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { archivedSummary, inlineSummaryTokens, summaryTargetTokens } from "../../core/compaction/checkpoint.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
-import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
+import type { FeatureSetup, SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { projectForcedSystemPrompt } from "../../core/forced-system-prompt.ts";
@@ -35,24 +35,16 @@ import { historyPrefixRewritten } from "./history-cache.ts";
  * tool counts as a failure. Any failure returns nothing and the caller writes the summary the standalone way.
  */
 
-/** What writing a summary needs of the extension API, whichever request ends up writing it. */
-export type SummaryApi = Pick<
-	ExtensionAPI,
-	| "getThinkingLevel"
-	| "getActiveTools"
-	| "getHiddenDeclarations"
-	| "getSettings"
-	| "appendEntry"
-	| "createUsageRecorder"
->;
+/** What writing a summary needs of the feature API, whichever request ends up writing it. */
+export type SummaryApi = Pick<FeatureSetup, "models" | "tools" | "settings" | "session" | "usage">;
 
 /** The checkpoint request appended to the cached conversation. */
-export const SHARED_SUMMARY_PROMPT = renderInstruction("workflows/compaction/shared-request.md", {
+export const SHARED_SUMMARY_PROMPT = renderPrompt("workflows/compaction/shared-request.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
 });
 
 /** Said when the conversation starts with an earlier summary, which this one replaces. */
-const PREVIOUS_SUMMARY_NOTE = renderInstruction("workflows/compaction/shared-previous-summary.md", {
+const PREVIOUS_SUMMARY_NOTE = renderPrompt("workflows/compaction/shared-previous-summary.md", {
 	tldrHeading: TLDR_HEADING,
 });
 
@@ -66,7 +58,7 @@ function archivedPreviousNote(entries: ReadonlyArray<{ sourceEntry: unknown; mes
 		(entry) => isRecord(entry.sourceEntry) && entry.sourceEntry.type === "compaction" && entry.messages.length > 0,
 	);
 	const text = isRecord(previous?.sourceEntry) ? archivedSummary(previous.sourceEntry.details) : undefined;
-	return text === undefined ? "" : renderInstruction("workflows/compaction/shared-archived-summary.md", { text });
+	return text === undefined ? "" : renderPrompt("workflows/compaction/shared-archived-summary.md", { text });
 }
 
 /** The longest a quoted start of a message gets. */
@@ -101,7 +93,7 @@ function boundaryNote(
 ): string {
 	const kept = entries.find((entry) => entry.sourceEntry.id === firstKeptEntryId);
 	const first = kept?.messages.map(describeMessage).find((description) => description !== undefined);
-	return first === undefined ? "" : renderInstruction("workflows/compaction/shared-boundary.md", { first });
+	return first === undefined ? "" : renderPrompt("workflows/compaction/shared-boundary.md", { first });
 }
 
 /** What the provider keeps free of a request's context window (`clampMaxTokensToContext`). */
@@ -114,9 +106,9 @@ function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: n
 
 /** The session's own cache preferences for `model`, as its requests resolve them (settings over the registry's layers). */
 export function sessionCachePreferences(
-	ctx: Pick<ExtensionContext, "modelRegistry">,
+	ctx: Pick<FeatureContext, "modelRegistry">,
 	model: Model<Api>,
-	settings: ReturnType<ExtensionAPI["getSettings"]>,
+	settings: ReturnType<FeatureSetup["settings"]["get"]>,
 ): CachePreferences {
 	return ctx.modelRegistry.getCachePolicy(model, [{ source: "session settings", values: settings }]).options;
 }
@@ -147,9 +139,11 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
  * prompt) is cold the same way.
  */
 export async function sharedSummary(
-	api: Pick<ExtensionAPI, "getThinkingLevel" | "getSettings" | "getHiddenDeclarations">,
+	api: SetupPick<"models", "getThinkingLevel"> &
+		SetupPick<"settings", "get"> &
+		SetupPick<"tools", "getHiddenDeclarations">,
 	event: Pick<SessionBeforeCompactEvent, "preparation" | "signal" | "summaryRequest">,
-	ctx: Pick<ExtensionContext, "modelRegistry" | "sessionManager">,
+	ctx: Pick<FeatureContext, "modelRegistry" | "sessionManager">,
 	model: Model<Api>,
 	instructions: string,
 	unusable: (reason: string, userChoice?: boolean) => void = () => undefined,
@@ -163,7 +157,7 @@ export async function sharedSummary(
 		return undefined;
 	};
 	try {
-		const settings = api.getSettings();
+		const settings = api.settings.get();
 		// Octocode replaces images with a note in a session's requests; this request cannot show them, so it is not made.
 		if (settings.images?.blockImages) return fail("images are blocked in settings", true);
 		const { preparation } = event;
@@ -171,7 +165,7 @@ export async function sharedSummary(
 		// The projection as every live request sends it: Octocode's own `context` transform (`requestView`) and, in a
 		// child, only the latest identity reminder, so the cached prefix is the same.
 		const projected = requestView(
-			latestReminderOnly(withoutHiddenDeclarations(projection.messages, new Set(api.getHiddenDeclarations()))),
+			latestReminderOnly(withoutHiddenDeclarations(projection.messages, new Set(api.tools.getHiddenDeclarations()))),
 			ctx.sessionManager,
 			model,
 		);
@@ -194,7 +188,7 @@ export async function sharedSummary(
 		]
 			.filter(Boolean)
 			.join("\n\n");
-		const level = api.getThinkingLevel();
+		const level = api.models.getThinkingLevel();
 		const preferences = sessionCachePreferences(ctx, model, settings);
 		// Only `long` instructions over shorter history can outlive the history entry; a rewritten prefix loses both.
 		const instructionsLive =

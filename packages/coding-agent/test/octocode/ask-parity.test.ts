@@ -3,8 +3,8 @@ import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import { describe, expect, it, type Mock, vi } from "vitest";
 import { askClient } from "../../../acp/src/server/ask.ts";
 import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
-import type { ExtensionUIContext } from "../../src/core/features/index.ts";
-import { createExtensionUIContext, type PendingExtensionRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
+import type { SessionUI } from "../../src/core/features/index.ts";
+import { createSessionUI, type PendingUiRequests } from "../../src/modes/rpc/rpc-mode/ui-context.ts";
 import { ALLOW_ONCE, DENY, DENY_NOTE } from "../../src/octocode/permission/ask/text.ts";
 import { permissionHeader } from "../../src/octocode/permission/header.ts";
 import type { PermissionMode } from "../../src/octocode/permission/mode.ts";
@@ -40,9 +40,9 @@ const expected: Reply[] = [
 
 describe("one Question[] through every frontend", () => {
 	it("RPC ask: a client's replies come back checked, and a forged pick declines the batch", async () => {
-		const pending: PendingExtensionRequests = new Map();
+		const pending: PendingUiRequests = new Map();
 		const sent: { id: string }[] = [];
-		const ui = createExtensionUIContext((record) => sent.push(record as { id: string }), pending, { ask: true });
+		const ui = createSessionUI((record) => sent.push(record as { id: string }), pending, { ask: true });
 		const answer = ui.ask!(questions);
 		pending.get(sent[0].id)!.resolve({ type: "extension_ui_response", id: sent[0].id, replies: expected });
 		expect(await answer).toEqual(expected);
@@ -52,7 +52,7 @@ describe("one Question[] through every frontend", () => {
 		expect(await forged).toEqual(questions.map((q) => ({ id: q.id, cancelled: "declined" })));
 		// A client that did not declare `ask` still has `ui.ask`: it puts the same questions as select requests.
 		const sentWire: Record<string, unknown>[] = [];
-		const undeclared = createExtensionUIContext((event) => sentWire.push(event as Record<string, unknown>), pending);
+		const undeclared = createSessionUI((event) => sentWire.push(event as Record<string, unknown>), pending);
 		void undeclared.ask?.([{ id: "q", type: "text", question: "Region?" }]);
 		expect(sentWire[0]).toMatchObject({ method: "input", title: "Region?" });
 	});
@@ -62,7 +62,7 @@ describe("one Question[] through every frontend", () => {
 		const tracker = new UIPromptTracker(async (event) => {
 			if (event.type === "ui_prompt_start") started = event.id ?? "";
 		});
-		const ui = tracker.wrap({ ask: () => new Promise<Reply[]>(() => {}) } as unknown as ExtensionUIContext);
+		const ui = tracker.wrap({ ask: () => new Promise<Reply[]>(() => {}) } as unknown as SessionUI);
 		const answer = ui.ask!(questions);
 		await Promise.resolve();
 		expect(tracker.answer(started, { replies: [{ id: "c", picks: ["9"] }] }).ok).toBe(false);
@@ -112,9 +112,9 @@ const header = (overrides: Record<string, unknown> = {}): string =>
 
 /** What the child's RPC `ask` writes for `questions`, as the record the parent's relay reads. */
 function childRequest(questions: Question[], title?: string): Record<string, unknown> {
-	const pending: PendingExtensionRequests = new Map();
+	const pending: PendingUiRequests = new Map();
 	const sent: Record<string, unknown>[] = [];
-	const ui = createExtensionUIContext((record) => sent.push(record as Record<string, unknown>), pending, { ask: true });
+	const ui = createSessionUI((record) => sent.push(record as Record<string, unknown>), pending, { ask: true });
 	void (ui.ask as (...args: unknown[]) => Promise<Reply[]>)(
 		questions,
 		title ? { header: title.split("\n", 1)[0] } : {},
@@ -122,7 +122,7 @@ function childRequest(questions: Question[], title?: string): Record<string, unk
 	return sent[0];
 }
 
-type AskFn = NonNullable<ExtensionUIContext["ask"]>;
+type AskFn = NonNullable<SessionUI["ask"]>;
 function parent(mode: PermissionMode, ask: Mock<AskFn>) {
 	const fake = fakeHost();
 	const permission = fakePermission(mode, { api: fake.api });

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { registerStallRecorder, STALL_ENTRY, STALL_MS } from "../../src/octocode/profiler/stalls.ts";
+import { asSetup } from "./fake-host.ts";
 
 function recorder() {
 	const handlers = new Map<string, (event: unknown) => Promise<void>>();
 	const entries: Array<{ type: string; data: Record<string, unknown> }> = [];
-	registerStallRecorder({
-		on: (name: string, handler: (event: unknown) => Promise<void>) => void handlers.set(name, handler),
-		appendEntry: (type: string, data: Record<string, unknown>) => void entries.push({ type, data }),
-	} as never);
+	registerStallRecorder(
+		asSetup({
+			on: (name: string, handler: (event: unknown) => Promise<void>) => void handlers.set(name, handler),
+			appendEntry: (type: string, data: Record<string, unknown>) => void entries.push({ type, data }),
+		}) as never,
+	);
 	const emit = (name: string, event: unknown = {}) => handlers.get(name)!(event);
 	return { emit, entries };
 }

@@ -38,7 +38,7 @@ describe("thinking visibility while a bash tool is running", () => {
 			settingsManager: { setHideThinkingBlock: vi.fn() },
 			chatContainer,
 			ui,
-			footerDataProvider: { setExtensionStatus: vi.fn() },
+			footerDataProvider: { setFeatureStatus: vi.fn() },
 		};
 
 		expect(renderChat(chatContainer)).toContain("first");
@@ -47,7 +47,7 @@ describe("thinking visibility while a bash tool is running", () => {
 		toggleThinkingBlockVisibility(host);
 
 		expect(fakeThis.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
-		expect(fakeThis.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(fakeThis.footerDataProvider.setFeatureStatus).not.toHaveBeenCalled();
 		expect(renderChat(chatContainer)).toContain("Thinking blocks: hidden");
 		expect(chatContainer.children).toContain(component);
 		expect(renderChat(chatContainer)).toContain("first");

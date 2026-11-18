@@ -5,16 +5,18 @@ import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../../src/cli/args.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -42,8 +44,8 @@ async function declaredTools(
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow, maxTokens: 4096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -57,14 +59,15 @@ async function declaredTools(
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([
 			{ name: "faux", factory: provider },
 			{
 				name: "builtin:mcp",
-				factory: createMcpExtension({ presets: recommendedPresets(), logPath: path.join(root, "mcp.log") }),
+				factory: createMcpFeature({ presets: recommendedPresets(), logPath: path.join(root, "mcp.log") }),
 			},
-		],
-		disabledFeatures: ["mcp", "llama.cpp"],
+		]),
+		disabledFeatures: ["mcp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -90,7 +93,7 @@ async function declaredTools(
 		...(selection.excludeTools ? { excludeTools: selection.excludeTools } : {}),
 	});
 	try {
-		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 		let declared: string[] = [];
 		// The first prompt waits up to 10 s for the server; a slow start joins a later prompt.
@@ -106,7 +109,7 @@ async function declaredTools(
 		}
 		return declared;
 	} finally {
-		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		session.dispose();
 	}
 }

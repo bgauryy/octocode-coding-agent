@@ -75,7 +75,7 @@ export interface ChildReport {
 	/** The child's agent id. */
 	agent: string;
 	/** The outcome word the report led with, if any (`failed` for a run whose model call failed). */
-	/** The report's outcome word (`instructions/report.ts` names them); absent when the child gave none. */
+	/** The report's outcome word (`native/prompts/report.ts` names them); absent when the child gave none. */
 	outcome?: string;
 	/** The whole report on disk, when it was long enough to be saved. */
 	file?: string;

@@ -17,10 +17,12 @@ import {
 	createAgentSessionServices,
 	createSessionFromServices,
 } from "../../src/core/agent-session-runtime.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Deferred native tools (`web`, `archive`, `models`, `backlogPlan`) are decided when the tools register, from this
@@ -57,7 +59,7 @@ async function ask(): Promise<Declared> {
 	return requests.at(-1)!;
 }
 
-const rebind = () => runtime.session.bindExtensions({ mode: "rpc", shutdownHandler: () => undefined } as never);
+const rebind = () => runtime.session.bindFeatures({ mode: "rpc", shutdownHandler: () => undefined } as never);
 const web = (declared: Declared) =>
 	(JSON.parse(declared.tools) as Array<{ name: string; parameters: unknown }>).find((tool) => tool.name === "web");
 
@@ -84,8 +86,8 @@ beforeAll(async () => {
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }] as never,
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -101,7 +103,8 @@ beforeAll(async () => {
 			agentDir,
 			settingsManager,
 			resourceLoaderOptions: {
-				extensionFactories: [{ name: "faux-provider", factory: provider }],
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([{ name: "faux-provider", factory: provider }]),
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,

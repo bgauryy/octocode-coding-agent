@@ -1,16 +1,7 @@
 import { execFileSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, join, relative } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultPackageManager, type ProgressEvent, type ResolvedResource } from "../src/core/package-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -55,7 +46,7 @@ function updateMarkerPath(targetDir: string): string {
 
 function expectManagedNpmProject(installRoot: string): void {
 	expect(JSON.parse(readFileSync(join(installRoot, "package.json"), "utf-8"))).toEqual({
-		name: "octocode-extensions",
+		name: "octocode-packages",
 		private: true,
 	});
 	expect(readFileSync(join(installRoot, ".gitignore"), "utf-8")).toBe("*\n!.gitignore\n");
@@ -113,55 +104,6 @@ describe("DefaultPackageManager", () => {
 	});
 
 	describe("resolve", () => {
-		it("should return no package-sourced paths when no sources configured", async () => {
-			const result = await packageManager.resolve();
-			expect(result.extensions).toEqual([]);
-			expect(result.prompts).toEqual([]);
-			expect(result.themes).toEqual([]);
-			expect(result.skills.every((r) => r.metadata.source === "auto" && r.metadata.origin === "top-level")).toBe(true);
-		});
-
-		it("should resolve local extension paths from settings", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			const extPath = join(extDir, "my-extension.ts");
-			writeFileSync(extPath, "export default function() {}");
-			settingsManager.setExtensionPaths(["extensions/my-extension.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
-		});
-
-		it("should resolve built-in extensions with user exclusions and project overrides", async () => {
-			const pm = new DefaultPackageManager({
-				cwd: tempDir,
-				agentDir,
-				settingsManager,
-				builtinExtensions: ["mcp", "llama.cpp"],
-			});
-			const builtins = async () =>
-				(await pm.resolve()).extensions.map((r) => [r.path, r.enabled, r.metadata.source, r.metadata.scope]);
-
-			expect(await builtins()).toEqual([
-				["builtin:mcp", true, "builtin", "user"],
-				["builtin:llama.cpp", true, "builtin", "user"],
-			]);
-
-			// MCP is core: an entry that excludes it, in either scope, changes nothing.
-			settingsManager.setExtensionPaths(["-builtin:llama.cpp", "-builtin:mcp"]);
-			settingsManager.setProjectExtensionPaths(["-builtin:mcp"]);
-			expect(await builtins()).toEqual([
-				["builtin:mcp", true, "builtin", "user"],
-				["builtin:llama.cpp", false, "builtin", "user"],
-			]);
-
-			settingsManager.setProjectExtensionPaths(["+builtin:llama.cpp"]);
-			expect(await builtins()).toEqual([
-				["builtin:mcp", true, "builtin", "user"],
-				["builtin:llama.cpp", true, "builtin", "project"],
-			]);
-		});
-
 		it("should resolve skill paths from settings", async () => {
 			const skillDir = join(agentDir, "skills", "my-skill");
 			mkdirSync(skillDir, { recursive: true });
@@ -198,18 +140,6 @@ Content`,
 			expect(result.skills.some((r) => r.path === skillFile && r.enabled)).toBe(true);
 		});
 
-		it("should resolve project paths relative to .pi", async () => {
-			const extDir = join(tempDir, ".octocode", "extensions");
-			mkdirSync(extDir, { recursive: true });
-			const extPath = join(extDir, "project-ext.ts");
-			writeFileSync(extPath, "export default function() {}");
-
-			settingsManager.setProjectExtensionPaths(["extensions/project-ext.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
-		});
-
 		it("should auto-discover user prompts with overrides", async () => {
 			const promptsDir = join(agentDir, "prompts");
 			mkdirSync(promptsDir, { recursive: true });
@@ -222,74 +152,6 @@ Content`,
 			expect(result.prompts.some((r) => r.path === promptPath && !r.enabled)).toBe(true);
 		});
 
-		it("should resolve symlinked user and project resources once", async () => {
-			const previousHome = process.env.HOME;
-			process.env.HOME = tempDir;
-
-			try {
-				const sharedDir = join(tempDir, "shared-resources");
-				const sharedExtensionsDir = join(sharedDir, "extensions");
-				const sharedSkillsDir = join(sharedDir, "skills");
-				const sharedPromptsDir = join(sharedDir, "prompts");
-				const sharedThemesDir = join(sharedDir, "themes");
-				mkdirSync(sharedExtensionsDir, { recursive: true });
-				mkdirSync(sharedSkillsDir, { recursive: true });
-				mkdirSync(sharedPromptsDir, { recursive: true });
-				mkdirSync(sharedThemesDir, { recursive: true });
-
-				writeFileSync(join(sharedExtensionsDir, "shared.ts"), "export default function() {}");
-				mkdirSync(join(sharedSkillsDir, "shared-skill"), { recursive: true });
-				writeFileSync(
-					join(sharedSkillsDir, "shared-skill", "SKILL.md"),
-					`---
-name: shared-skill
-description: Shared skill
----
-Content`,
-				);
-				writeFileSync(join(sharedPromptsDir, "shared.md"), "Shared prompt");
-				writeFileSync(join(sharedThemesDir, "shared.json"), JSON.stringify({ name: "shared-theme" }));
-
-				mkdirSync(join(agentDir), { recursive: true });
-				mkdirSync(join(tempDir, ".octocode"), { recursive: true });
-				symlinkSync(sharedExtensionsDir, join(agentDir, "extensions"), "dir");
-				symlinkSync(sharedSkillsDir, join(agentDir, "skills"), "dir");
-				symlinkSync(sharedPromptsDir, join(agentDir, "prompts"), "dir");
-				symlinkSync(sharedThemesDir, join(agentDir, "themes"), "dir");
-				symlinkSync(sharedExtensionsDir, join(tempDir, ".octocode", "extensions"), "dir");
-				symlinkSync(sharedSkillsDir, join(tempDir, ".octocode", "skills"), "dir");
-				symlinkSync(sharedPromptsDir, join(tempDir, ".octocode", "prompts"), "dir");
-				symlinkSync(sharedThemesDir, join(tempDir, ".octocode", "themes"), "dir");
-
-				const result = await packageManager.resolve();
-
-				expect({
-					extensions: result.extensions.length,
-					skills: result.skills.length,
-					prompts: result.prompts.length,
-					themes: result.themes.length,
-				}).toEqual({
-					extensions: 1,
-					skills: 1,
-					prompts: 1,
-					themes: 1,
-				});
-
-				// Project auto-discovered has higher precedence than user auto-discovered,
-				// so the surviving entry should be scoped to project.
-				expect(result.extensions[0].metadata.scope).toBe("project");
-				expect(result.skills[0].metadata.scope).toBe("project");
-				expect(result.prompts[0].metadata.scope).toBe("project");
-				expect(result.themes[0].metadata.scope).toBe("project");
-			} finally {
-				if (previousHome === undefined) {
-					delete process.env.HOME;
-				} else {
-					process.env.HOME = previousHome;
-				}
-			}
-		});
-
 		it("should auto-discover project prompts with overrides", async () => {
 			const promptsDir = join(tempDir, ".octocode", "prompts");
 			mkdirSync(promptsDir, { recursive: true });
@@ -300,36 +162,6 @@ Content`,
 
 			const result = await packageManager.resolve();
 			expect(result.prompts.some((r) => r.path === promptPath && !r.enabled)).toBe(true);
-		});
-
-		it("should resolve directory with package.json pi.extensions in extensions setting", async () => {
-			// Create a package with pi.extensions in package.json
-			const pkgDir = join(tempDir, "my-extensions-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "my-extensions-pkg",
-					octocode: {
-						extensions: ["./extensions/clip.ts", "./extensions/cost.ts"],
-					},
-				}),
-			);
-			writeFileSync(join(pkgDir, "extensions", "clip.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "cost.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "helper.ts"), "export const x = 1;"); // Not in manifest, shouldn't be loaded
-
-			// Add the directory to extensions setting (not packages setting)
-			settingsManager.setExtensionPaths([pkgDir]);
-
-			const result = await packageManager.resolve();
-
-			// Should find the extensions declared in package.json pi.extensions
-			expect(result.extensions.some((r) => r.path === join(pkgDir, "extensions", "clip.ts") && r.enabled)).toBe(true);
-			expect(result.extensions.some((r) => r.path === join(pkgDir, "extensions", "cost.ts") && r.enabled)).toBe(true);
-
-			// Should NOT find helper.ts (not declared in manifest)
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "helper.ts"))).toBe(false);
 		});
 	});
 
@@ -604,90 +436,7 @@ Content`,
 		});
 	});
 
-	describe("resolveExtensionSources", () => {
-		it("should resolve local paths", async () => {
-			const extPath = join(tempDir, "ext.ts");
-			writeFileSync(extPath, "export default function() {}");
-
-			const result = await packageManager.resolveExtensionSources([extPath]);
-			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
-		});
-
-		it("should handle directories with pi manifest", async () => {
-			const pkgDir = join(tempDir, "my-package");
-			mkdirSync(pkgDir, { recursive: true });
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "my-package",
-					octocode: {
-						extensions: ["./src/index.ts"],
-						skills: ["./skills"],
-					},
-				}),
-			);
-			mkdirSync(join(pkgDir, "src"), { recursive: true });
-			writeFileSync(join(pkgDir, "src", "index.ts"), "export default function() {}");
-			mkdirSync(join(pkgDir, "skills", "my-skill"), { recursive: true });
-			writeFileSync(
-				join(pkgDir, "skills", "my-skill", "SKILL.md"),
-				"---\nname: my-skill\ndescription: Test\n---\nContent",
-			);
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-			expect(result.extensions.some((r) => r.path === join(pkgDir, "src", "index.ts") && r.enabled)).toBe(true);
-			// Skills with SKILL.md are returned as file paths
-			expect(result.skills.some((r) => r.path === join(pkgDir, "skills", "my-skill", "SKILL.md") && r.enabled)).toBe(
-				true,
-			);
-		});
-
-		it("should keep pi manifest entries with leading tilde package-relative", async () => {
-			const pkgDir = join(tempDir, "tilde-manifest-package");
-			const directExtensionPath = join(pkgDir, "~extensions", "main.ts");
-			const slashExtensionPath = join(pkgDir, "~", "extensions", "alt.ts");
-			const directSkillPath = join(pkgDir, "~skills", "direct-skill", "SKILL.md");
-			const slashSkillPath = join(pkgDir, "~", "skills", "slash-skill", "SKILL.md");
-
-			mkdirSync(join(pkgDir, "~extensions"), { recursive: true });
-			mkdirSync(join(pkgDir, "~", "extensions"), { recursive: true });
-			mkdirSync(join(pkgDir, "~skills", "direct-skill"), { recursive: true });
-			mkdirSync(join(pkgDir, "~", "skills", "slash-skill"), { recursive: true });
-			writeFileSync(directExtensionPath, "export default function() {}");
-			writeFileSync(slashExtensionPath, "export default function() {}");
-			writeFileSync(directSkillPath, "---\nname: direct-skill\ndescription: Direct\n---\nContent");
-			writeFileSync(slashSkillPath, "---\nname: slash-skill\ndescription: Slash\n---\nContent");
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "tilde-manifest-package",
-					octocode: {
-						extensions: ["~extensions/main.ts", "~/extensions/alt.ts"],
-						skills: ["~skills", "~/skills"],
-					},
-				}),
-			);
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-
-			expect(result.extensions.some((r) => r.path === directExtensionPath && r.enabled)).toBe(true);
-			expect(result.extensions.some((r) => r.path === slashExtensionPath && r.enabled)).toBe(true);
-			expect(result.skills.some((r) => r.path === directSkillPath && r.enabled)).toBe(true);
-			expect(result.skills.some((r) => r.path === slashSkillPath && r.enabled)).toBe(true);
-		});
-
-		it("should handle directories with auto-discovery layout", async () => {
-			const pkgDir = join(tempDir, "auto-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			mkdirSync(join(pkgDir, "themes"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "main.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "themes", "dark.json"), "{}");
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "main.ts") && r.enabled)).toBe(true);
-			expect(result.themes.some((r) => pathEndsWith(r.path, "dark.json") && r.enabled)).toBe(true);
-		});
-
+	describe("resolveSources", () => {
 		it("should stop recursing when a package skill directory contains SKILL.md", async () => {
 			const pkgDir = join(tempDir, "skill-root-pkg");
 			mkdirSync(join(pkgDir, "skills", "root-skill", "nested-skill"), { recursive: true });
@@ -696,7 +445,7 @@ Content`,
 			writeFileSync(rootSkill, "---\nname: root-skill\ndescription: Root skill\n---\n");
 			writeFileSync(nestedSkill, "---\nname: nested-skill\ndescription: Nested skill\n---\n");
 
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
+			const result = await packageManager.resolveSources([pkgDir]);
 			expect(result.skills.some((r) => r.path === rootSkill && r.enabled)).toBe(true);
 			expect(result.skills.some((r) => r.path === nestedSkill)).toBe(false);
 		});
@@ -711,7 +460,7 @@ Content`,
 			writeFileSync(extPath, "export default function() {}");
 
 			// Local paths don't trigger install progress, but we can verify the callback is set
-			await packageManager.resolveExtensionSources([extPath]);
+			await packageManager.resolveSources([extPath]);
 
 			// For now just verify no errors - npm/git would trigger actual events
 			expect(events.length).toBe(0);
@@ -1207,64 +956,6 @@ if (args[0] === "view") {
 		};
 		const viewArgs = (spec: string) => ["view", spec, "version", "--json"];
 
-		it("should install user npm packages into the Octocode-managed npm root", async () => {
-			const pm = managerWith({ npmCommand: ["pnpm"], packages: ["npm:pnpm-pkg"] });
-			const packagePath = join(agentDir, "npm", "node_modules", "pnpm-pkg");
-			withScript(
-				"pnpm",
-				`if (args[0] === "list") { console.error("legacy lookup unavailable"); process.exit(1); }${materializeScript("pnpm-pkg")}`,
-			);
-
-			const first = await pm.resolve();
-			const second = await pm.resolve();
-
-			for (const result of [first, second]) {
-				expect(result.extensions.some((r) => r.path === join(packagePath, "extensions", "index.ts") && r.enabled)).toBe(
-					true,
-				);
-			}
-			expect(
-				calls("pnpm")
-					.filter((entry) => entry.args[0] === "install")
-					.map((entry) => entry.args),
-			).toEqual([
-				[
-					"install",
-					"pnpm-pkg",
-					"--prefix",
-					join(agentDir, "npm"),
-					"--config.auto-install-peers=false",
-					"--config.strict-peer-dependencies=false",
-					"--config.strict-dep-builds=false",
-					"--ignore-scripts",
-				],
-			]);
-			expect(pm.getInstalledPath("npm:pnpm-pkg", "user")).toBe(packagePath);
-		});
-
-		it("should load legacy pnpm global package paths from pnpm list output", async () => {
-			const pm = managerWith({ npmCommand: ["pnpm"], packages: ["npm:pnpm-pkg"] });
-			const pnpmRoot = join(tempDir, "pnpm", "global", "v11");
-			const packagePath = join(pnpmRoot, "20-hash", "node_modules", "pnpm-pkg");
-			mkdirSync(join(packagePath, "extensions"), { recursive: true });
-			writeFileSync(join(packagePath, "package.json"), JSON.stringify({ name: "pnpm-pkg", version: "1.0.0" }));
-			writeFileSync(join(packagePath, "extensions", "index.ts"), "export default function() {};");
-			withScript(
-				"pnpm",
-				`if (args.join(" ") === "list -g --depth 0 --json") console.log(JSON.stringify([{ path: ${JSON.stringify(pnpmRoot)}, dependencies: { "pnpm-pkg": { version: "1.0.0", path: ${JSON.stringify(packagePath)} } } }]));
-else process.exit(1);`,
-			);
-
-			const result = await pm.resolve();
-
-			expect(result.extensions.some((r) => r.path === join(packagePath, "extensions", "index.ts") && r.enabled)).toBe(
-				true,
-			);
-			// Found by listing: nothing was installed.
-			expect(calls("pnpm").some((entry) => entry.args[0] === "install")).toBe(false);
-			expect(pm.getInstalledPath("npm:pnpm-pkg", "user")).toBe(packagePath);
-		});
-
 		it("should resolve wrapped pnpm global package paths from pnpm list output", () => {
 			const pm = managerWith({ npmCommand: ["mise", "exec", "node@20", "--", "pnpm"] });
 			const pnpmRoot = join(tempDir, "pnpm", "global", "v11");
@@ -1482,79 +1173,6 @@ else process.exit(1);`,
 			expect(maxOverlap("git", "fetch")).toBeGreaterThan(1);
 		});
 
-		it("should skip installing missing package sources when offline", async () => {
-			process.env.OCTOCODE_OFFLINE = "1";
-			managerWith();
-			settingsManager.setProjectPackages(["npm:missing-package", "git:github.com/example/missing-repo"]);
-
-			const result = await packageManager.resolve();
-
-			const allResources = [...result.extensions, ...result.skills, ...result.prompts, ...result.themes];
-			expect(allResources.some((r) => r.metadata.origin === "package")).toBe(false);
-			expect(calls()).toEqual([]);
-		});
-
-		it("should skip refreshing temporary git sources when offline", async () => {
-			process.env.OCTOCODE_OFFLINE = "1";
-			managerWith();
-			const gitSource = "git:github.com/example/repo";
-			const internals = packageManager as unknown as PackageManagerInternals;
-			const parsedGitSource = internals.parseSource(gitSource);
-			if (parsedGitSource.type !== "git") throw new Error("Expected a git source");
-			const installedPath = internals.getGitInstallPath(parsedGitSource, "temporary");
-			mkdirSync(join(installedPath, "extensions"), { recursive: true });
-			writeFileSync(join(installedPath, "extensions", "index.ts"), "export default function() {};");
-
-			const result = await packageManager.resolveExtensionSources([gitSource], { temporary: true });
-
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "extensions/index.ts") && r.enabled)).toBe(true);
-			expect(calls()).toEqual([]);
-		});
-
-		it("should load a new checkout when a pinned temporary git source changes ref", async () => {
-			const remote = createRemote({ "extensions/old.ts": "export default function() {};" }, "example/repo");
-			const oldRef = git(remote, "rev-parse", "HEAD");
-			const newRef = commit(
-				remote,
-				{ "extensions/old.ts": null, "extensions/new.ts": "export default function() {};" },
-				"swap",
-			);
-			managerWith();
-			const internals = packageManager as unknown as PackageManagerInternals;
-			const pathOf = (ref: string) => {
-				const parsed = internals.parseSource(`git:github.com/example/repo@${ref}`);
-				if (parsed.type !== "git") throw new Error("Expected a git source");
-				return internals.getGitInstallPath(parsed, "temporary");
-			};
-			// The old pinned checkout exists from an earlier run.
-			clonedCheckout(pathOf(oldRef), remote);
-			git(pathOf(oldRef), "checkout", "-q", oldRef);
-
-			const result = await packageManager.resolveExtensionSources([`git:github.com/example/repo@${newRef}`], {
-				temporary: true,
-			});
-
-			expect(pathOf(newRef)).not.toBe(pathOf(oldRef));
-			expect(git(pathOf(newRef), "rev-parse", "HEAD")).toBe(newRef);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "extensions/new.ts") && r.enabled)).toBe(true);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "extensions/old.ts"))).toBe(false);
-		});
-
-		it("should not run npm view during resolve for installed unpinned packages", async () => {
-			process.env.OCTOCODE_OFFLINE = "1";
-			const root = join(tempDir, ".octocode", "npm");
-			const installedPath = installedNpm(root, "example", "1.0.0");
-			mkdirSync(join(installedPath, "extensions"), { recursive: true });
-			writeFileSync(join(installedPath, "extensions", "index.ts"), "export default function() {};");
-			managerWith();
-			settingsManager.setProjectPackages(["npm:example@^1.0.0"]);
-
-			const result = await packageManager.resolve();
-
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "extensions/index.ts") && r.enabled)).toBe(true);
-			expect(calls("npm")).toEqual([]);
-		});
-
 		it("should reinstall pinned npm packages when installed version does not match", async () => {
 			const root = join(tempDir, ".octocode", "npm");
 			installedNpm(root, "example", "1.0.0");
@@ -1663,32 +1281,6 @@ else process.exit(1);`,
 			expect(calls("git")[0]?.args.slice(0, 2)).toEqual(["clone", source]);
 			expect(events.some((e) => e.type === "start" && e.action === "install")).toBe(true);
 		});
-
-		it("should resolve autoload-disabled project package entries as deltas over global packages", async () => {
-			const pkgDir = join(agentDir, "npm", "node_modules", "pi-tools");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "pi-tools", version: "1.0.0" }));
-			writeFileSync(join(pkgDir, "extensions", "foo.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "bar.ts"), "export default function() {}");
-			const pm = managerWith();
-			settingsManager.setPackages(["npm:pi-tools"]);
-			settingsManager.setProjectPackages([
-				{ source: "npm:pi-tools", autoload: false, extensions: ["-extensions/foo.ts"] },
-			]);
-
-			const result = await pm.resolve();
-
-			const states = Object.fromEntries(
-				result.extensions.map((resource) => [
-					resource.path,
-					{ enabled: resource.enabled, scope: resource.metadata.scope },
-				]),
-			);
-			// Already installed: nothing was run to resolve it.
-			expect(calls()).toEqual([]);
-			expect(states[join(pkgDir, "extensions", "foo.ts")]).toEqual({ enabled: false, scope: "project" });
-			expect(states[join(pkgDir, "extensions", "bar.ts")]).toEqual({ enabled: true, scope: "user" });
-		});
 	});
 
 	describe("source parsing", () => {
@@ -1745,66 +1337,7 @@ else process.exit(1);`,
 		});
 	});
 
-	describe("temporary install paths", () => {
-		it("should place temporary npm packages under the agent temp extension folder", () => {
-			const managerWithInternals = packageManager as unknown as PackageManagerInternals;
-			const source = managerWithInternals.parseSource("npm:left-pad");
-			if (source.type !== "npm") {
-				throw new Error("Expected npm source");
-			}
-
-			const installPath = managerWithInternals.getNpmInstallPath(source, "temporary");
-			const tempRoot = join(agentDir, "tmp", "extensions");
-
-			expect(pathEndsWith(installPath, "node_modules/left-pad")).toBe(true);
-			expect(relative(tempRoot, installPath).startsWith("..")).toBe(false);
-			expect(installPath.startsWith(join(tmpdir(), "octocode-extensions"))).toBe(false);
-			if (process.platform !== "win32") {
-				expect(statSync(tempRoot).mode & 0o777).toBe(0o700);
-			}
-		});
-	});
-
 	describe("settings source normalization", () => {
-		it("should store global local packages relative to agent settings base", () => {
-			const pkgDir = join(tempDir, "packages", "local-global-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "index.ts"), "export default function() {}");
-
-			const added = packageManager.addSourceToSettings("./packages/local-global-pkg");
-			expect(added).toBe(true);
-
-			const settings = settingsManager.getGlobalSettings();
-			const rel = relative(agentDir, pkgDir);
-			const expected = rel.startsWith(".") ? rel : `./${rel}`;
-			expect(settings.packages?.[0]).toBe(expected);
-		});
-
-		it("should store project local packages relative to .pi settings base", () => {
-			const projectPkgDir = join(tempDir, "project-local-pkg");
-			mkdirSync(join(projectPkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(projectPkgDir, "extensions", "index.ts"), "export default function() {}");
-
-			const added = packageManager.addSourceToSettings("./project-local-pkg", { local: true });
-			expect(added).toBe(true);
-
-			const settings = settingsManager.getProjectSettings();
-			const rel = relative(join(tempDir, ".octocode"), projectPkgDir);
-			const expected = rel.startsWith(".") ? rel : `./${rel}`;
-			expect(settings.packages?.[0]).toBe(expected);
-		});
-
-		it("should remove local package entries using equivalent path forms", () => {
-			const pkgDir = join(tempDir, "remove-local-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "index.ts"), "export default function() {}");
-
-			packageManager.addSourceToSettings("./remove-local-pkg");
-			const removed = packageManager.removeSourceFromSettings(`${pkgDir}/`);
-			expect(removed).toBe(true);
-			expect(settingsManager.getGlobalSettings().packages ?? []).toHaveLength(0);
-		});
-
 		it("should return false when adding the same git source with the same ref", () => {
 			const first = packageManager.addSourceToSettings("git:github.com/user/repo@v1");
 			expect(first).toBe(true);
@@ -1820,30 +1353,6 @@ else process.exit(1);`,
 			const updated = packageManager.addSourceToSettings("git:github.com/user/repo@v2");
 			expect(updated).toBe(true);
 			expect(settingsManager.getGlobalSettings().packages).toEqual(["git:github.com/user/repo@v2"]);
-		});
-
-		it("should preserve package filters when replacing a package source ref", () => {
-			settingsManager.setPackages([
-				{
-					source: "git:github.com/user/repo@v1",
-					extensions: ["extensions/main.ts"],
-					skills: [],
-					prompts: ["prompts/review.md"],
-					themes: ["themes/dark.json"],
-				},
-			]);
-
-			const updated = packageManager.addSourceToSettings("git:github.com/user/repo@v2");
-			expect(updated).toBe(true);
-			expect(settingsManager.getGlobalSettings().packages).toEqual([
-				{
-					source: "git:github.com/user/repo@v2",
-					extensions: ["extensions/main.ts"],
-					skills: [],
-					prompts: ["prompts/review.md"],
-					themes: ["themes/dark.json"],
-				},
-			]);
 		});
 	});
 
@@ -1925,29 +1434,6 @@ else process.exit(1);`,
 			expect(identity4).toBe("git:github.com/user/repo");
 		});
 
-		it("should deduplicate git URLs with different supported formats", async () => {
-			const pkgDir = join(tempDir, "https-dedup-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "test.ts"), "export default function() {}");
-
-			// Mock the package as if it were cloned from different URL formats
-			// In reality, these would all point to the same local dir after install
-			settingsManager.setPackages([
-				"https://github.com/user/repo",
-				"git:github.com/user/repo",
-				"https://github.com/user/repo.git",
-			]);
-
-			// Since these URLs don't actually exist and we can't clone them,
-			// we verify they produce the same identity
-			const id1 = (packageManager as any).getPackageIdentity("https://github.com/user/repo");
-			const id2 = (packageManager as any).getPackageIdentity("git:github.com/user/repo");
-			const id3 = (packageManager as any).getPackageIdentity("https://github.com/user/repo.git");
-
-			expect(id1).toBe(id2);
-			expect(id2).toBe(id3);
-		});
-
 		it("should handle HTTPS URLs with refs in resolve", async () => {
 			// This tests that the ref is properly extracted and stored
 			const parsed = (packageManager as any).parseSource("https://github.com/user/repo@main");
@@ -1984,19 +1470,6 @@ else process.exit(1);`,
 					process.env.HOME = previousHome;
 				}
 			}
-		});
-
-		it("should exclude extensions with ! pattern", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(join(extDir, "keep.ts"), "export default function() {}");
-			writeFileSync(join(extDir, "remove.ts"), "export default function() {}");
-
-			settingsManager.setExtensionPaths(["extensions", "!**/remove.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isEnabled(r, "keep.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "remove.ts"))).toBe(true);
 		});
 
 		it("should filter themes with glob patterns", async () => {
@@ -2043,44 +1516,9 @@ else process.exit(1);`,
 			expect(result.skills.some((r) => isEnabled(r, "good-skill", "includes"))).toBe(true);
 			expect(result.skills.some((r) => isDisabled(r, "bad-skill", "includes"))).toBe(true);
 		});
-
-		it("should work without patterns (backward compatible)", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			const extPath = join(extDir, "my-ext.ts");
-			writeFileSync(extPath, "export default function() {}");
-
-			settingsManager.setExtensionPaths(["extensions/my-ext.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
-		});
 	});
 
 	describe("pattern filtering in pi manifest", () => {
-		it("should support glob patterns in manifest extensions", async () => {
-			const pkgDir = join(tempDir, "manifest-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			mkdirSync(join(pkgDir, "node_modules/dep/extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "local.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "node_modules/dep/extensions", "remote.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "node_modules/dep/extensions", "skip.ts"), "export default function() {}");
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "manifest-pkg",
-					octocode: {
-						extensions: ["extensions", "node_modules/dep/extensions", "!**/skip.ts"],
-					},
-				}),
-			);
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-			expect(result.extensions.some((r) => isEnabled(r, "local.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "remote.ts"))).toBe(true);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "skip.ts"))).toBe(false);
-		});
-
 		it("should support glob patterns in manifest skills", async () => {
 			const pkgDir = join(tempDir, "skill-manifest-pkg");
 			mkdirSync(join(pkgDir, "skills/good-skill"), { recursive: true });
@@ -2103,7 +1541,7 @@ else process.exit(1);`,
 				}),
 			);
 
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
+			const result = await packageManager.resolveSources([pkgDir]);
 			expect(result.skills.some((r) => isEnabled(r, "good-skill", "includes"))).toBe(true);
 			expect(result.skills.some((r) => r.path.includes("bad-skill"))).toBe(false);
 		});
@@ -2130,317 +1568,13 @@ else process.exit(1);`,
 				}),
 			);
 
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
+			const result = await packageManager.resolveSources([pkgDir]);
 			expect(result.skills.some((r) => isEnabled(r, "pdf-to-markdown", "includes"))).toBe(true);
 			expect(result.skills.some((r) => isEnabled(r, "document-processor-api", "includes"))).toBe(true);
-		});
-
-		it("should sort manifest glob matches and use exact entries for dot paths and symlink traversal", async () => {
-			const pkgDir = join(tempDir, "manifest-glob-semantics-pkg");
-			const extensionFilesDir = join(pkgDir, "extension-files");
-			const extensionGroupDir = join(pkgDir, "extension-groups", "group");
-			const linkedPluginSource = join(pkgDir, "linked-plugin-source");
-			mkdirSync(join(extensionFilesDir, "nested"), { recursive: true });
-			mkdirSync(extensionGroupDir, { recursive: true });
-			mkdirSync(join(pkgDir, "plugins", "local", "skills", "local-skill"), { recursive: true });
-			mkdirSync(join(linkedPluginSource, "skills", "linked-skill"), { recursive: true });
-			writeFileSync(join(extensionFilesDir, "z.ts"), "export default function() {}");
-			writeFileSync(join(extensionFilesDir, "a.ts"), "export default function() {}");
-			writeFileSync(join(extensionFilesDir, ".ignored.ts"), "export default function() {}");
-			writeFileSync(join(extensionFilesDir, "nested", ".hidden.ts"), "export default function() {}");
-			writeFileSync(join(extensionGroupDir, "index.ts"), "export default function() {}");
-			writeFileSync(
-				join(pkgDir, "plugins", "local", "skills", "local-skill", "SKILL.md"),
-				"---\nname: local-skill\ndescription: Local\n---\n",
-			);
-			writeFileSync(
-				join(linkedPluginSource, "skills", "linked-skill", "SKILL.md"),
-				"---\nname: linked-skill\ndescription: Linked\n---\n",
-			);
-			symlinkSync(
-				linkedPluginSource,
-				join(pkgDir, "plugins", "linked"),
-				process.platform === "win32" ? "junction" : "dir",
-			);
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "manifest-glob-semantics-pkg",
-					octocode: {
-						extensions: [
-							"./extension-files/*.ts",
-							"./extension-files/**/.ignored.ts",
-							"./extension-files/nested/.hidden.ts",
-							"./extension-groups/*/",
-						],
-						skills: ["./plugins/*/skills", "./plugins/linked/skills"],
-					},
-				}),
-			);
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-			expect(result.extensions.map((resource) => relative(pkgDir, resource.path))).toEqual([
-				join("extension-files", "a.ts"),
-				join("extension-files", "z.ts"),
-				join("extension-files", "nested", ".hidden.ts"),
-				join("extension-groups", "group", "index.ts"),
-			]);
-			expect(result.skills.some((resource) => pathEndsWith(resource.path, "local-skill/SKILL.md"))).toBe(true);
-			expect(result.skills.some((resource) => pathEndsWith(resource.path, "linked-skill/SKILL.md"))).toBe(true);
-		});
-	});
-
-	describe("pattern filtering in package filters", () => {
-		it("should apply user filters on top of manifest filters (not replace)", async () => {
-			// Manifest excludes baz.ts, user excludes bar.ts
-			// Result should exclude BOTH
-			const pkgDir = join(tempDir, "layered-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "foo.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "bar.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "baz.ts"), "export default function() {}");
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "layered-pkg",
-					octocode: {
-						extensions: ["extensions", "!**/baz.ts"],
-					},
-				}),
-			);
-
-			// User filter adds exclusion for bar.ts
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["!**/bar.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			// foo.ts should be included (not excluded by anyone)
-			expect(result.extensions.some((r) => isEnabled(r, "foo.ts"))).toBe(true);
-			// bar.ts should be excluded (by user)
-			expect(result.extensions.some((r) => isDisabled(r, "bar.ts"))).toBe(true);
-			// baz.ts should be excluded (by manifest)
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "baz.ts"))).toBe(false);
-		});
-
-		it("should exclude extensions from package with ! pattern", async () => {
-			const pkgDir = join(tempDir, "pattern-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "foo.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "bar.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "baz.ts"), "export default function() {}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["!**/baz.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isEnabled(r, "foo.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "bar.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "baz.ts"))).toBe(true);
-		});
-
-		it("should filter themes from package", async () => {
-			const pkgDir = join(tempDir, "theme-pkg");
-			mkdirSync(join(pkgDir, "themes"), { recursive: true });
-			writeFileSync(join(pkgDir, "themes", "nice.json"), "{}");
-			writeFileSync(join(pkgDir, "themes", "ugly.json"), "{}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: [],
-					skills: [],
-					prompts: [],
-					themes: ["!ugly.json"],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.themes.some((r) => isEnabled(r, "nice.json"))).toBe(true);
-			expect(result.themes.some((r) => isDisabled(r, "ugly.json"))).toBe(true);
-		});
-
-		it("should combine include and exclude patterns", async () => {
-			const pkgDir = join(tempDir, "combo-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "alpha.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "beta.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "gamma.ts"), "export default function() {}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["**/alpha.ts", "**/beta.ts", "!**/beta.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isEnabled(r, "alpha.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "beta.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "gamma.ts"))).toBe(true);
-		});
-
-		it("should work with direct paths (no patterns)", async () => {
-			const pkgDir = join(tempDir, "direct-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "one.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "two.ts"), "export default function() {}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["extensions/one.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isEnabled(r, "one.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "two.ts"))).toBe(true);
-		});
-
-		it("should resolve autoload-disabled package entries as positive-only without a global package", async () => {
-			vi.stubEnv("HOME", tempDir);
-			const pkgDir = join(tempDir, "positive-only-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			mkdirSync(join(pkgDir, "skills", "foo"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "foo.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "bar.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "skills", "foo", "SKILL.md"), "# Foo\n");
-			settingsManager.setProjectPackages([
-				{
-					source: relative(join(tempDir, ".octocode"), pkgDir),
-					autoload: false,
-					extensions: ["+extensions/foo.ts"],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-
-			expect(result.extensions.map((resource) => resource.path)).toEqual([join(pkgDir, "extensions", "foo.ts")]);
-			expect(result.skills).toEqual([]);
 		});
 	});
 
 	describe("force-include patterns", () => {
-		it("should force-include extensions with + pattern after exclusion", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(join(extDir, "keep.ts"), "export default function() {}");
-			writeFileSync(join(extDir, "excluded.ts"), "export default function() {}");
-			writeFileSync(join(extDir, "force-back.ts"), "export default function() {}");
-
-			// Exclude all, then force-include one back
-			settingsManager.setExtensionPaths(["extensions", "!extensions/*.ts", "+extensions/force-back.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isDisabled(r, "keep.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "excluded.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "force-back.ts"))).toBe(true);
-		});
-
-		it("should force-include overrides exclude in package filters", async () => {
-			const pkgDir = join(tempDir, "force-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "alpha.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "beta.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "gamma.ts"), "export default function() {}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["!**/*.ts", "+extensions/beta.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isDisabled(r, "alpha.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "beta.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isDisabled(r, "gamma.ts"))).toBe(true);
-		});
-
-		it("should force-include multiple resources", async () => {
-			const pkgDir = join(tempDir, "multi-force-pkg");
-			mkdirSync(join(pkgDir, "skills/skill-a"), { recursive: true });
-			mkdirSync(join(pkgDir, "skills/skill-b"), { recursive: true });
-			mkdirSync(join(pkgDir, "skills/skill-c"), { recursive: true });
-			writeFileSync(join(pkgDir, "skills/skill-a", "SKILL.md"), "---\nname: skill-a\ndescription: A\n---\nContent");
-			writeFileSync(join(pkgDir, "skills/skill-b", "SKILL.md"), "---\nname: skill-b\ndescription: B\n---\nContent");
-			writeFileSync(join(pkgDir, "skills/skill-c", "SKILL.md"), "---\nname: skill-c\ndescription: C\n---\nContent");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: [],
-					skills: ["!**/*", "+skills/skill-a", "+skills/skill-c"],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.skills.some((r) => isEnabled(r, "skill-a", "includes"))).toBe(true);
-			expect(result.skills.some((r) => isDisabled(r, "skill-b", "includes"))).toBe(true);
-			expect(result.skills.some((r) => isEnabled(r, "skill-c", "includes"))).toBe(true);
-		});
-
-		it("should force-include after specific exclusion", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(join(extDir, "a.ts"), "export default function() {}");
-			writeFileSync(join(extDir, "b.ts"), "export default function() {}");
-
-			// Specifically exclude b.ts, then force it back
-			settingsManager.setExtensionPaths(["extensions", "!extensions/b.ts", "+extensions/b.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isEnabled(r, "a.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "b.ts"))).toBe(true);
-		});
-
-		it("should handle force-include in manifest patterns", async () => {
-			const pkgDir = join(tempDir, "manifest-force-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "one.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "two.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "three.ts"), "export default function() {}");
-			writeFileSync(
-				join(pkgDir, "package.json"),
-				JSON.stringify({
-					name: "manifest-force-pkg",
-					octocode: {
-						extensions: ["extensions", "!**/two.ts", "+extensions/two.ts"],
-					},
-				}),
-			);
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-			expect(result.extensions.some((r) => isEnabled(r, "one.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "two.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "three.ts"))).toBe(true);
-		});
-
 		it("should force-include themes", async () => {
 			const themesDir = join(agentDir, "themes");
 			mkdirSync(themesDir, { recursive: true });
@@ -2472,81 +1606,7 @@ else process.exit(1);`,
 		});
 	});
 
-	describe("force-exclude patterns", () => {
-		it("should force-exclude top-level resources", async () => {
-			const extDir = join(agentDir, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(join(extDir, "alpha.ts"), "export default function() {}");
-			writeFileSync(join(extDir, "beta.ts"), "export default function() {}");
-
-			settingsManager.setExtensionPaths(["extensions", "+extensions/alpha.ts", "-extensions/alpha.ts"]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isDisabled(r, "alpha.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "beta.ts"))).toBe(true);
-		});
-
-		it("should force-exclude in package filters", async () => {
-			const pkgDir = join(tempDir, "force-exclude-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "alpha.ts"), "export default function() {}");
-			writeFileSync(join(pkgDir, "extensions", "beta.ts"), "export default function() {}");
-
-			settingsManager.setPackages([
-				{
-					source: pkgDir,
-					extensions: ["extensions/*.ts", "+extensions/alpha.ts", "-extensions/alpha.ts"],
-					skills: [],
-					prompts: [],
-					themes: [],
-				},
-			]);
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => isDisabled(r, "alpha.ts"))).toBe(true);
-			expect(result.extensions.some((r) => isEnabled(r, "beta.ts"))).toBe(true);
-		});
-	});
-
 	describe("package deduplication", () => {
-		it("should dedupe same local package in global and project (project wins)", async () => {
-			const pkgDir = join(tempDir, "shared-pkg");
-			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(pkgDir, "extensions", "shared.ts"), "export default function() {}");
-
-			// Same package in both global and project
-			settingsManager.setPackages([pkgDir]); // global
-			settingsManager.setProjectPackages([pkgDir]); // project
-
-			// Debug: verify settings are stored correctly
-			const globalSettings = settingsManager.getGlobalSettings();
-			const projectSettings = settingsManager.getProjectSettings();
-			expect(globalSettings.packages).toEqual([pkgDir]);
-			expect(projectSettings.packages).toEqual([pkgDir]);
-
-			const result = await packageManager.resolve();
-			// Should only appear once (deduped), with project scope
-			const sharedPaths = result.extensions.filter((r) => r.path.includes("shared-pkg"));
-			expect(sharedPaths.length).toBe(1);
-			expect(sharedPaths[0].metadata.scope).toBe("project");
-		});
-
-		it("should keep both if different packages", async () => {
-			const pkg1Dir = join(tempDir, "pkg1");
-			const pkg2Dir = join(tempDir, "pkg2");
-			mkdirSync(join(pkg1Dir, "extensions"), { recursive: true });
-			mkdirSync(join(pkg2Dir, "extensions"), { recursive: true });
-			writeFileSync(join(pkg1Dir, "extensions", "from-pkg1.ts"), "export default function() {}");
-			writeFileSync(join(pkg2Dir, "extensions", "from-pkg2.ts"), "export default function() {}");
-
-			settingsManager.setPackages([pkg1Dir]); // global
-			settingsManager.setProjectPackages([pkg2Dir]); // project
-
-			const result = await packageManager.resolve();
-			expect(result.extensions.some((r) => r.path.includes("pkg1"))).toBe(true);
-			expect(result.extensions.some((r) => r.path.includes("pkg2"))).toBe(true);
-		});
-
 		it("should dedupe SSH and HTTPS URLs for same repo", async () => {
 			// Same repository, different URL formats
 			const httpsUrl = "https://github.com/user/repo";
@@ -2617,110 +1677,6 @@ else process.exit(1);`,
 			expect(id1).toBe("git:github.com/user/repo1");
 			expect(id2).toBe("git:github.com/user/repo2");
 			expect(id1).not.toBe(id2);
-		});
-	});
-
-	describe("multi-file extension discovery", () => {
-		it("should only load index.ts from subdirectories, not helper modules", async () => {
-			// Regression test: packages with multi-file extensions in subdirectories
-			// should only load the index.ts entry point, not helper modules like agents.ts
-			const pkgDir = join(tempDir, "multifile-pkg");
-			mkdirSync(join(pkgDir, "extensions", "subagent"), { recursive: true });
-
-			// Main entry point
-			writeFileSync(
-				join(pkgDir, "extensions", "subagent", "index.ts"),
-				`import { helper } from "./agents.ts";
-export default function(api) { api.registerTool({ name: "test", description: "test", execute: async () => helper() }); }`,
-			);
-			// Helper module (should NOT be loaded as standalone extension)
-			writeFileSync(
-				join(pkgDir, "extensions", "subagent", "agents.ts"),
-				`export function helper() { return "helper"; }`,
-			);
-			// Top-level extension file (should be loaded)
-			writeFileSync(join(pkgDir, "extensions", "standalone.ts"), "export default function(api) {}");
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-
-			// Should find the index.ts and standalone.ts
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "subagent/index.ts") && r.enabled)).toBe(true);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "standalone.ts") && r.enabled)).toBe(true);
-
-			// Should NOT find agents.ts as a standalone extension
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "agents.ts"))).toBe(false);
-		});
-
-		it("should respect package.json pi.extensions manifest in subdirectories", async () => {
-			const pkgDir = join(tempDir, "manifest-subdir-pkg");
-			mkdirSync(join(pkgDir, "extensions", "custom"), { recursive: true });
-
-			// Subdirectory with its own manifest
-			writeFileSync(
-				join(pkgDir, "extensions", "custom", "package.json"),
-				JSON.stringify({
-					octocode: {
-						extensions: ["./main.ts"],
-					},
-				}),
-			);
-			writeFileSync(join(pkgDir, "extensions", "custom", "main.ts"), "export default function(api) {}");
-			writeFileSync(join(pkgDir, "extensions", "custom", "utils.ts"), "export const util = 1;");
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-
-			// Should find main.ts declared in manifest
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "custom/main.ts") && r.enabled)).toBe(true);
-
-			// Should NOT find utils.ts (not declared in manifest)
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "utils.ts"))).toBe(false);
-		});
-
-		it("should handle mixed top-level files and subdirectories", async () => {
-			const pkgDir = join(tempDir, "mixed-pkg");
-			mkdirSync(join(pkgDir, "extensions", "complex"), { recursive: true });
-
-			// Top-level extension
-			writeFileSync(join(pkgDir, "extensions", "simple.ts"), "export default function(api) {}");
-
-			// Subdirectory with index.ts + helpers
-			writeFileSync(
-				join(pkgDir, "extensions", "complex", "index.ts"),
-				"import { a } from './a.ts'; export default function(api) {}",
-			);
-			writeFileSync(join(pkgDir, "extensions", "complex", "a.ts"), "export const a = 1;");
-			writeFileSync(join(pkgDir, "extensions", "complex", "b.ts"), "export const b = 2;");
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-
-			// Should find simple.ts and complex/index.ts
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "simple.ts") && r.enabled)).toBe(true);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "complex/index.ts") && r.enabled)).toBe(true);
-
-			// Should NOT find helper modules
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "complex/a.ts"))).toBe(false);
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "complex/b.ts"))).toBe(false);
-
-			// Total should be exactly 2
-			expect(result.extensions.filter((r) => r.enabled).length).toBe(2);
-		});
-
-		it("should skip subdirectories without index.ts or manifest", async () => {
-			const pkgDir = join(tempDir, "no-entry-pkg");
-			mkdirSync(join(pkgDir, "extensions", "broken"), { recursive: true });
-
-			// Subdirectory with no index.ts and no manifest
-			writeFileSync(join(pkgDir, "extensions", "broken", "helper.ts"), "export const x = 1;");
-			writeFileSync(join(pkgDir, "extensions", "broken", "another.ts"), "export const y = 2;");
-
-			// Valid top-level extension
-			writeFileSync(join(pkgDir, "extensions", "valid.ts"), "export default function(api) {}");
-
-			const result = await packageManager.resolveExtensionSources([pkgDir]);
-
-			// Should only find the valid top-level extension
-			expect(result.extensions.some((r) => pathEndsWith(r.path, "valid.ts") && r.enabled)).toBe(true);
-			expect(result.extensions.filter((r) => r.enabled).length).toBe(1);
 		});
 	});
 

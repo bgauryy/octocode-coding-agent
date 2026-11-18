@@ -1,8 +1,9 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { CheckIn, type CheckInConfig } from "./check-in.ts";
+import { CheckIn, type CheckInConfig } from "../monitor/attention/check-in.ts";
+import type { Attention } from "../monitor/ledger.ts";
 import { Inbox } from "./inbox.ts";
 import { type Mail, mailIds } from "./mail.ts";
 import type { Message, RecipientKind } from "./model.ts";
@@ -27,7 +28,7 @@ interface DeliveryHost {
 	/** This agent's id, undefined while it has not joined. */
 	id(): string | undefined;
 	parentId(): string | undefined;
-	ctx(): ExtensionContext | undefined;
+	ctx(): FeatureContext | undefined;
 	/** A subagent with no person to talk to (`Team.headless`). */
 	headless(): boolean;
 	/** Writes the heartbeat if one is due (a status change, or the interval passed); whether it did. */
@@ -40,6 +41,8 @@ interface DeliveryHost {
 	recipientKind?(id: string): RecipientKind;
 	/** The check-in's setting, read when a step ends. */
 	checkIn(): CheckInConfig;
+	/** Records a check-in in the monitor ledger. */
+	attention?(attention: Attention, delivered: boolean): void;
 }
 
 /**
@@ -50,6 +53,8 @@ interface DeliveryHost {
 export class Delivery {
 	private readonly inbox = new Inbox();
 	private readonly checkIn: CheckIn;
+	/** The database of the check-in being run (`sendCheckIn`), which the check-in reads the last exchange from. */
+	private checkInDb: TeamStore | undefined;
 	private failedTicks = 0;
 	/** When an idle agent was handed a waking message that has not reached the model yet; undefined when none is outstanding. */
 	private wakeHandedAt: number | undefined;
@@ -64,7 +69,11 @@ export class Delivery {
 		this.host = host;
 		this.mail = mail;
 		this.pace = pace;
-		this.checkIn = new CheckIn(mail);
+		this.checkIn = new CheckIn({
+			lastExchange: (me, parent) => this.checkInDb?.refs.lastExchange(me, parent) ?? 0,
+			notice: (text) => mail.notice(text),
+			record: (attention, delivered) => host.attention?.(attention, delivered),
+		});
 	}
 
 	/**
@@ -81,17 +90,20 @@ export class Delivery {
 		} catch (error) {
 			// A locked or closed database is retried on the next tick; say so once if it lasts long enough for leases to lapse.
 			if (++this.failedTicks === FAILED_TICKS_NOTICE)
-				this.mail.notice(renderInstruction("notices/mail/team-db-unavailable.md", { error: errorMessage(error) }));
+				this.mail.notice(renderPrompt("notices/mail/team-db-unavailable.md", { error: errorMessage(error) }));
 		}
 		if (stepEnded) this.sendCheckIn(db, me);
 	}
 
 	/** Fails open: a busy database or an unreadable setting costs this ping, and the next step tries again. */
 	private sendCheckIn(db: TeamStore, me: string): void {
+		this.checkInDb = db;
 		try {
-			db.quick(() => this.checkIn.due(db, me, this.host.parentId(), this.host.checkIn()));
+			db.quick(() => this.checkIn.due(me, this.host.parentId(), this.host.checkIn()));
 		} catch {
 			// Nothing depends on a ping.
+		} finally {
+			this.checkInDb = undefined;
 		}
 	}
 

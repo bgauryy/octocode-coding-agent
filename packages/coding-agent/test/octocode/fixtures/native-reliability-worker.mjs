@@ -4,6 +4,8 @@ import path from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as pause } from 'node:timers/promises';
+import { testFeatures } from "../../helpers/features.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 const { name, root, cwd, bundle } = JSON.parse(process.argv[2]);
 const privateHome = path.join(root, name, 'home');
@@ -59,12 +61,12 @@ async function boot() {
   faux.setResponses(Array.from({ length: 256 }, () => response));
   const settingsManager = SettingsManager.create(cwd, agentDir);
   const loader = new DefaultResourceLoader({
-    cwd, agentDir, settingsManager,
-    extensionFactories: [(api) => api.registerProvider(faux.provider)],
+    cwd, agentDir, settingsManager, nativeFeatures: nativeFeatureSet(),
+    features: testFeatures([(api) => api.providers.register(faux.provider)]),
     noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
   });
   await loader.reload();
-  if (loader.getExtensions().errors.length) throw new Error(JSON.stringify(loader.getExtensions().errors));
+  if (loader.getFeatures().errors.length) throw new Error(JSON.stringify(loader.getFeatures().errors));
   const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: path.join(agentDir, 'models.json') });
   ({ session } = await createSessionFromServices({
     services: { cwd, agentDir, modelRuntime, settingsManager, resourceLoader: loader, diagnostics: [] },
@@ -73,7 +75,7 @@ async function boot() {
   session.subscribe((event) => {
     if (event.type === 'agent_settled') send({ kind: 'settled', name, generation, aborted: event.aborted ?? false });
   });
-  await session.bindExtensions({ mode: 'rpc', onError: (error) => { errors.push({ event: error.event, error: error.error }); send({ kind: 'extension-error', name, event: error.event, error: error.error }); } });
+  await session.bindFeatures({ mode: 'rpc', onError: (error) => { errors.push({ event: error.event, error: error.error }); send({ kind: 'extension-error', name, event: error.event, error: error.error }); } });
   await session.setModel(faux.getModel());
   await execute('agent', { type: 'coordinate', action: 'join', joinGoal: `Isolated messaging fixture ${name}` });
   await execute('agent', { type: 'coordinate', action: 'lock', paths: [`${name}.txt`], reason: 'Crash-cleanup fixture' });
@@ -87,11 +89,11 @@ async function execute(name, input) {
   if (!tool) throw new Error(`Missing tool ${name}`);
   const id = `fixture-${Date.now()}`;
   const signal = new AbortController().signal;
-  return tool.execute(id, input, signal, undefined, session.extensionRunner.createToolContext(id, signal));
+  return tool.execute(id, input, signal, undefined, session.featureHost.createToolContext(id, signal));
 }
 async function shutdown(reason = 'quit') {
   if (!session) return;
-  await session.extensionRunner.emit({ type: 'session_shutdown', reason });
+  await session.featureHost.emit({ type: 'session_shutdown', reason });
   session.dispose();
   session = undefined;
 }

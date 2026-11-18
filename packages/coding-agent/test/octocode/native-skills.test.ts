@@ -6,10 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getNativeSkillsDir } from "../../src/config.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { asSetup } from "./fake-host.ts";
 import { adoptSkillResourceSnapshot, captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkills } from "../../src/core/skills.ts";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { bundledSkillDirs, registerSkills } from "../../src/octocode/skills.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 describe("skills the application ships", () => {
 	let root: string;
@@ -33,13 +34,16 @@ describe("skills the application ships", () => {
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
 			settingsManager: SettingsManager.inMemory(),
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 		});
 		await loader.reload();
 		let handler: ((event: unknown, ctx: unknown) => Promise<{ skillPaths: string[] }>) | undefined;
-		registerSkills({
-			on: (_event: string, listener: typeof handler) => (handler = listener),
-		} as unknown as ExtensionAPI);
+		registerSkills(
+			asSetup({
+				on: (_event: string, listener: typeof handler) => (handler = listener),
+			}),
+		);
 		const { skillPaths } = (await handler?.(
 			{ type: "resources_discover", cwd: path.join(root, "project"), reason: "startup" },
 			{ hasUI: false, ui: {}, isProjectTrusted: () => true },
@@ -53,7 +57,7 @@ describe("skills the application ships", () => {
 		return loader;
 	};
 
-	it("holds the core skills as valid skills, and octocode-context-optimization's scripts only call the CLI", () => {
+	it("holds the core skills as valid skills, and octocode-context-optimization covers skill descriptions only", () => {
 		const { skills, diagnostics } = loadSkills({
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
@@ -62,18 +66,33 @@ describe("skills the application ships", () => {
 		});
 		expect(diagnostics).toEqual([]);
 		expect(skills.map((skill) => skill.name).sort()).toEqual([
-			"octocode-backlog-grooming",
+			"octocode-backlog",
+			"octocode-clasify",
 			"octocode-context-optimization",
 			"octocode-critical-thinking",
 			"octocode-debugging",
+			"octocode-github-research",
+			"octocode-local-research",
+			"octocode-maintenance",
+			"octocode-memory",
+			"octocode-output",
+			"octocode-subagents",
 			"resume-external-harness",
 		]);
+		// Delegation, filing items and saving memories need tools only the coordinator holds.
+		expect(
+			skills
+				.filter((skill) => skill.audience === "coordinator")
+				.map((skill) => skill.name)
+				.sort(),
+		).toEqual(["octocode-backlog", "octocode-maintenance", "octocode-memory", "octocode-subagents"]);
 		const dir = path.join(getNativeSkillsDir(), "octocode-context-optimization");
-		expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toContain("octocode-agentic-prompts");
-		for (const script of fs.readdirSync(path.join(dir, "scripts"))) {
-			const source = fs.readFileSync(path.join(dir, "scripts", script), "utf8");
-			expect(source).not.toMatch(/packages\/mcp|packages["',\s]+join|compact\/index\.ts/);
-		}
+		// Every file the skill links exists, and no MCP rewriting machinery is left in it.
+		const body = fs.readFileSync(path.join(dir, "SKILL.md"), "utf8");
+		for (const [, link] of body.matchAll(/\]\(((?!https?:)[^)#]+)/g))
+			expect(fs.existsSync(path.join(dir, link))).toBe(true);
+		expect(fs.existsSync(path.join(dir, "scripts"))).toBe(false);
+		expect(body).not.toMatch(/mcp compact|MCP server/i);
 	});
 
 	it("is discovered by a root session, even with extra skill folders turned off", async () => {
@@ -100,94 +119,11 @@ describe("skills the application ships", () => {
 			cwd: path.join(root, "project"),
 			agentDir: path.join(root, "agent"),
 			settingsManager: SettingsManager.inMemory(),
+			nativeFeatures: nativeFeatureSet(),
 			noSkills: true,
 		});
 		await child.reload();
 		expect(child.getSkills().skills.map((skill) => skill.name)).not.toContain("octocode-context-optimization");
-	});
-
-	describe("scripts", () => {
-		const scripts = path.join(getNativeSkillsDir(), "octocode-context-optimization", "scripts");
-		/** An executable standing in for `octocode`: it records its arguments and writes the --out file it is given. */
-		const fakeCli = () => {
-			const log = path.join(root, "calls.jsonl");
-			const bin = path.join(root, "fake-octocode.mjs");
-			fs.writeFileSync(
-				bin,
-				`#!/usr/bin/env node
-import { appendFileSync, writeFileSync } from "node:fs";
-const args = process.argv.slice(2);
-appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");
-const out = args.indexOf("--out");
-if (out >= 0) writeFileSync(args[out + 1], "{}");
-if (args.includes("--plain")) console.log("// plain file");
-process.exit(args.includes("fail") ? 3 : 0);
-`,
-				{ mode: 0o755 },
-			);
-			return {
-				bin,
-				calls: () =>
-					fs
-						.readFileSync(log, "utf8")
-						.trim()
-						.split("\n")
-						.map((line) => JSON.parse(line)),
-			};
-		};
-		const run = (script: string, args: string[], bin: string) =>
-			spawnSync(process.execPath, [path.join(scripts, script), ...args], {
-				encoding: "utf8",
-				env: { ...process.env, OCTOCODE_BIN: bin },
-			});
-
-		it("generate saves the catalog and the plain file through `mcp compact catalog` and `show --plain`", () => {
-			const { bin, calls } = fakeCli();
-			const work = path.join(root, "work");
-			const result = run("generate.mjs", ["demo", "--work", work], bin);
-			expect(result.status).toBe(0);
-			expect(calls()).toEqual([
-				["mcp", "compact", "catalog", "demo", "--out", path.join(work, "demo.catalog.json")],
-				["mcp", "compact", "show", "demo", "--plain", "--catalog", path.join(work, "demo.catalog.json")],
-			]);
-			expect(fs.readFileSync(path.join(work, "demo.plain.ts"), "utf8")).toBe("// plain file\n");
-		});
-
-		it("check and apply use the saved catalog and pass the exit status through", () => {
-			const { bin, calls } = fakeCli();
-			const work = path.join(root, "work");
-			fs.mkdirSync(work);
-			fs.writeFileSync(path.join(work, "demo.catalog.json"), "{}");
-			expect(run("check.mjs", ["demo", "--overrides", "o.json", "--work", work], bin).status).toBe(0);
-			expect(
-				run("apply.mjs", ["demo", "--overrides", "o.json", "--optimized-by", "m", "--work", work], bin).status,
-			).toBe(0);
-			expect(calls()).toEqual([
-				["mcp", "compact", "check", "demo", "--overrides", "o.json", "--catalog", path.join(work, "demo.catalog.json")],
-				[
-					"mcp",
-					"compact",
-					"apply",
-					"demo",
-					"--overrides",
-					"o.json",
-					"--optimized-by",
-					"m",
-					"--catalog",
-					path.join(work, "demo.catalog.json"),
-				],
-			]);
-			expect(run("check.mjs", ["fail", "--overrides", "o.json", "--work", work], bin).status).toBe(3);
-		});
-
-		it("check asks the live server when no catalog was saved, and apply needs the model name", () => {
-			const { bin, calls } = fakeCli();
-			expect(run("check.mjs", ["demo", "--overrides", "o.json", "--work", path.join(root, "empty")], bin).status).toBe(
-				0,
-			);
-			expect(calls()).toEqual([["mcp", "compact", "check", "demo", "--overrides", "o.json"]]);
-			expect(run("apply.mjs", ["demo", "--overrides", "o.json"], bin).status).toBe(1);
-		});
 	});
 
 	describe("octocode-debugging scripts", () => {

@@ -73,8 +73,9 @@ export function isolatedTreeRefusal(
 			"A write to a relative path after a `cd` the guard cannot follow (it follows only `cd /abs/dir`, `cd ~/dir` or `cd ./dir` joined by `&&`: not a bare name, `..`, a variable, `cd -`, `||` or a loop)",
 			main,
 		);
-	// An awk call outside its allowlist (`awkUnread`) is uncertain here too: its program or library may write the main tree.
-	if (!effect.uncertain && effect.awkUnread === undefined) return undefined;
+	// An awk call outside its allowlist (`awkUnread`) or a swapped program (`programSwap`) is uncertain here too: what it
+	// runs may write the main tree.
+	if (!effect.uncertain && effect.awkUnread === undefined && effect.programSwap === undefined) return undefined;
 	const spelled = [main, env[TEAM_WORKSPACE_ENV]?.trim() ?? main];
 	const namesMain =
 		spelled.some((form) => command.includes(form)) ||

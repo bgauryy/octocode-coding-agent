@@ -255,7 +255,7 @@
     },
     "bashOutputMaxBytes": {
       "type": "number",
-      "description": "Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens, or raise it up to 50,000 bytes. Output of the user's own `!` commands follows the same limit.",
+      "description": "Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens but never raise it. Output of the user's own `!` commands follows the same limit.",
       "minimum": 1024,
       "default": 20000
     },
@@ -292,6 +292,35 @@
           },
           "description": "Regular expressions for commands that count as long, added to the built-in runners (vitest, jest, pytest, cargo, go, yarn test/check/build/dev…), for example `[\"bazel\\s+(?:test|build)\", \"make\\s+(?:test|check)\"]`. Each is matched where a command starts (the line, or after `;`, `&`, `|`, `(` and `VAR=value` words) and must end at a space or the end of a part. An entry that is not a valid regular expression is ignored.",
           "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "sandbox": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            },
+            {
+              "type": "string",
+              "const": "on"
+            }
+          ],
+          "description": "`\"off\"` runs agent shell commands as you, with your rights. `\"auto\"` runs every command the agent starts (the `bash` tool and its background jobs) inside an operating-system sandbox in the `manual`, `workspace` and `full` permission modes, and unsandboxed in `bypass`; `\"on\"` sandboxes them in every mode. A sandboxed command reads everything; it writes the workspace (the repository root, or the working folder outside a repository), the system temporary folder and its scratch folder, and nowhere else. A read-only subagent writes only its scratch and throwaway folders, and an isolated subagent its own worktree, never the main tree. Paths later sessions load (git hooks and config, `.octocode/` configuration, instruction files, other agents' project folders) stay write-protected. Network goes through a filtering proxy: in `manual` and `workspace` each new host asks (a private address as a private-network ask), allowed once or for the session; `full` allows every host and records each; a read-only subagent gets none; loopback is always reachable. A refused write or host is named in the command's result. Your own `!` commands are never sandboxed. macOS only (Seatbelt): when the sandbox cannot start (another platform, a missing dependency) a warning says why and one question asks whether this session's commands run unsandboxed. Read from the global settings file; a project file cannot change it. Takes effect for new sessions.",
+          "default": "off"
+        },
+        "allowUnsandboxed": {
+          "type": "boolean",
+          "description": "Whether the agent may ask to run a command outside the sandbox (the `bash` tool's `sandbox: false`, and the question when the sandbox cannot start). Such a run asks in every permission mode but `bypass`, and allowing all shell commands never covers it. `false` refuses it without asking. Read from the global settings file only.",
+          "default": true
         }
       },
       "additionalProperties": false
@@ -590,12 +619,6 @@
                 "type": "boolean",
                 "description": "When false, start empty and only apply explicit resource patterns."
               },
-              "extensions": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
               "skills": {
                 "type": "array",
                 "items": {
@@ -620,13 +643,6 @@
         "description": "Package source for npm or git packages. Use the string form to load all resources or the object form to filter resources."
       },
       "description": "npm or git package sources, as strings or objects with resource filtering."
-    },
-    "extensions": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "`builtin:<id>` entries switch a built-in feature on (llama.cpp, mcp). Other entries are ignored: user code extensions are not supported."
     },
     "deviceId": {
       "type": "string",
@@ -1010,7 +1026,7 @@
           "const": "disabled"
         }
       ],
-      "description": "HTTP header or body idle timeout in milliseconds; a compaction summary attempt that receives nothing for this long is retried. 0 or \"disabled\" disables both."
+      "description": "HTTP header or body idle timeout in milliseconds; a model stream or compaction summary attempt that receives nothing for this long is retried. 0 or \"disabled\" disables it."
     },
     "remote": {
       "type": "object",
@@ -1142,6 +1158,23 @@
     "timer": {
       "type": "object",
       "properties": {
+        "cron": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Let a session without a screen to confirm on (print, JSON, RPC) set cron schedules with wait. Each run is a model turn with nobody attending, so it is off until you turn it on here; a session with a screen asks once instead. Read from the global settings file; a project file cannot turn it on.",
+              "default": false
+            },
+            "maxUsdPerSession": {
+              "type": "number",
+              "description": "The most a session may spend, in USD, since its first cron schedule before cron runs stop. Read from the global settings file.",
+              "default": 2,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
         "check": {
           "type": "object",
           "properties": {
@@ -1152,6 +1185,99 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "monitor": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Sample the machine (load, memory, swap, GPU, busiest processes) once per interval and tell the session whose processes cause a tripped threshold. One Octocode process per machine takes the samples; every session reads them.",
+          "default": true
+        },
+        "sampleSeconds": {
+          "type": "number",
+          "description": "Seconds between machine samples.",
+          "default": 60,
+          "minimum": 10,
+          "maximum": 3600
+        },
+        "samples": {
+          "type": "number",
+          "description": "Consecutive samples over a threshold before it alerts, so a short spike does not.",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 60
+        },
+        "cooldownMinutes": {
+          "type": "number",
+          "description": "Minutes before the same threshold alerts again.",
+          "default": 15,
+          "minimum": 0
+        },
+        "loadPerCore": {
+          "type": "number",
+          "description": "Alert when the 1-minute load average per logical CPU reaches this (0 turns it off).",
+          "default": 3,
+          "minimum": 0
+        },
+        "memoryAvailablePercent": {
+          "type": "number",
+          "description": "Alert when the memory the system can still hand out falls to this percentage of the total (0 turns it off).",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "swapPercent": {
+          "type": "number",
+          "description": "Alert when used swap reaches this percentage of the swap in place (above 100 turns it off).",
+          "default": 90,
+          "minimum": 0
+        },
+        "gpuPercent": {
+          "type": "number",
+          "description": "Alert when GPU utilization reaches this percentage (above 100 turns it off).",
+          "default": 95,
+          "minimum": 0
+        },
+        "stuckJobMinutes": {
+          "type": "number",
+          "description": "Tell the session when one of its background bash jobs has written no output and used almost no CPU for this many minutes (0 turns it off).",
+          "default": 15,
+          "minimum": 0
+        },
+        "contextBands": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "description": "Shares of the room before automatic compaction at which the model is told, once each, how much context it has used and how much is left. Each is above 0 and below 1; [] turns the notices off.",
+          "default": [
+            0.5,
+            0.75,
+            0.9
+          ]
+        },
+        "checkInSeconds": {
+          "type": "number",
+          "description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
+          "default": 300,
+          "minimum": 0
+        },
+        "idleAgentMinutes": {
+          "type": "number",
+          "description": "Minutes a working agent may make no progress (no model reply or tool event) before the agent responsible for it is told, once per silence: a subagent's parent, or a main session itself (a note and a footer mark). Checked once a minute; an agent waiting on the user, its children or its jobs is excused, and nothing is stopped. 0 turns it off.",
+          "default": 5,
+          "minimum": 0
+        },
+        "silenceMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Deprecated: use monitor.idleAgentMinutes, which wins when both are set. Read in its place when it is unset; 0 turns the rule off."
         }
       },
       "additionalProperties": false
@@ -1229,14 +1355,13 @@
         "checkInSeconds": {
           "type": "number",
           "minimum": 0,
-          "description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
+          "description": "Deprecated: use monitor.checkInSeconds, which wins when both are set. Seconds a running subagent and its parent may go without a message before the subagent is asked whether it needs something; 0 turns it off.",
           "default": 300
         },
         "silenceMinutes": {
           "type": "number",
           "minimum": 0,
-          "description": "Minutes a working subagent may make no progress (no model reply or tool event) before its parent is told, again at twice and four times the interval; the parent decides what to do, nothing is stopped. 0 turns it off.",
-          "default": 10
+          "description": "Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off."
         },
         "wakeHoldSeconds": {
           "type": "number",
@@ -1244,6 +1369,11 @@
           "maximum": 10,
           "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
           "default": 0
+        },
+        "peerOverlapWake": {
+          "type": "boolean",
+          "description": "Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
+          "default": true
         }
       },
       "description": "Limits on the subagents a session starts, and how they are checked on.",

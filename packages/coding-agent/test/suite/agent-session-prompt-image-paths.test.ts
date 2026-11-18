@@ -18,11 +18,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type Context, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, expect, it, vi } from "vitest";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import { createHarness, type Harness, type HarnessOptions } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const PNG = new URL("../../../ai/test/data/red-circle.png", import.meta.url);
 const harnesses: Harness[] = [];
@@ -150,12 +151,12 @@ it("attaches at most 8 images and each real file once", async () => {
 });
 
 it("does not scan SDK prompts or extension sendUserMessage text", async () => {
-	let api: ExtensionAPI | undefined;
-	const { harness, requests, dir } = await setup({ extensionFactories: [(extension) => void (api = extension)] });
+	let api: FeatureSetup | undefined;
+	const { harness, requests, dir } = await setup({ features: testFeatures([(feature) => void (api = feature)]) });
 	const path = png(dir, "shot.png");
 	await harness.session.prompt(`sdk ${path}`);
 	expect(lastUser(requests)).toEqual({ text: `sdk ${path}`, images: 0 });
-	api!.sendUserMessage(`extension ${path}`);
+	api!.session.sendUserMessage(`extension ${path}`);
 	await vi.waitFor(() => expect(requests).toHaveLength(2));
 	await harness.session.waitForIdle();
 	expect(lastUser(requests)).toEqual({ text: `extension ${path}`, images: 0 });

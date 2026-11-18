@@ -113,7 +113,7 @@ function picker(context: Awaited<ReturnType<typeof fixture>>, choice = "Global: 
 		updateAvailableProviderCount: vi.fn(),
 		updateEditorBorderColor: vi.fn(),
 		maybeWarnAboutAnthropicSubscriptionAuth: vi.fn().mockResolvedValue(undefined),
-		showExtensionSelector: vi.fn().mockResolvedValue(choice),
+		showSelectorDialog: vi.fn().mockResolvedValue(choice),
 		showSelector: (create: (finish: () => void) => { component: ModelSelectorComponent }) => {
 			component = create(done).component;
 		},
@@ -319,7 +319,7 @@ describe("saving a default model", () => {
 		component.handleInput("\x13");
 		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
 		await context.settings.flush();
-		expect(host.showExtensionSelector).toHaveBeenCalledOnce();
+		expect(host.showSelectorDialog).toHaveBeenCalledOnce();
 		const project = JSON.parse(readFileSync(join(context.root, ".octocode", "settings.json"), "utf8"));
 		expect(project).toMatchObject({ defaultProvider: context.selected.provider, defaultModel: context.selected.id });
 		expect(existsSync(context.settingsPath)).toBe(false);

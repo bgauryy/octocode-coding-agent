@@ -61,22 +61,17 @@ describe("approval dialog while the user types", () => {
 		expect(userTexts(t!.requests.at(-1)!).at(-1)).toBe("steer me now");
 	});
 
-	it("shows the text being typed and lets Backspace edit it", async () => {
-		await openApproval();
+	it("shows the text being typed, lets Backspace edit it, and Esc clears it first and denies only when there is none", async () => {
+		const marker = await openApproval();
 		await t!.type("abcd");
 		t!.press("\x7f");
 		await t!.type("x");
 		await t!.until(shows("abcx"), "the draft line");
 		expect(await t!.text()).not.toContain("abcdx");
-	});
-
-	it("Esc clears typed text first and denies only when there is none", async () => {
-		const marker = await openApproval();
-		await t!.type("oops");
 		t!.press(KEY.esc);
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		await new Promise((resolve) => setTimeout(resolve, 100));
 		expect(await t!.text()).toContain("Run this command?");
-		expect(await t!.text()).not.toContain("oops");
+		expect(await t!.text()).not.toContain("abcx");
 		t!.press(KEY.esc);
 		await t!.until(async () => !(await t!.text()).includes("Run this command?"), "the dialog to close");
 		expect(fs.existsSync(marker)).toBe(false);
@@ -159,8 +154,8 @@ describe("Esc handling", () => {
 	});
 });
 
-describe("working indicator", () => {
-	it("stays on across an agent_end inside a run (retry, continue) and clears at settle", async () => {
+describe("working indicator and background job results", () => {
+	it("stays on across an agent_end inside a run (retry, continue), draws a job result above the streaming message, and clears at settle", async () => {
 		t = await startUi();
 		const reply = hang("done");
 		t.script(reply);
@@ -172,24 +167,6 @@ describe("working indicator", () => {
 		// A retry or continue ends one agent segment and starts the next while the run is still going.
 		await t.host.handleEvent({ type: "agent_end", messages: [] } as never);
 		expect(t.host.activeStatusIndicator?.kind).toBe("working");
-
-		reply.release();
-		await t.until(() => !t!.host.session.isStreaming, "idle");
-		await t.until(
-			() => t!.host.activeStatusIndicator?.kind !== "working",
-			"the indicator to clear when the run settles",
-		);
-	});
-});
-
-describe("a background job result while a reply streams", () => {
-	it("is drawn above the streaming message, which stays whole", async () => {
-		t = await startUi();
-		const reply = hang("the reply");
-		t.script(reply);
-		await t.type("work");
-		t.press(KEY.enter);
-		await t.until(() => t!.host.session.isStreaming, "turn to start");
 
 		// Mid-message: the application layer has an assistant message component open (host.streamingComponent).
 		const streaming = new AssistantMessageComponent(undefined, false, t.host.getMarkdownThemeWithSettings());
@@ -213,6 +190,12 @@ describe("a background job result while a reply streams", () => {
 		expect(row).toBeLessThan(children.indexOf(streaming));
 		expect(children.at(-1)).toBe(streaming);
 		t.host.streamingComponent = undefined;
+
 		reply.release();
+		await t.until(() => !t!.host.session.isStreaming, "idle");
+		await t.until(
+			() => t!.host.activeStatusIndicator?.kind !== "working",
+			"the indicator to clear when the run settles",
+		);
 	});
 });

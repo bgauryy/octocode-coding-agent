@@ -3,15 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { renderInstruction } from "../../src/core/prompt-template.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerIdleItems } from "../../src/octocode/subagents/idle-items.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
-const notice = (ref: string) => renderInstruction("notices/subagents/idle-item.md", { ref }).trim();
+const notice = (ref: string) => renderPrompt("notices/monitor/idle-item.md", { ref }).trim();
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -103,6 +103,49 @@ describe("idle item notice", () => {
 		expect(s.fake.sent).toHaveLength(0);
 	});
 
+	it("says nothing for an item whose derived items (from, any depth) have running children, and names it once they end", async () => {
+		const s = setup();
+		const backlog = openBacklog(fakeCtx({ cwd: path.join(s.cwd) }), { isSubagent: false });
+		const p = s.hold("parent");
+		const claim = (input: Record<string, unknown>) => {
+			const item = backlog.store.add({ ...READY, title: "derived", state: "todo", createdBy: "user", ...input });
+			return backlog.store.update(item.ref, { state: "ongoing" }, backlog.actor).ref;
+		};
+		const c1 = claim({ from: p });
+		const c2 = claim({ from: p });
+		const deep = claim({ from: c1 });
+		s.runs.running.set("a", undefined);
+		s.runs.running.set("b", undefined);
+		s.runs.items.set("a", deep);
+		s.runs.items.set("b", c2);
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(0);
+		s.runs.running.clear();
+		s.runs.running.set("other", undefined);
+		await s.settle();
+		expect(s.fake.sent.length).toBeGreaterThan(0);
+		expect(s.fake.sent.some((m) => m.message.content.includes(p))).toBe(true);
+	});
+
+	it("says nothing for an item a child serves through a derived item that also has an epic parent", async () => {
+		const s = setup();
+		const backlog = openBacklog(fakeCtx({ cwd: path.join(s.cwd) }), { isSubagent: false });
+		const p = s.hold("origin");
+		const epic = backlog.store.add({ ...READY, title: "epic", type: "epic", createdBy: "user" }).ref;
+		const child = backlog.store.add({
+			...READY,
+			title: "slice",
+			state: "todo",
+			createdBy: "user",
+			parentId: epic,
+			from: p,
+		}).ref;
+		s.runs.running.set("a", undefined);
+		s.runs.items.set("a", child);
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(0);
+	});
+
 	it("names an item whose child ended", async () => {
 		const s = setup();
 		const ref = s.hold("ended");
@@ -119,6 +162,20 @@ describe("idle item notice", () => {
 		s.runs.running.set("child", undefined);
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(0);
+	});
+
+	it("says nothing for an item when a reservation lies inside its directory, and names it once that is released", async () => {
+		const s = setup(true);
+		await s.fake.emit("session_start", {}, fakeCtx({ cwd: s.cwd }));
+		s.team.join("coordinate");
+		s.hold("folder move", ["packages/"]);
+		expect(s.team.lock([path.join(s.cwd, "packages/tools/agent.ts")], "peer edit").ok).toBe(true);
+		s.runs.running.set("child", undefined);
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(0);
+		s.team.unlock();
+		await s.settle();
+		expect(s.fake.sent).toHaveLength(1);
 	});
 
 	it("says nothing for an item whose paths this session holds in the team database", async () => {

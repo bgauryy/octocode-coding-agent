@@ -3,11 +3,9 @@
  * a single unref'd interval at the fastest cadence any subscriber needs, stops when the last one leaves, and in reduced
  * motion stops ticking decoration (spinners, shimmer, glow) while counters (elapsed seconds) keep their 1 s tick.
  * While the user scrolls, decoration holds still too, so its repaints do not compete with the scroll's frames. While
- * the terminal reports that it lost focus, decoration slows to the background spinner cadence; it never stops, so
- * running work does not look stuck.
+ * the terminal reports that it lost focus, decoration pauses and repaints once on focus back: an unfocused session
+ * repaints only for its counters (each a 1 s tick), so running work still shows it moves.
  */
-
-import { MOTION } from "./design.ts";
 
 /** `decor` moves for looks and freezes in reduced motion; `info` shows changing information and always ticks. */
 export type AnimationKind = "decor" | "info";
@@ -41,6 +39,8 @@ class AnimationClock {
 	private heldUntil = 0;
 	/** When the hold in progress began: decoration drawn from the clock shows this moment until the hold ends. */
 	private heldSince = 0;
+	/** When the terminal lost focus: decoration drawn from the clock shows this moment until focus returns. */
+	private blurredAt = 0;
 
 	/** Call `listener` about every `everyMs` while subscribed; returns the unsubscribe. */
 	subscribe(listener: (now: number) => void, options: AnimationSubscription): () => void {
@@ -70,12 +70,13 @@ class AnimationClock {
 	}
 
 	/**
-	 * Record a focus report (`false`: the terminal lost focus). Unfocused, decoration ticks no faster than
-	 * `MOTION.backgroundSpinnerMs`; counters are unchanged. Focus back restores the cadence and repaints decoration once.
+	 * Record a focus report (`false`: the terminal lost focus). Unfocused, decoration pauses where it is; counters keep
+	 * ticking. Focus back resumes the cadence and repaints decoration once.
 	 */
 	setFocused(focused: boolean): void {
 		if (this.focused === focused) return;
 		this.focused = focused;
+		if (!focused) this.blurredAt = Date.now();
 		this.reschedule();
 		if (!focused) return;
 		const now = Date.now();
@@ -86,13 +87,6 @@ class AnimationClock {
 			subscriber.due = now + subscriber.everyMs;
 			this.notify(subscriber, now);
 		}
-	}
-
-	/** The interval a subscriber is called at now: decoration slows while unfocused. */
-	private intervalOf(subscriber: Subscriber): number {
-		return !this.focused && subscriber.kind === "decor"
-			? Math.max(subscriber.everyMs, MOTION.backgroundSpinnerMs)
-			: subscriber.everyMs;
 	}
 
 	isReducedMotion(): boolean {
@@ -110,10 +104,12 @@ class AnimationClock {
 	}
 
 	/**
-	 * The time decoration drawn from the clock (a shimmer band, a spinner glyph picked by time) shows: now, or the start
-	 * of a hold in progress, so a frame painted during the hold draws it where it stopped.
+	 * The time decoration drawn from the clock (a shimmer band, a spinner glyph picked by time) shows: now, the moment
+	 * focus left, or the start of a hold in progress, so a frame painted meanwhile (a counter's tick) draws it where it
+	 * stopped.
 	 */
 	decorationTime(): number {
+		if (!this.focused) return this.blurredAt;
 		const now = Date.now();
 		return now < this.heldUntil ? this.heldSince : now;
 	}
@@ -124,12 +120,13 @@ class AnimationClock {
 	}
 
 	private ticking(): Subscriber[] {
-		return [...this.subscribers].filter((subscriber) => !(this.reduced && subscriber.kind === "decor"));
+		const paused = this.reduced || !this.focused;
+		return [...this.subscribers].filter((subscriber) => !(paused && subscriber.kind === "decor"));
 	}
 
 	private reschedule(): void {
 		const live = this.ticking();
-		const cadence = live.length === 0 ? 0 : Math.min(...live.map((subscriber) => this.intervalOf(subscriber)));
+		const cadence = live.length === 0 ? 0 : Math.min(...live.map((subscriber) => subscriber.everyMs));
 		if (cadence === this.cadence && (cadence === 0) === (this.timer === undefined)) return;
 		if (this.timer !== undefined) clearInterval(this.timer);
 		this.timer = undefined;
@@ -162,10 +159,10 @@ class AnimationClock {
 		const held = now < this.heldUntil;
 		for (const subscriber of this.ticking()) {
 			if (!this.subscribers.has(subscriber)) continue;
-			if (subscriber.due - now > this.intervalOf(subscriber)) subscriber.due = now;
+			if (subscriber.due - now > subscriber.everyMs) subscriber.due = now;
 			if (now < subscriber.due - SLACK_MS) continue;
 			if (held && subscriber.kind === "decor") continue;
-			const every = this.intervalOf(subscriber);
+			const every = subscriber.everyMs;
 			subscriber.due += every;
 			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
 			if (subscriber.due <= now) subscriber.due = now + every;

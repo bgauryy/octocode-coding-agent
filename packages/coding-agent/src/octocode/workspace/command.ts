@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { ITEM_REF } from "../shared/item-ref.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -22,9 +22,9 @@ export function parseWebArgs(args: string): { view: "board" | "activity"; item?:
  */
 export function webCommand(
 	/** This session's own server, the fallback: opens the page and resolves to its address. */
-	open: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<string>,
+	open: (ctx: FeatureContext, view: "board" | "activity", item?: string) => Promise<string>,
 	/** The user-level daemon: opens its page on this session; throws when it cannot. */
-	daemon?: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<void>,
+	daemon?: (ctx: FeatureContext, view: "board" | "activity", item?: string) => Promise<void>,
 ): Subcommand {
 	return {
 		description: "Open the web workspace",

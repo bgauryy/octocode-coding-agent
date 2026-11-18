@@ -57,8 +57,7 @@ async function fixture(
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		noSkills: !options.plugin,
 		noPromptTemplates: true,
 		noThemes: true,

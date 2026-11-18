@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
@@ -158,7 +158,7 @@ describe("team across the worktrees of one repository", () => {
 		const ctx = {
 			sessionManager: { getSessionId: () => "sess-team" },
 			isIdle: () => true,
-		} as unknown as ExtensionContext;
+		} as unknown as FeatureContext;
 		const inTmux = { TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%7" };
 		// Joined now, so the roster does not leave it out as stale.
 		const row = newMember(inTmux, ctx, "main-aaaaaa", undefined, Date.now());

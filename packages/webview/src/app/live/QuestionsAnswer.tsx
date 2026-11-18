@@ -1,11 +1,14 @@
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
 import { type SubmitEvent, useState } from "react";
 import { Button } from "../ui/primitives.tsx";
+import { AutoCountdown } from "./AutoCountdown.tsx";
 
 interface Props {
 	questions: Question[];
 	disabled: boolean;
 	loading: boolean;
+	/** Whether the host's countdown still runs; the cards show it only then. */
+	counting: boolean;
 	/** One reply per question, picking options by id. */
 	onSubmit: (replies: Reply[]) => void;
 }
@@ -15,7 +18,7 @@ interface Props {
  * choice, confirmation or approval picks one option (a radio), a multi picks several (checkboxes), and a write-in or an
  * approval's deny-with-a-note option opens a text field. The host checks the replies against the questions again.
  */
-export function QuestionsAnswer({ questions, disabled, loading, onSubmit }: Props) {
+export function QuestionsAnswer({ questions, disabled, loading, counting, onSubmit }: Props) {
 	const [picks, setPicks] = useState<Record<string, string[]>>({});
 	const [texts, setTexts] = useState<Record<string, string>>({});
 	const pickedOf = (id: string) => picks[id] ?? [];
@@ -55,6 +58,15 @@ export function QuestionsAnswer({ questions, disabled, loading, onSubmit }: Prop
 			{questions.map((question) => (
 				<fieldset key={question.id} className="dialog-answer-question" disabled={disabled || loading}>
 					<legend>{question.header ? `${question.header}: ${question.question}` : question.question}</legend>
+					{counting && question.timeoutSeconds && (question.options ?? []).some((option) => option.recommended) ? (
+						<AutoCountdown
+							seconds={question.timeoutSeconds}
+							labels={(question.options ?? [])
+								.filter((option) => option.recommended)
+								.map((option) => option.label)
+								.slice(0, question.type === "multi" ? undefined : 1)}
+						/>
+					) : null}
 					{(question.options ?? []).map((option) => (
 						<label key={option.id} className="dialog-answer-option">
 							<input

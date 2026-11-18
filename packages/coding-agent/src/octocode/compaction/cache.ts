@@ -3,8 +3,8 @@ import { getAnthropicCompat } from "@octocodeai/octocode-ai/api/anthropic-messag
 import type {
 	CacheWarmingDecisionEvent,
 	CacheWarmingDecisionEventResult,
-	ExtensionAPI,
-	ExtensionContext,
+	FeatureContext,
+	SetupPick,
 } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -71,7 +71,7 @@ const keyOf = (model: Pick<Model<Api>, "provider" | "id">) => `${model.provider}
  * rest of the process (a later reply without usage, such as an aborted one, does not undo that), and:
  *
  * - idle-warming decisions use its inferred lifetime (`of`);
- * - an `anthropic-messages` model also gets those lifetimes in Octocode's model registry through `api.registerProvider`, so Octocode's
+ * - an `anthropic-messages` model also gets those lifetimes in Octocode's model registry through `api.providers.register`, so Octocode's
  *   cache warmer, which plans with the resolved tiers, uses a learned 5-minute long tier too. The registration lists every model of
  *   the provider as the registry has it (models.json definitions, auth and headers config stay Octocode's, and a models.json
  *   `modelOverrides.promptCache` still wins, since Octocode applies overrides last); only models seen caching gain lifetimes.
@@ -106,8 +106,8 @@ export class PromptCacheLifetimes {
 
 	/** Notes a turn's assistant reply; supplies lifetimes to Octocode's registry when it shows an undeclared model caching. */
 	observe(
-		api: Pick<ExtensionAPI, "registerProvider">,
-		ctx: Pick<ExtensionContext, "modelRegistry">,
+		api: SetupPick<"providers", "register">,
+		ctx: Pick<FeatureContext, "modelRegistry">,
 		message: unknown,
 		env: NodeJS.ProcessEnv = process.env,
 	): void {
@@ -133,7 +133,7 @@ export class PromptCacheLifetimes {
 			this.caching.has(keyOf(entry)) &&
 			(!entry.promptCache || this.supplied.has(keyOf(entry)));
 		try {
-			api.registerProvider(model.provider, {
+			api.providers.register(model.provider, {
 				models: models.map((entry) =>
 					inferred(entry)
 						? { ...entry, promptCache: inferredPromptCache(entry, !this.shortOnly.has(keyOf(entry))) }
@@ -150,29 +150,42 @@ export class PromptCacheLifetimes {
 
 /**
  * Octocode's say in a cache refresh Octocode is about to send. Active runs retain the core economic decision, including
- * headless runs and subagents waiting for tools. Only interactive sessions receive idle refreshes. An idle refresh (Octocode assumes a constant 15% chance the user returns) is decided from
- * this session's own idle gaps at the current idle age instead: warm when q(t) × the miss cost beats the refresh cost.
+ * headless runs and subagents waiting for tools. An idle session that `expectsWake` (its children, jobs or timers still
+ * run, or it waits for an answer: `warm-wait.ts`) will send its next request without a person, so its refreshes are kept
+ * up while the refreshes of this wait, the next one included, cost no more than the one rewrite they save; the core's
+ * idle safety limit still ends the wait. Otherwise an idle refresh is decided from this session's own idle gaps at the
+ * current idle age: warm when q(t) × the miss cost beats the refresh cost. Without enough gaps, an interactive session
+ * keeps Octocode's assumed 15% chance that it resumes, and a headless one or a settled subagent stops; a settled
+ * subagent whose gaps show its coordinator's mail tends to come within the lifetime is refreshed.
  * Undefined keeps Octocode's decision (a streaming refresh, whose run is still going, or too little history).
  */
 export function warmingDecision(
 	event: Pick<CacheWarmingDecisionEvent, "action" | "warmCost" | "missCost" | "continuationProbability">,
-	ctx: Pick<ExtensionContext, "hasUI" | "sessionManager">,
+	ctx: Pick<FeatureContext, "hasUI" | "sessionManager">,
 	ttlMs: number | undefined,
 	now = Date.now(),
 	isSubagent = envFlag(process.env, SUBAGENT_ENV),
+	expectsWake = false,
 ): CacheWarmingDecisionEventResult | undefined {
 	if (event.continuationProbability >= 1) return undefined;
-	if (!interactive(ctx, isSubagent)) return event.action === "stop" ? undefined : { action: "stop" };
-	if (ttlMs === undefined) return undefined;
+	if (expectsWake) {
+		const { warms } = cacheClock(ctx.sessionManager);
+		const action = (warms + 1) * event.warmCost <= event.missCost ? "warm" : "stop";
+		return action === event.action ? undefined : { action };
+	}
+	const person = interactive(ctx, isSubagent);
+	const stop = event.action === "stop" ? undefined : ({ action: "stop" } as const);
+	if (!person && !isSubagent) return stop;
+	if (ttlMs === undefined) return person ? undefined : stop;
 	const { replyAt, gaps } = cacheClock(ctx.sessionManager);
 	const q = replyAt === undefined ? undefined : idleContinuation(gaps, now - replyAt, ttlMs);
-	if (q === undefined) return undefined;
+	if (q === undefined) return person ? undefined : stop;
 	const action = q * event.missCost > event.warmCost ? "warm" : "stop";
 	return action === event.action ? undefined : { action };
 }
 
 /**
- * q(t): the chance a refresh now is used, from this session's idle gaps (prompt after a finished run). Of the gaps that
+ * q(t): the chance a refresh now is used, from this session's idle gaps (next request after a finished run). Of the gaps that
  * lasted longer than `idleMs`, the share that ended after a tenth of the lifetime (sooner, the entry is still warm
  * without the refresh) and within the lifetime (later, the refreshed entry has expired too). Undefined with too few.
  */
@@ -190,9 +203,14 @@ interface ClockState {
 	cacheAt: number;
 	/** The latest refresh by Octocode's warmer, anchored to provider dispatch rather than the later usage receipt. */
 	warmAt: number;
-	/** Idle gaps: from a finished run's last reply to the next user prompt, in ms. */
+	/** Refreshes by Octocode's warmer since the last reply: what the current wait has spent. */
+	warms: number;
+	/**
+	 * Idle gaps: from a finished run's last reply to the next request, in ms. The next request is a user prompt or a
+	 * reply started by anything else that resumed the session (a child's report, a message, a job's end, a timer).
+	 */
 	gaps: number[];
-	/** When the run that just ended finished, until the next user prompt. */
+	/** When the run that just ended finished, until the next request. */
 	finished: number | undefined;
 }
 
@@ -221,11 +239,14 @@ function noteClock(state: ClockState, entry: unknown): void {
 					? requestedAt
 					: receiptAt;
 		if (at > state.warmAt) state.warmAt = at;
+		if (kind === "cache_warm") state.warms++;
 		return;
 	}
 	if (type !== "message" || typeof message?.timestamp !== "number") return;
 	if (message.role === "assistant") {
+		if (state.finished !== undefined) state.gaps.push(message.timestamp - state.finished);
 		state.replyAt = message.timestamp;
+		state.warms = 0;
 		// Older sessions did not always record usage. Explicit zero usage, however, is not evidence of a cache refresh.
 		if (!message.usage || Number(message.usage.cacheRead) > 0 || Number(message.usage.cacheWrite) > 0) {
 			state.cacheAt = message.timestamp;
@@ -242,6 +263,7 @@ const clockIndex = new BranchIndex<ClockState>(
 		replyAt: undefined,
 		cacheAt: Number.NEGATIVE_INFINITY,
 		warmAt: Number.NEGATIVE_INFINITY,
+		warms: 0,
 		gaps: [],
 		finished: undefined,
 	}),
@@ -251,16 +273,18 @@ const clockIndex = new BranchIndex<ClockState>(
 /**
  * The prompt cache's clock on the session's branch, resumed rather than rescanned (`BranchIndex`): `replyAt`, when the
  * last reply was requested; `useAt`, when the entry was last used, the later of a reply with cache activity and a refresh
- * by Octocode's warmer (undefined without a reply or cache activity); `gaps`, the idle gaps (read-only).
+ * by Octocode's warmer (undefined without a reply or cache activity); `warms`, the warmer's refreshes since the last
+ * reply; `gaps`, the idle gaps (read-only).
  */
 export function cacheClock(session: BranchSource): {
 	replyAt: number | undefined;
 	useAt: number | undefined;
+	warms: number;
 	gaps: readonly number[];
 } {
-	const { replyAt, cacheAt, warmAt, gaps } = clockIndex.read(session);
+	const { replyAt, cacheAt, warmAt, warms, gaps } = clockIndex.read(session);
 	const usedAt = Math.max(cacheAt, warmAt);
-	return { replyAt, useAt: replyAt === undefined || !Number.isFinite(usedAt) ? undefined : usedAt, gaps };
+	return { replyAt, useAt: replyAt === undefined || !Number.isFinite(usedAt) ? undefined : usedAt, warms, gaps };
 }
 
 /** Whether the entry a request would read has expired: it was last used longer ago than `ttlMs`. False when either is unknown. */

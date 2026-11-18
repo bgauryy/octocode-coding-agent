@@ -3,7 +3,7 @@ import { AGENTS, type AgentContext, type CapturedTool } from "./capture.ts";
 import { systemText } from "./render.ts";
 
 /**
- * The committed `src/octocode/instructions/final/<agent>.md`: each agent's final system prompt and tool declarations with
+ * The committed `src/octocode/native/prompts/final/<agent>.md`: each agent's final system prompt and tool declarations with
  * every part that varies by machine, user, session or configuration replaced by a `{{PLACEHOLDER}}`.
  *
  * The prompt builder wraps each dynamic part in a tag of its own (`<mcps>`, `<skills>`, `<environment>`...), so the
@@ -22,7 +22,7 @@ export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: str
 	{
 		name: "MCP_TOOL_SUMMARIES",
 		stands: "The `- mcp__<server>__*: ...` lines of the `<tools>` list, one per enabled MCP server.",
-		renderedBy: "`packages/mcp/src/section.ts` and the tool snippets of `src/octocode/instructions/tools/`",
+		renderedBy: "`packages/mcp/src/section.ts` and the tool snippets of `src/octocode/native/tools/`",
 	},
 	{
 		name: "MCP_TOOLS",
@@ -38,12 +38,13 @@ export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: str
 		name: "PROJECT_CONTEXT",
 		stands:
 			"The `<project_context>` block: the AGENTS.md / CLAUDE.md files of the working directory and its ancestors.",
-		renderedBy: "`src/octocode/instructions/system/project-context.md`, files loaded by `src/core/resource-loader.ts`",
+		renderedBy:
+			"`src/octocode/native/prompts/system/project-context.md`, files loaded by `src/core/resource-loader.ts`",
 	},
 	{
 		name: "SKILLS_LIST",
 		stands: "The `<available_skills>` block: the skills this agent may load (bundled, user and project skills).",
-		renderedBy: "`src/core/skills.ts` and `src/octocode/instructions/system/skills-intro.md`",
+		renderedBy: "`src/core/skills.ts` and `src/octocode/native/prompts/system/skills-intro.md`",
 	},
 	{
 		name: "HARNESSES",
@@ -53,7 +54,7 @@ export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: str
 	{
 		name: "ENVIRONMENT",
 		stands: "The `<environment>` block: platform, shell and today's date.",
-		renderedBy: "`src/octocode/instructions/system/environment.md`",
+		renderedBy: "`src/octocode/native/prompts/system/environment.md`",
 	},
 	{
 		name: "HOST_PROBE",

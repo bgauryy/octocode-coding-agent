@@ -277,11 +277,11 @@ describe("AgentSession.getSessionStats", () => {
 					totalTokens: 100,
 					cost: { input: 0.001, output: 0.002, cacheRead: 0.007, cacheWrite: 0, total: 0.01 },
 				},
-				"extension override",
+				"feature override",
 			);
 
 			const [entry] = sessionManager.getEntries();
-			expect(entry).toMatchObject({ type: "usage", kind: "cache_warm", note: "extension override" });
+			expect(entry).toMatchObject({ type: "usage", kind: "cache_warm", note: "feature override" });
 			const stats = session.getSessionStats();
 			expect(stats.tokens).toEqual({ input: 2, output: 1, cacheRead: 97, cacheWrite: 0, total: 100 });
 			expect(stats.totalMessages).toBe(0);

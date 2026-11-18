@@ -70,6 +70,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		risk: UNKNOWN,
 	}),
 	"shell.destructive": (request) => ({ effect: `runs ${first(request)}`, undo: "none", risk: UNKNOWN }),
+	"shell.unsandboxed": (request) => ({
+		effect: `runs ${first(request)} outside the sandbox`,
+		undo: "none: a shell command is not checkpointed",
+		risk: "no sandbox bounds what it writes, reads or connects to",
+	}),
 	web: (request) => ({
 		effect: `requests ${first(request)}`,
 		undo: "nothing to undo",
@@ -94,6 +99,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		effect: `opens ${first(request)}`,
 		undo: "none",
 		risk: "reaches internal services that public-address checks keep out",
+	}),
+	"net.shell": (request) => ({
+		effect: `connects to ${first(request)}`,
+		undo: "none: sent data cannot be taken back",
+		risk: "what the command sends leaves this machine",
 	}),
 	"upload.outside": (request) => ({
 		effect: `sends ${request.what.join(", ")} to the page`,

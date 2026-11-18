@@ -26,8 +26,8 @@ describe("backlog discovery in the native footer", () => {
 		const [top, bottom] = footerLines(state, "main", statuses, theme, 200);
 		expect(bottom).toContain("/web · backlogs & activity");
 		expect(top).not.toContain("/web");
-		expect(bottom).toContain("15.5k tokens");
-		expect(bottom).toContain("2 compactions");
+		expect(top).toContain("15.5k tok (↑12.4k ↓3.1k)");
+		expect(bottom).toMatch(/^model-x · Fix login · 2 compactions /);
 		if (counts.ongoing) expect(bottom).toContain("2 ongoing · 4 todo · 3 to triage");
 	});
 
@@ -53,7 +53,7 @@ describe("backlog discovery in the native footer", () => {
 		}
 	});
 
-	it("shortens the hint to /web while preserving location and usage at common terminal widths", () => {
+	it("shortens the hint to /web while line 1 keeps the location and usage at common terminal widths", () => {
 		const statuses = new Map([
 			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],
 		]);
@@ -61,8 +61,8 @@ describe("backlog discovery in the native footer", () => {
 			const [top, bottom] = footerLines({ ...state, chip: chipParts("manual") }, "main", statuses, theme, width);
 			expect(top).toContain("manual");
 			expect(bottom).toContain("/web");
-			expect(bottom).toContain("project");
-			expect(bottom).toContain("15.5k tokens");
+			expect(top).toMatch(/^\/work\/project ⎇ main · /);
+			expect(top).toContain("15.5k tok");
 		}
 		for (const width of [0, 1, 4, 8, 20, 40, 80, 120, 200]) {
 			const lines = footerLines(state, "main", statuses, theme, width);

@@ -21,7 +21,8 @@ import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { tmp } from "./helpers.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
+import { asSetup } from "./fake-host.ts";
 
 const call = (id: string, name: string, args: Record<string, unknown>) => ({
 	role: "assistant",
@@ -51,9 +52,9 @@ describe("file restore after compaction", () => {
 		);
 		const session = SessionManager.inMemory(dir);
 		const kept = session.appendMessage({ role: "user", content: "Continue working on large.ts", timestamp: 1 });
-		const sent: Array<Parameters<ExtensionAPI["sendMessage"]>[0]> = [];
-		const api = {
-			sendMessage: (message: Parameters<ExtensionAPI["sendMessage"]>[0]) => {
+		const sent: Array<Parameters<FeatureSetup["session"]["sendMessage"]>[0]> = [];
+		const api = asSetup({
+			sendMessage: (message: Parameters<FeatureSetup["session"]["sendMessage"]>[0]) => {
 				sent.push(message);
 				session.appendCustomMessageEntry(
 					message.customType,
@@ -62,15 +63,15 @@ describe("file restore after compaction", () => {
 					message.details,
 				);
 			},
-		};
+		});
 		const ctx = { cwd: dir, sessionManager: session };
 		const candidates = [{ file, workedAt: 3, line: 1 }];
-		const first = deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)!;
+		const first = deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS)!;
 		expect(first.files[0].whole).toBe(false);
 		const prefix = JSON.stringify(session.buildSessionProjection().messages);
 		session.appendCompaction("Newest checkpoint", kept, 50_000);
 		const checkpoint = JSON.stringify(session.buildSessionProjection().messages);
-		expect(deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)?.id).toBe(first.id);
+		expect(deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS)?.id).toBe(first.id);
 		expect(sent).toHaveLength(1);
 		expect(JSON.stringify(session.buildSessionProjection().messages)).toBe(checkpoint);
 		const guard = new FileGuard();
@@ -82,7 +83,7 @@ describe("file restore after compaction", () => {
 		).toBe(true);
 		expect(prefix).toContain("item0");
 		fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("item0", "changedItem0"));
-		expect(deliverRestoredFiles(api, candidates, ctx, RESTORE_TOTAL_CHARS)?.files[0].whole).toBe(false);
+		expect(deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS)?.files[0].whole).toBe(false);
 		expect(sent).toHaveLength(2);
 		expect(sent[1].content).toContain("changedItem0");
 	});
@@ -96,9 +97,9 @@ describe("file restore after compaction", () => {
 		).join("\n");
 		fs.writeFileSync(file, text);
 		const session = SessionManager.inMemory(dir);
-		const sent: Array<Parameters<ExtensionAPI["sendMessage"]>[0]> = [];
-		const api = {
-			sendMessage: (message: Parameters<ExtensionAPI["sendMessage"]>[0]) => {
+		const sent: Array<Parameters<FeatureSetup["session"]["sendMessage"]>[0]> = [];
+		const api = asSetup({
+			sendMessage: (message: Parameters<FeatureSetup["session"]["sendMessage"]>[0]) => {
 				sent.push(message);
 				session.appendCustomMessageEntry(
 					message.customType,
@@ -108,14 +109,14 @@ describe("file restore after compaction", () => {
 					Date.now() - 60_000,
 				);
 			},
-		};
+		});
 		const ctx = { cwd: dir, sessionManager: session };
-		const first = deliverRestoredFiles(api, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
+		const first = deliverRestoredFiles({ session: api }, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
 		fs.writeFileSync(file, text.replace("value", "other"));
 		const guard = new FileGuard();
 		guard.restore(contextReads(ctx));
 		expect(guard.inspect(file, "edit", "outline.ts").stale).toBe(true);
-		const pending = deliverRestoredFiles(api, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
+		const pending = deliverRestoredFiles({ session: api }, plain(file), ctx, RESTORE_TOTAL_CHARS)!;
 		expect(pending.id).toBe(first.id);
 		expect(sent).toHaveLength(1);
 		expect(settleRestoredFiles(session.buildSessionProjection().messages, pending, guard)).toBe(true);
@@ -140,7 +141,9 @@ describe("file restore after compaction", () => {
 				buildSessionProjection: () => ({ entries: [{ sourceEntry: entry, messages: [message] }], messages: [message] }),
 			},
 		};
-		expect(deliverRestoredFiles({ sendMessage }, plain(file), ctx as never, RESTORE_TOTAL_CHARS)).toBeUndefined();
+		expect(
+			deliverRestoredFiles({ session: { sendMessage } }, plain(file), ctx as never, RESTORE_TOTAL_CHARS),
+		).toBeUndefined();
 		expect(sendMessage).not.toHaveBeenCalled();
 		expect(fs.readFileSync(file, "utf8")).toBe(original);
 	});
@@ -283,11 +286,11 @@ describe("file restore after compaction", () => {
 		};
 		const deliver = (error: Error) =>
 			deliverRestoredFiles(
-				{
+				asSetup({
 					sendMessage: () => {
 						throw error;
 					},
-				} as never,
+				}) as never,
 				[{ file, workedAt: 3 }],
 				ctx as never,
 				RESTORE_TOTAL_CHARS,
@@ -295,7 +298,7 @@ describe("file restore after compaction", () => {
 		expect(
 			deliver(
 				new Error(
-					"This extension ctx is stale after session replacement or reload. Do not use a captured api or command ctx.",
+					"This feature ctx is stale after session replacement or reload. Do not use a captured api or command ctx.",
 				),
 			),
 		).toBeUndefined();
@@ -310,12 +313,12 @@ describe("file restore after compaction", () => {
 			message: { customType: string; details: { id: string; files: string[] } };
 			options: unknown;
 		}> = [];
-		const api = {
+		const api = asSetup({
 			sendMessage: (message: never, options: unknown) => {
 				sent.push({ message, options });
 				return undefined;
 			},
-		};
+		});
 		const guard = new FileGuard();
 		guard.restore([]);
 		expect(guard.check(file, "write", "w.ts")).toMatch(/not read in this session/);
@@ -323,12 +326,7 @@ describe("file restore after compaction", () => {
 			cwd: dir,
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 		};
-		const pending = deliverRestoredFiles(
-			api as never,
-			[{ file, workedAt: 3, line: 1 }],
-			ctx as never,
-			RESTORE_TOTAL_CHARS,
-		)!;
+		const pending = deliverRestoredFiles(api, [{ file, workedAt: 3, line: 1 }], ctx as never, RESTORE_TOTAL_CHARS)!;
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({
 			customType: RESTORED_FILES_TYPE,
@@ -383,12 +381,12 @@ describe("file restore after compaction", () => {
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 		};
 		const pending = deliverRestoredFiles(
-			{
+			asSetup({
 				sendMessage: (message: never) => {
 					sent.push({ message });
 					return undefined;
 				},
-			} as never,
+			}) as never,
 			[{ file }],
 			ctx as never,
 			RESTORE_TOTAL_CHARS,
@@ -426,19 +424,19 @@ describe("file restore after compaction", () => {
 		const file = path.join(dir, "big.txt");
 		fs.writeFileSync(file, Array.from({ length: 400 }, (_, i) => `z${i}`.padEnd(60, "z")).join("\n"));
 		const sent: Array<{ message: { details: { id: string; files: string[]; partial?: string[] } } }> = [];
-		const api = {
+		const api = asSetup({
 			sendMessage: (message: never) => {
 				sent.push({ message });
 				return undefined;
 			},
-		};
+		});
 		const guard = new FileGuard();
 		guard.restore([]);
 		const ctx = {
 			cwd: dir,
 			sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 		};
-		const pending = deliverRestoredFiles(api as never, [{ file, workedAt: 3 }], ctx as never, RESTORE_TOTAL_CHARS)!;
+		const pending = deliverRestoredFiles(api, [{ file, workedAt: 3 }], ctx as never, RESTORE_TOTAL_CHARS)!;
 		expect(pending.files[0]).toMatchObject({ file, whole: false });
 		expect(sent[0].message.details.partial).toEqual([file]);
 		expect(settleRestoredFiles([{ role: "custom", ...(sent[0].message as object) }], pending, guard)).toBe(true);
@@ -585,12 +583,12 @@ describe("file restore after compaction", () => {
 				result("3", "read", at, { details: { truncation: { outputLines: 5 } } }),
 			];
 			const sent: Array<{ details: { files: string[] } }> = [];
-			const api = {
+			const api = asSetup({
 				sendMessage: (message: { details: { files: string[] } }) => {
 					sent.push(message);
 					return undefined;
 				},
-			};
+			});
 			const ctx = {
 				cwd: dir,
 				sessionManager: {
@@ -600,7 +598,7 @@ describe("file restore after compaction", () => {
 					}),
 				},
 			};
-			const pending = deliverRestoredFiles(api as never, plain(held, stale, cut), ctx as never, RESTORE_TOTAL_CHARS)!;
+			const pending = deliverRestoredFiles(api, plain(held, stale, cut), ctx as never, RESTORE_TOTAL_CHARS)!;
 			expect(pending.files.map((entry) => entry.file)).toEqual([stale, cut]);
 			expect(sent[0].details.files).toEqual([stale, cut]);
 			// Everything the context holds already: no message at all.
@@ -629,7 +627,7 @@ describe("restored message framing budget", () => {
 		const total = 5_000;
 		const sendMessage = vi.fn();
 		const ctx = { cwd, sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } };
-		const pending = deliverRestoredFiles({ sendMessage }, plain(file), ctx as never, total);
+		const pending = deliverRestoredFiles({ session: { sendMessage } }, plain(file), ctx as never, total);
 		expect(pending?.files).toHaveLength(1);
 		expect(sendMessage).toHaveBeenCalledOnce();
 		expect(sendMessage.mock.calls[0][0].content.length).toBeLessThanOrEqual(total);

@@ -11,6 +11,11 @@ export interface Row {
 	wrap?: boolean;
 	indent?: string;
 	lead?: string;
+	/**
+	 * Parts drawn after `text` on a row that does not wrap, each with its own separator (` · 14 tool calls`). Like a
+	 * header's meta, a part is drawn whole or not at all: the last ones drop first, before `text` is cut.
+	 */
+	meta?: readonly string[];
 }
 
 /** The parts of a header row: `left` (mark and name), the `summary` drawn in parentheses, `meta`, then `right` (time). */
@@ -39,6 +44,7 @@ function sameRows(a: readonly Row[], b: readonly Row[]): boolean {
 		const x = a[index];
 		const y = b[index];
 		if (x.text !== y.text || x.wrap !== y.wrap || x.indent !== y.indent || x.lead !== y.lead) return false;
+		if (x.meta !== y.meta && (x.meta?.join("\0") ?? "") !== (y.meta?.join("\0") ?? "")) return false;
 	}
 	return true;
 }
@@ -57,27 +63,43 @@ function sameHeader(a: Header | undefined, b: Header | undefined): boolean {
 	);
 }
 
-/** Columns the summary keeps at least when meta competes for the row. */
+/** The leading `parts` that fit `room` columns whole, joined: meta is drawn whole or not at all, the last part dropping first. */
+function wholeParts(parts: readonly string[], room: number): string {
+	let shown = "";
+	let left = room;
+	for (const part of parts) {
+		left -= visibleWidth(part);
+		if (left < 0) break;
+		shown += part;
+	}
+	return shown;
+}
+
+/** Columns a summary that is cut anyway keeps at least before meta may stay beside it. */
 const SUMMARY_SHARE = 2 / 3;
 /** The fewest summary columns worth drawing inside parentheses. */
 const MIN_SUMMARY = 4;
 
 /**
- * One row: `left(summary)meta right`. The mark, name and time are always kept; the summary comes before meta, and is
- * drawn with its parentheses as one unit or not at all.
+ * One row: `left(summary)meta right`. The mark, name and time are always kept, and meta is drawn whole or not at all.
+ * Meta drops before the summary is cut: a summary that fits once meta is gone shows whole. A summary too long for the
+ * row even alone keeps meta only while it still gets its share of the room. The summary is drawn with its parentheses
+ * as one unit or not at all.
  */
 function headerLine({ left, summary, right, meta = "", parens = ["(", ")"] }: Header, width: number): string {
 	const room = width - visibleWidth(left) - visibleWidth(right);
 	const summaryWidth = summary ? visibleWidth(summary) + 2 : 0;
 	const metaWidth = visibleWidth(meta);
-	const summaryRoom = Math.min(summaryWidth, Math.max(room - metaWidth, Math.floor(room * SUMMARY_SHARE)));
+	const besideMeta = room - metaWidth;
+	const keepMeta =
+		summaryWidth <= besideMeta ||
+		(summaryWidth > room && besideMeta >= Math.max(Math.floor(room * SUMMARY_SHARE), MIN_SUMMARY + 2));
+	const summaryRoom = Math.min(summaryWidth, keepMeta ? besideMeta : room);
 	const unit =
 		summary && summaryRoom >= Math.min(summaryWidth, MIN_SUMMARY + 2)
 			? `${parens[0]}${truncateToWidth(summary, summaryRoom - 2, "…")}${parens[1]}`
 			: "";
-	const metaRoom = room - visibleWidth(unit);
-	const shownMeta =
-		metaRoom >= metaWidth ? meta : metaRoom >= MIN_SUMMARY + 3 ? truncateToWidth(meta, metaRoom, "…") : "";
+	const shownMeta = wholeParts([meta], room - visibleWidth(unit));
 	return truncateToWidth(`${left}${unit}${shownMeta}${right}`, width, "…");
 }
 
@@ -86,7 +108,8 @@ function drawRows(rows: readonly Row[], width: number): string[] {
 	for (const row of rows) {
 		const lead = row.lead ?? "";
 		if (!row.wrap) {
-			out.push(truncateToWidth(`${lead}${row.text}`, width, "…"));
+			const meta = row.meta ? wholeParts(row.meta, width - visibleWidth(lead) - visibleWidth(row.text)) : "";
+			out.push(truncateToWidth(`${lead}${row.text}${meta}`, width, "…"));
 			continue;
 		}
 		const indent = row.indent ?? "";

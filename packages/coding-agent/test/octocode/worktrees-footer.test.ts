@@ -1,9 +1,10 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionAPI, ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../src/core/features/index.ts";
 import { registerWorktreeFooter, worktreeFooterText } from "../../src/octocode/worktrees/footer.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
+import { asSetup } from "./fake-host.ts";
 
 const saved = { ...process.env };
 let repo: TestRepo;
@@ -53,15 +54,17 @@ describe("worktreeFooterText", () => {
 
 describe("registerWorktreeFooter", () => {
 	function harness() {
-		const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => Promise<void>>();
-		const api = { on: (name: string, handler: never) => void handlers.set(name, handler) } as unknown as ExtensionAPI;
+		const handlers = new Map<string, (event: unknown, ctx: FeatureContext) => Promise<void>>();
+		const api = asSetup({
+			on: (name: string, handler: never) => void handlers.set(name, handler),
+		}) as unknown as FeatureSetup;
 		const statuses: Array<string | undefined> = [];
 		const ctxAt = (cwd: string) =>
 			({
 				cwd,
 				hasUI: true,
 				ui: { setStatus: (_key: string, value?: string) => void statuses.push(value) },
-			}) as unknown as ExtensionContext;
+			}) as unknown as FeatureContext;
 		let listener: (() => void) | undefined;
 		let stops = 0;
 		const team = {
@@ -127,7 +130,7 @@ describe("registerWorktreeFooter", () => {
 		const h = harness();
 		await h.start(repo.root);
 		h.statuses.push = () => {
-			throw new Error("This extension ctx is stale after session replacement or reload.");
+			throw new Error("This feature ctx is stale after session replacement or reload.");
 		};
 		h.team.view.members = [member("x", other)];
 		expect(() => h.tick()).not.toThrow();

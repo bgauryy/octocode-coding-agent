@@ -1,0 +1,411 @@
+{
+	"events": {
+		"agent_before_settle": [
+			"registerStopHook@octocode/hooks/register/stop.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts"
+		],
+		"agent_end": [
+			"registerPlanning@octocode/plan/register.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerBacklog@octocode/backlog/index.ts",
+			"registerRecordedSpend@octocode/team/tools/spend.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerUi@octocode/ui/chrome.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"agent_interrupted": [
+			"registerInterruptHook@octocode/hooks/register/events.ts"
+		],
+		"agent_settle_end": [
+			"registerWake@octocode/wake/register.ts"
+		],
+		"agent_settled": [
+			"Delivery.install@octocode/ui/delivery.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerIdleItems@octocode/subagents/idle-items.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerAwaiting@octocode/ui/awaiting.ts",
+			"registerWake@octocode/wake/register.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts",
+			"registerWakeRetry@octocode/wake-retry.ts"
+		],
+		"agent_start": [
+			"Delivery.install@octocode/ui/delivery.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerBacklog@octocode/backlog/index.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerEditor@octocode/ui/editor.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerUi@octocode/ui/chrome.ts",
+			"registerWake@octocode/wake/register.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"before_agent_start": [
+			"registerPlanning@octocode/plan/register.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerTaskEvents@octocode/backlog/task-events.ts",
+			"registerBacklogDigest@octocode/backlog/digest.ts",
+			"registerMemory@octocode/memory/register.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
+			"registerTurnSetup@octocode/turn.ts",
+			"registerBackgroundHooks@octocode/hooks/background.ts",
+			"registerStopHook@octocode/hooks/register/stop.ts",
+			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
+			"registerHooksPromptSection@octocode/hooks/prompt-section.ts",
+			"registerSourcePolicy@octocode/permission/source-policy-loader.ts",
+			"registerLoopGuard@octocode/loop-guard.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"registerWakeRetry@octocode/wake-retry.ts",
+			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts"
+		],
+		"cache_warming_decision": [
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerPresentWarming@octocode/ui/present-warming.ts"
+		],
+		"context": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerMessageHooks@octocode/hooks/register/messages.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"input": [
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"registerPromptOptimization@octocode/prompt-optimization/register.ts",
+			"registerPromptHook@octocode/hooks/register/events.ts",
+			"registerWakeRetry@octocode/wake-retry.ts",
+			"Subcommands.register@octocode/shared/commands.ts"
+		],
+		"message_end": [
+			"recordChildReports@octocode/permission/provenance/reports.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerMemory@octocode/memory/register.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerRecordedSpend@octocode/team/tools/spend.ts",
+			"registerConfinedNote@octocode/team/node-confine.ts",
+			"registerTerminal@octocode/terminal/register.ts",
+			"registerUnpricedNotice@octocode/ui/footer/notices.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerUi@octocode/ui/chrome.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerTurnBudget@octocode/compaction/turn-budget.ts",
+			"registerLoopGuard@octocode/loop-guard.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"message_start": [
+			"Delivery.install@octocode/ui/delivery.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerUi@octocode/ui/chrome.ts"
+		],
+		"message_update": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"model_select": [
+			"withNativePermissionOwners@octocode/permission/native-tools.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerReasoningNotice@octocode/ui/footer/notices.ts",
+			"registerFallbackNotice@octocode/ui/footer/notices.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"resources_discover": [
+			"registerSkills@octocode/skills.ts"
+		],
+		"session_before_compact": [
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerPreCompactHook@octocode/hooks/register/events.ts",
+			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"session_before_fork": [
+			"registerLeaveConfirmation@octocode/session-guards.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts"
+		],
+		"session_before_quit": [
+			"registerLeaveConfirmation@octocode/session-guards.ts"
+		],
+		"session_before_switch": [
+			"registerLeaveConfirmation@octocode/session-guards.ts"
+		],
+		"session_before_tree": [
+			"registerCheckpoints@octocode/files/checkpoint-command.ts"
+		],
+		"session_compact": [
+			"registerPlanning@octocode/plan/register.ts",
+			"registerRunningWork@octocode/sessions/register.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerMemory@octocode/memory/register.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerRecordedSpend@octocode/team/tools/spend.ts",
+			"registerConfinedNote@octocode/team/node-confine.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerTurnSetup@octocode/turn.ts",
+			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
+			"registerPostCompactHook@octocode/hooks/register/events.ts",
+			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerDeferredSchemaRestore@octocode/compaction/deferred-schemas.ts",
+			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"session_compact_failed": [
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"session_compact_prewarm": [
+			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"session_info_changed": [
+			"registerSessions@octocode/sessions/register.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerNotify@octocode/ui/notify.ts"
+		],
+		"session_shutdown": [
+			"Delivery.install@octocode/ui/delivery.ts",
+			"registerReadReceipts@octocode/files/read-receipts.ts",
+			"registerBashTool@octocode/native/tools/bash/tool.ts",
+			"registerProcesses@octocode/processes/register.ts",
+			"registerPlanning@octocode/plan/register.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"webLauncher@octocode/browser/launcher.ts",
+			"registerBacklog@octocode/backlog/index.ts",
+			"registerSessionAttach@octocode/web-daemon/attach-register.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerOctocodeCli@octocode/cli/command.ts",
+			"registerWorktreeFooter@octocode/worktrees/footer.ts",
+			"registerTerminal@octocode/terminal/register.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerPhasePort@octocode/ui/phase-port.ts",
+			"registerPhaseLine@octocode/ui/phase-line.ts",
+			"registerAwaiting@octocode/ui/awaiting.ts",
+			"registerWake@octocode/wake/register.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerBackgroundHooks@octocode/hooks/background.ts",
+			"registerMessageHooks@octocode/hooks/register/messages.ts",
+			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
+			"registerHooks@octocode/hooks/register.ts",
+			"notificationHook@octocode/hooks/register/messages.ts",
+			"registerAgentHooks@octocode/hooks/register/agents.ts",
+			"registerBacklogHooks@octocode/hooks/register/backlog.ts",
+			"registerMonitorHooks@octocode/hooks/register/monitor.ts",
+			"registerSessionEndHook@octocode/hooks/register/events.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"registerMonitor@octocode/monitor/register.ts",
+			"registerWakeRetry@octocode/wake-retry.ts",
+			"registerTimers@octocode/timer/register.ts",
+			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts",
+			"octocode@octocode/index.ts"
+		],
+		"session_start": [
+			"withNativePermissionOwners@octocode/permission/native-tools.ts",
+			"Delivery.install@octocode/ui/delivery.ts",
+			"registerReaderRole@octocode/session-guards.ts",
+			"octocode@octocode/index.ts",
+			"registerBashTool@octocode/native/tools/bash/tool.ts",
+			"registerProcesses@octocode/processes/register.ts",
+			"registerPlanning@octocode/plan/register.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerRealm@octocode/realm/register.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"webLauncher@octocode/browser/launcher.ts",
+			"webLauncher@octocode/browser/launcher.ts",
+			"registerBacklog@octocode/backlog/index.ts",
+			"registerTaskEvents@octocode/backlog/task-events.ts",
+			"registerBacklogDigest@octocode/backlog/digest.ts",
+			"registerBacklog@octocode/backlog/index.ts",
+			"registerSessionAttach@octocode/web-daemon/attach-register.ts",
+			"registerWebCommands@octocode/remote/register.ts",
+			"registerRemoteAutoStart@octocode/remote/command.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerRecordedSpend@octocode/team/tools/spend.ts",
+			"registerEditor@octocode/ui/editor.ts",
+			"registerOctocodeCli@octocode/cli/command.ts",
+			"registerWorktrees@octocode/worktrees/register.ts",
+			"registerWorktreeFooter@octocode/worktrees/footer.ts",
+			"registerTerminal@octocode/terminal/register.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
+			"registerUnpricedNotice@octocode/ui/footer/notices.ts",
+			"registerReasoningNotice@octocode/ui/footer/notices.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerPhasePort@octocode/ui/phase-port.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerPhaseLine@octocode/ui/phase-line.ts",
+			"registerAwaiting@octocode/ui/awaiting.ts",
+			"registerUi@octocode/ui/chrome.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerBackgroundHooks@octocode/hooks/background.ts",
+			"registerMessageHooks@octocode/hooks/register/messages.ts",
+			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
+			"registerHooks@octocode/hooks/register.ts",
+			"notificationHook@octocode/hooks/register/messages.ts",
+			"registerAgentHooks@octocode/hooks/register/agents.ts",
+			"registerBacklogHooks@octocode/hooks/register/backlog.ts",
+			"registerMonitorHooks@octocode/hooks/register/monitor.ts",
+			"registerSourcePolicy@octocode/permission/source-policy-loader.ts",
+			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerArchiveTool@octocode/native/tools/archive/tool.ts",
+			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
+			"registerSkillTool@octocode/native/tools/skill/tool.ts",
+			"registerLoopGuard@octocode/loop-guard.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"registerMonitor@octocode/monitor/register.ts",
+			"octocode@octocode/index.ts",
+			"registerWakeRetry@octocode/wake-retry.ts",
+			"registerTimers@octocode/timer/register.ts"
+		],
+		"session_tree": [
+			"registerPlanning@octocode/plan/register.ts",
+			"registerCheckpoints@octocode/files/checkpoint-command.ts",
+			"registerSessions@octocode/sessions/register.ts",
+			"registerRecordedSpend@octocode/team/tools/spend.ts",
+			"registerEditor@octocode/ui/editor.ts",
+			"registerFooter@octocode/ui/footer.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"thinking_level_select": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerFooter@octocode/ui/footer.ts"
+		],
+		"tool_call": [
+			"registerTurnSetup@octocode/turn.ts",
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_call_discarded": [
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_call_early_start": [
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_execution_end": [
+			"withNativePermissionOwners@octocode/permission/native-tools.ts",
+			"registerReadReceipts@octocode/files/read-receipts.ts",
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerWake@octocode/wake/register.ts",
+			"registerStallRecorder@octocode/profiler/stalls.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts",
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_execution_start": [
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerTurnLine@octocode/ui/turn-line.ts",
+			"registerWake@octocode/wake/register.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerStopHook@octocode/hooks/register/stop.ts",
+			"registerLoopGuard@octocode/loop-guard.ts",
+			"registerNotify@octocode/ui/notify.ts",
+			"OctocodeApi.observe@octocode/api/bridge.ts"
+		],
+		"tool_execution_update": [
+			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts"
+		],
+		"tool_result": [
+			"registerReadReceipts@octocode/files/read-receipts.ts",
+			"registerNestedContext@octocode/files/nested-context.ts",
+			"octocode@octocode/index.ts",
+			"registerFileTool@octocode/native/tools/file/tool.ts",
+			"registerTaskEvents@octocode/backlog/task-events.ts",
+			"registerBreakAttribution@octocode/team/break-attribution.ts",
+			"registerConfinedNote@octocode/team/node-confine.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerPostToolUseHook@octocode/hooks/register/post-tool-use.ts",
+			"registerReadDedupe@octocode/files/dedupe.ts",
+			"registerLoopGuard@octocode/loop-guard.ts"
+		],
+		"turn_end": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerTurnSetup@octocode/turn.ts",
+			"registerBackgroundHooks@octocode/hooks/background.ts",
+			"registerHooks@octocode/hooks/register.ts",
+			"registerPostToolBatchHook@octocode/hooks/register/events.ts",
+			"registerCompaction@octocode/compaction/register.ts"
+		],
+		"turn_prompt": [
+			"registerTurnSetup@octocode/turn.ts"
+		],
+		"turn_start": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerTurnBudget@octocode/compaction/turn-budget.ts"
+		],
+		"ui_prompt_end": [
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerAwaiting@octocode/ui/awaiting.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerNotify@octocode/ui/notify.ts"
+		],
+		"ui_prompt_start": [
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
+			"registerAwaiting@octocode/ui/awaiting.ts",
+			"registerActivity@octocode/ui/activity.ts",
+			"registerNotify@octocode/ui/notify.ts"
+		],
+		"user_bash": [
+			"registerTerminal@octocode/terminal/register.ts",
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"user_input": [
+			"registerPromptHook@octocode/hooks/register/events.ts"
+		]
+	},
+	"tools": [
+		"file",
+		"bash",
+		"backlog",
+		"backlogPlan",
+		"memory",
+		"web",
+		"askUser",
+		"models",
+		"agent",
+		"compact",
+		"archive",
+		"skill",
+		"wait"
+	]
+}

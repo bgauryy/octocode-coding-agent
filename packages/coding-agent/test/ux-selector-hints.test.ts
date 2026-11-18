@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import { ExtensionSelectorComponent } from "../src/modes/interactive/components/extension-selector.ts";
+import { DialogSelectorComponent } from "../src/modes/interactive/components/dialog-selector.ts";
 import { FirstTimeSetupComponent } from "../src/modes/interactive/components/first-time-setup.ts";
 import { QueueListComponent } from "../src/modes/interactive/components/queue-list.ts";
 import { TrustPromptComponent } from "../src/modes/interactive/components/trust-prompt.ts";
@@ -15,7 +15,7 @@ describe("selector key hints name actions, not the arrows", () => {
 	beforeAll(() => initTheme("dark"));
 
 	test("extension selector", () => {
-		const selector = new ExtensionSelectorComponent("Pick", ["a", "b"], vi.fn(), vi.fn());
+		const selector = new DialogSelectorComponent("Pick", ["a", "b"], vi.fn(), vi.fn());
 		const shown = text(selector.render(80));
 		expect(shown).toMatch(/enter select \u00b7 \S+ cancel/);
 		expect(shown).not.toMatch(ARROW_LABEL);
@@ -24,23 +24,26 @@ describe("selector key hints name actions, not the arrows", () => {
 	test("first-time setup", () => {
 		const setup = new FirstTimeSetupComponent({ onThemePreview: vi.fn(), onSubmit: vi.fn(), onCancel: vi.fn() });
 		const shown = text(setup.render(80));
-		expect(shown).toMatch(/enter continue \u00b7 \S+ skip setup/);
+		expect(shown).toMatch(/enter continue \u00b7 \S+ cancel/);
+		expect(shown).toMatch(/^› 1\. System/m);
 		expect(shown).not.toMatch(ARROW_LABEL);
 	});
 
-	test("trust prompt keeps its one-key choices", () => {
+	test("trust prompt numbers its answers and names Enter and Esc, never `choose`", () => {
 		const prompt = new TrustPromptComponent({
 			title: "Trust this folder?",
 			body: ["Project files can run code."],
 			rows: [
-				{ key: "y", label: "Trust", value: true },
-				{ key: "n", label: "Not now", value: false },
+				{ label: "Not now", value: false },
+				{ label: "Trust", value: true },
 			],
 			onCancel: vi.fn(),
 			onChoose: vi.fn(),
 		});
 		const shown = text(prompt.render(80));
-		expect(shown).toContain("y/n choose \u00b7 enter confirm");
+		expect(shown).toMatch(/^› 1\. Not now\n {2}2\. Trust$/m);
+		expect(shown).toMatch(/enter confirm \u00b7 \S+ cancel/);
+		expect(shown).not.toContain("choose");
 		expect(shown).not.toMatch(ARROW_LABEL);
 	});
 

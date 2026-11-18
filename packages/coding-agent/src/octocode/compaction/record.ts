@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { SetupPick } from "../../core/features/index.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 
 /**
@@ -27,12 +27,12 @@ type CompactionNoteKind =
 
 /** Appends a compaction note to the session; a session replaced meanwhile (a stale `api`) records nothing. */
 export function recordCompactionNote(
-	api: Pick<ExtensionAPI, "appendEntry">,
+	api: SetupPick<"session", "appendEntry">,
 	kind: CompactionNoteKind,
 	reason: string,
 ): void {
 	try {
-		api.appendEntry(COMPACTION_NOTE_TYPE, { kind, reason });
+		api.session.appendEntry(COMPACTION_NOTE_TYPE, { kind, reason });
 	} catch (error) {
 		if (!isStaleSessionError(error)) throw error;
 	}

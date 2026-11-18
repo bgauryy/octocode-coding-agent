@@ -1,7 +1,7 @@
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import { Type } from "typebox";
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { textResult } from "../shared/util.ts";
 import { checkGoal, GOAL_DESCRIPTION } from "../team/identity.ts";
 import type { RunPlan } from "./claim.ts";
@@ -40,7 +40,7 @@ export function runnerPlan(params: Record<string, unknown>, runners: Runners | u
 /** The part of the session's permission state a child's runner task asks: the spawn class, relayed to its parent. */
 interface SpawnPermission {
 	check(
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		request: { action: "agent.spawn"; title: string; what: string[]; purpose: string; signal: AbortSignal },
 	): Promise<{ allowed: boolean }>;
 }
@@ -53,7 +53,7 @@ interface SpawnPermission {
 export function registerChildRunnerTask(
 	runners: Runners,
 	permission: SpawnPermission,
-	registerTool: ExtensionAPI["registerTool"],
+	registerTool: FeatureSetup["tools"]["register"],
 	team?: Team,
 ): void {
 	let started = 0;
@@ -64,7 +64,7 @@ export function registerChildRunnerTask(
 		description:
 			"Run a self-contained task in an installed vendor CLI using its own sign-in, checked when used, and return its report; the call waits for it.",
 		parameters: Type.Object({
-			runner: StringEnum(runners.ids, { description: renderInstruction("tools/agent/child-runner.md") }),
+			runner: StringEnum(runners.ids, { description: renderPrompt("tools/agent/child-runner.md") }),
 			goal: Type.String({ description: GOAL_DESCRIPTION }),
 			task: Type.String({ description: "The whole brief: the runner sees nothing else of this session" }),
 			model: Type.Optional(Type.String({ description: "The runner's own model option" })),

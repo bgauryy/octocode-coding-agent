@@ -51,9 +51,7 @@ export class ResourceSettings {
 		const updated = withTogglePattern(current, this.getResourcePattern(item), enabled);
 
 		if (scope === "project") {
-			if (arrayKey === "extensions") {
-				this.settingsManager.setProjectExtensionPaths(updated);
-			} else if (arrayKey === "skills") {
+			if (arrayKey === "skills") {
 				this.settingsManager.setProjectSkillPaths(updated);
 			} else if (arrayKey === "prompts") {
 				this.settingsManager.setProjectPromptTemplatePaths(updated);
@@ -61,9 +59,7 @@ export class ResourceSettings {
 				this.settingsManager.setProjectThemePaths(updated);
 			}
 		} else {
-			if (arrayKey === "extensions") {
-				this.settingsManager.setExtensionPaths(updated);
-			} else if (arrayKey === "skills") {
+			if (arrayKey === "skills") {
 				this.settingsManager.setSkillPaths(updated);
 			} else if (arrayKey === "prompts") {
 				this.settingsManager.setPromptTemplatePaths(updated);
@@ -103,9 +99,7 @@ export class ResourceSettings {
 		(pkg as Record<string, unknown>)[arrayKey] = updated.length > 0 ? updated : undefined;
 
 		// Clean up empty filter object
-		const hasFilters = ["extensions", "skills", "prompts", "themes"].some(
-			(k) => (pkg as Record<string, unknown>)[k] !== undefined,
-		);
+		const hasFilters = ["skills", "prompts", "themes"].some((k) => (pkg as Record<string, unknown>)[k] !== undefined);
 		if (!hasFilters) {
 			packages[pkgIndex] = (pkg as { source: string }).source;
 		}
@@ -133,7 +127,7 @@ export class ResourceSettings {
 			return !(state === "inherit" && this.isInheritedGlobalItem(item) && target === pattern);
 		});
 		if (state !== "inherit") {
-			// Project entries name inherited files to override them. Built-in paths need no entry.
+			// Project entries name inherited files to override them. Octocode collection skills need no entry.
 			if (this.isInheritedGlobalItem(item) && item.metadata.source !== "builtin" && !updated.includes(pattern))
 				updated.push(pattern);
 			updated.push(`${state === "load" ? "+" : "-"}${pattern}`);
@@ -143,8 +137,7 @@ export class ResourceSettings {
 	}
 
 	private setProjectTopLevelPaths(key: ResourceType, paths: string[]): void {
-		if (key === "extensions") this.settingsManager.setProjectExtensionPaths(paths);
-		else if (key === "skills") this.settingsManager.setProjectSkillPaths(paths);
+		if (key === "skills") this.settingsManager.setProjectSkillPaths(paths);
 		else if (key === "prompts") this.settingsManager.setProjectPromptTemplatePaths(paths);
 		else this.settingsManager.setProjectThemePaths(paths);
 	}
@@ -300,8 +293,6 @@ export class ResourceSettings {
 	}
 
 	private getResourcePattern(item: ResourceItem): string {
-		// A built-in extension is named `builtin:<id>`; a skill of the Octocode collection, relative to its folder.
-		if (item.metadata.source === "builtin" && !item.metadata.baseDir) return item.path;
 		const scope = item.metadata.scope as "user" | "project";
 		const baseDir = item.metadata.baseDir ?? this.getTopLevelBaseDir(scope);
 		return relative(baseDir, item.path);

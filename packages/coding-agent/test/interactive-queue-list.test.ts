@@ -124,14 +124,14 @@ describe("queued-messages list", () => {
 	test("opens focused on the last message for Up and lists every row with kind and notes", () => {
 		const { host, list } = fixture([
 			{ text: "first" },
-			{ text: "with image", mode: "followUp", imageCount: 1, source: "extension" },
+			{ text: "with image", mode: "followUp", imageCount: 1, source: "feature" },
 		]);
 		expect(showQueueManager(host, "last")).toBe(true);
 		expect(list()?.selectedIndex).toBe(1);
 		const rendered = list()?.render(80).join("\n") ?? "";
 		expect(rendered).toContain("Next turn");
 		expect(rendered).toContain("After run");
-		expect(rendered).toContain("1 attachment, extension");
+		expect(rendered).toContain("1 attachment, feature");
 		// Keys and verbs are styled apart (`hintLine`), so the hint is read as visible text.
 		expect(rendered.replace(/\x1b\[[0-9;]*m/g, "")).toContain("enter edit");
 		for (const line of list()?.render(80) ?? [])

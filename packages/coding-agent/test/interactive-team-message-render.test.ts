@@ -7,7 +7,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../src/core/features/index.ts";
+import type { FeatureSetup } from "../src/core/features/index.ts";
 import { subscribeToAgent } from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { registerMessageRenderer } from "../src/octocode/team/tools/messages.ts";
@@ -16,6 +16,7 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 const BODY = "please review the plan";
 const mail = (): { content: string; display: true; details: { messages: object[] } } => ({
@@ -41,7 +42,7 @@ async function attach(harness: Harness) {
 		getAppKeyDisplay: () => "alt+up",
 		pendingTools: new Map(),
 		entriesRenderedByRebuild: new Set<string>(),
-		programStatus: { handleEvent: vi.fn() },
+		programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 		workingVisible: false,
 		ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
 		editor: {},
@@ -57,7 +58,7 @@ async function attach(harness: Harness) {
 	subscribeToAgent(host);
 	return {
 		text: () => stripAnsi(chatContainer.render(100).join("\n")),
-		copies: () => stripAnsi(chatContainer.render(100).join("\n")).split("sparkly-seahorse → you").length - 1,
+		copies: () => stripAnsi(chatContainer.render(100).join("\n")).split("sparkly-seahorse → me").length - 1,
 		unsubscribe: () => host.unsubscribe?.(),
 	};
 }
@@ -73,8 +74,8 @@ describe("interactive transcript: a delivered team message renders once", () => 
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	const create = async (extra: Array<(api: ExtensionAPI) => void> = [], tools: AgentTool[] = []) => {
-		const harness = await createHarness({ tools, extensionFactories: [registerMessageRenderer, ...extra] });
+	const create = async (extra: Array<(api: FeatureSetup) => void> = [], tools: AgentTool[] = []) => {
+		const harness = await createHarness({ tools, features: testFeatures([registerMessageRenderer, ...extra]) });
 		harnesses.push(harness);
 		const view = await attach(harness);
 		ui.push(view.unsubscribe);
@@ -139,10 +140,10 @@ describe("interactive transcript: a delivered team message renders once", () => 
 		let sent = false;
 		const { harness, view } = await create([
 			(api) =>
-				api.on("agent_settled", async () => {
+				api.bus.on("agent_settled", async () => {
 					if (sent) return;
 					sent = true;
-					await api.sendMessage(
+					await api.session.sendMessage(
 						{ customType: INTERNAL_MESSAGE_TYPE, ...mail() },
 						{ triggerTurn: true, deliverAs: "steer" },
 					);
@@ -160,7 +161,7 @@ describe("interactive transcript: a delivered team message renders once", () => 
 		let drafted = false;
 		const { harness, view } = await create([
 			(api) =>
-				api.on("turn_end", () => {
+				api.bus.on("turn_end", () => {
 					if (drafted) return;
 					drafted = true;
 					return { entries: [{ type: "custom_message", customType: INTERNAL_MESSAGE_TYPE, ...mail() }] };

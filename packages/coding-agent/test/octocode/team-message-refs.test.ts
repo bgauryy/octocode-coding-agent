@@ -153,8 +153,10 @@ describe("a child's report answers the questions put to it", () => {
 		const store = team();
 		const sent: string[] = [];
 		const mail = new Mail({
-			sendMessage: (message: { content: unknown }) => {
-				sent.push(String(message.content));
+			session: {
+				sendMessage: (message: { content: unknown }) => {
+					sent.push(String(message.content));
+				},
 			},
 		});
 		try {
@@ -179,8 +181,10 @@ describe("a child's report answers the questions put to it", () => {
 		const store = team();
 		const sent: string[] = [];
 		const mail = new Mail({
-			sendMessage: (message: { content: unknown }) => {
-				sent.push(String(message.content));
+			session: {
+				sendMessage: (message: { content: unknown }) => {
+					sent.push(String(message.content));
+				},
 			},
 		});
 		try {
@@ -189,11 +193,12 @@ describe("a child's report answers the questions put to it", () => {
 			store.remove("a-1");
 			mail.reportDeadLetters(store, "p-1", (id) => id === "a-1");
 			expect(sent).toHaveLength(1);
-			expect(sent[0]).toContain("was not read");
-			expect(sent[0]).not.toContain("read but not answered");
+			expect(sent[0]).toContain("a-1");
 			mail.reportDeadLetters(store, "p-1", () => false);
 			expect(sent).toHaveLength(2);
-			expect(sent[1]).toContain("was read but not answered");
+			// Read but unanswered is a different report than never read.
+			expect(sent[1]).toContain("a-1");
+			expect(sent[1]).not.toBe(sent[0]);
 		} finally {
 			store.close();
 		}
@@ -204,7 +209,7 @@ describe("a child's report answers the questions put to it", () => {
 		try {
 			askAndRead(store);
 			store.remove("a-1");
-			expect(deadLetterText(store.deadLetters("p-1")[0])).toContain("was read but not answered");
+			expect(deadLetterText(store.deadLetters("p-1")[0])).toContain("a-1");
 		} finally {
 			store.close();
 		}

@@ -159,7 +159,7 @@ describe("RPC unknown command responses", () => {
 	test("binds a replaced session once: the runtime's rebind hook is the only rebind", async () => {
 		const listenerSnapshot = takeListenerSnapshot();
 		const harness = await createHarness();
-		const bind = vi.spyOn(harness.session, "bindExtensions");
+		const bind = vi.spyOn(harness.session, "bindFeatures");
 		let rebind: (() => Promise<void>) | undefined;
 		// Like the real runtime, each replacement calls the registered rebind hook itself.
 		const replaced = async () => {

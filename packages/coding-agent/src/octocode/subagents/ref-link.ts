@@ -1,5 +1,5 @@
 import type { WorkLink } from "@octocodeai/octocode-contracts/backlogs";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { mergeLinks } from "../backlog/evidence-links.ts";
@@ -55,7 +55,7 @@ function noteMergedRef(backlog: Backlog, ref: string, into?: string): string[] {
 }
 
 /** `/agents merge`'s (and, without `into`, `/agents discard`'s) footer: the items noted, or why not (never throws: the git change happened). */
-export function noteMerge(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">, ref: string, into?: string): string {
+export function noteMerge(ctx: Pick<FeatureContext, "cwd" | "sessionManager">, ref: string, into?: string): string {
 	try {
 		const items = noteMergedRef(openBacklog(ctx, { isSubagent: false }), ref, into);
 		return items.length ? `\nNoted on ${items.join(", ")}.` : "";

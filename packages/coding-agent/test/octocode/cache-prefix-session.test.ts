@@ -12,12 +12,14 @@ import {
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -86,14 +88,15 @@ it("sends the same tools and leading prompt on every turn and after a compaction
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noPromptTemplates: true,
 		noThemes: true,
-		extensionFactories: [
-			{ name: "mcp", factory: createMcpExtension() },
+		features: testFeatures([
+			{ name: "mcp", factory: createMcpFeature() },
 			{
 				name: "cache-fixture",
 				factory: (api) =>
-					api.registerProvider("faux-cache", {
+					api.providers.register("faux-cache", {
 						name: "Fixture",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -109,7 +112,7 @@ it("sends the same tools and leading prompt on every turn and after a compaction
 						},
 					} as never),
 			},
-		],
+		]),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
@@ -119,7 +122,7 @@ it("sends the same tools and leading prompt on every turn and after a compaction
 		resourceLoader,
 		sessionManager: SessionManager.create(cwd, path.join(home, "sessions")),
 	});
-	await session.bindExtensions({
+	await session.bindFeatures({
 		mode: "json",
 		uiContext: { confirm: async () => true, notify: () => undefined } as never,
 		shutdownHandler: () => undefined,
@@ -132,7 +135,7 @@ it("sends the same tools and leading prompt on every turn and after a compaction
 		await session.prompt("After compaction.");
 	} finally {
 		await session.abort("shutdown");
-		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		session.dispose();
 	}
 

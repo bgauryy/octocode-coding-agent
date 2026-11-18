@@ -2,7 +2,7 @@ import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
-import { identityBlock, withIdentity } from "../../src/octocode/instructions/task.ts";
+import { identityBlock, withIdentity } from "../../src/octocode/native/prompts/task.ts";
 import { AGENT_ROLE_ENV } from "../../src/octocode/team/store/env.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -27,8 +27,8 @@ async function sections(
 	if (options.readOnly) vi.stubEnv(READ_ONLY_ENV, "1");
 	const fake = fakeHost();
 	for (const name of selectedTools) fake.tools.set(name, { name, exposure: "direct" });
-	fake.api.events = createEventBus();
-	setMcpSessionStatus(fake.api.events, status);
+	Object.assign(fake.api, { channels: createEventBus() });
+	setMcpSessionStatus(fake.api.channels, status);
 	registerTurnSetup(fake.api, { isSubagent: options.isSubagent, profiles: () => PROFILES });
 	const event = {
 		systemPromptOptions: {

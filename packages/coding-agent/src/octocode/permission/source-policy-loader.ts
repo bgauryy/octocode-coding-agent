@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { ExtensionAPI, ExtensionContext, ToolInvocation } from "../../core/features/types.ts";
+import type { FeatureSetup, FeatureContext, ToolInvocation } from "../../core/features/types.ts";
 import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
 import { say } from "../shared/commands.ts";
@@ -17,7 +17,7 @@ import { readPolicy, stageSettingsWrite, persistSettingsWrite } from "./source-p
 
 /** `home`: the user's home for user-level settings (the OS home by default); `onChange`: runs after each new policy. */
 export function registerSourcePolicy(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	{ home = os.homedir(), onChange }: { home?: string; onChange?: () => void } = {},
 ) {
 	let policy: SourcePolicy = { rules: [], errors: [] };
@@ -27,11 +27,11 @@ export function registerSourcePolicy(
 	let sessionRules: SourceRuleArrays = { allow: [], deny: [], ask: [] };
 	let transient: SourcePolicy = { rules: [], errors: [] };
 	let revision = 0;
-	const sessionSource = (ctx: ExtensionContext) => ({
+	const sessionSource = (ctx: FeatureContext) => ({
 		path: "Claude session permission updates",
 		anchor: ctx.cwd,
 	});
-	const publish = (ctx: ExtensionContext) => {
+	const publish = (ctx: FeatureContext) => {
 		const overlay = parseSourcePolicy({ permissions: sessionRules }, sessionSource(ctx));
 		policy = {
 			rules: [...basePolicy.rules, ...transient.rules, ...overlay.rules],
@@ -45,9 +45,9 @@ export function registerSourcePolicy(
 		};
 		revision++;
 		onChange?.();
-		nativeHost(api).setToolPolicy?.((name) => !sourceToolDenied(policy, name));
+		nativeHost(api).tools.setPolicy?.((name) => !sourceToolDenied(policy, name));
 	};
-	const capture = async (ctx: ExtensionContext) => {
+	const capture = async (ctx: FeatureContext) => {
 		try {
 			await initializeBashSyntax();
 		} catch {
@@ -108,7 +108,7 @@ export function registerSourcePolicy(
 		last = snapshot.fingerprint;
 		acceptedContents = snapshot.contents;
 	};
-	const load = async (ctx: ExtensionContext) => {
+	const load = async (ctx: FeatureContext) => {
 		const snapshot = await capture(ctx);
 		if (snapshot.fingerprint === last) return;
 		install(snapshot);
@@ -116,17 +116,17 @@ export function registerSourcePolicy(
 		if (policy.errors.length) say(ctx, policy.errors.join("\n"), "warning");
 	};
 	let pending: Promise<void> = Promise.resolve();
-	const refresh = (ctx: ExtensionContext) => {
+	const refresh = (ctx: FeatureContext) => {
 		const current = pending.then(() => load(ctx));
 		pending = current.catch(() => {});
 		return current;
 	};
-	api.on("session_start", async (_event, ctx) => refresh(ctx));
-	api.on("before_agent_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => refresh(ctx));
+	api.bus.on("before_agent_start", async (_event, ctx) => {
 		await refresh(ctx);
 	});
 	return {
-		prepareUpdates: (ctx: ExtensionContext, updates: readonly SourcePermissionUpdate[]) => {
+		prepareUpdates: (ctx: FeatureContext, updates: readonly SourcePermissionUpdate[]) => {
 			const nextSession = applySessionRuleUpdates(
 				sessionRules,
 				updates.filter((update) => update.destination === "session"),

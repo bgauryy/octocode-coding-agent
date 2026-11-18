@@ -49,7 +49,7 @@ flowchart LR
 
 - [User guide](packages/coding-agent/README.md): features, commands, first run
 - [Documentation index](packages/coding-agent/docs/index.md)
-- [Develop Octocode itself](DEVELOPMENT.md): run from source, checks, releases
+- [Develop Octocode itself](DEVELOPMENT.md): run from source, package map, checks, releases
 - [Security](SECURITY.md)
 
 MIT; original Pi copyright notices are retained in [LICENSE](LICENSE). Fork of Pi by Mario Zechner and contributors.

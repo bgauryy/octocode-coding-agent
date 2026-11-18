@@ -1,27 +1,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpServerToolStates } from "../../../mcp/src/api.ts";
 import { projectMcpConfigPath } from "../../../mcp/src/paths.ts";
 import type { InventoryItem } from "../../src/octocode/harness/inventory.ts";
-import { createMcpToolsSource } from "../../src/octocode/harness/mcp-tools.ts";
+import { createMcpToolsSource } from "../../src/octocode/mcp-host/tools.ts";
 import { HarnessPicker } from "../../src/octocode/harness/picker.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { pinTool } from "../../src/octocode/web-daemon/tool-exposure.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
-import { stripAnsi } from "../../src/utils/ansi.ts";
 import { trustFolder } from "./helpers.ts";
+import { menuText, runToolsPage } from "./mcp-tools-page-driver.ts";
 
-beforeAll(() => initTheme("dark"));
-
-const ENTER = "\r";
-const DOWN = "\x1b[B";
-const LEFT = "\x1b[D";
-const ESC = "\x1b";
-const TAB = "\t";
-const SPACE = " ";
+initTheme("dark");
 
 let root: string;
 let agentDir: string;
@@ -45,49 +38,14 @@ const session = () =>
 		{ name: "read", state: "direct", decidedBy: "default" },
 	);
 
-const server: InventoryItem = {
-	id: "mcp:docs",
-	name: "docs",
-	kind: "mcp",
-	host: "mcp",
-	depth: 0,
-	label: "docs",
-	on: true,
-	detail: "Global · connected · 2 tools · direct",
-};
-
-/** The picker on its MCPs section, with the tool rows reading and writing the isolated folders. */
-function open(options: { trusted?: boolean; scope?: "project" } = {}) {
-	const projectTrusted = options.trusted ?? true;
-	const done = vi.fn();
-	const picker = new HarnessPicker(
-		{
-			items: [server],
-			section: "mcp",
-			apply: vi.fn(() => "Saved"),
-			paths: { global: "~/settings.json", project: ".octocode/settings.json" },
-			height: 24,
-			done,
-			requestRender: vi.fn(),
-			mcpTools: createMcpToolsSource({
-				ctx: () => ({
-					cwd,
-					agentDir,
-					settings: SettingsManager.create(cwd, agentDir, { projectTrusted }),
-					projectTrusted,
-				}),
-				live: () => live,
-			}),
-		},
-		theme,
-		new KeybindingsManager(),
-	);
-	if (options.scope === "project") picker.handleInput(TAB);
-	picker.handleInput(ENTER);
-	const keys = (...data: string[]) => data.forEach((key) => picker.handleInput(key));
-	const text = () => stripAnsi(picker.render(100).join("\n"));
-	return { picker, keys, text, done };
-}
+/** The `/mcp` tools page of `docs`, answered with `choices`; resolves to every menu shown. */
+const page = (choices: Array<string | undefined>, options: { trusted?: boolean; scope?: "global" | "project" } = {}) =>
+	runToolsPage({ cwd, agentDir, live: () => live, ...options }, choices);
+/** The text of the last tools list shown. */
+const shown = async (
+	choices: Array<string | undefined>,
+	options?: { trusted?: boolean; scope?: "global" | "project" },
+) => menuText((await page(choices, options)).filter((menu) => menu.title === "docs — tools").at(-1)!);
 
 beforeEach(() => {
 	root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-harness-mcp-tools-"));
@@ -106,81 +64,70 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("opening a server's tools", () => {
-	it("lists each tool with its exposure and the Available to row, and leaves with ← or Esc", () => {
-		const { keys, text, done } = open();
-		expect(text()).toContain("Harness › MCPs › docs");
-		expect(text()).toContain("Available to: every agent");
-		expect(text()).toMatch(/\[x\] read\s+direct/);
-		expect(text()).toMatch(/\[x\] search\s+direct/);
-		keys(LEFT);
-		expect(text()).not.toContain("Available to");
-		expect(text()).toContain("[x] docs");
-		keys(ENTER, ESC);
-		expect(text()).not.toContain("Available to");
-		// Esc went back one level; it did not close the picker.
-		expect(done).not.toHaveBeenCalled();
+describe("the /mcp tools page", () => {
+	it("lists each tool with its exposure under Available to and Default for tools", async () => {
+		const [menu] = await page([]);
+		expect(menu.items.map((item) => [item.value, item.badge])).toEqual([
+			["@available", "every agent"],
+			["@default", "direct"],
+			["read", "direct"],
+			["search", "direct"],
+		]);
+		expect(menu.confirmLabel).toBe("open");
+		expect(menu.cancelLabel).toBe("back");
 	});
 
-	it("lists only pinned tools and says to connect when the server is not connected", () => {
+	it("lists only pinned tools and says to connect when the server is not connected", async () => {
 		writeJson(globalMcp(), {
 			mcpServers: { docs: { command: "docs-server", toolExposure: { legacy: "hidden", "get_*": "hidden" } } },
 		});
 		live = undefined;
-		const { text } = open();
-		expect(text()).toContain("not connected");
-		expect(text()).toContain("Connect to list tools");
-		expect(text()).toMatch(/\[ \] legacy\s+hidden · pinned/);
+		const text = await shown([]);
+		expect(text).toContain("not connected · 1 tool pinned");
+		expect(text).toContain("Connect the server to list its tools.");
+		expect(text).toContain("legacy  hidden  pinned");
 		// A pattern is not a tool name.
-		expect(text()).not.toContain("get_*");
+		expect(text).not.toContain("get_*");
 	});
 });
 
 describe("switching a tool", () => {
-	it("Space hides a tool by writing toolExposure to the server's file, and brings it back by removing the pin", () => {
-		const { keys, text } = open();
-		// Rows: Available to, read, search.
-		keys(DOWN, DOWN, SPACE);
+	it("hides a tool by writing toolExposure to the server's file, and brings it back by removing the pin", async () => {
+		const text = await shown(["read", "hidden"]);
 		expect(docs()).toEqual({ command: "docs-server", toolExposure: { read: "hidden" } });
-		expect(text()).toMatch(/\[ \] read\s+hidden · pinned · from the next session/);
-		expect(text()).toContain("running sessions keep what they declared");
-		keys(SPACE);
+		expect(text).toContain("read  hidden  pinned · from the next session");
+		expect(text).toContain("running sessions keep what they declared");
+		const back = await shown(["read", "@unpin"]);
 		expect(docs()).toEqual({ command: "docs-server" });
-		expect(text()).toMatch(/\[x\] read\s+direct/);
+		expect(back).toContain("read  direct");
 	});
 
-	it("Space pins direct when the tool is hidden by something that is not a pin", () => {
-		writeJson(globalMcp(), { mcpServers: { docs: { command: "docs-server", exposure: "hidden" } } });
-		live = connected({ name: "read", state: "hidden", decidedBy: "server" });
-		const { keys } = open();
-		keys(DOWN, DOWN, SPACE);
-		expect(docs().toolExposure).toEqual({ read: "direct" });
-		// The server's default is hidden too, so removing the pin would change nothing: Space keeps pinning direct.
-		keys(SPACE);
-		expect(docs().toolExposure).toEqual({ read: "hidden" });
-		keys(SPACE);
-		expect(docs().toolExposure).toEqual({ read: "direct" });
+	it("opens the tool's choices with the current exposure selected and a server default row only when pinned", async () => {
+		writeJson(globalMcp(), { mcpServers: { docs: { command: "docs-server", toolExposure: { read: "deferred" } } } });
+		const menus = await page(["read"]);
+		const choices = menus.find((menu) => menu.title === "read — tool")!;
+		expect(choices.selected).toBe("deferred");
+		expect(choices.items.map((item) => item.value)).toEqual(["direct", "deferred", "onDemand", "hidden", "@unpin"]);
+		expect(choices.items.find((item) => item.value === "deferred")?.badge).toBe("current");
+		const unpinned = (await page(["search"])).find((menu) => menu.title === "search — tool")!;
+		expect(unpinned.items.map((item) => item.value)).not.toContain("@unpin");
 	});
 
-	it("Tab cycles direct, deferred, hidden and back, writing each pin", () => {
-		const { keys, text } = open();
+	it("writes each exposure as a pin", async () => {
 		const pins = [];
-		keys(DOWN, DOWN);
-		for (let step = 0; step < 4; step += 1) {
-			keys(TAB);
+		for (const exposure of ["deferred", "onDemand", "hidden", "direct"]) {
+			await page(["read", exposure]);
 			pins.push(docs().toolExposure?.read);
 		}
-		expect(pins).toEqual(["deferred", "hidden", "direct", "deferred"]);
-		expect(text()).toMatch(/\[~\] read\s+deferred · pinned/);
+		expect(pins).toEqual(["deferred", "onDemand", "hidden", "direct"]);
 	});
 
-	it("keeps the other pins and the rest of the file", () => {
+	it("keeps the other pins and the rest of the file", async () => {
 		writeJson(globalMcp(), {
 			mcpServers: { docs: { command: "docs-server", env: { A: "1" }, toolExposure: { search: "deferred" } } },
 			other: true,
 		});
-		const { keys } = open();
-		keys(DOWN, DOWN, SPACE);
+		await page(["read", "hidden"]);
 		expect(readJson(globalMcp())).toEqual({
 			mcpServers: {
 				docs: { command: "docs-server", env: { A: "1" }, toolExposure: { read: "hidden", search: "deferred" } },
@@ -190,62 +137,57 @@ describe("switching a tool", () => {
 	});
 
 	it("writes the web Tools panel's file content for the same pin", async () => {
-		const { keys } = open();
-		keys(DOWN, DOWN, TAB, TAB);
-		const fromPicker = readJson(globalMcp());
+		await page(["read", "onDemand"]);
+		const fromPage = readJson(globalMcp());
 		writeJson(globalMcp(), { mcpServers: { docs: { command: "docs-server" } } });
 		await pinTool(
-			{ kind: "mcp", server: "docs", tool: "read", pin: "hidden", scope: "global" },
+			{ kind: "mcp", server: "docs", tool: "read", pin: "onDemand", scope: "global" },
 			{ agentDir, actor: "web:test" },
 		);
-		expect(readJson(globalMcp())).toEqual(fromPicker);
+		expect(readJson(globalMcp())).toEqual(fromPage);
 	});
 });
 
 describe("Available to", () => {
-	it("writes defaultActive false for 'only agents that name it' and clears it for 'every agent'", () => {
-		const { keys, text } = open();
-		keys(SPACE);
+	it("writes defaultActive false for 'only agents that name it' and clears it for 'every agent'", async () => {
+		const text = await shown(["@available", "named"]);
 		expect(docs()).toEqual({ command: "docs-server", defaultActive: false });
-		expect(text()).toContain("Available to: only agents that name it");
-		expect(text()).toContain("profile tools: name mcp__docs__");
-		keys(SPACE);
+		expect(text).toContain("Available to  agents that name it");
+		expect(text).toContain("profile tools: name mcp__docs__");
+		const back = await shown(["@available", "every"]);
 		expect(docs()).toEqual({ command: "docs-server" });
-		expect(text()).toContain("Available to: every agent");
+		expect(back).toContain("Available to  every agent");
 	});
 
-	it("reads the saved choice when the view opens", () => {
+	it("reads the saved choice when the page opens", async () => {
 		writeJson(globalMcp(), { mcpServers: { docs: { command: "docs-server", defaultActive: false } } });
-		expect(open().text()).toContain("Available to: only agents that name it");
+		expect(await shown([])).toContain("Available to  agents that name it");
 	});
 });
 
 describe("where a change is written", () => {
-	it("writes a project override, leaving the global server as it is, when project scope is chosen in a trusted folder", () => {
+	it("writes a project override, leaving the global server as it is, when project scope is chosen in a trusted folder", async () => {
 		trustFolder(cwd);
-		const { keys } = open({ scope: "project" });
-		keys(DOWN, DOWN, SPACE);
+		await page(["read", "hidden"], { scope: "project" });
 		expect(docs(projectMcpConfigPath(cwd))).toEqual({ toolExposure: { read: "hidden" } });
 		expect(docs()).toEqual({ command: "docs-server" });
 	});
 
-	it("refuses project scope in an untrusted folder and writes nothing", () => {
-		const { keys, text } = open({ trusted: false, scope: "project" });
-		keys(DOWN, DOWN, SPACE);
-		expect(text()).toContain("not trusted");
+	it("refuses project scope in an untrusted folder and writes nothing", async () => {
+		const text = await shown(["read", "hidden"], { trusted: false, scope: "project" });
+		expect(text).toContain("not trusted");
 		expect(fs.existsSync(projectMcpConfigPath(cwd))).toBe(false);
 		expect(docs()).toEqual({ command: "docs-server" });
 	});
 
-	it("writes a project server's own file when the global scope is chosen", () => {
+	it("writes a project server's own file when the global scope is chosen", async () => {
 		trustFolder(cwd);
 		writeJson(projectMcpConfigPath(cwd), { mcpServers: { docs: { command: "project-docs" } } });
-		const { keys } = open();
-		keys(DOWN, DOWN, SPACE);
+		await page(["read", "hidden"], { scope: "global" });
 		expect(docs(projectMcpConfigPath(cwd))).toEqual({ command: "project-docs", toolExposure: { read: "hidden" } });
 	});
 
-	it("does not offer a switch for a server no configuration file holds", () => {
+	it("does not offer a switch for a server no configuration file holds", async () => {
 		live = [
 			{
 				server: "docs",
@@ -255,17 +197,27 @@ describe("where a change is written", () => {
 			},
 		];
 		writeJson(globalMcp(), { mcpServers: {} });
-		const { keys, text } = open();
-		keys(DOWN, DOWN, SPACE);
-		expect(text()).toContain("not in a configuration file");
+		const text = await shown(["run", "hidden"]);
+		expect(text).toContain("not in a configuration file");
 		expect(docs()).toBeUndefined();
 	});
 });
 
-describe("Enter without the tools source", () => {
-	it("keeps switching the server as before", () => {
+const server: InventoryItem = {
+	id: "mcp:docs",
+	name: "docs",
+	kind: "mcp",
+	host: "mcp",
+	depth: 0,
+	label: "docs",
+	on: true,
+	detail: "Global · connected · 2 tools · direct",
+};
+
+describe("the /harness MCP row", () => {
+	const picker = (options: { openTools?: (server: string, scope: "global" | "project") => void }) => {
 		const apply = vi.fn(() => "Saved");
-		const picker = new HarnessPicker(
+		const view = new HarnessPicker(
 			{
 				items: [server],
 				section: "mcp",
@@ -274,11 +226,30 @@ describe("Enter without the tools source", () => {
 				height: 20,
 				done: vi.fn(),
 				requestRender: vi.fn(),
+				...options,
 			},
 			theme,
 			new KeybindingsManager(),
 		);
-		picker.handleInput(ENTER);
+		return { view, apply };
+	};
+
+	it("opens the /mcp tools page with the picker's scope on Enter or →", () => {
+		const openTools = vi.fn();
+		const { view, apply } = picker({ openTools });
+		view.handleInput("\r");
+		view.handleInput("\t");
+		view.handleInput("\x1b[C");
+		expect(openTools.mock.calls).toEqual([
+			["docs", "global"],
+			["docs", "project"],
+		]);
+		expect(apply).not.toHaveBeenCalled();
+	});
+
+	it("keeps switching the server on Enter without an MCP owner", () => {
+		const { view, apply } = picker({});
+		view.handleInput("\r");
 		expect(apply).toHaveBeenCalledOnce();
 	});
 });
@@ -318,11 +289,11 @@ describe("usage audit of a server's tools", () => {
 		expect(rows.find((row) => row.name === "plain")?.audit).toBeUndefined();
 	});
 
-	it("shows the rate, the last day used and the reason beside the exposure", () => {
+	it("shows the rate, the last day used and the reason beside the exposure", async () => {
 		live = audited();
-		const { text } = open();
-		expect(text()).toMatch(/\[x\] search\s+direct · 12\.5% of 8 sessions · 3 calls · last 2026-11-14 · promoted/);
-		expect(text()).toMatch(/\[~\] read\s+deferred · 0\.0% of 8 sessions · 0 calls · unused in 7 days · unused/);
-		expect(text()).toMatch(/\[x\] plain\s+direct$/m);
+		const text = await shown([]);
+		expect(text).toContain("search  direct  12.5% of 8 sessions · 3 calls · last 2026-11-14 · promoted");
+		expect(text).toContain("read  deferred  0.0% of 8 sessions · 0 calls · unused in 7 days · unused");
+		expect(text).toMatch(/^plain {2}direct$/m);
 	});
 });

@@ -6,7 +6,7 @@ import {
 	type ShellCompletionOptions,
 } from "../../../../terminal/src/index.ts";
 import { getAgentDir } from "../../config.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { getShellEnv } from "../../utils/shell.ts";
@@ -31,7 +31,7 @@ function modelAllowedGlobally(agentDir: string): boolean {
 }
 
 /** The command and exit code of the newest `!` result in the session, if any. */
-function lastBashResult(ctx: ExtensionContext): { command: string; exitCode: number } | undefined {
+function lastBashResult(ctx: FeatureContext): { command: string; exitCode: number } | undefined {
 	const entries = ctx.sessionManager.getEntries?.() ?? [];
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
@@ -46,7 +46,7 @@ function lastBashResult(ctx: ExtensionContext): { command: string; exitCode: num
 }
 
 /** The shell commands of the newest assistant reply in the session. */
-function lastReply(ctx: ExtensionContext): string[] {
+function lastReply(ctx: FeatureContext): string[] {
 	const entries = ctx.sessionManager.getEntries?.() ?? [];
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
@@ -60,10 +60,10 @@ function lastReply(ctx: ExtensionContext): string[] {
  * `!` shell mode in the terminal: Tab completes from the user's own shell (`packages/terminal`), and ghost text
  * suggests the rest of the command from the agent's last reply, the `!` history, or the small model.
  */
-export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string } = {}): void {
+export function registerTerminal(api: FeatureSetup, options: { agentDir?: string } = {}): void {
 	const agentDir = options.agentDir ?? getAgentDir();
 	const history = new ShellHistoryStore();
-	let ctx: ExtensionContext | undefined;
+	let ctx: FeatureContext | undefined;
 	let service: ShellCompletionService | undefined;
 	let ghost: GhostController | undefined;
 	let stopListening: (() => void) | undefined;
@@ -74,7 +74,7 @@ export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string
 	const suggester = new NextCommandSuggester((request, signal) =>
 		ctx ? askSmallModel(api, ctx, request, signal) : Promise.resolve(undefined),
 	);
-	const terminal = () => api.getSettings().terminal;
+	const terminal = () => api.settings.get().terminal;
 	const completion = (): ShellCompletionOptions => ({
 		shell: terminal()?.completion?.shell ?? DEFAULTS.completion.shell,
 		loadRc: terminal()?.completion?.loadRc ?? DEFAULTS.completion.loadRc,
@@ -89,9 +89,9 @@ export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string
 	};
 
 	/** Sets up completion and ghost text for a started terminal session; a UI without the editor hooks gets neither. */
-	const start = (started: ExtensionContext) => {
+	const start = (started: FeatureContext) => {
 		ctx = started;
-		const ui = started.ui as Partial<ExtensionContext["ui"]>;
+		const ui = started.ui as Partial<FeatureContext["ui"]>;
 		const settings = {
 			...completion(),
 			cwd: started.cwd,
@@ -135,7 +135,7 @@ export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string
 		stopListening ??= ui.onEditorChange((text) => ghost?.update(text));
 	};
 
-	api.on("session_start", (_event, started) => {
+	api.bus.on("session_start", (_event, started) => {
 		if (started.mode !== "tui" || !started.hasUI) return;
 		try {
 			start(started);
@@ -144,7 +144,7 @@ export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string
 		}
 	});
 
-	api.on("user_bash", (event) => {
+	api.bus.on("user_bash", (event) => {
 		settleLastRun();
 		const command = event.command.trim();
 		if (command && !command.includes("\n")) {
@@ -156,13 +156,13 @@ export function registerTerminal(api: ExtensionAPI, options: { agentDir?: string
 		return undefined;
 	});
 
-	api.on("message_end", (event) => {
+	api.bus.on("message_end", (event) => {
 		if (event.message.role !== "assistant") return;
 		reply = replyCommands(contentText(event.message.content));
 		suggester.forget();
 	});
 
-	api.on("session_shutdown", () => {
+	api.bus.on("session_shutdown", () => {
 		settleLastRun();
 		stopListening?.();
 		stopListening = undefined;

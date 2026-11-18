@@ -1,8 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { canonicalizePath } from "@octocodeai/octocode-common/paths";
-import { readExtensionManifest } from "../extension-manifest.ts";
 import { collectResourceFiles } from "./auto-entries.ts";
+import { readPackageManifest } from "./manifest.ts";
 import {
 	applyAutoloadDisabledPatterns,
 	applyPatterns,
@@ -35,7 +35,7 @@ import {
  *   4  package resource (origin: "package")
  */
 function resourcePrecedenceRank(m: PathMetadata): number {
-	// Built-in extensions load after file and package extensions, whichever scope enables them.
+	// The bundled skill collection ranks after every file and package resource, whichever scope enables it.
 	if (m.source === "builtin") return 5;
 	if (m.origin === "package") return 4;
 	const scopeBase = m.scope === "project" ? 0 : 2;
@@ -63,7 +63,7 @@ export function collectPackageResources(
 		return true;
 	}
 
-	const manifest = readExtensionManifest(join(packageRoot, "package.json"));
+	const manifest = readPackageManifest(join(packageRoot, "package.json"));
 	if (manifest) {
 		for (const resourceType of RESOURCE_TYPES) {
 			const entries = manifest[resourceType];
@@ -93,7 +93,7 @@ function collectDefaultResources(
 	target: Map<string, { metadata: PathMetadata; enabled: boolean }>,
 	metadata: PathMetadata,
 ): void {
-	const manifest = readExtensionManifest(join(packageRoot, "package.json"));
+	const manifest = readPackageManifest(join(packageRoot, "package.json"));
 	const entries = manifest?.[resourceType];
 	if (entries) {
 		addManifestEntries(entries, packageRoot, resourceType, target, metadata);
@@ -161,7 +161,7 @@ function collectManifestFiles(
 	packageRoot: string,
 	resourceType: ResourceType,
 ): { allFiles: string[]; enabledByManifest: Set<string> } {
-	const manifest = readExtensionManifest(join(packageRoot, "package.json"));
+	const manifest = readPackageManifest(join(packageRoot, "package.json"));
 	const entries = manifest?.[resourceType];
 	if (entries && entries.length > 0) {
 		const allFiles = collectFilesFromManifestEntries(entries, packageRoot, resourceType);
@@ -258,8 +258,6 @@ export function getTargetMap(
 	resourceType: ResourceType,
 ): Map<string, { metadata: PathMetadata; enabled: boolean }> {
 	switch (resourceType) {
-		case "extensions":
-			return accumulator.extensions;
 		case "skills":
 			return accumulator.skills;
 		case "prompts":
@@ -285,7 +283,6 @@ export function addResource(
 
 export function createAccumulator(): ResourceAccumulator {
 	return {
-		extensions: new Map(),
 		skills: new Map(),
 		prompts: new Map(),
 		themes: new Map(),
@@ -311,7 +308,6 @@ export function toResolvedPaths(accumulator: ResourceAccumulator): ResolvedPaths
 	};
 
 	return {
-		extensions: mapToResolved(accumulator.extensions),
 		skills: mapToResolved(accumulator.skills),
 		prompts: mapToResolved(accumulator.prompts),
 		themes: mapToResolved(accumulator.themes),

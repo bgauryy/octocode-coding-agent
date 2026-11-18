@@ -1,5 +1,5 @@
 import type { Question } from "@octocodeai/octocode-contracts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { interactive } from "../shared/interactive.ts";
 import { ask } from "../ask/ask.ts";
 import { permissionAnswer } from "../ask/decode.ts";
@@ -58,7 +58,7 @@ function externalApproval(
  * told it was refused rather than having its turn cancelled. An abort or no answer cancels.
  */
 export const externalPermissionDialog: ExternalPolicy["permission"] =
-	(ctx: ExtensionContext) => async (request, signal) => {
+	(ctx: FeatureContext) => async (request, signal) => {
 		const cancelled = { outcome: { outcome: "cancelled" as const } };
 		if (signal.aborted) return cancelled;
 		const options = request.options.filter(
@@ -81,7 +81,7 @@ export const externalPermissionDialog: ExternalPolicy["permission"] =
 interface ExternalPermissionPort {
 	readonly mode: string;
 	check(
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		request: { action: "agent.spawn"; title: string; what: string[]; purpose: string; signal: AbortSignal },
 	): Promise<{ allowed: boolean }>;
 }
@@ -94,7 +94,7 @@ interface ExternalPermissionPort {
  */
 export const externalPermission =
 	(permission: ExternalPermissionPort): ExternalPolicy["permission"] =>
-	(ctx: ExtensionContext) => {
+	(ctx: FeatureContext) => {
 		const dialog = externalPermissionDialog(ctx);
 		return async (request, signal) => {
 			const allow = request.options.find((option) => option.kind === "allow_once");

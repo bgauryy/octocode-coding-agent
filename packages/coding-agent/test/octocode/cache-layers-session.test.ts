@@ -8,12 +8,14 @@ import {
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
-import { createMcpExtension } from "../../../mcp/src/index.ts";
+import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -43,14 +45,15 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noPromptTemplates: true,
 		noThemes: true,
-		extensionFactories: [
-			{ name: "mcp", factory: createMcpExtension() },
+		features: testFeatures([
+			{ name: "mcp", factory: createMcpFeature() },
 			{
 				name: "cache-fixture",
 				factory: (api) =>
-					api.registerProvider("faux-cache", {
+					api.providers.register("faux-cache", {
 						name: "Fixture",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -66,7 +69,7 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 						},
 					} as never),
 			},
-		],
+		]),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
@@ -76,7 +79,7 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 		resourceLoader,
 		sessionManager: SessionManager.create(cwd, path.join(home, "sessions", project)),
 	});
-	await session.bindExtensions({
+	await session.bindFeatures({
 		mode: "json",
 		uiContext: { confirm: async () => true, notify: () => undefined } as never,
 		shutdownHandler: () => undefined,
@@ -87,7 +90,7 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 		await session.prompt("Again.");
 	} finally {
 		await session.abort("shutdown");
-		await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+		await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 		session.dispose();
 	}
 	expect(captured).toHaveLength(2);
@@ -156,7 +159,7 @@ it("sends byte-identical tools and first instruction block from different projec
 	expect(a.second).toContain("Rules that only project-a has.");
 	// The directory and the date sit in the third block, which has no breakpoint: neither cached block names them.
 	expect(a.volatileBoundary).toBe("cwd");
-	expect(a.volatileNames.slice(0, 2)).toEqual(["cwd", "environment:platform"]);
+	expect(a.volatileNames.slice(0, 3)).toEqual(["cwd", "environment", "environment:platform"]);
 	expect(a.volatile).toMatch(/project-a/);
 	expect(a.volatile).toMatch(/Date: /);
 	expect(a.second).not.toMatch(/<cwd>|Date: /);

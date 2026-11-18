@@ -28,6 +28,8 @@ export interface WorkRow {
 	mark?: "queued" | "held";
 	/** The backlog item (`B12`) a bash job serves, from the call's `item`. */
 	item?: string;
+	/** The backlog items (`B12`) a timer's note names; a timer that waits on an item's state names none. */
+	items?: readonly string[];
 }
 
 /** One child queued behind prerequisites, as the panel shows it. */
@@ -46,7 +48,8 @@ const sameRow = (a: WorkRow, b: WorkRow) =>
 	a.startedAt === b.startedAt &&
 	a.dueAt === b.dueAt &&
 	a.mark === b.mark &&
-	a.item === b.item;
+	a.item === b.item &&
+	a.items?.join() === b.items?.join();
 
 interface WorkState {
 	byKind: Readonly<Partial<Record<WorkKind, readonly WorkRow[]>>>;
@@ -135,7 +138,7 @@ export class RunningWork {
 	}
 }
 
-/** One store per extension instance, so the bash, timer and agent features of a session meet in the same view without a shared global. */
+/** One store per feature instance, so the bash, timer and agent features of a session meet in the same view without a shared global. */
 const stores = new WeakMap<object, RunningWork>();
 export function runningWorkOf(owner: object): RunningWork {
 	let store = stores.get(owner);

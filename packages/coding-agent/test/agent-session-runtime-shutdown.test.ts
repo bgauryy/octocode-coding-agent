@@ -10,7 +10,7 @@ function stuckSession() {
 			calls.push("abort");
 			return new Promise<void>(() => {});
 		}),
-		extensionRunner: { hasHandlers: () => false },
+		featureHost: { hasHandlers: () => false },
 		sessionManager: { retire: () => calls.push("retire") },
 		dispose: () => calls.push("dispose"),
 	} as unknown as AgentSession;

@@ -1,12 +1,12 @@
 import type { PackageCommand } from "./help.ts";
 
-type UpdateTarget = { type: "all" } | { type: "self" } | { type: "extensions"; source?: string } | { type: "models" };
+type UpdateTarget = { type: "all" } | { type: "self" } | { type: "packages"; source?: string } | { type: "models" };
 
 interface PackageCommandOptions {
 	command: PackageCommand;
 	source?: string;
 	updateTarget?: UpdateTarget;
-	showExtensionsSkippedNote: boolean;
+	showPackagesSkippedNote: boolean;
 	local: boolean;
 	force: boolean;
 	/** `--trust`: record the user's trust for this folder, then run. */
@@ -38,10 +38,10 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 	let conflictingOptions: string | undefined;
 	let source: string | undefined;
 	let selfFlag = false;
-	let extensionsFlag = false;
+	let packagesFlag = false;
 	let modelsFlag = false;
 	let allFlag = false;
-	let extensionFlagSource: string | undefined;
+	let packageFlagSource: string | undefined;
 
 	for (let index = 0; index < rest.length; index++) {
 		const arg = rest[index];
@@ -68,9 +68,9 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 			continue;
 		}
 
-		if (arg === "--extensions") {
+		if (arg === "--packages") {
 			if (command === "update") {
-				extensionsFlag = true;
+				packagesFlag = true;
 			} else {
 				invalidOption = invalidOption ?? arg;
 			}
@@ -109,7 +109,7 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 			continue;
 		}
 
-		if (arg === "--extension") {
+		if (arg === "--package") {
 			if (command !== "update") {
 				invalidOption = invalidOption ?? arg;
 				continue;
@@ -118,11 +118,11 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 			const value = rest[index + 1];
 			if (!value || value.startsWith("-")) {
 				missingOptionValue = missingOptionValue ?? arg;
-			} else if (extensionFlagSource) {
-				conflictingOptions = conflictingOptions ?? "--extension can only be provided once";
+			} else if (packageFlagSource) {
+				conflictingOptions = conflictingOptions ?? "--package can only be provided once";
 				index++;
 			} else {
-				extensionFlagSource = value;
+				packageFlagSource = value;
 				index++;
 			}
 			continue;
@@ -141,54 +141,54 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 	}
 
 	let updateTarget: UpdateTarget | undefined;
-	let showExtensionsSkippedNote = false;
+	let showPackagesSkippedNote = false;
 	if (command === "update") {
-		if (allFlag && (selfFlag || extensionsFlag || modelsFlag || extensionFlagSource)) {
+		if (allFlag && (selfFlag || packagesFlag || modelsFlag || packageFlagSource)) {
 			conflictingOptions =
-				conflictingOptions ?? "--all cannot be combined with --self, --extensions, --models, or --extension";
+				conflictingOptions ?? "--all cannot be combined with --self, --packages, --models, or --package";
 		}
 		if (allFlag && source) {
 			conflictingOptions = conflictingOptions ?? "--all cannot be combined with a positional source";
 		}
 
 		if (modelsFlag) {
-			if (selfFlag || extensionsFlag || allFlag || extensionFlagSource) {
+			if (selfFlag || packagesFlag || allFlag || packageFlagSource) {
 				conflictingOptions =
-					conflictingOptions ?? "--models cannot be combined with --self, --extensions, --all, or --extension";
+					conflictingOptions ?? "--models cannot be combined with --self, --packages, --all, or --package";
 			}
 			if (source) {
 				conflictingOptions = conflictingOptions ?? "--models cannot be combined with a positional source";
 			}
 			updateTarget = { type: "models" };
-		} else if (extensionFlagSource) {
-			if (selfFlag || extensionsFlag || allFlag) {
-				conflictingOptions = conflictingOptions ?? "--extension cannot be combined with --self, --extensions, or --all";
+		} else if (packageFlagSource) {
+			if (selfFlag || packagesFlag || allFlag) {
+				conflictingOptions = conflictingOptions ?? "--package cannot be combined with --self, --packages, or --all";
 			}
 			if (source) {
-				conflictingOptions = conflictingOptions ?? "--extension cannot be combined with a positional source";
+				conflictingOptions = conflictingOptions ?? "--package cannot be combined with a positional source";
 			}
-			updateTarget = { type: "extensions", source: extensionFlagSource };
+			updateTarget = { type: "packages", source: packageFlagSource };
 		} else if (source) {
 			if (source === "self") {
-				updateTarget = extensionsFlag ? { type: "all" } : { type: "self" };
+				updateTarget = packagesFlag ? { type: "all" } : { type: "self" };
 			} else {
-				if (extensionsFlag || selfFlag || allFlag) {
+				if (packagesFlag || selfFlag || allFlag) {
 					conflictingOptions =
-						conflictingOptions ?? "positional update targets cannot be combined with --self, --extensions, or --all";
+						conflictingOptions ?? "positional update targets cannot be combined with --self, --packages, or --all";
 				}
-				updateTarget = { type: "extensions", source };
+				updateTarget = { type: "packages", source };
 			}
 		} else if (allFlag) {
 			updateTarget = { type: "all" };
-		} else if (selfFlag && extensionsFlag) {
+		} else if (selfFlag && packagesFlag) {
 			updateTarget = { type: "all" };
 		} else if (selfFlag) {
 			updateTarget = { type: "self" };
-		} else if (extensionsFlag) {
-			updateTarget = { type: "extensions" };
+		} else if (packagesFlag) {
+			updateTarget = { type: "packages" };
 		} else {
 			updateTarget = { type: "self" };
-			showExtensionsSkippedNote = true;
+			showPackagesSkippedNote = true;
 		}
 	}
 
@@ -196,7 +196,7 @@ export function parsePackageCommand(args: string[]): PackageCommandOptions | und
 		command,
 		source,
 		updateTarget,
-		showExtensionsSkippedNote,
+		showPackagesSkippedNote,
 		local,
 		force,
 		trust,
@@ -212,6 +212,6 @@ export function updateTargetIncludesSelf(target: UpdateTarget): boolean {
 	return target.type === "all" || target.type === "self";
 }
 
-export function updateTargetIncludesExtensions(target: UpdateTarget): boolean {
-	return target.type === "all" || target.type === "extensions";
+export function updateTargetIncludesPackages(target: UpdateTarget): boolean {
+	return target.type === "all" || target.type === "packages";
 }

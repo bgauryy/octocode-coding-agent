@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../../core/prompt-template.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatCost } from "../../shared/format.ts";
 import { plural } from "../../shared/text.ts";
@@ -61,7 +61,7 @@ async function tell(
 	replyTo: number | undefined,
 	signal?: AbortSignal,
 ): Promise<string> {
-	const text = renderInstruction("notices/subagents/budget-granted.md", { requests, used, soft, hard });
+	const text = renderPrompt("notices/subagents/budget-granted.md", { requests, used, soft, hard });
 	try {
 		const result = await team.send(id, text, {
 			replyRequired: false,

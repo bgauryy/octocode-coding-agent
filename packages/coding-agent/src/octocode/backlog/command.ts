@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
@@ -16,8 +16,8 @@ import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 
 const OPEN_TASKS = TASK_STATES.filter(isOpenTask);
 
-export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand {
-	const doWeb = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand {
+	const doWeb = async (ctx: CommandContext, backlog: Backlog): Promise<void> => {
 		// The same page as `/web backlogs` where that command is registered: the web daemon's, or this session's own.
 		const web = deps.web?.();
 		if (web) return web.handler("backlogs", ctx);
@@ -27,7 +27,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 
 	const { apply, handOff, move, closeItem, add, actions, tasks } = createItemActions(api, deps);
 
-	const doExport = (ctx: ExtensionCommandContext, backlog: Backlog) => {
+	const doExport = (ctx: CommandContext, backlog: Backlog) => {
 		try {
 			say(
 				ctx,
@@ -39,7 +39,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	};
 
 	/** Writes the HTML page and, with a UI, opens it in the default browser. */
-	const doHtml = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+	const doHtml = async (ctx: CommandContext, backlog: Backlog): Promise<void> => {
 		let file: string;
 		try {
 			file = exportBacklogHtml(backlog, ctx.cwd);
@@ -57,7 +57,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	};
 
 	/** The TUI board; loops back to it after each action until the user closes it or hands an item to the agent. */
-	const board = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+	const board = async (ctx: CommandContext, backlog: Backlog): Promise<void> => {
 		// Loaded on open: the board paints with the terminal UI package, which a headless session never loads.
 		const { showBoard } = await import("./board.ts");
 		let selected: string | undefined;
@@ -100,7 +100,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 	};
 
 	/** Without a custom component (RPC): the board as a select list. */
-	const selectBoard = async (ctx: ExtensionCommandContext, backlog: Backlog): Promise<void> => {
+	const selectBoard = async (ctx: CommandContext, backlog: Backlog): Promise<void> => {
 		const ADD = "+ Add an item";
 		const EXPORT = "Export to .octocode/code/backlog.md";
 		const HTML = "Open as HTML";
@@ -128,7 +128,7 @@ export function backlogCommand(api: ExtensionAPI, deps: CommandDeps): Subcommand
 		{
 			args: string;
 			description: string;
-			run(ctx: ExtensionCommandContext, backlog: Backlog, args: string): void | Promise<void>;
+			run(ctx: CommandContext, backlog: Backlog, args: string): void | Promise<void>;
 		}
 	> = {
 		web: { args: "", description: "open the live local board", run: doWeb },

@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getAssistantTexts, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("blocked tool termination", () => {
 	const harnesses: Harness[] = [];
@@ -25,15 +26,15 @@ describe("blocked tool termination", () => {
 		};
 		const harness = await createHarness({
 			tools: [echoTool],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("tool_call", async () => ({
+					api.bus.on("tool_call", async () => ({
 						block: true,
 						reason: "Blocked by terminating policy",
 						terminate: true,
 					}));
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([

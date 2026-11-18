@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI } from "../../core/features/index.ts";
+import type { FeatureSetup } from "../../core/features/index.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { changesByOthers } from "./edits.ts";
 import type { Team } from "./session.ts";
@@ -17,8 +17,8 @@ const MAX_SCANNED = 40;
  * this session wrote last, a path that is no file here and a change older than an hour are not named; git, formatters and
  * other editors are not in the log, so a break without a name says nothing about who caused it.
  */
-export function registerBreakAttribution(api: ExtensionAPI, team: Team): void {
-	api.on("tool_result", async (event, ctx) => {
+export function registerBreakAttribution(api: FeatureSetup, team: Team): void {
+	api.bus.on("tool_result", async (event, ctx) => {
 		if (event.toolName !== "bash" || !event.isError || event.parentToolCallId) return undefined;
 		const log = team.editLog();
 		if (!log) return undefined;

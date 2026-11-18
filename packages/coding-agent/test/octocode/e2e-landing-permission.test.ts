@@ -80,11 +80,24 @@ async function finished(each: Session, steps: string) {
 }
 
 describe("git merge in the main checkout, on the default branch, in full mode", () => {
-	it("asks over RPC, naming the command and the branch; once asks again, for this session does not, and shares the tool's grant", async () => {
+	it("a typed `!git merge` is consent and asks nothing; an agent merge asks over RPC, naming the command and the branch; once asks again, for this session does not, and shares the tool's grant", async () => {
 		const box = sandbox(endpoint);
 		const branch = git(box.project, "branch", "--show-current");
 		for (const each of ["one", "two", "three"]) branchWithCommit(box, each);
+		branchWithCommit(box, "feature");
 		const started = await session(box);
+
+		// A user's own `!git merge` is consent: it runs, asks nothing, and the audit says it was typed.
+		// RPC's `bash` is the terminal's `!`: the `user_bash` path.
+		started.run.process.stdin?.write(
+			`${JSON.stringify({ id: "typed", type: "bash", command: "git merge --no-edit feature" })}\n`,
+		);
+		await until(() => /"id":"typed"/.test(started.run.stdout()), "the typed merge");
+		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(true);
+		expect(dialogs(started.run)).toHaveLength(0);
+		prompt(started.run, "typed-log", "/permissions log");
+		await until(() => /shell allowed \(typed\)/.test(notices(started.run)), "the audit's typed entry");
+		expect(notices(started.run)).not.toContain("worktree.merge");
 
 		const first = runs(started, "git merge --no-ff --no-edit one");
 		const dialog = await askedFor(started, 1);
@@ -156,23 +169,6 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		expect(refusal).toContain("in the main checkout");
 		expect(refusal).toContain("this worktree and its branch are as they were");
 		expect(refusal).toContain("`/worktree merge <branch>`");
-	});
-
-	it("a user's own `!git merge` is consent: it runs, asks nothing, and the audit says it was typed", async () => {
-		const box = sandbox(endpoint);
-		branchWithCommit(box, "feature");
-		const started = await session(box);
-		// RPC's `bash` is the terminal's `!`: the `user_bash` path.
-		started.run.process.stdin?.write(
-			`${JSON.stringify({ id: "typed", type: "bash", command: "git merge --no-edit feature" })}\n`,
-		);
-		await until(() => /"id":"typed"/.test(started.run.stdout()), "the typed merge");
-		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(true);
-		expect(dialogs(started.run)).toHaveLength(0);
-		prompt(started.run, "log", "/permissions log");
-		await until(() => /shell allowed \(typed\)/.test(notices(started.run)), "the audit's typed entry");
-		expect(notices(started.run)).not.toContain("worktree.merge");
-		await close(started);
 	});
 });
 

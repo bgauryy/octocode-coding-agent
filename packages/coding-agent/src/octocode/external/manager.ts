@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { EXTERNAL_PROMPT_DEFAULT_MS } from "../api/protocol.ts";
 import { apiDir, listInstances, matchInstances } from "../api/registry.ts";
 import type { MessageEnvelope } from "../shared/messages.ts";
@@ -29,13 +29,13 @@ function notSent(message: string): Error {
 export interface ExternalPolicy {
 	/** Undefined preserves an explicitly enabled legacy/custom ACP setup. */
 	enabledRunners?: readonly string[];
-	authorize(input: ExternalParams, ctx: ExtensionContext, signal: AbortSignal): Promise<void>;
-	beforeSend(message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal): Promise<void>;
-	afterReceive(message: MessageEnvelope, ctx: ExtensionContext): Promise<void>;
-	permission(ctx: ExtensionContext): AcpPermission;
-	sender(ctx: ExtensionContext): string;
+	authorize(input: ExternalParams, ctx: FeatureContext, signal: AbortSignal): Promise<void>;
+	beforeSend(message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal): Promise<void>;
+	afterReceive(message: MessageEnvelope, ctx: FeatureContext): Promise<void>;
+	permission(ctx: FeatureContext): AcpPermission;
+	sender(ctx: FeatureContext): string;
 	/** What a prompt's `refs` resolve against; without it, a prompt with refs is refused. */
-	references?(ctx: ExtensionContext): ReferenceContext;
+	references?(ctx: FeatureContext): ReferenceContext;
 }
 
 interface Connection {
@@ -109,7 +109,7 @@ export class ExternalAgents {
 		);
 	}
 
-	async call(value: unknown, ctx: ExtensionContext, callerSignal?: AbortSignal): Promise<unknown> {
+	async call(value: unknown, ctx: FeatureContext, callerSignal?: AbortSignal): Promise<unknown> {
 		const input = parseExternalParams(value);
 		for (const [id, entry] of this.connections) {
 			if (entry.backend?.isClosed) this.connections.delete(id);
@@ -228,7 +228,7 @@ export class ExternalAgents {
 	}
 
 	/** The prompt text with its refs' content appended; a refusal here is not-sent. */
-	private async expand(input: ExternalParams, ctx: ExtensionContext): Promise<string> {
+	private async expand(input: ExternalParams, ctx: FeatureContext): Promise<string> {
 		if (!input.refs?.length) return input.text!;
 		if (!this.policy.references) throw notSent("refs are unavailable in this session; nothing was sent.");
 		try {
@@ -240,7 +240,7 @@ export class ExternalAgents {
 
 	private async connect(
 		input: ExternalParams,
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		signal: AbortSignal,
 	): Promise<ExternalInfo & { models?: string[]; modelsMore?: number }> {
 		if (input.transport === "acp" && !selectedExternalAgent(this.policy.enabledRunners, input.vendor!, input.command!))

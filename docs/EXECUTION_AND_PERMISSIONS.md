@@ -83,4 +83,4 @@ flowchart LR
 | A server that connects mid-run gets its block in the next request                                                      |
 | Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read              |
 
-Section order and cache tiers: [instructions](../packages/coding-agent/docs/instructions.md). Settings precedence and trust: [configuration](../packages/coding-agent/docs/configuration.md#precedence). Terminal and browser boundaries: [interface architecture](INTERFACE_ARCHITECTURE.md).
+Section order and cache tiers: [instructions](../packages/coding-agent/docs/prompts.md). Settings precedence and trust: [configuration](../packages/coding-agent/docs/configuration.md#precedence). Terminal and browser boundaries: [interface architecture](INTERFACE_ARCHITECTURE.md).

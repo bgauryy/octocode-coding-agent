@@ -25,13 +25,13 @@ export function showPage(
 	});
 }
 
-/** The one confirmation (`Cancel` first), asked through the extension selector. */
+/** The one confirmation (`Cancel` first), asked through the feature selector. */
 export function confirmAction(
-	host: Pick<ProviderManagerHost, "showExtensionSelector">,
+	host: Pick<ProviderManagerHost, "showSelectorDialog">,
 	question: string,
 	actions: readonly string[],
 ): Promise<string | undefined> {
-	return confirmChoice((title, options) => host.showExtensionSelector(title, options), question, actions);
+	return confirmChoice((title, options) => host.showSelectorDialog(title, options), question, actions);
 }
 
 export { successNotice };

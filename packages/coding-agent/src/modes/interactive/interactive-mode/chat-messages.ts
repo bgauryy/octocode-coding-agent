@@ -23,7 +23,6 @@ type ChatMessagesHost = Pick<
 	| "editor"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
-	| "hiddenThinkingLabel"
 	| "uiStore"
 	| "outputPad"
 	| "session"
@@ -34,7 +33,7 @@ type ChatMessagesHost = Pick<
 >;
 
 export function addCustomEntryToChat(host: ChatMessagesHost, entry: Extract<SessionEntry, { type: "custom" }>): void {
-	const renderer = host.session.extensionRunner.getEntryRenderer(entry.customType);
+	const renderer = host.session.featureHost.getEntryRenderer(entry.customType);
 	if (!renderer) {
 		return;
 	}
@@ -48,7 +47,7 @@ export function addCustomEntryToChat(host: ChatMessagesHost, entry: Extract<Sess
 }
 
 /**
- * Add a row that is not part of the assistant message streaming right now (an extension entry, a background job
+ * Add a row that is not part of the assistant message streaming right now (a feature entry, a background job
  * result) above it, so the message stays whole instead of the row landing inside its text.
  */
 function addAboveStreaming(host: ChatMessagesHost, component: Component): void {
@@ -90,7 +89,7 @@ export function addMessageToChat(
 		}
 		case "custom": {
 			if (message.display) {
-				const renderer = host.session.extensionRunner.getMessageRenderer(message.customType);
+				const renderer = host.session.featureHost.getMessageRenderer(message.customType);
 				const component = new CustomMessageComponent(
 					message,
 					renderer,
@@ -132,7 +131,7 @@ export function addMessageToChat(
 				undefined,
 				host.uiStore.getState().view.hideThinking,
 				host.getMarkdownThemeWithSettings(),
-				host.hiddenThinkingLabel,
+				undefined,
 				host.outputPad,
 				host.getMarkdownTransformers(),
 				{
@@ -143,8 +142,6 @@ export function addMessageToChat(
 					requestRender: () => host.ui.requestRender(),
 				},
 			);
-			// Only the fullscreen renderer reports the mouse; elsewhere a click hint would be false.
-			assistantComponent.setMouseHint(host.ui.mode === "fullscreen");
 			assistantComponent.setExpanded(host.uiStore.getState().view.toolsExpanded);
 			assistantComponent.updateMessage(port.normalizeMessage(message), false);
 			host.chatContainer.addChild(assistantComponent);

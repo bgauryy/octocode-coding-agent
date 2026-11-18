@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { withIdentity } from "../../src/octocode/instructions/task.ts";
+import { withIdentity } from "../../src/octocode/native/prompts/task.ts";
 import { stateFolderRefusal } from "../../src/octocode/permission/file-access.ts";
 import { Isolation } from "../../src/octocode/subagents/isolation.ts";
 import { grantFolder } from "../../src/octocode/trust/grants.ts";
@@ -19,7 +19,7 @@ import { subagentProcessEnv, type Identity } from "../../src/octocode/subagents/
 import { createWorktree, type Worktree } from "../../src/octocode/subagents/worktree.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness, type Harness } from "../suite/harness.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { headlessFileTool } from "./permission-file-harness.ts";
@@ -80,17 +80,17 @@ describe("isolated subagent session", () => {
 				return { content: [{ type: "text", text: "written" }], details: {} };
 			},
 		};
-		const extensionsResult = await createTestExtensionsResult(
+		const featuresResult = await createTestFeaturesResult(
 			[
 				(api) => {
 					const permission = new Permission({ api, env, isSubagent: true });
-					api.on("session_start", (_event, ctx) => permission.start(ctx));
+					api.bus.on("session_start", (_event, ctx) => permission.start(ctx));
 					const gate = permissionGate({
 						permission,
 						provenance: { check: () => undefined },
 						env,
 					});
-					api.on("tool_call", (event, ctx) => gate(event, ctx));
+					api.bus.on("tool_call", (event, ctx) => gate(event, ctx));
 					registerTurnSetup(api, {
 						isSubagent: true,
 						profiles: () => new Map(),
@@ -100,7 +100,7 @@ describe("isolated subagent session", () => {
 			cwd,
 		);
 		const resourceLoader = {
-			...createTestResourceLoader({ extensionsResult }),
+			...createTestResourceLoader({ featuresResult }),
 			getAgentsFiles: () => ({ agentsFiles: [{ path: path.join(cwd, "AGENTS.md"), content: "Rules." }] }),
 		};
 		const harness = await createHarness({ cwd, tools: [file], resourceLoader });

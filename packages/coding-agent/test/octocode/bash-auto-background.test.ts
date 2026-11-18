@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import {
 	BACKGROUND_AFTER_ENV,
@@ -18,6 +18,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { createHarness, getMessageText } from "../suite/harness.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const posix = process.platform !== "win32";
 
@@ -232,7 +233,7 @@ describe("the sleep hint", () => {
 
 	it.runIf(posix)("names the timer in the result of the real tool when timer is an active tool", async () => {
 		const { api, tools } = fakeHost();
-		api.getActiveTools = () => ["bash", "wait"];
+		api.tools.getActive = () => ["bash", "wait"];
 		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({ backgroundAfterSeconds: 0 }));
 		const result = await tools
 			.get("bash")
@@ -387,11 +388,11 @@ describe.runIf(posix)("a user message queued during a foreground command", () =>
 		const jobs = new BashJobs(tmp());
 		const harness = await createHarness({
 			sessionManager: manager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => void registerBashTool(api, new Subcommands(), jobs, () => ({ backgroundAfterSeconds: 0 })),
-			],
+			]),
 		});
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		let secondRequest: string[] = [];
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("bash", { command: "echo working; sleep 30", reason: "long work" })], {

@@ -1,11 +1,12 @@
 import path from "node:path";
 import { RELATIVE_AFTER_CD, followingBareCd, underDirectory } from "../bash-cwd.ts";
-import { bashSyntax, initializeBashSyntax } from "../bash-syntax.ts";
+import { bashSyntax, initializeBashSyntax, parseBash } from "../bash-syntax.ts";
 import type { BashCommand } from "../bash-types.ts";
 import { bashCandidates } from "../bash-wrappers.ts";
 import { homeSpelling } from "../file-access.ts";
 import { awkEffect } from "./awk-program.ts";
 import type { ShellMutation } from "./mutation-types.ts";
+import { programSwap } from "./environment.ts";
 import { gitRefMove, gitRoleGlobal, gitUnread } from "./git-forms.ts";
 import { programSetting } from "./git-programs.ts";
 import { destinations, gitDestinations, literalCommand, optionValues, withoutLocations } from "./destinations.ts";
@@ -34,7 +35,7 @@ import { writerEffect } from "./writers.ts";
 import { sedFiles, sedInPlace, sedWrites } from "./sed-script.ts";
 import { base, wrappedCommand } from "./words.ts";
 
-/** The shell entry points the extension wires into the team gate: this file's mutation reads and the parsed command list. */
+/** The shell entry points `team-surfaces.ts` wires into the team gate: this file's mutation reads and the parsed command list. */
 export { parsedShell } from "./commands.ts";
 
 /** Marks the command `uncertain`, keeping the first reason. */
@@ -77,6 +78,7 @@ function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undef
 	into.uncertain ||= other.uncertain;
 	if (other.uncertainBecause) into.uncertainBecause ??= other.uncertainBecause;
 	if (other.awkUnread) into.awkUnread ??= other.awkUnread;
+	if (other.programSwap) into.programSwap ??= other.programSwap;
 	into.unparsed ||= other.unparsed;
 	if (other.afterDirectoryChange) into.afterDirectoryChange = true;
 	if (other.afterUnjoinedCd) into.afterUnjoinedCd = true;
@@ -168,8 +170,9 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 			}
 		}
 		// Whichever `octocode` runs (the product or another program by that name), the guard does not model it: the product
-		// starts a session of its own, with none of this role's limits.
-		if (name === "octocode") found.opaque.push("octocode");
+		// starts a session of its own, with none of this role's limits. `octocode-cli`, the research CLI agent shells put on
+		// PATH (`cli/shim.ts`), runs tools the guard does not model either.
+		if (name === "octocode" || name === "octocode-cli") found.opaque.push(name);
 		// Words read at run time may be operands or options (`-delete`, `-o f`): a program judged by its words cannot be judged.
 		const input = fed.get(at);
 		if (input && inputMayWrite(name, rest, input)) {
@@ -314,6 +317,9 @@ export function shellMutation(command: string, depth = 0, env: NodeJS.ProcessEnv
 	// Every write-target check (state folder, read-only role, reservations, isolated tree) shares this one cd-following.
 	const syntax = bashSyntax(depth === 0 ? followingBareCd(command, env) : command);
 	found.unparsed = syntax.incomplete;
+	// `bashSyntax` lists no assignment or `-v` test; the tree shows them (an unparsed line is `unparsed` already).
+	const swap = parseBash(command, (root) => programSwap(root, true, env));
+	if (swap) found.programSwap = swap;
 	// A `cd` changes what a relative path names: `BashCommand.dirs` and `BashFileTarget.dirs` say where each part runs.
 	const moved = syntax.commands.some((part) => part.movesDirectory === true);
 	for (const target of syntax.targets) {

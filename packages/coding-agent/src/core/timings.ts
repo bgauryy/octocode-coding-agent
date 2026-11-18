@@ -11,7 +11,7 @@ interface TimingNamespace {
 	lastCpu: NodeJS.CpuUsage;
 }
 
-type TimingLabel = "main" | "extensions";
+type TimingLabel = "main" | "features";
 
 const timingNamespaces = new Map<TimingLabel, TimingNamespace>();
 

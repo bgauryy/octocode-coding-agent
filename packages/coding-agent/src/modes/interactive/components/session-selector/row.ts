@@ -7,6 +7,7 @@ import { hasSessionName } from "../session-selector-search.ts";
 import type { FlatSessionNode } from "./session-tree.ts";
 import type { SessionExtras } from "./types.ts";
 import { formatAge, formatSessionTime, shortenPath } from "./utils.ts";
+import { cursorMark } from "../../../../theme/theme-tui-helpers.ts";
 
 /** At this width or less, line 2 leaves out the changed-file count. */
 const NARROW_WIDTH = 80;
@@ -108,7 +109,7 @@ export function renderSessionRow(view: RowView): string[] {
 	const { node, width, selected, current, confirmingDelete } = view;
 	const session = node.session;
 	const prefix = treePrefix(node, width);
-	const cursor = selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
+	const cursor = cursorMark(selected);
 	const mark = view.marked
 		? theme.fg("error", GLYPH.failed)
 		: current

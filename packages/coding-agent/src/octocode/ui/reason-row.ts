@@ -53,7 +53,7 @@ class ReasonLine implements Component {
 		};
 		this.lines = entries.map((entry) => {
 			const lead = theme.italic(theme.fg("toolReason", `↳ ${entry.prefix}${flat(entry.goal, entry.ours)}`));
-			return entry.rest ? lead + theme.italic(theme.fg("dim", ` — ${flat(entry.rest, entry.ours)}`)) : lead;
+			return entry.rest ? lead + theme.italic(theme.fg("dim", ` · ${flat(entry.rest, entry.ours)}`)) : lead;
 		});
 	}
 	/** The row at the last width, returned as the same array while nothing changed: a transcript draws every row on every frame. */
@@ -108,7 +108,7 @@ function entryOf(purpose: StatedPurpose, prefix: string, ours: boolean, shown?: 
 		: [purpose.mainGoal, purpose.reason, purpose.reasoning];
 	const texts = [...new Set(order.filter((text) => text !== undefined && text !== shown))];
 	const [goal, ...rest] = texts;
-	return goal === undefined ? undefined : { prefix, goal, ...(rest.length ? { rest: rest.join(" — ") } : {}), ours };
+	return goal === undefined ? undefined : { prefix, goal, ...(rest.length ? { rest: rest.join(" · ") } : {}), ours };
 }
 
 /** The reason row of a tool call, shared by the terminal tool view and the HTML export (which receives it from the session, since `core/` cannot import the tool views). */

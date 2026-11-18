@@ -6,19 +6,23 @@ import {
 	wrapTmuxPassthrough,
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "@octocodeai/octocode-common/env";
 import { promptTitle } from "../shared/locks.ts";
+import { agentNameOf } from "../shared/agent-name.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
+import { isPendingPhase, sessionPhaseOf } from "../shared/session-phase.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { plainTitle, TitleTracker, terminalTitle } from "./terminal-title.ts";
+import { registerPhaseFeed } from "./phase-feed.ts";
 import { registerPresentWarming } from "./present-warming.ts";
 
 /**
  * "Answer ready" and "waiting for you" signals for a terminal in the background: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
- * the bell). The terminal title carries the session state, `🐙⠋ Running - fix login · repo · 2 agents`: thinking and running animate,
- * then `⚠️` needs you, `🟢` done or `🔴` error until the user is back (focus returns or a key is pressed), else idle.
+ * the bell). The terminal title carries the session state, `🦑⠋ shy-barnacle Running - fix login · repo · 2 agents`: thinking and
+ * running animate, `⏳` waits on background work, then `⚠️` needs you, `🟢` done or `🔴` error until the user is back (focus
+ * returns or a key is pressed), else idle.
  *
  * This enables focus reports (CSI ?1004) and reads `ESC [ I` / `ESC [ O` in both TUI modes. A terminal without focus
  * reports leaves focus unknown; then it falls back to idleness: a run that took long while the user typed nothing.
@@ -133,13 +137,13 @@ interface NotifyOptions {
 	 * Notices for the Notification hooks, whether or not the terminal was signalled: a dialog when it opens, an unread
 	 * answer after a minute without input (the `idle_prompt` notice).
 	 */
-	onNotice?: (notice: Notice, ctx: ExtensionContext) => void;
+	onNotice?: (notice: Notice, ctx: FeatureContext) => void;
 	env?: NodeJS.ProcessEnv;
 	write?: (data: string) => void;
 }
 
 /** Registers the notifier for the root session; it follows Octocode's events, and the presence it sees steers cache warming. */
-export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): void {
+export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): void {
 	const env = options.env ?? process.env;
 	const write =
 		options.write ??
@@ -148,12 +152,15 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 			return undefined;
 		});
 	const condition = notifyCondition(env);
-	let ctx: ExtensionContext | undefined;
+	let ctx: FeatureContext | undefined;
 	let focus: Focus = "unknown";
 	let lastInputAt = Date.now();
 	let lastNoticeAt = 0;
 	const title = new TitleTracker();
 	const work = runningWorkOf(api);
+	const name = agentNameOf(api);
+	registerPhaseFeed(api);
+	const phase = sessionPhaseOf(api);
 	/** The first prompt of the session, its description in the tab until it has a name. */
 	let firstPrompt: string | undefined;
 	/** Outcome of the latest response, applied to the title when the run settles. */
@@ -166,16 +173,25 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 	const focusOffAtExit = () => write(FOCUS_OFF);
 	const dropExitHook = () => process.removeListener("exit", focusOffAtExit);
 
-	const tui = (current: ExtensionContext | undefined): current is ExtensionContext =>
+	const tui = (current: FeatureContext | undefined): current is FeatureContext =>
 		current?.mode === "tui" && current.hasUI;
 	const painter = new TitlePainter(
 		{
-			state: () => title.state,
+			// Done, Error or Idle only once every subagent has finished: a running child keeps the tab waiting.
+			state: () => {
+				const state = title.state;
+				const settled = state === "done" || state === "failed" || state === "idle";
+				return settled && (work.agents() ?? work.background().length) > 0 ? "background" : state;
+			},
 			target: () => (tui(ctx) ? { cwd: ctx.cwd, setTitle: (text) => ctx?.ui.setTitle(text) } : undefined),
-			description: () => api.getSessionName()?.trim() || firstPrompt,
+			description: () => api.session.getName()?.trim() || firstPrompt,
 			agents: () => work.agents() ?? work.background().length,
 		},
-		{ full: terminalTitle, plain: plainTitle },
+		{
+			full: (state, description, cwd, agents, frame) =>
+				terminalTitle(state, description, cwd, agents, frame, name.get()),
+			plain: plainTitle,
+		},
 	);
 	const paintTitle = (force = false) => painter.paint(force);
 	/** The user is back: drop a finished or failed mark. */
@@ -188,35 +204,56 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		idleTimer = undefined;
 	};
 	/** The user is (probably) not looking: unfocused, or no focus reports and a long run with no keypress. */
-	const away = (now: number): boolean => {
+	const away = (now: number, since = lastRunStart()): boolean => {
 		if (condition === "always") return true;
 		if (focus !== "unknown") return focus === "unfocused";
-		const runStartedAt = lastRunStart();
-		return runStartedAt !== undefined && now - runStartedAt >= AWAY_MS && now - lastInputAt >= AWAY_MS;
+		return since !== undefined && now - since >= AWAY_MS && now - lastInputAt >= AWAY_MS;
 	};
-	const fire = (notice: Notice, hook: boolean) => {
+	const fire = (notice: Notice, hook: boolean, since?: number) => {
 		if (!ctx?.hasUI) return;
 		if (hook) options.onNotice?.(notice, ctx);
 		if (!tui(ctx)) return;
 		const now = Date.now();
-		if (condition === "off" || !away(now) || now - lastNoticeAt < DEBOUNCE_MS) return;
+		if (condition === "off" || !away(now, since) || now - lastNoticeAt < DEBOUNCE_MS) return;
 		lastNoticeAt = now;
 		write(notificationSequence(notifyMethod(env), notice.title, notice.message, env));
 	};
 
-	// Background subagents and jobs outlive the run: the tab says finished only once the last of them ends.
-	work.subscribe(() => {
-		title.setBackground(work.busy());
+	// Background subagents, jobs, wakes and timers outlive the run: the tab says finished only once the phase is final.
+	work.subscribe(() => paintTitle());
+	// Joining, rejoining or leaving the team renames the tab at once, not at the next state change.
+	name.subscribe(() => paintTitle(true));
+	phase.subscribe((next) => {
+		title.setPending(isPendingPhase(next));
 		paintTitle();
 	});
+	// The answer is ready when the job ends, not at a settle that agents or a report are about to continue.
+	phase.onJobEnd((end) => {
+		const answer = lastAnswer;
+		lastAnswer = "";
+		if (!ctx?.hasUI || !answer) return;
+		fire({ type: "idle_prompt", title: "Octocode: answer ready", message: answer }, false, end.startedAt);
+		const current = ctx;
+		clearIdle();
+		idleTimer = setTimeout(
+			() =>
+				options.onNotice?.(
+					{ type: "idle_prompt", title: "Octocode is waiting for your input", message: answer },
+					current,
+				),
+			IDLE_PROMPT_MS,
+		);
+		idleTimer.unref?.();
+	});
 
-	api.on("session_start", async (_event, current) => {
+	api.bus.on("session_start", async (_event, current) => {
 		unsubscribe?.();
 		unsubscribe = undefined;
 		clearIdle();
 		painter.reset();
 		ctx = current;
 		title.reset();
+		title.setPending(isPendingPhase(phase.phase()));
 		outcome = "idle";
 		firstPrompt = firstPromptOf(current);
 		if (!tui(current)) return;
@@ -239,12 +276,12 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		}
 	});
 	// The host rewrites the plain title on a rename; put the state mark back.
-	api.on("session_info_changed", async () => paintTitle(true));
-	api.on("before_agent_start", async (event) => {
+	api.bus.on("session_info_changed", async () => paintTitle(true));
+	api.bus.on("before_agent_start", async (event) => {
 		if (!firstPrompt && event.messageType === "user") firstPrompt = event.prompt.trim() || undefined;
 		return undefined;
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		clearIdle();
 		unsubscribe?.();
 		unsubscribe = undefined;
@@ -252,11 +289,11 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		if (tui(ctx) && condition !== "off") write(FOCUS_OFF);
 		title.reset();
 		// Work still running after exit is no longer this tab's: leave the plain title, without a state.
-		title.setBackground(0);
+		title.setPending(false);
 		painter.leave();
 		ctx = undefined;
 	});
-	api.on("agent_start", async () => {
+	api.bus.on("agent_start", async () => {
 		beginRun(Date.now());
 		lastAnswer = "";
 		outcome = "idle";
@@ -264,15 +301,15 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 		title.start();
 		paintTitle();
 	});
-	api.on("tool_execution_start", async (event) => {
+	api.bus.on("tool_execution_start", async (event) => {
 		title.toolStart(event.toolCallId);
 		paintTitle();
 	});
-	api.on("tool_execution_end", async (event) => {
+	api.bus.on("tool_execution_end", async (event) => {
 		title.toolEnd(event.toolCallId);
 		paintTitle();
 	});
-	api.on("agent_end", async (event) => {
+	api.bus.on("agent_end", async (event) => {
 		type Message = (typeof event.messages)[number];
 		const last = [...event.messages]
 			.reverse()
@@ -286,35 +323,19 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 				? `Failed: ${last.errorMessage ?? "the run stopped with an error"}`
 				: contentText(last.content) || "Ready for input";
 	});
-	api.on("agent_settled", async (event, next) => {
-		const answer = lastAnswer;
-		lastAnswer = "";
+	api.bus.on("agent_settled", async (event, next) => {
 		title.settle(event.aborted ? "idle" : outcome);
 		outcome = "idle";
 		// Someone watching the terminal has already seen the outcome.
 		if (focus === "focused") title.seen();
 		paintTitle();
-		if (ctx?.hasUI && answer) {
-			fire({ type: "idle_prompt", title: "Octocode: answer ready", message: answer }, false);
-			const current = ctx;
-			clearIdle();
-			idleTimer = setTimeout(
-				() =>
-					options.onNotice?.(
-						{ type: "idle_prompt", title: "Octocode is waiting for your input", message: answer },
-						current,
-					),
-				IDLE_PROMPT_MS,
-			);
-			idleTimer.unref?.();
-		}
 		settleRun(Date.now(), next.hasPendingMessages() && !event.aborted);
 	});
-	api.on("ui_prompt_end", async (event) => {
+	api.bus.on("ui_prompt_end", async (event) => {
 		title.promptEnd(event.id);
 		paintTitle();
 	});
-	api.on("ui_prompt_start", async (event) => {
+	api.bus.on("ui_prompt_start", async (event) => {
 		const firstBlocking = title.promptStart(event.id, event.blocking === true);
 		paintTitle();
 		// A dialog over another is the same wait: one notification. A blocking one over a dialog the user opened (such as
@@ -336,7 +357,7 @@ export function registerNotify(api: ExtensionAPI, options: NotifyOptions = {}): 
 }
 
 /** The text of the session's first user message, for a resumed session that has no name. */
-function firstPromptOf(ctx: ExtensionContext): string | undefined {
+function firstPromptOf(ctx: FeatureContext): string | undefined {
 	for (const entry of ctx.sessionManager?.getEntries() ?? []) {
 		if (entry.type !== "message" || entry.message.role !== "user") continue;
 		const text = contentText(entry.message.content).trim();

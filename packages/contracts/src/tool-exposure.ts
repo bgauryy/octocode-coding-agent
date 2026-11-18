@@ -12,6 +12,11 @@ export const TOOL_EXPOSURE_STATES = ["direct", "deferred", "hidden"] as const;
 export const ToolExposureStateSchema = StringEnum(TOOL_EXPOSURE_STATES);
 export type ToolExposureState = Static<typeof ToolExposureStateSchema>;
 
+/** What a pin can hold: the states plus `onDemand`, which an MCP tool pin may name and which shows as `deferred`. */
+export const TOOL_PIN_STATES = ["direct", "deferred", "onDemand", "hidden"] as const;
+export const ToolPinStateSchema = StringEnum(TOOL_PIN_STATES);
+export type ToolPinState = Static<typeof ToolPinStateSchema>;
+
 /** The native tools a pin can defer under every `mcpExposure` value; every other native tool is declared in full. */
 export const NATIVE_PINNABLE_TOOLS = ["web", "archive", "models", "backlogPlan"] as const;
 
@@ -24,9 +29,10 @@ export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "wait"] as const;
 /**
  * Native tools a session leaves undeclared until first use (`onDemand`) when it would otherwise declare them deferred,
  * on a transport that adds declarations after the cached prefix. A `nativeToolExposure` pin opts a tool out. Shows as
- * `deferred` on the Tools panel.
+ * `deferred` on the Tools panel. `web` stays declared: a model asked for live content without naming a tool fetches it
+ * through the shell instead of calling an undeclared `web`.
  */
-export const NATIVE_ON_DEMAND_TOOLS = ["web", "archive", "models"] as const;
+export const NATIVE_ON_DEMAND_TOOLS = ["archive", "models"] as const;
 
 /**
  * What decided a tool's state: its own pin, a `toolExposure` pattern, its server's `exposure`, use in the last 24 hours
@@ -66,7 +72,7 @@ export const ToolExposureRowSchema = Type.Object(
 	{
 		name: ToolNameSchema,
 		/** The pin saved for this tool, in the configuration a new session reads. */
-		pin: Type.Optional(ToolExposureStateSchema),
+		pin: Type.Optional(ToolPinStateSchema),
 		/** What the running session declares when the list is `live`; otherwise what the configuration says. */
 		state: ToolExposureStateSchema,
 		decidedBy: StringEnum(TOOL_DECIDED_BY),
@@ -83,7 +89,7 @@ export const ToolExposureGroupSchema = Type.Object(
 		/** The MCP server's configured name; `native` for the native tools. */
 		name: ToolNameSchema,
 		tools: Type.Array(ToolExposureRowSchema, { maxItems: 2000 }),
-		/** False when no pin can be saved for the group (a server an extension registered). */
+		/** False when no pin can be saved for the group (a server a feature registered). */
 		pinnable: Type.Boolean(),
 		/** Why the group lists no tools or only some, in fixed words. */
 		note: Type.Optional(Type.String({ maxLength: 300 })),
@@ -126,7 +132,7 @@ export const ToolPinCommandSchema = Type.Union([
 			kind: Type.Literal("mcp"),
 			server: ToolNameSchema,
 			tool: Type.String({ minLength: 1, maxLength: 256, pattern: "^[^\\u0000-\\u001f\\u007f*]+$" }),
-			pin: Type.Union([ToolExposureStateSchema, Type.Null()]),
+			pin: Type.Union([ToolPinStateSchema, Type.Null()]),
 			...PinTargetProperties,
 		},
 		{ additionalProperties: false },

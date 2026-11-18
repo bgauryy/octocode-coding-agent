@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { historyWindows } from "../../storage/retention.ts";
@@ -25,7 +25,7 @@ export interface Backlog {
 }
 
 /** A workspace owns its board. A child delegated an item works on the board that issued it. */
-export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">, options: BacklogOptions): Backlog {
+export function openBacklog(ctx: Pick<FeatureContext, "cwd" | "sessionManager">, options: BacklogOptions): Backlog {
 	const env = options.env ?? process.env;
 	const agent = sharedAgentDb(env);
 	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
@@ -35,7 +35,7 @@ export function openBacklog(ctx: Pick<ExtensionContext, "cwd" | "sessionManager"
 
 /** Native tools can wait for first-time workspace metadata without holding the event loop. */
 export async function openBacklogWhenReady(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	options: BacklogOptions,
 	signal?: AbortSignal,
 ): Promise<Backlog> {
@@ -47,7 +47,7 @@ export async function openBacklogWhenReady(
 }
 
 function backlogContext(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	options: BacklogOptions,
 	agent: AgentDb,
 	workspace: WorkspaceIdentity,
@@ -93,4 +93,4 @@ export interface BacklogWeb {
 	isUp?: () => boolean;
 }
 
-export type OpenBacklogWeb = (ctx: ExtensionContext, backlog: Backlog, changed: () => void) => Promise<BacklogWeb>;
+export type OpenBacklogWeb = (ctx: FeatureContext, backlog: Backlog, changed: () => void) => Promise<BacklogWeb>;

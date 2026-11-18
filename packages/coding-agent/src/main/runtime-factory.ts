@@ -16,6 +16,7 @@ import { createSessionFromServices } from "../core/agent-session/create-session.
 import { warningsBesideListing } from "../core/resource-loader/feature-loading.ts";
 import { resolveModelScope, unattendedUseNotice } from "../core/model-resolver.ts";
 import type { FolderTrustResolver } from "../core/folder-trust.ts";
+import type { NativeFeatureSet } from "../core/resource-loader/types.ts";
 import type { SkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { collectSettingsDiagnostics } from "../core/settings-diagnostics.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
@@ -44,11 +45,16 @@ export interface CliRuntimeFactoryOptions {
 	/** This process serves an ACP client's session (`--mode acp` started it as a worker): no one watches it either. */
 	acpWorker?: boolean;
 	skillResourceSnapshot: SkillResourceSnapshot | undefined;
+	/** The native feature set every runtime registers; a CLI session never runs without it. */
+	nativeFeatures: NativeFeatureSet;
 }
 
 /** Create the factory that builds each CLI runtime, initially and after session switches. */
 export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): CreateAgentSessionRuntimeFactory {
-	const { parsed, cwd, folderTrust, requireTrust, getAppMode, acpWorker, skillResourceSnapshot } = options;
+	const { parsed, cwd, folderTrust, requireTrust, getAppMode, acpWorker, skillResourceSnapshot, nativeFeatures } =
+		options;
+	// Without the native set a session would run with no permission checks or native tools: refuse to build one.
+	if (!nativeFeatures) throw new Error("createCliRuntimeFactory needs the native feature set (nativeFeatures).");
 
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
@@ -77,6 +83,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			modelRuntimeSignal: loading.signal,
 			resourceLoaderOptions: {
 				skillResourceSnapshot,
+				nativeFeatures,
 				additionalSkillPaths: resolvedSkillPaths,
 				additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
 				additionalThemePaths: resolvedThemePaths,
@@ -118,14 +125,14 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			...missingCliPathWarnings("--prompt-template", "prompt template", resolvedPromptTemplatePaths),
 			...missingCliPathWarnings("--theme", "theme", resolvedThemePaths),
 			...collectSettingsDiagnostics(settingsManager),
-			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
+			...resourceLoader.getFeatures().errors.map(({ path, error }) => ({
 				type: "error" as const,
 				message: `Failed to register feature "${path}": ${error}`,
 			})),
 			// The interactive listing names code that is not loaded in its own row; the other modes have only this line.
 			...(getAppMode() === "interactive"
-				? warningsBesideListing(resourceLoader.getExtensions().warnings)
-				: (resourceLoader.getExtensions().warnings ?? [])
+				? warningsBesideListing(resourceLoader.getFeatures().warnings)
+				: (resourceLoader.getFeatures().warnings ?? [])
 			).map(({ path, warning }) => ({
 				type: "warning" as const,
 				message: `${path}: ${warning}`,

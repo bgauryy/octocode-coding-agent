@@ -4,6 +4,7 @@ import { startEarlySummary, takeEarlySummary } from "../../src/octocode/compacti
 import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { createSessionUsageRecorder } from "../../src/core/usage-totals.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = {
 	provider: "p",
@@ -43,14 +44,14 @@ function setup(replyAfter?: Promise<void>) {
 	const calls: Array<{ context: Context; options: SimpleStreamOptions }> = [];
 	const recordedUsage: unknown[] = [];
 	const notes: string[] = [];
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => "high",
 		createUsageRecorder: () => (message: unknown) => recordedUsage.push(message),
 		getActiveTools: () => [],
 		getHiddenDeclarations: () => [],
 		getSettings: () => ({}),
 		appendEntry: (_type: string, data: { kind: string; reason: string }) => notes.push(`${data.kind}: ${data.reason}`),
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		modelRegistry: {

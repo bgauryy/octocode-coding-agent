@@ -32,7 +32,7 @@ function mode() {
 		session: {
 			resourceLoader: {},
 			getAllTools: () => [{ name: "timer" }],
-			extensionRunner: { getRegisteredCommands: () => [], hasHandlers: () => false },
+			featureHost: { getRegisteredCommands: () => [], hasHandlers: () => false },
 		},
 	};
 	setupEditorSubmitHandler(createFakeHost(instance));

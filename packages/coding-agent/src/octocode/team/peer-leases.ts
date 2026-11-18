@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -155,8 +155,7 @@ class PeerDatabase {
 		this.drop();
 		this.retryAt = now + RETRY_MS;
 		if (this.warned) return;
-		this.warned =
-			this.warn?.(renderInstruction("notices/mail/peer-db-unavailable.md", { file: this.file, why })) ?? true;
+		this.warned = this.warn?.(renderPrompt("notices/mail/peer-db-unavailable.md", { file: this.file, why })) ?? true;
 	}
 }
 

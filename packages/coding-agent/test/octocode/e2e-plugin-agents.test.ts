@@ -10,6 +10,8 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { tmp, trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -104,15 +106,16 @@ async function fixture(where: Where) {
 		cwd,
 		agentDir,
 		settingsManager,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		nativeFeatures: nativeFeatureSet(),
+		disabledFeatures: ["mcp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
-		extensionFactories: [
+		features: testFeatures([
 			{
 				name: "parent-fixture",
 				factory: (api) =>
-					api.registerProvider("faux-parent", {
+					api.providers.register("faux-parent", {
 						name: "Fixture parent",
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
@@ -121,7 +124,7 @@ async function fixture(where: Where) {
 						streamSimple: faux.streamSimple,
 					} as never),
 			},
-		],
+		]),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
@@ -131,7 +134,7 @@ async function fixture(where: Where) {
 		resourceLoader,
 		sessionManager: SessionManager.create(cwd, path.join(root, "parent-sessions")),
 	});
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("faux-parent", "parent")!);
 	return {
 		requests,
@@ -166,7 +169,7 @@ async function fixture(where: Where) {
 		},
 		close: async () => {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+			await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 			server.closeAllConnections();
 			await new Promise<void>((resolve) => server.close(() => resolve()));

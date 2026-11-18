@@ -1,7 +1,7 @@
 import type { RunnerBilling } from "./runner-port.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { ChildCacheMetrics } from "./cache-monitor.ts";
-import type { ReportStatus } from "../instructions/report.ts";
+import type { ReportStatus } from "../native/prompts/report.ts";
 import type { Ask } from "../team/asks.ts";
 import type { Compactions } from "./events.ts";
 import type { RanModel } from "./event-ran.ts";
@@ -69,7 +69,7 @@ export interface RunDetails {
 	compacting?: boolean;
 	/** Its compactions so far; absent when none started. */
 	compactions?: Compactions;
-	/** Warnings and errors its extensions showed (a child has no screen): an inline page, then a count and the file with every one. */
+	/** Warnings and errors its features showed (a child has no screen): an inline page, then a count and the file with every one. */
 	notices?: ChildNotices;
 	/** Its saved conversation. */
 	session?: ChildSessionDetails;

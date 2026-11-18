@@ -12,7 +12,7 @@ type Host = Pick<
 	| "chatContainer"
 	| "getMarkdownThemeWithSettings"
 	| "session"
-	| "showExtensionSelector"
+	| "showSelectorDialog"
 	| "showStatus"
 	| "showWarning"
 	| "ui"

@@ -5,7 +5,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import type * as NativeConfig from "../../src/config.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { checkDelegable } from "../../src/octocode/backlog/delegation.ts";
-import { registerBacklogTool } from "../../src/octocode/backlog/tool.ts";
+import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
 import { GraphWake } from "../../src/octocode/subagents/graph-wake.ts";
@@ -17,7 +17,7 @@ import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
-import { registerBacklogPlanTool } from "../../src/octocode/backlog/plan-tool.ts";
+import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
 
 /**
  * USER DECISION 2 (2026-11-08): the coordination graph never stalls. However a prerequisite ends (done, closed, or its

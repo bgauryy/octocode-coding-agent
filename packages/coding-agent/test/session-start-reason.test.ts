@@ -7,6 +7,7 @@ import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 	"reports %s session startup from loaded session state",
@@ -29,19 +30,18 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 		const loader = new DefaultResourceLoader({
 			cwd: root,
 			agentDir: root,
-			nativeFeatures: false,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			settingsManager,
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_start", (event) => {
+					api.bus.on("session_start", (event) => {
 						seen.push(event.reason);
 					});
 				},
-			],
+			]),
 		});
 		let session: Awaited<ReturnType<typeof createTestSession>>["session"] | undefined;
 		try {
@@ -63,7 +63,7 @@ it.each(["new", "empty-persisted", "restored", "explicit-fork"] as const)(
 						}
 					: {}),
 			}));
-			await session.bindExtensions({});
+			await session.bindFeatures({});
 			expect(seen).toEqual([kind === "new" ? "startup" : kind === "explicit-fork" ? "fork" : "resume"]);
 		} finally {
 			session?.dispose();

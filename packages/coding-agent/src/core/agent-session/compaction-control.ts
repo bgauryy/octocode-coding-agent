@@ -74,7 +74,7 @@ export class SessionCompaction {
 		const { session } = this.host;
 		return {
 			sessionManager: session.sessionManager,
-			extensionRunner: session.extensionRunner,
+			featureHost: session.featureHost,
 			summarize: (...args) => this.host.summarize(...args),
 			summaryRequest: (reason) => summaryRequestPolicy(this.host, reason),
 			refreshContext: () => this.host.refreshContext(),
@@ -82,7 +82,7 @@ export class SessionCompaction {
 	}
 
 	async emitSessionCompactFailed(event: Omit<SessionCompactFailedEvent, "type">): Promise<void> {
-		const runner = this.host.session.extensionRunner;
+		const runner = this.host.session.featureHost;
 		if (runner.hasHandlers("session_compact_failed")) {
 			await runner.emit({
 				type: "session_compact_failed",
@@ -111,7 +111,7 @@ export class SessionCompaction {
 			errorMessage,
 			aborted: false,
 			willRetry: false,
-			fromExtension: false,
+			fromFeature: false,
 		});
 	}
 
@@ -146,7 +146,7 @@ export class SessionCompaction {
 		const controller = new AbortController();
 		this._compactionAbortController = controller;
 		this.host.emit({ type: "compaction_start", reason: "manual" });
-		const outcome = { fromExtension: false, cancelledByExtension: false };
+		const outcome = { fromFeature: false, cancelledByFeature: false };
 		let compactionResult: CompactionResult;
 
 		try {
@@ -176,7 +176,7 @@ export class SessionCompaction {
 			this._prewarm.reset();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			const aborted = controller.signal.aborted || outcome.cancelledByExtension;
+			const aborted = controller.signal.aborted || outcome.cancelledByFeature;
 			const errorMessage = aborted ? undefined : `Compaction failed: ${message}`;
 			this._clearManualCompactionState();
 			this.host.emit({
@@ -192,7 +192,7 @@ export class SessionCompaction {
 				errorMessage,
 				aborted,
 				willRetry: false,
-				fromExtension: outcome.fromExtension,
+				fromFeature: outcome.fromFeature,
 			});
 			this.host.releaseHeldInput();
 			throw error;
@@ -223,7 +223,7 @@ export class SessionCompaction {
 		const forced = this.host.forcedSystemPrompt();
 		this._prewarm.dropIfStale(model, settings, forced);
 		if (!this._prewarm.due(tokens, model, settings)) return;
-		this._prewarm.start(session.sessionManager, session.extensionRunner, model, settings, {
+		this._prewarm.start(session.sessionManager, session.featureHost, model, settings, {
 			forceSystemPrompt: forced,
 			watch: summaryStreamWatcher({ idleMs: session.settingsManager.getHttpIdleTimeoutMs() }),
 			retry: session.settingsManager.getRetrySettings(),
@@ -241,7 +241,7 @@ export class SessionCompaction {
 	/**
 	 * Execute threshold or overflow compaction. Manual compaction uses
 	 * `AgentSession.compact()` instead. Both paths call the lower-level `compact()`
-	 * function imported from `./compaction/index.ts` after preparation and extension
+	 * function imported from `./compaction/index.ts` after preparation and feature
 	 * interception.
 	 *
 	 * @param reason Automatic trigger selected by `_checkCompaction()`
@@ -275,7 +275,7 @@ export class SessionCompaction {
 				willRetry: false,
 				errorMessage,
 			});
-			// An overflow's failed reply is already out of the context: extensions hear that it was not recovered. The run
+			// An overflow's failed reply is already out of the context: features hear that it was not recovered. The run
 			// keeps the failure the provider reported for it.
 			if (reason === "overflow") {
 				await this.emitSessionCompactFailed({
@@ -283,14 +283,14 @@ export class SessionCompaction {
 					errorMessage,
 					aborted: false,
 					willRetry: false,
-					fromExtension: false,
+					fromFeature: false,
 				});
 			}
 			return false;
 		}
 		let abortController: AbortController | undefined;
 		let started = false;
-		const outcome = { fromExtension: false, cancelledByExtension: false };
+		const outcome = { fromFeature: false, cancelledByFeature: false };
 		this.host.run.windowUnfit = undefined;
 
 		try {
@@ -354,7 +354,7 @@ export class SessionCompaction {
 			const message = error instanceof Error ? error.message : "compaction failed";
 			this._prewarm.drop();
 			if (error instanceof CompactionFitError) this.host.run.windowUnfit = message;
-			const aborted = abortController?.signal.aborted === true || outcome.cancelledByExtension;
+			const aborted = abortController?.signal.aborted === true || outcome.cancelledByFeature;
 			if (!aborted && started) this._autoCompactionLimit.failed();
 			if (started) {
 				const errorMessage = aborted
@@ -376,7 +376,7 @@ export class SessionCompaction {
 					errorMessage,
 					aborted,
 					willRetry: false,
-					fromExtension: outcome.fromExtension,
+					fromFeature: outcome.fromFeature,
 				});
 			}
 			return false;

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { textResult } from "../shared/util.ts";
 import { NOTE_WARN_CHARS } from "./limits.ts";
@@ -51,7 +51,7 @@ interface WriteCall {
 	params: MemoryWriteParams;
 	store: MemoryStore;
 	permission: Permission;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	signal: AbortSignal | undefined;
 }
 

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PROMPT_CACHE_KEY_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
@@ -34,18 +34,22 @@ function latest(branch: readonly SessionEntry[]): CacheGroupRecord | undefined {
 }
 
 /** Records the child's cache group before each run's first request, once per distinct key and prefix. */
-export function registerCacheGroup(api: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
+export function registerCacheGroup(api: FeatureSetup, env: NodeJS.ProcessEnv = process.env): void {
 	if (!env[AGENT_ID_ENV]) return;
 	const key = env[PROMPT_CACHE_KEY_ENV] || undefined;
-	api.on("before_agent_start", async (event, ctx: Pick<ExtensionContext, "sessionManager">) => {
-		const active = new Set(api.getActiveTools());
-		const tools = api
-			.getAllTools()
+	api.bus.on("before_agent_start", async (event, ctx: Pick<FeatureContext, "sessionManager">) => {
+		const active = new Set(api.tools.getActive());
+		const tools = api.tools
+			.getAll()
 			.filter((tool) => active.has(tool.name))
 			.map(({ name, description, parameters }) => ({ name, description, parameters }));
 		const prefix = prefixHash(event.systemPrompt, tools);
 		const known = latest(ctx.sessionManager.getBranch());
 		if (known?.prefix === prefix && known.key === key) return;
-		api.appendEntry(CACHE_GROUP_ENTRY, { version: 1, prefix, ...(key ? { key } : {}) } satisfies CacheGroupRecord);
+		api.session.appendEntry(CACHE_GROUP_ENTRY, {
+			version: 1,
+			prefix,
+			...(key ? { key } : {}),
+		} satisfies CacheGroupRecord);
 	});
 }

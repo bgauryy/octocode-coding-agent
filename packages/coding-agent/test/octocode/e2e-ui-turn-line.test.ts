@@ -120,7 +120,7 @@ describe("turn summary line", () => {
 			// A run with a tool call writes a summary line; a plain reply does not.
 			t.script(toolTurn("echo one"), "first answer", toolTurn("echo two"), "second answer");
 			await t.until(async () => /ctx [▰▱]+ \d+% of \d+k/.test(await footer()), "a context gauge");
-			expect(await footer()).not.toMatch(/\d+ tokens/);
+			expect(await footer()).not.toMatch(/\d+ tok(?!\/s)/);
 			await turn("hello there");
 			await turn("and again");
 			const replies = t.host.session.sessionManager
@@ -130,13 +130,14 @@ describe("turn summary line", () => {
 				);
 			expect(replies).toHaveLength(4);
 			expect(replies[3].cacheRead, "the second request re-reads the first prompt").toBeGreaterThan(0);
-			await t.until(async () => /\dk? tokens/.test(await footer()), "the footer to count tokens");
+			await t.until(async () => /\dk? tok(?!\/s)/.test(await footer()), "the footer to count tokens");
 			const rows = await footer();
 			// Context fill is known (a percentage over the auto-compact window), never `?`.
 			expect(rows).toMatch(/ctx [▰▱]+ \d+% of \d+k/);
 			expect(rows).not.toMatch(/ctx \? of/);
-			// Tokens: new prompt plus output, with the breakdown including cache reads.
-			expect(rows).toMatch(/[1-9]\d*(?:\.\d)?k? tokens \(↑\d[^)]*cached ↓\d+/);
+			// Tokens: new prompt plus output; cache reads appear once, as the cached share.
+			expect(rows).toMatch(/[1-9]\d*(?:\.\d)?k? tok \(↑\d[\d.]*k? ↓\d[\d.]*k?\)/);
+			expect(rows).toMatch(/[1-9]\d*% cached/);
 			// Cache % is on each run's summary line, not in the footer.
 			await t.until(async () => (await lines()).length === 2, "both summary lines");
 			expect(await lines()).toEqual([expect.stringMatching(/cache \d+%/), expect.stringMatching(/cache [1-9]\d*%/)]);

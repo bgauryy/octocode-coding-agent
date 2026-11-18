@@ -1,0 +1,1 @@
+- Research, code, ideas, plans and designs start from evidence the research server fetches; its `<mcps>` block routes each question, and its tools beat memory.

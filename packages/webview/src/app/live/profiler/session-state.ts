@@ -3,6 +3,8 @@ import type {
 	ProfileEvent,
 	ProfileFinding,
 	ProfileMessage,
+	FeedCursor,
+	ProfileMessages,
 	ProfileRequest,
 	ProfileRequests,
 	ProfileTimeline,
@@ -29,6 +31,8 @@ export interface ProfilerSession {
 	selection: ProfileSelection | undefined;
 	range: ProfileRange | undefined;
 	filter: string;
+	/** Where the next older page of messages starts; `loaded` is false until a page was asked for, and no `next` after the last. */
+	older: { loaded: boolean; next?: FeedCursor };
 	paused: boolean;
 	/** Live frames received while paused, coalesced per agent: the newest row, requests by index, events and messages by id. */
 	held: HeldFrame[];
@@ -51,6 +55,7 @@ export const emptySession: ProfilerSession = {
 	selection: undefined,
 	range: undefined,
 	filter: "",
+	older: { loaded: false },
 	paused: false,
 	held: [],
 	heldFrames: 0,
@@ -61,6 +66,7 @@ export type SessionAction =
 	| { type: "requests"; value: ProfileRequests }
 	| { type: "timeline"; value: ProfileTimeline }
 	| { type: "insights"; value: ProfileFinding[] }
+	| { type: "older"; value: ProfileMessages }
 	| { type: "update"; value: ProfileUpdate }
 	| { type: "select"; value: ProfileSelection | undefined }
 	| { type: "step"; by: number }
@@ -207,6 +213,12 @@ export function reduceSession(session: ProfilerSession, action: SessionAction): 
 			};
 		case "insights":
 			return { ...session, findings: action.value };
+		case "older":
+			return {
+				...session,
+				older: { loaded: true, ...(action.value.next ? { next: action.value.next } : {}) },
+				timeline: mergeTimeline(session.timeline, [], action.value.messages),
+			};
 		case "update":
 			return session.paused
 				? { ...session, held: hold(session.held, action.value), heldFrames: session.heldFrames + 1 }

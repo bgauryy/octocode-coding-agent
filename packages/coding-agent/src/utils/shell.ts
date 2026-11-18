@@ -5,6 +5,7 @@ import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { getAgentDir, getBinDir, getLegacyProviderDirs } from "../config.ts";
 import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
+import { activeCommandSandbox, rememberLaunch } from "./command-sandbox.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
 
 export interface ShellConfig {
@@ -199,21 +200,39 @@ export function leadsProcessGroup(): boolean {
  * detached into its own group on POSIX, in a Windows job (ready before the shell starts) on Windows. The command goes
  * over stdin when the shell takes it that way, else as the last argument. A spawn that fails reports through the
  * child's `error` event and leaves `pid` undefined.
+ *
+ * With a command sandbox installed (`setCommandSandbox`) the shell starts inside it, and a command the sandbox cannot
+ * wrap rejects instead of running without. `unsandboxed` is for a command the user typed (`!`), or one the user allowed
+ * to run outside the sandbox (`shell.unsandboxed`). The sandbox's own variables (its proxy) are laid over `env`, and
+ * what it registered for the command is released when the shell exits; `sandboxDenials` reads what it refused.
  */
 export async function spawnShell(
 	shell: ShellConfig,
 	command: string,
-	{ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv },
+	{ cwd, env, unsandboxed = false }: { cwd: string; env: NodeJS.ProcessEnv; unsandboxed?: boolean },
 ): Promise<ChildProcess> {
 	const viaStdin = shell.commandTransport === "stdin";
+	const sandbox = unsandboxed ? undefined : activeCommandSandbox();
+	const launch = await sandbox?.wrap({ shell: shell.shell, shellArgs: shell.args, viaStdin, command, cwd });
 	await prepareTree();
-	const child = spawn(shell.shell, viaStdin ? shell.args : [...shell.args, command], {
-		cwd,
-		detached: leadsProcessGroup(),
-		env,
-		stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
-		windowsHide: true,
-	});
+	let child: ChildProcess;
+	try {
+		child = spawn(launch?.file ?? shell.shell, launch?.args ?? (viaStdin ? shell.args : [...shell.args, command]), {
+			cwd,
+			detached: leadsProcessGroup(),
+			env: launch ? { ...env, ...launch.env } : env,
+			stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
+			windowsHide: true,
+		});
+	} catch (error) {
+		launch?.release();
+		throw error;
+	}
+	if (launch) {
+		rememberLaunch(child, launch);
+		child.once("exit", launch.release);
+		child.once("error", launch.release);
+	}
 	if (viaStdin) {
 		// The shell may exit before reading its stdin; its exit code is reported, a broken pipe is not news.
 		child.stdin?.on("error", () => undefined);
@@ -227,8 +246,9 @@ let keepProviderKeys = false;
 let extraPathEntries: () => readonly string[] = () => [];
 
 /**
- * Folders every shell command finds before Octocode's `bin`: `octocode/index.ts` installs the research CLI's shim folder
- * (`octocode/cli/shim.ts`) here, so `octocode` in an agent shell is that CLI whatever the user's path holds.
+ * Folders every shell command finds before Octocode's `bin`: `octocode/index.ts` installs the shim folder
+ * (`octocode/cli/shim.ts`) here, so in an agent shell `octocode` is this coding agent and `octocode-cli` the research CLI,
+ * whatever the user's path holds.
  */
 export function setShellPathEntries(entries: () => readonly string[]): void {
 	extraPathEntries = entries;

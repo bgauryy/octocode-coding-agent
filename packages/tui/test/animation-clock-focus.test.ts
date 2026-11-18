@@ -1,7 +1,6 @@
 import assert from "node:assert";
 import { afterEach, describe, it, mock } from "node:test";
 import { animationClock } from "../src/tokens/clock.ts";
-import { MOTION } from "../src/tokens/design.ts";
 
 function advance(ms: number, step = 20): void {
 	for (let done = 0; done < ms; done += step) mock.timers.tick(step);
@@ -14,7 +13,7 @@ describe("animationClock focus", () => {
 		mock.timers.reset();
 	});
 
-	it("slows decoration to the background spinner cadence while unfocused, counters keep 1 s", () => {
+	it("pauses decoration while unfocused, counters keep 1 s", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let decor = 0;
 		let info = 0;
@@ -23,21 +22,30 @@ describe("animationClock focus", () => {
 		animationClock.setFocused(false);
 		decor = 0;
 		advance(2_000);
-		assert.ok(decor <= 2_000 / MOTION.backgroundSpinnerMs, `decor ticked ${decor} times`);
-		assert.ok(decor >= 8, `decor must not freeze: ${decor}`);
+		assert.strictEqual(decor, 0);
 		assert.strictEqual(info, 2);
 		stopDecor();
 		stopInfo();
 	});
 
-	it("keeps a decor subscriber that is already slower at its own cadence", () => {
+	it("pauses a slower decor subscriber too, and stops the timer when only decoration is left", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let slow = 0;
 		const stop = animationClock.subscribe(() => slow++, { everyMs: 500, kind: "decor" });
 		animationClock.setFocused(false);
+		assert.strictEqual(animationClock.isRunning(), false);
 		advance(2_000);
-		assert.ok(slow >= 3 && slow <= 4, `ticked ${slow}`);
+		assert.strictEqual(slow, 0);
 		stop();
+	});
+
+	it("draws decoration where it stood when focus left until focus returns", () => {
+		mock.timers.enable({ apis: ["setInterval", "Date"], now: 10_000 });
+		animationClock.setFocused(false);
+		advance(3_000);
+		assert.strictEqual(animationClock.decorationTime(), 10_000);
+		animationClock.setFocused(true);
+		assert.strictEqual(animationClock.decorationTime(), 13_000);
 	});
 
 	it("restores the cadence and repaints decor once on focus in", () => {
@@ -51,6 +59,7 @@ describe("animationClock focus", () => {
 		assert.strictEqual(decor, 1, "one repaint on focus in");
 		advance(800);
 		assert.ok(decor >= 9, `back to the foreground cadence: ${decor}`);
+		assert.ok(decor <= 11, `no catch-up burst: ${decor}`);
 		stop();
 	});
 

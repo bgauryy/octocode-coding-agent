@@ -15,7 +15,7 @@ import {
 	TOTAL_BUDGET,
 } from "../../src/octocode/memory/inject.ts";
 import { ftsQuery, jaccard, normalizeTitle, parseMemoryId, terms } from "../../src/octocode/memory/query.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import {
 	MemoryError,

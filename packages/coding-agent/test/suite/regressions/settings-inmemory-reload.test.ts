@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 describe("in-memory settings survive reload", () => {
 	let tempDir: string;
@@ -47,7 +48,8 @@ describe("in-memory settings survive reload", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			disabledFeatures: ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,

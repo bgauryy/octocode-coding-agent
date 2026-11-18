@@ -7,6 +7,7 @@ import { collapseSystemMessages, getCurrentTools } from "../../utils/transcript.
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "../constrained-sampling.ts";
 import type { GoogleBaseOptions } from "./google-options.ts";
 import { supportsGoogleStrictToolSampling } from "./google-capabilities.ts";
+import { geminiToolSchema } from "./google-schema.ts";
 import { googleSdkMessages } from "./google-messages.ts";
 import { googleTextParts } from "./google-text.ts";
 import { googleRequestIds } from "./google-ids.ts";
@@ -29,7 +30,9 @@ export function googleSdkMapping(
 				definition.name,
 				tool({
 					description: definition.description,
-					inputSchema: jsonSchema(getJsonSchemaToolParameters(definition, strict)),
+					inputSchema: jsonSchema(
+						geminiToolSchema(getJsonSchemaToolParameters(definition, strict)) as Parameters<typeof jsonSchema>[0],
+					),
 					strict,
 				}),
 			];

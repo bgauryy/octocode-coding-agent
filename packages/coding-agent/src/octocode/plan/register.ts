@@ -1,8 +1,9 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import { contentText } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext, FeatureContext } from "../../core/features/index.ts";
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { STATUS } from "../shared/status.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";
 import { getMcpSessionStatus } from "../../../../mcp/src/api.ts";
 import { planStartupRequested } from "./startup.ts";
@@ -10,38 +11,38 @@ import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanSt
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
 
 /** User controls are commands, never model tools. Plan text lives in branch-aware custom entries. */
-export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopWork: () => Promise<void>) {
+export function registerPlanning(api: FeatureSetup, commands: Subcommands, stopWork: () => Promise<void>) {
 	let state: PlanState = { active: false, revision: 0, text: "" };
 	let transitioning = false;
 	const blocked = () => transitioning || state.active;
 	let unbind: (() => void) | undefined;
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		unbind?.();
 	});
-	const display = (ctx: ExtensionContext) =>
-		ctx.ui.setStatus("plan", state.active ? `Plan · revision ${state.revision}` : undefined);
-	const write = (next: PlanState, ctx: ExtensionContext) => {
-		api.appendEntry(PLAN_ENTRY, { version: 1, ...next });
+	const display = (ctx: FeatureContext) =>
+		ctx.ui.setStatus(STATUS.plan, state.active ? `plan r${state.revision}` : undefined, "warning");
+	const write = (next: PlanState, ctx: FeatureContext) => {
+		api.session.appendEntry(PLAN_ENTRY, { version: 1, ...next });
 		state = next;
 		display(ctx);
 	};
-	const restore = (ctx: ExtensionContext) => {
+	const restore = (ctx: FeatureContext) => {
 		state = readPlan(ctx.sessionManager.getBranch());
 		display(ctx);
 	};
-	const ensureState = (ctx: ExtensionContext) => {
+	const ensureState = (ctx: FeatureContext) => {
 		if (unbind) return;
 		restore(ctx);
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
 	};
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		restore(ctx);
 		unbind?.();
 		unbind = bindPlanConstraint(ctx.sessionManager.getSessionId(), blocked);
 		if (_event.reason === "startup" && planStartupRequested() && !state.active) write({ ...state, active: true }, ctx);
 	});
-	api.on("session_tree", async (_event, ctx) => restore(ctx));
-	api.on("before_agent_start", async (event, ctx) => {
+	api.bus.on("session_tree", async (_event, ctx) => restore(ctx));
+	api.bus.on("before_agent_start", async (event, ctx) => {
 		ensureState(ctx);
 		if (!blocked()) {
 			delete event.systemPromptOptions.sections.planning;
@@ -50,11 +51,11 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 		event.systemPromptOptions.sections.planning = PLANNING_INSTRUCTIONS;
 	});
 	// The summary may drop the plan's wording: put the current revision back at the tail, outside the cached prefix.
-	api.on("session_compact", async (_event, ctx) => {
+	api.bus.on("session_compact", async (_event, ctx) => {
 		ensureState(ctx);
 		if (!state.active || !state.text) return;
 		try {
-			void api.sendMessage(
+			void api.session.sendMessage(
 				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
@@ -62,14 +63,14 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 			// The session was replaced.
 		}
 	});
-	api.on("agent_end", async (event, ctx) => {
+	api.bus.on("agent_end", async (event, ctx) => {
 		if (!state.active || transitioning) return;
 		const last = event.messages.findLast((message) => message.role === "assistant");
 		if (last?.role !== "assistant" || last.stopReason !== "stop") return;
 		const text = contentText(last.content).trim();
 		if (text) write({ active: true, revision: state.revision + 1, text }, ctx);
 	});
-	const control = async (options: PlanOptions, ctx: ExtensionCommandContext): Promise<void> => {
+	const control = async (options: PlanOptions, ctx: CommandContext): Promise<void> => {
 		if (transitioning) throw new Error("A planning transition is already in progress.");
 		ensureState(ctx);
 		if (options.action === "show") return;
@@ -101,7 +102,7 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 				if (!/^--approve [1-9]\d*$/.test(args)) return say(ctx, "Usage: /plan --approve <revision>", "warning");
 				const approved = { ...state };
 				await control({ action: "approve", revision: Number(args.split(" ")[1]) }, ctx);
-				api.sendUserMessage(approvedPlanPrompt(approved), {
+				api.session.sendUserMessage(approvedPlanPrompt(approved), {
 					expandPromptTemplates: false,
 				});
 			} else {
@@ -109,7 +110,7 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 					return say(ctx, "Usage: /plan [description|--show|--off|--approve <revision>]", "warning");
 				if (args.length > 8000) return say(ctx, "Plan descriptions must be at most 8000 characters.", "warning");
 				await control({ action: "enter" }, ctx);
-				if (args) api.sendUserMessage(args, { expandPromptTemplates: false });
+				if (args) api.session.sendUserMessage(args, { expandPromptTemplates: false });
 			}
 			say(
 				ctx,
@@ -126,8 +127,8 @@ export function registerPlanning(api: ExtensionAPI, commands: Subcommands, stopW
 			if (!blocked()) return undefined;
 			const reason = planningRefusal(
 				event,
-				api.getAllTools().find((tool) => tool.name === event.toolName),
-				getMcpSessionStatus(api.events),
+				api.tools.getAll().find((tool) => tool.name === event.toolName),
+				getMcpSessionStatus(api.channels),
 				planning.readOnlyShell,
 			);
 			return reason ? { block: true, reason } : undefined;

@@ -1,5 +1,5 @@
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import type { ExtensionCommandContext } from "../../../core/features/index.ts";
+import type { CommandContext } from "../../../core/features/index.ts";
 import { badge } from "../../../theme/page-kit.ts";
 import { say } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
@@ -24,7 +24,7 @@ function read(team: Team, member: Member): AgentDetail {
 }
 
 /** Shows the page (Escape goes back) or, without a UI, prints it. Returns after the user leaves. */
-async function show(team: Team, member: Member, ctx: ExtensionCommandContext, nested: boolean): Promise<void> {
+async function show(team: Team, member: Member, ctx: CommandContext, nested: boolean): Promise<void> {
 	const detail = read(team, member);
 	if (!ctx.hasUI) return say(ctx, agentDetailPageText(detail));
 	const state = badge(detail.state);
@@ -37,14 +37,14 @@ async function show(team: Team, member: Member, ctx: ExtensionCommandContext, ne
 }
 
 /** `/agents <name>`: the page of the live agent the name picks, or the reason none is. */
-export async function openAgent(team: Team, name: string, ctx: ExtensionCommandContext): Promise<void> {
+export async function openAgent(team: Team, name: string, ctx: CommandContext): Promise<void> {
 	const found = findMember(team.members(), name);
 	if ("error" in found) return say(ctx, found.error, "warning");
 	await show(team, found.member, ctx, false);
 }
 
 /** `/agents` in a session with a UI: a list to pick an agent from; Escape on its page returns here. */
-export async function pickAgent(team: Team, ctx: ExtensionCommandContext): Promise<void> {
+export async function pickAgent(team: Team, ctx: CommandContext): Promise<void> {
 	let initialId: string | undefined;
 	for (;;) {
 		const { members } = team.snapshot();

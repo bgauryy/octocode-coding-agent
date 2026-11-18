@@ -2,6 +2,7 @@ import { wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { blockedReason, type SwitchScope } from "../../core/extensibility/switch.ts";
 import type { Theme } from "../../theme/theme.ts";
+import { cursorMark } from "../../theme/theme-tui-helpers.ts";
 import { HOST_TITLES, type InventoryItem } from "./inventory.ts";
 import { type OverviewRow, overviewRows } from "./overview.ts";
 import { HARNESS_SECTIONS, type HarnessSection, sectionCount, sectionOf } from "./sections.ts";
@@ -12,7 +13,7 @@ export type Row =
 	| { type: "section"; row: OverviewRow };
 
 /**
- * The rows a section lists. The Overview lists one row per section. Hooks, sources and extensions group under their
+ * The rows a section lists. The Overview lists one row per section. Hooks and sources group under their
  * host's heading. A filter matches label, id and detail; without one, a hook shows only inside an open hook file.
  */
 export function pickerRows(
@@ -29,8 +30,7 @@ export function pickerRows(
 				? [item.label, item.id, item.detail].some((text) => text.toLowerCase().includes(query))
 				: item.kind !== "hook" || expanded.has(item.parents?.[0] ?? "")),
 	);
-	if (section !== "hooks" && section !== "sources" && section !== "extensions")
-		return matches.map((item) => ({ type: "item", item }));
+	if (section !== "hooks" && section !== "sources") return matches.map((item) => ({ type: "item", item }));
 	return (Object.keys(HOST_TITLES) as InventoryItem["host"][]).flatMap((host) => {
 		const own = matches.filter((item) => item.host === host);
 		return own.length
@@ -66,7 +66,9 @@ export function itemDetailLines(
 		`ID: ${item.id}`,
 		`Switch scope: ${scope} · writes ${scopePath}`,
 		...(item.kind === "hook-file" || item.kind === "hook" ? ["Hook files: → opens handlers; ← closes them."] : []),
-		...(hasTools ? ["Enter or → opens this server's tools and who gets it; Space switches the server."] : []),
+		...(hasTools
+			? ["Enter or → opens this server's tools page in /mcp (exposure and who gets it); Space switches the server."]
+			: []),
 		...(reason ? [`Restriction: ${reason}`] : []),
 	].flatMap((line) => wrapTextWithAnsi(sanitizeTerminalText(line), Math.max(1, width - 2)));
 }
@@ -83,5 +85,5 @@ export function itemRowLine(
 	const brief =
 		item.kind === "hook" ? (item.gate ? "gate" : "") : item.kind === "mcp" ? item.detail : item.detail.split(" · ")[0];
 	const fold = item.kind === "hook-file" && !item.locked ? (state.expanded ? "▾ " : "▸ ") : "";
-	return `${state.selected ? t.fg("accent", "> ") : "  "}${"  ".repeat(item.depth)}${fold}${box} ${name}${brief ? t.fg("dim", `  ${sanitizeTerminalText(brief)}`) : ""}`;
+	return `${cursorMark(state.selected)}${"  ".repeat(item.depth)}${fold}${box} ${name}${brief ? t.fg("dim", `  ${sanitizeTerminalText(brief)}`) : ""}`;
 }

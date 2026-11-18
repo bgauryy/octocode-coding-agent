@@ -46,6 +46,7 @@ collect.sh
 # Yarn
 .yarn/*
 !.yarn/releases
+!.yarn/patches
 .pnp.*
 TMPTMP
 # Disposable host compilation trees

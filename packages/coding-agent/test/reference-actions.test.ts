@@ -31,7 +31,7 @@ function host(source = "[guide](docs/a.md#L12:3)") {
 		sessionManager: { getCwd: () => "/original" },
 		settingsManager: {},
 		ui: {},
-		showExtensionCustom: vi.fn(),
+		showCustomDialog: vi.fn(),
 		showWarning: vi.fn(),
 		showError: vi.fn(),
 		showStatus: vi.fn(),

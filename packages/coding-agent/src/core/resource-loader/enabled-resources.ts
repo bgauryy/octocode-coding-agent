@@ -2,8 +2,6 @@ import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../package-m
 import { mapSkillPath } from "./paths.ts";
 
 export interface EnabledResourcePaths {
-	/** Enabled `extensions` entries: only `builtin:<name>` entries switch a built-in feature; the rest are ignored. */
-	extensions: string[];
 	skills: string[];
 	prompts: string[];
 	themes: string[];
@@ -22,7 +20,6 @@ export function collectEnabledResources(
 	};
 	const pathsOf = (resources: ResolvedResource[]): string[] => enabledOf(resources).map((r) => r.path);
 	return {
-		extensions: pathsOf(resolvedPaths.extensions),
 		skills: enabledOf(resolvedPaths.skills).map((resource) => mapSkillPath(resource, metadataByPath)),
 		prompts: pathsOf(resolvedPaths.prompts),
 		themes: pathsOf(resolvedPaths.themes),

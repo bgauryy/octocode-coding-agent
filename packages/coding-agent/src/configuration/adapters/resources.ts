@@ -1,4 +1,3 @@
-import { builtinEffect, SWITCHABLE_BUILTIN_IDS } from "../../core/features/builtin-ids.ts";
 import { getOctocodeSkillsDir } from "../../config.ts";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import { ResourceSettings } from "../../core/package-manager/resource-settings.ts";
@@ -15,7 +14,6 @@ import { chooseSkillWinner } from "../../core/skills.ts";
 
 const KIND_OF_TYPE: Record<ResourceType, string> = {
 	skills: "skill",
-	extensions: "extension",
 	prompts: "prompt",
 	themes: "theme",
 };
@@ -25,7 +23,6 @@ const RUN_ONLY_FLAG: Record<ResourceType, string> = {
 	skills: "--skill",
 	prompts: "--prompt-template",
 	themes: "--theme",
-	extensions: "a command-line extension path",
 };
 
 interface Row {
@@ -44,7 +41,6 @@ async function resourceRows(ctx: ConfigContext): Promise<Row[]> {
 		agentDir: ctx.agentDir,
 		settingsManager: ctx.settings,
 		builtinSkillsDir: getOctocodeSkillsDir(),
-		builtinExtensions: [...SWITCHABLE_BUILTIN_IDS],
 	}).resolve(async () => "skip");
 	const items = buildGroups(resolved, ctx.agentDir).flatMap((group) =>
 		group.subgroups.flatMap((subgroup) => subgroup.items),
@@ -80,7 +76,7 @@ function shadowing(core: Row, named: Row[], agentDir: string): void {
 	const rank = (row: Row) =>
 		skillPathPrecedence(row.item.path, {
 			metadataByPath: new Map([[path.resolve(row.item.path), row.item.metadata]]),
-			extensionPaths: new Set(),
+			featurePaths: new Set(),
 			agentDir,
 		});
 	const pathId = (row: Row) => `${KIND_OF_TYPE[row.item.resourceType]}:${homeTilde(row.item.path)}`;
@@ -162,17 +158,12 @@ async function write(op: ConfigOp, ctx: ConfigContext, row: Row): Promise<Config
 			op,
 			`${row.id} is still switched ${after.item.enabled ? "on" : "off"}: the ${scope} settings did not take the change.`,
 		);
-	const effect = on ? undefined : builtinEffect(item.path);
-	return applied(
-		op,
-		"reload",
-		`${row.id} switched ${on ? "on" : "off"} ${where}.${effect ? ` Switching it off ${effect}.` : ""}`,
-	);
+	return applied(op, "reload", `${row.id} switched ${on ? "on" : "off"} ${where}.`);
 }
 
-/** Skills, extensions, prompts and themes: the `+`/`-` patterns of their settings arrays, written by `ResourceSettings`. */
+/** Skills, prompts and themes: the `+`/`-` patterns of their settings arrays, written by `ResourceSettings`. */
 export const resourcesAdapter: ConfigAdapter = {
-	kinds: ["skill", "extension", "prompt", "theme"],
+	kinds: ["skill", "prompt", "theme"],
 	async list(ctx) {
 		return (await resourceRows(ctx)).map(toEntry);
 	},

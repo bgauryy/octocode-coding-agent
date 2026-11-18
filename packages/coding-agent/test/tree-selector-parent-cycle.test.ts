@@ -37,7 +37,7 @@ describe("tree selector over a self-parented entry", () => {
 
 	it("filters to user messages and back without hanging", () => {
 		const list = new TreeList(selfParentedTree(), "y", 10, "y", "labeled-only");
-		expect(list.render(80).join("\n")).toContain("No entries found");
+		expect(list.render(80).join("\n")).toContain("No entries · ");
 		list.handleInput("a");
 		expect(list.getSearchQuery()).toBe("a");
 	});

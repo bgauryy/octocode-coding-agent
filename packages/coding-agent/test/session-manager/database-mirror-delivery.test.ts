@@ -191,7 +191,7 @@ describe("database mirror delivery", () => {
 		const runtime = new AgentSessionRuntime(
 			{
 				abort: async () => undefined,
-				extensionRunner: { hasHandlers: () => false },
+				featureHost: { hasHandlers: () => false },
 				sessionManager: session,
 				dispose: () => undefined,
 			} as unknown as AgentSession,

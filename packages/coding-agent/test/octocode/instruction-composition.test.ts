@@ -12,11 +12,12 @@ import {
 	diffSystemPromptSections,
 	normalizeBuildSystemPromptOptions,
 } from "../../src/core/system-prompt.ts";
-import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/instructions/role.ts";
+import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/native/prompts/role.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { createHarness } from "../suite/harness.ts";
 import { fakeHost } from "./fake-host.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 // The research server is the one whose entry gives reader and search roles (`mcp/src/roles.ts`), never a name.
 useResearchRoles();
@@ -44,8 +45,7 @@ it("composes a child role once alongside discovered user and project instruction
 	const loader = new DefaultResourceLoader({
 		cwd,
 		agentDir,
-		nativeFeatures: false,
-		disabledFeatures: ["mcp", "llama.cpp"],
+		disabledFeatures: ["mcp"],
 		settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
 	});
 	await loader.reload();
@@ -94,9 +94,9 @@ it("sends the updated policy to the model through the real session pipeline", as
 	const name = RESEARCH.search;
 	const harness = await createHarness({
 		initialActiveToolNames: ["read", name],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
-				api.registerTool({
+				api.tools.register({
 					name,
 					label: "Research fixture",
 					description: "Offline research fixture",
@@ -108,7 +108,7 @@ it("sends the updated policy to the model through the real session pipeline", as
 					profiles: () => new Map(),
 				});
 			},
-		],
+		]),
 	});
 	try {
 		const requests: TranscriptContext[] = [];

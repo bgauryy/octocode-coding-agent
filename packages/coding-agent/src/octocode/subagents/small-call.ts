@@ -2,7 +2,7 @@ import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
 import { completeSimple } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { currentCatalog } from "./catalog.ts";
 import { resolveTier } from "./model.ts";
 
@@ -23,7 +23,7 @@ export interface SmallCallOptions {
 }
 
 /** The `provider/id` the `small` purpose resolves to for this session, or undefined: no cheaper model, so a call would fail. */
-export function smallModelLabel(ctx: ExtensionContext): string | undefined {
+export function smallModelLabel(ctx: FeatureContext): string | undefined {
 	if (!ctx.model) return undefined;
 	const chosen = resolveTier("small", ctx.modelRegistry.getAvailable(), ctx.model, currentCatalog());
 	return chosen ? `${chosen.provider}/${chosen.id}` : undefined;
@@ -40,7 +40,7 @@ export type SmallCallResult =
  * session's own model when `fallbackToSession` is set, else fails. Never rejects: a missing model, failed
  * authentication, a failed or aborted call and an empty reply each give `{ error }` naming the cause.
  */
-export async function callSmallModel(ctx: ExtensionContext, options: SmallCallOptions): Promise<SmallCallResult> {
+export async function callSmallModel(ctx: FeatureContext, options: SmallCallOptions): Promise<SmallCallResult> {
 	try {
 		if (!ctx.model) return { error: "no model is selected" };
 		const available = ctx.modelRegistry.getAvailable();

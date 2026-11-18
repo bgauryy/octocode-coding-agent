@@ -9,7 +9,6 @@ import { repoKey } from "../../utils/git-repository.ts";
 import { clipText } from "@octocodeai/octocode-common/clip";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
 import { buildGroups } from "../../core/package-manager/resource-groups.ts";
-import { SWITCHABLE_BUILTIN_IDS, builtinEffect } from "../../core/features/builtin-ids.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 import { getOctocodeSkillsDir } from "../../config.ts";
@@ -190,57 +189,40 @@ async function piSkillItems(input: DiscoverInput, cwd: string, home?: string): P
 	return items;
 }
 
-/** Extensions and skills from the package resolver, switched by the `extensions` and `skills` patterns. */
+/** Skills from the package resolver, switched by the `skills` patterns. */
 async function resourceItems(
 	manager: SettingsManager,
 	cwd: string,
 	agentDir: string,
 	extraSkills: readonly InventoryItem[],
 ): Promise<InventoryItem[]> {
-	const builtinExtensions = [...SWITCHABLE_BUILTIN_IDS];
 	// "skip": listing must never install a missing package source.
 	const resolved = await new DefaultPackageManager({
 		cwd,
 		agentDir,
 		settingsManager: manager,
-		builtinExtensions,
 		builtinSkillsDir: getOctocodeSkillsDir(),
 	}).resolve(async () => "skip");
-	const groups = buildGroups(resolved, agentDir);
-	const rows = (type: "extensions" | "skills") =>
-		groups.flatMap((group) =>
-			group.subgroups
-				.filter((subgroup) => subgroup.type === type)
-				.flatMap((subgroup) =>
-					subgroup.items.map((resource): InventoryItem =>
-						type === "skills"
-							? {
-									id: `skill:${homeTilde(resource.path)}`,
-									name: resource.displayName,
-									host: "skills",
-									kind: "skill",
-									depth: 0,
-									label: resource.displayName,
-									on: resource.enabled,
-									detail: collectionSkillDetail(resource) ?? `${group.label} · ${homeTilde(resource.path)}`,
-									...(resource.metadata.scope === "project" ? { project: true as const } : {}),
-									resource,
-								}
-							: {
-									id: `extension:${homeTilde(resource.path)}`,
-									host: group.origin === "package" ? "packages" : "octocode",
-									kind: "extension",
-									depth: 0,
-									label: `${resource.displayName} (extension)`,
-									on: resource.enabled,
-									detail: `${group.label} · ${group.scope}${builtinEffect(resource.path) ? ` · switching it off ${builtinEffect(resource.path)}` : ""}`,
-									resource,
-								},
-					),
-				),
-		);
+	const skills = buildGroups(resolved, agentDir).flatMap((group) =>
+		group.subgroups
+			.filter((subgroup) => subgroup.type === "skills")
+			.flatMap((subgroup) =>
+				subgroup.items.map((resource): InventoryItem => ({
+					id: `skill:${homeTilde(resource.path)}`,
+					name: resource.displayName,
+					host: "skills",
+					kind: "skill",
+					depth: 0,
+					label: resource.displayName,
+					on: resource.enabled,
+					detail: collectionSkillDetail(resource) ?? `${group.label} · ${homeTilde(resource.path)}`,
+					...(resource.metadata.scope === "project" ? { project: true as const } : {}),
+					resource,
+				})),
+			),
+	);
 	// Skills read best alphabetically; the detail names the folder each comes from.
-	return [...rows("extensions"), ...[...rows("skills"), ...extraSkills].sort((a, b) => a.label.localeCompare(b.label))];
+	return [...skills, ...extraSkills].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** Everything `/harness` lists, from the same loaders the session uses; nothing is installed or executed. */

@@ -1,9 +1,9 @@
-import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
+import { CancellableLoader, Container, Loader, Spacer, type TUI } from "@octocodeai/octocode-tui";
 import type { Theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { keyHint } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
 
-/** Loader wrapped with borders for extension UI */
+/** A loader between rules for feature UI; a cancellable one has one hint line, `esc cancel`, cut and never wrapped. */
 export class BorderedLoader extends Container {
 	private loader: CancellableLoader | Loader;
 	private cancellable: boolean;
@@ -33,7 +33,7 @@ export class BorderedLoader extends Container {
 		this.addChild(this.loader);
 		if (this.cancellable) {
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(keyHint("tui.select.cancel", "cancel"), 1, 0));
+			this.addChild(new HintBar([[keyText("tui.select.cancel"), "cancel", 0]]));
 		}
 		this.addChild(new Spacer(1));
 		this.addChild(new DynamicBorder(borderColor));

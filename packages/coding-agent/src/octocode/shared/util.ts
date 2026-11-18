@@ -1,6 +1,6 @@
 import { activeRates, type ModelCost, type Usage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { truncateHead } from "../../core/tools/index.ts";
 import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -142,7 +142,7 @@ export const stringList = (value: unknown): string[] | undefined =>
 
 export { MINUTE_MS, HOUR_MS, DAY_MS } from "@octocodeai/octocode-common/time";
 
-/** Octocode's wording for an extension context used after its session was replaced or reloaded. */
+/** Octocode's wording for a feature context used after its session was replaced or reloaded. */
 const STALE_SESSION = "stale after session replacement";
 
 /** Whether `error` says a session context is stale (Octocode gives no error class for it). */
@@ -260,7 +260,7 @@ export function memoizedModelLookup(find: ModelLookup): ModelLookup {
 }
 
 export const modelLookup =
-	(ctx: Pick<ExtensionContext, "modelRegistry">): ModelLookup =>
+	(ctx: Pick<FeatureContext, "modelRegistry">): ModelLookup =>
 	(provider, id) =>
 		ctx.modelRegistry?.find(provider, id);
 

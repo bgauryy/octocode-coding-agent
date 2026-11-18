@@ -67,90 +67,81 @@ async function run(box: Sandbox, steps: Step[]): Promise<string> {
 const allText = () =>
 	endpoint.requests.flatMap((request) => request.messages.map((message) => message.text)).join("\n---\n");
 
+const HARNESSES = [
+	{ name: "claude", dir: ".claude", file: "settings.json" },
+	{ name: "codex", dir: ".codex", file: "hooks.json" },
+] as const;
+
+/** Configures one PreToolUse hook per format, each recording its input in its own marker; returns the markers. */
+function configureAll(box: Sandbox): Record<"claude" | "codex" | "octocode", string> {
+	const markers = {
+		claude: path.join(box.root, "claude-marker.json"),
+		codex: path.join(box.root, "codex-marker.json"),
+		octocode: path.join(box.root, "octocode-marker.json"),
+	};
+	for (const { name, dir, file } of HARNESSES)
+		writeProject(box, dir, file, { hooks: { PreToolUse: hook(`cat > ${quote(markers[name])}`) } });
+	writeProject(box, ".octocode", "hooks.json", { hooks: { PreToolUse: hook(`cat > ${quote(markers.octocode)}`) } });
+	return markers;
+}
+
 describe("PreToolUse hook gating by harness", () => {
-	for (const [name, dir, file] of [
-		["claude", ".claude", "settings.json"],
-		["codex", ".codex", "hooks.json"],
-	] as const) {
-		const configure = (box: Sandbox, marker: string) =>
-			writeProject(box, dir, file, { hooks: { PreToolUse: hook(`cat > ${quote(marker)}`) } });
+	it("runs only the Octocode-format hook with the defaults: the claude and codex harnesses are off", async () => {
+		const box = sandbox(endpoint);
+		const markers = configureAll(box);
+		await run(box, bashThenDone);
+		expect(fired(markers.claude), "claude hook ran although its harness is off").toBeUndefined();
+		expect(fired(markers.codex), "codex hook ran although its harness is off").toBeUndefined();
+		expect(fired(markers.octocode)?.hook_event_name, "native hook did not run").toBe("PreToolUse");
+	});
 
-		it(`does not run a project ${dir}/${file} hook with the defaults (${name} harness off)`, async () => {
+	for (const { name } of HARNESSES) {
+		it(`runs the project hook of harness:${name} once it is on, and not the other harness's`, async () => {
 			const box = sandbox(endpoint);
-			const marker = path.join(box.root, "marker.json");
-			configure(box, marker);
-			await run(box, bashThenDone);
-			expect(fired(marker), `${name} hook ran although its harness is off`).toBeUndefined();
-		});
-
-		it(`runs a project ${dir}/${file} hook once harness:${name} is on`, async () => {
-			const box = sandbox(endpoint);
-			const marker = path.join(box.root, "marker.json");
 			enableHarnesses(box, name);
-			configure(box, marker);
+			const markers = configureAll(box);
 			await run(box, bashThenDone);
-			const input = fired(marker);
+			const input = fired(markers[name]);
 			expect(input?.hook_event_name, `${name} hook did not run with its harness on`).toBe("PreToolUse");
 			expect(input.session_id).toBeTruthy();
+			const other = name === "claude" ? "codex" : "claude";
+			expect(fired(markers[other]), `${other} hook ran although only ${name} is on`).toBeUndefined();
 		});
 	}
-
-	it("runs an Octocode-format .octocode/hooks.json hook with the defaults", async () => {
-		const box = sandbox(endpoint);
-		const marker = path.join(box.root, "marker.json");
-		writeProject(box, ".octocode", "hooks.json", { hooks: { PreToolUse: hook(`cat > ${quote(marker)}`) } });
-		await run(box, bashThenDone);
-		expect(fired(marker)?.hook_event_name, "native hook did not run").toBe("PreToolUse");
-	});
 });
 
 describe("Stop and PostToolUse hook feedback", () => {
-	it("continues the session with Stop hook feedback and sends it to the model", async () => {
+	it("continues the session with Stop hook feedback, in both output formats, and sends it to the model", async () => {
 		const box = sandbox(endpoint);
 		enableHarnesses(box, "claude");
-		const once = path.join(box.root, "stop-once");
+		const count = path.join(box.root, "stop-count");
 		const feedback = "STOPFEEDBACK-please-add-tests";
-		const body = JSON.stringify({ decision: "block", reason: feedback });
-		writeProject(box, ".claude", "settings.json", {
-			hooks: {
-				Stop: hook(`if [ -e ${quote(once)} ]; then exit 0; fi; touch ${quote(once)}; printf %s ${quote(body)}`),
-			},
-		});
-		await run(box, [{ text: "first answer" }, { text: "second answer after feedback" }]);
-		expect(endpoint.requests.length, "Stop block did not trigger another model request").toBeGreaterThanOrEqual(2);
-		const second = endpoint.requests[1].messages.map((message) => message.text).join("\n");
-		expect(second, "Stop feedback missing from the next request").toContain(feedback);
-		expect(endpoint.requests[0].messages.map((m) => m.text).join("\n")).not.toContain(feedback);
-	});
-
-	it("continues on Stop hookSpecificOutput.additionalContext", async () => {
-		const box = sandbox(endpoint);
-		enableHarnesses(box, "claude");
-		const once = path.join(box.root, "stop-once");
-		const feedback = "STOPCONTEXT-check-the-docs";
-		const body = JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: feedback } });
-		writeProject(box, ".claude", "settings.json", {
-			hooks: {
-				Stop: hook(`if [ -e ${quote(once)} ]; then exit 0; fi; touch ${quote(once)}; printf %s ${quote(body)}`),
-			},
-		});
-		await run(box, [{ text: "first answer" }, { text: "second answer" }]);
-		expect(endpoint.requests.length, "Stop additionalContext did not continue the run").toBeGreaterThanOrEqual(2);
-		expect(endpoint.requests[1].messages.map((m) => m.text).join("\n"), "context missing from next request").toContain(
-			feedback,
-		);
-	});
-
-	it("delivers PostToolUse additionalContext in the next model request", async () => {
-		const box = sandbox(endpoint);
-		enableHarnesses(box, "claude");
+		const context = "STOPCONTEXT-check-the-docs";
+		const block = JSON.stringify({ decision: "block", reason: feedback });
+		const additional = JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: context } });
+		// First Stop blocks, the second adds context, the third lets the run end.
+		const stop = `n=$(cat ${quote(count)} 2>/dev/null || echo 0); echo $((n+1)) > ${quote(count)}; case $n in 0) printf %s ${quote(block)};; 1) printf %s ${quote(additional)};; esac`;
 		const note = "POSTTOOL-annotation-xyz";
-		const body = JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: note } });
-		writeProject(box, ".claude", "settings.json", { hooks: { PostToolUse: hook(`printf %s ${quote(body)}`) } });
-		await run(box, bashThenDone);
-		expect(endpoint.requests.length).toBeGreaterThanOrEqual(2);
-		expect(endpoint.requests[0].messages.map((m) => m.text).join("\n")).not.toContain(note);
-		expect(endpoint.requests[1].messages.map((m) => m.text).join("\n"), "PostToolUse context missing").toContain(note);
+		const post = JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: note } });
+		writeProject(box, ".claude", "settings.json", {
+			hooks: { Stop: hook(stop), PostToolUse: hook(`printf %s ${quote(post)}`) },
+		});
+		await run(box, [
+			{ tool: "bash", args: { command: "echo hooked" } },
+			{ text: "first answer" },
+			{ text: "second answer after feedback" },
+			{ text: "third answer" },
+		]);
+		const texts = endpoint.requests.map((request) => request.messages.map((message) => message.text).join("\n"));
+		expect(texts.length, "the Stop hooks did not trigger further model requests").toBeGreaterThanOrEqual(4);
+		// PostToolUse context reaches the request after the tool, not the one before it.
+		expect(texts[0]).not.toContain(note);
+		expect(texts[1], "PostToolUse context missing").toContain(note);
+		// Stop feedback reaches the next request only.
+		expect(texts[1]).not.toContain(feedback);
+		expect(texts[2], "Stop feedback missing from the next request").toContain(feedback);
+		expect(texts[2]).not.toContain(context);
+		expect(texts[3], "Stop additionalContext missing from the next request").toContain(context);
 		expect(allText()).toContain(note);
 	});
 });

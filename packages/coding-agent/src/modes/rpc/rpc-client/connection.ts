@@ -18,7 +18,7 @@ export class RpcConnection {
 	private process: ChildProcess | null = null;
 	private stopReadingStdout: (() => void) | null = null;
 	private eventListeners: RpcEventListener[] = [];
-	private extensionUIListeners: Array<(request: RpcExtensionUIRequest) => void> = [];
+	private uiRequestListeners: Array<(request: RpcExtensionUIRequest) => void> = [];
 	private pendingRequests: Map<string, { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }> =
 		new Map();
 	private requestId = 0;
@@ -216,10 +216,10 @@ export class RpcConnection {
 
 	/** Subscribe to UI requests separately from session events. */
 	onExtensionUIRequest(listener: (request: RpcExtensionUIRequest) => void): () => void {
-		this.extensionUIListeners.push(listener);
+		this.uiRequestListeners.push(listener);
 		return () => {
-			const index = this.extensionUIListeners.indexOf(listener);
-			if (index !== -1) this.extensionUIListeners.splice(index, 1);
+			const index = this.uiRequestListeners.indexOf(listener);
+			if (index !== -1) this.uiRequestListeners.splice(index, 1);
 		};
 	}
 
@@ -290,7 +290,7 @@ export class RpcConnection {
 			return;
 		}
 		if (data.type === "extension_ui_request") {
-			notifyAll("RPC UI request listener", this.extensionUIListeners, data as RpcExtensionUIRequest);
+			notifyAll("RPC UI request listener", this.uiRequestListeners, data as RpcExtensionUIRequest);
 			return;
 		}
 

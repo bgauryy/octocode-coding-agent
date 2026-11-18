@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ERR, MESSAGE_KEY_MAX, RpcError, stringParam } from "../protocol.ts";
 import type { SendReceipts } from "../receipts.ts";
@@ -11,9 +11,9 @@ export interface AbortHost {
 	readonly ceilings: TurnCeilings;
 	readonly receipts: SendReceipts;
 	/** The bound session; throws when there is none. */
-	session(): ExtensionContext;
+	session(): FeatureContext;
 	/** Refuses a call whose `expectedSessionId` no longer names the session. */
-	guardSession(params: Record<string, unknown>, ctx: ExtensionContext): void;
+	guardSession(params: Record<string, unknown>, ctx: FeatureContext): void;
 	/** The caller's facts, verified with the instance it names when it names one (`bridge/verify.ts`). */
 	verify(facts: ExternalFacts, params: Record<string, unknown>, connection: Connection): Promise<ExternalFacts>;
 	/** Records what an API client did in the session. */

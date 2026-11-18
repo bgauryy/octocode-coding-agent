@@ -1,6 +1,6 @@
 # Context management
 
-What a native Octocode session sends the model on each request, how changes reach it, and how history stays inside the window. Related pages: [prompt caching](../packages/coding-agent/docs/prompt-caching.md) (providers, retention, warming, miss diagnostics), [agent context](../packages/coding-agent/docs/agent-context.md) (each source and its switch), [agent instructions](../packages/coding-agent/docs/instructions.md) (prose), [MCP](../packages/coding-agent/docs/mcp.md).
+What a native Octocode session sends the model on each request, how changes reach it, and how history stays inside the window. Related pages: [prompt caching](../packages/coding-agent/docs/prompt-caching.md) (providers, retention, warming, miss diagnostics), [agent context](../packages/coding-agent/docs/agent-context.md) (each source and its switch), [agent instructions](../packages/coding-agent/docs/prompts.md) (prose), [MCP](../packages/coding-agent/docs/mcp.md).
 
 ## What the model sees
 
@@ -25,7 +25,7 @@ A cache hit also needs matching settings, adapter support and a live provider en
 
 ### Sections
 
-In prompt order. An empty section is left out. `SYSTEM.md` replaces `preamble` and drops `docs` ([instructions](../packages/coding-agent/docs/instructions.md)).
+In prompt order. An empty section is left out. `SYSTEM.md` replaces `preamble` and drops `docs` ([instructions](../packages/coding-agent/docs/prompts.md)).
 
 | Section                                                     | Content                                                                                                                                           |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -62,12 +62,12 @@ Context files below `cwd` load on first read under their folder (a research read
 
 Before each prompt, the `before_agent_start` handlers fill the sections; the session sends only what differs from what the transcript holds.
 
-| Change                    | Result                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------- |
-| Section text (date, plan) | A section patch in history; the instruction blocks stay as they were where the adapter allows |
-| Tool added or removed     | A tool change in history where the provider supports it; otherwise tools and blocks rewritten |
-| Model switched            | The previous model's cache is not reusable                                                    |
-| Idle past the history TTL | The history may need a new cache write; messages are unchanged                                |
+| Change                    | Result                                                                                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section text (date, plan) | A section patch in history; the instruction blocks stay as they were where the adapter allows                                                                                                                                                        |
+| Tool added or removed     | A tool change in history where the provider supports it; otherwise tools and blocks rewritten                                                                                                                                                        |
+| Model switched            | The previous model's cache is not reusable                                                                                                                                                                                                           |
+| Idle past the history TTL | The history may need a new cache write; messages are unchanged. A request that failed (a timeout) reads nothing and does not renew the entry; while the session waits on children, jobs or timers, the warmer refreshes it within one rewrite's cost |
 
 Some adapters must place an update in the leading message (Mistral after a tool result). To see why a request missed the cache, set `OCTOCODE_CACHE_DIAGNOSTICS=on` or `showCacheMissNotices` ([prompt caching](../packages/coding-agent/docs/prompt-caching.md#provider-reported-miss-reasons)).
 
@@ -129,7 +129,7 @@ sequenceDiagram
     end
     S->>S: save compaction entry, rebuild context
     X->>D: archive summarized messages as Markdown
-    X->>S: re-read up to 5 recent files
+    X->>S: re-read up to 5 recent files (edited whole, read-only as outline)
 ```
 
 1. **Cut.** Never on a tool result; a cut inside a turn adds a summary of that turn's start. If the kept part leaves no room for a summary (often after switching to a smaller model), more is summarized; if even the newest turn does not fit, compaction fails with that reason: switch to a larger window or `/new`.
@@ -140,7 +140,7 @@ sequenceDiagram
 4. **Checkpoint.** Goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR. Code then appends the user's messages, askUser answers and, for a child, its coordinator's messages word for word within a budget (older or long ones move behind saved references), file lists, saved results, loaded skills by name and path, and the backlog and running work as the tools report them now. The shared request also asks what each image shows; the standalone one says images do not arrive.
 5. **Store.** Within 80% of the reserve the summary stays inline; otherwise a session with a file saves it whole behind a reference, and an in-memory session keeps head and tail.
 6. **Rebuild.** The entry is saved with the system message in force (blocks stay cached); the context becomes instructions, checkpoint, newest messages and restored files.
-7. **Archive and restore.** Summarized messages become searchable Markdown (`archive`; they also stay in the session file). Up to 5 recent files are re-read: whole within 8k characters, else an outline (at most 4k) or a window of lines; 20k characters in total, at most 10% of the window after the reserve.
+7. **Archive and restore.** Summarized messages become searchable Markdown (`archive`; they also stay in the session file). Up to 5 recent files are re-read. A file the agent changed in the summarized part comes back whole within 8k characters, else as an outline (at most 4k) or a window of lines. A file it only read comes back as an outline, or not at all when it has no declarations; dependencies under `node_modules` it only read are skipped. Scratch (`.octocode/tmp`, `.octocode/code/temp`) never comes back. The total is 20k characters, at most 10% of the window after the reserve.
 
 **Summary requested early.** So a compaction does not hold the turn while the summary is written, the session plans it a tenth of the window before the threshold (8,000–32,000 tokens) and Octocode requests the shared summary then, beside the run. The compaction uses it if ready, or waits only for the rest. Everything after the planned cut stays verbatim; file lists are rebuilt at use.
 
@@ -183,11 +183,11 @@ Judge long-session quality by retained constraints, correct next actions, recove
 
 ## Skills and MCP tools in the context
 
-The skills listing, and MCP tools under `mcpPresentation: "compact"` or `json`, go through one optimization store under `context-optimization/` in the agent directory. Under the default `declared`, each MCP tool keeps its own description and schema.
+The skills listing goes through an optimization store under `context-optimization/` in the agent directory. MCP descriptions, schemas and instructions are never rewritten: the model reads each server's own text.
 
-- **Scope.** User skills and servers share one folder; a repository's skills and workspace servers use `projects/<repo>-<hash>/`, shared by its worktrees.
-- **Recorded automatically.** A root session records skills it finds, and the MCP host each server's file, when they change. Each entry hashes its source, so an edited skill or changed tool falls back to its own wording.
-- **Rewritten on request.** `octocode context list` shows entries still at `source`; the bundled `octocode-context-optimization` skill rewrites them with fidelity checks (`octocode context` for [skills](../packages/coding-agent/docs/skills.md#optimized-descriptions), `octocode mcp compact` for [servers](../packages/coding-agent/docs/mcp-reference.md#compact-presentation)).
+- **Scope.** User skills share one folder; a repository's skills use `projects/<repo>-<hash>/`, shared by its worktrees.
+- **Recorded automatically.** A root session records skills it finds when they change. Each entry hashes its source, so an edited skill falls back to its own wording.
+- **Rewritten on request.** `octocode context list` shows entries still at `source`; the bundled `octocode-context-optimization` skill rewrites their descriptions concisely, keeping every point (`octocode context`, [skills](../packages/coding-agent/docs/skills.md#optimized-descriptions)).
 - **Stable in a session.** Read at start and `/reload`, so a rewrite never changes a cached prompt mid-run. Subagents read the same store.
 
 A server reaches an agent only when its tool selection names it. A server with `defaultActive: false` (the built-in `browser`) starts only for agents that select `mcp__<server>__*`; a selected server that has not connected shows in `mcps` as one line with its state. Locations and precedence: [MCP reference](../packages/coding-agent/docs/mcp-reference.md#configuration-and-precedence); `/mcp config` shows what the session resolved.

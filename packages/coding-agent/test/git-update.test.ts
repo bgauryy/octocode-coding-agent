@@ -237,7 +237,7 @@ describe("DefaultPackageManager git update", () => {
 		it("should refresh cached temporary git sources when resolving", async () => {
 			const managerWithPaths = packageManager as unknown as PackageManagerPathInternals;
 			const cachedDir = managerWithPaths.getGitInstallPath(managerWithPaths.parseSource(gitSource), "temporary");
-			const extensionFile = join(cachedDir, "octocode-extensions", "session-breakdown.ts");
+			const featureFile = join(cachedDir, "octocode-extensions", "session-breakdown.ts");
 
 			rmSync(cachedDir, { recursive: true, force: true });
 			mkdirSync(join(cachedDir, "octocode-extensions"), { recursive: true });
@@ -245,7 +245,7 @@ describe("DefaultPackageManager git update", () => {
 				join(cachedDir, "package.json"),
 				JSON.stringify({ octocode: { extensions: ["./octocode-extensions"] } }, null, 2),
 			);
-			writeFileSync(extensionFile, "// stale");
+			writeFileSync(featureFile, "// stale");
 
 			const executedCommands: string[] = [];
 			const managerWithInternals = packageManager as unknown as {
@@ -255,7 +255,7 @@ describe("DefaultPackageManager git update", () => {
 			managerWithInternals.runCommand = async (command, args) => {
 				executedCommands.push(`${command} ${args.join(" ")}`);
 				if (command === "git" && args[0] === "reset") {
-					writeFileSync(extensionFile, "// fresh");
+					writeFileSync(featureFile, "// fresh");
 				}
 			};
 			managerWithInternals.runCommandCapture = async (_command, args) => {
@@ -271,7 +271,7 @@ describe("DefaultPackageManager git update", () => {
 				return "";
 			};
 
-			await packageManager.resolveExtensionSources([gitSource], { temporary: true });
+			await packageManager.resolveSources([gitSource], { temporary: true });
 
 			expect(executedCommands).toContain(
 				"git fetch --prune --no-tags origin +refs/heads/main:refs/remotes/origin/main",

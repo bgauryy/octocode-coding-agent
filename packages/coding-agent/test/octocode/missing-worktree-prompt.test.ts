@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { assertSessionCwdExists, MissingSessionCwdError } from "../../src/core/session-cwd.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { promptForMissingSessionCwd as promptInTui } from "../../src/modes/interactive/interactive-mode/extension-dialogs.ts";
+import { promptForMissingSessionCwd as promptInTui } from "../../src/modes/interactive/interactive-mode/dialogs.ts";
 import type * as StartupUi from "../../src/cli/startup-ui.ts";
 import { promptForMissingSessionCwd as promptAtStartup } from "../../src/main/startup.ts";
 
@@ -56,9 +56,9 @@ describe("resuming a session whose worktree is gone", () => {
 
 	it("the /resume prompt in the terminal offers it too", async () => {
 		const error = missingCwdError(WORKTREE);
-		const showExtensionConfirm = vi.fn(async (_title: string, _message: string) => false);
-		await promptInTui({ showExtensionConfirm } as never, error);
-		expect(showExtensionConfirm.mock.calls[0][1]).toContain("/worktree new feature");
+		const showConfirmDialog = vi.fn(async (_title: string, _message: string) => false);
+		await promptInTui({ showConfirmDialog } as never, error);
+		expect(showConfirmDialog.mock.calls[0][1]).toContain("/worktree new feature");
 	});
 
 	it("the non-interactive error (--print, --continue) names it as well", () => {

@@ -10,6 +10,8 @@ import { createTestSession } from "../helpers/session.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { HOOK_HARNESSES_ON, tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 type Options = {
@@ -148,17 +150,18 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 			cwd,
 			agentDir,
 			settingsManager,
-			disabledFeatures: options.nestedMcp ? ["llama.cpp"] : ["mcp", "llama.cpp"],
+			nativeFeatures: nativeFeatureSet(),
+			disabledFeatures: options.nestedMcp ? [] : ["mcp"],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			extensionFactories: [
+			features: testFeatures([
 				{
 					name: "permission-fixture",
 					factory(api) {
 						if (options.nestedMcp)
-							api.registerTool({
+							api.tools.register({
 								name: "nested_mcp_policy_fixture",
 								label: "Nested MCP fixture",
 								description: "Read through the configured fixture MCP server",
@@ -171,7 +174,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 									};
 								},
 							});
-						api.registerTool({
+						api.tools.register({
 							name: "nested_permission_fixture",
 							label: "Nested permission fixture",
 							description: "Run two safe fixture file writes",
@@ -199,7 +202,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 							},
 						});
 						if (options.nestedBash)
-							api.registerTool({
+							api.tools.register({
 								name: "nested_bash_rewrite_fixture",
 								label: "Nested Bash fixture",
 								description: "Run two owned acceptance commands",
@@ -219,7 +222,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 									};
 								},
 							});
-						api.registerProvider("permission-fixture", {
+						api.providers.register("permission-fixture", {
 							name: "Fixture",
 							api: faux.api,
 							baseUrl: "http://127.0.0.1:0",
@@ -229,7 +232,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 						} as never);
 					},
 				},
-			],
+			]),
 		});
 	let resourceLoader = makeResourceLoader();
 	await resourceLoader.reload();
@@ -246,7 +249,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 					: {}),
 			sessionManager: SessionManager.create(cwd, path.join(root, "sessions")),
 		});
-		await session.bindExtensions({
+		await session.bindFeatures({
 			mode: "json",
 			shutdownHandler: () => undefined,
 		} as never);
@@ -265,7 +268,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 		},
 		async restart() {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({
+			await session.featureHost.emit({
 				type: "session_shutdown",
 				reason: "quit",
 			});
@@ -322,7 +325,7 @@ export async function fixture(protocol: "claude" | "codex", options: Options = {
 		},
 		async close() {
 			await session.abort("shutdown");
-			await session.extensionRunner.emit({
+			await session.featureHost.emit({
 				type: "session_shutdown",
 				reason: "quit",
 			});

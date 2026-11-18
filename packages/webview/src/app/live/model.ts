@@ -4,6 +4,7 @@ import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-con
 import { stripTerminalSequences } from "@octocodeai/octocode-common/ansi";
 import type { UiState } from "../model/ui-state.ts";
 import type { FeedEvent } from "./application-projection.ts";
+import { type JobPhase, jobPhaseOf, jobWords } from "./phase-words.ts";
 export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
 
 export type Tone = "success" | "danger" | "accent" | "warning" | "agent" | "neutral";
@@ -214,7 +215,9 @@ export type RunPhase =
 	| { kind: "tool"; name: string }
 	| { kind: "compacting" }
 	| { kind: "retrying" }
-	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> };
+	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> }
+	/** No run is active but the job goes on: background agents, a pending wake, or a timer. */
+	| { kind: "job"; phase: JobPhase };
 /**
  * What the session is doing now. A dialog that waits for the user wins (also while no run is active: a background
  * subagent's approval), then compaction or a retry (which start after the run settled, so `streaming` is already
@@ -223,7 +226,11 @@ export type RunPhase =
 export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 	if (snapshot?.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
 	if (snapshot?.status === "compacting" || snapshot?.status === "retrying") return { kind: snapshot.status };
-	if (!snapshot?.streaming) return { kind: "idle" };
+	if (!snapshot?.streaming) {
+		// The run settled but the host says the job did not end: not idle, and not finished.
+		const job = jobPhaseOf(snapshot?.phase);
+		return job ? { kind: "job", phase: job } : { kind: "idle" };
+	}
 	const tool = snapshot.tools?.findLast((candidate) => candidate.status === "running");
 	if (tool) return { kind: "tool", name: tool.toolName };
 	const last = snapshot.messages.at(-1);
@@ -233,12 +240,14 @@ export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 
 /** The session panel's badge: the shared run state and its label, or nothing while the session is idle. */
 export function sessionBadge(
-	snapshot: Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting"> | undefined,
+	snapshot: Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting" | "phase"> | undefined,
 ): { state: UiState; label: string; warn: boolean } | undefined {
 	if (snapshot?.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
 	if (snapshot?.status === "compacting") return { state: "running", label: "Compacting", warn: false };
 	if (snapshot?.status === "retrying") return { state: "running", label: "Retrying", warn: true };
-	return snapshot?.streaming ? { state: "running", label: "Running", warn: false } : undefined;
+	if (snapshot?.streaming) return { state: "running", label: "Running", warn: false };
+	const job = jobPhaseOf(snapshot?.phase);
+	return job ? { state: "running", label: jobWords(job, Date.now()), warn: false } : undefined;
 }
 
 export const stripAnsi = stripTerminalSequences;

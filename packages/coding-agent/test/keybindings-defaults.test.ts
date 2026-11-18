@@ -64,7 +64,17 @@ function canonicalKey(key: string): string {
 	return [...modifiers, base].join("+");
 }
 
-async function editorCollisions(platform: NodeJS.Platform, env: Record<string, string | undefined>): Promise<string[]> {
+const inEditorContext = (action: string): boolean =>
+	EDITOR_CONTEXT_ACTIONS.includes(action) || EDITOR_CONTEXT_PREFIXES.some((prefix) => action.startsWith(prefix));
+
+/** Actions a focused list (picker, page, autocomplete menu) takes: its own keys, never the editor's. */
+const inListContext = (action: string): boolean => action.startsWith("tui.select.");
+
+async function collisions(
+	platform: NodeJS.Platform,
+	env: Record<string, string | undefined>,
+	inContext: (action: string) => boolean,
+): Promise<string[]> {
 	const original = Object.getOwnPropertyDescriptor(process, "platform");
 	Object.defineProperty(process, "platform", { value: platform });
 	for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
@@ -73,9 +83,7 @@ async function editorCollisions(platform: NodeJS.Platform, env: Record<string, s
 		const { KEYBINDINGS } = await import("../src/core/keybindings.ts");
 		const owners = new Map<string, string[]>();
 		for (const [action, definition] of Object.entries(KEYBINDINGS)) {
-			const inContext =
-				EDITOR_CONTEXT_ACTIONS.includes(action) || EDITOR_CONTEXT_PREFIXES.some((prefix) => action.startsWith(prefix));
-			if (!inContext) continue;
+			if (!inContext(action)) continue;
 			const keys: readonly string[] = Array.isArray(definition.defaultKeys)
 				? definition.defaultKeys
 				: [definition.defaultKeys];
@@ -104,7 +112,22 @@ describe("default keybindings", () => {
 		["WSL", "linux", { WSL_DISTRO_NAME: "Ubuntu" }],
 		["Windows", "win32", {}],
 	] as const)("gives no two editor actions the same key on %s", async (_name, platform, env) => {
-		expect(await editorCollisions(platform, env)).toEqual([]);
+		expect(await collisions(platform, env, inEditorContext)).toEqual([]);
+	});
+
+	it.each([
+		["macOS", "darwin", {}],
+		["Linux", "linux", { WSL_DISTRO_NAME: undefined, WSL_INTEROP: undefined }],
+		["WSL", "linux", { WSL_DISTRO_NAME: "Ubuntu" }],
+		["Windows", "win32", {}],
+	] as const)("gives no two list actions the same key on %s", async (_name, platform, env) => {
+		expect(await collisions(platform, env, inListContext)).toEqual([]);
+	});
+
+	it("jumps a list to its first and last item with home and end", async () => {
+		const { KEYBINDINGS } = await import("../src/core/keybindings.ts");
+		expect(KEYBINDINGS["tui.select.home"].defaultKeys).toBe("home");
+		expect(KEYBINDINGS["tui.select.end"].defaultKeys).toBe("end");
 	});
 
 	it.each([

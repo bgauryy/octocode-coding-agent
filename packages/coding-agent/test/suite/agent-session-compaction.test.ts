@@ -15,6 +15,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "../../src/core/compaction/index.ts";
 import { createHarness, getUserTexts, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 type SessionWithCompactionInternals = {
 	_checkCompaction: (assistantMessage: AssistantMessage, skipAbortedCheck?: boolean) => Promise<boolean>;
@@ -111,7 +112,7 @@ async function createAbortableCompactionHarness(): Promise<{
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_before_compact", async (event) => {
+				api.bus.on("session_before_compact", async (event) => {
 					return new Promise<{ cancel: true }>((resolve) => {
 						event.signal.addEventListener("abort", () => resolve({ cancel: true }), { once: true });
 						markCompactionStarted();
@@ -129,13 +130,13 @@ describe("AgentSession compaction characterization", () => {
 		const seen: Array<string | undefined> = [];
 		const harness = await createHarness({
 			compactionPolicy: { keepRecentTokens: 1 },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_before_compact", async (event) => {
+					api.bus.on("session_before_compact", async (event) => {
 						seen.push(event.customInstructions);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		const abort = vi.spyOn(harness.session, "abort");
@@ -243,7 +244,7 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "summary from extension",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -285,10 +286,10 @@ describe("AgentSession compaction characterization", () => {
 
 	it("checkpoints the summarized system state and replays retained system patches in place", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					for (const name of ["kept_tool", "retired_tool"])
-						api.registerTool({
+						api.tools.register({
 							name,
 							label: name,
 							description: name,
@@ -296,7 +297,7 @@ describe("AgentSession compaction characterization", () => {
 							execute: async () => ({ content: [], details: undefined }),
 						});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("declared")]);
@@ -360,7 +361,7 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "manual compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -529,12 +530,12 @@ describe("AgentSession compaction characterization", () => {
 			errorMessage?: string;
 			aborted: boolean;
 			willRetry: boolean;
-			fromExtension: boolean;
+			fromFeature: boolean;
 		}> = [];
 		const harness = await createHarness({
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_compact_failed", async (event) => {
+					api.bus.on("session_compact_failed", async (event) => {
 						failedEvents.push(event);
 					});
 				},
@@ -561,7 +562,7 @@ describe("AgentSession compaction characterization", () => {
 				reason: "threshold",
 				aborted: false,
 				willRetry: false,
-				fromExtension: false,
+				fromFeature: false,
 				errorMessage: "Auto-compaction failed: summary generator blew up",
 			}),
 		]);
@@ -574,7 +575,7 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -625,7 +626,7 @@ describe("AgentSession compaction characterization", () => {
 			tools: [largeTool],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", (event) => {
+					api.bus.on("session_before_compact", (event) => {
 						order.push("compaction");
 						observedSettings.push(event.preparation.settings);
 						return {
@@ -696,7 +697,7 @@ describe("AgentSession compaction characterization", () => {
 			tools: [largeTool],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => {
+					api.bus.on("session_before_compact", async (event) => {
 						markCompactionStarted();
 						await compactionReleased;
 						return {
@@ -754,7 +755,7 @@ describe("AgentSession compaction characterization", () => {
 			tools: [terminatingTool],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", (event) => ({
+					api.bus.on("session_before_compact", (event) => ({
 						compaction: {
 							summary: "unexpected compaction",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -805,7 +806,7 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -899,7 +900,7 @@ describe("AgentSession compaction characterization", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "auto compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,
@@ -960,7 +961,7 @@ describe("AgentSession compaction characterization", () => {
 			models: [{ id: "faux-1", contextWindow: 1, maxTokens: 100 }],
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: "successful overflow compacted",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

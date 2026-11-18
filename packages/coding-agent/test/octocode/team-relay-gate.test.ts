@@ -217,7 +217,7 @@ describe("relay settlement", () => {
 			store.remove("p-1");
 			const [letter] = store.deadLetters("a-1");
 			expect(letter).toMatchObject({ id, relay: { to: "done-1" } });
-			expect(deadLetterText(letter)).toContain("which relays it, left the team first");
+			expect(deadLetterText(letter)).toContain("done-1");
 		} finally {
 			store.close();
 		}

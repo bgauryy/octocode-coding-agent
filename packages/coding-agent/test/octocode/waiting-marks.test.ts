@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showAskDialog } from "./ask-dialog-helper.ts";
 import { Breath, tabMark } from "../../src/octocode/ask/dialog/marks.ts";
-import { registerAskUser } from "../../src/octocode/ask/tool.ts";
+import { registerAskUser } from "../../src/octocode/native/tools/ask-user/tool.ts";
 import { agentState } from "../../src/octocode/subagents/render-state.ts";
 import { renderAgentCall, renderAgentMessage, renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
@@ -154,7 +154,7 @@ describe("agent rows", () => {
 			tagged,
 			asking,
 		);
-		expect(call(asking)).toContain("<warning>◇ <toolTitle>🐙 Agent");
+		expect(call(asking)).toBe("<warning>◇ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
 	});
 
 	it.each([
@@ -165,7 +165,9 @@ describe("agent rows", () => {
 		animationClock.setReducedMotion(true);
 		const context = row();
 		renderAgentResult({ content, details: details(extra) }, { isPartial: false } as never, tagged, context);
-		expect(first(renderAgentCall(args, tagged, context))).toContain(`${mark} <toolTitle>🐙 Agent`);
+		expect(first(renderAgentCall(args, tagged, context))).toBe(
+			`${mark} <toolTitle>Agent<muted>(<muted>audit auth<muted>)`,
+		);
 	});
 
 	it.each([
@@ -178,6 +180,8 @@ describe("agent rows", () => {
 			{ expanded: false } as never,
 			tagged,
 		) as unknown as { render(width: number): string[] };
-		expect(message.render(120).join("\n")).toContain(`${mark} <toolTitle>🐙 Agent`);
+		expect(message.render(120)[0]?.trimEnd()).toBe(
+			` ${mark} <toolTitle>Agent<muted>(<muted>general-0001<muted>)<dim> · background`,
+		);
 	});
 });

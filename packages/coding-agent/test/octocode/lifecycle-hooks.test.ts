@@ -34,11 +34,11 @@ function project(hooks: unknown): string {
 	return cwd;
 }
 
-/** A host whose `api.events` really delivers, so the team's announcements reach the hooks. */
+/** A host whose `api.channels` really delivers, so the team's announcements reach the hooks. */
 function host() {
 	const fake = fakeHost();
 	const listeners = new Map<string, Array<(data: unknown) => void>>();
-	(fake.api as { events: unknown }).events = {
+	(fake.api as { channels: unknown }).channels = {
 		on: (channel: string, handler: (data: unknown) => void) => {
 			listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
 			return () => undefined;
@@ -308,7 +308,7 @@ describe("the hooks, driven by the team", () => {
 		const cwd = project({});
 		const fake = host();
 		const heard: AgentLifecycleNotice[] = [];
-		fake.api.events.on(AGENT_LIFECYCLE_CHANNEL, (data) => heard.push(data as AgentLifecycleNotice));
+		fake.api.channels.on(AGENT_LIFECYCLE_CHANNEL, (data) => heard.push(data as AgentLifecycleNotice));
 		const dbFile = path.join(tmp(), "team.sqlite");
 		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: dbFile });
 		teams.push(team);

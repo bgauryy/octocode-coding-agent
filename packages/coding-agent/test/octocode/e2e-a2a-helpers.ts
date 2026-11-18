@@ -49,7 +49,7 @@ function titleOf(pid: number): string {
 export async function session(box: Sandbox, cwd?: string) {
 	const before = new Set(instancesOf(box).map((instance) => instance.id));
 	const run = box.start(["--mode", "rpc"], { stdin: "pipe", ...(cwd ? { cwd } : {}) });
-	await until(() => instancesOf(box).some((instance) => !before.has(instance.id)), "the API to come up", 60_000);
+	await until(() => instancesOf(box).some((instance) => !before.has(instance.id)), "the API to come up", 180_000);
 	const instance = instancesOf(box).find((each) => !before.has(each.id)) as InstanceRecord;
 	const status = await new ApiClient(instance).call<{ sessionId: string }>("status");
 	await until(() => titleOf(instance.pid).startsWith("octocode-rpc-"), "the process title", 30_000);

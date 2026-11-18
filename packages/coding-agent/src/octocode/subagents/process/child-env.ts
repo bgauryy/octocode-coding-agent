@@ -1,5 +1,5 @@
 import { PROMPT_CACHE_KEY_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { ROLE_PROMPT_FILE_ENV } from "../../instructions/role.ts";
+import { ROLE_PROMPT_FILE_ENV } from "../../native/prompts/role.ts";
 import {
 	AGENT_SCRATCH_ENV,
 	BACKLOG_ITEM_ENV,
@@ -15,6 +15,7 @@ import {
 	READ_ONLY_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	SKILLS_IN_TASK_ENV,
+	SKILL_CATALOG_ENV,
 	SUBAGENT_ENV,
 	SUBAGENT_HOOKS_ENV,
 	TEAM_WORKSPACE_ENV,
@@ -54,6 +55,7 @@ export const CHILD_OWNED_ENV: readonly string[] = [
 	READ_ONLY_ENV,
 	LEAN_ENV,
 	SKILLS_IN_TASK_ENV,
+	SKILL_CATALOG_ENV,
 	PERMISSION_GRANTS_ENV,
 	PERMISSION_NONCE_FILE_ENV,
 	PERMISSION_RELAY_ENV,

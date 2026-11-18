@@ -13,10 +13,10 @@ import {
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
-import type { ToolDefinition } from "../src/core/features/types.ts";
+import type { ToolDefinition, ToolRenderers } from "../src/core/features/types.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { type BashOperations, createBashTool, createBashToolDefinition } from "../src/core/tools/bash.ts";
-import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
+import { withBuiltInRenderers } from "../src/octocode/files/built-in-renderers.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -206,7 +206,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "README.md" }], details: undefined, isError: false });
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("$ echo README.md");
+		expect(rendered).toContain("Bash(echo README.md)");
 	});
 
 	test("bash execute emits an initial empty partial update before output arrives", async () => {
@@ -289,7 +289,10 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-bash-duration",
 			{ command: "long-running-command" },
 			{},
-			createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false }),
+			withBuiltInRenderers(
+				"bash",
+				createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false }) as ToolRenderers,
+			),
 			createFakeTui(),
 			process.cwd(),
 		);
@@ -306,8 +309,9 @@ describe("ToolExecutionComponent parity", () => {
 		vi.advanceTimersByTime(1_000);
 		component.invalidate();
 		expect(stripAnsi(component.render(120).join("\n"))).toBe(completed);
-		expect(running).toContain(`Elapsed ${formatted}`);
-		expect(completed).toContain(`Took ${formatted}`);
+		// The duration shows once, in the header: live while running, the measured time once done.
+		expect(running).toContain(`Bash(long-running-command) · ${formatted}`);
+		expect(completed.match(new RegExp(`· ${formatted}`, "g"))?.length ?? 0).toBeLessThanOrEqual(1);
 	});
 
 	test("bash renderer shows a result's recorded duration, also for a result restored without a live start", () => {
@@ -319,7 +323,10 @@ describe("ToolExecutionComponent parity", () => {
 				"tool-bash-recorded",
 				{ command: "sleep 4" },
 				{},
-				createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false }),
+				withBuiltInRenderers(
+					"bash",
+					createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false }) as ToolRenderers,
+				),
 				createFakeTui(),
 				process.cwd(),
 			);
@@ -332,10 +339,10 @@ describe("ToolExecutionComponent parity", () => {
 			component.updateResult({ content: [], isError: false, durationMs: 4_200 }, false);
 			return stripAnsi(component.render(120).join("\n"));
 		};
-		// The recorded duration, shown once on the outcome line, not again as a `Took` line.
+		// The recorded duration, shown once in the header, not again under it.
 		for (const live of [true, false]) {
 			const text = render(live);
-			expect(text).toContain("✓ 4.2s");
+			expect(text).toContain("✓ Bash(sleep 4) · 4.2s");
 			expect(text.match(/4\.2s/g)).toHaveLength(1);
 			expect(text).not.toContain("Took");
 		}
@@ -347,13 +354,13 @@ describe("ToolExecutionComponent parity", () => {
 			"tool-4",
 			{ command: "echo hello" },
 			{},
-			createBashToolDefinition(process.cwd()),
+			withBuiltInRenderers("bash", createBashToolDefinition(process.cwd()) as ToolRenderers),
 			createFakeTui(),
 			process.cwd(),
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered.match(/\$ echo hello/g)?.length ?? 0).toBe(1);
+		expect(rendered.match(/Bash\(echo hello\)/g)?.length ?? 0).toBe(1);
 	});
 
 	test("inherits missing built-in result renderer slot from the built-in tool", () => {
@@ -395,7 +402,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("$ cat README.md");
+		expect(rendered).toContain("Bash(cat README.md)");
 		expect(rendered).toContain("override result");
 	});
 

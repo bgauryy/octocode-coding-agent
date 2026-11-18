@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { liveSession } from "./team-live-session.ts";
 
 // Team mail is handed to Octocode by a one-second tick and, at the end of a turn that ran tools, by the `turn_end`
-// listener (`team/tools.ts`), just before the loop reads queued steering for the next request.
+// listener (`native/tools/coordinate/tool.ts`), just before the loop reads queued steering for the next request.
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {

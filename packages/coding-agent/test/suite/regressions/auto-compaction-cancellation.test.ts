@@ -52,7 +52,7 @@ describe("automatic compaction cancellation regressions", () => {
 			},
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", () => ({ cancel: true }));
+					api.bus.on("session_before_compact", () => ({ cancel: true }));
 				},
 			],
 		});
@@ -144,7 +144,7 @@ describe("automatic compaction cancellation regressions", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", () => ({ cancel: true }));
+					api.bus.on("session_before_compact", () => ({ cancel: true }));
 				},
 			],
 		});

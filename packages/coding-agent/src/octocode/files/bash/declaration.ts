@@ -1,13 +1,9 @@
-// What the `bash` tool declares to the model: description, parameters, output schema and call header.
+// What the `bash` tool declares to the model: description, parameters and output schema.
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
-import { Type, type Static, type TSchema } from "typebox";
+import { Type, type TSchema } from "typebox";
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { maxOutputTokensParameter } from "../../../core/tools/bash.ts";
-import type { Theme } from "../../../theme/theme.ts";
-import { formatDuration } from "../../shared/format.ts";
 import { reasonSchema } from "../../shared/reason.ts";
-import { toolHeader } from "../../render/tool.ts";
-import type { RenderContext } from "../../render/types.ts";
 import { probeCliHost, renderCliGuide } from "./cli-guide.ts";
 import { DEFAULT_BASH_TIMEOUT, MAX_FOREGROUND_TIMEOUT } from "./results.ts";
 import { verificationSchema } from "./verification.ts";
@@ -56,6 +52,12 @@ export const bashParameters = Type.Object({
 				"Record verification for current edits; later edits make it stale. Zero exit proves only command success.",
 		}),
 	),
+	sandbox: Type.Optional(
+		Type.Boolean({
+			description:
+				"false: run outside the command sandbox, after it refused something the command needs; asks the user each time",
+		}),
+	),
 	item: Type.Optional(
 		Type.String({
 			description: "Background: your ongoing backlog item (B<n>) this job serves; it is not idle meanwhile.",
@@ -64,17 +66,3 @@ export const bashParameters = Type.Object({
 	// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.
 	reason: reasonSchema(),
 });
-
-export function renderBashCall(args: Static<typeof bashParameters>, theme: Theme, context: RenderContext) {
-	// The timeout shows only when the model set one; the default deadline is in the tool description.
-	const asked = typeof args.timeout === "number" && args.timeout > 0 ? args.timeout : undefined;
-	const timeout = asked ? `timeout ${formatDuration(asked * 1000)}` : "";
-	const meta = [args.background ? "background" : "", timeout].filter(Boolean).join(" · ");
-	return toolHeader(
-		theme,
-		context,
-		args.type === "powershell" ? "PowerShell" : "Bash",
-		typeof args.command === "string" ? args.command : "",
-		meta ? { meta } : {},
-	);
-}

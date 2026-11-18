@@ -1,6 +1,8 @@
 import { type AgentDb, type TimerRow, timers } from "../../../../db/src/api.ts";
 import { onSecond } from "../shared/clock.ts";
 import type { CheckInput } from "./condition.ts";
+import { cronOf } from "./cron.ts";
+import { type CronEvent, claimCron } from "./cron-fire.ts";
 import { conditionTiming } from "./conditions/index.ts";
 import {
 	type CheckOutcome,
@@ -33,6 +35,10 @@ export interface SchedulerDeps {
 	wake(row: TimerRow): void;
 	/** The number of active timers after any change, for the footer. */
 	changed?(active: number): void;
+	/** Why a due cron timer must end instead of running (the session's spending cap), or undefined. */
+	cronStop?(row: TimerRow): string | undefined;
+	/** A cron run was skipped as too late, or its timer stopped before running. */
+	cronEvent?(event: CronEvent): void;
 	/** A failed pass (an unreadable database): the timers stay in the database and the next tick tries again. */
 	failed?(error: unknown): void;
 }
@@ -153,8 +159,11 @@ export class TimerScheduler {
 			if (this.stopped) return;
 			if (this.checking.has(due.id)) continue;
 			if (due.kind === "until" && this.checking.size >= MAX_CHECKS) continue;
-			const claimed = timers.claim(db, due.id, this.deps.sessionId, this.now());
+			const spec = cronOf(due);
+			const cron = spec && claimCron(db, due, spec, this.deps.sessionId, this.now(), this.deps.cronStop);
+			const claimed = cron ? cron.row : timers.claim(db, due.id, this.deps.sessionId, this.now());
 			this.deps.wrote?.();
+			if (cron?.event) this.deps.cronEvent?.(cron.event);
 			if (!claimed) continue;
 			const fire = this.guarded(claimed.id, () => this.fire(claimed)).catch((error: unknown) =>
 				this.reportFailure(error),
@@ -279,6 +288,7 @@ export class TimerScheduler {
 	private input(row: TimerRow): CheckInput {
 		return {
 			cwd: row.cwd ?? process.cwd(),
+			expiring: row.deadline_at !== null && this.now() >= row.deadline_at,
 			signal: this.checking.get(row.id)?.signal,
 			row: { id: row.id, checks: row.checks, spentUsd: row.spent_usd, sessionId: row.session_id },
 		};

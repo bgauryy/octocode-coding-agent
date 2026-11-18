@@ -1,9 +1,9 @@
-import type { ExtensionAPI, ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { AGENT_LIFECYCLE_CHANNEL, type AgentLifecycleNotice } from "../../shared/agent-lifecycle.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import type { HookEvent } from "../catalog.ts";
 import type { AgentChainNotice } from "../../shared/agent-chain.ts";
 import { ChainLinks, onChainNotice } from "./chain.ts";
+import { hookObserver } from "./observe.ts";
 import type { HookSession, Dispatch, ReportFailure } from "./types.ts";
 
 const asNotice = (value: unknown): AgentLifecycleNotice | undefined =>
@@ -75,61 +75,39 @@ function queuedHookInput(
  * session ends still reports. A process that is killed cannot run its own hooks: the process that reaps it runs AgentOff.
  */
 export function registerAgentHooks(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	session: HookSession,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): void {
-	let context: ExtensionContext | undefined;
-	const pending = new Set<Promise<void>>();
+	let context: FeatureContext | undefined;
 	const chain = new ChainLinks();
 	/**
 	 * Runs the hooks of `event` in the background under the presence deadline; `build` makes the input and `name` is what
 	 * the matcher tests. It is built one turn of the event loop later: the chain notice a transition causes (the queued
 	 * children it released or held) is sent while the transition is still being delivered.
 	 */
-	const observe = (event: HookEvent, name: string, build: () => Record<string, unknown>, ctx: ExtensionContext) => {
-		const groups = session.config[event];
-		if (groups.length === 0) return;
-		const budget = Math.min(
-			60_000,
-			Math.max(1500, ...groups.flatMap((group) => group.hooks.map((hook) => hook.timeoutMs))),
-		);
-		const abort = new AbortController();
-		const timer = setTimeout(() => abort.abort(), budget);
-		const done: Promise<void> = Promise.resolve()
-			.then(() => dispatch(ctx, event, [name], build, abort.signal, ["octocode"]))
-			.then(() => undefined)
-			.catch((error: unknown) => {
-				if (!abort.signal.aborted) reportFailure(ctx, event, error);
-			})
-			.finally(() => {
-				clearTimeout(timer);
-				pending.delete(done);
-			});
-		pending.add(done);
-	};
-	const run = (notice: AgentLifecycleNotice, ctx: ExtensionContext) =>
+	const { observe, settled } = hookObserver(session, { dispatch, reportFailure }, { defer: true });
+	const run = (notice: AgentLifecycleNotice, ctx: FeatureContext) =>
 		observe(
 			notice.kind === "on" ? "AgentOn" : "AgentOff",
 			notice.kind === "on" ? (notice.role ?? "general") : (notice.reason ?? "left"),
 			() => agentHookInput(notice, chain),
 			ctx,
 		);
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		context = ctx;
 	});
-	api.events.on(AGENT_LIFECYCLE_CHANNEL, (value) => {
+	api.channels.on(AGENT_LIFECYCLE_CHANNEL, (value) => {
 		const notice = asNotice(value);
 		if (notice && context) run(notice, context);
 	});
-	onChainNotice(api.events, (notice) => {
+	onChainNotice(api.channels, (notice) => {
 		chain.note(notice);
 		if (notice.kind === "queued" && context)
 			observe("AgentQueued", notice.role, () => queuedHookInput(notice, null), context);
 	});
-	api.on("session_shutdown", async () => {
-		// Each hook stops at its own deadline, so this wait is bounded.
-		await Promise.allSettled(pending);
+	api.bus.on("session_shutdown", async () => {
+		await settled();
 		context = undefined;
 	});
 }

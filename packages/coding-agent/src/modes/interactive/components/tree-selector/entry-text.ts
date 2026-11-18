@@ -1,5 +1,6 @@
 import type { SessionTreeNode } from "../../../../core/session-manager.ts";
 import { theme } from "../../../../theme/theme.ts";
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import { styledLine } from "@octocodeai/octocode-common/sanitize";
 import { plainText } from "../styled-line.ts";
 import type { ToolCallInfo } from "./types.ts";
@@ -159,7 +160,7 @@ export function getEntryDisplayText(
 			result = "";
 	}
 
-	// Names, ids and types come from the model, tools and extensions too: keep the theme's colours, drop every other control.
+	// Names, ids and types come from the model, tools and features too: keep the theme's colours, drop every other control.
 	const line = styledLine(result);
 	return isSelected ? theme.bold(line) : line;
 }
@@ -270,12 +271,12 @@ function formatToolCall(name: string, args: Record<string, unknown>): string {
 				.replace(/[\n\t]/g, " ")
 				.trim()
 				.slice(0, 50);
-			return `[bash: ${cmd}${rawCmd.length > 50 ? "..." : ""}]`;
+			return `[bash: ${cmd}${rawCmd.length > 50 ? ELLIPSIS : ""}]`;
 		}
 		default: {
 			// Custom tool - show name and truncated JSON args
 			const argsStr = JSON.stringify(args).slice(0, 40);
-			return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? "..." : ""}]`;
+			return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? ELLIPSIS : ""}]`;
 		}
 	}
 }

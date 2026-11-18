@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { Backlog } from "./context.ts";
 import type { Item } from "./item.ts";
 
@@ -16,12 +16,12 @@ function closedNotice(backlog: Backlog, ref: string): string | undefined {
 	if (!ready.length && !still.length) return undefined;
 	const marks = backlog.store.marks(still);
 	const waits = still.map((item) =>
-		renderInstruction("notices/subagents/item-waits.md", {
+		renderPrompt("notices/subagents/item-waits.md", {
 			ref: item.ref,
 			open: (marks.get(item.ref)?.blockedBy ?? []).join(", "),
 		}).trim(),
 	);
-	return renderInstruction("notices/subagents/item-closed.md", {
+	return renderPrompt("notices/subagents/item-closed.md", {
 		ref,
 		ready: ready.join(", "),
 		several: ready.length > 1,
@@ -51,7 +51,7 @@ export function graphNotice(
 			.map((each) => each.ref)
 			.filter((each) => !queued.has(each));
 		if (!ready.length) return undefined;
-		return renderInstruction("notices/subagents/item-ready.md", {
+		return renderPrompt("notices/subagents/item-ready.md", {
 			ready: ready.join(", "),
 			several: ready.length > 1,
 			done: item.ref,
@@ -60,7 +60,7 @@ export function graphNotice(
 	if (owner === undefined) return undefined;
 	const waiting = dependents(backlog, item.ref, ["backlog", "todo", "ongoing"]).map((each) => each.ref);
 	if (!waiting.length) return undefined;
-	return renderInstruction(`notices/subagents/item-owner-${lingers ? "lingers" : "ended"}.md`, {
+	return renderPrompt(`notices/subagents/item-owner-${lingers ? "lingers" : "ended"}.md`, {
 		ref: item.ref,
 		child: owner,
 		waiting: waiting.join(", "),
@@ -87,10 +87,10 @@ export function endedNotice(
 
 /** What the coordinator is told when a queued child started by itself: `after` names what it waited for (`B12`, `agent:sly-mantle`). */
 export function startedNotice(child: string, item: string | undefined, after: readonly string[]): string {
-	return renderInstruction("notices/subagents/item-started.md", { child, item, after: after.join(", ") }).trim();
+	return renderPrompt("notices/subagents/item-started.md", { child, item, after: after.join(", ") }).trim();
 }
 
 /** What the coordinator is told when a queued child is held: `why` names the prerequisites that failed, or the refusal at its start. */
 export function heldNotice(child: string, item: string | undefined, why: string): string {
-	return renderInstruction("notices/subagents/item-held.md", { child, item, why }).trim();
+	return renderPrompt("notices/subagents/item-held.md", { child, item, why }).trim();
 }

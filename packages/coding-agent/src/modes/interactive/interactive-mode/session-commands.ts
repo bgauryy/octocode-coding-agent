@@ -41,15 +41,14 @@ type SessionCommandsHost = Pick<
 	| "outputPad"
 	| "promptForMissingSessionCwd"
 	| "rebuildChatFromMessages"
-	| "resetExtensionUI"
+	| "resetFeatureUI"
 	| "runtimeHost"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
 	| "setupAutocompleteProvider"
-	| "setupExtensionShortcuts"
 	| "showError"
-	| "showExtensionConfirm"
+	| "showConfirmDialog"
 	| "showLoadedResources"
 	| "showSelector"
 	| "showStatus"
@@ -68,7 +67,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		return;
 	}
 
-	host.resetExtensionUI();
+	host.resetFeatureUI();
 
 	const reloadBox = new Container();
 	const borderColor = (s: string) => theme.fg("border", s);
@@ -76,7 +75,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 	reloadBox.addChild(new Spacer(1));
 	reloadBox.addChild(
 		new ThemedText(
-			() => theme.fg("muted", "Reloading keybindings, extensions, skills, prompts, themes, and context files…"),
+			() => theme.fg("muted", "Reloading keybindings, features, skills, prompts, themes, and context files…"),
 			1,
 			0,
 		),
@@ -122,8 +121,6 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		host.applyRuntimeSettings();
 		host.themeController.applyFromSettings();
 		host.setupAutocompleteProvider();
-		const runner = host.session.extensionRunner;
-		host.setupExtensionShortcuts(runner);
 		host.showLoadedResources({
 			force: false,
 			showDiagnosticsWhenQuiet: true,
@@ -132,7 +129,7 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		if (modelsJsonError) {
 			host.showError(`models.json error: ${modelsJsonError}`);
 		}
-		host.showStatus("Reloaded keybindings, extensions, skills, prompts, themes, and context files");
+		host.showStatus("Reloaded keybindings, features, skills, prompts, themes, and context files");
 		dismissReloadBox(host.editor);
 		reloadBoxDismissed = true;
 	} catch (error) {
@@ -197,7 +194,7 @@ export async function handleImportCommand(host: SessionCommandsHost, text: strin
 		return;
 	}
 
-	const confirmed = await host.showExtensionConfirm("Import session", `Replace current session with ${inputPath}?`);
+	const confirmed = await host.showConfirmDialog("Import session", `Replace current session with ${inputPath}?`);
 	if (!confirmed) {
 		host.showStatus("Import cancelled");
 		return;
@@ -234,7 +231,7 @@ export async function handleImportCommand(host: SessionCommandsHost, text: strin
 }
 
 export async function handleShareCommand(host: SessionCommandsHost): Promise<void> {
-	const confirmed = await host.showExtensionConfirm(
+	const confirmed = await host.showConfirmDialog(
 		"Share session",
 		"Uploads this whole session (every branch, the system prompt and tool definitions) to a secret GitHub gist. It is unlisted, but anyone with the link can read it. Continue?",
 	);

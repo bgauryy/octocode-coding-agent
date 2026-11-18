@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxThinking, fauxToolCall } from "@octocodeai/oc
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 function normalizeEventOrder(events: Harness["events"]): string[] {
 	const normalized: string[] = [];
@@ -126,15 +127,15 @@ describe("AgentSession retry and event characterization", () => {
 	it("prompt waits for retry completion even when assistant message_end handling is delayed", async () => {
 		const harness = await createHarness({
 			settings: { retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 } },
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_end", async (event) => {
+					api.bus.on("message_end", async (event) => {
 						if (event.message.role === "assistant") {
 							await new Promise((resolve) => setTimeout(resolve, 40));
 						}
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([
@@ -230,16 +231,16 @@ describe("AgentSession retry and event characterization", () => {
 	it("emits extension events before public event subscribers", async () => {
 		const order: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("message_start", async (event) => {
+					api.bus.on("message_start", async (event) => {
 						order.push(`extension:${event.type}:${event.message.role}`);
 					});
-					api.on("message_end", async (event) => {
+					api.bus.on("message_end", async (event) => {
 						order.push(`extension:${event.type}:${event.message.role}`);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.session.subscribe((event) => {

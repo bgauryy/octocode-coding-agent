@@ -1,5 +1,5 @@
-import type { ExtensionContext, ToolCallEvent } from "../../core/features/index.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import type { FeatureContext, ToolCallEvent } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { shellPath } from "./file-access.ts";
 import { callRequest } from "./gate/classify.ts";
 import type { PermissionRequest } from "./request.ts";
@@ -43,7 +43,7 @@ async function protectedLanding(
  */
 export async function landingRequest(
 	event: ToolCallEvent,
-	ctx: Pick<ExtensionContext, "cwd">,
+	ctx: Pick<FeatureContext, "cwd">,
 	classified: PermissionRequest | undefined,
 	find: FindProtectedBranch,
 	granted: boolean,
@@ -55,8 +55,8 @@ export async function landingRequest(
 	const { branch, checkout } = found;
 	const target = `on ${branch} in the main checkout ${checkout}`;
 	const named = {
-		reason: renderInstruction("notices/landing/why.md", { branch, checkout }),
-		nextStep: renderInstruction("notices/landing/next-step.md"),
+		reason: renderPrompt("notices/landing/why.md", { branch, checkout }),
+		nextStep: renderPrompt("notices/landing/next-step.md"),
 	};
 	if (classified?.action === "shell.destructive")
 		return {

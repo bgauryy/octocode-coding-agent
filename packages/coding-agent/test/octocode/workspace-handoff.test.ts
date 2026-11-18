@@ -125,7 +125,7 @@ describe("backlog implementation handoff", () => {
 	it("rolls back the claim when agent message delivery fails", async () => {
 		const app = setup();
 		const item = add();
-		vi.spyOn(app.api, "sendUserMessage").mockImplementation(() => {
+		vi.spyOn(app.api.session, "sendUserMessage").mockImplementation(() => {
 			throw new Error("Session unavailable");
 		});
 		expect(

@@ -8,10 +8,10 @@ import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { newChildState, reduceEvent } from "../../src/octocode/subagents/events.ts";
 import { isWaitingLine } from "../../src/octocode/subagents/pending-waits.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
-import { CheckIn, checkInConfig } from "../../src/octocode/team/check-in.ts";
+import { CheckIn, checkInConfig } from "../../src/octocode/monitor/attention/check-in.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { ConditionDeps } from "../../src/octocode/timer/conditions/types.ts";
-import { timerTool } from "../../src/octocode/timer/tool.ts";
+import { timerTool } from "../../src/octocode/native/tools/wait/tool.ts";
 import { tmp } from "./helpers.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
@@ -42,15 +42,15 @@ describe("the check-in while the child waits on its own work", () => {
 		const owner = {};
 		const work = runningWorkOf(owner);
 		const notice = vi.fn((_text: string) => true);
-		const ping = new CheckIn({ notice });
+		const ping = new CheckIn({ notice, lastExchange: (me, parent) => store!.refs.lastExchange(me, parent) });
 		const start = Date.now();
 		ping.begin(start);
 		work.set(kind, [{ kind, id: "x", title: "waiting" }]);
-		const busy = checkInConfig({ checkInSeconds: 300 }, {}, owner);
-		ping.due(store, "c-1", "p-1", busy, start + 6 * MIN);
+		const busy = checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner);
+		ping.due("c-1", "p-1", busy, start + 6 * MIN);
 		expect(notice).not.toHaveBeenCalled();
 		work.set(kind, []);
-		ping.due(store, "c-1", "p-1", checkInConfig({ checkInSeconds: 300 }, {}, owner), start + 6 * MIN);
+		ping.due("c-1", "p-1", checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner), start + 6 * MIN);
 		expect(notice).toHaveBeenCalledTimes(1);
 	});
 
@@ -58,7 +58,7 @@ describe("the check-in while the child waits on its own work", () => {
 		const owner = {};
 		const work = runningWorkOf(owner);
 		work.set("external", [{ kind: "external", id: "e", title: "prompt" }]);
-		expect(checkInConfig({ checkInSeconds: 300 }, {}, owner).busy).toBe(false);
+		expect(checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner).busy).toBe(false);
 	});
 });
 
@@ -80,6 +80,9 @@ describe("an until timer on an agent that already ended", () => {
 			deps: { agentEnd, item } as ConditionDeps,
 			implicit: () => "",
 			checkRefusal: async () => undefined,
+			cronRefusal: async () => undefined,
+			cronCap: () => 2,
+			sessionUsd: () => 0,
 			changed: () => undefined,
 		});
 		const ctx = { cwd: root, sessionManager: { getSessionId: () => "s1" } } as never;

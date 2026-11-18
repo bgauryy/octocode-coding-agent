@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { AgentRuns, Run } from "./claim.ts";
@@ -23,9 +23,9 @@ interface IdentityParts {
 export function configureIdentity(
 	run: Run,
 	runs: Pick<AgentRuns, "items" | "team">,
-	api: Pick<ExtensionAPI, "events">,
+	api: Pick<FeatureSetup, "channels">,
 	permission: Permission,
-	ctx: Pick<ExtensionContext, "hasUI">,
+	ctx: Pick<FeatureContext, "hasUI">,
 	parts: IdentityParts,
 ): void {
 	const { resultContract, linked, skillPlan, skillResources, taskServers, grants } = parts;
@@ -41,7 +41,7 @@ export function configureIdentity(
 	run.identity.skillsInTask = skillPlan.inTask;
 	run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
 	// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
-	const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.events);
+	const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.channels);
 	if (recent) run.identity.mcpRecent = recent;
 	const inherited = taskServers?.servers ?? addedServers;
 	if (Object.keys(inherited).length > 0) run.identity.mcpServers = inherited;

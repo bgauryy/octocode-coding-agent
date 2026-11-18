@@ -39,6 +39,22 @@ const trackedPrototypes = new WeakSet<object>();
 const trackedByPrototype = new WeakMap<object, boolean>();
 const tracks = new WeakMap<Component, RenderTrack>();
 let serial = 0;
+/** While `recordUntrackedRenders` runs: untracked components parents asked about, by class name. */
+let untrackedRenders: Map<string, number> | undefined;
+
+/**
+ * Count, until the returned function is called, the components parents rendered whose `render` is not tracked, by class
+ * name. Each such component, and every row that holds it, renders again on every frame: a test that mounts a kind of row
+ * and records one quiet frame finds the parts that make it volatile. The function stops recording and returns the counts.
+ */
+export function recordUntrackedRenders(): () => Map<string, number> {
+	const counts = new Map<string, number>();
+	untrackedRenders = counts;
+	return () => {
+		if (untrackedRenders === counts) untrackedRenders = undefined;
+		return counts;
+	};
+}
 
 /**
  * Declare that components whose `render` is `prototype.render` change their rows only after a signal (see the module
@@ -160,7 +176,13 @@ export function settleRender(component: Component, stable: boolean): void {
  * it is tracked, and a composite settled that render without a volatile child.
  */
 export function isRenderStable(component: Component, since: number): boolean {
-	if (!isRenderTracked(component)) return false;
+	if (!isRenderTracked(component)) {
+		if (untrackedRenders) {
+			const name = (component as { constructor?: { name?: string } }).constructor?.name || "anonymous";
+			untrackedRenders.set(name, (untrackedRenders.get(name) ?? 0) + 1);
+		}
+		return false;
+	}
 	const track = tracks.get(component);
 	if (!track?.composite) return true;
 	return track.served > since && !track.volatile;

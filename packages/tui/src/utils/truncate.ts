@@ -125,6 +125,15 @@ function finalizeTruncatedResult(
 }
 
 /**
+ * `text` padded with spaces to `width` terminal columns (wide characters count 2, ANSI codes 0): on the right, or on
+ * the left with `align: "right"`. Text already as wide or wider comes back unchanged; cut it with `truncateToWidth`.
+ */
+export function padToWidth(text: string, width: number, align: "left" | "right" = "left"): string {
+	const padding = " ".repeat(Math.max(0, Math.floor(width) - visibleWidth(text)));
+	return align === "right" ? padding + text : text + padding;
+}
+
+/**
  * Truncate text to fit within a maximum visible width, adding ellipsis if needed.
  * Optionally pad with spaces to reach exactly maxWidth.
  * Properly handles ANSI escape codes (they don't count toward width).

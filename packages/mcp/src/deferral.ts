@@ -11,7 +11,7 @@
  * share of declaring sessions across all workspaces that called or loaded it, `common/src/usage-counts.ts`; no data
  * promotes nothing); `direct`; `deferred`; or `auto:<bytes>`, where servers stay direct, in name order, while the text
  * of the direct blocks fits within that many bytes and are deferred past it (`McpPresentation.describe`). For `recent`
- * and `usage` the set is fixed when the session starts (`McpExtensionState.recentTools`), a resumed session declares
+ * and `usage` the set is fixed when the session starts (`McpFeatureState.recentTools`), a resumed session declares
  * the set it saved (`recent-session.ts`) and a child the set of its coordinator. The `auto` budget is in bytes, not a
  * share of the context window, so switching models never re-decides it and rewrites the prefix.
  */

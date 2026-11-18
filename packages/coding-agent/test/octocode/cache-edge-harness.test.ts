@@ -15,7 +15,7 @@ import { getBuiltinModel, getBuiltinModels, getBuiltinProviders } from "@octocod
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureSetup, FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { getPromptCacheTtlMs } from "../../src/core/cache-warmer/economics.ts";
@@ -30,6 +30,8 @@ import { createCliRuntimeFactory } from "../../src/main/runtime-factory.ts";
 import { tmp } from "./helpers.ts";
 import { baseEnv, captureChild, fixture, withEnv, type AgentContext } from "./agent-context/capture.ts";
 import { instructionBlocks, toolsText } from "./agent-context/fingerprint.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Cache edge cases of the request a child sends (lane harness). Provider caches read the request from its start: the
@@ -182,6 +184,7 @@ describe("retention with no settings", () => {
 		const factory = createCliRuntimeFactory({
 			parsed: parseArgs(["-p", "--no-mcp", "--no-skills", "--no-prompt-templates", "--no-themes", "hi"]),
 			cwd,
+			nativeFeatures: nativeFeatureSet(),
 			folderTrust: () => ({ state: "trusted", root: cwd }),
 			requireTrust: false,
 			getAppMode: () => "print",
@@ -247,16 +250,16 @@ async function scripted(
 		ids = ["faux-1"],
 		extra,
 		sessionManager = SessionManager.inMemory(fx.cwd),
-	}: { ids?: string[]; extra?: (api: ExtensionAPI) => void; sessionManager?: SessionManager } = {},
+	}: { ids?: string[]; extra?: (api: FeatureSetup) => void; sessionManager?: SessionManager } = {},
 ) {
 	const faux = createFauxCore({
 		provider: "faux",
 		models: ids.map((id) => ({ id, contextWindow: 200_000, maxTokens: 4_096 })),
 	});
-	let api: ExtensionAPI | undefined;
-	const factory: ExtensionFactory = (registered) => {
+	let api: FeatureSetup | undefined;
+	const factory: FeatureRegister = (registered) => {
 		api = registered;
-		registered.registerProvider("faux", {
+		registered.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -271,7 +274,8 @@ async function scripted(
 		cwd: fx.cwd,
 		agentDir: fx.agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "scripted", factory }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "scripted", factory }]),
 		noPromptTemplates: true,
 		noThemes: true,
 	});
@@ -283,7 +287,7 @@ async function scripted(
 		settingsManager,
 		sessionManager,
 	});
-	await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	const contexts: TranscriptContext[] = [];
 	const prompt = async (text: string) => {
 		faux.setResponses([
@@ -326,11 +330,11 @@ describe("a tool redefined or removed mid-session", () => {
 
 	it("appends each change after the history and keeps every earlier request a byte-identical prefix", async () => {
 		await inFixture(async (fx) => {
-			const s = await scripted(fx, { extra: (api) => api.registerTool(docsTool("Search the docs server (v1).")) });
+			const s = await scripted(fx, { extra: (api) => api.tools.register(docsTool("Search the docs server (v1).")) });
 			try {
 				await s.prompt("first");
 				// The server reconnects with a changed description: same name, new definition.
-				s.api.registerTool(docsTool("Search the docs server (v2, with filters)."));
+				s.api.tools.register(docsTool("Search the docs server (v2, with filters)."));
 				await s.prompt("second");
 				// The server drops the tool.
 				s.session.setActiveToolsByName(s.session.getActiveToolNames().filter((name) => name !== "docs_search"));
@@ -343,7 +347,10 @@ describe("a tool redefined or removed mid-session", () => {
 				expect(serialized(s.contexts[0])).not.toContain("(v2");
 				expect(delta(s.contexts[0], s.contexts[1])).toContain("toolsAdded");
 				expect(delta(s.contexts[0], s.contexts[1])).toContain("(v2, with filters)");
-				expect(delta(s.contexts[1], s.contexts[2])).toContain("toolsRemoved");
+				// The scripted model's transport has no in-place tool changes: the removal is announced and held, so the tool
+				// list the provider read stays as sent until the next span.
+				expect(delta(s.contexts[1], s.contexts[2])).not.toContain("toolsRemoved");
+				expect(delta(s.contexts[1], s.contexts[2])).toContain("docs_search is turned off");
 			} finally {
 				s.session.dispose?.();
 			}

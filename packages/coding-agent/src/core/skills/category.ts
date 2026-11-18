@@ -3,7 +3,7 @@ import { getNativeSkillsDir, getOctocodeSkillsDir } from "../../config.ts";
 
 /**
  * Where a skill comes from, as agents and users see it:
- * - `core`: shipped inside Octocode itself (`native-skills/`), part of how the agent works;
+ * - `core`: shipped inside Octocode itself (`native/skills/`), part of how the agent works;
  * - `octocode`: the public Octocode skill collection of the installed research CLI (resource source `builtin`);
  * - `workspace`: the project's own skills (scope `project`: `.octocode/skills/`, `.agents/skills/`, `.claude/skills/`, ...);
  * - `global`: everything else (the user's folders, other tools' user folders, packages, settings, `--skill`).
@@ -27,7 +27,7 @@ export function skillCategory(skill: {
 }): SkillCategory {
 	const { core, octocode } = categoryRoots();
 	if (isUnderPath(skill.filePath, core)) return "core";
-	// Built-in extensions share the `builtin` source but have no file (`<builtin:id>`); a builtin file is a collection skill.
+	// Built-in features share the `builtin` source but have no file (`<builtin:id>`); a builtin file is a collection skill.
 	const collectionFile = skill.sourceInfo?.source === "builtin" && !skill.filePath.startsWith("<builtin:");
 	if (collectionFile || (octocode && isUnderPath(skill.filePath, octocode))) return "octocode";
 	return skill.sourceInfo?.scope === "project" ? "workspace" : "global";

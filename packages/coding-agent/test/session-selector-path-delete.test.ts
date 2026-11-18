@@ -212,8 +212,8 @@ describe("session selector path/delete interactions", () => {
 
 		expect(allLoadCalls).toBe(1);
 		const output = stripAnsi(selector.render(120).join("\n"));
-		expect(output).toContain("◉ This folder ○ All");
-		expect(output).not.toContain("○ This folder ◉ All");
+		expect(output).toContain("this folder · threaded");
+		expect(output).not.toContain("all folders");
 	});
 
 	it("does not start redundant All loads when toggling scopes while All is already loading", async () => {
@@ -244,7 +244,7 @@ describe("session selector path/delete interactions", () => {
 
 		expect(allLoadCalls).toBe(1);
 		expect(selector.getSessionList().getSelectedSessionPath()).toBe(allSessions[0].path);
-		expect(selector.render(120).join("\n")).toContain("Loading");
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("all folders · loading… · threaded");
 
 		allDeferred.resolve(allSessions);
 		await flushPromises();

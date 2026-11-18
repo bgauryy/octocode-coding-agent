@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { contentText } from "../../shared/util.ts";
 import { MAX_FRAME_BYTES } from "../protocol.ts";
 import { boundedText } from "./bounded.ts";
@@ -9,7 +9,7 @@ import { boundedText } from "./bounded.ts";
  * and the page says the size it used. Every message carries its `index`; `earlier.before` is the next page's `before` and is absent
  * on the first page of the transcript. A text over `RESULT_MAX_CHARS` is cut with its whole text saved to a file.
  */
-export function historyPage(ctx: ExtensionContext, lastAssistantText: string, limit: number, before?: number): unknown {
+export function historyPage(ctx: FeatureContext, lastAssistantText: string, limit: number, before?: number): unknown {
 	const all: Array<{ role: string; text: string }> = [];
 	for (const entry of ctx.sessionManager.getBranch()) {
 		const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;

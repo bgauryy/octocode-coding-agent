@@ -1,7 +1,7 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { requestMcpReload } from "../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../config.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 
@@ -25,7 +25,7 @@ const harnessToggles = (settings: Settings) =>
 		.sort(([a], [b]) => a.localeCompare(b));
 
 /** The saved `harness:` switches, global and project: what decides which vendors' MCP servers load. */
-function harnessSwitches(ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">): string {
+function harnessSwitches(ctx: Pick<FeatureContext, "cwd" | "isProjectTrusted">): string {
 	const manager = SettingsManager.create(ctx.cwd, getAgentDir(), { projectTrusted: ctx.isProjectTrusted() });
 	const [problem] = manager.drainErrors();
 	if (problem) throw new Error(`Cannot read ${problem.path}: ${problem.error.message}`);
@@ -33,12 +33,12 @@ function harnessSwitches(ctx: Pick<ExtensionContext, "cwd" | "isProjectTrusted">
 }
 
 /** Registers the child's check for a vendor switch; a top-level session has no use for it (its `/harness` reloads MCP itself). */
-export function registerHarnessSync(api: ExtensionAPI): void {
+export function registerHarnessSync(api: FeatureSetup): void {
 	let seen: string | undefined;
 	const report = (what: string, error: unknown): void => {
 		process.stderr.write(`Harness switches not applied to this subagent: ${what}: ${errorMessage(error)}\n`);
 	};
-	const remember = (ctx: ExtensionContext) => {
+	const remember = (ctx: FeatureContext) => {
 		try {
 			seen = harnessSwitches(ctx);
 		} catch (error) {
@@ -46,7 +46,7 @@ export function registerHarnessSync(api: ExtensionAPI): void {
 			report("the start settings", error);
 		}
 	};
-	const sync = async (ctx: ExtensionContext): Promise<void> => {
+	const sync = async (ctx: FeatureContext): Promise<void> => {
 		if (seen === undefined) return remember(ctx);
 		let now: string;
 		try {
@@ -58,21 +58,21 @@ export function registerHarnessSync(api: ExtensionAPI): void {
 		if (now === seen) return;
 		seen = now;
 		try {
-			await requestMcpReload(api.events);
+			await requestMcpReload(api.channels);
 		} catch (error) {
 			report("the MCP reload failed", error);
 		}
 	};
-	api.on("session_start", (_event, ctx) => {
+	api.bus.on("session_start", (_event, ctx) => {
 		remember(ctx);
 	});
 	// The MCP owner describes its servers in `before_agent_start` and `turn_prompt`, which run after these hooks have
 	// reloaded: `input` precedes a new prompt's first request, `turn_end` each later request of the run.
-	api.on("input", async (_event, ctx) => {
+	api.bus.on("input", async (_event, ctx) => {
 		await sync(ctx);
 		return { action: "continue" as const };
 	});
-	api.on("turn_end", async (_event, ctx) => {
+	api.bus.on("turn_end", async (_event, ctx) => {
 		await sync(ctx);
 		return undefined;
 	});

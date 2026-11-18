@@ -8,7 +8,7 @@ import { waitForServers } from "../src/connections.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { McpServerConnection } from "../src/runtime.ts";
 import type { McpServer } from "../src/server.ts";
-import type { McpExtensionState } from "../src/state.ts";
+import type { McpFeatureState } from "../src/state.ts";
 import { toParameters } from "../src/tools.ts";
 
 const never = () => new Promise<never>(() => {});
@@ -71,7 +71,7 @@ describe("reconnect while a connect is hanging", () => {
 describe("waitForServers", () => {
 	const server = (name: string, ready: Promise<void> | undefined) =>
 		({ entry: { name, source: "test", config: { command: "unused" } }, ready }) as McpServer;
-	const stateOf = (servers: McpServer[]) => ({ servers }) as unknown as McpExtensionState;
+	const stateOf = (servers: McpServer[]) => ({ servers }) as unknown as McpFeatureState;
 
 	it("stops when aborted and reports the servers still pending", async () => {
 		const slow = server("slow", never());

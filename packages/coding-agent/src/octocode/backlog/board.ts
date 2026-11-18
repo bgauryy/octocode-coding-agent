@@ -1,8 +1,8 @@
-import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { truncateToWidth, type TuiMouseEvent, visibleWidth } from "@octocodeai/octocode-tui";
 import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { ruleLine } from "../../theme/dynamic-border.ts";
 import { onSecond } from "../shared/clock.ts";
 import { headerLine, helpLine } from "./board-chrome.ts";
@@ -44,14 +44,16 @@ const TASK_FLOW: readonly TaskState[] = ["todo", "ongoing", "done"];
 
 /**
  * The board: epics, then a section per state (backlog, todo, ongoing, done, top to bottom) with counts and open-task counts,
- * then this session's tasks. ↑↓ select an epic, an item or a task (the selected item shows its tasks, the selected epic its
- * items), ←→ move the selected item or task to the neighbouring state, Enter item or task actions, `a` add, `d` do it now,
- * `e` export, `h` open as HTML, Esc close. Rows are columns that fit the width (`board-rows.ts`). Everything is read when
+ * then this session's tasks. ↑↓ select an epic, an item or a task, stopping at the ends (the selected item shows its tasks,
+ * the selected epic its items), ←→ move the selected item or task to the neighbouring state, Enter item or task actions,
+ * `a` add, `d` do it now, `e` export, `h` open as HTML, Esc (or `q`) close. The wheel moves one row, a press selects the
+ * row under the pointer and a click on the selected row opens it as Enter does. Rows are columns that fit the width
+ * (`board-rows.ts`). Everything is read when
  * the board opens and after a change, never per frame; while it is open a once-a-second check of the database revision
  * re-reads it when another process wrote (the check stops when the board closes or is disposed).
  */
 export function showBoard(
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	source: BoardSource,
 	selectRef?: string,
 ): Promise<BoardChoice | undefined> {
@@ -89,8 +91,11 @@ export function showBoard(
 		};
 		const step = (by: number) => {
 			const { rows } = layout;
-			if (rows.length > 0) select(rows[(Math.max(0, at()) + by + rows.length) % rows.length]?.key);
+			if (rows.length > 0) select(rows[Math.min(rows.length - 1, Math.max(0, Math.max(0, at()) + by))]?.key);
 		};
+		/** The row key drawn on each line of the last frame, for the mouse. */
+		let lineKeys: (string | undefined)[] = [];
+		let press: { key: string; wasSelected: boolean } | undefined;
 
 		// Another session, subagent or process may write while the board is open: compare the revision and re-read on a change.
 		let stopWatching: (() => void) | undefined = source.revision
@@ -167,6 +172,32 @@ export function showBoard(
 			refresh();
 		}
 
+		function handleMouse(event: TuiMouseEvent): { handled: true; focus?: true } | undefined {
+			if (event.type === "wheel" && event.wheelDelta) {
+				flash = undefined;
+				step(event.wheelDelta < 0 ? -1 : 1);
+				refresh();
+				return { handled: true };
+			}
+			if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
+			const key = lineKeys[event.y];
+			if (event.type === "press") {
+				if (!key) return undefined;
+				press = { key, wasSelected: key === selected };
+				flash = undefined;
+				select(key);
+				refresh();
+				return { handled: true, focus: true };
+			}
+			// Selecting an epic or item opens its rows beneath it, so the click acts on the row pressed, not the line under it now.
+			const pressed = press ?? (key ? { key, wasSelected: key === selected } : undefined);
+			press = undefined;
+			if (!pressed) return undefined;
+			const row = layout.rows.find((candidate) => candidate.key === pressed.key);
+			if (row && pressed.wasSelected) finish({ action: row.kind === "task" ? "task" : "open", ref: row.key });
+			return { handled: true };
+		}
+
 		function render(width: number): string[] {
 			const height = tui.terminal?.rows ?? 40;
 			if (cache && cacheWidth === width && cacheHeight === height) return cache;
@@ -184,8 +215,11 @@ export function showBoard(
 			const cursor = theme.bold(theme.fg("accent", ` ${CURSOR} `));
 			const glyph = (state: State | undefined) => (state ? `${theme.fg(STATE_COLOR[state], STATE_GLYPH[state])} ` : "");
 			const listed: string[] = [];
+			const keys: (string | undefined)[] = [];
 			let selectedLine = 0;
 			for (const entry of layout.entries) {
+				keys.length = listed.length;
+				if (entry.kind === "row") keys.push(entry.row.key);
 				if (entry.kind === "heading") {
 					listed.push("");
 					const note = entry.note ? theme.fg("dim", ` · ${entry.note}`) : "";
@@ -210,6 +244,7 @@ export function showBoard(
 			const start =
 				listed.length <= room ? 0 : Math.min(Math.max(0, selectedLine - Math.floor(room / 2)), listed.length - room);
 			for (const line of listed.slice(start, start + room)) push(line);
+			lineKeys = [undefined, undefined, ...keys.slice(start, start + room)];
 			lines.push("");
 			if (flash) push(` ${theme.fg("warning", sanitizeTerminalText(flash))}`);
 			push(helpLine(keybindings, theme, w));
@@ -223,6 +258,7 @@ export function showBoard(
 		return {
 			render,
 			handleInput,
+			handleMouse,
 			dispose: stop,
 			invalidate: () => {
 				cache = undefined;

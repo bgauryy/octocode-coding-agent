@@ -3,11 +3,13 @@
  * mail. Both name sender → recipient, the kind and the message number; the body previews collapsed and shows whole expanded.
  */
 import { describe, expect, it } from "vitest";
-import { agentModes } from "../../src/octocode/agent-tool.ts";
+import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { ENTITY } from "../../src/octocode/shared/entity.ts";
 import { registerMessageRenderer, registerSendMessageTool } from "../../src/octocode/team/tools/messages.ts";
 import type { Team } from "../../src/octocode/team/session.ts";
+import type { Endpoint } from "@octocodeai/octocode-contracts/team";
+import { mailRows } from "../../src/octocode/team/tools/message-rows.ts";
 import { rendered, theme } from "./fake-host.ts";
 
 type Any = any;
@@ -17,8 +19,8 @@ function setup() {
 	const tools = new Map<string, Any>();
 	const renderers = new Map<string, Any>();
 	const api = {
-		registerTool: (tool: Any) => tools.set(tool.name, tool),
-		registerMessageRenderer: (type: string, render: Any) => renderers.set(type, render),
+		tools: { register: (tool: Any) => tools.set(tool.name, tool) },
+		renderers: { message: (type: string, render: Any) => renderers.set(type, render) },
 	} as Any;
 	registerSendMessageTool(api, {} as Team, modes.collect);
 	modes.register(api);
@@ -85,18 +87,42 @@ describe("delivered agent mail rows", () => {
 			mail({ details: { messages: [{ at, text: BODY, replyRequired: false, ...entry }] } }, { expanded }, theme),
 		);
 
-	it("names the sender with its entity mark, the recipient, number and kind", () => {
-		expect(row({ id: 51, from: "ink", sender: { role: "implementer" } }, false).split("\n")[0]).toMatch(
-			new RegExp(`^ ✉ ${ENTITY.subagent} ink → you · #51 · FYI · \\d\\d:\\d\\d:\\d\\d$`),
+	it("names the sender with its entity mark and role, the real recipient, number and kind", () => {
+		expect(row({ id: 51, from: "ink", sender: { role: "implementer" }, to: "kraken" }, false).split("\n")[0]).toMatch(
+			new RegExp(`^ ✉ ${ENTITY.subagent} ink\\(implementer\\) → kraken · #51 · FYI · \\d\\d:\\d\\d:\\d\\d$`),
 		);
-		expect(row({ id: 52, from: "kraken", sender: { role: "main" }, replyRequired: true }, false)).toContain(
-			`✉ ${ENTITY.main} kraken → you · #52 · request ·`,
+		expect(row({ id: 52, from: "kraken", sender: { role: "main" }, to: "ink", replyRequired: true }, false)).toContain(
+			`✉ ${ENTITY.main} kraken(main) → ink · #52 · request ·`,
 		);
-		expect(row({ id: 53, from: "kelp", replyTo: 43 }, false)).toContain("✉ kelp → you · #53 · reply to #43 ·");
-		expect(row({ id: 54, from: "kraken", interrupt: true }, false)).toContain("· #54 · interrupt ·");
-		const forwarded = row({ id: 17, from: "dolphin", forwardedBy: "kraken", note: "please handle" }, true);
-		expect(forwarded).toContain("✉ dolphin → you · #17 · FYI · forwarded by kraken ·");
+		expect(row({ id: 53, from: "kelp", to: "ink", replyTo: 43 }, false)).toContain(
+			"✉ kelp → ink · #53 · reply to #43 ·",
+		);
+		expect(row({ id: 54, from: "kraken", to: "ink", interrupt: true }, false)).toContain("· #54 · interrupt ·");
+		const forwarded = row({ id: 17, from: "dolphin", to: "ink", forwardedBy: "kraken", note: "please handle" }, true);
+		expect(forwarded).toContain("✉ dolphin → ink · #17 · FYI · forwarded by kraken ·");
 		expect(forwarded).toContain("kraken: please handle");
+	});
+
+	it("falls back to the sender alone when the entry names no recipient, and never says `you`", () => {
+		const line = row({ id: 51, from: "ink", sender: { role: "implementer" } }, false).split("\n")[0];
+		expect(line).toMatch(/^ ✉ \S+ ink\(implementer\) · #51 · FYI · /);
+		expect(line).not.toContain("→");
+		expect(row({ id: 51, from: "ink", to: "kraken" }, false)).not.toContain("you");
+	});
+
+	it("names each end with its role, worktree and tmux marks when the endpoints resolve", () => {
+		const ends: Record<string, Endpoint> = {
+			ink: { id: "ink", role: "implementer", worktree: "worktree fix", branch: "fix/x", tmuxPane: "%4" },
+			kraken: { id: "kraken", role: "main", worktree: "main", departed: true },
+		};
+		const message = { details: { messages: [{ at, id: 7, from: "ink", to: "kraken", text: "hi" }] } };
+		const header = rendered(mailRows(message, { expanded: false, endpoints: (id) => ends[id] ?? { id } }, theme)).split(
+			"\n",
+		)[0];
+		expect(header).toMatch(
+			/ink\(implementer\) \[worktree fix, fix\/x, tmux [^\]]+\] → kraken\(main, left\) \[main\] · #7 · FYI · /,
+		);
+		expect(header).not.toContain("→ you");
 	});
 
 	it("previews the body collapsed and shows it whole expanded", () => {

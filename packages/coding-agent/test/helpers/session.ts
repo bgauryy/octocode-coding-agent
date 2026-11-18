@@ -12,6 +12,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import type { ResourceLoader } from "../../src/core/resource-loader/types.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
+import { nativeFeatureSet } from "./native-features.ts";
 
 export interface CreateTestSessionOptions extends Omit<
 	CreateSessionFromServicesOptions,
@@ -59,7 +60,7 @@ export async function createTestSession(options: CreateTestSessionOptions = {}):
 	const sessionManager = sessionManagerOption ?? SessionManager.create(cwd);
 	let resourceLoader = resourceLoaderOption;
 	if (!resourceLoader) {
-		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, nativeFeatures: nativeFeatureSet() });
 		await resourceLoader.reload();
 	}
 

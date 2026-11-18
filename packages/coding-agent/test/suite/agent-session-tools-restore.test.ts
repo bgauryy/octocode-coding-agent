@@ -2,9 +2,10 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { nativeHost } from "../../src/octocode/shared/host-api.ts";
-import type { ExtensionAPI } from "../../src/core/features/types.ts";
+import type { FeatureSetup } from "../../src/core/features/types.ts";
 import type { SessionManager } from "../../src/core/session-manager.ts";
 import { createHarness, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 /** Resume and `--tools`: tools activated by name come back when the allowlist and tool policy permit them. */
 describe("AgentSession restore of loaded tools with an explicit --tools allowlist", () => {
@@ -14,9 +15,9 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 	});
 
 	/** Tools that registration does not activate: only naming them does. */
-	const registerOptIn = (api: ExtensionAPI, names: readonly string[]) => {
+	const registerOptIn = (api: FeatureSetup, names: readonly string[]) => {
 		for (const name of names) {
-			api.registerTool({
+			api.tools.register({
 				name,
 				label: name,
 				description: `Opt-in tool ${name}.`,
@@ -26,14 +27,14 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 			});
 		}
 	};
-	const optInTools = (api: ExtensionAPI) => registerOptIn(api, ["gem_one", "gem_two"]);
+	const optInTools = (api: FeatureSetup) => registerOptIn(api, ["gem_one", "gem_two"]);
 
 	async function start(options: {
 		allowedToolNames?: string[];
 		initialActiveToolNames?: string[];
 		sessionManager?: SessionManager;
 	}) {
-		const harness = await createHarness({ ...options, extensionFactories: [optInTools] });
+		const harness = await createHarness({ ...options, features: testFeatures([optInTools]) });
 		harnesses.push(harness);
 		return harness;
 	}
@@ -74,14 +75,14 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 
 	it("resumes a transcript that recorded tool_search without declaring it", async () => {
 		const first = await createHarness({
-			extensionFactories: [(api) => registerOptIn(api, ["gem_one", "tool_search"])],
+			features: testFeatures([(api) => registerOptIn(api, ["gem_one", "tool_search"])]),
 		});
 		harnesses.push(first);
 		first.session.setActiveToolsByName(["gem_one", "tool_search"]);
 		first.setResponses([fauxAssistantMessage("loaded")]);
 		await first.session.prompt("go");
 		const second = await createHarness({
-			extensionFactories: [optInTools],
+			features: testFeatures([optInTools]),
 			sessionManager: first.sessionManager,
 		});
 		harnesses.push(second);
@@ -97,12 +98,12 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 		expect(second.session.getActiveToolNames()).toEqual([]);
 	});
 
-	// The tool policy is set after construction (an extension calls `api.setToolPolicy` once the session is bound), so
+	// The tool policy is set after construction (an extension calls `api.tools.setPolicy` once the session is bound), so
 	// these tests check the loadout after the policy is applied to the resumed session.
 	describe("after setToolPolicy is applied to a resumed session", () => {
 		async function resume(allowedToolNames: string[], allows: ((name: string) => boolean) | undefined) {
 			const first = await loadBoth();
-			let api: ExtensionAPI | undefined;
+			let api: FeatureSetup | undefined;
 			const second = await createHarness({
 				allowedToolNames,
 				initialActiveToolNames: [],
@@ -117,7 +118,7 @@ describe("AgentSession restore of loaded tools with an explicit --tools allowlis
 			});
 			harnesses.push(second);
 			const restored = second.session.getActiveToolNames();
-			if (allows) nativeHost(api!).setToolPolicy?.(allows);
+			if (allows) nativeHost(api!).tools.setPolicy?.(allows);
 			return { second, restored };
 		}
 

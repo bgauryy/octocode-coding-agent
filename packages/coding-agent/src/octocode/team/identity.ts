@@ -1,4 +1,5 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
+import { ADJECTIVES, CREATURES } from "./names.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText, storedText } from "@octocodeai/octocode-common/sanitize";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -7,96 +8,36 @@ import { AGENT_GOAL_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "./store/env.ts";
 /** Who an agent is on the team: its name (the id), its goal, and the row it joins with. */
 
 /**
- * Every agent's name comes from here: `adjective-creature` (`inky-kraken`), drawn from a closed list so names stay
- * short, friendly and easy to type. The name is the team id: it is the `sendMessage` address, the worktree ref
- * (`refs/octocode/<name>`) and the scratch folder, so it holds only lowercase letters, hyphens and digits.
+ * Every agent's name comes from `adjective-creature` (`inky-kraken`, words in `names.ts`). The name is the team id: the
+ * `sendMessage` address, the worktree ref (`refs/octocode/<name>`) and the scratch folder, so it holds only lowercase
+ * letters, hyphens and digits.
  */
-export const ADJECTIVES: readonly string[] = [
-	"inky",
-	"deep",
-	"swift",
-	"curious",
-	"salty",
-	"sly",
-	"glowing",
-	"tidal",
-	"misty",
-	"briny",
-	"nimble",
-	"plucky",
-	"jolly",
-	"wily",
-	"sneaky",
-	"bubbly",
-	"dapper",
-	"mellow",
-	"cosmic",
-	"cheeky",
-	"zesty",
-	"snappy",
-	"wobbly",
-	"bouncy",
-	"sleepy",
-	"spry",
-	"nifty",
-	"sparkly",
-	"shy",
-	"bold",
-	"calm",
-	"merry",
-];
+export { ADJECTIVES, CREATURES };
 
-export const CREATURES: readonly string[] = [
-	"kraken",
-	"squid",
-	"tentacle",
-	"nautilus",
-	"cuttlefish",
-	"siphon",
-	"reef",
-	"abyss",
-	"octopus",
-	"ink",
-	"coral",
-	"clam",
-	"shell",
-	"barnacle",
-	"urchin",
-	"seahorse",
-	"anemone",
-	"lagoon",
-	"tide",
-	"kelp",
-	"pearl",
-	"mantle",
-	"beak",
-	"jelly",
-	"crab",
-	"starfish",
-	"dolphin",
-	"otter",
-	"turtle",
-	"whale",
-	"eel",
-	"prawn",
-];
-
-/** Longest base name (`adjective-creature`); a numeric suffix added when the list runs out comes on top. */
+/** Longest base name (`adjective-creature`) in the main pool; a numeric suffix added as a last resort comes on top. */
 export const MAX_NAME_CHARS = 16;
 
-/** Every permutation that fits in `MAX_NAME_CHARS`. */
+/** Every combination that fits in `MAX_NAME_CHARS`. */
 export const AGENT_NAMES: readonly string[] = ADJECTIVES.flatMap((adjective) =>
 	CREATURES.map((creature) => `${adjective}-${creature}`),
 ).filter((name) => name.length <= MAX_NAME_CHARS);
 
+/** Combinations too long for the main pool: used only once every `AGENT_NAMES` entry is taken. */
+const LONG_NAMES: readonly string[] = ADJECTIVES.flatMap((adjective) =>
+	CREATURES.map((creature) => `${adjective}-${creature}`),
+).filter((name) => name.length > MAX_NAME_CHARS);
+
 /**
- * A name nobody in `taken` holds, chosen with `random` (0 ≤ r < 1). When every name is taken, a random one gets the
+ * A name nobody in `taken` holds, chosen with `random` (0 ≤ r < 1). Names that fit `MAX_NAME_CHARS` come first, then the
+ * longer combinations (a different first or last word); only when every combination is taken does a random one get the
  * smallest free numeric suffix (`inky-kraken-2`).
  */
 export function agentName(taken: Iterable<string> = [], random: () => number = Math.random): string {
 	const used = new Set(taken);
-	const free = AGENT_NAMES.filter((name) => !used.has(name));
-	if (free.length > 0) return free[Math.floor(random() * free.length)];
+	for (const pool of [AGENT_NAMES, LONG_NAMES]) {
+		const free = pool.filter((name) => !used.has(name));
+		if (free.length > 0) return free[Math.floor(random() * free.length)];
+	}
 	const base = AGENT_NAMES[Math.floor(random() * AGENT_NAMES.length)];
 	let suffix = 2;
 	while (used.has(`${base}-${suffix}`)) suffix += 1;
@@ -105,7 +46,8 @@ export function agentName(taken: Iterable<string> = [], random: () => number = M
 
 /**
  * An agent's goal: what it works on, read at a glance in the panel, `coordinate list` and message headers. It is a label,
- * not content: any length is accepted, and the panel shows its first `GOAL_SHOWN_CHARS` characters.
+ * not content: any length is accepted. `GOAL_SHOWN_CHARS` is the length a goal should aim for, so it reads whole in a
+ * narrow panel; a wider terminal shows more of a longer one.
  */
 export const GOAL_SHOWN_CHARS = 48;
 const GOAL_EXAMPLE = "audit auth token refresh";
@@ -172,7 +114,7 @@ export function heldChildMember(
  */
 export function newMember(
 	env: NodeJS.ProcessEnv,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	id: string,
 	goal: string | undefined,
 	now: number,

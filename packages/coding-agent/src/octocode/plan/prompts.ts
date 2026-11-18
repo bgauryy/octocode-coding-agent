@@ -1,12 +1,12 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { PlanState } from "../../core/plan-state.ts";
 
-/** The `planning` section while planning is active (`octocode/instructions/workflows/planning.md`). */
-export const PLANNING_INSTRUCTIONS = renderInstruction("workflows/planning.md");
+/** The `planning` section while planning is active (`octocode/native/prompts/workflows/planning.md`). */
+export const PLANNING_INSTRUCTIONS = renderPrompt("workflows/planning.md");
 
 /** Include the approved content: its original assistant message may have been compacted away. */
 export function approvedPlanPrompt(plan: PlanState): string {
-	return renderInstruction("workflows/plan-approved.md", {
+	return renderPrompt("workflows/plan-approved.md", {
 		revision: plan.revision,
 		record: JSON.stringify({ revision: plan.revision, plan: plan.text }),
 	});
@@ -20,5 +20,5 @@ const PLAN_REMINDER_CHARS = 8_000;
 export function planReminder(plan: PlanState): string {
 	const text =
 		plan.text.length > PLAN_REMINDER_CHARS ? `${plan.text.slice(0, PLAN_REMINDER_CHARS)}\n[…clipped]` : plan.text;
-	return renderInstruction("workflows/plan-reminder.md", { revision: plan.revision, text });
+	return renderPrompt("workflows/plan-reminder.md", { revision: plan.revision, text });
 }

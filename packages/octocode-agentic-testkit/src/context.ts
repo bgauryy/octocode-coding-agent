@@ -1,4 +1,4 @@
-import { canonicalize, hashOf, textOf, type CapturedRequest, type Trace } from "./trace.ts";
+import { cacheForm, canonicalize, hashOf, textOf, type CapturedRequest, type Trace } from "./trace.ts";
 
 export interface PrefixBreak {
 	agent: string;
@@ -34,7 +34,9 @@ export function prefixBreaks(
 				breaks.push({ agent, request: cur.index, messageIndex: 0, reason: "tools-changed" });
 				continue;
 			}
-			const at = prev.messages.findIndex((m, k) => canon(m) !== canon(cur.messages[k]));
+			const at = prev.messages.findIndex(
+				(m, k) => cur.messages[k] === undefined || canon(cacheForm(m)) !== canon(cacheForm(cur.messages[k])),
+			);
 			if (at !== -1) breaks.push({ agent, request: cur.index, messageIndex: at, reason: "message-rewritten" });
 		}
 	}
@@ -78,6 +80,49 @@ export function duplicateBlocks(trace: Trace, minChars = 200): DuplicateBlock[] 
 /** Per-request size in UTF-8 bytes of the canonical request (bytes, not tokens). */
 export function growth(trace: Trace, agent?: string): number[] {
 	return trace.requests.filter((r) => agent === undefined || r.agent === agent).map((r) => r.bytes);
+}
+
+export interface CacheBreak {
+	agent: string;
+	request: number;
+	promptTokens: number;
+	estimated: boolean;
+}
+
+export interface CacheBreakOptions {
+	/** Prompts below this size are not cached by providers, so a cold read there is no break. Default 1024. */
+	minPromptTokens?: number;
+	/** Each compaction of an agent excuses one cold read of that agent (the earliest unexcused one). Default true. */
+	allowAfterCompaction?: boolean;
+	agent?: string;
+}
+
+/**
+ * Cold reads after warm-up, from the usage each request reports: per agent, every request after its first whose prompt
+ * reaches `minPromptTokens` and reads no cached token. Requests and harness events carry no shared order, so as in
+ * `prefixBreaks` a compaction is tied to its agent, not to a request: N compactions excuse that agent's first N breaks.
+ */
+export function cacheBreaks(trace: Trace, opts: CacheBreakOptions = {}): CacheBreak[] {
+	const min = opts.minPromptTokens ?? 1024;
+	const excused = new Map<string, number>();
+	if (opts.allowAfterCompaction !== false)
+		for (const e of trace.of("compaction")) excused.set(e.agent, (excused.get(e.agent) ?? 0) + 1);
+	const seen = new Set<string>();
+	const breaks: CacheBreak[] = [];
+	for (const r of trace.requests) {
+		if (opts.agent !== undefined && r.agent !== opts.agent) continue;
+		const first = !seen.has(r.agent);
+		seen.add(r.agent);
+		const u = r.usage;
+		if (first || !u || u.promptTokens < min || u.cachedTokens > 0) continue;
+		const left = excused.get(r.agent) ?? 0;
+		if (left > 0) {
+			excused.set(r.agent, left - 1);
+			continue;
+		}
+		breaks.push({ agent: r.agent, request: r.index, promptTokens: u.promptTokens, estimated: u.estimated });
+	}
+	return breaks;
 }
 
 /** Share of prompt tokens the (simulated or real) provider reported as cache reads. */

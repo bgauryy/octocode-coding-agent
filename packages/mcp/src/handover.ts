@@ -13,11 +13,11 @@ import { isDeepStrictEqual } from "node:util";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled, type McpServer } from "./server.ts";
-import type { McpExtensionOptions, McpExtensionState } from "./state.ts";
+import type { McpFeatureOptions, McpFeatureState } from "./state.ts";
 
 /** The session a connection reports to. A handed connection is rebound to the session that takes it. */
 export interface ConnectionOwner {
-	state: McpExtensionState;
+	state: McpFeatureState;
 	isCurrent: () => boolean;
 }
 
@@ -34,7 +34,7 @@ export interface HandedConnection {
 	cwd: string;
 	trusted: boolean;
 	launched: McpServerEntry;
-	options: McpExtensionOptions;
+	options: McpFeatureOptions;
 }
 
 const handed = new Map<string, HandedConnection>();
@@ -43,7 +43,7 @@ const handed = new Map<string, HandedConnection>();
 const SWITCHES: ReadonlySet<unknown> = new Set(["new", "resume", "fork"]);
 
 /** Whether the next session could take `server`'s connection: connected, idle, chosen, and launched by this session. */
-function handable(state: McpExtensionState, server: McpServer): HandedConnection | undefined {
+function handable(state: McpFeatureState, server: McpServer): HandedConnection | undefined {
 	const connection = server.connection;
 	const launched = connection && state.preparedLaunches.get(connection);
 	if (!connection || !launched || !isEnabled(server) || server.unselected) return undefined;
@@ -71,7 +71,7 @@ export function closeHanded(): Promise<void>[] {
  * At `session_shutdown`: hold the connections the next session may take when the session is being replaced, and
  * return the ones to close now. Connections an earlier session held and nobody took close too.
  */
-export function handOver(state: McpExtensionState, reason: unknown): { closing: Promise<void>[] } {
+export function handOver(state: McpFeatureState, reason: unknown): { closing: Promise<void>[] } {
 	const closing = closeHanded();
 	const keep = SWITCHES.has(reason);
 	for (const server of state.servers) {
@@ -108,12 +108,12 @@ export function takeHanded(starting: readonly McpServer[]): {
 }
 
 /** The host options that build a connection, which must be the very same for a connection to change sessions. */
-function sameHost(a: McpExtensionOptions, b: McpExtensionOptions): boolean {
+function sameHost(a: McpFeatureOptions, b: McpFeatureOptions): boolean {
 	return a.credentials === b.credentials && a.createTransport === b.createTransport && a.logPath === b.logPath;
 }
 
 /** Whether `held` is the connection `server` would launch now in `state`; a launch that cannot be prepared does not match. */
-function matches(state: McpExtensionState, server: McpServer, held: HandedConnection): boolean {
+function matches(state: McpFeatureState, server: McpServer, held: HandedConnection): boolean {
 	const { connection } = held;
 	if (connection.state !== "connected" || connection.isStopped || !connection.idle) return false;
 	if (held.cwd !== state.sessionCwd || held.trusted !== state.projectTrusted) return false;
@@ -130,7 +130,7 @@ function matches(state: McpExtensionState, server: McpServer, held: HandedConnec
  * adopted connection, or undefined when the caller must close `held` and launch afresh.
  */
 export function adoptHanded(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: McpServer,
 	held: HandedConnection,
 	isCurrent: () => boolean,

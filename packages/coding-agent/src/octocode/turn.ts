@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
 import type { Skill } from "../core/skills.ts";
 import {
 	currentEnvironment,
@@ -8,11 +8,17 @@ import {
 } from "../core/system-prompt.ts";
 import { terminalHostFacts } from "@octocodeai/octocode-common/terminal-host";
 import { FILE_TOOL } from "../core/tools/tool-names.ts";
-import { leanPromptSections } from "./instructions/lean.ts";
-import { octocodePromptSections, type ResearchContext } from "./instructions/policy.ts";
-import { readRolePrompt } from "./instructions/role.ts";
+import { leanPromptSections } from "./native/prompts/lean.ts";
+import { octocodePromptSections, type ResearchContext } from "./native/prompts/policy.ts";
+import { readRolePrompt } from "./native/prompts/role.ts";
 import { getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
-import { envFlag, LEAN_ENV, READ_ONLY_ENV, SKILLS_IN_TASK_ENV } from "@octocodeai/octocode-common/env";
+import {
+	envFlag,
+	LEAN_ENV,
+	READ_ONLY_ENV,
+	SKILL_CATALOG_ENV,
+	SKILLS_IN_TASK_ENV,
+} from "@octocodeai/octocode-common/env";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
@@ -27,13 +33,13 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
  * Where this session's replies go, for the `environment` section. Read at every prompt: `/settings` can turn Mermaid
  * off mid-session, and the volatile section absorbs the change without touching the cached policy.
  */
-function environmentSurface(api: ExtensionAPI, ctx: ExtensionContext, isSubagent: boolean): EnvironmentSurface {
+function environmentSurface(api: FeatureSetup, ctx: FeatureContext, isSubagent: boolean): EnvironmentSurface {
 	const surface: SessionSurface | undefined = isSubagent ? "subagent" : ctx.mode;
 	// Only a terminal this process draws in has a host worth naming; an RPC client's terminal is not this one.
 	const host = surface === "tui" || surface === "print" ? terminalHostFacts(process.env).join(", ") : "";
 	// Only the terminal UI draws Mermaid (`modes/interactive/components/mermaid.ts`); `final` still draws it once done.
 	const mermaid =
-		surface === "tui" && typeof api.getSettings === "function" && api.getSettings().markdown?.mermaid !== "off";
+		surface === "tui" && typeof api.settings.get === "function" && api.settings.get().markdown?.mermaid !== "off";
 	return {
 		surface,
 		host: host || undefined,
@@ -43,7 +49,7 @@ function environmentSurface(api: ExtensionAPI, ctx: ExtensionContext, isSubagent
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
 export function registerTurnSetup(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
@@ -63,16 +69,17 @@ export function registerTurnSetup(
 	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
 	// Skills the parent chose ride in the task (`subagents/task-skills.ts`), so the cached prompt does not depend on them.
 	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
+	const skillCatalog = options.isSubagent ? process.env[SKILL_CATALOG_ENV]?.split(",").filter(Boolean) : undefined;
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 	// Only the coordinator routes tasks: its prompt states the routes once per session, later changes arrive as a notice.
 	const routing = new RoutingWatch();
 	const coordinates = (selected: readonly string[]) => !options.isSubagent && selected.includes("agent");
 
-	api.on("before_agent_start", async (event, ctx) => {
+	api.bus.on("before_agent_start", async (event, ctx) => {
 		// Read each turn: the prompt changes only when a person attaches or leaves, not on its own.
 		const hasUI = ctx.hasUI;
-		const selected = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
-		const servers = getMcpSessionStatus(api.events);
+		const selected = event.systemPromptOptions.selectedTools ?? api.tools.getActive();
+		const servers = getMcpSessionStatus(api.channels);
 		const roles = currentToolRoles().research;
 		const server = roles && servers.find((server) => server.name === roles.server);
 		// The built-in browser server selected for this agent, declared or still connecting, means this agent can browse
@@ -135,7 +142,7 @@ export function registerTurnSetup(
 			canBacklog: selected.includes("backlog") && selected.includes("backlogPlan"),
 			// What the selection allows, never what has connected: a server coming up must not change these bytes.
 			canReadLocal:
-				research !== undefined && (typeof api.selectsTools !== "function" || api.selectsTools(research.reader, true)),
+				research !== undefined && (typeof api.tools.selects !== "function" || api.tools.selects(research.reader, true)),
 			canAsk: selected.includes("askUser") && hasUI,
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
@@ -183,18 +190,19 @@ export function registerTurnSetup(
 			event.systemPromptOptions.sections.docs = "";
 			event.systemPromptOptions.sections.harnesses = "";
 			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
+			if (skillCatalog?.length && !skillsInTask) event.systemPromptOptions.skillCatalog = skillCatalog;
 		}
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});
 
 	// The call is seen before it runs, so the rules are in the request that reads its result: a foreground child's report
 	// arrives as that result. A refused call counts too; the section is then early, never missing.
-	api.on("tool_call", (event) => {
+	api.bus.on("tool_call", (event) => {
 		if (!options.isSubagent && event.toolName === "agent" && waitsOnAnAgent(event.input)) delegated = true;
 	});
 
 	// The next request of the same run: before_agent_start runs only when a run starts, and the first child starts inside one.
-	api.on("turn_prompt", (event) => {
+	api.bus.on("turn_prompt", (event) => {
 		if (!delegated || policyInputs === undefined || policyInputs.childStarted) return;
 		policyInputs = { ...policyInputs, childStarted: true };
 		promptKey = JSON.stringify(policyInputs);
@@ -202,15 +210,18 @@ export function registerTurnSetup(
 		if (prompt.children) event.systemPromptOptions.sections.children = prompt.children;
 	});
 
-	api.on("session_compact", () => routing.compacted());
+	api.bus.on("session_compact", () => routing.compacted());
 
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
-	api.on("turn_end", (_event, ctx) => {
-		if (!coordinates(api.getActiveTools()) || ownsPrompt(ctx)) return;
+	api.bus.on("turn_end", (_event, ctx) => {
+		if (!coordinates(api.tools.getActive()) || ownsPrompt(ctx)) return;
 		const reading = currentRouting(ctx, options.profiles().values());
 		const notice = routing.notice(reading.facts, reading);
 		if (notice)
-			void api.sendMessage({ customType: ROUTING_NOTICE_ID, content: notice, display: false }, { triggerTurn: false });
+			void api.session.sendMessage(
+				{ customType: ROUTING_NOTICE_ID, content: notice, display: false },
+				{ triggerTurn: false },
+			);
 	});
 
 	return {
@@ -230,7 +241,7 @@ export function registerTurnSetup(
  * system prompt, so Octocode's `<delegation>` never reaches it and a routing notice would amend text it never saw. The
  * notice waits, unspent, for the next model that reads Octocode's prompt.
  */
-const ownsPrompt = (ctx: Pick<ExtensionContext, "model" | "modelRegistry">): boolean =>
+const ownsPrompt = (ctx: Pick<FeatureContext, "model" | "modelRegistry">): boolean =>
 	ctx.model !== undefined && ctx.modelRegistry.getProviderKind(ctx.model.provider) === "CLI";
 
 /** Whether an `agent` call starts something the session then waits on: a child, or a message to a peer or an outside agent. Only `coordinate` does not. */
@@ -257,5 +268,5 @@ const canReachMcp = (selected: readonly string[]): boolean =>
 
 /** Copy the skill metadata so child prompt preparation cannot mutate the loader's catalog. */
 export function childSkills(skills: readonly Skill[]): Skill[] {
-	return skills.map((skill) => ({ ...skill }));
+	return skills.filter((skill) => skill.audience !== "coordinator").map((skill) => ({ ...skill }));
 }

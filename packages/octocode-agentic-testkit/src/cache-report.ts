@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,13 @@ import type { Usage } from "./trace.ts";
 /** Where cassettes and the cache report live: `TESTKIT_REPORT_DIR` (the vitest config sets it), else the OS temp dir. */
 export function cacheDir(): string {
 	return process.env.TESTKIT_REPORT_DIR ?? join(tmpdir(), "testkit");
+}
+
+const PROCESS_RUN = randomUUID();
+
+/** The test run this process belongs to: every worker of one `vitest run` shares the global setup's id; else this process. */
+export function runId(): string {
+	return process.env.TESTKIT_RUN_ID ?? PROCESS_RUN;
 }
 
 export interface CacheEvent {
@@ -104,6 +112,7 @@ export default function setup(): () => void {
 	rmSync(dir, { recursive: true, force: true });
 	mkdirSync(dir, { recursive: true });
 	process.env.TESTKIT_CACHE_RUN_DIR = dir;
+	process.env.TESTKIT_RUN_ID = randomUUID();
 	return () => {
 		const events = readdirSync(dir)
 			.filter((f) => f.endsWith(".jsonl"))

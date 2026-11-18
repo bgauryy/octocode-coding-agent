@@ -1,7 +1,8 @@
 /** Session reports that read the session without changing it: fork candidates and HTML export. */
 
 import { contentText } from "@octocodeai/octocode-ai";
-import { getThemeByName, theme } from "../../theme/theme.ts";
+import { theme } from "../../theme/theme-global.ts";
+import { getThemeByName } from "../../theme/theme-loader.ts";
 import { loadExportToolRows } from "../export-html/tool-rows.ts";
 import type { ToolHtmlRenderer } from "../export-html/index.ts";
 import type { ToolDefinition } from "../features/index.ts";
@@ -27,11 +28,11 @@ export function getUserMessagesForForking(sessionManager: SessionManager): Array
 }
 
 /**
- * Export the session to HTML with the requested or configured theme and extension tool renderers. The exporter loads
+ * Export the session to HTML with the requested or configured theme and feature tool renderers. The exporter loads
  * on first use: it pulls in the web assets and terminal tool components, which headless SDK sessions never need.
  */
 export async function exportToHtml(
-	session: Pick<SessionPublic, "settingsManager" | "extensionRunner" | "sessionManager" | "agent">,
+	session: Pick<SessionPublic, "settingsManager" | "featureHost" | "sessionManager" | "agent">,
 	getToolDefinition: (name: string) => ToolDefinition | undefined,
 	outputPath: string | undefined,
 	options: { themeName?: string },
@@ -40,18 +41,27 @@ export async function exportToHtml(
 		(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
 	);
 
-	const [{ exportSessionToHtml }, { createToolHtmlRenderer }, { reasonRow, purposeRows }] = await Promise.all([
+	const [
+		{ exportSessionToHtml },
+		{ createToolHtmlRenderer },
+		{ reasonRow, purposeRows, builtInRenderers, callFailure, resultFailure },
+	] = await Promise.all([
 		import("../export-html/index.ts"),
 		import("../export-html/tool-renderer.ts"),
 		loadExportToolRows(),
 	]);
-	// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
+	// Create tool renderer if we have a feature runner (for custom tool HTML rendering)
 	const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
-		getToolRenderers: (name) => session.extensionRunner.resolveToolRenderers(name, () => getToolDefinition(name)),
+		getToolRenderers: (name) => {
+			const renderers = session.featureHost.resolveToolRenderers(name, () => getToolDefinition(name));
+			return builtInRenderers ? builtInRenderers(name, renderers) : renderers;
+		},
 		theme,
 		cwd: session.sessionManager.getCwd(),
 		reasonRow,
 		purposeRows,
+		...(callFailure ? { callFailure } : {}),
+		...(resultFailure ? { resultFailure } : {}),
 	});
 
 	return exportSessionToHtml(session.sessionManager, session.agent.state, {

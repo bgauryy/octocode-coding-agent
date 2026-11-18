@@ -96,6 +96,8 @@ export function acpClient(child: ChildProcess, answer: PermissionAnswer = "allow
 		if (response.error) throw new Error(`${method}: ${JSON.stringify(response.error)}`);
 		return (response.result ?? {}) as T;
 	};
+	/** The id the next request will carry. */
+	const nextId = () => next;
 	const notify = (method: string, params: unknown = {}) => send({ method, params });
 	const said = () =>
 		updates
@@ -116,6 +118,7 @@ export function acpClient(child: ChildProcess, answer: PermissionAnswer = "allow
 		raw,
 		request,
 		notify,
+		nextId,
 		said,
 		prompt,
 		respondPermission,

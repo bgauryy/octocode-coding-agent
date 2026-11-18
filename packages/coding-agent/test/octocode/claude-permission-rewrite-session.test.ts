@@ -198,7 +198,7 @@ it("user-entered Bash refuses unsupported permission replacement before executio
 		}),
 	});
 	try {
-		const event = await f.session.extensionRunner.emitUserBash({
+		const event = await f.session.featureHost.emitUserBash({
 			type: "user_bash",
 			command: original,
 			excludeFromContext: false,

@@ -10,7 +10,7 @@ it.each(["manual", "threshold", "overflow"] as const)(
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async (event) => ({
+					api.bus.on("session_before_compact", async (event) => ({
 						compaction: {
 							summary: " \n\t",
 							firstKeptEntryId: event.preparation.firstKeptEntryId,

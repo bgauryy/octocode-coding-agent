@@ -176,7 +176,7 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 			if (action === "remove") flags.push("--yes");
 		}
 		if (["install", "remove", "config"].includes(command)) flags.push("--local", "-l");
-		if (command === "update") flags.push("--self", "--extensions", "--models", "--all", "--extension", "--force");
+		if (command === "update") flags.push("--self", "--packages", "--models", "--all", "--package", "--force");
 		return prefix.startsWith("-") ? filter(flags) : [];
 	}
 	return filter(prefix.startsWith("-") ? CLI_FLAGS : words.length <= 1 ? [...Object.keys(commands), ...CLI_FLAGS] : []);

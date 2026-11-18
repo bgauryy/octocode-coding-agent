@@ -3,6 +3,17 @@ import type { ApplicationSession } from "./session-port.ts";
 
 const services = new WeakMap<ApplicationSession, ApplicationService>();
 const registered = new Set<ApplicationService>();
+const openedListeners = new Set<(service: ApplicationService) => void>();
+
+/**
+ * Calls `listener` each time a port is opened, after it is registered and started, so a feature that publishes domain
+ * events can give a port that appears later (a host attaching to a running session) what it published before.
+ * Returns the function that removes the listener.
+ */
+export function onApplicationPortOpened(listener: (service: ApplicationService) => void): () => void {
+	openedListeners.add(listener);
+	return () => openedListeners.delete(listener);
+}
 
 export function getApplicationPort(session: ApplicationSession): ApplicationService {
 	let service = services.get(session);
@@ -14,6 +25,7 @@ export function getApplicationPort(session: ApplicationSession): ApplicationServ
 		services.set(session, service);
 		registered.add(service);
 		if (typeof session.subscribe === "function") service.start();
+		for (const listener of openedListeners) listener(service);
 	}
 	return service;
 }

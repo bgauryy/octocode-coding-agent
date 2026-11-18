@@ -9,7 +9,7 @@ import { toolHint } from "../../utils/tool-hint.ts";
  * a nested value the model wrote, else from the call's arguments (`derivedReason`). The registry wrapper removes it
  * before a tool that does not declare it runs (`withoutReason`); permission requests and tool rows read it from the
  * call's input (`callReason`). The schema carries no description: the policy says once what to write
- * (`instructions/shared/mcp-fields.md`, `instructions/lean/lean.md`), instead of every tool repeating it.
+ * (`native/prompts/shared/mcp-fields.md`, `native/prompts/lean/lean.md`), instead of every tool repeating it.
  */
 
 /** The shared `reason` definition; a tool that declares `reason` itself (to read it in `execute`) uses this one. */
@@ -98,24 +98,69 @@ export function hasDerivedReason(toolName: string, input: unknown): boolean {
 	return isRecord(input) && filled(input.reason) && input.reason === derivedReason(toolName, withoutReason(input));
 }
 
+/** `<parameter name="x">value` runs, as a model writes them when its call's parameters land in text. */
+const PARAMETER_TEXT = /<parameter name="([^"]+)">([\s\S]*?)(?=<parameter name="|<\/parameter>|$)/g;
+
+/** `text` as the declared type: numbers, integers and booleans by `type`, objects and arrays by JSON; `undefined` when it does not parse. */
+function parameterValue(text: string, property: unknown): unknown {
+	const type = isRecord(property) ? property.type : undefined;
+	if (type === "number" || type === "integer") {
+		const value = Number(text);
+		return text !== "" && Number.isFinite(value) && (type === "number" || Number.isInteger(value)) ? value : undefined;
+	}
+	if (type === "boolean") return text === "true" ? true : text === "false" ? false : undefined;
+	if (type === "object" || type === "array") {
+		try {
+			const value: unknown = JSON.parse(text);
+			return type === "array" ? (Array.isArray(value) ? value : undefined) : isRecord(value) ? value : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+	return text;
+}
+
+/**
+ * The arguments with `<parameter name="x">value` text written inside a top-level `reason` lifted into the declared,
+ * absent top-level properties it names, and the reason cut before the first `</reason>` or `<parameter`. Unchanged
+ * when nothing is lifted: a set or undeclared name, or a value that does not fit its declared type, stays as written.
+ */
+function withLiftedParameters(
+	params: Record<string, unknown>,
+	properties: Record<string, unknown>,
+): Record<string, unknown> {
+	const reason = params.reason;
+	if (typeof reason !== "string" || !reason.includes("<parameter name=")) return params;
+	const lifted: Record<string, unknown> = {};
+	for (const [, name, text] of reason.matchAll(PARAMETER_TEXT)) {
+		if (!(name in properties) || params[name] !== undefined || name in lifted) continue;
+		const value = parameterValue(text.trim(), properties[name]);
+		if (value !== undefined) lifted[name] = value;
+	}
+	if (Object.keys(lifted).length === 0) return params;
+	const cut = reason.search(/<\/reason>|<parameter/);
+	return { ...params, ...lifted, reason: reason.slice(0, cut).trim() };
+}
+
 /**
  * The call's arguments with the reason settled before validation, so a call never fails for it. A top-level non-empty
- * text wins. Else the first nested one is lifted, else `derivedReason` fills it. A nested `reason` the model wrote
+ * text wins, after `<parameter>` text written inside it is lifted. Else the first nested one is lifted, else `derivedReason` fills it. A nested `reason` the model wrote
  * where `declared` has no slot is removed: it is not the tool's input and would fail strict arguments. Parameters
  * without object properties are returned unchanged.
  */
 export function settleReason<T>(params: T, toolName: string, declared: TSchema): T {
 	const shape = declared as unknown as SchemaShape;
 	if (!isRecord(params) || !isRecord(shape.properties)) return params;
+	const args = withLiftedParameters(params, shape.properties);
 	const changes: Record<string, unknown> = {};
 	for (const [name, property] of Object.entries(shape.properties)) {
-		if (name === "reason" || !(name in params)) continue;
-		const value = withoutUndeclaredNested(params[name], property as TSchema);
-		if (value !== params[name]) changes[name] = value;
+		if (name === "reason" || !(name in args)) continue;
+		const value = withoutUndeclaredNested(args[name], property as TSchema);
+		if (value !== args[name]) changes[name] = value;
 	}
-	const cleaned = Object.keys(changes).length > 0 ? { ...params, ...changes } : params;
-	if (filled(params.reason)) return cleaned;
-	return { ...cleaned, reason: nestedReason(params) ?? derivedReason(toolName, cleaned) };
+	const cleaned = Object.keys(changes).length > 0 ? { ...args, ...changes } : args;
+	if (filled(args.reason)) return cleaned as T;
+	return { ...cleaned, reason: nestedReason(args) ?? derivedReason(toolName, cleaned) } as T;
 }
 
 /** The arguments without `reason`, for a tool that does not declare it. Top level only: nested per-query `reason` fields are the tool's own input, unlike the identity key in `loop-guard.ts`. */

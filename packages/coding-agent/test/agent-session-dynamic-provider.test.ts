@@ -7,10 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import type { ExtensionFactory } from "../src/core/features/index.ts";
+import type { FeatureRegister } from "../src/core/features/index.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { testFeatures } from "./helpers/features.ts";
+import { nativeFeatureSet } from "./helpers/native-features.ts";
 
 function nativeAnthropicProvider(baseUrl: string): Provider {
 	const model = { ...getBuiltinModel("anthropic", "claude-sonnet-4-5"), baseUrl };
@@ -50,7 +52,7 @@ describe("AgentSession dynamic provider registration", () => {
 		}
 	});
 
-	async function createSession(extensionFactories: ExtensionFactory[]) {
+	async function createSession(factories: FeatureRegister[]) {
 		const settingsManager = SettingsManager.create(tempDir, agentDir);
 		const sessionManager = SessionManager.inMemory();
 		const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
@@ -63,7 +65,8 @@ describe("AgentSession dynamic provider registration", () => {
 			cwd: tempDir,
 			agentDir,
 			settingsManager,
-			extensionFactories,
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures(factories),
 		});
 		await resourceLoader.reload();
 
@@ -93,7 +96,7 @@ describe("AgentSession dynamic provider registration", () => {
 	it("applies top-level registerProvider overrides to the active model", async () => {
 		const session = await createSession([
 			(api) => {
-				api.registerProvider("anthropic", { baseUrl: "http://localhost:8080/top-level" });
+				api.providers.register("anthropic", { baseUrl: "http://localhost:8080/top-level" });
 			},
 		]);
 
@@ -106,13 +109,13 @@ describe("AgentSession dynamic provider registration", () => {
 	it("applies session_start registerProvider overrides to the active model", async () => {
 		const session = await createSession([
 			(api) => {
-				api.on("session_start", () => {
-					api.registerProvider("anthropic", { baseUrl: "http://localhost:8080/session-start" });
+				api.bus.on("session_start", () => {
+					api.providers.register("anthropic", { baseUrl: "http://localhost:8080/session-start" });
 				});
 			},
 		]);
 
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 
 		expect(session.model?.baseUrl).toBe("http://localhost:8080/session-start");
 		expect(await capturePromptBaseUrl(session)).toBe("http://localhost:8080/session-start");
@@ -123,7 +126,7 @@ describe("AgentSession dynamic provider registration", () => {
 	it("registers native octocode-ai providers during extension loading", async () => {
 		const session = await createSession([
 			(api) => {
-				api.registerProvider(nativeAnthropicProvider("http://localhost:8080/native-top-level"));
+				api.providers.register(nativeAnthropicProvider("http://localhost:8080/native-top-level"));
 			},
 		]);
 
@@ -136,16 +139,16 @@ describe("AgentSession dynamic provider registration", () => {
 	it("applies command-time registerProvider overrides without reload", async () => {
 		const session = await createSession([
 			(api) => {
-				api.registerCommand("use-proxy", {
+				api.commands.register("use-proxy", {
 					description: "Use proxy",
 					handler: async () => {
-						api.registerProvider("anthropic", { baseUrl: "http://localhost:8080/command" });
+						api.providers.register("anthropic", { baseUrl: "http://localhost:8080/command" });
 					},
 				});
 			},
 		]);
 
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 		await session.prompt("/use-proxy");
 
 		expect(session.model?.baseUrl).toBe("http://localhost:8080/command");
@@ -157,16 +160,16 @@ describe("AgentSession dynamic provider registration", () => {
 	it("registers native octocode-ai providers at command time", async () => {
 		const session = await createSession([
 			(api) => {
-				api.registerCommand("use-native", {
+				api.commands.register("use-native", {
 					description: "Use native provider",
 					handler: async () => {
-						api.registerProvider(nativeAnthropicProvider("http://localhost:8080/native-command"));
+						api.providers.register(nativeAnthropicProvider("http://localhost:8080/native-command"));
 					},
 				});
 			},
 		]);
 
-		await session.bindExtensions({});
+		await session.bindFeatures({});
 		await session.prompt("/use-native");
 
 		expect(session.model?.baseUrl).toBe("http://localhost:8080/native-command");

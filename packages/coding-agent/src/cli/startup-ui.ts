@@ -11,8 +11,8 @@ import { areExperimentalFeaturesEnabled } from "../core/experimental.ts";
 import { KeybindingsManager } from "../core/keybindings.ts";
 import { DefaultPackageManager, type ResolvedResource } from "../core/package-manager.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
-import { ExtensionInputComponent } from "../modes/interactive/components/extension-input.ts";
-import { ExtensionSelectorComponent } from "../modes/interactive/components/extension-selector.ts";
+import { DialogInputComponent } from "../modes/interactive/components/dialog-input.ts";
+import { DialogSelectorComponent } from "../modes/interactive/components/dialog-selector.ts";
 import {
 	FirstTimeSetupComponent,
 	type FirstTimeSetupResult,
@@ -163,7 +163,7 @@ export async function showStartupSelector<T>(
 			resolve(result);
 		};
 
-		const selector = new ExtensionSelectorComponent(
+		const selector = new DialogSelectorComponent(
 			title,
 			options.map((option) => option.label),
 			(option) => void finish(options.find((entry) => entry.label === option)?.value),
@@ -235,7 +235,7 @@ export async function showStartupInput(
 			resolve(result);
 		};
 
-		const input = new ExtensionInputComponent(
+		const input = new DialogInputComponent(
 			title,
 			placeholder,
 			(value) => void finish(value),

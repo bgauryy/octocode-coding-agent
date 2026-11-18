@@ -3,7 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
 import { registerNativeSessionLifecycle } from "../../src/octocode/session-lifecycle.ts";
@@ -11,6 +11,7 @@ import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { createHarness, getMessageText, type Harness } from "../suite/harness.ts";
 import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 const posix = process.platform !== "win32";
 
@@ -20,7 +21,7 @@ async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; is
 	const jobs = new BashJobs(tmp());
 	const harness = await createHarness({
 		sessionManager: SessionManager.create(root, path.join(root, "sessions")),
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				registerBashTool(api, new Subcommands(), jobs, () => ({ backgroundAfterSeconds: 0 }));
 				registerNativeSessionLifecycle(api, {
@@ -31,9 +32,9 @@ async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; is
 					...options,
 				});
 			},
-		],
+		]),
 	});
-	await harness.session.bindExtensions({});
+	await harness.session.bindFeatures({});
 	return { harness, jobs };
 }
 
@@ -165,6 +166,76 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 		await session.harness.session.prompt("start a server");
 		expect(Date.now() - started).toBeLessThan(10_000);
 		expect(session.jobs.running()).toHaveLength(0);
+	});
+});
+
+describe.runIf(posix)("a subagent's own waits around its report (B744)", () => {
+	const open: Array<{ harness: Harness; jobs: BashJobs }> = [];
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		for (const { harness, jobs } of open.splice(0)) {
+			await jobs.stopAll("session end");
+			harness.cleanup();
+		}
+	});
+	const setWait = (after: number) =>
+		fauxAssistantMessage([fauxToolCall("wait", { op: "set", after, note: "check the build" })], {
+			stopReason: "toolUse",
+		});
+	const listWaits = async (session: { harness: Harness }) => {
+		let listed = "";
+		session.harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("wait", { op: "list", all: true })], {
+				stopReason: "toolUse",
+			}),
+			(context) => {
+				listed = requestText(context);
+				return fauxAssistantMessage("done. listed");
+			},
+		]);
+		await session.harness.session.prompt("list waits");
+		return listed;
+	};
+
+	it("ends the waits a child set when it reports: the run ends at once and no wake starts a turn later", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		session.harness.setResponses([setWait(1), fauxAssistantMessage("done. The build is green.")]);
+		const started = Date.now();
+		await session.harness.session.prompt("build and report");
+		expect(Date.now() - started).toBeLessThan(1_000);
+		expect(session.harness.faux.state.callCount).toBe(2);
+		await new Promise((resolve) => setTimeout(resolve, 1_500));
+		expect(session.harness.faux.state.callCount).toBe(2);
+		const listed = await listWaits(session);
+		expect(listed).toMatch(/cancel/i);
+		expect(listed).not.toMatch(/\bactive\b/i);
+	});
+
+	it("keeps a wait the child answers without a report: the run holds and the wake starts its next turn", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		session.harness.setResponses([
+			setWait(1),
+			fauxAssistantMessage("Waiting for the build."),
+			fauxAssistantMessage("done. The build is green."),
+		]);
+		await session.harness.session.prompt("build and report");
+		expect(session.harness.faux.state.callCount).toBe(3);
+	});
+
+	it("leaves a top-level headless session's waits alone: its run still holds for the wake after a report-like answer", async () => {
+		const session = await child({ isSubagent: false });
+		open.push(session);
+		session.harness.setResponses([
+			setWait(1),
+			fauxAssistantMessage("done. Reminder set."),
+			fauxAssistantMessage("done. Reminded."),
+		]);
+		await session.harness.session.prompt("remind me");
+		expect(session.harness.faux.state.callCount).toBe(3);
 	});
 });
 

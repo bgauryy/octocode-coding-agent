@@ -1,6 +1,6 @@
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import type { Usage } from "@octocodeai/octocode-ai";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { JudgeOutcome, JudgeRequest } from "./conditions/types.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 
@@ -25,22 +25,22 @@ export const CHECK_CAPS = {
 export interface SmallModel {
 	/** One tool-less call to the cheaper model; never rejects (an `error` names the cause). */
 	call(
-		ctx: ExtensionContext,
+		ctx: FeatureContext,
 		options: { text: string; signal: AbortSignal; maxTokens: number },
 	): Promise<{ text: string; model: string; provider: string; modelId: string; usage: Usage } | { error: string }>;
 	/** The `provider/id` the route resolves to for this session, or undefined when no cheaper model exists. */
-	label(ctx: ExtensionContext): string | undefined;
+	label(ctx: FeatureContext): string | undefined;
 }
 
 export interface JudgeHost {
-	ctx(): ExtensionContext | undefined;
+	ctx(): FeatureContext | undefined;
 	now(): number;
 	/** What this session's `check` waits have spent so far, ended ones included. */
 	sessionSpend(sessionId: string): number;
 	/** Whether `check` may run: the `timer.check.enabled` setting, or the user's first-use answer. */
 	allowed(): boolean;
 	small: SmallModel;
-	/** Adds a call's spend to the session's cost total (`ExtensionAPI.recordUsage`); called once per model call, whether or not the wait ends. */
+	/** Adds a call's spend to the session's cost total (`FeatureSetup.recordUsage`); called once per model call, whether or not the wait ends. */
 	recordUsage(kind: string, provider: string, model: string, usage: Usage): void;
 }
 

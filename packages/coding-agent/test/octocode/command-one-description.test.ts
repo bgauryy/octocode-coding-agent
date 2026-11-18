@@ -7,6 +7,7 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -25,6 +26,7 @@ it("every command name shown in the registry has one description of at most 50 c
 		cwd,
 		agentDir,
 		settingsManager,
+		nativeFeatures: nativeFeatureSet(),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -43,7 +45,7 @@ it("every command name shown in the registry has one description of at most 50 c
 		const add = (name: string, description: string | undefined) =>
 			descriptions.set(name, (descriptions.get(name) ?? new Set()).add(description ?? ""));
 		for (const command of BUILTIN_SLASH_COMMANDS) add(command.name, command.description);
-		for (const command of session.extensionRunner.getRegisteredCommands())
+		for (const command of session.featureHost.getRegisteredCommands())
 			if (command.sourceInfo.owner === "native") add(command.name, command.description);
 		for (const [name, texts] of descriptions) {
 			expect([name, [...texts]]).toEqual([name, [[...texts][0]]]);

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentSessionServices } from "../../src/core/agent-session-services.ts";
 import { credentialRead } from "../../src/octocode/permission/credential-store.ts";
 import { tmp } from "./helpers.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /** Synthetic files in a temp home only: no test reads a real credential file. */
 const saved = { ...process.env };
@@ -71,7 +72,8 @@ describe("startup warnings for key files", () => {
 				cwd: home,
 				agentDir: agent,
 				resourceLoaderOptions: {
-					disabledFeatures: ["mcp", "llama.cpp"],
+					nativeFeatures: nativeFeatureSet(),
+					disabledFeatures: ["mcp"],
 					noSkills: true,
 					noPromptTemplates: true,
 					noThemes: true,

@@ -171,10 +171,7 @@ function findModelDefaults(models: readonly AnyModel[], modelId: string, api?: A
 	);
 }
 
-function findExtensionModelDefaults(
-	models: readonly AnyModel[],
-	definition: ProviderModelConfig,
-): AnyModel | undefined {
+function findFeatureModelDefaults(models: readonly AnyModel[], definition: ProviderModelConfig): AnyModel | undefined {
 	const type = definition.type ?? "chat";
 	const candidates = models.filter((model) => isModelType(model, type));
 	return (
@@ -185,14 +182,14 @@ function findExtensionModelDefaults(
 	);
 }
 
-function extensionModelFromDefinition(
+function featureModelFromDefinition(
 	providerId: string,
 	models: readonly AnyModel[],
 	config: ProviderConfigInput,
 	definition: ProviderModelConfig,
 ): AnyModel {
 	const type = definition.type ?? "chat";
-	const defaults = findExtensionModelDefaults(models, definition);
+	const defaults = findFeatureModelDefaults(models, definition);
 	const api = definition.api ?? (type === "chat" ? config.api : undefined) ?? defaults?.api;
 	if (!api) {
 		throw new Error(
@@ -257,7 +254,7 @@ export function applyModelsJson(
 	return models;
 }
 
-export function applyExtension(
+export function applyFeature(
 	providerId: string,
 	models: readonly AnyModel[],
 	config: ProviderConfigInput | undefined,
@@ -272,5 +269,5 @@ export function applyExtension(
 				)
 			: [...models];
 	}
-	return config.models.map((definition) => extensionModelFromDefinition(providerId, models, config, definition));
+	return config.models.map((definition) => featureModelFromDefinition(providerId, models, config, definition));
 }

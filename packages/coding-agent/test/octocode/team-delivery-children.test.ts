@@ -1,6 +1,6 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { sendMessage } from "../../src/octocode/api/bridge/send.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { SendReceipts } from "../../src/octocode/api/receipts.ts";
@@ -177,7 +177,7 @@ describe("a subagent", () => {
 describe("an external client (API message.send, the inbound side of the octocode transport)", () => {
 	it("steers a busy agent: the message is in the next model request, not at the end of the turn", async () => {
 		const long = gate();
-		let ctx: ExtensionContext | undefined;
+		let ctx: FeatureContext | undefined;
 		const live = await liveSession({
 			tools: [
 				{

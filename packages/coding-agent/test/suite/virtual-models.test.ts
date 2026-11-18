@@ -2,7 +2,7 @@ import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { type ModelRoute, type ModelRouteRequest, VIRTUAL_MODEL_STATE_ENTRY } from "../../src/core/virtual-models.ts";
 import { createHarness, type Harness, type HarnessOptions } from "./harness.ts";
 
@@ -14,7 +14,7 @@ const echoTool: AgentTool = {
 	execute: async () => ({ content: [{ type: "text", text: "echoed" }], details: {} }),
 };
 
-type Route = (request: ModelRouteRequest, ctx: ExtensionContext) => ModelRoute;
+type Route = (request: ModelRouteRequest, ctx: FeatureContext) => ModelRoute;
 
 /** Router used by these tests: new user turns pick by thinking level, everything else stays put. */
 const defaultRoute: Route = (request, ctx) => {
@@ -45,24 +45,26 @@ describe("AgentSession virtual models", () => {
 				{ id: "large", contextWindow: 50_000, maxTokens: 4000, reasoning: true },
 			],
 			tools: [echoTool],
-			builtinCompactionFactories: [
-				...(options.builtinCompactionFactories ?? options.extensionFactories ?? []),
-				(api) => {
-					api.registerVirtualModel({
-						provider: "router",
-						id: "auto",
-						name: "Auto",
-						thinkingLevels: ["low", "high"],
-						contextWindow: 1000,
-						route(request, ctx) {
-							requests.push(request);
-							return route(request, ctx);
-						},
-					});
-				},
-			],
+			builtinCompactionFactories: [...(options.builtinCompactionFactories ?? options.features ?? [])],
 		});
 		harnesses.push(harness);
+		harness.session.modelRuntime.registerVirtualModel({
+			provider: "router",
+			id: "auto",
+			name: "Auto",
+			thinkingLevels: ["low", "high"],
+			contextWindow: 1000,
+			route(request) {
+				requests.push(request);
+				const ctx = {
+					modelRegistry: {
+						find: (provider: string, id: string) => harness.session.modelRuntime.getModel(provider, id),
+					},
+				};
+				return route(request, ctx as unknown as FeatureContext);
+			},
+		});
+
 		// Stream through the runtime, which records the thinking level on responses.
 		const runtime = harness.session.modelRuntime;
 		harness.session.agent.streamFunction = (model, context, options) => runtime.streamSimple(model, context, options);
@@ -126,7 +128,7 @@ describe("AgentSession virtual models", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+					api.bus.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "overflow compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -152,7 +154,7 @@ describe("AgentSession virtual models", () => {
 			builtinCompactionFactories: [
 				(api) => {
 					let continued = false;
-					api.on("agent_before_settle", () => {
+					api.bus.on("agent_before_settle", () => {
 						if (continued) return undefined;
 						continued = true;
 						return {
@@ -175,7 +177,7 @@ describe("AgentSession virtual models", () => {
 		const { harness, reasons } = await createRoutedHarness(defaultRoute, {
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("before_agent_start", () => ({
+					api.bus.on("before_agent_start", () => ({
 						message: { customType: "context", content: "Extra context.", display: false },
 					}));
 				},
@@ -231,7 +233,7 @@ describe("AgentSession virtual models", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+					api.bus.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -266,7 +268,7 @@ describe("AgentSession virtual models", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 0 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+					api.bus.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "compacted", firstKeptEntryId, tokensBefore },
 					}));
 				},
@@ -376,7 +378,7 @@ describe("AgentSession virtual models", () => {
 			compactionPolicy: { keepRecentTokens: 1 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+					api.bus.on("session_before_compact", async ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 						compaction: { summary: "extension summary", firstKeptEntryId, tokensBefore },
 					}));
 				},

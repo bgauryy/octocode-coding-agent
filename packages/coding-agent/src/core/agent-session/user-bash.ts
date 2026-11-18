@@ -4,7 +4,7 @@
  */
 
 import type { BashResult } from "../bash-executor.ts";
-import type { ExtensionRunner } from "../features/index.ts";
+import type { FeatureHost } from "../features/index.ts";
 import type { BashOperations } from "../tools/bash.ts";
 
 /** A `user_bash` handler threw or returned an invalid result. The runner already reported it; nothing ran. */
@@ -27,7 +27,7 @@ export interface UserBashOptions {
 
 /** What the operation needs of the session. */
 export interface UserBashHost {
-	readonly extensionRunner: Pick<ExtensionRunner, "emitUserBash">;
+	readonly featureHost: Pick<FeatureHost, "emitUserBash">;
 	readonly sessionManager: { getCwd(): string };
 	executeBash(
 		command: string,
@@ -49,7 +49,7 @@ export async function runUserBash(
 	const excludeFromContext = options.excludeFromContext ?? false;
 	let hook;
 	try {
-		hook = await host.extensionRunner.emitUserBash({
+		hook = await host.featureHost.emitUserBash({
 			type: "user_bash",
 			command,
 			excludeFromContext,

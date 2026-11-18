@@ -2,13 +2,14 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { orderToolNames } from "../../src/core/agent-session/tool-definitions.ts";
-import type { ExtensionAPI, ExtensionFactory } from "../../src/core/features/types.ts";
+import type { FeatureSetup, FeatureRegister } from "../../src/core/features/types.ts";
 import { findToolCacheBoundary } from "../../src/core/tool-roles.ts";
 import { createHarness, type Harness } from "./harness.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "../octocode/fake-research-roles.ts";
+import { testFeatures } from "../helpers/features.ts";
 
-const register = (api: ExtensionAPI, name: string, namespace?: string, roleVariant?: boolean) =>
-	api.registerTool({
+const register = (api: FeatureSetup, name: string, namespace?: string, roleVariant?: boolean) =>
+	api.tools.register({
 		name,
 		label: name,
 		description: `${name} tool.`,
@@ -20,7 +21,7 @@ const register = (api: ExtensionAPI, name: string, namespace?: string, roleVaria
 
 /** An extension standing in for an MCP server that registers its tools when its connection completes. */
 const server =
-	(namespace: string, tools: string[]): ExtensionFactory =>
+	(namespace: string, tools: string[]): FeatureRegister =>
 	(api) => {
 		for (const tool of tools) register(api, `${namespace}__${tool}`, namespace);
 	};
@@ -31,17 +32,17 @@ describe("declared tool order", () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
 	});
 
-	async function declared(factories: ExtensionFactory[]): Promise<string[]> {
-		const harness = await createHarness({ extensionFactories: factories });
+	async function declared(factories: FeatureRegister[]): Promise<string[]> {
+		const harness = await createHarness({ features: testFeatures(factories) });
 		harnesses.push(harness);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([fauxAssistantMessage("ok")]);
 		await harness.session.prompt("go");
 		return harness.session.agent.state.tools.map((tool) => tool.name);
 	}
 
 	it("sorts MCP tools by namespace and name whichever server registers first", async () => {
-		const plain: ExtensionFactory = (api) => register(api, "plain_tool");
+		const plain: FeatureRegister = (api) => register(api, "plain_tool");
 		const alpha = server("mcp__alpha", ["zeta", "beta"]);
 		const beta = server("mcp__beta", ["gamma", "alpha"]);
 		const forward = await declared([plain, alpha, beta]);
@@ -57,9 +58,11 @@ describe("declared tool order", () => {
 describe("unlisted tools", () => {
 	it("declare the same tool bytes and boundary whichever order they register in", async () => {
 		const declare = async (names: string[]) => {
-			const harness = await createHarness({ extensionFactories: [(api) => names.forEach((n) => register(api, n))] });
+			const harness = await createHarness({
+				features: testFeatures([(api) => names.forEach((n) => register(api, n))]),
+			});
 			try {
-				await harness.session.bindExtensions({});
+				await harness.session.bindFeatures({});
 				harness.setResponses([fauxAssistantMessage("ok")]);
 				await harness.session.prompt("go");
 				const tools = harness.session.agent.state.tools;
@@ -85,10 +88,10 @@ describe("role-variant tools", () => {
 	it("declare after the shared tools and set the boundary from the definition alone", async () => {
 		const declare = async (names: Array<[string, boolean]>) => {
 			const harness = await createHarness({
-				extensionFactories: [(api) => names.forEach(([name, variant]) => register(api, name, undefined, variant))],
+				features: testFeatures([(api) => names.forEach(([name, variant]) => register(api, name, undefined, variant))]),
 			});
 			try {
-				await harness.session.bindExtensions({});
+				await harness.session.bindFeatures({});
 				harness.setResponses([fauxAssistantMessage("ok")]);
 				await harness.session.prompt("go");
 				const tools = harness.session.agent.state.tools;

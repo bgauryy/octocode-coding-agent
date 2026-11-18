@@ -131,6 +131,14 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Selection page down"
     },
+    "tui.select.home": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Select the first item"
+    },
+    "tui.select.end": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Select the last item"
+    },
     "tui.select.confirm": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Confirm selection"

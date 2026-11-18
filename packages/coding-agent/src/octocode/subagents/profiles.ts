@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { configDiscovery, discoveryInput } from "../../core/discovery/service.ts";
 import { type PluginProfileOptions, translateAgentFields } from "../../core/plugin-agent-fields.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { selectsToolPrefix } from "../../core/agent-session/tool-selection.ts";
 import { applyToolModifiers, SettingsManager } from "../../core/settings-manager.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
@@ -67,15 +67,30 @@ export interface AgentProfile {
 	hash?: string;
 	/**
 	 * True: a lean child for small models. It runs exactly `tools` (default `LEAN_DEFAULT_TOOLS`) without the specialist
-	 * floor, MCP or extensions, and a short subagent prompt replaces the native policy (`instructions/lean.ts`).
+	 * floor, MCP or features, and a short subagent prompt replaces the native policy (`native/prompts/lean.ts`).
 	 */
 	lean?: true;
 	/** Skills the child gets when the task names none (`skills:` front matter): inlined in its role prompt, or its task when lean (`task-skills.ts`). */
 	skills?: string[];
+	/** Skills the child's prompt lists (`catalog:` front matter); the rest stay loadable by name and the prompt counts them. Absent: all are listed. */
+	catalog?: string[];
 }
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
+
+/** The skills a subagent started without a role lists in its prompt (a role's `catalog:` replaces it); the rest stay loadable by name. */
+export const GENERAL_CATALOG: readonly string[] = [
+	"octocode-research",
+	"octocode-local-research",
+	"octocode-github-research",
+	"octocode-clasify",
+	"octocode-debugging",
+	"octocode-engineer",
+	"octocode-test-plan",
+	"octocode-clean-agentic-code",
+	"octocode-documentation",
+];
 
 export { CORE_TOOLS, DEFAULT_CHILD_TOOLS, MCP_ACCESS_TOOLS, SHELL_TOOLS };
 
@@ -169,6 +184,7 @@ export function parseProfile(
 	const lean = flag("lean") === true;
 	const hooks = hookModeOf(frontmatter.hooks);
 	const skills = skillNames(frontmatter.skills);
+	const catalog = skillNames(frontmatter.catalog);
 	// A bad `tools` selector fails the profile when it is loaded, not when it first runs.
 	const selected = selectedTools(tools);
 	if (lean) leanTools(name, tools);
@@ -189,6 +205,7 @@ export function parseProfile(
 		...(lean ? { lean: true as const, tools: leanTools(name, tools) } : {}),
 		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
 		...(skills ? { skills } : {}),
+		...(catalog?.length ? { catalog } : {}),
 		...(excludeTools ? { excludeTools } : {}),
 		...(mcpDefer ? { mcpDefer } : {}),
 		...(model ? { model } : {}),
@@ -225,7 +242,7 @@ function deferRoleNames(value: unknown): McpDeferRole[] | undefined {
 	return roles.length > 0 ? MCP_DEFER_ROLES.filter((role) => roles.includes(role)) : undefined;
 }
 
-/** `skills:` front matter: a comma-separated string or a YAML list of skill names. */
+/** `skills:` and `catalog:` front matter: a comma-separated string or a YAML list of skill names. */
 function skillNames(value: unknown): string[] | undefined {
 	if (value === undefined || value === null) return undefined;
 	if (typeof value === "string") return toolList(value);
@@ -273,21 +290,22 @@ export function profileSelectsTool(
 	);
 }
 
-const BROWSER_MCP_PREFIX = `${mcpNamespace(BROWSER_SERVER)}__`;
-
-/** Whether the profile selects the browser MCP server's tools: the capability `headless` applies to. */
-export function profileSelectsBrowser(profile: AgentProfile | undefined): boolean {
-	// The server is not active by default, so only an entry naming it counts: a broad `mcp__*` does not.
+/** Whether the profile names the MCP server's tools itself: a broad `mcp__*` does not count. */
+export function profileSelectsServer(profile: AgentProfile | undefined, server: string): boolean {
 	const selected = selectedTools(profileTools(profile));
 	const relative = !selected || isRelative(selected);
-	return selectsToolPrefix(BROWSER_MCP_PREFIX, false, {
+	return selectsToolPrefix(`${mcpNamespace(server)}__`, false, {
 		...(relative ? {} : { allowed: selected }),
 		excluded: profileExcludes(profile?.excludeTools),
 		modifiers: relative ? (selected ?? []) : [],
 	});
 }
 
-/** The workspace classes exposed by the child's native selection and Octocode's direct extension tools. */
+/** Whether the profile selects the browser MCP server's tools: the capability `headless` applies to. */
+export const profileSelectsBrowser = (profile: AgentProfile | undefined): boolean =>
+	profileSelectsServer(profile, BROWSER_SERVER);
+
+/** The workspace classes exposed by the child's native selection and Octocode's direct feature tools. */
 export function profileReach(profile: AgentProfile | undefined, defaultTools?: readonly string[]): ActionClass[] {
 	const nativeDefaults = ["bash", "file"];
 	const configured =
@@ -307,7 +325,7 @@ const REACH_TEXT: Record<string, string> = {
 /** The `agent.spawn` request for `profile`'s child: what it reaches and declares, and the answer the profile still needs. */
 export function spawnRequest(
 	permission: Permission,
-	ctx: Pick<ExtensionContext, "cwd">,
+	ctx: Pick<FeatureContext, "cwd">,
 	profile: AgentProfile | undefined,
 	task: string,
 	defaultTools: readonly string[] | undefined,
@@ -356,7 +374,7 @@ export function spawnRequest(
  */
 export async function askSpawn(
 	permission: Permission,
-	ctx: Pick<ExtensionContext, "hasUI" | "ui" | "cwd">,
+	ctx: Pick<FeatureContext, "hasUI" | "ui" | "cwd">,
 	profile: AgentProfile | undefined,
 	task: string,
 	signal?: AbortSignal,

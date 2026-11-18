@@ -11,7 +11,7 @@ export function getPackageCommandUsage(command: PackageCommand): string {
 		case "remove":
 			return `${APP_NAME} remove <source> [-l] [--trust]`;
 		case "update":
-			return `${APP_NAME} update [source|self] [--self|--extensions|--models|--all] [--extension <source>] [--trust] [--force]`;
+			return `${APP_NAME} update [source|self] [--self|--packages|--models|--all] [--package <source>] [--trust] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--trust]`;
 	}
@@ -94,16 +94,16 @@ Update ${APP_TITLE}, installed packages, or model catalogs.
 
 Options:
   --self                  Update ${APP_TITLE} only (default when no target is given)
-  --extensions            Update installed packages only
+  --packages              Update installed packages only
   --models                Refresh model catalogs only
   --all                   Update ${APP_TITLE} and installed packages
-  --extension <source>    Update one package only
+  --package <source>      Update one package only
   --trust                 Record your trust for this folder first
   --force                 Reinstall ${APP_TITLE} even if the current version is latest
 
 Short forms:
   ${APP_NAME} update                Update ${APP_TITLE} only
-  ${APP_NAME} update --all          Update ${APP_TITLE} and all extensions
+  ${APP_NAME} update --all          Update ${APP_TITLE} and all packages
   ${APP_NAME} update --models       Refresh model catalogs only
   ${APP_NAME} update <source>       Update one package
   ${APP_NAME} update self           Update ${APP_TITLE} only

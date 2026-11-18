@@ -14,7 +14,7 @@ import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { createTestSession } from "../helpers/session.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "../utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "../utilities.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -53,13 +53,13 @@ it("sends the shared summary request with the cache key the session's own reques
 	runtime.registerNativeProvider(faux.provider);
 	await runtime.refresh({ allowNetwork: false });
 
-	const extensionsResult = await createTestExtensionsResult(
+	const featuresResult = await createTestFeaturesResult(
 		[
 			{
 				name: "summary",
 				owner: "native",
 				factory: (api) => {
-					api.on("session_before_compact", async (event, ctx) => {
+					api.bus.on("session_before_compact", async (event, ctx) => {
 						const result = await sharedSummary(api, event, ctx, ctx.model!, "Keep the objective.");
 						return result ? { compaction: result } : undefined;
 					});
@@ -73,10 +73,10 @@ it("sends the shared summary request with the cache key the session's own reques
 		agentDir: dir,
 		modelRuntime: runtime,
 		sessionManager: fork,
-		resourceLoader: createTestResourceLoader({ extensionsResult }),
+		resourceLoader: createTestResourceLoader({ featuresResult }),
 	});
 	try {
-		await session.bindExtensions({
+		await session.bindFeatures({
 			mode: "json",
 			uiContext: { confirm: async () => true, notify: () => undefined } as never,
 			shutdownHandler: () => undefined,

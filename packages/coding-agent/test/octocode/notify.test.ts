@@ -2,6 +2,7 @@ import { resetMultiplexerCache } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type FakeTmux, installFakeTmux } from "../../../tui/test/helpers/fake-tmux.ts";
 import { titledDialog } from "../../src/octocode/shared/locks.ts";
+import { agentNameOf } from "../../src/octocode/shared/agent-name.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import {
 	type Notice,
@@ -14,7 +15,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 function setup(env: NodeJS.ProcessEnv, mode = "tui", hasUI = true) {
 	const fake = fakeHost();
-	(fake.api as unknown as { getSessionName: () => string | undefined }).getSessionName = () => undefined;
+	(fake.api.session as { getName: () => string | undefined }).getName = () => undefined;
 	const writes: string[] = [];
 	const notices: Notice[] = [];
 	let input: ((data: string) => unknown) | undefined;
@@ -166,18 +167,18 @@ describe("registerNotify", () => {
 		const s = setup({ TERM_PROGRAM: "iTerm.app" });
 		await s.fake.fire("session_start", {}, s.ctx);
 		expect(s.writes).toEqual(["\x1b[?1004h"]);
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		expect(s.type("\x1b[I")).toEqual({ consume: true });
 		await run(s);
 		expect(s.writes).toHaveLength(1);
 		// Watching: the outcome is already seen.
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		expect(s.type("\x1b[O")).toEqual({ consume: true });
 		await run(s);
 		expect(s.writes.at(-1)).toBe("\x1b]9;Octocode: answer ready: All done.\x07");
-		expect(s.ctx.ui.title).toBe("🐙🟢 Done - repo");
+		expect(s.ctx.ui.title).toBe("🦑🟢 Done - repo");
 		s.type("\x1b[I");
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		await s.fake.fire("session_shutdown", {}, s.ctx);
 		expect(s.writes.at(-1)).toBe("\x1b[?1004l");
 		expect(s.unsubscribed()).toBe(true);
@@ -232,10 +233,10 @@ describe("registerNotify", () => {
 		vi.advanceTimersByTime(3_000);
 		await s.fake.fire("ui_prompt_start", { kind: "confirm", title: "Plain?" }, s.ctx);
 		expect(s.notices.at(-1)).toMatchObject({ type: "elicitation_dialog", message: "Plain?" });
-		expect(s.ctx.ui.title).toBe("🐙⚠️ Needs you - repo");
+		expect(s.ctx.ui.title).toBe("🦑⚠️ Needs you - repo");
 		// A keypress clears only a finished outcome; the run still waits on its dialog.
 		s.type("x");
-		expect(s.ctx.ui.title).toBe("🐙⚠️ Needs you - repo");
+		expect(s.ctx.ui.title).toBe("🦑⚠️ Needs you - repo");
 	});
 
 	it("signals a blocking dialog that opens while no run is active, and shows waiting in the tab", async () => {
@@ -248,7 +249,7 @@ describe("registerNotify", () => {
 		await s.fake.fire("ui_prompt_start", { kind: "select", title: "Run it?", approval: true, blocking: true }, s.ctx);
 		expect(s.writes.length).toBe(before + 1);
 		expect(s.notices.at(-1)).toMatchObject({ type: "permission_prompt", message: "Run it?" });
-		expect(s.ctx.ui.title).toBe("🐙⚠️ Needs you - repo");
+		expect(s.ctx.ui.title).toBe("🦑⚠️ Needs you - repo");
 		await s.fake.fire("ui_prompt_end", { kind: "select" }, s.ctx);
 		expect(s.ctx.ui.title).not.toContain("⚠️");
 	});
@@ -269,9 +270,9 @@ describe("registerNotify", () => {
 		expect(s.notices.slice(before)).toEqual([
 			expect.objectContaining({ type: "permission_prompt", message: "Run it?" }),
 		]);
-		expect(s.ctx.ui.title).toBe("🐙⚠️ Needs you - repo");
+		expect(s.ctx.ui.title).toBe("🦑⚠️ Needs you - repo");
 		await s.fake.fire("ui_prompt_end", { id: "picker", kind: "select" }, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙⚠️ Needs you - repo");
+		expect(s.ctx.ui.title).toBe("🦑⚠️ Needs you - repo");
 		await s.fake.fire("ui_prompt_end", { id: "approval", kind: "select", nested: true }, s.ctx);
 		expect(s.ctx.ui.title).not.toContain("⚠️");
 	});
@@ -285,7 +286,7 @@ describe("registerNotify", () => {
 		work.setBackground(["general-1a2b"]);
 		work.setAgents(3);
 		vi.advanceTimersByTime(300);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Thinking - repo · 3 agents");
+		expect(s.ctx.ui.title).toBe("🦑⠋ Thinking - repo · 3 agents");
 	});
 
 	it("shows thinking, a running tool, and the outcome until a keypress; coalesces quick tool swaps", async () => {
@@ -299,33 +300,33 @@ describe("registerNotify", () => {
 		};
 		await s.fake.fire("session_start", {}, s.ctx);
 		await s.fake.fire("agent_start", {}, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Thinking - repo");
+		expect(s.ctx.ui.title).toBe("🦑⠋ Thinking - repo");
 		// A tool that finishes within the window never reaches the tab.
 		await s.fake.fire("tool_execution_start", { toolCallId: "a", toolName: "read" }, s.ctx);
 		await s.fake.fire("tool_execution_end", { toolCallId: "a", toolName: "read" }, s.ctx);
 		vi.advanceTimersByTime(300);
-		expect(titles).toEqual(["🐙 Idle - repo", "🐙⠋ Thinking - repo"]);
+		expect(titles).toEqual(["🦑 Idle - repo", "🦑⠋ Thinking - repo"]);
 		await s.fake.fire("tool_execution_start", { toolCallId: "b", toolName: "bash" }, s.ctx);
 		vi.advanceTimersByTime(300);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Running - repo");
+		expect(s.ctx.ui.title).toBe("🦑⠋ Running - repo");
 		await s.fake.fire("tool_execution_end", { toolCallId: "b", toolName: "bash" }, s.ctx);
 		await s.fake.fire("agent_end", answer("", "error", "rate limited"), s.ctx);
 		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙🔴 Error - repo");
+		expect(s.ctx.ui.title).toBe("🦑🔴 Error - repo");
 		s.type("k");
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		// An interrupted run goes straight back to idle.
 		await s.fake.fire("agent_start", {}, s.ctx);
 		await s.fake.fire("agent_end", answer("partial", "aborted"), s.ctx);
 		await s.fake.fire("agent_settled", { aborted: true }, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		// A dialog opened between runs is the user's own and changes nothing.
 		await s.fake.fire("ui_prompt_start", { kind: "select" }, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 		await s.fake.fire("ui_prompt_end", { kind: "select" }, s.ctx);
 	});
 
-	it("keeps the tab busy while background subagents or jobs run after the main run, then shows the outcome", async () => {
+	it("shows waiting while background subagents or jobs run after the main run, then the outcome", async () => {
 		vi.useFakeTimers({ now: 1_000_000 });
 		const s = setup({ OCTOCODE_NOTIFY: "off" });
 		const work = runningWorkOf(s.fake.api);
@@ -334,25 +335,58 @@ describe("registerNotify", () => {
 		work.setBackground(["general-1a2b"]);
 		await s.fake.fire("agent_end", answer("Started a child"), s.ctx);
 		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
-		vi.advanceTimersByTime(300); // busy to busy is coalesced
-		expect(s.ctx.ui.title).toBe("🐙⠋ Running - repo · 1 agent");
+		vi.advanceTimersByTime(300);
+		expect(s.ctx.ui.title).toBe("🦑⏳ Waiting - repo · 1 agent");
 		s.type("k"); // seeing the tab does not end the work
 		work.set("bash", [{ kind: "bash", id: "bash-1", title: "build" }]);
 		work.setBackground([]);
 		vi.advanceTimersByTime(300);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Running - repo");
+		expect(s.ctx.ui.title).toBe("🦑⏳ Waiting - repo");
 		work.set("bash", []);
-		expect(s.ctx.ui.title).toBe("🐙🟢 Done - repo");
+		expect(s.ctx.ui.title).toBe("🦑🟢 Done - repo");
 		s.type("k");
-		expect(s.ctx.ui.title).toBe("🐙 Idle - repo");
+		expect(s.ctx.ui.title).toBe("🦑 Idle - repo");
 	});
 
 	it("leaves no busy mark on the tab after shutdown while background work still runs", async () => {
 		const s = setup({ OCTOCODE_NOTIFY: "off" });
 		await s.fake.fire("session_start", {}, s.ctx);
 		runningWorkOf(s.fake.api).set("bash", [{ kind: "bash", id: "bash-1", title: "dev server" }]);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Running - repo");
+		expect(s.ctx.ui.title).toBe("🦑⏳ Waiting - repo");
 		await s.fake.fire("session_shutdown", {}, s.ctx);
+		expect(s.ctx.ui.title).toBe("repo");
+	});
+
+	it("never shows Done while a subagent still runs, even when the session's phase is final", async () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		const work = runningWorkOf(s.fake.api);
+		await s.fake.fire("session_start", {}, s.ctx);
+		await s.fake.fire("agent_start", {}, s.ctx);
+		await s.fake.fire("agent_end", answer("done for now"), s.ctx);
+		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
+		expect(s.ctx.ui.title).toBe("🦑🟢 Done - repo");
+		work.setBackground(["a", "b"]);
+		expect(s.ctx.ui.title).toBe("🦑⏳ Waiting - repo · 2 agents");
+		work.setBackground(["b"]); // one of two finished: still waiting
+		expect(s.ctx.ui.title).toBe("🦑⏳ Waiting - repo · 1 agent");
+		work.setBackground([]);
+		expect(s.ctx.ui.title).toBe("🦑🟢 Done - repo");
+	});
+
+	it("names the agent in the tab as soon as it joins, rejoins or leaves the team, keeping the state", async () => {
+		const s = setup({ OCTOCODE_NOTIFY: "off" });
+		await s.fake.fire("session_start", {}, s.ctx);
+		const name = agentNameOf(s.fake.api);
+		name.set("shy-barnacle");
+		expect(s.ctx.ui.title).toBe("🦑 shy-barnacle Idle - repo");
+		await s.fake.fire("agent_start", {}, s.ctx);
+		name.set("shy-barnacle-2");
+		expect(s.ctx.ui.title).toBe("🦑⠋ shy-barnacle-2 Thinking - repo");
+		name.set(undefined);
+		expect(s.ctx.ui.title).toBe("🦑⠋ Thinking - repo");
+		await s.fake.fire("session_shutdown", {}, s.ctx);
+		name.set("late");
 		expect(s.ctx.ui.title).toBe("repo");
 	});
 
@@ -361,18 +395,18 @@ describe("registerNotify", () => {
 		await s.fake.fire("session_start", {}, s.ctx);
 		await s.fake.fire("before_agent_start", { messageType: "user", prompt: "fix the\nlogin bug" }, s.ctx);
 		await s.fake.fire("agent_start", {}, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Thinking - fix the login bug · repo");
+		expect(s.ctx.ui.title).toBe("🦑⠋ Thinking - fix the login bug · repo");
 		await s.fake.fire("before_agent_start", { messageType: "user", prompt: "and the tests" }, s.ctx);
-		(s.fake.api as unknown as { getSessionName: () => string }).getSessionName = () => "login fix";
+		(s.fake.api.session as { getName: () => string }).getName = () => "login fix";
 		await s.fake.fire("session_info_changed", {}, s.ctx);
-		expect(s.ctx.ui.title).toBe("🐙⠋ Thinking - login fix · repo");
+		expect(s.ctx.ui.title).toBe("🦑⠋ Thinking - login fix · repo");
 
 		const resumed = setup({ OCTOCODE_NOTIFY: "off" });
 		const entries = [{ type: "message", message: { role: "user", content: [{ type: "text", text: "earlier ask" }] } }];
 		(resumed.ctx as unknown as { sessionManager: { getEntries: () => unknown[] } }).sessionManager.getEntries = () =>
 			entries;
 		await resumed.fake.fire("session_start", {}, resumed.ctx);
-		expect(resumed.ctx.ui.title).toBe("🐙 Idle - earlier ask · repo");
+		expect(resumed.ctx.ui.title).toBe("🦑 Idle - earlier ask · repo");
 	});
 
 	it("fires the idle_prompt hook after a minute without input, and none after a keypress", async () => {

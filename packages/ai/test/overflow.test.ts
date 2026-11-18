@@ -16,6 +16,16 @@ describe("silent overflow", () => {
 	});
 });
 
+describe("overflow error text", () => {
+	it("recognizes LiteLLM's pre-call context window check", () => {
+		const message = createErrorMessage(
+			"litellm.ContextWindowExceededError: litellm.BadRequestError: Context Window exceeded for given call. Model=gpt-4o",
+			"litellm",
+		);
+		expect(isContextOverflow(message)).toBe(true);
+	});
+});
+
 function createErrorMessage(errorMessage: string, provider = "ollama"): AssistantMessage {
 	return {
 		role: "assistant",

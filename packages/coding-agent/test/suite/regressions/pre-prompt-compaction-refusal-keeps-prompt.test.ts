@@ -32,7 +32,7 @@ describe("pre-prompt compaction refused as a failure", () => {
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
 				(api) => {
-					api.on("session_before_compact", async () => ({ cancel: true, failure: refusal }));
+					api.bus.on("session_before_compact", async () => ({ cancel: true, failure: refusal }));
 				},
 			],
 		});

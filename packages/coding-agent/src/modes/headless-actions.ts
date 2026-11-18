@@ -1,5 +1,5 @@
 import type { AgentSession } from "../core/agent-session.ts";
-import type { ExtensionCommandContextActions } from "../core/features/index.ts";
+import type { CommandActions } from "../core/features/index.ts";
 
 /**
  * The command actions print and RPC modes share: each acts on the session bound when it runs, read through
@@ -7,7 +7,7 @@ import type { ExtensionCommandContextActions } from "../core/features/index.ts";
  */
 export function headlessCommandActions(
 	getSession: () => AgentSession,
-): Pick<ExtensionCommandContextActions, "waitForIdle" | "navigateTree" | "reload"> {
+): Pick<CommandActions, "waitForIdle" | "navigateTree" | "reload"> {
 	return {
 		waitForIdle: () => getSession().waitForIdle(),
 		navigateTree: async (targetId, options) => {

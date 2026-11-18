@@ -126,9 +126,16 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 					data: { customType: entry.customType, kind: note.kind },
 					failed: true,
 				};
+			// One backlog state change (`octocode/backlog/status-line.ts`): its line is the whole content.
+			if (entry.customType === "octocode-backlog-line" && typeof note.text === "string" && note.text.trim())
+				return {
+					kind: entry.type,
+					text: note.text,
+					data: { customType: entry.customType, ...pick(note, ["ref", "change"]) },
+				};
 			return {
 				kind: entry.type,
-				text: `Extension state: ${entry.customType}`,
+				text: `Feature state: ${entry.customType}`,
 				data: { customType: entry.customType, privateDataStored: entry.data !== undefined },
 			};
 		}

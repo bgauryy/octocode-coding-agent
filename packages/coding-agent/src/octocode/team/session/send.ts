@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -29,7 +29,7 @@ export type Resumer = (
 	request?: ResumeRequest,
 ) => Promise<string | undefined>;
 
-export type MessageHook = (message: MessageEnvelope, ctx: ExtensionContext, signal?: AbortSignal) => Promise<void>;
+export type MessageHook = (message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal) => Promise<void>;
 
 /** Who got a message and its id (`resumed`: a resumed subagent's receipt; `relayed`: the parent that relays it; `delivery`: how each recipient meets it), or an error text. */
 export type SendResult =
@@ -48,7 +48,7 @@ export type SendResult =
 /** What sending reads of the team (`Team`, `session.ts`): the current values each time, so a change while a hook runs is seen. */
 export interface SendHost {
 	me(): Member | undefined;
-	ctx(): ExtensionContext | undefined;
+	ctx(): FeatureContext | undefined;
 	/** The open database, compared with the one the send started on. */
 	db(): TeamStore | undefined;
 	store(): TeamStore;

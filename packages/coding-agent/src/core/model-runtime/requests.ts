@@ -71,7 +71,7 @@ export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
 	roleVariantTools?: ReadonlySet<string>;
 };
 
-/** Resolve a model's auth and merge the headers configured for it in models.json or by its extension. */
+/** Resolve a model's auth and merge the headers configured for it in models.json or by its feature. */
 export async function resolveModelAuth(
 	models: MutableModels,
 	layers: ProviderLayers,
@@ -83,7 +83,7 @@ export async function resolveModelAuth(
 	const configuredHeaders = resolveConfiguredModelHeaders(
 		model,
 		layers.config.getProvider(model.provider),
-		layers.extensionProviders.get(model.provider),
+		layers.featureProviders.get(model.provider),
 		{ ...resolution.env, ...overrides.env },
 	);
 	return {

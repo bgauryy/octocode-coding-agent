@@ -6,16 +6,19 @@
 
 import {
 	type Component,
+	type Focusable,
 	getKeybindings,
-	GLYPH,
+	ListView,
 	truncateToWidth,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { ruleLine } from "./dynamic-border.ts";
 import { theme } from "./theme.ts";
 import { type BadgeState, type EnterVerb, legend, pageHints, positionLabel } from "./page-kit.ts";
-import { hintLine, keyText, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
+import { cursorMark, hintLine, keyText, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
 
 export interface PageRow {
 	id: string;
@@ -75,52 +78,142 @@ export interface ManagePageOptions {
 	onCancel(): void;
 }
 
-type Line = { text?: string; row?: PageRow; heading?: string; note?: string };
+/** A selectable row with the section headings and empty notes drawn above it. */
+interface Item {
+	row: PageRow;
+	above: Line[];
+}
 
-const MAX_LINES = 14;
+type Line = { heading: string } | { note: string };
+
+const MAX_ROWS = 14;
 const MAX_NAME_WIDTH = 24;
 
 function pad(text: string, width: number): string {
 	return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
 }
 
-export class ManagePageComponent implements Component {
+/**
+ * The page: rows on a `ListView` (the `›` cursor, page keys that move it, an `a–b/total` foot counting rows, the wheel
+ * and a click that selects; a page never acts on a click). Section headings ride above their first row; sections
+ * after the last row are drawn under the list.
+ */
+export class ManagePageComponent implements Component, Focusable {
 	private readonly selectable: PageRow[];
-	private selected = 0;
 	private readonly options: ManagePageOptions;
-	private scroll = 0;
-	private bodyRows = MAX_LINES;
-	private manualScroll = false;
-	private selectionVisible = true;
+	private readonly list: ListView<Item>;
+	/** Headings and empty notes after the last selectable row. */
+	private readonly trailing: Line[] = [];
+	private width = 80;
+	/** Lines above the list in the last render, to place mouse rows. */
+	private listTop = 0;
+	/** First fact line shown when the facts do not fit; page keys scroll them while every row is in view. */
+	private factScroll = 0;
+	private factsOverflow = false;
+	private factPage = 1;
+	focused = false;
 
 	constructor(options: ManagePageOptions) {
 		this.options = options;
 		this.selectable = options.sections.flatMap((section) => [...section.rows]);
-		const initial = this.selectable.findIndex((row) => row.id === options.initialId);
-		this.selected = Math.max(0, initial);
+		const items: Item[] = [];
+		let pending: Line[] = [];
+		for (const section of options.sections) {
+			pending.push({ heading: section.heading });
+			if (section.rows.length === 0 && section.empty) pending.push({ note: section.empty });
+			for (const row of section.rows) {
+				items.push({ row, above: pending });
+				pending = [];
+			}
+		}
+		this.trailing = pending;
+		const nameWidth = Math.min(MAX_NAME_WIDTH, Math.max(1, ...this.selectable.map((row) => visibleWidth(row.name))));
+		this.list = new ListView<Item>({
+			items,
+			maxRows: MAX_ROWS,
+			mark: false,
+			clickConfirms: false,
+			theme: {
+				cursor: (text) => theme.fg("accent", text),
+				position: (text) => theme.fg("muted", text),
+				empty: (text) => theme.fg("muted", text),
+			},
+			row: (item, { selected, width }) => [
+				...item.above.map((line) => this.renderLine(line, width)),
+				...this.renderRow(item.row, width, nameWidth, selected),
+			],
+		});
+		const initial = items.findIndex((item) => item.row.id === options.initialId);
+		this.list.setSelectedIndex(Math.max(0, initial));
+		this.list.onSelect = (item) => options.onSelect(item.row.id);
+		this.list.onCancel = () => options.onCancel();
+		this.list.onSelectionChange = (item) => options.onHighlight?.(item.row.id);
 	}
 
 	invalidate(): void {}
 
-	private lines(): Line[] {
-		const lines: Line[] = [];
-		for (const section of this.options.sections) {
-			lines.push({ heading: section.heading });
-			for (const row of section.rows) lines.push({ row });
-			if (section.rows.length === 0 && section.empty) lines.push({ note: section.empty });
-		}
-		return lines;
-	}
-
 	render(width: number): string[] {
 		if (width <= 0) return [];
-		return this.renderBody(width);
+		this.width = width;
+		const { title, facts = [], notes = [], alerts = [] } = this.options;
+		const border = ruleLine(width);
+		const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width));
+		const factLines = facts.flatMap((fact) => wrap(` ${theme.fg("muted", fact.label)}  ${fact.value}`));
+		const tail = [
+			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
+			...notes.flatMap((note) => wrap(` ${theme.fg("muted", note)}`)),
+			...(this.options.legend?.length ? wrap(` ${theme.fg("muted", legend(this.options.legend))}`) : []),
+		];
+		const viewport = this.options.viewportRows?.() ?? process.stdout.rows ?? 24;
+		// Title, rules, footer and one heading per section; the rows keep at least three lines.
+		const fixed = 6 + tail.length + this.trailing.length + this.options.sections.length;
+		const rowLines = Math.min(this.selectable.length, 3);
+		const factRoom = Math.max(2, viewport - fixed - rowLines - 1);
+		this.factsOverflow = factLines.length > factRoom;
+		this.factPage = Math.max(1, factRoom - 1);
+		this.factScroll = this.factsOverflow ? Math.max(0, Math.min(this.factScroll, factLines.length - factRoom + 1)) : 0;
+		const shownFacts = this.factsOverflow
+			? [
+					...factLines.slice(this.factScroll, this.factScroll + factRoom - 1),
+					this.factsFoot(factLines.length, factRoom - 1, width),
+				]
+			: factLines;
+		const head = [
+			border,
+			truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…"),
+			"",
+			...shownFacts,
+			...(facts.length ? [""] : []),
+		];
+		const room = viewport - fixed - head.length + 3;
+		this.list.setMaxRows(Math.max(3, Math.min(MAX_ROWS, room)));
+		this.listTop = head.length;
+		const body = this.selectable.length > 0 ? this.list.render(width) : [];
+		return [
+			...head,
+			...body,
+			...this.trailing.map((line) => this.renderLine(line, width)),
+			...tail,
+			this.footer(width),
+			border,
+		];
+	}
+
+	/** `a–b/total facts · pgup/pgdn scroll` under a fact window. */
+	private factsFoot(total: number, shown: number, width: number): string {
+		const last = Math.min(total, this.factScroll + shown);
+		const keys = `${keyText("tui.select.pageUp")}/${keyText("tui.select.pageDown")}`;
+		return truncateToWidth(
+			` ${theme.fg("muted", `${positionLabel(this.factScroll + 1, last, total)} facts`)}${theme.fg("dim", " · ")}${hintLine([[keys, "scroll"]])}`,
+			width,
+			"…",
+		);
 	}
 
 	private footer(width: number): string {
 		const { hints, facts, nested = false, enter } = this.options;
 		if (hints) return renderHintLine(hints, width);
-		const row = this.selectable[this.selected];
+		const row = this.list.getSelectedItem()?.row;
 		return renderHintLine(
 			pageHints(facts?.length ? "detail" : "list", {
 				nested,
@@ -131,84 +224,23 @@ export class ManagePageComponent implements Component {
 		);
 	}
 
-	private renderBody(width: number): string[] {
-		const { title, facts = [], notes = [], alerts = [] } = this.options;
-		const border = ruleLine(width);
-		const selected = this.selectable[this.selected];
-		const body: { text: string; id?: string }[] = [];
-		const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width));
-		for (const fact of facts)
-			for (const text of wrap(` ${theme.fg("muted", fact.label)}  ${fact.value}`)) body.push({ text });
-		if (facts.length) body.push({ text: "" });
-		const nameWidth = Math.min(MAX_NAME_WIDTH, Math.max(1, ...this.selectable.map((row) => visibleWidth(row.name))));
-		for (const line of this.lines()) {
-			const row = line.row;
-			const narrow = width < 72;
-			const shown = row && narrow ? { ...row, detail: undefined } : row;
-			body.push({
-				text: this.renderLine(shown ? { row: shown } : line, width, nameWidth, row === selected ? shown : undefined),
-				id: row?.id,
-			});
-			if (
-				row &&
-				row === selected &&
-				row.detail &&
-				(narrow || visibleWidth(`   ${row.name}  ${row.detail}  ${row.badge ?? ""}`) > width)
-			) {
-				for (const text of wrap(`   ${theme.fg("muted", row.detail)}`)) body.push({ text });
-			}
-		}
-		const tail = [
-			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
-			...notes.flatMap((note) => wrap(` ${theme.fg("muted", note)}`)),
-			...(this.options.legend?.length ? wrap(` ${theme.fg("muted", legend(this.options.legend))}`) : []),
-		];
-		this.bodyRows = Math.max(
-			3,
-			Math.min(MAX_LINES, (this.options.viewportRows?.() ?? process.stdout.rows ?? 24) - tail.length - 7),
-		);
-		const at = Math.max(
-			0,
-			body.findIndex((line) => line.id === selected?.id),
-		);
-		if (!this.manualScroll) {
-			if (at < this.scroll) this.scroll = Math.max(0, at - 1);
-			else if (at >= this.scroll + this.bodyRows) this.scroll = at - this.bodyRows + 1;
-		}
-		this.scroll = Math.max(0, Math.min(this.scroll, body.length - this.bodyRows));
-		this.selectionVisible = body
-			.slice(this.scroll, this.scroll + this.bodyRows)
-			.some((line) => line.id === selected?.id);
-		const scrolling = body.length > this.bodyRows;
-		return [
-			border,
-			truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, width, "…"),
-			"",
-			...body.slice(this.scroll, this.scroll + this.bodyRows).map((line) => line.text),
-			...(scrolling
-				? [
-						truncateToWidth(
-							` ${theme.fg("muted", positionLabel(this.scroll + 1, Math.min(body.length, this.scroll + this.bodyRows), body.length))}${theme.fg("dim", " · ")}${hintLine([[`${keyText("tui.select.pageUp")}/${keyText("tui.select.pageDown")}`, "scroll"]])}${this.selectionVisible ? "" : `${theme.fg("dim", " · ")}${hintLine([[keyText("tui.select.confirm"), "show selection"]])}`}`,
-							width,
-							"…",
-						),
-					]
-				: []),
-			...tail,
-			this.footer(width),
-			border,
-		];
+	private renderLine(line: Line, width: number): string {
+		if ("heading" in line) return truncateToWidth(` ${theme.fg("muted", theme.bold(line.heading))}`, width, "…");
+		return truncateToWidth(`   ${theme.fg("muted", line.note)}`, width, "…");
 	}
 
-	private renderLine(line: Line, width: number, nameWidth: number, selectedRow: PageRow | undefined): string {
-		if (line.heading !== undefined)
-			return truncateToWidth(` ${theme.fg("muted", theme.bold(line.heading))}`, width, "…");
-		if (line.note !== undefined) return truncateToWidth(`   ${theme.fg("muted", line.note)}`, width, "…");
-		if (!line.row) return "";
-		const row = line.row;
-		const selected = row === selectedRow;
+	/** The row, and on a narrow terminal or a long row the selected row's detail on the lines under it. */
+	private renderRow(row: PageRow, width: number, nameWidth: number, selected: boolean): string[] {
+		const narrow = width < 72;
+		const long = !!row.detail && visibleWidth(`   ${row.name}  ${row.detail}  ${row.badge ?? ""}`) > width;
+		const line = this.rowLine(narrow ? { ...row, detail: undefined } : row, width, nameWidth, selected);
+		if (!selected || !row.detail || !(narrow || long)) return [line];
+		return [line, ...wrapTextWithAnsi(`   ${theme.fg("muted", row.detail)}`, Math.max(1, width))];
+	}
+
+	private rowLine(row: PageRow, width: number, nameWidth: number, selected: boolean): string {
 		const name = pad(row.name, nameWidth);
-		const left = `${selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  "}${selected ? theme.fg("accent", name) : theme.fg("text", name)}${row.detail ? `  ${theme.fg("muted", row.detail)}` : ""}`;
+		const left = `${cursorMark(selected)}${selected ? theme.fg("accent", name) : theme.fg("text", name)}${row.detail ? `  ${theme.fg("muted", row.detail)}` : ""}`;
 		if (!row.badge) return truncateToWidth(` ${left}`, width, "…");
 		// Keep the selection marker and a name column while reserving room for the status.
 		const badge = truncateToWidth(theme.fg(row.tone ?? "muted", row.badge), Math.max(0, width - 5), "…");
@@ -226,25 +258,20 @@ export class ManagePageComponent implements Component {
 	}
 
 	handleInput(data: string): void {
+		const row = this.list.getSelectedItem()?.row;
 		const kb = getKeybindings();
-		const row = this.selectable[this.selected];
-		if (kb.matches(data, "tui.select.pageUp") || kb.matches(data, "tui.select.pageDown")) {
-			this.scroll += kb.matches(data, "tui.select.pageUp") ? -this.bodyRows : this.bodyRows;
-			this.manualScroll = true;
-		} else if (kb.matches(data, "tui.select.up") || kb.matches(data, "tui.select.down")) {
-			this.manualScroll = false;
-			const step = kb.matches(data, "tui.select.up") ? -1 : 1;
-			this.selected = Math.max(0, Math.min(this.selectable.length - 1, this.selected + step));
-			const moved = this.selectable[this.selected];
-			if (moved) this.options.onHighlight?.(moved.id);
-		} else if (kb.matches(data, "tui.select.confirm")) {
-			if (!this.selectionVisible) {
-				// The selection is scrolled off: bring it back instead of acting on a row the user cannot see.
-				this.manualScroll = false;
-				return;
-			}
-			if (row) this.options.onSelect(row.id);
-		} else if (kb.matches(data, "tui.select.cancel")) this.options.onCancel();
-		else if (row && this.selectionVisible && this.rowAccepts(row, data)) this.options.onKey?.(data, row.id);
+		const page = kb.matches(data, "tui.select.pageUp") ? -1 : kb.matches(data, "tui.select.pageDown") ? 1 : 0;
+		const rowsFit = this.list.visibleRange().end - this.list.visibleRange().start >= this.list.getItems().length;
+		if (page && this.factsOverflow && rowsFit) this.factScroll = Math.max(0, this.factScroll + page * this.factPage);
+		else if (row && this.rowAccepts(row, data)) this.options.onKey?.(data, row.id);
+		else this.list.handleInput(data);
+	}
+
+	/** The wheel moves the cursor and a click selects a row; neither acts on it. */
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (this.selectable.length === 0) return undefined;
+		const y = event.y - this.listTop;
+		if (event.type !== "wheel" && y < 0) return undefined;
+		return this.list.handleMouse({ ...event, y, width: this.width });
 	}
 }

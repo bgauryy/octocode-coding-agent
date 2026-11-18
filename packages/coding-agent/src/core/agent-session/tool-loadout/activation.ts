@@ -21,7 +21,7 @@ export interface ActivationInput {
 	allowedTools?: (name: string) => boolean;
 	/** The caller named the active tools, so nothing is added on registration. */
 	explicitActiveNames: boolean;
-	includeAllExtensionTools: boolean;
+	includeAllFeatureTools: boolean;
 	registered: Iterable<string>;
 	customTools: { definition: ToolDefinition; sourceInfo: { owner?: string } }[];
 	previousActivated: ReadonlySet<string>;
@@ -38,7 +38,7 @@ export function toolsToActivate(input: ActivationInput): string[] {
 			// Naming or matching a tool activates it even when it is not active by default.
 			if (input.allowedTools(name) && input.isDeclarable(name) && !input.deselected.has(name)) added.push(name);
 		}
-	} else if (input.includeAllExtensionTools) {
+	} else if (input.includeAllFeatureTools) {
 		for (const { definition, sourceInfo } of input.customTools) {
 			if (sourceInfo.owner !== "native" && input.isActivatedOnRegistration(definition.name))
 				added.push(definition.name);

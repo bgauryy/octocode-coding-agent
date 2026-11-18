@@ -17,13 +17,15 @@ import {
 	createAgentSessionServices,
 	createSessionFromServices,
 } from "../../src/core/agent-session-runtime.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
- * On-demand native tools (`web`, `archive`, `models`) on a scripted model whose transport adds tools after the cached
+ * On-demand native tools (`archive`, `models`) on a scripted model whose transport adds tools after the cached
  * prefix: a new session leaves them undeclared while `<tools>` lists them; the first call or a load with the `mcp` tool
  * declares one after the head, which stays byte-identical. A resumed session declares what it loaded, compaction carries
  * a loaded tool into the new head, and a switch to a model without in-place additions declares the rest deferred.
@@ -34,7 +36,7 @@ const root = fs.realpathSync(tmp("octocode-native-ondemand-"));
 const cwd = path.join(root, "project");
 const agentDir = path.join(root, "agent");
 const sessions = path.join(root, "sessions");
-const ON_DEMAND = ["web", "archive", "models"];
+const ON_DEMAND = ["archive", "models"];
 
 let capable: ReturnType<typeof createFauxCore>;
 let plain: ReturnType<typeof createFauxCore>;
@@ -42,9 +44,9 @@ let runtime: AgentSessionRuntime;
 
 const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const providerOf =
-	(core: ReturnType<typeof createFauxCore>, compat?: Record<string, boolean>): ExtensionFactory =>
+	(core: ReturnType<typeof createFauxCore>, compat?: Record<string, boolean>): FeatureRegister =>
 	(api) => {
-		api.registerProvider(core.models[0].provider, {
+		api.providers.register(core.models[0].provider, {
 			name: core.models[0].provider,
 			api: core.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -70,7 +72,7 @@ async function run(
 	return requests;
 }
 
-const rebind = () => runtime.session.bindExtensions({ mode: "rpc", shutdownHandler: () => undefined } as never);
+const rebind = () => runtime.session.bindFeatures({ mode: "rpc", shutdownHandler: () => undefined } as never);
 const head = (context: TranscriptContext) => JSON.stringify(context.messages[0]);
 const declared = (context: TranscriptContext) => getCurrentTools(context.messages).map((tool) => tool.name);
 const toolsSection = (context: TranscriptContext) =>
@@ -107,7 +109,8 @@ beforeAll(async () => {
 			agentDir,
 			settingsManager,
 			resourceLoaderOptions: {
-				extensionFactories: [
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
 					{
 						name: "faux-provider",
 						factory: providerOf(capable, {
@@ -116,7 +119,7 @@ beforeAll(async () => {
 						}),
 					},
 					{ name: "faux-plain-provider", factory: providerOf(plain) },
-				],
+				]),
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,
@@ -155,10 +158,18 @@ describe("on-demand native tools", () => {
 			expect(toolsSection(first)).toMatch(new RegExp(`^- ${name}: \\S`, "m"));
 		}
 		expect(declared(first)).toContain("mcp");
+		// `web` is not on demand: a model asked for live content without naming a tool uses the shell instead.
+		expect(declared(first)).toContain("web");
+		// One line tells the model the undeclared ones are callable by name; it names each of them.
+		const callable = toolsSection(first)
+			.split("\n")
+			.filter((line) => !line.startsWith("- ") && line.includes("`mcp`"));
+		expect(callable).toHaveLength(1);
+		for (const name of ON_DEMAND) expect(callable[0]).toContain(name);
 		expect(results(second)).not.toContain("not found");
 		expect(head(second)).toBe(head(first));
 		expect(declared(second)).toContain("archive");
-		expect(declared(second)).not.toContain("web");
+		expect(declared(second)).not.toContain("models");
 		// Loading moves no `<tools>` line.
 		expect(toolsSection(second)).toBe(toolsSection(first));
 
@@ -167,7 +178,7 @@ describe("on-demand native tools", () => {
 		const [resumed] = await run(capable, [fauxAssistantMessage("ok")]);
 		expect(head(resumed)).toBe(head(first));
 		expect(declared(resumed)).toContain("archive");
-		expect(declared(resumed)).not.toContain("web");
+		expect(declared(resumed)).not.toContain("models");
 		expect(toolsSection(resumed)).toBe(toolsSection(first));
 
 		// Compaction starts a new head: the loaded tool is in it, the unloaded ones are still left out.
@@ -185,7 +196,6 @@ describe("on-demand native tools", () => {
 		await runtime.session.compact();
 		const [compacted] = await run(capable, [fauxAssistantMessage("ok")]);
 		expect(declared(compacted)).toContain("archive");
-		expect(declared(compacted)).not.toContain("web");
 		expect(declared(compacted)).not.toContain("models");
 	}, 120_000);
 
@@ -205,7 +215,6 @@ describe("on-demand native tools", () => {
 		expect(results(second)).toContain("Input schema");
 		expect(head(second)).toBe(head(first));
 		expect(declared(second)).toContain("models");
-		expect(declared(second)).not.toContain("web");
 
 		await runtime.session.setModel(runtime.session.modelRuntime.getModel("faux-plain", "plain-1")!);
 		const [switched] = await run(plain, [fauxAssistantMessage("ok")]);

@@ -6,16 +6,28 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { type ApiEvent, CLIENT_MARGIN_MS, ERR, MAX_FRAME_BYTES, WAIT_MS } from "./protocol.ts";
 import type { InstanceRecord } from "./registry.ts";
 
-/** A call refused before any byte left this process: it can be retried unchanged once its cause is fixed. */
-const notSent = (message: string): Error => Object.assign(new Error(message), { execution: "not-sent" });
+/**
+ * Why a call never reached the other session: `unreachable` (nothing accepted the connection: the process is gone or its
+ * socket is stale) or `overloaded` (it refused the connection before reading the request; `retryAfterMs` says when to try again).
+ */
+type NotSentReason = "unreachable" | "overloaded";
 
-function socketError(error: Error): Error {
-	const code =
-		isRecord(error) && typeof error.code === "string" && Object.hasOwn(constants.errno, error.code)
-			? ` (${error.code})`
-			: "";
-	return new Error(`API socket transport failed${code}`);
+/** A call refused before any byte left this process: it can be retried unchanged once its cause is fixed. */
+const notSent = (message: string, reason?: NotSentReason): Error =>
+	Object.assign(new Error(message), { execution: "not-sent", ...(reason ? { reason } : {}) });
+
+function errnoCode(error: Error): string {
+	return isRecord(error) && typeof error.code === "string" && Object.hasOwn(constants.errno, error.code)
+		? ` (${error.code})`
+		: "";
 }
+
+/** The transport failed after the request may have been written: whether the other session took it is unknown. */
+const socketError = (error: Error): Error => new Error(`API socket transport failed${errnoCode(error)}`);
+
+/** The connection itself failed, so no request byte was written. */
+const connectError = (error: Error): Error =>
+	notSent(`API socket connection failed${errnoCode(error)}; nothing was sent`, "unreachable");
 
 /** A failed call, carrying the JSON-RPC code. */
 export class ApiCallError extends Error {
@@ -105,6 +117,8 @@ export class ApiClient {
 			const socket = net.connect(this.instance.socket!);
 			let buffer = "";
 			let finished = false;
+			// Until the connection opens no byte of the request is written, so every failure before then is a non-delivery.
+			let connected = false;
 			const finish = (error?: Error, response?: unknown): void => {
 				if (finished) return;
 				finished = true;
@@ -114,17 +128,31 @@ export class ApiClient {
 				if (error) reject(error);
 				else resolve(response);
 			};
-			const abort = (): void => finish(new Error("API call aborted"));
+			const abort = (): void => finish(connected ? new Error("API call aborted") : notSent("API call aborted"));
 			const timer = setTimeout(
-				() => finish(new Error("API call timed out; delivery may have been accepted")),
+				() =>
+					finish(
+						connected
+							? new Error("API call timed out; delivery may have been accepted")
+							: notSent("API call timed out before the connection opened; nothing was sent", "unreachable"),
+					),
 				options.timeoutMs,
 			);
 			socket.setEncoding("utf8");
-			socket.once("error", (error) => finish(socketError(error)));
-			socket.once("close", () => finish(new Error("API socket closed before its response")));
+			socket.once("error", (error) => finish(connected ? socketError(error) : connectError(error)));
+			socket.once("close", () =>
+				finish(
+					connected
+						? new Error("API socket closed before its response")
+						: notSent("API socket closed before it connected; nothing was sent", "unreachable"),
+				),
+			);
 			options.signal?.addEventListener("abort", abort, { once: true });
 			if (options.signal?.aborted) return abort();
-			socket.on("connect", () => socket.write(`${payload}\n`));
+			socket.on("connect", () => {
+				connected = true;
+				socket.write(`${payload}\n`);
+			});
 			socket.on("data", (chunk: string) => {
 				buffer += chunk;
 				if (Buffer.byteLength(buffer, "utf8") > MAX_FRAME_BYTES)

@@ -8,9 +8,11 @@ function harness() {
 	const channels = new Map<string, Array<(data: unknown) => void>>();
 	const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
 	const api = {
-		on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) =>
-			handlers.set(event, [...(handlers.get(event) ?? []), handler]),
-		events: {
+		bus: {
+			on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) =>
+				handlers.set(event, [...(handlers.get(event) ?? []), handler]),
+		},
+		channels: {
 			on: (channel: string, handler: (data: unknown) => void) => {
 				channels.set(channel, [...(channels.get(channel) ?? []), handler]);
 				return () => undefined;
@@ -55,7 +57,7 @@ describe("chain fields on the presence hooks", () => {
 	it("gives AgentQueued its prerequisites and item, matched by role", async () => {
 		const h = harness();
 		await h.start();
-		h.api.events.emit(AGENT_CHAIN_CHANNEL, {
+		h.api.channels.emit(AGENT_CHAIN_CHANNEL, {
 			kind: "queued",
 			agent: "kelp",
 			role: "reviewer",
@@ -75,22 +77,22 @@ describe("chain fields on the presence hooks", () => {
 	it("gives AgentOn started_after and the prerequisite's AgentOff releases, or holds on failure", async () => {
 		const h = harness();
 		await h.start();
-		h.api.events.emit(AGENT_CHAIN_CHANNEL, {
+		h.api.channels.emit(AGENT_CHAIN_CHANNEL, {
 			kind: "released",
 			agent: "kelp",
 			role: "general",
 			after: ["agent:sly"],
 			seq: 4,
 		});
-		h.api.events.emit(AGENT_CHAIN_CHANNEL, {
+		h.api.channels.emit(AGENT_CHAIN_CHANNEL, {
 			kind: "held",
 			agent: "moss",
 			role: "general",
 			after: ["agent:sly"],
 			failed: ["agent:sly"],
 		});
-		h.api.events.emit(AGENT_LIFECYCLE_CHANNEL, lifecycle("off", "sly"));
-		h.api.events.emit(AGENT_LIFECYCLE_CHANNEL, lifecycle("on", "kelp"));
+		h.api.channels.emit(AGENT_LIFECYCLE_CHANNEL, lifecycle("off", "sly"));
+		h.api.channels.emit(AGENT_LIFECYCLE_CHANNEL, lifecycle("on", "kelp"));
 		await h.flush();
 		const off = h.seen.find((each) => each.event === "AgentOff")!;
 		expect(off.input).toMatchObject({ releases: ["kelp"], holds: ["moss"] });

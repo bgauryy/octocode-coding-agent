@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
-import { registerFileTool } from "../../src/octocode/files/tool.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { fakeCtx, fakePermission } from "./fake-host.ts";
+import { fakeCtx, fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 interface FileTool {
@@ -17,12 +17,12 @@ interface FileTool {
 function fileTool(): FileTool {
 	let tool: FileTool | undefined;
 	registerFileTool(
-		{
+		asSetup({
 			registerTool: (t: FileTool) => {
 				tool = t;
 			},
 			on: () => undefined,
-		} as never,
+		}) as never,
 		new FileGuard(),
 		fakePermission(),
 	);

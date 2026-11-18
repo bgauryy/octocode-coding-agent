@@ -10,7 +10,7 @@ export interface InventoryItem {
 	/** The plugin, skill or MCP server name the row stands for, beside its id. */
 	name?: string;
 	host: InventoryHost;
-	kind: "harness" | "plugin" | "extension" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
+	kind: "harness" | "plugin" | "hooks" | "hook-file" | "hook" | "skill" | "mcp";
 	label: string;
 	/** 0 host-level, 1 a file or container, 2 one handler. */
 	depth: 0 | 1 | 2;
@@ -25,7 +25,7 @@ export interface InventoryItem {
 	locked?: string;
 	/** The broader toggle keys that decide this item when its own key is unset, most specific first. */
 	parents?: string[];
-	/** For extensions and skills: the resource the existing `extensions` and `skills` patterns switch. */
+	/** For skills: the resource the existing `skills` patterns switch. */
 	resource?: ResourceItem;
 	/** For a plugin another host installed: the `plugins` entry switching it on adds. */
 	install?: { path: string; protocol: "claude" | "codex" };

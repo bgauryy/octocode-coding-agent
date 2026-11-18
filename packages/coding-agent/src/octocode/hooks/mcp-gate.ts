@@ -1,6 +1,6 @@
 import { type BoundMcpHookCaller, type McpHookCaller, getMcpHookCaller } from "../../../../mcp/src/api.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 
 /**
  * What an `mcp_tool` hook's call goes through before it reaches the server. A hook's call is a tool call like the
@@ -10,7 +10,7 @@ import type { ExtensionContext } from "../../core/features/index.ts";
  */
 type HookMcpGate = (
 	call: { toolName: string; input: Record<string, unknown> },
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 ) => Promise<string | undefined>;
 
 const REQUEST_GATE = "octocode:hook-mcp-gate:request";
@@ -38,7 +38,7 @@ function getHookMcpGate(events: EventBus): HookMcpGate | undefined {
  */
 export function boundMcpHookCaller(
 	events: EventBus,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	event?: string,
 ): BoundMcpHookCaller | undefined {
 	const caller: McpHookCaller | undefined = getMcpHookCaller(events);

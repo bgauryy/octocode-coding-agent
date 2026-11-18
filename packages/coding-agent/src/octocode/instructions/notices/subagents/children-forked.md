@@ -1,1 +1,0 @@
-[Fork] These subagents were running when this session was forked; they stopped with the session it was forked from, which receives their reports: {{children}}. To continue one here, call `agent` type `task` with `resume` set to its id. An isolated child resumes in a worktree recreated from its saved ref; when that ref is gone, start a new task with the context it needs.

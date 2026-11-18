@@ -3,6 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getMessageText, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("parallel preflight abort", () => {
 	const harnesses: Harness[] = [];
@@ -33,9 +34,9 @@ describe("parallel preflight abort", () => {
 		};
 		const harness = await createHarness({
 			tools: [externalWrite],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("tool_call", async (event, ctx) => {
+					api.bus.on("tool_call", async (event, ctx) => {
 						const value = "value" in event.input ? String(event.input.value) : "";
 						preflights.push(value);
 						if (value === "second") {
@@ -43,11 +44,11 @@ describe("parallel preflight abort", () => {
 							release.resolve();
 						}
 					});
-					api.on("tool_result", async (event) => {
+					api.bus.on("tool_result", async (event) => {
 						resultHooks.push(event.toolCallId);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		harness.setResponses([

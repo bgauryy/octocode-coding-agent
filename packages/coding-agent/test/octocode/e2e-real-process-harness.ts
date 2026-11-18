@@ -308,7 +308,11 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 
 /** A `ps` scan: a child's arguments name its session folder under the sandbox, and a script's command names its markers. */
 function processesNaming(needle: string): number[] {
-	const listing = execFileSync("ps", ["-axww", "-o", "pid=,command="], { encoding: "utf8" });
+	// A busy machine lists more than execFileSync's 1 MB default (ENOBUFS).
+	const listing = execFileSync("ps", ["-axww", "-o", "pid=,command="], {
+		encoding: "utf8",
+		maxBuffer: 64 * 1024 * 1024,
+	});
 	const found = listing
 		.split("\n")
 		.map((line) => ({ line: line.trim(), pid: Number.parseInt(line.trim(), 10) }))

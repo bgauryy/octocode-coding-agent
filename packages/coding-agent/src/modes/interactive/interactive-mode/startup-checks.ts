@@ -214,7 +214,7 @@ export function showNewVersionNotification(host: StartupChecksHost, release: Lat
 
 export function showPackageUpdateNotification(host: StartupChecksHost, packages: string[]): void {
 	const updateInstruction = () =>
-		theme.fg("muted", "Package updates are available. Run ") + theme.fg("accent", `${APP_NAME} update --extensions`);
+		theme.fg("muted", "Package updates are available. Run ") + theme.fg("accent", `${APP_NAME} update --packages`);
 	const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
 
 	host.chatContainer.addChild(new Spacer(1));

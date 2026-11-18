@@ -7,7 +7,7 @@ const trustedTransformers = new WeakSet<MarkdownTransformer>();
 /**
  * Marks a built-in transformer as trusted: it runs after every other transformer and after the final sanitize, so the
  * terminal styling it adds reaches the screen. Its output must be built only from the Markdown it is given (already
- * sanitized) and its own styling. Extension transformers are never marked: their output is sanitized.
+ * sanitized) and its own styling. Feature transformers are never marked: their output is sanitized.
  */
 export function trustedMarkdownTransformer(transformer: MarkdownTransformer): MarkdownTransformer {
 	trustedTransformers.add(transformer);
@@ -45,7 +45,7 @@ function runTransformers(
 }
 
 /**
- * Sanitizes the Markdown, runs the untrusted (extension) transformers and sanitizes what they return, then runs the
+ * Sanitizes the Markdown, runs the untrusted (feature) transformers and sanitizes what they return, then runs the
  * trusted built-ins over that clean text, keeping their styling.
  */
 function applyMarkdownTransformers(

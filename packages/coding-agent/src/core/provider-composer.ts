@@ -17,12 +17,7 @@ import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capab
 import { classifierErrorResult, imageErrorResult } from "@octocodeai/octocode-ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonProvider } from "./model-config.ts";
 import { composeApiKeyAuth, composeOAuthAuth, configuredApiKey, configuredHeaders } from "./provider-composer/auth.ts";
-import {
-	applyExtension,
-	applyModelOverride,
-	applyModelsJson,
-	getAllProviderModels,
-} from "./provider-composer/models.ts";
+import { applyFeature, applyModelOverride, applyModelsJson, getAllProviderModels } from "./provider-composer/models.ts";
 import type { KnownModelLookup } from "./provider-composer/known-models.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 import {
@@ -37,63 +32,63 @@ export type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.
 function rawModelHeaders(
 	model: AnyModel,
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): Record<string, string> | undefined {
-	// models.json definitions and overrides are chat-only. Extension definitions
+	// models.json definitions and overrides are chat-only. Feature definitions
 	// are matched by operation and id so colliding models cannot share headers.
 	const chatDefinition = isModelType(model, "chat")
 		? config?.models?.find((entry) => entry.id === model.id)
 		: undefined;
-	const extensionModel = extension?.models?.find(
+	const featureModel = feature?.models?.find(
 		(entry) => (entry.type ?? "chat") === (model.type ?? "chat") && entry.id === model.id,
 	);
 	const headers = {
 		...(isModelType(model, "chat") ? config?.modelOverrides?.[model.id]?.headers : undefined),
 		...chatDefinition?.headers,
-		...extensionModel?.headers,
+		...featureModel?.headers,
 	};
 	return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
-export function validateExtensionProvider(
+export function validateFeatureProvider(
 	providerId: string,
 	base: Provider | undefined,
 	modelsConfig: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput,
+	feature: ProviderConfigInput,
 ): void {
-	if (extension.streamSimple && !extension.api) {
+	if (feature.streamSimple && !feature.api) {
 		throw new Error(`Provider ${providerId}: "api" is required when registering streamSimple.`);
 	}
-	applyExtension(providerId, applyModelsJson(providerId, getAllProviderModels(base), modelsConfig), extension);
+	applyFeature(providerId, applyModelsJson(providerId, getAllProviderModels(base), modelsConfig), feature);
 }
 
-/** Compose built-in, models.json, and extension layers without reading credentials. */
+/** Compose built-in, models.json, and feature layers without reading credentials. */
 export function composeModelProvider(
 	providerId: string,
 	base: Provider | undefined,
 	modelConfig: ModelConfig,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 	known?: KnownModelLookup,
 ): Provider {
 	const config = modelConfig.getProvider(providerId);
-	let extensionOAuthCredential: OAuthCredentials | undefined;
-	let refreshedExtensionModels: ProviderConfigInput["models"];
-	const currentExtension = (): ProviderConfigInput | undefined =>
-		extension && refreshedExtensionModels ? { ...extension, models: refreshedExtensionModels } : extension;
+	let featureOAuthCredential: OAuthCredentials | undefined;
+	let refreshedFeatureModels: ProviderConfigInput["models"];
+	const currentFeature = (): ProviderConfigInput | undefined =>
+		feature && refreshedFeatureModels ? { ...feature, models: refreshedFeatureModels } : feature;
 	// models.json modelOverrides are the topmost user-config layer: they apply once,
-	// after custom-model upserts, extension model replacement, and legacy OAuth projection.
+	// after custom-model upserts, feature model replacement, and legacy OAuth projection.
 	const getAllModels = (): AnyModel[] => {
-		let models = applyExtension(
+		let models = applyFeature(
 			providerId,
 			applyModelsJson(providerId, getAllProviderModels(base), config, known),
-			currentExtension(),
+			currentFeature(),
 		);
-		if (extensionOAuthCredential && extension?.oauth?.modifyModels) {
-			// The extension hook is chat-only; other model types pass through untouched.
+		if (featureOAuthCredential && feature?.oauth?.modifyModels) {
+			// The feature hook is chat-only; other model types pass through untouched.
 			models = [
-				...extension.oauth.modifyModels(
+				...feature.oauth.modifyModels(
 					models.filter((model) => isModelType(model, "chat")),
-					extensionOAuthCredential,
+					featureOAuthCredential,
 				),
 				...models.filter((model) => !isModelType(model, "chat")),
 			];
@@ -108,8 +103,8 @@ export function composeModelProvider(
 	};
 	// Validate eagerly so registration/reload reports structural errors immediately.
 	getAllModels();
-	const apiKey = composeApiKeyAuth(providerId, base, config, extension);
-	const oauth = composeOAuthAuth(providerId, base, config, extension);
+	const apiKey = composeApiKeyAuth(providerId, base, config, feature);
+	const oauth = composeOAuthAuth(providerId, base, config, feature);
 	if (!apiKey && !oauth) throw new Error(`Provider ${providerId}: no authentication method configured.`);
 
 	const supportsBaseApi = (model: Model<Api>) => base?.getModels().some((entry) => entry.api === model.api) ?? false;
@@ -120,8 +115,8 @@ export function composeModelProvider(
 		simple: boolean,
 	): AssistantMessageEventStream =>
 		lazyStream(model, async () => {
-			if (extension?.streamSimple && model.api === extension.api) {
-				return extension.streamSimple(model, context, options);
+			if (feature?.streamSimple && model.api === feature.api) {
+				return feature.streamSimple(model, context, options);
 			}
 			if (base && supportsBaseApi(model)) {
 				return simple ? base.streamSimple(model, context, options) : base.stream(model, context, options);
@@ -133,31 +128,31 @@ export function composeModelProvider(
 
 	const provider: Provider = {
 		id: providerId,
-		name: extension?.name ?? config?.name ?? base?.name ?? extension?.oauth?.name ?? providerId,
-		baseUrl: extension?.baseUrl ?? config?.baseUrl ?? base?.baseUrl,
+		name: feature?.name ?? config?.name ?? base?.name ?? feature?.oauth?.name ?? providerId,
+		baseUrl: feature?.baseUrl ?? config?.baseUrl ?? base?.baseUrl,
 		headers: base?.headers,
 		auth: { ...(apiKey ? { apiKey } : {}), ...(oauth ? { oauth } : {}) },
 		getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
 		getAllModels,
 		refreshModels:
-			base?.refreshModels || extension?.refreshModels || extension?.oauth?.modifyModels
+			base?.refreshModels || feature?.refreshModels || feature?.oauth?.modifyModels
 				? async (context) => {
 						await base?.refreshModels?.(context);
 						let refreshed: NonNullable<ProviderConfigInput["models"]> | undefined;
-						if (extension?.refreshModels) refreshed = await extension.refreshModels(context);
+						if (feature?.refreshModels) refreshed = await feature.refreshModels(context);
 						if (context.signal.aborted) return;
 						const oauthCredential = context.credential?.type === "oauth" ? context.credential : undefined;
 						await context.publish({
 							update: () => {
 								if (refreshed) {
 									// Validate before publishing the new synchronous list.
-									applyExtension(providerId, applyModelsJson(providerId, getAllProviderModels(base), config, known), {
-										...extension,
+									applyFeature(providerId, applyModelsJson(providerId, getAllProviderModels(base), config, known), {
+										...feature,
 										models: refreshed,
 									});
-									refreshedExtensionModels = refreshed;
+									refreshedFeatureModels = refreshed;
 								}
-								extensionOAuthCredential = oauthCredential;
+								featureOAuthCredential = oauthCredential;
 							},
 						});
 					}
@@ -180,11 +175,11 @@ export function composeModelProvider(
 	if (cancelDeferred) {
 		provider.cancelDeferred = (model, handle, options) => cancelDeferred(model, handle, options);
 	}
-	const extensionImages = extension?.images;
+	const featureImages = feature?.images;
 	const generateImages = base?.generateImages;
-	if (generateImages || Object.keys(extensionImages ?? {}).length > 0) {
+	if (generateImages || Object.keys(featureImages ?? {}).length > 0) {
 		provider.generateImages = (model, context, options) => {
-			const implementation = extensionImages?.[model.api];
+			const implementation = featureImages?.[model.api];
 			if (implementation) return implementation.generateImages(model, context, options);
 			if (generateImages) return generateImages(model, context, options);
 			return Promise.resolve(
@@ -192,11 +187,11 @@ export function composeModelProvider(
 			);
 		};
 	}
-	const extensionClassifiers = extension?.classifiers;
+	const featureClassifiers = feature?.classifiers;
 	const classify = base?.classify;
-	if (classify || Object.keys(extensionClassifiers ?? {}).length > 0) {
+	if (classify || Object.keys(featureClassifiers ?? {}).length > 0) {
 		provider.classify = (model, context, options) => {
-			const implementation = extensionClassifiers?.[model.api];
+			const implementation = featureClassifiers?.[model.api];
 			if (implementation) return implementation.classify(model, context, options);
 			if (classify) return classify(model, context, options);
 			return Promise.resolve(
@@ -214,10 +209,10 @@ export function composeModelProvider(
 export function resolveConfiguredModelHeaders(
 	model: AnyModel,
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 	env?: Record<string, string>,
 ): Record<string, string> | undefined {
-	return resolveHeadersOrThrow(rawModelHeaders(model, config, extension), `model "${model.provider}/${model.id}"`, env);
+	return resolveHeadersOrThrow(rawModelHeaders(model, config, feature), `model "${model.provider}/${model.id}"`, env);
 }
 
 export interface CompatibilityRequestConfig {
@@ -228,23 +223,23 @@ export interface CompatibilityRequestConfig {
 export function resolveCompatibilityRequestConfig(
 	model: AnyModel,
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): CompatibilityRequestConfig {
 	const configured = resolveHeadersOrThrow(
-		{ ...configuredHeaders(config, extension), ...rawModelHeaders(model, config, extension) },
+		{ ...configuredHeaders(config, feature), ...rawModelHeaders(model, config, feature) },
 		`model "${model.provider}/${model.id}"`,
 	);
 	return {
 		headers: model.headers || configured ? { ...model.headers, ...configured } : undefined,
-		authHeader: extension?.authHeader ?? config?.authHeader ?? false,
+		authHeader: feature?.authHeader ?? config?.authHeader ?? false,
 	};
 }
 
 export function configuredRequestAuthStatus(
 	config: ModelsJsonProvider | undefined,
-	extension: ProviderConfigInput | undefined,
+	feature: ProviderConfigInput | undefined,
 ): AuthStatus | undefined {
-	const value = configuredApiKey(config, extension);
+	const value = configuredApiKey(config, feature);
 	if (value === undefined) return undefined;
 	if (isCommandConfigValue(value)) return { configured: true, source: "models_json_command" };
 	const names = getConfigValueEnvVarNames(value);
@@ -253,5 +248,5 @@ export function configuredRequestAuthStatus(
 			? { configured: true, source: "environment", label: names.join(", ") }
 			: { configured: false };
 	}
-	return { configured: true, source: extension?.apiKey !== undefined ? "fallback" : "models_json_key" };
+	return { configured: true, source: feature?.apiKey !== undefined ? "fallback" : "models_json_key" };
 }

@@ -20,7 +20,7 @@ describe("agent names", () => {
 	});
 
 	it("offers only unique names that fit in 16 characters and are safe as ids (refs, folders, targets)", () => {
-		expect(AGENT_NAMES.length).toBeGreaterThanOrEqual(200);
+		expect(AGENT_NAMES.length).toBeGreaterThanOrEqual(5000);
 		expect(new Set(AGENT_NAMES).size).toBe(AGENT_NAMES.length);
 		for (const name of AGENT_NAMES) {
 			expect(name.length).toBeLessThanOrEqual(MAX_NAME_CHARS);
@@ -46,8 +46,25 @@ describe("agent names", () => {
 		expect(agentName(new Set(rest), () => 0.5)).toBe(left);
 	});
 
-	it("adds the smallest free numeric suffix once the space is used up", () => {
-		const all = new Set(AGENT_NAMES);
+	it("returns a fresh unsuffixed name with 1,100 names taken, never a taken one", () => {
+		const taken = new Set(AGENT_NAMES.slice(0, 1100));
+		for (const r of [0, 0.25, 0.5, 0.999999]) {
+			const name = agentName(taken, () => r);
+			expect(taken.has(name)).toBe(false);
+			expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+		}
+	});
+
+	it("uses a longer free combination before any numeric suffix", () => {
+		const taken = new Set(AGENT_NAMES);
+		const name = agentName(taken, () => 0);
+		expect(taken.has(name)).toBe(false);
+		expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+		expect(name.length).toBeGreaterThan(MAX_NAME_CHARS);
+	});
+
+	it("adds the smallest free numeric suffix only once every combination is taken", () => {
+		const all = new Set(ADJECTIVES.flatMap((adjective) => CREATURES.map((creature) => `${adjective}-${creature}`)));
 		const second = agentName(all, () => 0);
 		expect(second).toMatch(/^[a-z]+-[a-z]+-2$/);
 		expect(AGENT_NAMES).toContain(second.replace(/-2$/, ""));

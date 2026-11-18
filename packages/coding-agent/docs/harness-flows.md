@@ -5,7 +5,7 @@ Every model request is assembled from the same parts. This page follows them in 
 ```mermaid
 flowchart LR
     A["Request assembly"] --> B["Fixed prefix<br/>for the prompt cache"]
-    B --> C["Tool loadout<br/>direct, deferred, hidden"]
+    B --> C["Tool loadout<br/>direct, deferred, onDemand, hidden"]
     C --> D["Trimming history<br/>clearing, compaction"]
     D --> E["Outside data<br/>fenced and checked"]
 ```
@@ -33,7 +33,7 @@ flowchart TD
 
 | Part                   | What it holds                                                                                                           | You change it with                                               |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| System prompt          | Built-in text, the policy for the declared tools, your `SYSTEM.md` or `APPEND_SYSTEM.md`                                | [Instructions](instructions.md)                                  |
+| System prompt          | Built-in text, the policy for the declared tools, your `SYSTEM.md` or `APPEND_SYSTEM.md`                                | [Instructions](prompts.md)                                       |
 | Instruction files      | `AGENTS.md` files from the global one down to the working folder; deeper ones load when a file under them is first read | `--no-context-files`                                             |
 | Skills listing         | Each skill's name, description and path; the body loads only when the agent calls `skill`                               | `/harness` per skill; [skills](skills.md)                        |
 | MCP instruction blocks | One block per enabled server: its purpose, call prefix and instructions (deferred tools add one index line each)        | `/configuration enable` or `disable` `mcp:<name>`, [MCP](mcp.md) |
@@ -63,7 +63,7 @@ flowchart TD
 | Tool list fixed per session          | Which MCP tools are direct or deferred is decided when the session starts and kept; the set of recently used tools is saved with the first prompt, so resume, reload and fork declare the same set                                                                                                                              | A prefix rewrite on every change          | A tool you start using mid-session is not promoted until later                                        | `mcpExposure` (and pins)                             |
 | Redeclared in place after first use  | After its first call (successful or not), a deferred MCP tool is declared in full for the rest of the session, but only where the model accepts in-place tool changes (Anthropic with mid-conversation tool changes, OpenAI Responses with additional tools). The prefix is not rewritten, and compaction keeps the declaration | Re-reading the schema on every later call | Nothing on those models; elsewhere the tool stays thin and its schema keeps arriving as a tool result | `mcpPresentation` must be `declared` (default)       |
 | Children share the parent's tool set | A subagent uses its parent's set of recently used tools, so siblings declare the same tools and share the cached tool prefix; tools that depend on the agent's role come last. A profile with `mcpDefer` defers its read-only tools and shares only with agents that defer the same ones                                        | Each child re-writing the same prefix     | A child's deferred or direct tools follow the parent's recent use, not its own                        | Agent profile `mcpDefer`                             |
-| Cache warmer                         | Between turns Octocode may send a cheap refresh so the cached history does not expire, only when its expected saving reaches $0.05                                                                                                                                                                                              | A full re-write after a pause             | The refresh requests, billed as reads                                                                 | `cacheWarming`: `off`, `streaming`, `idle` (default) |
+| Cache warmer                         | Between turns Octocode may send a cheap refresh so the cached history does not expire, when its expected saving reaches $0.05, or while it waits on children, jobs, timers or an asked answer, up to one rewrite's cost per wait                                                                                                | A full re-write after a pause             | The refresh requests, billed as reads                                                                 | `cacheWarming`: `off`, `streaming`, `idle` (default) |
 
 Catalog changes (an MCP server changing a tool's description or schema) re-register that tool once; a reconnect with the same catalog changes nothing ([the table](prompt-caching.md#second-instruction-block)). Look for misses with `showCacheMissNotices` or `OCTOCODE_CACHE_DIAGNOSTICS=on` ([miss reasons](prompt-caching.md#provider-reported-miss-reasons)); the warmer's arithmetic and window are in [warming and measurements](prompt-caching.md#warming-and-measurements).
 
@@ -149,12 +149,12 @@ The `auto` budget counts bytes, not a share of the context window, so changing m
 | Promoted by use      | At least 10% of declaring sessions called or read it, and at least 20 sessions of that group declared it                                                                   |
 | Promoted by refusals | Refused calls exceed one per session that used the tool                                                                                                                    |
 | Snapshot             | Each group keeps one for 1 hour, built at the next session start after it expires; the session, its resumptions and its subagents keep it                                  |
-| Native tools         | `memory` and `wait` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`                                |
+| Native tools         | `memory` and `wait` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`                                 |
 | No data              | Nothing is promoted; deleting the counts file defers every tool again                                                                                                      |
 
 The default stays `"recent"`. Counts are a hint: an unreadable file reads as no data.
 
-**Usage audit.** Three places show the same numbers per tool: the **Use (7 days)** column of the Tools panel on the [web Settings page](web-workspace.md#settings-page), the `/harness mcp` view, and the `mcp` tool's `tools` listing. Each row shows the share of sessions that used the tool, its calls, the last day used (or "unused in 7 days"), refusals, and for a deferred tool the bytes its thin declaration saves. Under `"usage"` the row also gives the reason: `promoted` (direct because the snapshot named it) or `unused` (deferred and never used in the window).
+**Usage audit.** Three places show the same numbers per tool: the **Use (7 days)** column of the Tools panel on the [web Settings page](web-workspace.md#settings-page), the `/mcp` → server → **Tools** page, and the `mcp` tool's `tools` listing. Each row shows the share of sessions that used the tool, its calls, the last day used (or "unused in 7 days"), refusals, and for a deferred tool the bytes its thin declaration saves. Under `"usage"` the row also gives the reason: `promoted` (direct because the snapshot named it) or `unused` (deferred and never used in the window).
 
 ### Pins
 
@@ -164,7 +164,7 @@ The default stays `"recent"`. Counts are a hint: an unreadable file reads as no 
 | `exposure`           | The server's entry in `mcp.json`                               | Every tool of the server without its own pin                                                         |
 | `nativeToolExposure` | `settings.json`, for deferrable native tools                   | `direct` or `deferred`; unpinned they follow `mcpExposure`. Every other native tool is always direct |
 
-Pins and `mcpExposure` apply from the next session. See and change them in the Tools panel, or in `/harness mcp`, then the server, **Default for tools**. Reference: [MCP tool exposure](mcp.md#control-tool-exposure).
+Pins and `mcpExposure` apply from the next session. See and change them in the Tools panel, or in `/mcp`, then the server, **Tools** › **Default for tools**. Reference: [MCP tool exposure](mcp.md#control-tool-exposure).
 
 ## 4. Trimming context
 
@@ -186,12 +186,12 @@ flowchart TD
 
 ### Clearing old tool results
 
-Only results that can be fetched again are cleared: `web`, MCP tools and read-only `bash` commands. `file` and `agent` results and writing commands never are. Each cleared result's full text is saved first and the placeholder names the file, so nothing is lost; one that cannot be saved stays.
+Only results that can be fetched again are cleared: `web`, MCP tools and `bash` commands that only print (reads, `sed -n` and `awk` that write nothing, also after `cd` or in a pipeline). `file` and `agent` results and writing commands never are. Each cleared result's full text is saved first and the placeholder names the file, so nothing is lost; one that cannot be saved stays.
 
 Clearing is allowed only when the old results total at least 20,000 tokens (the newest five always stay) and clearing is cheaper than not clearing. In plain words:
 
 - **Free:** if the next request would rewrite the cache anyway (the cache expired, the model changed, or an update rewrites the start), clearing costs nothing extra, so it happens.
-- **While the cache is warm:** clearing makes the next request write the changed history to the cache once, which costs more than reading it. It happens only when re-sending the old results for the requests still expected would cost more than that one rewrite. Expected requests are about as many as the session has made since the last compaction, capped by how many fit before the compaction threshold.
+- **While the cache is warm:** clearing makes the next request write the changed history to the cache once, which costs more than reading it. It happens only when re-sending the old results for the requests still expected would cost more than that one rewrite; it may then clear only the results after a large message that stays, when that saves more. Expected requests are about as many as the session has made since the last compaction, capped by how many fit before the compaction threshold.
 - **Unknown cache lifetime:** only the free case clears.
 
 The decision is stored with the session, so later requests, a resume and a fork show the same placeholders and the prefix stays byte-stable. Details and the formula: [clearing old tool results](native-features.md#clearing-old-tool-results). There is no setting for it.
@@ -212,9 +212,9 @@ When context tokens exceed the window minus a reserve, Octocode summarizes older
 
 What survives, and where else to find the rest:
 
-| Kept in context                                                                                                                                                                                                                                                                                                                                       | Left to the saved archive                                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| The checkpoint (goal, constraints, decisions, progress, next steps); your messages and `askUser` answers word for word within a budget; file lists and saved results; loaded skills by name and path; the backlog and running work as the tools report them now; schemas of deferred tools the session called; up to five recently read files re-read | Summarized messages, as searchable Markdown for the `archive` tool; the session file keeps every original entry |
+| Kept in context                                                                                                                                                                                                                                                                                                                                                                                                 | Left to the saved archive                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| The checkpoint (goal, constraints, decisions, progress, next steps); your messages and `askUser` answers word for word within a budget; file lists and saved results; loaded skills by name and path; the backlog and running work as the tools report them now; schemas of deferred tools the session called; up to five recent files re-read: changed ones whole, ones only read as an outline, never scratch | Summarized messages, as searchable Markdown for the `archive` tool; the session file keeps every original entry |
 
 The cost is a summary request (shared with the cached prefix when the model is unchanged) and a lossy summary. The pipeline and its limits: [Context management](../../../docs/CONTEXT.md#the-compaction-pipeline); rules and caps: [Compaction](configuration.md#compaction).
 
@@ -261,18 +261,18 @@ How each provider is asked to cache decides what a change costs. Provider settin
 
 What each event does to the cached request, per provider. "Kept" means the request opens with the previous one, so the cached part is read again; "rewritten once" means the history is billed again once and the next request appends.
 
-| Event                         | Anthropic                                         | OpenAI Responses                    | Codex                               | OpenRouter        | xAI               | Google, Vertex    |
-| ----------------------------- | ------------------------------------------------- | ----------------------------------- | ----------------------------------- | ----------------- | ----------------- | ----------------- |
-| Next turn                     | Kept                                              | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Deferred tool loaded          | Kept                                              | Kept                                | Kept                                | Kept: tool result | Kept              | Kept: tool result |
-| Refused call returns a schema | Kept                                              | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Skill loaded                  | Kept                                              | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Images in history             | Kept                                              | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Fork                          | Kept                                              | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Child agent                   | Kept: tools, instructions and marker places match | Kept                                | Kept                                | Kept              | Kept              | Kept              |
-| Model switch                  | Rewritten once                                    | Rewritten once                      | Rewritten once                      | Rewritten once    | Rewritten once    | Rewritten once    |
-| Provider switch               | Rewritten once                                    | Rewritten once                      | Rewritten once                      | Rewritten once    | Rewritten once    | Rewritten once    |
-| Compaction                    | Rewritten once, tools and instructions kept       | Same                                | Same                                | Same              | Same              | Same              |
+| Event                         | Anthropic                                         | OpenAI Responses | Codex          | OpenRouter        | xAI            | Google, Vertex    |
+| ----------------------------- | ------------------------------------------------- | ---------------- | -------------- | ----------------- | -------------- | ----------------- |
+| Next turn                     | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Deferred tool loaded          | Kept                                              | Kept             | Kept           | Kept: tool result | Kept           | Kept: tool result |
+| Refused call returns a schema | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Skill loaded                  | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Images in history             | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Fork                          | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Child agent                   | Kept: tools, instructions and marker places match | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Model switch                  | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Provider switch               | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Compaction                    | Rewritten once, tools and instructions kept       | Same             | Same           | Same              | Same           | Same              |
 
 No event rewrites the request on every turn. Two notes on reading it: the deferred-tool row says "kept" for every provider because loading never changes the tools that were sent: a model whose catalog entry allows in-place tool changes (Anthropic tool changes, OpenAI Responses and Codex additional tools, which xAI's endpoint can also carry) gets the definition appended after the breakpoint, and any other model gets the schema as a tool result; the table shows what the request bytes do, and a provider's own routing, minimum length and expiry still decide a real hit.
 

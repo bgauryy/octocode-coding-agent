@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { UIPromptTracker } from "../src/core/features/runner/ui-prompt.ts";
-import { showExtensionEditor } from "../src/modes/interactive/interactive-mode/extension-dialogs.ts";
-import { createExtensionUIContext, type PendingExtensionRequests } from "../src/modes/rpc/rpc-mode/ui-context.ts";
+import { showEditorDialog } from "../src/modes/interactive/interactive-mode/dialogs.ts";
+import { createSessionUI, type PendingUiRequests } from "../src/modes/rpc/rpc-mode/ui-context.ts";
 
 function context() {
 	const records: Array<Record<string, unknown>> = [];
-	const pending: PendingExtensionRequests = new Map();
-	return { records, pending, ui: createExtensionUIContext((record) => void records.push(record as never), pending) };
+	const pending: PendingUiRequests = new Map();
+	return { records, pending, ui: createSessionUI((record) => void records.push(record as never), pending) };
 }
 
 describe("the RPC editor dialog", () => {
@@ -48,7 +48,7 @@ describe("the RPC editor dialog", () => {
 describe("the terminal editor dialog", () => {
 	it("does not open once its signal has aborted", async () => {
 		await expect(
-			showExtensionEditor({} as never, "Edit", undefined, { signal: AbortSignal.abort() }),
+			showEditorDialog({} as never, "Edit", undefined, { signal: AbortSignal.abort() }),
 		).resolves.toBeUndefined();
 	});
 });

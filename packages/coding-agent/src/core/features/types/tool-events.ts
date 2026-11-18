@@ -15,7 +15,7 @@ interface ToolCallEventBase {
 	 * in the parent result's `nestedCalls` record.
 	 */
 	toolCallId: string;
-	/** Who issued the call. Omitted by older extension callers; treat omission as a model call. */
+	/** Who issued the call. Omitted by older feature callers; treat omission as a model call. */
 	origin?: "model" | "tool" | "user" | "hook";
 	/** Set when another tool (for example another tool) issued this call. */
 	parentToolCallId?: string;
@@ -59,19 +59,15 @@ interface ToolResultEventBase {
 	usage?: Usage;
 }
 
-export interface BashToolResultEvent extends ToolResultEventBase {
+interface BashToolResultEvent extends ToolResultEventBase {
 	toolName: "bash";
 	details: BashToolDetails | undefined;
 }
 
-export interface CustomToolResultEvent extends ToolResultEventBase {
+interface CustomToolResultEvent extends ToolResultEventBase {
 	toolName: string;
 	details: unknown;
 }
 
 /** Fired after a tool executes. Can modify result. */
 export type ToolResultEvent = BashToolResultEvent | CustomToolResultEvent;
-
-export function isBashToolResult(e: ToolResultEvent): e is BashToolResultEvent {
-	return e.toolName === "bash";
-}

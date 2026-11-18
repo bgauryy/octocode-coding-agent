@@ -94,6 +94,14 @@ function checkedQuestion(value: unknown, opts: CheckOptions): Question | undefin
 		});
 		if (notes.length) result.notes = notes;
 	}
+	// A countdown only means something on a choice or multi question; a forged approval never carries one.
+	if (
+		typeof raw.timeoutSeconds === "number" &&
+		Number.isInteger(raw.timeoutSeconds) &&
+		!forged &&
+		(type === "choice" || type === "multi")
+	)
+		result.timeoutSeconds = Math.min(L.timeoutSeconds, Math.max(1, raw.timeoutSeconds));
 	if (type !== "text") result.options = checked;
 	if (raw.writeIn === false) result.writeIn = false;
 	else {

@@ -1,12 +1,12 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_SENDER } from "../shared/messages.ts";
 import { messageText } from "../team/routing.ts";
 import type { ResumeRequest } from "../team/session/send.ts";
-import type { ReportStatus } from "../instructions/report.ts";
+import type { ReportStatus } from "../native/prompts/report.ts";
 import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
 import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
 import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
@@ -43,7 +43,7 @@ interface LingeringRun {
 	until: number;
 	generation: number;
 	run: Run;
-	ctx: ExtensionContext;
+	ctx: FeatureContext;
 	timer?: NodeJS.Timeout;
 }
 
@@ -82,7 +82,7 @@ export class Lingering {
 	private readonly profiles: () => Map<string, AgentProfile>;
 	private sessionId: string | undefined;
 	/** The latest context, for telling the user a parked-record write failed; the warning is given once until a write succeeds. */
-	private notifier: ExtensionContext | undefined;
+	private notifier: FeatureContext | undefined;
 	private persistWarned = false;
 
 	/**
@@ -92,12 +92,12 @@ export class Lingering {
 	readonly permission: Permission;
 	private readonly runs: AgentRuns;
 	private readonly launchSignal: (signal?: AbortSignal) => AbortSignal;
-	private readonly start: (run: Run, ctx: ExtensionContext, resumption: Resumption) => void;
+	private readonly start: (run: Run, ctx: FeatureContext, resumption: Resumption) => void;
 	constructor(
 		runs: AgentRuns,
 		permission: Permission,
 		launchSignal: (signal?: AbortSignal) => AbortSignal,
-		start: (run: Run, ctx: ExtensionContext, resumption: Resumption) => void,
+		start: (run: Run, ctx: FeatureContext, resumption: Resumption) => void,
 		profiles: () => Map<string, AgentProfile>,
 	) {
 		this.runs = runs;
@@ -108,7 +108,7 @@ export class Lingering {
 	}
 
 	/** A session reopen restores addresses only; no worker executes until a direct authorized follow-up. */
-	reopen(ctx: ExtensionContext): void {
+	reopen(ctx: FeatureContext): void {
 		this.close();
 		const session = ctx.sessionManager.getSessionId();
 		this.sessionId = session;
@@ -213,7 +213,7 @@ export class Lingering {
 	}
 
 	/** Called when the run reported (with its outcome): it stays reachable for the window, and the report says so. */
-	window(run: Run, ctx: ExtensionContext): LingerWindow {
+	window(run: Run, ctx: FeatureContext): LingerWindow {
 		const session = this.runs.session;
 		const secondsFor = (outcome?: ReportStatus, awaited?: AwaitedReply): number =>
 			session === this.runs.session
@@ -234,7 +234,7 @@ export class Lingering {
 			const blocked = outcome === "blocked";
 			const peer = !blocked && awaited === "peer";
 			const parent = !blocked && awaited === "parent";
-			const note = renderInstruction("notices/subagents/lingering.md", {
+			const note = renderPrompt("notices/subagents/lingering.md", {
 				id,
 				seconds,
 				blocked,
@@ -291,7 +291,7 @@ export class Lingering {
 				last.profile,
 				asked,
 				launchSignal,
-				runs.api.getSettings().defaultTools,
+				runs.api.settings.get().defaultTools,
 				{ goal: last.identity.goal },
 			);
 			launchSignal.throwIfAborted();
@@ -301,7 +301,7 @@ export class Lingering {
 				throw new Error(`Subagent ${id} cannot resume: its saved transcript is missing. Start a new task instead.`);
 			// Keep the saved conversation, model and skill inventory, but renew authorization from the parent's current policy,
 			// and take the session's current MCP servers, as a new run would.
-			const handoff = getMcpSessionHandoff(runs.api.events);
+			const handoff = getMcpSessionHandoff(runs.api.channels);
 			const { stopped } = handoff;
 			// A child whose task named its servers keeps that list: the session's added servers outside it stay out.
 			const only = last.identity.mcpOnly;

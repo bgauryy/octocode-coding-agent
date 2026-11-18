@@ -2,32 +2,23 @@ import { existsSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { readJsonFile } from "@octocodeai/octocode-common/json";
-import { canonicalizePath, isUnderPath } from "@octocodeai/octocode-common/paths";
+import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { vendorOn } from "../discovery/vendors/switch.ts";
-import { PI_PROJECT_DIR_NAME } from "../discovery/roots.ts";
 import type { DiscoverInput } from "../discovery/types.ts";
 import { detectFeatureConflicts } from "../features/conflicts.ts";
-import { createExtensionRuntime } from "../features/runtime.ts";
+import { createFeatureRuntime } from "../features/runtime.ts";
 import { registerFeature } from "../features/register.ts";
-import type { Feature, InlineExtension, LoadExtensionsResult, LoadWarning } from "../features/types.ts";
+import type { Feature, LoadedFeatures, LoadWarning } from "../features/types.ts";
 import { effectivePlugins } from "../extensibility/toggles.ts";
-import {
-	DefaultPackageManager,
-	type PathMetadata,
-	type ResolvedPaths,
-	type ResolvedResource,
-} from "../package-manager.ts";
+import { DefaultPackageManager, type ResolvedPaths, type ResolvedResource } from "../package-manager.ts";
 import { loadConfiguredPluginMcp } from "../plugin-mcp.ts";
 import { SettingsManager } from "../settings-manager.ts";
-import { BUILTIN_PATH_PREFIX } from "../source-info.ts";
 
-/** Where users learn the replacement for a user code extension. */
-const EXTENSIONS_REMOVED = "User code extensions are not supported; use plugins and hooks (see docs/plugins.md).";
-/** The same for Pi's TypeScript extensions and hooks, which Octocode lists but never loads. */
-const PI_EXTENSION_NOT_LOADED =
-	"Pi extension, not loaded. Octocode does not run Pi TypeScript extensions or hooks; convert it to a hooks.json entry or a plugin (see docs/plugins.md).";
+/** Pi's TypeScript hooks, which Octocode lists but never loads. */
+const PI_HOOK_NOT_LOADED =
+	"Pi hook, not loaded. Octocode does not run Pi TypeScript hooks; convert it to a hooks.json entry or a plugin (see docs/plugins.md).";
 
 /** The resource loader configuration that feature registration reads; fixed after construction. */
 export interface FeatureLoadingConfig {
@@ -36,55 +27,24 @@ export interface FeatureLoadingConfig {
 	readonly settingsManager: SettingsManager;
 	readonly eventBus: EventBus;
 	readonly packageManager: DefaultPackageManager;
-	/** The built-in features available to this session, before settings and `disabledFeatures` switch any off. */
+	/** The built-in features available to this session, before `disabledFeatures` switches any off. */
 	readonly builtinFeatures: readonly Feature[];
 	/** The native feature set, absent for a session that supplies its own tool policy. */
 	readonly nativeFeature: Feature | undefined;
 	/** Features injected next to the defaults (tests and hosts that wrap the core). */
-	readonly injected: InlineExtension[];
+	readonly injected: readonly Feature[];
 	readonly disabledFeatures: ReadonlySet<string>;
 }
 
 /**
- * Warnings for the `extensions` entries that name code: user code extensions were removed, so each is ignored and the
- * session starts. `builtin:<id>` entries are not code; they switch a built-in feature (see `defaultFeatures`).
+ * Warnings for the Pi hook files Octocode lists but never runs. A file that discovery lists as not loaded carries
+ * `listedInContext`: the context view says so, once.
  */
-export function ignoredExtensionWarnings(
-	extensionPaths: readonly string[],
-	metadataByPath: Map<string, PathMetadata>,
-	piRoots: readonly string[] = [],
-): LoadWarning[] {
-	return extensionPaths
-		.filter((path) => !path.startsWith(BUILTIN_PATH_PREFIX))
-		.map((path) => {
-			const root = metadataByPath.get(path)?.packageRoot;
-			const owner = root ? ` shipped by package ${root}` : "";
-			if (piRoots.some((piRoot) => isUnderPath(path, piRoot))) return { path, warning: PI_EXTENSION_NOT_LOADED };
-			return { path, warning: `Ignored extension${owner}. ${EXTENSIONS_REMOVED}` };
-		});
-}
-
-/**
- * Warnings for the user code Octocode ignores: the `extensions` entries (see {@link ignoredExtensionWarnings}) and Pi's
- * `hooks/` files, which are not extension entries. Pi's roots are its global folders and, in a trusted folder, `.pi/`.
- * A file that discovery lists as not loaded carries `listedInContext`: the context view says so, once.
- */
-export function ignoredCodeWarnings(
-	extensionPaths: readonly string[],
-	metadataByPath: Map<string, PathMetadata>,
-	input: DiscoverInput,
-): LoadWarning[] {
-	const piRoots = input.piRoots.length > 0 ? [...input.piRoots, join(input.cwd, PI_PROJECT_DIR_NAME)] : [];
-	const ignored = (["extension", "hook"] as const)
-		.flatMap((kind) => configDiscovery.discover(kind, input))
-		.filter((item) => item.provenance.notLoaded === "ignored-code");
-	const listed = new Set(ignored.map((item) => canonicalizePath(item.provenance.path)));
-	const hooks = ignored
-		.filter((item) => item.kind === "hook")
-		.map((item) => ({ path: item.provenance.path, warning: PI_EXTENSION_NOT_LOADED }));
-	return [...ignoredExtensionWarnings(extensionPaths, metadataByPath, piRoots), ...hooks].map((warning) =>
-		listed.has(canonicalizePath(warning.path)) ? { ...warning, listedInContext: true } : warning,
-	);
+export function ignoredCodeWarnings(input: DiscoverInput): LoadWarning[] {
+	return configDiscovery
+		.discover("hook", input)
+		.filter((item) => item.provenance.notLoaded === "ignored-code")
+		.map((item) => ({ path: item.provenance.path, warning: PI_HOOK_NOT_LOADED, listedInContext: true }));
 }
 
 /** The loader warnings a screen shows beside the context listing, which already lists code that is not loaded. */
@@ -107,7 +67,7 @@ export class FeatureSetLoader {
 
 	/**
 	 * The packages and folders in effect, then Pi's global folders resolved with Pi's own settings. With Pi switched off
-	 * (`harness:pi`) only its extensions are kept (listed, never run); a Pi skill another harness supplies is left out.
+	 * (`harness:pi`) its skills, prompts and themes are left out; a Pi skill another harness supplies is left out too.
 	 */
 	private async resolveWithPi(): Promise<ResolvedPaths> {
 		const resolved = await this.config.packageManager.resolve();
@@ -155,8 +115,8 @@ export class FeatureSetLoader {
 				settingsManager,
 			});
 			const legacy = await manager.resolve(async () => "skip");
-			for (const kind of ["extensions", "skills", "prompts", "themes"] as const) {
-				if (kind !== "extensions" && !piOn) continue;
+			for (const kind of ["skills", "prompts", "themes"] as const) {
+				if (!piOn) continue;
 				const localKey = (file: string): string | undefined => {
 					for (const root of roots) {
 						const prefix = `${resolve(root, kind)}${sep}`;
@@ -183,37 +143,21 @@ export class FeatureSetLoader {
 		return resolved;
 	}
 
-	private injectedFeatures(): Feature[] {
-		return this.config.injected.map((input, index) => {
-			const named = typeof input !== "function";
-			const id = named ? input.name : String(index + 1);
-			return {
-				id,
-				owner: "builtin",
-				hidden: named && input.hidden,
-				path: `<inline:${id}>`,
-				register: named ? input.factory : input,
-			};
-		});
-	}
-
 	/**
-	 * Register the session's features, in order: the enabled built-ins, the native feature set, injected features, then
-	 * the MCP servers of configured plugins. A feature whose registration throws is reported and skipped.
+	 * Register the session's features, in order: the built-ins, the native feature set, injected features, then the MCP
+	 * servers of configured plugins. A feature whose registration throws is reported and skipped, except the native
+	 * set, whose failure fails startup.
 	 */
-	async loadFeatures(enabledExtensionPaths: readonly string[]): Promise<LoadExtensionsResult> {
+	async loadFeatures(): Promise<LoadedFeatures> {
 		const { cwd, eventBus, disabledFeatures } = this.config;
-		const enabledBuiltins = new Set(
-			enabledExtensionPaths
-				.filter((path) => path.startsWith(BUILTIN_PATH_PREFIX))
-				.map((path) => path.slice(BUILTIN_PATH_PREFIX.length)),
-		);
-		const runtime = createExtensionRuntime();
-		const result: LoadExtensionsResult = { extensions: [], errors: [], warnings: [], runtime };
+		const runtime = createFeatureRuntime();
+		const result: LoadedFeatures = { features: [], errors: [], warnings: [], runtime };
 		const register = async (feature: Feature) => {
 			try {
-				result.extensions.push(await registerFeature(feature, eventBus, runtime, cwd));
+				result.features.push(await registerFeature(feature, eventBus, runtime));
 			} catch (error) {
+				// Without the native set a session would run with no permission checks or native tools: stop startup instead.
+				if (feature.owner === "native") throw error;
 				result.errors.push({
 					path: feature.path ?? `${feature.owner}:${feature.id}`,
 					error: error instanceof Error ? error.message : "failed to register feature",
@@ -221,10 +165,10 @@ export class FeatureSetLoader {
 			}
 		};
 		for (const feature of this.config.builtinFeatures) {
-			if (enabledBuiltins.has(feature.id) && !disabledFeatures.has(feature.id)) await register(feature);
+			if (!disabledFeatures.has(feature.id)) await register(feature);
 		}
 		if (this.config.nativeFeature) await register(this.config.nativeFeature);
-		for (const feature of this.injectedFeatures()) await register(feature);
+		for (const feature of this.config.injected) await register(feature);
 		const pluginMcp = loadConfiguredPluginMcp(effectivePlugins(this.config.settingsManager.getSettings(), cwd), cwd);
 		for (const error of pluginMcp.errors) result.errors.push({ path: "settings.plugins", error });
 		// With MCP switched off (`--no-mcp`) nothing connects servers, so plugin servers are skipped quietly.
@@ -235,11 +179,11 @@ export class FeatureSetLoader {
 				hidden: true,
 				path: "<inline:plugin-mcp>",
 				register: (api) => {
-					for (const server of pluginMcp.servers) api.registerMcpServer(server.name, server.config);
+					for (const server of pluginMcp.servers) api.mcpServers.register(server.name, server.config);
 				},
 			});
 		}
-		for (const conflict of detectFeatureConflicts(result.extensions)) {
+		for (const conflict of detectFeatureConflicts(result.features)) {
 			result.errors.push({ path: conflict.path, error: conflict.message });
 		}
 		return result;

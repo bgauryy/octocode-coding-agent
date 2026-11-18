@@ -16,7 +16,7 @@ function fixture(failures: string[] = []) {
 	};
 	const session = {
 		abort: async () => step("abort")(),
-		extensionRunner: { hasHandlers: () => true, emit: async () => step("shutdown")() },
+		featureHost: { hasHandlers: () => true, emit: async () => step("shutdown")() },
 		sessionManager: { retire: step("retire") },
 		dispose: step("session"),
 	} as unknown as AgentSession;

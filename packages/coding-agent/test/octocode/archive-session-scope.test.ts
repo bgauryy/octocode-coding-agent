@@ -5,7 +5,7 @@ import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { agentEvents, closeSharedAgentDb, sessions, transcripts } from "../../../db/src/api.ts";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { archiveFolder, setSessionLineage, writeSegment } from "../../src/octocode/history/archive.ts";
 import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";

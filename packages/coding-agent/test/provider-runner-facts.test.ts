@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../src/core/features/index.ts";
+import type { FeatureContext } from "../src/core/features/index.ts";
 import type { RunnerState } from "../src/octocode/external/runner-status.ts";
 
 const runners = vi.hoisted(() => ({ list: vi.fn(() => []) }));
@@ -88,7 +88,7 @@ describe("external runner facts", () => {
 				identity: { id: "billing-fixture", scratch: root },
 				signal: undefined,
 				onProgress: vi.fn(),
-				ctx: { cwd: root } as ExtensionContext,
+				ctx: { cwd: root } as FeatureContext,
 			},
 		);
 		expect(result.billing).toBe(billing);

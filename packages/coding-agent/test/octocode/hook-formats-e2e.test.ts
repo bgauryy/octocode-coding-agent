@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { buildInventory, renderInventory } from "../../src/octocode/harness/inventory.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { createTestSession } from "../helpers/session.ts";
@@ -11,7 +11,9 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { trustFolder } from "./helpers.ts";
 import { approveFixtureHooks, approveFixtureSkillFiles } from "./guard-helpers.ts";
-import { PROFILE_EVENTS, writeExtensions, writeHookFiles, writePlugins, writeSkills } from "./fixtures/hook-formats.ts";
+import { PROFILE_EVENTS, writeFeatures, writeHookFiles, writePlugins, writeSkills } from "./fixtures/hook-formats.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 // Hermetic: a run from inside an Octocode subagent or a customized shell would change discovery.
 for (const key of ["OCTOCODE_SUBAGENT", "OCTOCODE_HOME", "OCTOCODE_AGENT_DB", "CLAUDE_CONFIG_DIR", "CODEX_HOME"])
@@ -60,7 +62,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			}),
 			cwd,
 		);
-		const { packageDir } = writeExtensions(agentDir, root, log);
+		const { packageDir } = writeFeatures(agentDir, root, log);
 		// The user trusted this project folder (/trust).
 		trustFolder(cwd);
 		// Keep the built-in research server off; plugin servers still register.
@@ -76,8 +78,8 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			provider: "faux",
 			models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 		});
-		const provider: ExtensionFactory = (api) => {
-			api.registerProvider("faux", {
+		const provider: FeatureRegister = (api) => {
+			api.providers.register("faux", {
 				name: "Faux",
 				api: faux.api,
 				baseUrl: "http://127.0.0.1:0",
@@ -97,7 +99,8 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			cwd,
 			agentDir,
 			settingsManager,
-			extensionFactories: [{ name: "faux-provider", factory: provider }],
+			nativeFeatures: nativeFeatureSet(),
+			features: testFeatures([{ name: "faux-provider", factory: provider }]),
 			noThemes: true,
 			noContextFiles: true,
 		});
@@ -109,7 +112,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 			settingsManager,
 			sessionManager: SessionManager.inMemory(cwd),
 		}));
-		await session.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 		faux.setResponses([
 			() =>
@@ -182,7 +185,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		expect(warnings.some((message) => message.startsWith("portable-kit:"))).toBe(false);
 	});
 
-	it("lists every plugin, extension and hook per host in the /harness inventory", async () => {
+	it("lists every plugin and hook per host in the /harness inventory", async () => {
 		const settings = session.settingsManager.getSettings();
 		// This SDK session keeps its settings in memory; the CLI resolves packages from the same files it loaded.
 		const manager = SettingsManager.inMemory(settings);
@@ -196,8 +199,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		);
 		expect(hosts.claude).toEqual(expect.arrayContaining(["hooks", "hook-file", "hook", "plugin"]));
 		expect(hosts.codex).toEqual(expect.arrayContaining(["hooks", "hook-file", "hook", "plugin"]));
-		expect(hosts.octocode).toEqual(expect.arrayContaining(["hooks", "hook-file", "hook", "extension"]));
-		expect(hosts.packages).toContain("extension");
+		expect(hosts.octocode).toEqual(expect.arrayContaining(["hooks", "hook-file", "hook"]));
 		// Every hook file the session ran (nine standalone, one per plugin) appears once.
 		expect(inventory.items.filter((item) => item.kind === "hook-file").length).toBe(hookFiles.length + plugins.length);
 		expect(text).toContain("claude-kit (plugin, claude manifest)");
@@ -212,7 +214,7 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 	});
 
 	it("registers reviewed plugin MCP servers", () => {
-		const { runtime } = loader.getExtensions();
+		const { runtime } = loader.getFeatures();
 		const registered = runtime.mcpServers.list().filter((server) => server.name.startsWith("plugin:"));
 		expect(registered.map((server) => server.name)).toEqual(
 			expect.arrayContaining(plugins.map(({ name }) => `plugin:${name}:echo`)),
@@ -222,13 +224,12 @@ describe("every hook, plugin, extension and skill format in one session", () => 
 		}
 	});
 
-	it("lists but never runs code extensions in the extensions folder and in a local package", () => {
-		// User code extensions are removed: the files are reported as ignored and no handler of theirs reached an event.
+	it("never runs code extensions in the extensions folder or in a local package", () => {
+		// Octocode does not support extensions: the files are neither run nor listed, and no handler of theirs reached an event.
 		expect(eventsOf("extension-dir")).toEqual([]);
 		expect(eventsOf("package")).toEqual([]);
-		const warnings = loader.getExtensions().warnings ?? [];
-		expect(warnings.length).toBeGreaterThan(0);
-		for (const warning of warnings) expect(warning.warning).toMatch(/^Ignored extension\b.*not supported/);
+		const warnings = loader.getFeatures().warnings ?? [];
+		expect(warnings.filter((warning) => /extension/i.test(warning.warning))).toEqual([]);
 	});
 
 	it("discovers skills from Octocode, Agent Skills, Claude and Codex folders", () => {

@@ -17,7 +17,7 @@ const hints: Record<string, ToolAnnotations> = {
 /** The MCP owner as `mcp/events.ts` drives it: the tool is authorized before the server is reached. */
 function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } = {}) {
 	const fake = fakeHost();
-	fake.api.events = createEventBus();
+	Object.assign(fake.api, { channels: createEventBus() });
 	const ctx = fakeCtx({ cwd: tmp(), hasUI: true, ui: { selects: [] } });
 	const permission = new Permission({ api: fake.api, env: { [PERMISSION_ENV]: mode }, isSubagent: false });
 	permission.start(ctx);
@@ -44,12 +44,12 @@ function setup(mode: "manual" | "workspace" | "full", options: { hit?: string } 
 		localReads: new Map(),
 	} as unknown as ToolGatesOptions);
 	const reached: string[] = [];
-	registerMcpHookCaller(fake.api.events, async (request) => {
+	registerMcpHookCaller(fake.api.channels, async (request) => {
 		await request.authorize({ toolName: `mcp__${request.server}__${request.tool}`, input: request.input });
 		reached.push(request.tool);
 		return { content: [{ type: "text", text: "ok" }] };
 	});
-	const call = boundMcpHookCaller(fake.api.events, ctx)!;
+	const call = boundMcpHookCaller(fake.api.channels, ctx)!;
 	const run = (tool: string) =>
 		call({
 			server: "db",
@@ -105,7 +105,7 @@ describe("hook-initiated MCP calls and the permission gate", () => {
 
 	it("exempts a PermissionRequest hook, which answers an ask and could not wait on its own", async () => {
 		const { fake, reached, ctx } = setup("manual");
-		const call = boundMcpHookCaller(fake.api.events, ctx, "PermissionRequest")!;
+		const call = boundMcpHookCaller(fake.api.channels, ctx, "PermissionRequest")!;
 		await call({
 			server: "db",
 			tool: "drop",
@@ -118,7 +118,7 @@ describe("hook-initiated MCP calls and the permission gate", () => {
 
 	it("refuses a hook call made while another is being decided (a Notification hook for the ask)", async () => {
 		const { run, fake, reached, ctx } = setup("manual");
-		const nested = boundMcpHookCaller(fake.api.events, ctx, "Notification")!;
+		const nested = boundMcpHookCaller(fake.api.channels, ctx, "Notification")!;
 		let inner: unknown;
 		ctx.ui.select = async () => {
 			// The ask announces itself; a Notification hook's MCP call arrives while it waits.

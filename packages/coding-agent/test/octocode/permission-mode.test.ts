@@ -31,11 +31,13 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 	"file.outside": ["ask", "ask", "allow"],
 	shell: ["ask", "allow", "allow"],
 	"shell.destructive": ["ask", "ask", "allow"],
+	"shell.unsandboxed": ["ask", "ask", "ask"],
 	web: ["ask", "allow", "allow"],
 	browser: ["ask", "allow", "allow"],
 	"browser.control": ["ask", "ask", "allow"],
 	"browser.cookies": ["ask", "ask", "ask"],
 	"net.private": ["ask", "ask", "allow"],
+	"net.shell": ["ask", "ask", "allow"],
 	"upload.outside": ["ask", "ask", "allow"],
 	"mcp.read": ["allow", "allow", "allow"],
 	"mcp.write": ["ask", "allow", "allow"],
@@ -178,6 +180,9 @@ describe("permission modes", () => {
 			].sort(),
 		).toEqual(["browser.control", "file.outside", "net.private", "shell"]);
 		expect(SPAWN_GRANTABLE.has("shell.destructive")).toBe(false);
+		// Per-target session grants without a kind: a child never inherits running unsandboxed or a host.
+		expect(SPAWN_GRANTABLE.has("shell.unsandboxed")).toBe(false);
+		expect(SPAWN_GRANTABLE.has("net.shell")).toBe(false);
 		expect(parseGrants({}).size).toBe(0);
 	});
 });

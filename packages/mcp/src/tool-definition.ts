@@ -10,7 +10,7 @@ import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { correctedCalls } from "./presentation/repeat-echo.ts";
 import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
-import { renderMcpCall } from "./presentation/call-row.ts";
+import { labelParts, renderMcpCall } from "./presentation/call-row.ts";
 import { renderMcpResult } from "./presentation/result-row.ts";
 import {
 	type McpToolCaller,
@@ -62,13 +62,12 @@ export interface McpToolDefinitionOptions {
 	timeoutMs: number;
 	getClient: () => Promise<McpToolCaller>;
 	/**
-	 * Declare the tool as a thin stub: `summary` (else the description's first sentence) and an open input object. The
+	 * Declare the tool as a thin stub: the description's first sentence and an open input object. The
 	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
 	 * server's own input schema, and a failed validation shows `signature()`.
 	 */
 	compact?: {
 		signature: () => string | undefined;
-		summary?: string;
 		/**
 		 * No block of the prompt describes the tool (a deferred tool in `declared` mode): the declaration carries the
 		 * server's whole description, and a failed validation shows the server's input schema.
@@ -96,7 +95,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		description: compact
 			? compact.whole
 				? description
-				: (compact.summary ?? firstSentence(description))
+				: firstSentence(description)
 			: tool.outputSchema
 				? `${description}\n\nServer result schema:\n${JSON.stringify(tool.outputSchema)}`
 				: description,
@@ -195,10 +194,17 @@ function argumentSummary(args: unknown): string {
 
 /** Renderers of calls to an MCP tool, labeled `server/tool`, also used before the tool is registered. */
 export function createMcpToolRenderers(label: string): McpToolRenderers {
+	const { title, server } = labelParts(label);
 	return {
 		display({ args, result, status }: { args: unknown; result?: AgentToolResult<McpToolDetails>; status: string }) {
 			const summary = argumentSummary(args);
-			const head: ToolDisplay = { title: label, ...(summary ? { summary } : {}), kind: "other", blocks: [] };
+			const head: ToolDisplay = {
+				title,
+				...(summary ? { summary } : {}),
+				...(server ? { meta: [server] } : {}),
+				kind: "other",
+				blocks: [],
+			};
 			if (!result) return head;
 			const text = result.content
 				.flatMap((block) => (block.type === "text" ? [block.text] : []))

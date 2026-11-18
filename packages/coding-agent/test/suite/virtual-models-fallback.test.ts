@@ -23,23 +23,20 @@ describe("usage limits under a virtual model", () => {
 				{ id: "small", contextWindow: 50_000 },
 				{ id: "large", contextWindow: 50_000 },
 			],
-			builtinCompactionFactories: [
-				(api) => {
-					api.registerVirtualModel({
-						provider: "router",
-						id: "auto",
-						name: "Auto",
-						contextWindow: 50_000,
-						route(request, ctx) {
-							requests.push(request);
-							const other = request.failed?.model.id === "large" ? "small" : "large";
-							return { model: ctx.modelRegistry.find("faux", other)!, thinkingLevel: "off" };
-						},
-					});
-				},
-			],
 		});
 		harnesses.push(harness);
+		harness.session.modelRuntime.registerVirtualModel({
+			provider: "router",
+			id: "auto",
+			name: "Auto",
+			contextWindow: 50_000,
+			route(request) {
+				requests.push(request);
+				const other = request.failed?.model.id === "large" ? "small" : "large";
+				return { model: harness.session.modelRuntime.getModel("faux", other)!, thinkingLevel: "off" };
+			},
+		});
+
 		const runtime = harness.session.modelRuntime;
 		harness.session.agent.streamFunction = (model, context, options) => runtime.streamSimple(model, context, options);
 		await harness.session.setModel(runtime.getModel("router", "auto")!);

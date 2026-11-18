@@ -1,6 +1,6 @@
 import type { CancelReason, Question, Reply } from "@octocodeai/octocode-contracts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionUIContext, ExtensionUIDialogOptions } from "../../core/features/types.ts";
+import type { SessionUI, DialogOptions } from "../../core/features/types.ts";
 import { SUBMIT_PICKS } from "./dialog/answers.ts";
 import { type AskOptions, plainTitle } from "./question.ts";
 
@@ -15,8 +15,8 @@ interface ApprovalPick {
  * than a select (the terminal's card, an RPC client's permission request) adds `approve`; without it an approval is a
  * plain select over its labels.
  */
-export type DialogUi = Pick<ExtensionUIContext, "select" | "input" | "confirm"> & {
-	approve?(question: Question, dialog: ExtensionUIDialogOptions): Promise<ApprovalPick | undefined>;
+export type DialogUi = Pick<SessionUI, "select" | "input" | "confirm"> & {
+	approve?(question: Question, dialog: DialogOptions): Promise<ApprovalPick | undefined>;
 };
 
 /**
@@ -28,7 +28,7 @@ export type DialogUi = Pick<ExtensionUIContext, "select" | "input" | "confirm"> 
 export async function degrade(ui: DialogUi, questions: readonly Question[], opts: AskOptions = {}): Promise<Reply[]> {
 	const { signal } = opts;
 	const started = Date.now();
-	const dialog: ExtensionUIDialogOptions = {
+	const dialog: DialogOptions = {
 		...(signal ? { signal } : {}),
 		...(opts.blocking ? { blocking: true } : {}),
 		...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),
@@ -60,7 +60,7 @@ async function typed(
 	ui: DialogUi,
 	title: string,
 	placeholder: string | undefined,
-	dialog: ExtensionUIDialogOptions,
+	dialog: DialogOptions,
 	interrupted: () => boolean,
 ): Promise<string | undefined> {
 	for (;;) {
@@ -70,12 +70,7 @@ async function typed(
 	}
 }
 
-async function askOne(
-	ui: DialogUi,
-	q: Question,
-	dialog: ExtensionUIDialogOptions,
-	why: () => CancelReason,
-): Promise<Reply> {
+async function askOne(ui: DialogUi, q: Question, dialog: DialogOptions, why: () => CancelReason): Promise<Reply> {
 	const cancelled = (): Reply => ({ id: q.id, cancelled: why() });
 	const interrupted = (): boolean => dialog.signal?.aborted === true;
 	const writeIn = q.writeIn ? q.writeIn : undefined;
@@ -138,7 +133,7 @@ async function askOne(
 async function askApproval(
 	ui: DialogUi,
 	q: Question,
-	dialog: ExtensionUIDialogOptions,
+	dialog: DialogOptions,
 	why: () => CancelReason,
 	interrupted: () => boolean,
 ): Promise<Reply> {

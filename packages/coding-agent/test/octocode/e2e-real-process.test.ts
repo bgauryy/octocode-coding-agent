@@ -54,7 +54,17 @@ describe("plan mode through the real tool registry", () => {
 		const read = (tool: string, args: Record<string, unknown>): Step => ({ tool, args });
 		const steps: Step[] = [
 			read("bash", { command: "ls" }),
-			read("askUser", { questions: [{ question: "Which?", options: [{ label: "a" }, { label: "b" }] }] }),
+			read("askUser", {
+				questions: [
+					{
+						question: "Which?",
+						options: [
+							{ label: "a", description: "why a" },
+							{ label: "b", description: "why b" },
+						],
+					},
+				],
+			}),
 			read("archive", { op: "list" }),
 			read("memory", { op: "list" }),
 			read("skill", { name: "no-such-skill" }),
@@ -86,43 +96,31 @@ describe("plan mode through the real tool registry", () => {
 });
 
 describe("a signal while a headless run holds for background work", () => {
-	it("SIGTERM ends the hold, stops the child and exits 143", async () => {
+	it("SIGTERM ends the hold, stops the child and a timed bash job, and exits 143", async () => {
 		const { holdCommand, root, start, survivors } = fresh();
 		const marker = path.join(root, "child.pid");
+		const jobMarker = path.join(root, "job.pid");
 		const child: Step[] = [{ tool: "bash", args: { command: holdCommand(marker) } }, { text: "child done" }];
 		const parent: Step[] = [
+			{ tool: "bash", args: { command: holdCommand(jobMarker), background: true, timeout: 280 } },
 			{ tool: "agent", args: { type: "task", background: true, goal: "sleep in a child", task: script(child) } },
 			{ text: "waiting for the child" },
 		];
 		const run = start(["-p", script(parent)]);
-		await until(() => fs.existsSync(marker), "the child's command");
-		// The parent is in its hold: it has answered and its child still runs.
-		await until(() => requestsOf(parent).length >= 2, "the parent's last turn");
+		await until(() => fs.existsSync(marker) && fs.existsSync(jobMarker), "the child's command and the job");
+		// The parent is in its hold: it has answered and both still run.
+		await until(() => requestsOf(parent).length >= 3, "the parent's last turn");
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		const command = pidFrom(marker);
+		const job = pidFrom(jobMarker);
 		expect(alive(command)).toBe(true);
+		expect(alive(job)).toBe(true);
 
 		run.process.kill("SIGTERM");
 		const { code } = await run.exited;
 		expect(code).toBe(143);
-		await until(() => !alive(command), "the child's command to stop", 15_000);
+		await until(() => !alive(command) && !alive(job), "the child's command and the job to stop", 15_000);
 		await until(() => survivors().length === 0, "every process of the run to stop", 15_000);
-	});
-
-	it("a timed bash job does not keep a signalled run alive", async () => {
-		const { holdCommand, root, start } = fresh();
-		const marker = path.join(root, "job.pid");
-		const parent: Step[] = [
-			{ tool: "bash", args: { command: holdCommand(marker), background: true, timeout: 280 } },
-			{ text: "job started" },
-		];
-		const run = start(["-p", script(parent)]);
-		await until(() => requestsOf(parent).length >= 2 && fs.existsSync(marker), "the job and the last turn");
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		const job = pidFrom(marker);
-		run.process.kill("SIGTERM");
-		expect((await run.exited).code).toBe(143);
-		await until(() => !alive(job), "the job to stop", 15_000);
 	});
 
 	it("a second signal exits at once while the first one's shutdown is still running", async () => {

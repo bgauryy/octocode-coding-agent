@@ -43,7 +43,17 @@ afterEach(async () => {
 const shell = (file: string) => ({ tool: "bash", args: { command: `echo ran > ${file}` } });
 const ask = {
 	tool: "askUser",
-	args: { questions: [{ question: "Unsupported question?", options: [{ label: "One" }, { label: "Two" }] }] },
+	args: {
+		questions: [
+			{
+				question: "Unsupported question?",
+				options: [
+					{ label: "One", description: "why one" },
+					{ label: "Two", description: "why two" },
+				],
+			},
+		],
+	},
 };
 
 it.each(["work", "dialog", "permission", "cancel", "cancel-response", "close", "eof"])(

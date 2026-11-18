@@ -105,14 +105,19 @@ The `skills` setting takes patterns and also filters auto-discovered skills: `"s
 
 ## Core skills
 
-Core skills ship inside Octocode and load in every root session whatever `OCTOCODE_EXTRA_SKILLS` says. Subagents receive them through their coordinator.
+Core skills ship inside Octocode and load in every root session whatever `OCTOCODE_EXTRA_SKILLS` says. Subagents receive them through their coordinator, except the coordinator-only ones (marked *), whose work needs tools subagents lack.
+
+Two skills load themselves on first use, once per session, when the model has not loaded them yet: `octocode-subagents` with the result of the first subagent start, and `octocode-backlog` with the result of the first backlog item added or edited.
 
 | Skill                           | Use it to                                                                                                                                                                                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `octocode-backlog-grooming`     | Groom the backlog like a sprint review: check every open item's state, age and relevance against the code, close done, obsolete or duplicate items on evidence, release stale claims, assign or comment                                      |
-| `octocode-context-optimization` | Rewrite what agents read of skills and MCP servers: skill descriptions ([optimized descriptions](#optimized-descriptions)) and MCP server files ([compact presentation](mcp-reference.md#compact-presentation))                              |
+| `octocode-backlog` *            | File, split and close backlog items with a checkable goal and evidence; groom the board like a sprint review, closing done, obsolete or duplicate items on evidence                                                                          |
+| `octocode-context-optimization` | Rewrite skill descriptions concisely, keeping every point ([optimized descriptions](#optimized-descriptions))                                                                                                                                |
 | `octocode-critical-thinking`    | Stress-test a consequential decision, plan or claim with the mental models that apply (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's Law), scaled to the stakes; ends with conclusion, key risks and confidence |
 | `octocode-debugging`            | Debug and profile programs through `bash`: lldb, gdb, pdb, a Node inspector script, crash and hang stacks, CPU and heap profiles                                                                                                             |
+| `octocode-subagents` *          | Decide whether to delegate, pick the child kind and model, plan waves of children, brief, integrate, recover, relay and merge; run multi-step workflows; design, debug and evaluate agent systems                                            |
+| `octocode-memory` *             | Decide whether a fact belongs in memory, a session note, AGENTS.md, a backlog item or nowhere, and word it as a rule                                                                                                                         |
+| `octocode-output`               | Shape a reply by its data: tables for comparisons and numbers, trees, diagrams, status marks, findings and recommendations                                                                                                                   |
 | `resume-external-harness`       | Find, read and resume Claude Code, Codex and Cursor sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                                                |
 
 ## Invoke a skill
@@ -158,11 +163,11 @@ sequenceDiagram
 
 A stored rewrite of a description replaces the original in the agent's list. Each rewrite is tied to a hash of the source description, so editing a skill returns it to its own wording until it is rewritten again. Sessions record loaded skills at startup, `/reload` and setting changes, and tell you once which have no rewrite. New rewrites reach agents at the next session start or `/reload`.
 
-| Command                                                              | Action                                                                       |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `octocode context list [--json]`                                     | Each recorded skill and MCP server file, `optimized` or `source`, with sizes |
-| `octocode context check --overrides <file>`                          | Validate rewrites: known skill, one paragraph, at most 1,024 characters      |
-| `octocode context apply --overrides <file> [--optimized-by <model>]` | Store each rewrite, in the project's record first                            |
+| Command                                                              | Action                                                                  |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `octocode context list [--json]`                                     | Each recorded skill, `optimized` or `source`, with sizes                |
+| `octocode context check --overrides <file>`                          | Validate rewrites: known skill, one paragraph, at most 1,024 characters |
+| `octocode context apply --overrides <file> [--optimized-by <model>]` | Store each rewrite, in the project's record first                       |
 
 The overrides file is `{ "skills": { "<name>": "<description>" } }`. Ask the agent to optimize skill descriptions, or run `/skill:octocode-context-optimization`. Records live in the agent directory (`context-optimization/skills.json`, shared; project skills under `context-optimization/projects/<repo>-<hash>/`), never in the repository; a session reads the project's record first.
 

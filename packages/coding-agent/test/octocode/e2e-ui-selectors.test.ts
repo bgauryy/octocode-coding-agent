@@ -33,9 +33,9 @@ describe("/model", () => {
 		await t.until(shows("Switch this chat"), "switch-or-default choice");
 		expect(t.host.session.model?.id).toBe("faux-1");
 		t.press(KEY.enter);
-		await t.until(shows(/faux\/faux-2 · local · permission/), "footer shows faux-2 and its kind");
+		await t.until(shows(/^faux-2 · local\b/m), "footer shows faux-2 and its kind");
 		expect(t.host.session.model?.id).toBe("faux-2");
-		expect(await t.text()).toMatch(/faux\/faux-2 · local · permission/);
+		expect(await t.text()).toMatch(/^faux-2 · local\b/m);
 		expect(t.host.sessionManager.getEntries().some((e) => e.type === "model_change" && e.modelId === "faux-2")).toBe(
 			true,
 		);

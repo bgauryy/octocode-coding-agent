@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { acquireRunLock } from "./full-run-lock.ts";
 import { nearLimitNotice } from "./near-limit-files.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,7 +42,14 @@ function run(name) {
 	});
 }
 
-const results = await Promise.all(names.map(run));
+// One full run at a time on this host; the checks inherit the lock, so a suite they start does not wait for it.
+const release = await acquireRunLock({ label: `yarn run-checks ${names.join(" ")}` });
+let results;
+try {
+	results = await Promise.all(names.map(run));
+} finally {
+	release();
+}
 // Advice only: reading the tree must never change what the checks decided.
 try {
 	const notice = nearLimitNotice(repoRoot);

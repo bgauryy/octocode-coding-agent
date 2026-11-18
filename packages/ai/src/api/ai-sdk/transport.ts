@@ -5,6 +5,7 @@ import { retryProviderRequest } from "../../utils/provider-retry.ts";
 import { headersToRecord } from "../../utils/headers.ts";
 import { assertImageRequestPayload } from "../../utils/image-input.ts";
 import type { Api, Model, StreamOptions } from "../../types.ts";
+import { readWithIdleTimeout, resolveStreamIdleTimeoutMs, streamIdleError } from "./stream-idle.ts";
 import { iterateSseMessages, throwOnSseErrorEvent } from "../../utils/server-sent-events.ts";
 
 class ResponseHookError extends Error {
@@ -115,10 +116,13 @@ export async function fetchSdkResponse(
 			});
 		}
 		const reader = response.body.getReader();
+		const idleMs = resolveStreamIdleTimeoutMs(options.streamIdleTimeoutMs);
 		const body = new ReadableStream<Uint8Array>({
 			async pull(controller) {
 				try {
-					const next = await raceWithAbortSignal(reader.read(), combined.signal);
+					const next = await readWithIdleTimeout(raceWithAbortSignal(reader.read(), combined.signal), idleMs, () =>
+						streamIdleError(idleMs!, url),
+					);
 					if (next.done) {
 						cleanup();
 						reader.releaseLock();

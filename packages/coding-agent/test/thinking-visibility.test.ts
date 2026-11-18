@@ -29,7 +29,7 @@ function transcript() {
 		settingsManager: { setHideThinkingBlock: vi.fn() },
 		chatContainer,
 		ui: { requestRender: vi.fn() },
-		footerDataProvider: { setExtensionStatus: vi.fn() },
+		footerDataProvider: { setFeatureStatus: vi.fn() },
 	};
 	const host = createFakeHost(context);
 	bindViewState(host);
@@ -57,7 +57,7 @@ describe("thinking visibility has one owner: the host setting", () => {
 		expect(context.settingsManager.setHideThinkingBlock).toHaveBeenLastCalledWith(false);
 		expect(plain(top)).toContain("Top thought.");
 		expect(plain(nested)).toContain("Nested thought.");
-		expect(context.footerDataProvider.setExtensionStatus).not.toHaveBeenCalled();
+		expect(context.footerDataProvider.setFeatureStatus).not.toHaveBeenCalled();
 		expect(context.chatContainer.render(80).join("\n")).toContain("Thinking blocks: visible");
 	});
 });

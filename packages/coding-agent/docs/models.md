@@ -6,22 +6,18 @@ Connect a provider, pick a model, and describe custom endpoints. Sign-in and key
 flowchart TD
     A[What do you have?] --> B{Subscription or API key for a supported provider?}
     B -- yes --> C["/providers: sign in or Add API key"]
-    B -- no --> D{Local GGUF files?}
-    D -- yes --> E["/llama (llama.cpp router)"]
-    D -- no --> F{Endpoint speaks OpenAI, Anthropic or Google API?}
+    B -- no --> F{Endpoint speaks OpenAI, Anthropic or Google API?}
     F -- yes --> G["/providers: Add from a template, or edit models.json"]
     F -- no --> H[not supported]
     C --> M["/model: pick a model"]
-    E --> M
     G --> M
 ```
 
-| What you have                                       | Setup                                                     |
-| --------------------------------------------------- | --------------------------------------------------------- |
-| A supported subscription                            | Sign in through `/providers`                              |
-| A provider API key                                  | `/providers`, or the provider's environment variable      |
-| A local GGUF model                                  | `/llama`                                                  |
-| Another API-key host, a gateway or a local server   | [`/providers` → Add from a template](#provider-templates) |
+| What you have                                       | Setup                                                                                           |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| A supported subscription                            | Sign in through `/providers`                                                                    |
+| A provider API key                                  | `/providers`, or the provider's environment variable                                            |
+| Another API-key host, a gateway or a local server   | [`/providers` → Add from a template](#provider-templates)                                       |
 | Ollama, LM Studio, vLLM, SGLang, a proxy or gateway | [Provider templates](#provider-templates), or [`models.json`](#configure-a-compatible-endpoint) |
 
 Octocode starts with a bundled catalog; cached catalog data works offline. `OCTOCODE_MODEL_CATALOG_URL` points at a compatible catalog service for remote overlays (there is no default service) and `octocode update --models` refreshes from it. Catalog entries whose id holds a control character are dropped; control sequences are removed from names; a bad catalog response is reported without quoting its body.
@@ -50,13 +46,13 @@ The saved global default applies to new sessions. Trusted workspace or run setti
 
 Saving a global default preserves existing global shortcut ordering. Workspace/run shortcut lists keep their own scope and are not copied into global settings.
 
-| Surface | Select for the current chat/run | Save a startup default |
-| --- | --- | --- |
-| Terminal picker | Enter, or `/model <provider>/<id>` | Ctrl+S in `/model` |
-| CLI | `octocode --model <provider>/<id>` | `octocode configuration set defaultProvider <provider>` and `octocode configuration set defaultModel <id>` |
-| Configuration/web settings | Changing defaults keeps the current chat's model | Set global defaults or trusted workspace defaults; new sessions use them |
-| SDK | `await session.setModel(model)` | `await session.setModel(model, { persist: true })` |
-| RPC | `set_model` | No persistence option; use configuration separately |
+| Surface                    | Select for the current chat/run                  | Save a startup default                                                                                     |
+| -------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Terminal picker            | Enter, or `/model <provider>/<id>`               | Ctrl+S in `/model`                                                                                         |
+| CLI                        | `octocode --model <provider>/<id>`               | `octocode configuration set defaultProvider <provider>` and `octocode configuration set defaultModel <id>` |
+| Configuration/web settings | Changing defaults keeps the current chat's model | Set global defaults or trusted workspace defaults; new sessions use them                                   |
+| SDK                        | `await session.setModel(model)`                  | `await session.setModel(model, { persist: true })`                                                         |
+| RPC                        | `set_model`                                      | No persistence option; use configuration separately                                                        |
 
 The CLI configuration commands edit the two fields independently. Prefer the picker or SDK paired save when changing provider and model together.
 
@@ -64,19 +60,9 @@ API/subscription models, configured local-server models and connected `claude-co
 
 ## Connect local models
 
-Octocode integrates with the llama.cpp router, which discovers GGUF files and loads models on demand. `/llama` manages the router (loaded models, downloads, connection); `/model` selects a loaded model.
-
-For an existing Ollama, LM Studio or vLLM server, open `/providers` → **Add from a template**, choose the server, enter its API base URL and the model IDs it serves, then select the model in `/model`. The templates use the defaults below and offer a no-key option for servers without authentication; a local model ID must match your server's installed or loaded model.
+For a llama.cpp server, Ollama, LM Studio or vLLM server, open `/providers` → **Add from a template**, choose the server, enter its API base URL and the model IDs it serves, then select the model in `/model`. The templates use the defaults below and offer a no-key option for servers without authentication; a local model ID must match your server's installed or loaded model.
 
 Local templates also ask for each model's loaded context window and maximum output. Enter positive token counts (`k` and `m` suffixes work); maximum output cannot exceed the context window. These values describe your running server and do not reconfigure it. Local definitions start with text input, no declared thinking and zero configured token rates; add verified vision, reasoning or pricing metadata explicitly. Templates do not start servers, pull models or infer their capabilities.
-
-Cached llama.cpp models can be restored as defaults and used by explicit CLI selections. A first headless run with an empty llama cache needs prior model discovery through `/model` or `/llama`.
-
-- Loading a model in place of loaded ones unloads them first, with a status line each; an unload unfinished after 60 seconds is reported with the model's state.
-- When a load fails or is stopped, `/llama` restores the previous models in a progress view (Esc asks `Stop restoring?`).
-- Live router updates stop if it sends more than 1 MiB without ending an event; `/llama` then keeps polling the catalog.
-- Thinking support comes from each model's chat template. A model whose template cannot be read is listed without thinking support until the next refresh, with a warning.
-- A dialog, selector or session reset closes the view; a running load, download or restore finishes anyway.
 
 ## Provider templates
 

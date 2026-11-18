@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { PARENT_FENCE_NOTE } from "../shared/fence.ts";
 import {
 	findReferences,
@@ -36,15 +36,13 @@ export async function taskReferences(
 
 /** A browser child's mode line; empty for any other child. */
 export function browserModeLine(browserMode: boolean | undefined): string {
-	return browserMode === undefined
-		? ""
-		: renderInstruction("subagent/browser-mode.md", { headless: String(browserMode) });
+	return browserMode === undefined ? "" : renderPrompt("subagent/browser-mode.md", { headless: String(browserMode) });
 }
 
 /** How the child returns the structured result its parent asked for (`resultSchema`); empty without one. */
 export function resultContractBlock(resultContract: ResultContract | undefined): string {
 	return resultContract
-		? renderInstruction("subagent/result-contract.md", {
+		? renderPrompt("subagent/result-contract.md", {
 				hash: resultContract.hash,
 				schema: JSON.stringify(resultContract.schema),
 			})

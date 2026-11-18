@@ -8,13 +8,13 @@
 import type { McpClient, McpPromptArgument } from "./client/index.ts";
 import { isEnabled } from "./server.ts";
 import { sanitizeJson } from "./sanitize.ts";
-import type { McpExtensionState } from "./state.ts";
+import type { McpFeatureState } from "./state.ts";
 import type { ContentBlock } from "./client/protocol/content.ts";
 
 const visible = (text: string): string => sanitizeJson(text) as string;
 
 /** The connected client of a server in this session, or an error naming why it has none. */
-async function clientOf(state: McpExtensionState, name: string, signal?: AbortSignal) {
+async function clientOf(state: McpFeatureState, name: string, signal?: AbortSignal) {
 	const server = state.findServer(name);
 	if (!server) {
 		const known = state.servers.map((candidate) => candidate.entry.name).join(", ") || "none";
@@ -34,7 +34,7 @@ const described = (item: { title?: string; description?: string; mimeType?: stri
 };
 
 /** A server's resources and resource templates, one per line. */
-export async function resourceListing(state: McpExtensionState, name: string, signal?: AbortSignal): Promise<string> {
+export async function resourceListing(state: McpFeatureState, name: string, signal?: AbortSignal): Promise<string> {
 	const { client, options } = await clientOf(state, name, signal);
 	if (!client.serverCapabilities?.resources) return `MCP server "${name}" offers no resources.`;
 	const [resources, templates] = [await client.listResources(options), await client.listResourceTemplates(options)];
@@ -47,7 +47,7 @@ export async function resourceListing(state: McpExtensionState, name: string, si
 
 /** One resource's contents, as tool content. */
 export async function readServerResource(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	name: string,
 	uri: string,
 	signal?: AbortSignal,
@@ -63,7 +63,7 @@ const promptLine = (prompt: { name: string; description?: string; arguments?: Mc
 };
 
 /** A server's prompts with their arguments (`<required>`, `[optional]`), one per line. */
-export async function promptListing(state: McpExtensionState, name: string): Promise<string> {
+export async function promptListing(state: McpFeatureState, name: string): Promise<string> {
 	const { client, options } = await clientOf(state, name);
 	if (!client.serverCapabilities?.prompts) return `MCP server "${name}" offers no prompts.`;
 	const prompts = await client.listPrompts(options);
@@ -100,7 +100,7 @@ export function promptArguments(
 
 /** A prompt's messages as one text: each message's text or resource text, in order. */
 export async function promptText(
-	state: McpExtensionState,
+	state: McpFeatureState,
 	server: string,
 	prompt: string,
 	words: readonly string[],

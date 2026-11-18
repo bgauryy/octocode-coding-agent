@@ -92,7 +92,7 @@ describe("per-server, per-file and per-field section deltas", () => {
 		expect(Object.keys(patch)).toEqual([name]);
 		expect(patch[name]).toContain("Keep files under 400 lines.");
 		expect(patch[name]).not.toContain("Run the tests.");
-		expect(patch[name]).toMatch(/^<project_context>\n<project_instructions path="\/repo\/pkg\/AGENTS.md">/);
+		expect(patch[name]).toMatch(/^<project_instructions path="\/repo\/pkg\/AGENTS.md">/);
 		expect(systemPromptSectionSpec(name)?.tier).toBe("session");
 		expect(NON_BASE_SECTIONS.has(name)).toBe(true);
 		expect(VOLATILE_SECTIONS.has(name)).toBe(false);
@@ -106,7 +106,7 @@ describe("per-server, per-file and per-field section deltas", () => {
 		const before = sections();
 		const patch = diffSystemPromptSections(before, sections({ now: new Date(2026, 10, 18, 0, 1) }))!;
 		expect(Object.keys(patch)).toEqual(["environment:date"]);
-		expect(patch["environment:date"]).toBe("<environment>\nDate: 2026-11-18\n</environment>");
+		expect(patch["environment:date"]).toBe("Date: 2026-11-18");
 		expect(systemPromptSectionSpec("environment:date")?.tier).toBe("volatile");
 		expect(VOLATILE_SECTIONS.has("environment:date")).toBe(true);
 		expect(sectionFamilyText(before, "environment")).toContain("Platform: ");

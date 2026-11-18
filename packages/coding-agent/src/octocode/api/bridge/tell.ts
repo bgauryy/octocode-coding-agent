@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../../core/features/index.ts";
+import type { FeatureContext } from "../../../core/features/index.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { ERR, RpcError, stringParam } from "../protocol.ts";
@@ -12,7 +12,7 @@ export interface TellHost {
 	readonly agents: AgentDirectory;
 	readonly ceilings: TurnCeilings;
 	/** The bound session; throws when there is none. */
-	session(): ExtensionContext;
+	session(): FeatureContext;
 	/** Records an API-started turn in the session. */
 	audit(data: Record<string, unknown>): void;
 	/** The caller's facts, verified with the instance it names when it names one (`bridge/verify.ts`). */

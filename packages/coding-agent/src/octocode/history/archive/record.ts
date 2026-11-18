@@ -118,16 +118,18 @@ const FENCE_LINE = /^`{3,}$/;
  * title, note, labels, section and message headings and `(none)` are the record's own wording and count as empty, so
  * wording added to `renderRecord` later counts for nothing unless it is a field in `LABELS` or fenced message text.
  */
-export function recordRankedText(lines: readonly string[]): string[] {
+export function recordRankedText(lines: readonly string[], openers?: Array<string | undefined>): string[] {
 	const ranked: string[] = [];
 	let at = 0;
 	for (; at < lines.length && !lines[at].startsWith("## "); at++) {
+		openers?.push(undefined);
 		const field = fieldOf(lines[at]);
 		ranked.push(field && FIELD_LABELS.has(field.label) && !LOCATION_LABELS.has(field.label) ? field.value : "");
 	}
 	let fence: string | undefined;
 	for (; at < lines.length; at++) {
 		const line = lines[at];
+		openers?.push(fence);
 		const inside = fence !== undefined && line !== fence;
 		if (fence === undefined && FENCE_LINE.test(line)) fence = line;
 		else if (line === fence) fence = undefined;

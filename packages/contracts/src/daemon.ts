@@ -148,6 +148,27 @@ export const AttachRequestSchema = Type.Union([
 	Type.Object({ ...requestId, method: Type.Literal("profiler.trace") }),
 	Type.Object({
 		...requestId,
+		method: Type.Literal("profiler.messages"),
+		params: Type.Object(
+			{
+				limit: Type.Integer({ minimum: 1, maximum: 500 }),
+				before: Type.Optional(
+					Type.Object({ at: Type.Integer({ minimum: 0 }), key: Text(32) }, { additionalProperties: false }),
+				),
+			},
+			{ additionalProperties: false },
+		),
+	}),
+	Type.Object({
+		...requestId,
+		method: Type.Literal("profiler.transcript"),
+		params: Type.Object(
+			{ agentId: Text(64), entry: Type.Integer({ minimum: 0 }), sessionId: Type.Optional(Text(128)) },
+			{ additionalProperties: false },
+		),
+	}),
+	Type.Object({
+		...requestId,
 		method: Type.Literal("profiler.timeline"),
 		params: Type.Object({ since: Type.Optional(Type.Integer({ minimum: 0 })) }, { additionalProperties: false }),
 	}),

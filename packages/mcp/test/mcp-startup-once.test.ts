@@ -49,8 +49,8 @@ function hostWithLateSkills() {
 		},
 	});
 	hosts.push(host);
-	host.api.getSkillDirectories = () => [...skills];
-	host.api.on("resources_discover", () => {
+	host.api.resources.getSkillDirectories = () => [...skills];
+	host.api.bus.on("resources_discover", () => {
 		skills.push(tmp("late-skill-"));
 	});
 	return { host, launches, skills };

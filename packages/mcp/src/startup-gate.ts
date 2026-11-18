@@ -1,6 +1,6 @@
 /**
  * When a session's first connections may launch. A server's launch carries the session's skill folders (the
- * `researchRoots` template), and the host adds the folders extensions contribute (`resources_discover`) only after
+ * `researchRoots` template), and the host adds the folders features contribute (`resources_discover`) only after
  * every `session_start` handler ran. A server launched before then would differ from the launch the first prompt
  * computes, and be started a second time there. So the startup connections wait for that discovery, or for whatever
  * needs a server sooner: the first prompt, a hook's call, a catalog command, or the session ending.

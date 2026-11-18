@@ -63,9 +63,9 @@ describe("report sends after the timed retries gave up", () => {
 		vi.useFakeTimers();
 		try {
 			const f = fakeHost();
-			const send = f.api.sendMessage;
+			const send = f.api.session.sendMessage;
 			let down = true;
-			f.api.sendMessage = (message, options) =>
+			f.api.session.sendMessage = (message, options) =>
 				down ? Promise.reject(new Error("prepareRun failed")) : send(message, options);
 			const warned: string[] = [];
 			const queue = new ReportQueue(f.api);
@@ -106,9 +106,9 @@ describe("report sends after the timed retries gave up", () => {
 		vi.useFakeTimers();
 		try {
 			const f = fakeHost();
-			const send = f.api.sendMessage;
+			const send = f.api.session.sendMessage;
 			let calls = 0;
-			f.api.sendMessage = (message, options) => {
+			f.api.session.sendMessage = (message, options) => {
 				calls++;
 				return calls === 1 ? Promise.reject(new Error("once")) : send(message, options);
 			};

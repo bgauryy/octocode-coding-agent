@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { nestedContextFiles } from "../../core/resource-loader/context-files.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { recordedLocalReads } from "../shared/local-reads.ts";
@@ -34,7 +34,7 @@ function isDelivered(value: unknown): value is Delivered {
  * The files whose delivering results the model still sees: a compaction keeps the results from its first kept entry on
  * (none when that entry is unknown), and a cleared result's text, appended files included, is gone.
  */
-function deliveredInContext(ctx: Pick<ExtensionContext, "sessionManager">): Delivered[] {
+function deliveredInContext(ctx: Pick<FeatureContext, "sessionManager">): Delivered[] {
 	const branch = ctx.sessionManager.getBranch();
 	const cleared = clearedResults(branch);
 	const position = new Map<string, number>();
@@ -62,8 +62,8 @@ function readFiles(event: { toolName: string; input: Record<string, unknown>; de
 	return recordedLocalReads(event.details).map((read) => read.file);
 }
 
-export function registerNestedContext(api: ExtensionAPI): void {
-	api.on("tool_result", async (event, ctx) => {
+export function registerNestedContext(api: FeatureSetup): void {
+	api.bus.on("tool_result", async (event, ctx) => {
 		if (event.isError || event.parentToolCallId || !ctx.isProjectTrusted()) return undefined;
 		if (!event.content.some((part) => part.type === "text")) return undefined;
 		const files = readFiles(event, ctx.cwd);

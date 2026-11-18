@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { identityBlock } from "../../src/octocode/instructions/task.ts";
+import { identityBlock } from "../../src/octocode/native/prompts/task.ts";
 import { configureIdentity } from "../../src/octocode/subagents/run-identity.ts";
+import { asSetup } from "./fake-host.ts";
 
 const member = (over: Partial<Member>): Member =>
 	({ id: "x", role: "implementer", parentId: "boss", pid: 1, status: "working", ...over }) as Member;
@@ -22,7 +23,7 @@ function spawned(members: Member[]): string {
 		background: true,
 	} as never;
 	const permission = { mode: "default", childGrants: () => [] } as never;
-	const api = { events: { emit() {}, on: () => () => {} } } as never;
+	const api = asSetup({ events: { emit() {}, on: () => () => {} } }) as never;
 	const runs = { items: new Map(), team: { members: () => members } } as never;
 	configureIdentity(run, runs, api, permission, { hasUI: false }, parts);
 	return identityBlock((run as { identity: never }).identity);

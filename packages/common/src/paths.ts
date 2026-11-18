@@ -52,7 +52,7 @@ export function getFileRevision(path: string): string | undefined {
 
 /**
  * Returns true if the value is NOT a package source (npm:, git:, etc.),
- * a built-in extension (builtin:), or a remote URL protocol. Bare names,
+ * a built-in feature (builtin:), or a remote URL protocol. Bare names,
  * relative paths, and file: URLs are considered local.
  */
 export function isLocalPath(value: string): boolean {

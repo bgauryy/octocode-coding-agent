@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { defaultPreset } from "./mcp-default-preset.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 
 function catalog(name: string, config: Pick<McpServerEntry["config"], "exposure" | "toolExposure"> = {}) {
-	const state = new McpExtensionState({ events: { on: () => () => {} } } as unknown as ExtensionAPI, {
+	const state = new McpFeatureState({ events: { on: () => () => {} } } as unknown as FeatureSetup, {
 		presets: [defaultPreset({})],
 	});
 	const entry: McpServerEntry = { name, config: { command: "fixture", ...config }, source: "test" };

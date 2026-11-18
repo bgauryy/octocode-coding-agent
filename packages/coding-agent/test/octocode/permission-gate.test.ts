@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate, powershellDestructive } from "../../src/octocode/permission/gate.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { bashSyntax } from "../../src/octocode/permission/bash-syntax.ts";
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { RECORD_FILE } from "../../src/octocode/history/archive/record.ts";
@@ -330,7 +330,6 @@ describe("permission gate", () => {
 			".octocode/agents/reviewer.md",
 			".octocode/prompts/p.md",
 			".octocode/themes/t.json",
-			".octocode/extensions/e.ts",
 			".octocode/plugins/p/plugin.json",
 			".octocode/npm/package.json",
 			".octocode/git/repo/x.ts",
@@ -347,6 +346,8 @@ describe("permission gate", () => {
 			".octocode/backlog-audit/.mcp.json",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
+		// Octocode loads no extensions, so a file in the old `extensions` folder is data.
+		expect(runsLater(path.join(root, ".octocode/extensions/e.ts"), root)).toBe(false);
 	});
 
 	it("runs a catastrophic command in full and audits it as shell.destructive, and asks in workspace and manual", async () => {

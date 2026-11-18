@@ -30,7 +30,7 @@ interface BackgroundWork {
 	files?: ChildFiles;
 }
 
-/** Bash job ids restart with each extension instance; the log path (id plus start time) is unique. */
+/** Bash job ids restart with each feature instance; the log path (id plus start time) is unique. */
 const jobKey = (id: string, log: string | undefined) => (log ? `log:${log}` : `id:${id}`);
 const agentKey = (id: string, runId: unknown) => `agent:${id}${typeof runId === "string" ? `:${runId}` : ""}`;
 

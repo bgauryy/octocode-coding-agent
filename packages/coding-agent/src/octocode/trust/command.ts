@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, type PageSection, showCommandPage, successNotice } from "../shared/page.ts";
 import type { FolderGrantView, GrantTarget } from "./grants.ts";
@@ -47,9 +47,9 @@ function parse(words: string[]): Parsed | string {
 	return { scope, yes, rest: rest.join(" ") };
 }
 
-const surfaceOf = (ctx: ExtensionCommandContext) => (ctx.hasUI ? ("tui" as const) : ("print" as const));
+const surfaceOf = (ctx: CommandContext) => (ctx.hasUI ? ("tui" as const) : ("print" as const));
 
-async function add(ctx: ExtensionCommandContext, parsed: Parsed, options: TrustOptions): Promise<void> {
+async function add(ctx: CommandContext, parsed: Parsed, options: TrustOptions): Promise<void> {
 	const folder = parsed.rest ? path.resolve(ctx.cwd, parsed.rest) : ctx.cwd;
 	const target = grantPath(folder, parsed.scope, options);
 	const now = resolveFolderTrust(target, options);
@@ -79,12 +79,7 @@ async function add(ctx: ExtensionCommandContext, parsed: Parsed, options: TrustO
 }
 
 /** Asks, then removes. Removing the decision that lets this session run closes the session: the next open asks again. */
-async function remove(
-	ctx: ExtensionCommandContext,
-	row: FolderGrantView,
-	yes: boolean,
-	options: TrustOptions,
-): Promise<void> {
+async function remove(ctx: CommandContext, row: FolderGrantView, yes: boolean, options: TrustOptions): Promise<void> {
 	const closes = appliesTo(row, ctx.cwd, options);
 	if (!yes) {
 		if (!ctx.hasUI)
@@ -117,7 +112,7 @@ async function remove(
 
 /** The terminal page: decisions (each opens a detail page with Remove), then the wider folders one step from trusting. */
 async function page(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	widen: Array<{ label: string; which: GrantTarget }>,
 	options: TrustOptions,
 ): Promise<void> {
@@ -163,7 +158,7 @@ async function page(
 }
 
 /** One decision: facts and its single action. Returns true when removing it closed the session. */
-async function detail(ctx: ExtensionCommandContext, row: FolderGrantView, options: TrustOptions): Promise<boolean> {
+async function detail(ctx: CommandContext, row: FolderGrantView, options: TrustOptions): Promise<boolean> {
 	const choice = await showCommandPage(ctx.ui, {
 		title: `${shown(row.path)} — ${row.decision === "refused" ? "refused" : "trusted"}`,
 		facts: [{ label: "Decision", value: describeGrant(row) }],
@@ -178,7 +173,7 @@ async function detail(ctx: ExtensionCommandContext, row: FolderGrantView, option
 }
 
 /** `/trust` with no arguments in a terminal: the decisions, and the next things a user would do with them. */
-async function menu(ctx: ExtensionCommandContext, options: TrustOptions): Promise<void> {
+async function menu(ctx: CommandContext, options: TrustOptions): Promise<void> {
 	const rows = liveGrants(options);
 	const widen: Array<{ label: string; which: GrantTarget }> = [];
 	for (const which of ["parent", "grandparent"] as const) {

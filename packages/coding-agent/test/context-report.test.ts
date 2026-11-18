@@ -102,19 +102,19 @@ it("compacts before dispatch using the routed model's output reserve", async () 
 	const harness = await createHarness({
 		models: [{ id: "physical", contextWindow: 64_000 }],
 		builtinCompactionFactories: [
-			(extension) => {
-				extension.registerVirtualModel({
-					provider: "router",
-					id: "auto",
-					name: "Auto",
-					contextWindow: 1000,
-					route: (_request, ctx) => ({ model: ctx.modelRegistry.find("faux", "physical")!, thinkingLevel: "off" }),
-				});
-				extension.on("session_before_compact", ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
+			(feature) => {
+				feature.bus.on("session_before_compact", ({ preparation: { firstKeptEntryId, tokensBefore } }) => ({
 					compaction: { summary: "compacted history", firstKeptEntryId, tokensBefore },
 				}));
 			},
 		],
+	});
+	harness.session.modelRuntime.registerVirtualModel({
+		provider: "router",
+		id: "auto",
+		name: "Auto",
+		contextWindow: 1000,
+		route: () => ({ model: harness.session.modelRuntime.getModel("faux", "physical")!, thinkingLevel: "off" }),
 	});
 	try {
 		const { session, sessionManager } = harness;
@@ -250,8 +250,8 @@ it("warns when one MCP server's instructions or the context files pass 1% of the
 		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 20_000 });
 		const report = contextReport(session);
 		expect(report.warnings).toEqual([
-			"MCP server typed instructions too long: 900 chars, budget 800 · fix: octocode mcp compact --help",
-			"MCP server big instructions too long: 801 chars, budget 800 · fix: octocode mcp compact --help",
+			"MCP server typed instructions too long: 900 chars, budget 800 · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions",
+			"MCP server big instructions too long: 801 chars, budget 800 · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions",
 			"Context files too long: 1200 chars, budget 800 · move rarely needed rules into linked files",
 		]);
 		const text = renderContextReport(report);

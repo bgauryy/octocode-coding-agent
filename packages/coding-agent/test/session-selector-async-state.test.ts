@@ -53,7 +53,7 @@ describe("session picker asynchronous state", () => {
 		opened.push(picker);
 		await flush();
 		expect(picker.getSessionList().getSelectedSessionPath()).toBe(session.path);
-		expect(picker.render(120).join("\n")).not.toContain("Loading");
+		expect(picker.render(120).join("\n")).not.toMatch(/loading/i);
 	});
 
 	it("keeps displayed quick rows available for deletion and scope changes", async () => {

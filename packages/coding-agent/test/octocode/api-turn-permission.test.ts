@@ -66,7 +66,7 @@ function setup(options: { hasUI: boolean; idle?: boolean; mode?: string; selects
 	const send = vi.fn((_message?: unknown, _options?: unknown): unknown => undefined);
 	const audits: Array<Record<string, unknown>> = [];
 	const host = {
-		api: { sendMessage: send },
+		api: { session: { sendMessage: send } },
 		agents: { list: () => [], deliverable: (text: string) => text },
 		operations,
 		receipts,

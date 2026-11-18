@@ -1,14 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import octocode from "../../src/octocode/index.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { agentsCommand } from "../../src/octocode/subagents/command.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+
+/** The marker a delivery carries when it stopped the receiver's step; a parent is not the user, so the unverified variant. */
+const interruptNotice = renderPrompt("notices/mail/interrupt.md", { fromUser: false }).trim();
 
 const repo = () => {
 	const dir = tmp();
@@ -77,7 +81,7 @@ describe("interrupt", () => {
 			interrupt: true,
 		})) as { id: number };
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
-		const send = vi.spyOn(child.api, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
+		const send = vi.spyOn(child.api.session, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
 		await child.emit("agent_settled", {}, child.ctx);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
 		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
@@ -105,7 +109,7 @@ describe("interrupt", () => {
 			interrupt: true,
 		})) as { id: number };
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
-		vi.spyOn(child.api, "sendMessage").mockImplementationOnce(() => {
+		vi.spyOn(child.api.session, "sendMessage").mockImplementationOnce(() => {
 			throw new Error("session not ready");
 		});
 		await child.emit("agent_settled", {}, child.ctx);
@@ -251,7 +255,7 @@ describe("interrupt", () => {
 		await parent.team.send(child.team.id, "switch tasks", { replyRequired: false, interrupt: true });
 		await vi.waitFor(() => expect(child.abort).toHaveBeenCalled(), { timeout: 3_000 });
 		await child.emit("agent_settled", {}, child.ctx);
-		expect(mail(child.sent)[0].message.content).toContain("your current step was stopped");
+		expect(mail(child.sent)[0].message.content).toContain(interruptNotice);
 		// One with a UI that is idle is woken, not stopped.
 		const ui = agent(
 			db,
@@ -332,7 +336,7 @@ describe("interrupt", () => {
 		expect(mail(child.sent)).toHaveLength(0);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
 		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(child.sent)[0].message.content).toContain("your current step was stopped");
+		expect(mail(child.sent)[0].message.content).toContain(interruptNotice);
 		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 	});
 

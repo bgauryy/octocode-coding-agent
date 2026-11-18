@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createExtensionRuntime } from "./helpers/features.ts";
+import { createFeatureRuntime } from "./helpers/features.ts";
 import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
@@ -52,7 +52,7 @@ This is a test skill.
 
 	it("should have empty skills when resource loader returns none (--no-skills)", async () => {
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+			getFeatures: () => ({ features: [], errors: [], runtime: createFeatureRuntime() }),
 			getSkills: () => ({ skills: [], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -87,7 +87,7 @@ This is a test skill.
 		};
 
 		const resourceLoader: ResourceLoader = {
-			getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+			getFeatures: () => ({ features: [], errors: [], runtime: createFeatureRuntime() }),
 			getSkills: () => ({ skills: [customSkill], diagnostics: [] }),
 			getPrompts: () => ({ prompts: [], diagnostics: [] }),
 			getThemes: () => ({ themes: [], diagnostics: [] }),

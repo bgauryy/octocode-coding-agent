@@ -1,6 +1,6 @@
 import type { OptionRole, Question } from "@octocodeai/octocode-contracts";
-import type { ExtensionContext } from "../../core/features/index.ts";
-import type { ExtensionUIPermissionRequest } from "../../core/features/types.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
+import type { PermissionPrompt } from "../../core/features/types.ts";
 import { ask } from "../ask/ask.ts";
 import { approvalQuestion } from "../ask/question.ts";
 import { kindOption } from "../permission/ask/text.ts";
@@ -99,7 +99,7 @@ interface ReviewStep {
 	reasonLines: readonly string[];
 	/** The choices, each with what it means to the engine; the one without a role opens a per-change review. */
 	choices: [label: string, role?: OptionRole][];
-	identity: Pick<ExtensionUIPermissionRequest, "toolCallId" | "toolName">;
+	identity: Pick<PermissionPrompt, "toolCallId" | "toolName">;
 }
 
 /** One review dialog as an approval question: its `allow_once` and `deny` choices are the permission's `allowOnce` and `rejectOnce`. */
@@ -127,7 +127,7 @@ function reviewQuestion(step: ReviewStep): Question {
 
 /** The choice picked in one review dialog and the note typed with it; undefined when dismissed or when it picks none of the offered choices. */
 async function decide(
-	ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+	ctx: Pick<FeatureContext, "hasUI" | "ui">,
 	step: ReviewStep,
 	signal: AbortSignal | undefined,
 ): Promise<{ label: string; note: string | undefined } | undefined> {
@@ -145,11 +145,11 @@ async function decide(
  * without `ask`) still gets its `select` with the permission fields derived from it.
  */
 export async function askReview(
-	ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+	ctx: Pick<FeatureContext, "hasUI" | "ui">,
 	queries: ChangeQuery[],
 	signal?: AbortSignal,
 	reasonLines: readonly string[] = [],
-	identity: Pick<ExtensionUIPermissionRequest, "toolCallId" | "toolName"> = {},
+	identity: Pick<PermissionPrompt, "toolCallId" | "toolName"> = {},
 ): Promise<Map<number, string | undefined> | "cancelled" | "session"> {
 	const all = (note?: string) => new Map(queries.map((_, index) => [index, note]));
 	const raw = (query: ChangeQuery) => `${query.type} ${query.path}${query.movePath ? ` → ${query.movePath}` : ""}`;

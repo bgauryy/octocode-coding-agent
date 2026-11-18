@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 import { getShellEnv } from "../../utils/shell.ts";
 import { spawnProcess, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
@@ -113,7 +113,7 @@ function waitForKey(signal: AbortSignal | undefined): Promise<void> {
  * resolves: another dialog taking the slot ends `custom` early while the CLI still owns the terminal.
  */
 export async function runCliInTerminal(
-	ctx: ExtensionCommandContext,
+	ctx: CommandContext,
 	bin: string,
 	argv: string[],
 	label: string,

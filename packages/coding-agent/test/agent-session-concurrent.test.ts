@@ -25,7 +25,7 @@ import {
 	type NormalizedBuildSystemPromptOptions,
 	normalizeBuildSystemPromptOptions,
 } from "../src/core/system-prompt.ts";
-import { createTestExtensionsResult, createTestResourceLoader } from "./utilities.ts";
+import { createTestFeaturesResult, createTestResourceLoader } from "./utilities.ts";
 
 function createAssistantMessage(text: string): AssistantMessage {
 	return {
@@ -57,7 +57,7 @@ describe("AgentSession concurrent prompt guard", () => {
 	});
 
 	afterEach(async () => {
-		delete (globalThis as typeof globalThis & { testExtensionApi?: unknown }).testExtensionApi;
+		delete (globalThis as typeof globalThis & { testFeatureApi?: unknown }).testFeatureApi;
 		delete (globalThis as typeof globalThis & { testCommandRuns?: unknown }).testCommandRuns;
 		if (session) {
 			session.dispose();
@@ -223,7 +223,7 @@ describe("AgentSession concurrent prompt guard", () => {
 								.join("\n");
 						});
 
-					if (userTexts.includes("Steer from extension")) {
+					if (userTexts.includes("Steer from feature")) {
 						sawSteeringMessage = true;
 						stream.push({ type: "start", partial: createAssistantMessage("") });
 						stream.push({ type: "done", reason: "stop", message: createAssistantMessage("Steered") });
@@ -250,12 +250,12 @@ describe("AgentSession concurrent prompt guard", () => {
 		const modelRegistry = await createModelRegistry(authStorage, tempDir);
 		await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));
 
-		const extensionsResult = await createTestExtensionsResult([
+		const featuresResult = await createTestFeaturesResult([
 			(api) => {
-				(globalThis as typeof globalThis & { testExtensionApi?: unknown }).testExtensionApi = api;
+				(globalThis as typeof globalThis & { testFeatureApi?: unknown }).testFeatureApi = api;
 			},
 			(api) => {
-				api.on("input", async (event) => {
+				api.bus.on("input", async (event) => {
 					lastInputSource = event.source;
 				});
 			},
@@ -267,7 +267,7 @@ describe("AgentSession concurrent prompt guard", () => {
 			settingsManager,
 			cwd: tempDir,
 			modelRuntime: getModelRuntime(modelRegistry),
-			resourceLoader: createTestResourceLoader({ extensionsResult }),
+			resourceLoader: createTestResourceLoader({ featuresResult }),
 		});
 		session.subscribe((event) => {
 			if (event.type === "queue_update") {
@@ -281,20 +281,22 @@ describe("AgentSession concurrent prompt guard", () => {
 
 		const api = (
 			globalThis as typeof globalThis & {
-				testExtensionApi?: {
-					sendUserMessage: (content: string, options?: { deliverAs?: "steer" | "followUp" }) => void;
+				testFeatureApi?: {
+					session: {
+						sendUserMessage: (content: string, options?: { deliverAs?: "steer" | "followUp" }) => void;
+					};
 				};
 			}
-		).testExtensionApi;
+		).testFeatureApi;
 		expect(api).toBeDefined();
 
-		api!.sendUserMessage("Steer from extension", { deliverAs: "steer" });
+		api!.session.sendUserMessage("Steer from feature", { deliverAs: "steer" });
 		await new Promise((resolve) => setTimeout(resolve, 25));
 
 		expect(session.pendingMessageCount).toBe(1);
-		expect(session.getSteeringMessages()).toContain("Steer from extension");
-		expect(lastInputSource).toBe("extension");
-		expect(queueEvents.some((event) => event.steering.includes("Steer from extension"))).toBe(true);
+		expect(session.getSteeringMessages()).toContain("Steer from feature");
+		expect(lastInputSource).toBe("feature");
+		expect(queueEvents.some((event) => event.steering.includes("Steer from feature"))).toBe(true);
 
 		await session.abort();
 		await firstPrompt.catch(() => {});
@@ -443,7 +445,7 @@ describe("AgentSession concurrent prompt guard", () => {
 
 		const snapshots: string[][] = [];
 		const sessionWithRunner = session as unknown as {
-			_extensionRunner?: {
+			_featureHost?: {
 				getRegisteredCommands: () => [];
 				hasHandlers: (eventType: string) => boolean;
 				emit: (event: { type: string; message?: { role?: string } }) => Promise<void>;
@@ -452,7 +454,7 @@ describe("AgentSession concurrent prompt guard", () => {
 				emitInput: (
 					text: string,
 					images: unknown,
-					source: "interactive" | "rpc" | "extension",
+					source: "interactive" | "rpc" | "feature",
 					streamingBehavior?: "steer" | "followUp",
 				) => Promise<{ action: "continue" }>;
 				emitBeforeAgentStart: (
@@ -462,7 +464,7 @@ describe("AgentSession concurrent prompt guard", () => {
 				invalidate: (message?: string) => void;
 			};
 		};
-		sessionWithRunner._extensionRunner = {
+		sessionWithRunner._featureHost = {
 			getRegisteredCommands: () => [],
 			hasHandlers: (eventType) => eventType === "tool_call",
 			emit: async () => {},
@@ -589,7 +591,7 @@ describe("AgentSession concurrent prompt guard", () => {
 		});
 
 		const sessionWithRunner = session as unknown as {
-			_extensionRunner?: {
+			_featureHost?: {
 				getRegisteredCommands: () => [];
 				hasHandlers: (eventType: string) => boolean;
 				emit: (event: { type: string; message?: { role?: string } }) => Promise<void>;
@@ -597,7 +599,7 @@ describe("AgentSession concurrent prompt guard", () => {
 				emitInput: (
 					text: string,
 					images: unknown,
-					source: "interactive" | "rpc" | "extension",
+					source: "interactive" | "rpc" | "feature",
 					streamingBehavior?: "steer" | "followUp",
 				) => Promise<{ action: "continue" }>;
 				emitBeforeAgentStart: (
@@ -607,7 +609,7 @@ describe("AgentSession concurrent prompt guard", () => {
 				invalidate: (message?: string) => void;
 			};
 		};
-		sessionWithRunner._extensionRunner = {
+		sessionWithRunner._featureHost = {
 			getRegisteredCommands: () => [],
 			hasHandlers: () => false,
 			emit: async () => {},

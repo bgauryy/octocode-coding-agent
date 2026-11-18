@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decide, live, NoAnswer, posteriorAbove, runTrials } from "../src/live.ts";
+import { decide, live, NoAnswer, passHatK, posteriorAbove, runTrials, type Trial } from "../src/live.ts";
 
 describe("decide", () => {
 	it("matches the reference numbers", () => {
@@ -12,12 +12,59 @@ describe("decide", () => {
 	});
 });
 
+describe("passHatK", () => {
+	it("is C(successes, k) / C(trials, k), as in tau2-bench", () => {
+		expect(passHatK(10, 7, 3)).toBeCloseTo(35 / 120, 12);
+		expect(passHatK(10, 10, 10)).toBe(1);
+	});
+	it("is 0 when successes < k", () => {
+		expect(passHatK(5, 2, 3)).toBe(0);
+	});
+	it("throws a RangeError on k < 1, k > trials or successes > trials", () => {
+		expect(() => passHatK(5, 3, 0)).toThrow(RangeError);
+		expect(() => passHatK(5, 3, 6)).toThrow(RangeError);
+		expect(() => passHatK(5, 6, 2)).toThrow(RangeError);
+	});
+});
+
 describe("runTrials", () => {
+	it("summary includes passRate and passHatK when k is given", async () => {
+		const s = await runTrials({ maxTrials: 10, threshold: 0.8, k: 3 }, ({ trial }) => trial % 10 < 7);
+		expect(s).toMatchObject({ trials: 10, successes: 7, passRate: 0.7, passHatK: 35 / 120 });
+	});
+	it("passHatK is absent without k or when answered trials are fewer than k", async () => {
+		const plain = await runTrials({ maxTrials: 2, threshold: 0.5 }, () => true);
+		expect(plain).not.toHaveProperty("passHatK");
+		const short = await runTrials({ maxTrials: 2, threshold: 0.5, k: 3 }, () => true);
+		expect(short).not.toHaveProperty("passHatK");
+	});
+	it("passRate is 0 when no trial was answered", async () => {
+		const s = await runTrials({ maxTrials: 2, threshold: 0.5 }, () => {
+			throw new NoAnswer("429");
+		});
+		expect(s).toMatchObject({ trials: 0, passRate: 0 });
+	});
+	it("rejects a k that is not an integer of at least 1 before running any trial", async () => {
+		let n = 0;
+		await expect(runTrials({ maxTrials: 3, threshold: 0.5, k: 0 }, () => ++n > 0)).rejects.toThrow(RangeError);
+		expect(n).toBe(0);
+	});
 	it("stops early once the posterior decides", async () => {
 		let n = 0;
-		const s = await runTrials({ maxTrials: 50, threshold: 0.8 }, () => void n++);
+		const s = await runTrials({ maxTrials: 50, threshold: 0.8 }, () => ++n > 0);
 		expect(s).toMatchObject({ decision: "pass", trials: 13, stoppedEarly: true });
 		expect(n).toBe(13);
+	});
+
+	it("a trial that returns no boolean fails, and says to return one (must-fail)", async () => {
+		// A trial that forgot its `return`: TypeScript rejects it, so cast it the way plain JS would pass it.
+		const forgot = (async () => {}) as unknown as Trial;
+		const s = await runTrials({ maxTrials: 20, threshold: 0.8 }, forgot);
+		expect(s).toMatchObject({ decision: "fail", successes: 0 });
+		expect(s.failures).toBeGreaterThan(0);
+		expect(s.lastError).toMatch(/returned undefined, not a boolean: return true \(pass\) or false \(fail\)/);
+		const truthy = await runTrials({ maxTrials: 20, threshold: 0.8 }, (() => "yes") as unknown as Trial);
+		expect(truthy).toMatchObject({ decision: "fail", successes: 0, lastError: expect.stringMatching(/a string/) });
 	});
 
 	it("fails early on a consistently failing fn and records the error", async () => {

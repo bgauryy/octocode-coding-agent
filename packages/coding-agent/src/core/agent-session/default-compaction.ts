@@ -1,4 +1,4 @@
-/** Octocode's default compaction summary: the one the session writes when no extension supplies one. */
+/** Octocode's default compaction summary: the one the session writes when no feature supplies one. */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { type Model, type RetryCallbacks, streamSimple } from "@octocodeai/octocode-ai/compat";

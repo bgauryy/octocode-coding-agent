@@ -17,7 +17,8 @@ import type { Api, Model } from "@octocodeai/octocode-ai";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import type { CompactionPreparation, CompactionResult } from "../../core/compaction/index.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
-import type { ExtensionContext, SessionCompactPrewarmEvent } from "../../core/features/index.ts";
+import type { FeatureContext, SessionCompactPrewarmEvent } from "../../core/features/index.ts";
+import { type PrewarmWatch, prewarmWatchOf } from "../monitor/attention/prewarm.ts";
 import { recordCompactionNote } from "./record.ts";
 import { sharedSummary, type SummaryApi } from "./shared-summary.ts";
 import { SHARED_IMAGE_FOCUS, SUMMARY_FOCUS } from "./summary-text.ts";
@@ -32,12 +33,15 @@ interface EarlySummary {
 	settled: boolean;
 	/** Stops the request this entry owns; the event's own signal belongs to the caller. */
 	cancel: () => void;
+	/** The compaction-prewarm rule of the session it was requested for: told when it was billed for nothing. */
+	watch: PrewarmWatch;
 }
 
 /** Notes, in the session the summary was requested for, that an early summary was not used and why. */
 type DiscardNote = (reason: string) => void;
 
 function discarded(entry: EarlySummary, reason: string, note: DiscardNote | undefined): void {
+	entry.watch.wasted("discarded");
 	note?.(
 		entry.settled
 			? `the early summary was discarded after its request finished (billed, not used): ${reason}`
@@ -105,13 +109,14 @@ const fileLists = (preparation: CompactionPreparation) => {
 export function startEarlySummary(
 	api: SummaryApi,
 	event: SessionCompactPrewarmEvent,
-	ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "sessionManager">,
+	ctx: Pick<FeatureContext, "model" | "modelRegistry" | "sessionManager">,
 	cold: boolean,
 ): void {
 	const model = ctx.model;
 	if (!model || cold || event.signal.aborted) return;
 	const { preparation, signal } = event;
-	const recordUsage = api.createUsageRecorder("compaction_attempt");
+	const recordUsage = api.usage.createRecorder("compaction_attempt");
+	const watch = prewarmWatchOf(api);
 	const requestedAt = Date.now();
 	// The request runs under its own signal, so a newer request for the session can stop it without touching the caller's.
 	const own = new AbortController();
@@ -142,21 +147,31 @@ export function startEarlySummary(
 	)
 		.then((result) => {
 			const seconds = ((Date.now() - requestedAt) / 1000).toFixed(1);
-			if (!result)
+			if (!result) {
 				note(`the early summary cannot be used (${unusable ?? "cancelled"}); the compaction requests its own`);
+				// A request this session stopped (a dropped plan, a newer prewarm) is reported where it was stopped.
+				if (!own.signal.aborted) watch.wasted("failed");
+			}
 			if (!result || signal.aborted) return undefined;
 			note(`the early summary is ready after ${seconds} s; the compaction uses it without waiting`);
 			return { result, lists: fileLists(preparation).text };
 		})
-		.catch(() => undefined);
-	const plan = planOf(model, preparation, api.getThinkingLevel(), event.summaryRequest?.forceSystemPrompt);
-	const entry: EarlySummary = { plan, signal, requestedAt, written, settled: false, cancel: () => own.abort() };
+		.catch(() => {
+			if (!own.signal.aborted) watch.wasted("failed");
+			return undefined;
+		});
+	const plan = planOf(model, preparation, api.models.getThinkingLevel(), event.summaryRequest?.forceSystemPrompt);
+	const entry: EarlySummary = { plan, signal, requestedAt, written, settled: false, cancel: () => own.abort(), watch };
 	void written.finally(() => {
 		entry.settled = true;
 		signal.removeEventListener("abort", forward);
 	});
 	// A second prewarm replaces the first: its request is stopped instead of running on, billed, with nobody to take it.
-	early.get(ctx.sessionManager)?.cancel();
+	const replaced = early.get(ctx.sessionManager);
+	if (replaced) {
+		replaced.cancel();
+		replaced.watch.wasted("replaced");
+	}
 	early.set(ctx.sessionManager, entry);
 }
 
@@ -208,6 +223,7 @@ export async function takeEarlySummary(
 		);
 		return undefined;
 	}
+	entry.watch.waited(waitedMs);
 	const text = written.result.summary.slice(0, written.result.summary.length - written.lists.length);
 	const now = fileLists(preparation);
 	return {

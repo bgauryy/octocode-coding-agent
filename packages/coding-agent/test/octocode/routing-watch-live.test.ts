@@ -9,10 +9,10 @@ import { providerSourceGate, watchProviderSettings } from "../../src/core/provid
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider.ts";
-import { registerModelsTool } from "../../src/octocode/subagents/models-tool.ts";
+import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import { ROUTING_NOTICE_ID } from "../../src/octocode/subagents/routing-watch.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
-import { fakeHost } from "./fake-host.ts";
+import { fakeHost, asSetup } from "./fake-host.ts";
 import { allSections } from "./helpers.ts";
 
 let home: string;
@@ -68,7 +68,7 @@ describe("a provider another process disables", () => {
 
 		const fake = fakeHost();
 		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
-		fake.api.setActiveTools(["bash", "file", "agent"]);
+		fake.api.tools.setActive(["bash", "file", "agent"]);
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const ctx = { hasUI: true, model: session, modelRegistry: registry };
 		const turn = async () => {
@@ -81,7 +81,7 @@ describe("a provider another process disables", () => {
 
 		let models: ToolDefinition | undefined;
 		registerModelsTool(
-			{ registerTool: (definition: ToolDefinition) => void (models = definition) } as never,
+			asSetup({ registerTool: (definition: ToolDefinition) => void (models = definition) }) as never,
 			() => new Map(),
 		);
 		const listed = async () => {
@@ -138,7 +138,7 @@ describe("Claude Code as the session's model", () => {
 
 		const fake = fakeHost();
 		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
-		fake.api.setActiveTools(["bash", "file", "agent"]);
+		fake.api.tools.setActive(["bash", "file", "agent"]);
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const turn = async (model: typeof groq) => {
 			const ctx = { hasUI: true, model, modelRegistry: registry };

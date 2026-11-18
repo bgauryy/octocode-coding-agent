@@ -11,7 +11,7 @@ import { APP_NAME, getAgentDir, getDocsPath } from "../../../config.ts";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
 import { KeychainLoginSession, plaintextStorageNotice } from "../../../core/auth-storage/keychain-login.ts";
-import { ExtensionSelectorComponent } from "../components/extension-selector.ts";
+import { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -147,7 +147,7 @@ function showAuthSelect(
 	return new Promise((resolve, reject) => {
 		const restoreDialog = () => showInEditorSlot(host, dialog);
 		const labels = prompt.options.map((option) => option.label);
-		const selector = new ExtensionSelectorComponent(
+		const selector = new DialogSelectorComponent(
 			prompt.message,
 			labels,
 			(optionLabel) => {

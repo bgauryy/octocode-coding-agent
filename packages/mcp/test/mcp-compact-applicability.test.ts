@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { structureApplicability, withOverrideNotes } from "../src/compact/applicability.ts";
+import { structureApplicability } from "../src/compact/applicability.ts";
 import { inlineTinyRefs } from "../src/compact/inline-refs.ts";
 import { checkToolBlock, schemaToTs } from "../src/compact/index.ts";
 
@@ -130,30 +130,6 @@ describe("structureApplicability", () => {
 		expect(text).toMatch(/operation: "read";\s*name: string;/);
 		expect(text).toMatch(/operation: "write";\s*body: string;/);
 		expect(text).toMatch(/operation: "list";/);
-	});
-});
-
-describe("a rule a field override states", () => {
-	it("binds the field and leaves the doc without the note, and the source schema unchanged", () => {
-		const source = {
-			...flat({ target: { type: "string", description: "Target." } }),
-			description: "For target: required except with operation: list.",
-		};
-		const { schema, fieldDocs } = withOverrideNotes(source, { target: "The target. Not with operation: list." });
-		expect(fieldDocs).toEqual({ target: "The target." });
-		expect((source.properties as Record<string, { description: string }>).target?.description).toBe("Target.");
-		const text = schemaToTs(structureApplicability(schema), { scope: "S_", fieldDocs }).type;
-		expect(text).toMatch(/operation: "read" \| "write";[^}]*\/\*\* The target\. \*\/ target: string;/);
-		expect(text).not.toContain("target?:");
-		expect(text).not.toContain("Not with");
-	});
-
-	it("leaves alone an override that only repeats the server's note, and one without a note", () => {
-		const source = flat({ depth: { type: "integer", description: "Levels. Only with operation: list." } });
-		const docs = { depth: "Levels. Only with operation: list.", path: "Where to look." };
-		const result = withOverrideNotes(source, docs);
-		expect(result.schema).toBe(source);
-		expect(result.fieldDocs).toEqual(docs);
 	});
 });
 

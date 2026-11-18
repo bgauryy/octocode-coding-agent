@@ -159,7 +159,8 @@ describe("the purpose block below a tool result", () => {
 
 	it("shows nothing before a result exists", () => {
 		const component = new ToolExecutionComponent(MCP, "c", {}, {}, undefined, ui, process.cwd());
-		expect(text(component).join("\n")).not.toContain("·");
+		// The header alone: the tool word and its server as meta, no purpose rows.
+		expect(text(component).map((line) => line.trim())).toEqual(["○ search · other"]);
 	});
 
 	it("is the same collapsed and expanded", () => {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NothingToCompactError } from "../../../src/core/agent-session/compaction-control.ts";
 import type { SessionCompactFailedEvent } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("manual compaction with nothing to compact", () => {
 	const harnesses: Harness[] = [];
@@ -13,13 +14,13 @@ describe("manual compaction with nothing to compact", () => {
 	it("rejects with a typed no-op, keeping the SDK message, and emits no compaction or failure event", async () => {
 		const failed: SessionCompactFailedEvent[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_compact_failed", async (event) => {
+					api.bus.on("session_compact_failed", async (event) => {
 						failed.push(event);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 

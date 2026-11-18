@@ -121,7 +121,7 @@ describe("key hint lines", () => {
 
 	test("the /providers provider picker ends with the key hints the other selectors show", () => {
 		const text = renderSelector().map(stripAnsi).join("\n");
-		expect(text).toMatch(/enter select \u00b7 \S+ cancel/);
+		expect(text).toMatch(/enter sign in \u00b7 \S+ cancel/);
 		expect(text).not.toContain("\u2191\u2193");
 		// The selected row uses the shared cursor glyph.
 		expect(text).toContain("\u203a Anthropic");

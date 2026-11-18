@@ -17,12 +17,12 @@ afterEach(() => {
 describe("native tool registration", () => {
 	it("declares bash by default and does not register ollama", async () => {
 		const fake = fakeHost();
-		Object.assign(fake.api, { getSessionName: () => undefined });
+		Object.assign(fake.api.session, { getName: () => undefined });
 		await octocode(fake.api);
 		const ctx = fakeCtx({ cwd: tmp(), hasUI: true });
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const tools = fake.api.getAllTools();
+		const tools = fake.api.tools.getAll();
 		expect(tools.find((tool) => tool.name === "ollama")).toBeUndefined();
 		const names = defaultToolNames([
 			{

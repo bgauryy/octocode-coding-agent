@@ -1,4 +1,4 @@
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import {
 	describeInstance,
 	type InstanceEntry,
@@ -31,7 +31,7 @@ export function ticketTarget(dir: string, target: InstanceRecord): InstanceRecor
 	const canonical = readInstance(dir, target.id);
 	if (!canonical || !sameRecord(canonical, target))
 		throw new Error(
-			renderInstruction("notices/mail/peer-ambiguous.md", { moved: true, target: name, id: target.id, records: "" }),
+			renderPrompt("notices/mail/peer-ambiguous.md", { moved: true, target: name, id: target.id, records: "" }),
 		);
 	const entries = listInstanceEntries(dir, false);
 	const own = ownEntry(entries, canonical);
@@ -44,7 +44,7 @@ export function ticketTarget(dir: string, target: InstanceRecord): InstanceRecor
 	);
 	if (!own || repeats.length > 0)
 		throw new Error(
-			renderInstruction("notices/mail/peer-ambiguous.md", {
+			renderPrompt("notices/mail/peer-ambiguous.md", {
 				moved: false,
 				target: name,
 				id: target.id,

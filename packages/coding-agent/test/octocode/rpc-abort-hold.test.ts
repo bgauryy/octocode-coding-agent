@@ -37,7 +37,7 @@ const { AgentSessionRuntime } = await import(${moduleUrl("src/core/agent-session
 const { SessionManager } = await import(${moduleUrl("src/core/session-manager.ts")});
 const { runRpcMode } = await import(${moduleUrl("src/modes/rpc/rpc-mode.ts")});
 const shutdownExtension = api => {
-  api.on("agent_end", (_event, ctx) => {
+  api.bus.on("agent_end", (_event, ctx) => {
     fs.writeFileSync(${JSON.stringify(marker)}, "shutdown requested");
     ctx.shutdown();
   });
@@ -45,7 +45,7 @@ const shutdownExtension = api => {
 const cwd = process.cwd();
 const services = await createAgentSessionServices({ cwd,
   agentDir: path.join(process.env.HOME, ".octocode", "octocodecode"),
-  resourceLoaderOptions: { extensionFactories: [{ name: "shutdown-fixture", factory: shutdownExtension }], noSkills: true, noContextFiles: true }
+  resourceLoaderOptions: { features: [{ id: "shutdown-fixture", owner: "builtin", path: "<inline:shutdown-fixture>", register: shutdownExtension }], noSkills: true, noContextFiles: true }
 });
 const { session } = await createSessionFromServices({ services, sessionManager: SessionManager.inMemory(cwd), model: services.modelRuntime.getModel("scripted", "model") });
 const runtime = new AgentSessionRuntime(session, services, async () => { throw new Error("No fixture session replacement"); });

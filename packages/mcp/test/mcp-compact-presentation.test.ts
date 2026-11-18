@@ -3,14 +3,7 @@ import { join } from "node:path";
 import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
-import {
-	catalogHash,
-	COMPACT_GENERATOR_VERSION,
-	generatedDir,
-	readGenerated,
-	renderServer,
-	writeGenerated,
-} from "../src/compact/index.ts";
+import { generatedDir, readGenerated, renderServer } from "../src/compact/index.ts";
 import { McpPresentation } from "../src/presentation/index.ts";
 import { firstSentence } from "../src/presentation/declaration.ts";
 import { reconnect, startConnection } from "../src/connections.ts";
@@ -79,29 +72,6 @@ describe("compact MCP presentation", () => {
 		expect((await h.prompt()).mcps).toContain("function late(");
 	});
 
-	it("picks up externally applied overrides and thin triggers when the model loadout rebuilds", async () => {
-		const agentDir = isolatedAgentDir();
-		const h = host();
-		await h.start();
-		const before = await h.prompt();
-		const connection = h.state.findServer("octocode")!.connection!;
-		const input = { server: "octocode", instructions: connection.instructions, tools: connection.tools };
-		const overrides = {
-			tools: { shout: "Applied shout wording." },
-			triggers: { shout: "Use the applied shout trigger." },
-		};
-		writeGenerated(generatedDir(agentDir), "octocode", renderServer(input, overrides), {
-			hash: catalogHash(input),
-			generatorVersion: COMPACT_GENERATOR_VERSION,
-			overrides,
-			generatedAt: "fixture",
-		});
-		expect((await h.prompt()).mcps).toBe(before.mcps);
-		await h.fire("model_select", { model: undefined }, h.ctx);
-		expect((await h.prompt()).mcps).toContain("Applied shout wording.");
-		expect(h.tools.get("mcp__octocode__shout").description).toBe("Use the applied shout trigger.");
-	});
-
 	it("declares thin stubs, validates against the server's schema and teaches with the signature", async () => {
 		isolatedAgentDir();
 		const h = host();
@@ -160,7 +130,7 @@ describe("compact MCP presentation", () => {
 	it("reads mcpPresentation from the settings", async () => {
 		isolatedAgentDir();
 		const h = host({ presentation: undefined });
-		h.api.getSettings = () => ({ mcpPresentation: "json" }) as never;
+		h.api.settings.get = () => ({ mcpPresentation: "json" }) as never;
 		await h.start();
 		expect((await h.prompt()).mcps).toContain("Input schema (JSON Schema): {");
 	});
@@ -291,7 +261,7 @@ describe("McpPresentation", () => {
 		expect(presentation.describe("s", ["a"], undefined, true).file).toContain("Changed.");
 	});
 
-	it("reuses a stored file whose hash matches and drops overrides of an older catalog", () => {
+	it("reuses a stored file whose hash matches and renders again for a changed catalog", () => {
 		const agentDir = tmp();
 		const presentation = () => new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" });
 		presentation().sync("s", "s", undefined, [tool("a")]);
@@ -304,15 +274,12 @@ describe("McpPresentation", () => {
 		expect(next.text).toContain("Changed.");
 	});
 
-	// Contract change: Octocode ships no overrides. Without ones the user stored, the file is the server's own text.
-	it("renders the server's own text when the user stored no overrides", () => {
+	it("renders the server's own text", () => {
 		const agentDir = tmp();
 		new McpPresentation({ agentDir: () => agentDir, mode: () => "compact" }).sync("s", "s", undefined, [tool("a")]);
 		const stored = readGenerated(generatedDir(agentDir), "s")!;
 		expect(stored.text).toBe(renderServer({ server: "s", tools: [tool("a")] }));
 		expect(stored.text).toContain("/** Does work. */");
-		expect(stored.meta.overrides).toBeUndefined();
-		expect(stored.meta.optimizedBy).toBeUndefined();
 	});
 });
 
@@ -334,7 +301,7 @@ describe("servers outside the tool selection", () => {
 		const h = host({
 			servers: [{ name: "octocode", config: { command: "unused", defaultActive: false }, source: "test" }],
 		});
-		h.api.selectsTools = (_prefix: string, activeByDefault: boolean) => activeByDefault;
+		h.api.tools.selects = (_prefix: string, activeByDefault: boolean) => activeByDefault;
 		await h.start();
 		const server = h.state.findServer("octocode")!;
 		expect(server.unselected).toBe(true);

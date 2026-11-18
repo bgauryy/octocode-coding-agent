@@ -44,7 +44,7 @@ describe("long response", () => {
 	});
 	it("reuses folded rows until content, width, keybinding or invalidation changes", () => {
 		const content = source(150);
-		const response = new LongResponse(content, false, false, () => {});
+		const response = new LongResponse(content, false, () => {});
 		const folded = response.render(80);
 		expect(response.render(80)).toBe(folded);
 		response.setExpanded(true);
@@ -75,12 +75,12 @@ describe("long response", () => {
 	it("leaves responses at and below the threshold unchanged", () => {
 		for (const n of [RESPONSE_FOLD_THRESHOLD - 1, RESPONSE_FOLD_THRESHOLD]) {
 			const content = source(n);
-			expect(new LongResponse(content, false, false, () => {}).render(80)).toEqual(content.render());
+			expect(new LongResponse(content, false, () => {}).render(80)).toEqual(content.render());
 		}
 	});
 	it("toggles a foldable response on left click and reports local state", () => {
 		const states: boolean[] = [];
-		const response = new LongResponse(source(121), false, true, (expanded) => states.push(expanded));
+		const response = new LongResponse(source(121), false, (expanded) => states.push(expanded));
 		response.render(80);
 		const click = {
 			type: "click",
@@ -102,7 +102,7 @@ describe("long response", () => {
 	});
 	it("folds rendered rows and restores them without changing the source", () => {
 		const content = source(RESPONSE_FOLD_THRESHOLD + 1);
-		const response = new LongResponse(content, false, false, () => {});
+		const response = new LongResponse(content, false, () => {});
 		const folded = response.render(80);
 		expect(folded.slice(0, RESPONSE_HEAD_LINES)).toEqual(content.render().slice(0, RESPONSE_HEAD_LINES));
 		expect(folded.slice(-RESPONSE_TAIL_LINES)).toEqual(content.render().slice(-RESPONSE_TAIL_LINES));

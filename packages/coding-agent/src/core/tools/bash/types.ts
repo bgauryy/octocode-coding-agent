@@ -1,4 +1,4 @@
-/** Types shared by the bash tool, the shell executor and the extension contract; imports nothing from them. */
+/** Types shared by the bash tool, the shell executor and the feature contract; imports nothing from them. */
 
 /**
  * Pluggable operations for the bash tool.
@@ -38,7 +38,7 @@ export interface BashResult {
 	fullOutputPath?: string;
 	/**
 	 * The result's first line for the model and the terminal, e.g. `[exit 0 · 4.2s · 312 lines · 18 KB]`; a trimmed
-	 * result adds what was kept and where the full output is. Absent from results an extension supplies.
+	 * result adds what was kept and where the full output is. Absent from results a feature supplies.
 	 */
 	header?: string;
 	/** Lines and bytes of the whole output, and the run time in seconds. */

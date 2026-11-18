@@ -1,7 +1,6 @@
 import {
 	type KeybindingDefinitions,
 	type KeybindingsConfig,
-	type KeyId,
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@octocodeai/octocode-tui";
@@ -142,7 +141,7 @@ const APP_KEYBINDINGS = {
 		description: "Save model selection",
 	},
 	"app.models.details": {
-		defaultKeys: "ctrl+d",
+		defaultKeys: "alt+i",
 		description: "Show or hide model pricing and cache details",
 	},
 	"app.models.enableAll": {
@@ -315,4 +314,4 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	}
 }
 
-export type { KeyId, KeybindingsConfig };
+export type { KeybindingsConfig };

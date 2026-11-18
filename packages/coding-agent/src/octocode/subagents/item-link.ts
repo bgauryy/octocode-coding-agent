@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { attachReport, checkDelegable, claimDelegated } from "../backlog/delegation.ts";
 import { graphNotice } from "../backlog/graph-notice.ts";
@@ -46,7 +46,7 @@ function itemGraphNotice(
  * work has an owner and a merge gate (`backlog/merge-gate.ts`). The parent's footer line; never throws.
  */
 export function trackSavedRef(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	agent: string,
 	ref: string,
 	patch?: string,
@@ -77,7 +77,7 @@ export function trackSavedRef(
  * the call is refused with why. Reading the item and noting the report share one backlog handle.
  */
 export function itemLink(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	ref: string | undefined,
 	{ queue = false, queued }: { queue?: boolean; queued?: () => ReadonlySet<string> } = {},
 ): ItemLink | undefined {

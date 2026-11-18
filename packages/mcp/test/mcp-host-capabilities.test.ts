@@ -8,7 +8,7 @@ import { getMcpSessionHandoff } from "../src/session-servers.ts";
 import { registerMcpManageTool } from "../src/manage-tool-wiring.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { createDefaultTransport, McpServerConnection } from "../src/runtime.ts";
-import { McpExtensionState } from "../src/state.ts";
+import { McpFeatureState } from "../src/state.ts";
 
 import { fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";
 
@@ -73,11 +73,11 @@ describe("shared MCP host capabilities", () => {
 
 	it("inherits extension registrations while omitting disabled, stopped and file-configured servers", async () => {
 		const fake = fakeHost();
-		Object.assign(fake.api, { events: createEventBus() });
-		const state = new McpExtensionState(fake.api, {});
+		Object.assign(fake.api, { channels: createEventBus() });
+		const state = new McpFeatureState(fake.api, {});
 		const config = { command: process.execPath, args: [fixture] };
 		const stopped = new McpServerConnection({
-			entry: { name: "stopped", source: "extension", scope: "extension", config },
+			entry: { name: "stopped", source: "feature", scope: "feature", config },
 			cwd: process.cwd(),
 			createTransport: createDefaultTransport,
 			credentials: new McpOAuthCredentialStore(new InMemoryAuthStorageBackend()),
@@ -85,15 +85,15 @@ describe("shared MCP host capabilities", () => {
 		});
 		await stopped.stop();
 		state.servers = [
-			{ entry: { name: "plugin", source: "extension", scope: "extension", config } },
+			{ entry: { name: "plugin", source: "feature", scope: "feature", config } },
 			{ entry: stopped.entry, connection: stopped },
-			{ entry: { name: "disabled", source: "extension", scope: "extension", config: { ...config, enabled: false } } },
+			{ entry: { name: "disabled", source: "feature", scope: "feature", config: { ...config, enabled: false } } },
 			{ entry: { name: "file", source: "mcp.json", scope: "global", config } },
 		];
 		registerMcpManageTool(state);
 		// The stopped server is not handed over as an addition, but its name is, so children skip it too. `available` names
 		// every enabled server of the session (what a task may name), the stopped and file-configured ones included.
-		expect(getMcpSessionHandoff(fake.api.events)).toEqual({
+		expect(getMcpSessionHandoff(fake.api.channels)).toEqual({
 			servers: { plugin: config },
 			stopped: [stopped.entry.name],
 			available: ["plugin", "stopped", "file"],

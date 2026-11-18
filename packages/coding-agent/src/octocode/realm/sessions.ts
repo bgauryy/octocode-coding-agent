@@ -1,11 +1,11 @@
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { listingScope, quickList } from "../sessions/catalog.ts";
 import type { SessionIndex } from "../sessions/store.ts";
 import { liveProcess } from "../shared/process.ts";
 import type { RealmSession } from "./model.ts";
 
 /** Where `/realm` reads sessions: those started in each of `roots`, the current one included. */
-export type SessionSource = (roots: readonly string[], ctx: ExtensionCommandContext) => Promise<RealmSession[]>;
+export type SessionSource = (roots: readonly string[], ctx: CommandContext) => Promise<RealmSession[]>;
 
 /**
  * The sessions Octocode saved for each folder, from the session catalog (the list `/resume` shows), with liveness from the

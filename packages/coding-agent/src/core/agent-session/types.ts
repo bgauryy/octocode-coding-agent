@@ -5,11 +5,11 @@ import type { ImageContent, Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmer } from "../cache-warmer.ts";
 import type { CompactionResult } from "../compaction/index.ts";
 import type {
-	ExtensionCommandContextActions,
-	ExtensionErrorListener,
-	ExtensionMode,
-	ExtensionRunner,
-	ExtensionUIContext,
+	CommandActions,
+	FeatureErrorListener,
+	UiMode,
+	FeatureHost,
+	SessionUI,
 	InputSource,
 	SessionStartEvent,
 	ShutdownHandler,
@@ -104,9 +104,9 @@ export interface AgentSessionConfig {
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	/** Thinking level the caller asked for (`--thinking`), before clamping: a model switch carries it over. */
 	requestedThinkingLevel?: ThinkingLevel;
-	/** Resource loader for extensions, skills, prompts, themes, context files, and system prompt */
+	/** Resource loader for features, skills, prompts, themes, context files, and system prompt */
 	resourceLoader: ResourceLoader;
-	/** SDK custom tools registered outside extensions */
+	/** SDK custom tools registered outside features */
 	customTools?: ToolDefinition[];
 	/** Canonical model/auth runtime used by coding-agent internals. */
 	modelRuntime: ModelRuntime;
@@ -139,19 +139,19 @@ export interface AgentSessionConfig {
 	 * a definition-first registry even when callers provide plain AgentTool instances.
 	 */
 	baseToolsOverride?: Record<string, AgentTool>;
-	/** Mutable ref used by Agent to access the current ExtensionRunner */
-	extensionRunnerRef?: { current?: ExtensionRunner };
-	/** Session start event metadata emitted when extensions bind to this runtime. */
+	/** Mutable ref used by Agent to access the current FeatureHost */
+	featureHostRef?: { current?: FeatureHost };
+	/** Session start event metadata emitted when features bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
 }
 
-export interface ExtensionBindings {
-	uiContext?: ExtensionUIContext;
-	mode?: ExtensionMode;
-	commandContextActions?: ExtensionCommandContextActions;
+export interface ModeBindingOptions {
+	uiContext?: SessionUI;
+	mode?: UiMode;
+	commandContextActions?: CommandActions;
 	abortHandler?: () => void;
 	shutdownHandler?: ShutdownHandler;
-	onError?: ExtensionErrorListener;
+	onError?: FeatureErrorListener;
 }
 
 /** A message waiting in the steering or follow-up queue, as the session lists it. */
@@ -178,13 +178,13 @@ export type PromptDisposition = QueuedInputDisposition | "started";
 
 /** Options for AgentSession.prompt() */
 export interface PromptOptions {
-	/** Whether to dispatch extension commands and expand skill commands and prompt templates (default: true) */
+	/** Whether to dispatch feature commands and expand skill commands and prompt templates (default: true) */
 	expandPromptTemplates?: boolean;
 	/** Image attachments */
 	images?: ImageContent[];
 	/** When streaming, how to queue the message: "steer" (interrupt) or "followUp" (wait). Required if streaming. */
 	streamingBehavior?: "steer" | "followUp";
-	/** Source of input for extension input event handlers. Defaults to "interactive". */
+	/** Source of input for feature input event handlers. Defaults to "interactive". */
 	source?: InputSource;
 	/**
 	 * Attach the image files the text names (absolute, `~/`, `./`, quoted or escaped paths, `file://` URLs) as images.

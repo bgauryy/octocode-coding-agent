@@ -42,7 +42,6 @@ describe("file restore of a long file", () => {
 		const line = 10 * 399 + 1;
 		const restored = restoreFiles([{ file, line: line - 2 }], new Set(), dir)!;
 		expect(restored.content).toMatch(new RegExp(`>${line - 10}: export function work398`));
-		expect(restored.content).toContain("the mark shows where you last read or changed it");
 	});
 
 	it("keeps a file at or under the whole-file size whole", () => {

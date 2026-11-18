@@ -11,7 +11,8 @@
 import type { Component, Container, TUI } from "@octocodeai/octocode-tui";
 import type { ImageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import type { TSchema } from "typebox";
-import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
+import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
+import type { McpExposure, McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 
 /** The host application's name, version and runtime. */
@@ -141,7 +142,7 @@ export interface McpRenderPort {
 		context: McpRenderContext,
 		name: string,
 		summary: string,
-		options?: { lines?: string[] },
+		options?: { lines?: string[]; meta?: string },
 	): Component;
 	resultBlock(
 		theme: McpTheme,
@@ -218,7 +219,7 @@ export interface McpUiPort {
 }
 
 /** Where a session runs, for the vendor switch: the host reads its settings (project settings only when trusted). */
-interface McpVendorPlace {
+export interface McpVendorPlace {
 	cwd: string;
 	agentDir: string;
 	projectTrusted: boolean;
@@ -261,7 +262,7 @@ interface McpReviewEntry {
 }
 
 /**
- * The host's extension guard: which configured servers stay off until the user approves their exact launch. Optional:
+ * The host's feature guard: which configured servers stay off until the user approves their exact launch. Optional:
  * without it every entry loads, so the package works alone. Never asked about a built-in (`default`) entry.
  */
 export interface McpReviewPort {
@@ -280,6 +281,51 @@ export interface McpReviewRating {
 	findings: string[];
 }
 
+/** The scope a tool switch is written for; the host picks the file (a project scope needs a trusted folder). */
+export type McpToolWriteScope = "global" | "project";
+
+/** One tool of a server as a new session declares it. */
+export interface McpToolSwitchRow {
+	name: string;
+	/** The server's `toolExposure` entry for this exact name. */
+	pin?: McpExposure;
+	/** What a new session declares: the pin, else what the session reports, else the server's default. */
+	state: McpExposure;
+	/** What the running session declares; absent when it does not list the tool. */
+	live?: McpExposure;
+	audit?: ToolAudit;
+}
+
+/** A server's tool switches: its tools, who gets the server, and where a change is written. */
+export interface McpToolSwitchView {
+	name: string;
+	/** The session lists this server's tools (it is connected). */
+	connected: boolean;
+	/** Every tool the session lists, then pinned tools it does not. */
+	tools: McpToolSwitchRow[];
+	/** `defaultActive`: in every agent's default tool selection, or only in agents whose `tools:` name it. */
+	everyAgent: boolean;
+	/** The exposure a tool without a pin gets from the server's own setting. */
+	defaultState: McpExposure;
+	/** Why a change cannot be saved; absent when it can. */
+	blocked?: string;
+	/** The file a change is written to, home shortened. */
+	target?: string;
+}
+
+/**
+ * Per-tool exposure pins, `defaultActive` and the server's `exposure`, written the way the host's other switch surfaces
+ * write them (the web Tools panel). Optional: without it the `/mcp` tools page only inspects. Each write answers with
+ * a line for the user and throws when it cannot be saved.
+ */
+export interface McpToolSwitchPort {
+	view(place: McpVendorPlace, server: string, scope: McpToolWriteScope): McpToolSwitchView;
+	/** `null` removes the pin. */
+	pin(place: McpVendorPlace, server: string, scope: McpToolWriteScope, tool: string, pin: McpExposure | null): string;
+	assign(place: McpVendorPlace, server: string, scope: McpToolWriteScope, everyAgent: boolean): string;
+	setExposure(place: McpVendorPlace, server: string, scope: McpToolWriteScope, exposure: McpExposure): string;
+}
+
 export interface McpHostPorts {
 	identity: McpIdentityPort;
 	plugins: McpPluginsPort;
@@ -293,6 +339,7 @@ export interface McpHostPorts {
 	render: McpRenderPort;
 	ui: McpUiPort;
 	review: McpReviewPort;
+	toolSwitch: McpToolSwitchPort;
 }
 
 let installed: Partial<McpHostPorts> = {};
@@ -321,5 +368,7 @@ export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
 /** The review port, or undefined when the host installed none. */
 export const hostReview = (): McpReviewPort | undefined => installed.review;
+/** The tool switch port, or undefined when the host installed none. */
+export const hostToolSwitch = (): McpToolSwitchPort | undefined => installed.toolSwitch;
 /** The folder for stdio server owner records, or undefined when no paths port is installed or it names none. */
 export const hostServerRecordsDir = (): string | undefined => installed.paths?.serverRecordsDir?.();

@@ -3,6 +3,7 @@
  * sources the items came from, what did not apply, and (expanded) every item with its path. Pure: the view in, specs out.
  */
 
+import { plural } from "@octocodeai/octocode-common/clip";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ResourceDiagnostic } from "../../../core/diagnostics.ts";
 import {
@@ -153,8 +154,6 @@ export function harnessRow(statuses: readonly HarnessStatus[]): LoadedRowSpec {
 /** A Codex `agents/openai.yaml` note: metadata this host reads but does not act on, information rather than a problem. */
 const isCodexNote = (diagnostic: ResourceDiagnostic): boolean =>
 	/[\\/]agents[\\/]openai\.yaml$/.test(diagnostic.path ?? "");
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /**
  * The startup warnings, one line each saying what is wrong and what to do (`details` are listed by ctrl+o), and the

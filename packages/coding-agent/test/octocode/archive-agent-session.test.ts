@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";

@@ -10,6 +10,7 @@ import { createHarness } from "./suite/harness.ts";
 import { HOOK_SETTINGS } from "./octocode/helpers.ts";
 import { approveFixtureHooks } from "./octocode/guard-helpers.ts";
 import "../src/octocode/mcp-host/core-install.ts";
+import { testFeatures } from "./helpers/features.ts";
 
 it("adds completed async context to the next model request without creating an extra turn", async () => {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "async-hook-session-"));
@@ -51,15 +52,15 @@ it("adds completed async context to the next model request without creating an e
 				},
 			},
 		],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				registerHooks(api, { env: {}, home });
 			},
-		],
+		]),
 	});
 	try {
 		approveFixtureHooks(harness.tempDir, home);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("finish_background", {})], {
 				stopReason: "toolUse",
@@ -104,15 +105,15 @@ it("resumes an idle real session once when an asyncRewake hook exits with code 2
 	const harness = await createHarness({
 		settings: { retry: { enabled: false }, ...HOOK_SETTINGS },
 		tools: [],
-		extensionFactories: [
+		features: testFeatures([
 			(api) => {
 				registerHooks(api, { env: {}, home });
 			},
-		],
+		]),
 	});
 	try {
 		approveFixtureHooks(harness.tempDir, home);
-		await harness.session.bindExtensions({});
+		await harness.session.bindFeatures({});
 		harness.setResponses([
 			fauxAssistantMessage("initial work finished"),
 			(context) => {

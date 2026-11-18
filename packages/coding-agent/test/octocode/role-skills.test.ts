@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getNativeSkillsDir } from "../../src/config.ts";
 
-const rolesDir = fileURLToPath(new URL("../../src/octocode/instructions/roles/", import.meta.url));
+const rolesDir = fileURLToPath(new URL("../../src/octocode/native/agents/", import.meta.url));
 
 /** The skill names a role's frontmatter lists (`skills: a, b`; `[]` is none). */
 function roleSkills(file: string): string[] {

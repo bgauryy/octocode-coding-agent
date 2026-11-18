@@ -19,7 +19,7 @@ function context(currentFile = "/tmp/current.jsonl") {
 			getSessionId: () => "01a1other",
 		},
 		runtimeHost: { switchSession: vi.fn(async () => ({ cancelled: false })) },
-		showExtensionConfirm: vi.fn(async () => true),
+		showConfirmDialog: vi.fn(async () => true),
 		clearStatusIndicator: vi.fn(),
 		showStatus: vi.fn(),
 	};
@@ -33,7 +33,7 @@ describe("interactive resume guards", () => {
 		const result = await handleResumeSession(createFakeHost(ctx), "/tmp/current.jsonl");
 		expect(result).toEqual({ cancelled: true });
 		expect(ctx.runtimeHost.switchSession).not.toHaveBeenCalled();
-		expect(ctx.showExtensionConfirm).not.toHaveBeenCalled();
+		expect(ctx.showConfirmDialog).not.toHaveBeenCalled();
 		expect(ctx.clearStatusIndicator).not.toHaveBeenCalled();
 		expect(livePid).not.toHaveBeenCalled();
 		expect(ctx.showStatus).toHaveBeenCalledWith("That is the current session.");
@@ -42,11 +42,11 @@ describe("interactive resume guards", () => {
 	it("keeps the current runtime when a live-session resume is rejected", async () => {
 		const ctx = context();
 		livePid.mockReturnValue(42);
-		ctx.showExtensionConfirm.mockResolvedValue(false);
+		ctx.showConfirmDialog.mockResolvedValue(false);
 		const result = await handleResumeSession(createFakeHost(ctx), "/tmp/other.jsonl");
 		expect(result).toEqual({ cancelled: true });
 		expect(ctx.runtimeHost.switchSession).not.toHaveBeenCalled();
-		expect(ctx.showExtensionConfirm).toHaveBeenCalledWith("Session is running", expect.stringContaining("pid 42"));
+		expect(ctx.showConfirmDialog).toHaveBeenCalledWith("Session is running", expect.stringContaining("pid 42"));
 	});
 
 	it("switches after a live-session resume is accepted", async () => {
@@ -61,7 +61,7 @@ describe("interactive resume guards", () => {
 		const ctx = context();
 		livePid.mockReturnValue(undefined);
 		await handleResumeSession(createFakeHost(ctx), "/tmp/other.jsonl");
-		expect(ctx.showExtensionConfirm).not.toHaveBeenCalled();
+		expect(ctx.showConfirmDialog).not.toHaveBeenCalled();
 		expect(ctx.runtimeHost.switchSession).toHaveBeenCalledOnce();
 	});
 });

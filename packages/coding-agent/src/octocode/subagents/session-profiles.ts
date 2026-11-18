@@ -1,5 +1,5 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { effectivePlugins } from "../../core/extensibility/toggles.ts";
 import { PROFILE_DECLARABLE } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
@@ -8,12 +8,12 @@ import { type AgentProfile, loadProfiles, profileFileName } from "./profiles.ts"
 
 /**
  * The profiles of a session: bundled, user, trusted-project, and the `<plugin>:<agent>` profiles of the enabled Claude plugins
- * (`api.getSettings()` holds project plugins only for a trusted folder). `refused` says why a profile file was skipped, by the
+ * (`api.settings.get()` holds project plugins only for a trusted folder). `refused` says why a profile file was skipped, by the
  * name the `agent` tool is asked for; what a notice covers is shown in an interactive session only.
  */
 export function loadSessionProfiles(
-	api: ExtensionAPI,
-	ctx: ExtensionContext,
+	api: FeatureSetup,
+	ctx: FeatureContext,
 	isSubagent: boolean,
 ): { profiles: Map<string, AgentProfile>; refused: Map<string, string> } {
 	const refused = new Map<string, string>();
@@ -30,7 +30,7 @@ export function loadSessionProfiles(
 			refused.set(name ?? profileFileName(file), errorMessage(error));
 		},
 		(name, file, replaced) => shadowed.push(`${name}: ${file} replaces ${replaced}`),
-		{ plugins: effectivePlugins(api.getSettings(), ctx.cwd), onNote: (message) => notes.push(message) },
+		{ plugins: effectivePlugins(api.settings.get(), ctx.cwd), onNote: (message) => notes.push(message) },
 	);
 	if (!interactive(ctx, isSubagent)) return { profiles, refused };
 	if (shadowed.length > 0)

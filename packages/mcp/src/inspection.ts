@@ -11,7 +11,7 @@ import type { UsageAuditSource } from "@octocodeai/octocode-common/tool-audit";
 import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
 import { auditReader, sessionUsage } from "./usage-audit.ts";
 
-/** What `toolCatalog` reads of the extension state, so inspection does not depend on the state module. */
+/** What `toolCatalog` reads of the feature state, so inspection does not depend on the state module. */
 interface McpToolCatalogSource {
 	findServer(name: string): McpServer | undefined;
 	toolExposure(entry: McpServerEntry, tool: string): McpExposure;

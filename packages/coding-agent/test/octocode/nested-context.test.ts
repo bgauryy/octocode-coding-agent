@@ -7,6 +7,7 @@ import {
 	registerNestedContext,
 } from "../../src/octocode/files/nested-context.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 type Result = { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> } | undefined;
 type Handler = (event: unknown, ctx: unknown) => Promise<Result>;
@@ -22,11 +23,13 @@ function setup(options: { trusted?: boolean } = {}) {
 	fs.writeFileSync(path.join(pkg, "src", "y.ts"), "export const y = 2;\n");
 	fs.writeFileSync(path.join(root, "top.ts"), "top\n");
 	let handler: Handler | undefined;
-	registerNestedContext({
-		on: (event: string, registered: Handler) => {
-			if (event === "tool_result") handler = registered;
-		},
-	} as never);
+	registerNestedContext(
+		asSetup({
+			on: (event: string, registered: Handler) => {
+				if (event === "tool_result") handler = registered;
+			},
+		}) as never,
+	);
 	const branch: Array<Record<string, unknown>> = [];
 	const ctx = {
 		cwd: root,

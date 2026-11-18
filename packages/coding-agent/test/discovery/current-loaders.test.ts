@@ -116,18 +116,4 @@ describe("Pi global roots through the resource loader", () => {
 		expect(paths(loader.getPrompts().prompts)).toEqual([piPrompt]);
 		expect(loader.getThemes().themes.map((theme) => theme.name ?? "")).toEqual(["pi-theme"]);
 	});
-
-	it("reports user code extensions as ignored and never runs them", async () => {
-		const marker = join(sandbox.home, "executed");
-		const extension = write(
-			join(sandbox.piAgentDir, "extensions", "boom.ts"),
-			`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "ran"); export default function () {}`,
-		);
-		const loader = createLoader(sandbox, false);
-		await loader.reload();
-		expect(loader.getExtensions().extensions).toEqual([]);
-		expect(loader.getExtensions().warnings?.map((warning) => warning.path)).toContain(extension);
-		const { existsSync } = await import("node:fs");
-		expect(existsSync(marker)).toBe(false);
-	});
 });

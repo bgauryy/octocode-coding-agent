@@ -1,8 +1,8 @@
-import { instructionSource } from "./prompt-template.ts";
+import { promptSource, renderPrompt, type TemplateValues } from "./prompt-template.ts";
 
 /**
  * Every known system prompt section: its order, cache tier, owner and what a custom prompt (`SYSTEM.md`, SDK
- * `customPrompt`) does to it, as the table in `instructions/sections/index.md` declares them. Producers fill section contents through `BuildSystemPromptOptions`
+ * `customPrompt`) does to it, as the table in `native/prompts/sections/index.md` declares them. Producers fill section contents through `BuildSystemPromptOptions`
  * (their defaults) or `before_agent_start` `sections`/`baseSections`; only `composeSystemPromptSections` orders them.
  */
 
@@ -19,8 +19,25 @@ export interface SystemPromptSectionSpec {
 	owner: string;
 	/** Under a custom prompt: `replace` takes the custom text, `drop` leaves the default out, `keep` is unchanged. */
 	underCustomPrompt: "replace" | "drop" | "keep";
-	/** Sections rendered together from `sections/<name>.md`: `policy` or `lean`. */
+	/** The renderer that fills the section from its chunks: `policy` or `lean`. */
 	group?: string;
+	/** A grouped section's prompt files, in order, each with the flags it needs. */
+	chunks?: PromptChunk[];
+}
+
+/** One entry of a section's chunk list: a prompt file, rendered when every flag holds (`!flag`: when it does not). */
+interface PromptChunk {
+	file: string;
+	when: string[];
+}
+
+/** A Chunks cell: comma-separated entries, each a backticked file then its flags (`` `policy/work.md` !readOnly ``). */
+function parseChunks(cell: string): PromptChunk[] | undefined {
+	if (cell === "-") return undefined;
+	return cell.split(",").map((entry) => {
+		const [file, ...when] = entry.trim().split(/\s+/);
+		return { file: file.replaceAll("`", ""), when };
+	});
 }
 
 type SystemPromptSectionTier = SystemPromptSectionSpec["tier"];
@@ -32,7 +49,7 @@ function parseSectionMap(markdown: string): SystemPromptSectionSpec[] {
 		.filter((line) => line.startsWith("|"))
 		.slice(2)
 		.map((line) => {
-			const [name, tier, underCustomPrompt, group, owner] = line
+			const [name, tier, underCustomPrompt, group, chunks, owner] = line
 				.split("|")
 				.slice(1, -1)
 				.map((cell) => cell.trim());
@@ -42,16 +59,34 @@ function parseSectionMap(markdown: string): SystemPromptSectionSpec[] {
 				owner,
 				underCustomPrompt: underCustomPrompt as SystemPromptSectionSpec["underCustomPrompt"],
 				...(group === "-" ? {} : { group }),
+				...(parseChunks(chunks) ? { chunks: parseChunks(chunks) } : {}),
 			};
 		});
 }
 
-/** Every known section in prompt order, from `instructions/sections/index.md`. Unknown extension sections take the two slots named in `composeSystemPromptSections`. */
+/** Every known section in prompt order, from `native/prompts/sections/index.md`. Unknown feature sections take the two slots named in `composeSystemPromptSections`. */
 export const SYSTEM_PROMPT_SECTIONS: readonly SystemPromptSectionSpec[] = parseSectionMap(
-	instructionSource("sections/index.md"),
+	promptSource("sections/index.md"),
 );
 
 const SPECS = new Map(SYSTEM_PROMPT_SECTIONS.map((spec) => [spec.name, spec]));
+
+function holds(values: TemplateValues, flag: string): boolean {
+	const name = flag.replace(/^!/, "");
+	if (!Object.hasOwn(values, name)) throw new Error(`Prompt template: unknown name "${name}"`);
+	return Boolean(values[name]) !== flag.startsWith("!");
+}
+
+/** A grouped section's text: its chunks whose flags hold, rendered with `values` and joined by newlines. */
+export function renderSectionChunks(name: string, values: TemplateValues): string {
+	const chunks = SPECS.get(name)?.chunks;
+	if (!chunks) throw new Error(`Prompt template: section ${name} has no chunk list`);
+	return chunks
+		.filter(({ when }) => when.every((flag) => holds(values, flag)))
+		.map(({ file }) => renderPrompt(file, values))
+		.filter(Boolean)
+		.join("\n");
+}
 
 /**
  * Sections composed as a family: the head (text before the first member) keeps the family's name, and each member
@@ -71,7 +106,7 @@ function sectionFamily(name: string): string {
 	return colon > 0 && name.slice(0, colon) in SECTION_FAMILIES ? name.slice(0, colon) : name;
 }
 
-/** The section's spec (a family member's is its family's), or undefined for a name only an extension writes. */
+/** The section's spec (a family member's is its family's), or undefined for a name only a feature writes. */
 export function systemPromptSectionSpec(name: string): SystemPromptSectionSpec | undefined {
 	return SPECS.get(sectionFamily(name));
 }
@@ -156,14 +191,15 @@ export function assertSystemPromptSectionName(name: string): void {
 
 /**
  * Order raw section contents by the spec and wrap every section but `preamble` in a tag of its name, so the model can
- * match later updates to it. The preamble stays bare: a custom prompt's text must begin the prompt byte for byte. Unknown names in `extensionBase` follow the known base sections, in their given order;
+ * match later updates to it. The preamble stays bare: a custom prompt's text must begin the prompt byte for byte. Unknown names in `featureBase` follow the known base sections, in their given order;
  * other unknown names end the session tier, before the volatile one. Empty contents are left out. A family section
- * (`SECTION_FAMILIES`) becomes its head and one section per member, each wrapped in the family's tag, so the model
- * reads every member as part of `<mcps>`, `<project_context>` or `<environment>`.
+ * (`SECTION_FAMILIES`) is wrapped once: its head section opens the family's tag (with the head's text, if any), one
+ * bare section per member follows, and the closing section `<family>:/` ends it, so a member changes alone and an
+ * update names it (`environment:date`).
  */
 export function composeSystemPromptSections(
 	contents: Readonly<Record<string, string>>,
-	extensionBase: ReadonlySet<string> = new Set(),
+	featureBase: ReadonlySet<string> = new Set(),
 ): Record<string, string> {
 	const present = Object.entries(contents).filter(([, text]) => text.length > 0);
 	const unknown = present.filter(([name]) => !SPECS.has(name));
@@ -173,15 +209,27 @@ export function composeSystemPromptSections(
 		if (!text) continue;
 		const memberStart = SECTION_FAMILIES[spec.name];
 		slots[spec.tier].push(
-			...(memberStart ? splitFamily(spec.name, text, memberStart) : [[spec.name, text] as [string, string]]),
+			...(memberStart
+				? familySections(spec.name, text, memberStart)
+				: [[spec.name, wrap(spec.name, text)] as [string, string]]),
 		);
 	}
-	slots.base.push(...unknown.filter(([name]) => extensionBase.has(name)));
-	slots.session.push(...unknown.filter(([name]) => !extensionBase.has(name)));
-	const sections: Record<string, string> = {};
-	for (const [name, text] of [...slots.base, ...slots.session, ...slots.volatile]) {
-		const tag = sectionFamily(name);
-		sections[name] = name === "preamble" ? text : `<${tag}>\n${text}\n</${tag}>`;
-	}
-	return sections;
+	const wrapped = (entries: Array<[string, string]>) =>
+		entries.map(([name, text]) => [name, wrap(name, text)] as [string, string]);
+	slots.base.push(...wrapped(unknown.filter(([name]) => featureBase.has(name))));
+	slots.session.push(...wrapped(unknown.filter(([name]) => !featureBase.has(name))));
+	return Object.fromEntries([...slots.base, ...slots.session, ...slots.volatile]);
+}
+
+/** A plain section in a tag of its name; the preamble stays bare, so a custom prompt's text begins the prompt byte for byte. */
+function wrap(name: string, text: string): string {
+	return name === "preamble" ? text : `<${name}>\n${text}\n</${name}>`;
+}
+
+/** A family's sections: the head opens its tag, the members stay bare, `<family>:/` closes it; none when it is empty. */
+function familySections(family: string, text: string, memberStart: RegExp): Array<[string, string]> {
+	const parts = splitFamily(family, text, memberStart);
+	if (parts.length === 0) return [];
+	const head = parts[0][0] === family ? parts.shift()![1] : "";
+	return [[family, head ? `<${family}>\n${head}` : `<${family}>`], ...parts, [`${family}:/`, `</${family}>`]];
 }

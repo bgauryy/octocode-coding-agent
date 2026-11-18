@@ -75,7 +75,7 @@ export async function signInToProvider(
 			? labels[options.indexOf(preferred)]
 			: labels.length === 1
 				? labels[0]
-				: await host.showExtensionSelector(`Sign in to ${name}`, labels);
+				: await host.showSelectorDialog(`Sign in to ${name}`, labels);
 	if (!picked) return false;
 	await actions.get(picked)?.();
 	return true;

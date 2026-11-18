@@ -23,12 +23,12 @@ describe("thinking selector", () => {
 		);
 		const getLevelRow = (level: string): string | undefined =>
 			selector
-				.getSelectList()
+				.getList()
 				.render(80)
 				.map((line) => stripAnsi(line))
 				.find((line) => line.includes(level));
 
-		expect(selector.getSelectList().getSelectedItem()?.label).toBe("✓ medium");
+		expect(selector.getList().getSelectedItem()?.label).toBe("✓ medium");
 		expect(getLevelRow("medium")?.startsWith("› ✓ medium")).toBe(true);
 		selector.handleInput("\x1b[B");
 		expect(getLevelRow("medium")?.startsWith("  ✓ medium")).toBe(true);

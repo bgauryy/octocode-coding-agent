@@ -7,7 +7,6 @@ import { type Component, type TuiAltScreen, TuiMainScreen } from "@octocodeai/oc
 import * as TuiLayouts from "@octocodeai/octocode-tui";
 import { getAgentDir } from "../../../config.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../../core/settings-manager.ts";
-import { forEachAssistantMessage } from "../state/assistant-messages.ts";
 import { applyEditorBorder } from "../state/bind-editor.ts";
 import { selectEditorBorder } from "../state/editor-slice.ts";
 import { createInteractiveTui } from "../tui-renderer.ts";
@@ -19,7 +18,6 @@ type ViewStateHost = Pick<
 	InteractiveModeHost,
 	| "activeSelectorDispose"
 	| "activeStatusIndicator"
-	| "chatContainer"
 	| "disposeActiveSelector"
 	| "editor"
 	| "editorContainer"
@@ -30,10 +28,9 @@ type ViewStateHost = Pick<
 	| "mountInteractiveTui"
 	| "onRightClickPaste"
 	| "options"
-	| "rebindExtensionTerminalInputListeners"
+	| "rebindFeatureTerminalInputListeners"
 	| "renderer"
 	| "session"
-	| "setToolsExpanded"
 	| "settingsManager"
 	| "showError"
 	| "showStatus"
@@ -113,13 +110,12 @@ export function switchTuiMode(
 	host.renderer = nextUi;
 	host.options.tuiMode = mode;
 	host.mountInteractiveTui(nextUi, components);
-	forEachAssistantMessage(host.chatContainer, (message) => message.setMouseHint(mode === "fullscreen"));
 	nextUi.invalidate();
 	nextUi.setFocus(focus);
 	if (!startRenderer) return true;
 	nextUi.start();
 	host.themeController.rebindTui();
-	host.rebindExtensionTerminalInputListeners();
+	host.rebindFeatureTerminalInputListeners();
 	if (
 		restoreProgress &&
 		settingsManager.getShowTerminalProgress() &&
@@ -143,10 +139,6 @@ export function updateEditorBorderColor(host: ViewStateHost): void {
 
 export function toggleToolOutputExpansion(host: ViewStateHost): void {
 	host.uiStore.getState().toggleToolsExpanded();
-}
-
-export function setToolsExpanded(host: ViewStateHost, expanded: boolean): void {
-	host.uiStore.getState().setToolsExpanded(expanded);
 }
 
 export function toggleThinkingBlockVisibility(host: ViewStateHost): void {

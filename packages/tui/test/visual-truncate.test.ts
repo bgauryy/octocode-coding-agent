@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Text } from "../src/components/text.ts";
-import { truncateToVisualLines } from "../src/components/visual-truncate.ts";
+import { truncateToVisualLines, VisualLinePreview } from "../src/components/visual-truncate.ts";
 
 /** The whole-text wrap the preview used to make: every line wrapped, then sliced. */
 function wrapAllThenSlice(text: string, max: number, width: number, paddingX: number, keep: "start" | "end") {
@@ -78,5 +78,19 @@ describe("truncateToVisualLines", () => {
 		assert.deepStrictEqual(preview, wrapAllThenSlice(big, 5, 80, 0, "end"));
 		assert.strictEqual(preview?.skippedCount, 40_000 - 5);
 		assert.ok(elapsed < 60, `${elapsed.toFixed(1)} ms of CPU for a 2 MB result`);
+	});
+});
+
+describe("VisualLinePreview", () => {
+	it("cuts a fold hint wider than the row with the shared ellipsis", () => {
+		const preview = new VisualLinePreview({
+			text: "a\nb\nc\nd",
+			maxVisualLines: 1,
+			keep: "start",
+			formatHint: (skipped) => `+${skipped} more lines hidden here`,
+		});
+		const hint = (preview.render(10).at(-1) ?? "").replace(/\x1b\[[0-9;]*m/g, "");
+		assert.strictEqual(hint, "+3 more l…");
+		assert.ok(!hint.includes("..."), hint);
 	});
 });

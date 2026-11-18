@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as Resolve from "../../src/octocode/cli/resolve.ts";
+import { asSetup } from "./fake-host.ts";
 
 const resolved = vi.hoisted(() => ({ cli: { bin: "/fake/octocode.js", version: "0.0.0" } as unknown }));
 vi.mock("../../src/octocode/cli/resolve.ts", async (importOriginal) => ({
@@ -87,10 +88,10 @@ describe("GitHub sign-in notice", () => {
 	/** The extension API's event hooks, run as a session would. */
 	function host() {
 		const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => Promise<void>>>();
-		const api = {
+		const api = asSetup({
 			on: (event: string, handler: (event: unknown, ctx: unknown) => Promise<void>) =>
 				handlers.set(event, [...(handlers.get(event) ?? []), handler]),
-		};
+		});
 		const notify = vi.fn();
 		const ctx = { hasUI: true, cwd: process.cwd(), ui: { notify } };
 		const emit = async (event: string) => {
@@ -108,7 +109,7 @@ describe("GitHub sign-in notice", () => {
 			cancelled: false,
 		}));
 		const { api, notify, emit } = host();
-		registerOctocodeCli(api as never, new Subcommands());
+		registerOctocodeCli(api, new Subcommands());
 		await emit("session_start");
 		await vi.waitFor(() => expect(notify).toHaveBeenCalledWith(GITHUB_LOGIN_NOTICE, "warning"));
 		// One CLI run per start: no `--help` probe before it.
@@ -119,7 +120,7 @@ describe("GitHub sign-in notice", () => {
 
 		resolved.cli = undefined;
 		const other = host();
-		registerOctocodeCli(other.api as never, new Subcommands());
+		registerOctocodeCli(other.api, new Subcommands());
 		await other.emit("session_start");
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(other.notify).not.toHaveBeenCalled();

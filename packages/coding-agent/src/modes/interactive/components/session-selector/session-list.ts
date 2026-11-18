@@ -1,8 +1,15 @@
-import { type Component, type Focusable, getKeybindings, Input, matchesKey } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	type Focusable,
+	getKeybindings,
+	ListView,
+	matchesKey,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
+} from "@octocodeai/octocode-tui";
 import type { KeybindingsManager } from "../../../../core/keybindings.ts";
 import type { SessionInfo } from "../../../../core/session-manager.ts";
 import { sessionTitle } from "../../../../core/session-manager/title.ts";
-import { theme } from "../../../../theme/theme.ts";
 import {
 	filterAndSortSessions,
 	hasSessionName,
@@ -14,39 +21,38 @@ import { buildSessionTree, type FlatSessionNode, flattenSessionTree } from "./se
 import { canonicalizePath } from "@octocodeai/octocode-common/paths";
 import { checkoutLabel, checkoutText } from "../../../../core/worktree-path.ts";
 import type { SessionCounts } from "./header.ts";
-import { type GroupMode, groupNodes, listItems, scrollTop, visibleItems } from "./groups.ts";
-import { emptyLine, renderGroupLabel, renderSearchBox } from "./list-chrome.ts";
+import { type GroupMode, groupNodes, type SessionRow, sessionRows } from "./groups.ts";
+import { emptyFor, renderGroupLabel } from "./list-chrome.ts";
 import { DeleteFlow } from "./marks.ts";
 import { renderPreview } from "./preview.ts";
 import { renderSessionRow } from "./row.ts";
 import type { SessionExtras, SessionPickerPorts } from "./types.ts";
-import { folderColumn } from "./utils.ts";
+import { dropLastWord, folderColumn, terminalRows } from "./utils.ts";
+import { listTheme } from "../list-kit.ts";
 
-/** Lines of the picker that are not list rows: top border, title, search box (3) and footer. */
-const CHROME_LINES = 6;
-/** The list never gets fewer lines than one row and its group label. */
+/** Lines of the picker that are not list rows: top rule, title, search line, hint line and closing rule. */
+const CHROME_LINES = 5;
+/** The list never gets fewer lines than one row, its group label and the position line. */
 const MIN_LIST_LINES = 4;
 
-const terminalRows = (): number => Math.max(1, (process.stdout.rows || 24) - 1);
-
 /**
- * Custom session list component: a search box over a window of two-line session rows, grouped by day or folder.
+ * The session list: a `⌕` search line over two-line session rows on `ListView`, grouped by day or folder. The search
+ * keeps the session syntax (`re:<regex>`, `"exact phrase"`) and the highlighted session across every change.
  */
 export class SessionList implements Component, Focusable {
 	public getSelectedSessionPath(): string | undefined {
-		const selected = this.filteredSessions[this.selectedIndex];
-		return selected?.session.path;
+		return this.getSelectedSession()?.path;
 	}
 
 	public getSelectedSession(): SessionInfo | undefined {
-		return this.filteredSessions[this.selectedIndex]?.session;
+		return this.list.getSelectedItem()?.node.session;
 	}
 
-	/** Where the selection stands, for the title: `(3 of 97)`. */
+	/** Where the selection stands among the rows shown, and how many rows are marked. */
 	public getCounts(): SessionCounts {
-		const shown = this.filteredSessions.length;
+		const shown = this.list.getItems().length;
 		return {
-			position: shown === 0 ? 0 : this.selectedIndex + 1,
+			position: shown === 0 ? 0 : this.list.getSelectedIndex() + 1,
 			shown,
 			total: this.allSessions.length,
 			marked: this.deleteFlow.markedCount,
@@ -54,21 +60,14 @@ export class SessionList implements Component, Focusable {
 	}
 
 	public setQuery(query: string): void {
-		this.searchInput.setValue(query);
-		this.filterSessions(query);
+		this.keepingSelection(() => this.list.setQuery(query));
 	}
 
 	private allSessions: SessionInfo[] = [];
-	private filteredSessions: FlatSessionNode[] = [];
-	private groupLabels = new Map<number, string>();
-	private groupMode: GroupMode = "none";
-	private selectedIndex: number = 0;
+	private readonly list: ListView<SessionRow>;
 	private lastSelectedPath?: string;
 	private selectionTouched = false;
-	private top = 0;
-	private lastListLines = 0;
 	private previewOpen = false;
-	private searchInput: Input;
 	private showCwd = false;
 	private sortMode: SortMode = "threaded";
 	private nameFilter: NameFilter = "all";
@@ -78,7 +77,7 @@ export class SessionList implements Component, Focusable {
 		extras: (session) => this.extras.get(session.id),
 		isCurrent: (session) => this.isCurrentSessionPath(session.path),
 		selected: () => this.getSelectedSession(),
-		moveDown: () => this.move(this.selectedIndex + 1),
+		moveDown: () => this.list.move(1),
 		error: (message) => this.onError?.(message),
 		confirmationChanged: (paths) => this.onDeleteConfirmationChange?.(paths),
 		marksChanged: (count) => this.onMarksChange?.(count),
@@ -106,14 +105,12 @@ export class SessionList implements Component, Focusable {
 	public onMarksChange?: (count: number) => void;
 	public onError?: (message: string) => void;
 
-	// Focusable implementation - propagate to searchInput for IME cursor positioning
-	private _focused = false;
+	// The search line shows the hardware cursor while the picker has focus.
 	get focused(): boolean {
-		return this._focused;
+		return this.list.focused;
 	}
 	set focused(value: boolean) {
-		this._focused = value;
-		this.searchInput.focused = value;
+		this.list.focused = value;
 	}
 
 	constructor(
@@ -126,32 +123,38 @@ export class SessionList implements Component, Focusable {
 		ports: Pick<SessionPickerPorts, "extras" | "viewportRows"> = {},
 	) {
 		this.ports = ports;
-		this.searchInput = new Input({
-			prompt: "⌕ ",
-			placeholder: 're:<regex> · "exact phrase"',
-			placeholderStyle: (text) => theme.fg("dim", text),
+		this.list = new ListView<SessionRow>({
+			items: [],
+			maxRows: 1,
+			theme: listTheme(),
+			// Session rows draw their own `›` and fill the width with the selected background.
+			mark: false,
+			row: (item, state) => this.renderRow(item, state.selected, state.width),
+			search: {
+				text: (item) => item.node.session.name ?? "",
+				// The query has its own syntax, sort and grouping: the rows are rebuilt from every session, not narrowed.
+				filter: (_items, query) => this.rowsFor(query),
+				placeholder: 're:<regex> · "exact phrase"',
+			},
 		});
+		this.list.onSelect = (item) => this.onSelect?.(item.node.session.path);
+		this.list.onCancel = () => this.onCancel?.();
 		this.showCwd = showCwd;
 		this.sortMode = sortMode;
 		this.nameFilter = nameFilter;
 		this.keybindings = keybindings;
 		this.currentSessionCanonicalPath = currentSessionFilePath && canonicalizePath(currentSessionFilePath);
 		this.setSessions(sessions, showCwd);
-
-		this.searchInput.onSubmit = () => {
-			const selected = this.filteredSessions[this.selectedIndex];
-			if (selected) this.onSelect?.(selected.session.path);
-		};
 	}
 
 	setSortMode(sortMode: SortMode): void {
 		this.sortMode = sortMode;
-		this.filterSessions(this.searchInput.getValue());
+		this.rebuild();
 	}
 
 	setNameFilter(nameFilter: NameFilter): void {
 		this.nameFilter = nameFilter;
-		this.filterSessions(this.searchInput.getValue());
+		this.rebuild();
 	}
 
 	setSessions(sessions: SessionInfo[], showCwd: boolean): void {
@@ -160,37 +163,49 @@ export class SessionList implements Component, Focusable {
 		this.byPath = new Map(sessions.map((session) => [canonicalizePath(session.path), session]));
 		this.deleteFlow.keepOnly(new Set(sessions.map((session) => session.path)));
 		this.extras = this.ports.extras?.(sessions.map((session) => session.id)) ?? new Map();
-		this.filterSessions(this.searchInput.getValue());
-		if (!this.selectionTouched) {
-			this.selectedIndex = 0;
-		}
+		this.rebuild();
+		if (!this.selectionTouched) this.list.setSelectedIndex(0);
 	}
 
-	private filterSessions(query: string): void {
+	/** Only a list in recency order is divided; threads and relevance order are not. */
+	private groupMode(): GroupMode {
+		return this.sortMode !== "recent" ? "none" : this.showCwd ? "folder" : "date";
+	}
+
+	/** The rows for `query`: the fork tree while threaded without a query, else the sorted, searched flat list. */
+	private rowsFor(query: string): SessionRow[] {
+		const named =
+			this.nameFilter === "all" ? this.allSessions : this.allSessions.filter((session) => hasSessionName(session));
+		const nodes: FlatSessionNode[] =
+			this.sortMode === "threaded" && !query.trim()
+				? flattenSessionTree(buildSessionTree(named))
+				: filterAndSortSessions(named, query, this.sortMode, "all").map((session) => ({
+						session,
+						depth: 0,
+						isLast: true,
+						ancestorContinues: [],
+					}));
+		return sessionRows(groupNodes(nodes, this.groupMode()));
+	}
+
+	private rebuild(): void {
+		this.keepingSelection(() => this.list.setItems(this.rowsFor("")));
+	}
+
+	/**
+	 * Run a change to the rows, then highlight the session that was highlighted before, or the last one that was.
+	 * `onQueryChange`: only when the change edited the query (a key may also just move the cursor).
+	 */
+	private keepingSelection(change: () => void, onQueryChange = false): void {
 		const selectedPath = this.getSelectedSessionPath() ?? this.lastSelectedPath;
 		this.lastSelectedPath = selectedPath;
-		const trimmed = query.trim();
-		const nameFiltered =
-			this.nameFilter === "all" ? this.allSessions : this.allSessions.filter((session) => hasSessionName(session));
-
-		let nodes: FlatSessionNode[];
-		if (this.sortMode === "threaded" && !trimmed) {
-			// Threaded mode without search: show tree structure
-			nodes = flattenSessionTree(buildSessionTree(nameFiltered));
-		} else {
-			// Other modes or with search: flat list
-			const filtered = filterAndSortSessions(nameFiltered, query, this.sortMode, "all");
-			nodes = filtered.map((session) => ({ session, depth: 0, isLast: true, ancestorContinues: [] }));
-		}
-		// Only a list in recency order is divided; threads and relevance order are not.
-		this.groupMode = this.sortMode !== "recent" ? "none" : this.showCwd ? "folder" : "date";
-		const grouped = groupNodes(nodes, this.groupMode);
-		this.filteredSessions = grouped.nodes;
-		this.groupLabels = grouped.labels;
-		const retained = this.filteredSessions.findIndex((node) => node.session.path === selectedPath);
-		this.selectedIndex =
-			retained >= 0 ? retained : Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
-		this.top = 0;
+		const index = this.list.getSelectedIndex();
+		const query = this.list.getQuery();
+		change();
+		if (onQueryChange && this.list.getQuery() === query) return;
+		const rows = this.list.getItems();
+		const retained = rows.findIndex((row) => row.node.session.path === selectedPath);
+		this.list.setSelectedIndex(retained >= 0 ? retained : Math.min(index, rows.length - 1));
 	}
 
 	private checkoutLabel(folder: string): string | undefined {
@@ -208,6 +223,7 @@ export class SessionList implements Component, Focusable {
 		return canonicalizePath(path) === this.currentSessionCanonicalPath;
 	}
 
+	/** Lines under the search line: the rows, their group labels and the `a–b/total` line. */
 	private listLines(): number {
 		const rows = this.ports.viewportRows?.() ?? terminalRows();
 		return Math.max(MIN_LIST_LINES, rows - CHROME_LINES);
@@ -219,58 +235,62 @@ export class SessionList implements Component, Focusable {
 		return parent ? sessionTitle(parent, 80) || undefined : undefined;
 	}
 
+	private renderRow(item: SessionRow, selected: boolean, width: number): string[] {
+		const session = item.node.session;
+		const cwd = session.cwd;
+		const groupMode = this.groupMode();
+		const row = renderSessionRow({
+			node: item.node,
+			width,
+			selected,
+			current: this.isCurrentSessionPath(session.path),
+			confirmingDelete: this.deleteFlow.isConfirming(session.path),
+			marked: this.deleteFlow.isMarked(session.path),
+			showPath: this.showPath,
+			...(this.showCwd && groupMode === "none" && cwd
+				? { folder: folderColumn(cwd, this.checkoutLabel(cwd), 40) }
+				: {}),
+			extras: this.extras.get(session.id),
+			...(cwd && this.checkoutText(cwd) ? { checkout: this.checkoutText(cwd) } : {}),
+			transcriptMatch: isTranscriptOnlyMatch(session, this.list.getQuery()),
+			parentTitle: this.parentTitle(session),
+		});
+		if (item.label === undefined) return row;
+		return [renderGroupLabel(item.label, groupMode, (folder) => this.checkoutLabel(folder), width), ...row];
+	}
+
+	/** As many rows as fit in `lines` with their labels, keeping one line for `a–b/total` when the list scrolls. */
+	private fitWindow(lines: number): void {
+		const rows = this.list.getItems();
+		const scrolls = rows.length * 2 > lines;
+		const room = scrolls ? lines - 1 : lines;
+		for (let count = Math.max(1, Math.floor(room / 2)); ; count--) {
+			this.list.setMaxRows(count);
+			if (count === 1) return;
+			const { start, end } = this.list.visibleRange();
+			let used = 0;
+			for (let index = start; index < end; index++) used += rows[index].label === undefined ? 2 : 3;
+			if (used <= room) return;
+		}
+	}
+
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const lines = renderSearchBox(this.searchInput, width);
-
-		if (this.filteredSessions.length === 0) {
-			lines.push(emptyLine(this.nameFilter, this.showCwd, this.searchInput.getValue(), width));
-			return lines;
-		}
-
+		const empty = emptyFor(this.nameFilter, this.showCwd, this.list.getQuery());
+		this.list.setEmpty(empty);
 		const height = this.listLines();
-		this.lastListLines = height;
-
-		if (this.previewOpen) {
-			const session = this.filteredSessions[this.selectedIndex].session;
+		const session = this.getSelectedSession();
+		if (this.previewOpen && session) {
+			this.list.setMaxRows(1);
+			const [search = ""] = this.list.render(width);
 			const checkout = session.cwd ? this.checkoutText(session.cwd) : undefined;
 			const extras = this.extras.get(session.id);
 			const shown = checkout && checkout !== "main" ? { ...extras, checkout } : extras;
-			lines.push(...renderPreview(session, shown, width).slice(0, height));
-			return lines;
+			return [search, ...renderPreview(session, shown, width).slice(0, height)];
 		}
-
-		const items = listItems(this.filteredSessions.length, this.groupLabels);
-		this.top = scrollTop(items, this.top, this.selectedIndex, height);
-		const query = this.searchInput.getValue();
-		for (const item of visibleItems(items, this.top, height)) {
-			if ("label" in item) {
-				lines.push(renderGroupLabel(item.label, this.groupMode, (f) => this.checkoutLabel(f), width));
-				continue;
-			}
-			const node = this.filteredSessions[item.row];
-			const session = node.session;
-			lines.push(
-				...renderSessionRow({
-					node,
-					width,
-					selected: item.row === this.selectedIndex,
-					current: this.isCurrentSessionPath(session.path),
-					confirmingDelete: this.deleteFlow.isConfirming(session.path),
-					marked: this.deleteFlow.isMarked(session.path),
-					showPath: this.showPath,
-					...(this.showCwd && this.groupMode === "none" && session.cwd
-						? { folder: folderColumn(session.cwd, this.checkoutLabel(session.cwd), 40) }
-						: {}),
-					extras: this.extras.get(session.id),
-					...(session.cwd && this.checkoutText(session.cwd) ? { checkout: this.checkoutText(session.cwd) } : {}),
-					transcriptMatch: isTranscriptOnlyMatch(session, query),
-					parentTitle: this.parentTitle(session),
-				}),
-			);
-		}
-		return lines;
+		this.fitWindow(height);
+		return this.list.render(width);
 	}
 
 	private setPreviewOpen(open: boolean): void {
@@ -278,8 +298,15 @@ export class SessionList implements Component, Focusable {
 		this.onPreviewChange?.(open);
 	}
 
-	private move(to: number): void {
-		this.selectedIndex = Math.max(0, Math.min(this.filteredSessions.length - 1, to));
+	/**
+	 * The list's mouse: the wheel moves one session, a press selects, a click on the selected session resumes it. None
+	 * while the preview or a delete question is open: a click never answers a destructive question.
+	 */
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (this.previewOpen || this.deleteFlow.confirming) return undefined;
+		const result = this.list.handleMouse(event);
+		if (result) this.selectionTouched = true;
+		return result;
 	}
 
 	handleInput(keyData: string): void {
@@ -329,10 +356,8 @@ export class SessionList implements Component, Focusable {
 		}
 
 		if (kb.matches(keyData, "app.session.rename")) {
-			const selected = this.filteredSessions[this.selectedIndex];
-			if (selected) {
-				this.onRenameSession?.(selected.session.path);
-			}
+			const selected = this.getSelectedSessionPath();
+			if (selected) this.onRenameSession?.(selected);
 			return;
 		}
 
@@ -343,54 +368,31 @@ export class SessionList implements Component, Focusable {
 			return;
 		}
 
-		// Ctrl+Backspace: non-invasive convenience alias for delete
-		// Only triggers deletion when the query is empty; otherwise it is forwarded to the input
+		// Ctrl+Backspace deletes only when the query is empty; with a query it erases the last word.
 		if (kb.matches(keyData, "app.session.deleteNoninvasive")) {
-			if (this.searchInput.getValue().length > 0) {
-				this.searchInput.handleInput(keyData);
-				this.filterSessions(this.searchInput.getValue());
-				return;
-			}
-
-			this.deleteFlow.ask();
+			const query = this.list.getQuery();
+			if (query.length > 0) this.setQuery(dropLastWord(query));
+			else this.deleteFlow.ask();
 			return;
 		}
 
 		// Space shows the preview; once a query is typed it is part of the query (`"exact phrase"`).
-		if (matchesKey(keyData, "space") && this.searchInput.getValue() === "") {
-			if (this.filteredSessions.length > 0) this.setPreviewOpen(!this.previewOpen);
+		if (matchesKey(keyData, "space") && this.list.getQuery() === "") {
+			if (this.list.getItems().length > 0) this.setPreviewOpen(!this.previewOpen);
 			return;
 		}
+
+		// Esc closes the preview, then drops the marks, then clears the query (the list), then cancels.
 		if (this.previewOpen && kb.matches(keyData, "tui.select.cancel")) {
 			this.setPreviewOpen(false);
 			return;
 		}
-
 		if (this.deleteFlow.markedCount > 0 && kb.matches(keyData, "tui.select.cancel")) {
 			this.deleteFlow.clearMarks();
 			return;
 		}
 
 		this.selectionTouched = true;
-		const page = Math.max(1, Math.floor((this.lastListLines || this.listLines()) / 2));
-		if (kb.matches(keyData, "tui.select.up")) {
-			this.move(this.selectedIndex - 1);
-		} else if (kb.matches(keyData, "tui.select.down")) {
-			this.move(this.selectedIndex + 1);
-		} else if (kb.matches(keyData, "tui.select.pageUp")) {
-			this.move(this.selectedIndex - page);
-		} else if (kb.matches(keyData, "tui.select.pageDown")) {
-			this.move(this.selectedIndex + page);
-		} else if (kb.matches(keyData, "tui.select.confirm")) {
-			const selected = this.filteredSessions[this.selectedIndex];
-			if (selected && this.onSelect) {
-				this.onSelect(selected.session.path);
-			}
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
-			this.onCancel?.();
-		} else {
-			this.searchInput.handleInput(keyData);
-			this.filterSessions(this.searchInput.getValue());
-		}
+		this.keepingSelection(() => this.list.handleInput(keyData), true);
 	}
 }

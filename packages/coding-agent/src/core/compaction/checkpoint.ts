@@ -1,4 +1,4 @@
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -51,7 +51,7 @@ export function spillFileLists(summary: string, save: (text: string) => string |
 			return block;
 		}
 		return file
-			? `${open}${renderInstruction("notices/recovery/file-list.md", { count: list.split("\n").length, file })}${close}`
+			? `${open}${renderPrompt("notices/recovery/file-list.md", { count: list.split("\n").length, file })}${close}`
 			: block;
 	});
 }
@@ -187,10 +187,10 @@ function finalizeWithFiles(candidate: CompactionResult, options: FinalizeOptions
 		const listed = [...earlierArchives].slice(-EARLIER_CHECKPOINTS_LISTED);
 		const omitted = earlierArchives.size - listed.length;
 		const omittedNote =
-			omitted > 0 ? `${renderInstruction("notices/recovery/earlier-checkpoints-omitted.md", { omitted })}\n` : "";
+			omitted > 0 ? `${renderPrompt("notices/recovery/earlier-checkpoints-omitted.md", { omitted })}\n` : "";
 		result = {
 			...result,
-			summary: `${result.summary}\n\n${renderInstruction("notices/recovery/earlier-checkpoints.md")}\n${omittedNote}${listed.join("\n")}`,
+			summary: `${result.summary}\n\n${renderPrompt("notices/recovery/earlier-checkpoints.md")}\n${omittedNote}${listed.join("\n")}`,
 		};
 	}
 	const { sessionFile } = options;

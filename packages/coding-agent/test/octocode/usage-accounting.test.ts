@@ -10,6 +10,7 @@ import { formatSessionReport } from "../../src/octocode/shared/session-report.ts
 import { finishedStats } from "../../src/octocode/subagents/render.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -34,7 +35,7 @@ describe("agent row usage", () => {
 			sessionManager: { getSessionId: () => "s1", getSessionFile: () => undefined },
 		} as never;
 		const team = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			env,
 		);
 		team.start(ctx);
@@ -62,7 +63,7 @@ describe("agent row usage", () => {
 			sessionManager: { getSessionId: () => "s1", getSessionFile: () => undefined },
 		} as never;
 		const team = new Team(
-			{ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" } as never,
+			asSetup({ sendMessage: () => undefined, appendEntry: () => undefined, getThinkingLevel: () => "off" }) as never,
 			env,
 		);
 		team.start(ctx);

@@ -188,7 +188,7 @@ export function applyAutoloadDisabledPatterns(
 /**
  * Whether the `skills` setting leaves a skill file enabled: a matching project entry decides, as for bundled skills,
  * otherwise the global entries do. For skill files that reach the loader without auto-discovery, such as folders an
- * extension adds.
+ * feature adds.
  */
 export function isSkillEnabledBySettings(
 	filePath: string,

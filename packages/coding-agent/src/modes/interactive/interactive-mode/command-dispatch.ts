@@ -54,7 +54,7 @@ type CommandDispatchHost = ConfigurationHost &
 		| "handleSessionCommand"
 		| "handleShareCommand"
 		| "handleThinkingCommand"
-		| "isExtensionCommand"
+		| "isFeatureCommand"
 		| "onInputCallback"
 		| "pendingUserInputs"
 		| "queueCompactionMessage"
@@ -63,16 +63,18 @@ type CommandDispatchHost = ConfigurationHost &
 		| "sessionManager"
 		| "sendCarriedMessages"
 		| "session"
-		| "showExtensionConfirm"
+		| "showConfirmDialog"
 		| "showError"
-		| "showExtensionSelector"
-		| "showExtensionCustom"
+		| "showSelectorDialog"
+		| "showCustomDialog"
 		| "showModelsSelector"
 		| "showOAuthSelector"
 		| "showQueueManager"
 		| "showSelector"
 		| "showSessionSelector"
 		| "showStatus"
+		| "showWorkingStatusIndicator"
+		| "activeStatusIndicator"
 		| "showTreeSelector"
 		| "showUserMessageSelector"
 		| "showWarning"
@@ -128,7 +130,7 @@ export function dispatchStartupSubmit(host: Pick<CommandDispatchHost, "editor" |
 }
 
 function getNativeCommand(host: CommandDispatchHost, name: string) {
-	return host.session.extensionRunner
+	return host.session.featureHost
 		.getRegisteredCommands()
 		.find((command) => command.name === name && command.sourceInfo.owner === "native");
 }
@@ -136,7 +138,7 @@ function getNativeCommand(host: CommandDispatchHost, name: string) {
 async function runNativeCommand(host: CommandDispatchHost, name: string, args = ""): Promise<boolean> {
 	const command = getNativeCommand(host, name);
 	if (!command) return false;
-	await command.handler(args, host.session.extensionRunner.createCommandContext());
+	await command.handler(args, host.session.featureHost.createCommandContext());
 	return true;
 }
 
@@ -170,15 +172,11 @@ async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 			? ["Model catalog — prices, capabilities and agent routing", CREDENTIAL_CHECK]
 			: []),
 	];
-	const llama = host.session.extensionRunner.getCommand("llama");
-	if (llama) choices.push("Local llama.cpp models");
-	const choice = await host.showExtensionSelector("Model settings — /model switches this chat's model", choices);
+	const choice = await host.showSelectorDialog("Model settings — /model switches this chat's model", choices);
 	if (choice === choices[0]) host.showModelsSelector();
 	else if (choice === "Model catalog — prices, capabilities and agent routing")
 		await runNativeCommand(host, "modelsettings");
 	else if (choice === CREDENTIAL_CHECK) await runNativeCommand(host, "modelsettings", "check");
-	else if (choice === "Local llama.cpp models" && llama)
-		await llama.handler("", host.session.extensionRunner.createCommandContext());
 }
 
 async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
@@ -279,7 +277,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "quit": {
 			// Quitting discards a running reply and stops background work: the native check asks, as it does for /new and /fork.
-			const runner = host.session.extensionRunner;
+			const runner = host.session.featureHost;
 			const guarded = runner?.hasHandlers("session_before_quit");
 			if (guarded ? (await runner?.emit({ type: "session_before_quit" }))?.cancel : false) {
 				host.showStatus("Still running: quit cancelled.");
@@ -288,10 +286,14 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			if (
 				guarded ||
 				!host.session.isStreaming ||
-				(await host.showExtensionConfirm("Quit", "Stop the running reply and quit?"))
+				(await host.showConfirmDialog("Quit", "Stop the running reply and quit?"))
 			)
 				await host.shutdown();
+			return;
 		}
+		default:
+			// A built-in without a case of its own is a native command (`/cron`, `/loop`): it runs, or says why it cannot.
+			if (!(await runNativeCommand(host, name, args))) host.showWarning(`/${name} requires native features.`);
 	}
 }
 
@@ -304,7 +306,7 @@ function slashRefusal(host: CommandDispatchHost, text: string, name: string, arg
 	if (builtin) return args && !builtin.argumentHint ? `/${name} does not take arguments.` : undefined;
 	const unknown = unknownCommandWarning(text, name, host.getSlashCommands(true));
 	if (unknown) return unknown;
-	return argumentWordRefusal(name, args, host.session.extensionRunner.getCommand(name)?.argumentWords);
+	return argumentWordRefusal(name, args, host.session.featureHost.getCommand(name)?.argumentWords);
 }
 
 export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
@@ -350,7 +352,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		if (await handleInputDuringCompaction(host, text, "steer")) return;
 
 		// If streaming, use prompt() with steer behavior
-		// This handles extension commands (execute immediately), prompt template expansion, and queueing
+		// This handles feature commands (execute immediately), prompt template expansion, and queueing
 		if (host.session.isStreaming) {
 			await host.queueInteractiveMessage(text, "steer");
 			return;
@@ -360,6 +362,9 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		// First, move any pending bash components to chat
 		host.flushPendingBashComponents();
 
+		// A run can take seconds to start (pasted images are resized first): show it is working from Enter on.
+		const { activeStatusIndicator } = host;
+		if (!activeStatusIndicator) host.showWorkingStatusIndicator();
 		if (host.onInputCallback) {
 			host.onInputCallback(text);
 		} else {

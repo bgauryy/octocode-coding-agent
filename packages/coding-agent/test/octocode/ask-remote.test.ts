@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExtensionUIContext } from "../../src/core/features/types.ts";
+import type { SessionUI } from "../../src/core/features/types.ts";
 import { UIPromptTracker } from "../../src/core/features/runner/ui-prompt.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showAskDialog } from "./ask-dialog-helper.ts";
@@ -25,7 +25,7 @@ function setup() {
 				});
 				dialog.focused = true;
 			}),
-	} as unknown as ExtensionUIContext;
+	} as unknown as SessionUI;
 	const base = fakeCtx({ cwd: process.cwd() });
 	const ctx = { ...base, ui: tracker.wrap({ ...base.ui, ...ui }) } as typeof base;
 	const flush = () => new Promise((resolve) => setTimeout(resolve, 0));

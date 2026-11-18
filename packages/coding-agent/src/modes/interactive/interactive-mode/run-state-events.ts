@@ -15,6 +15,7 @@ import {
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { phaseKeepsJobGoing } from "./session-phase.ts";
 
 /** Interactive-mode members used by the run-state event handler. */
 export type RunStateEventsHost = Pick<
@@ -78,7 +79,12 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			showRunOutcome(event.outcome, host);
 			// A new run that already started keeps the indicator its own `turn_start` shows.
 			if (!host.session.isStreaming) {
-				if (host.settingsManager.getShowTerminalProgress()) {
+				// Background agents, a wake or a timer continue the job: the tab progress stays until the phase is final
+				// (`bindSessionPhase` clears it then). The working indicator goes either way; the phase line replaces it.
+				if (
+					host.settingsManager.getShowTerminalProgress() &&
+					!phaseKeepsJobGoing(getApplicationPort(host.session).stateSource)
+				) {
 					host.ui.terminal.setProgress(false);
 				}
 				host.clearStatusIndicator("working");

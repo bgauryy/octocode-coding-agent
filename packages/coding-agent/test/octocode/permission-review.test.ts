@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolCallEvent, ToolResultEvent } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { registerArchiveTool } from "../../src/octocode/archive/tool.ts";
+import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { permissionGate } from "../../src/octocode/permission/gate.ts";
@@ -177,7 +177,6 @@ describe("places that run code later", () => {
 		const files = headlessFileTool("workspace", cwd);
 		for (const file of [
 			".git/hooks/pre-commit",
-			".octocode/extensions/x.ts",
 			".octocode/settings.json",
 			".claude/settings.json",
 			".codex/hooks.json",

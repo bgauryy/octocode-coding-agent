@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import {
 	atomicWriteFile,
 	atomicWriteFileSync,
@@ -385,7 +385,7 @@ async function blobHolds(blob: string, state: CurrentContent): Promise<boolean> 
 }
 
 /** The id of the latest user message on the session branch: the turn's anchor for fork restores. */
-export function lastUserEntry(ctx: ExtensionContext): string | undefined {
+export function lastUserEntry(ctx: FeatureContext): string | undefined {
 	const branch = ctx.sessionManager?.getBranch?.() ?? [];
 	for (let index = branch.length - 1; index >= 0; index--) {
 		const entry = branch[index];

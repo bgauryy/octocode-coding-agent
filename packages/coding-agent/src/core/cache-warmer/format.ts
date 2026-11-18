@@ -36,13 +36,13 @@ function formatCacheWarmingDecisionTime(nextWarmAt: number | undefined, now: num
 /** One-line status for `/session`. */
 export function formatCacheWarmingStatus(status: CacheWarmingStatus, now = Date.now()): string {
 	const decision = status.decision;
-	// A decision is attached once Octocode (or an extension) acted on it; "inactive"
+	// A decision is attached once Octocode (or a feature) acted on it; "inactive"
 	// without one never got that far.
-	if (!decision || (status.state === "inactive" && !decision.economicsAvailable && !status.extensionOverride)) {
+	if (!decision || (status.state === "inactive" && !decision.economicsAvailable && !status.featureOverride)) {
 		return `Inactive (${status.reason ?? "unknown reason"})`;
 	}
-	const details = status.extensionOverride
-		? `extension override, ${formatCacheWarmingEconomics(decision)}`
+	const details = status.featureOverride
+		? `feature override, ${formatCacheWarmingEconomics(decision)}`
 		: `${formatCacheWarmingEconomics(decision)} -> ${decision.action}`;
 	if (status.state === "inactive") return `Stopped (${details})`;
 	if (status.state === "refreshing") return `Warming cache (${details})`;

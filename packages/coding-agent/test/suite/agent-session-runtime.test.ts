@@ -14,13 +14,15 @@ import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type {
 	AgentToolResult,
-	ExtensionAPI,
-	ExtensionFactory,
+	FeatureSetup,
+	FeatureRegister,
 	SessionBeforeForkEvent,
 	SessionBeforeSwitchEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
 } from "../../src/core/features/index.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 type RecordedSessionEvent =
 	| SessionBeforeSwitchEvent
@@ -38,7 +40,7 @@ describe("AgentSessionRuntime characterization", () => {
 	});
 
 	async function createRuntimeForTest(
-		extensionFactory: ExtensionFactory,
+		featureFactory: FeatureRegister,
 		options?: { cwd?: string; bootstrapModel?: boolean; bootstrapThinkingLevel?: boolean },
 	) {
 		const tempDir =
@@ -62,9 +64,10 @@ describe("AgentSessionRuntime characterization", () => {
 			model: options?.bootstrapModel === false ? undefined : faux.getModel(),
 			thinkingLevel: options?.bootstrapThinkingLevel === false ? undefined : undefined,
 			resourceLoaderOptions: {
-				extensionFactories: [
-					(api: ExtensionAPI) => {
-						api.registerProvider(faux.getModel().provider, {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
 							baseUrl: faux.getModel().baseUrl,
 							apiKey: "faux-key",
 							api: faux.api,
@@ -79,9 +82,9 @@ describe("AgentSessionRuntime characterization", () => {
 								maxTokens: registeredModel.maxTokens,
 							})),
 						});
-						extensionFactory(api);
+						featureFactory(api);
 					},
-				],
+				]),
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -109,7 +112,7 @@ describe("AgentSessionRuntime characterization", () => {
 			agentDir: tempDir,
 			sessionManager: SessionManager.create(tempDir),
 		});
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 
 		cleanups.push(async () => {
 			await runtime.dispose();
@@ -123,8 +126,8 @@ describe("AgentSessionRuntime characterization", () => {
 	}
 
 	it("persists message_end assistant replacements to the session manager", async () => {
-		const { runtime } = await createRuntimeForTest((api: ExtensionAPI) => {
-			api.on("message_end", (event) => {
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("message_end", (event) => {
 				if (event.message.role !== "assistant") return;
 
 				return {
@@ -168,8 +171,8 @@ describe("AgentSessionRuntime characterization", () => {
 		const toolStartedPromise = new Promise<void>((resolve) => {
 			toolStarted = resolve;
 		});
-		const { runtime, faux } = await createRuntimeForTest((api: ExtensionAPI) => {
-			api.registerTool({
+		const { runtime, faux } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.tools.register({
 				name: "block",
 				label: "Block",
 				description: "Blocks until aborted",
@@ -187,7 +190,7 @@ describe("AgentSessionRuntime characterization", () => {
 		await runtime.session.prompt("hello");
 		const firstSessionFile = runtime.session.sessionFile!;
 		await runtime.newSession();
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 
 		faux.setResponses([fauxAssistantMessage(fauxToolCall("block", {}), { stopReason: "toolUse" })]);
 		const outgoingSession = runtime.session;
@@ -248,14 +251,14 @@ describe("AgentSessionRuntime characterization", () => {
 
 	it("emits session_before_switch and session_start for new and resume flows", async () => {
 		const events: RecordedSessionEvent[] = [];
-		const { runtime } = await createRuntimeForTest((api: ExtensionAPI) => {
-			api.on("session_before_switch", (event) => {
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_switch", (event) => {
 				events.push(event);
 			});
-			api.on("session_shutdown", (event) => {
+			api.bus.on("session_shutdown", (event) => {
 				events.push(event);
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -269,7 +272,7 @@ describe("AgentSessionRuntime characterization", () => {
 
 		const newSessionResult = await runtime.newSession();
 		expect(newSessionResult.cancelled).toBe(false);
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 		expect(runtime.session).not.toBe(originalSession);
 		expect(runtime.session.messages).toEqual([]);
 		const secondSessionFile = runtime.session.sessionFile;
@@ -283,7 +286,7 @@ describe("AgentSessionRuntime characterization", () => {
 
 		const switchResult = await runtime.switchSession(originalSessionFile!);
 		expect(switchResult.cancelled).toBe(false);
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 		expect(events).toEqual([
 			{ type: "session_before_switch", reason: "resume", targetSessionFile: originalSessionFile },
 			{ type: "session_shutdown", reason: "resume", targetSessionFile: originalSessionFile },
@@ -294,14 +297,14 @@ describe("AgentSessionRuntime characterization", () => {
 	it("honors session_before_switch cancellation for new and resume", async () => {
 		const events: RecordedSessionEvent[] = [];
 		let cancelReason: "new" | "resume" | undefined;
-		const { runtime } = await createRuntimeForTest((api: ExtensionAPI) => {
-			api.on("session_before_switch", (event) => {
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_switch", (event) => {
 				events.push(event);
 				if (event.reason === cancelReason) {
 					return { cancel: true };
 				}
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -329,18 +332,18 @@ describe("AgentSessionRuntime characterization", () => {
 	it("emits session_before_fork and session_start and honors cancellation", async () => {
 		const events: RecordedSessionEvent[] = [];
 		let cancelNextFork = false;
-		const { runtime } = await createRuntimeForTest((api: ExtensionAPI) => {
-			api.on("session_before_fork", (event) => {
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_fork", (event) => {
 				events.push(event);
 				if (cancelNextFork) {
 					cancelNextFork = false;
 					return { cancel: true };
 				}
 			});
-			api.on("session_shutdown", (event) => {
+			api.bus.on("session_shutdown", (event) => {
 				events.push(event);
 			});
-			api.on("session_start", (event) => {
+			api.bus.on("session_start", (event) => {
 				events.push(event);
 			});
 		});
@@ -353,7 +356,7 @@ describe("AgentSessionRuntime characterization", () => {
 		const successResult = await runtime.fork(userMessage.entryId);
 		expect(successResult.cancelled).toBe(false);
 		expect(successResult.selectedText).toBe("hello");
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 		expect(events).toEqual([
 			{ type: "session_before_fork", entryId: userMessage.entryId, position: "before" },
 			{ type: "session_shutdown", reason: "fork", targetSessionFile: runtime.session.sessionFile },
@@ -457,9 +460,10 @@ describe("AgentSessionRuntime characterization", () => {
 			authStorage,
 			model: faux.getModel(),
 			resourceLoaderOptions: {
-				extensionFactories: [
-					(api: ExtensionAPI) => {
-						api.registerProvider(faux.getModel().provider, {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
 							baseUrl: faux.getModel().baseUrl,
 							apiKey: "faux-key",
 							api: faux.api,
@@ -475,7 +479,7 @@ describe("AgentSessionRuntime characterization", () => {
 							})),
 						});
 					},
-				],
+				]),
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -502,7 +506,7 @@ describe("AgentSessionRuntime characterization", () => {
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(tempDir),
 		});
-		await runtime.session.bindExtensions({});
+		await runtime.session.bindFeatures({});
 		cleanups.push(async () => {
 			await runtime.dispose();
 			faux.unregister();
@@ -585,9 +589,10 @@ describe("AgentSessionRuntime characterization", () => {
 			agentDir: tempDir,
 			authStorage: otherAuthStorage,
 			resourceLoaderOptions: {
-				extensionFactories: [
-					(api: ExtensionAPI) => {
-						api.registerProvider(faux.getModel().provider, {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
 							baseUrl: faux.getModel().baseUrl,
 							apiKey: "faux-key",
 							api: faux.api,
@@ -603,7 +608,7 @@ describe("AgentSessionRuntime characterization", () => {
 							})),
 						});
 					},
-				],
+				]),
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -696,9 +701,10 @@ describe("AgentSessionRuntime characterization", () => {
 			agentDir: tempDir,
 			authStorage: otherAuthStorage,
 			resourceLoaderOptions: {
-				extensionFactories: [
-					(api: ExtensionAPI) => {
-						api.registerProvider(faux.getModel().provider, {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
 							baseUrl: faux.getModel().baseUrl,
 							apiKey: "faux-key",
 							api: faux.api,
@@ -714,7 +720,7 @@ describe("AgentSessionRuntime characterization", () => {
 							})),
 						});
 					},
-				],
+				]),
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,

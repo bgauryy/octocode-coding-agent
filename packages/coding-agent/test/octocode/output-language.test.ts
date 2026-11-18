@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { createResultFallback } from "../../src/modes/interactive/components/tool-execution/fallback.ts";
+import { resultFallback } from "../../src/modes/interactive/components/tool-execution/fallback.ts";
+import type { ToolRenderContext } from "../../src/core/features/types.ts";
 import { resultBlock } from "../../src/octocode/render/tool.ts";
 import { colorToolOutput, outputLanguage } from "../../src/theme/output-style.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
@@ -8,6 +9,7 @@ const YAML = "name: octocode\nversion: 1\ntags:\n  - a";
 const stripped = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 const colored = (text: string) => text !== stripped(text);
 const options = { expanded: true, previewLines: 5 };
+const expandedContext = { expanded: true, isPartial: false, isError: false, state: {} } as unknown as ToolRenderContext;
 
 describe("output language of a result without a file", () => {
 	beforeAll(() => initTheme("octocode-dark", false));
@@ -42,9 +44,9 @@ describe("output language of a result without a file", () => {
 	});
 
 	it("colors the plain fallback of a tool with no renderer", () => {
-		const out = createResultFallback(YAML, true)!.render(80).join("\n");
+		const out = resultFallback(YAML, expandedContext)!.render(80).join("\n");
 		expect(colored(out)).toBe(true);
-		const prose = createResultFallback("Note: one colon\nplain words", true)!.render(80).join("\n");
+		const prose = resultFallback("Note: one colon\nplain words", expandedContext)!.render(80).join("\n");
 		expect(prose).toContain(theme.fg("toolOutput", "Note: one colon"));
 	});
 });

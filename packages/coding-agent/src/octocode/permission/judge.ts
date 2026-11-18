@@ -1,4 +1,4 @@
-import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
+import type { FeatureContext, ToolCallEvent, ToolCallEventResult } from "../../core/features/index.ts";
 
 /**
  * The order in which a tool call is judged: two ordered, named step tables. The first step that decides wins; a step
@@ -10,11 +10,7 @@ import type { ExtensionContext, ToolCallEvent, ToolCallEventResult } from "../..
 /** A gate's result: a block, or an `ask` a later gate turns into a question (PreToolUse `permissionDecision: "ask"`). */
 export type GateVerdict = ToolCallEventResult & { ask?: string; rewritten?: true };
 
-export type Gate = (
-	event: ToolCallEvent,
-	ctx: ExtensionContext,
-	prior?: GateVerdict,
-) => Promise<GateVerdict | undefined>;
+export type Gate = (event: ToolCallEvent, ctx: FeatureContext, prior?: GateVerdict) => Promise<GateVerdict | undefined>;
 
 /** How a call reaches the gate: the model's own `tool_call`, or an `mcp_tool` hook's call (`hooks/mcp-gate.ts`). */
 export type JudgeEntry = "tool" | "hook";
@@ -65,7 +61,7 @@ export async function judge(
 	entry: JudgeEntry,
 	bodies: GateStepBodies,
 	event: ToolCallEvent,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	options: JudgeOptions,
 ): Promise<GateVerdict | undefined> {
 	let prior: GateVerdict | undefined;

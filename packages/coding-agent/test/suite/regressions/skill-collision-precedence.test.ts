@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { approveFixtureSkillFiles } from "../../octocode/guard-helpers.ts";
+import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 describe("skill collision precedence: user skills should override package skills", () => {
 	let tempDir: string;
@@ -67,7 +68,7 @@ describe("skill collision precedence: user skills should override package skills
 		const userSkillPath = createUserSkill("web-fetch", "User web-fetch override");
 		createSettingsWithPackage(pkgDir, "user");
 
-		const loader = new DefaultResourceLoader({ cwd, agentDir });
+		const loader = new DefaultResourceLoader({ cwd, agentDir, nativeFeatures: nativeFeatureSet() });
 		await loader.reload();
 
 		const { skills } = loader.getSkills();
@@ -86,6 +87,7 @@ describe("skill collision precedence: user skills should override package skills
 			cwd,
 			agentDir,
 			settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+			nativeFeatures: nativeFeatureSet(),
 		});
 		await loader.reload();
 
@@ -106,6 +108,7 @@ describe("skill collision precedence: user skills should override package skills
 			cwd,
 			agentDir,
 			settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+			nativeFeatures: nativeFeatureSet(),
 		});
 		await loader.reload();
 
@@ -125,6 +128,7 @@ describe("skill collision precedence: user skills should override package skills
 			cwd,
 			agentDir,
 			settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+			nativeFeatures: nativeFeatureSet(),
 		});
 		await loader.reload();
 

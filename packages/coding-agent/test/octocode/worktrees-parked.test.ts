@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCommandContext } from "../../src/core/features/index.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { scratchRoot } from "../../src/octocode/subagents/handoff/scratch.ts";
 import { allParked, writeParked, type ParkedWorker } from "../../src/octocode/subagents/parked.ts";
@@ -20,7 +20,7 @@ const contextAt = (cwd: string) =>
 		cwd,
 		hasUI: true,
 		ui: { notify: (note: string, level = "info") => void notices.push({ text: note, level }) },
-	}) as unknown as ExtensionCommandContext;
+	}) as unknown as CommandContext;
 
 beforeEach(() => {
 	allowWorktreeGrants(true); // these tests are about worktrees, not trust: a headless `--trust` run

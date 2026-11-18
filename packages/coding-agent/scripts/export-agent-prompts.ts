@@ -6,8 +6,8 @@ import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../src/cor
 import { SIDE_QUESTION_SYSTEM_PROMPT } from "../src/core/agent-session/side-question-prompt.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../src/core/compaction/utils.ts";
 import octocode from "../src/octocode/index.ts";
-import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../src/octocode/instructions/role.ts";
-import { teamTask, withIdentity } from "../src/octocode/instructions/task.ts";
+import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../src/octocode/native/prompts/role.ts";
+import { teamTask, withIdentity } from "../src/octocode/native/prompts/task.ts";
 import { loadProfiles, profileSelectsTool } from "../src/octocode/subagents/profiles.ts";
 import { registerTurnSetup } from "../src/octocode/turn.ts";
 import { HOOK_EVALUATION_SYSTEM_PROMPT } from "../src/octocode/hooks/prompt.ts";
@@ -74,14 +74,14 @@ try {
 					throw new Error("Prompt export does not execute MCP tools");
 				},
 			});
-			native.api.registerTool(definition);
+			native.api.tools.register(definition);
 		}
-		const defaults = native.api.getActiveTools();
+		const defaults = native.api.tools.getActive();
 		const selected = defaults.filter((tool) => !child || profileSelectsTool(profile, tool, defaults));
-		const tools = native.api.getAllTools().filter((tool) => selected.includes(tool.name));
+		const tools = native.api.tools.getAll().filter((tool) => selected.includes(tool.name));
 		const turn = fakeHost();
 		for (const tool of tools) turn.tools.set(tool.name, tool);
-		turn.api.setActiveTools(selected);
+		turn.api.tools.setActive(selected);
 		registerTurnSetup(turn.api, {
 			isSubagent: child,
 			profiles: () => profiles,

@@ -22,15 +22,15 @@ export interface FooterData {
 }
 
 /**
- * Provides git branch and extension statuses - data not otherwise accessible to extensions.
+ * Provides git branch and feature statuses - data not otherwise accessible to features.
  * Context usage on ctx.getContextUsage(), token stats on ctx.sessionManager.getEntries(), model info on ctx.model.
  */
 export class FooterDataProvider {
 	private cwd: string;
 	private static readonly WATCH_DEBOUNCE_MS = 500;
 
-	private extensionStatuses = new Map<string, StatusEntry>();
-	/** The statuses' texts, as extensions read them; derived once per change. */
+	private featureStatuses = new Map<string, StatusEntry>();
+	/** The statuses' texts, as features read them; derived once per change. */
 	private statusTexts: ReadonlyMap<string, string> | undefined;
 	private cachedBranch: string | null | undefined = undefined;
 	private gitPaths: GitPaths | null | undefined = undefined;
@@ -71,7 +71,7 @@ export class FooterDataProvider {
 	getState(): FooterData {
 		this.snapshot ??= {
 			branch: this.getGitBranch(),
-			statuses: this.extensionStatuses,
+			statuses: this.featureStatuses,
 			providerCount: this.availableProviderCount,
 		};
 		return this.snapshot;
@@ -89,9 +89,9 @@ export class FooterDataProvider {
 		for (const listener of this.listeners) listener();
 	}
 
-	/** Extension status texts set via ctx.ui.setStatus(); `getState().statuses` adds each one's tone. */
-	getExtensionStatuses(): ReadonlyMap<string, string> {
-		this.statusTexts ??= new Map([...this.extensionStatuses].map(([key, entry]) => [key, entry.text]));
+	/** Feature status texts set via ctx.ui.setStatus(); `getState().statuses` adds each one's tone. */
+	getFeatureStatuses(): ReadonlyMap<string, string> {
+		this.statusTexts ??= new Map([...this.featureStatuses].map(([key, entry]) => [key, entry.text]));
 		return this.statusTexts;
 	}
 
@@ -101,20 +101,20 @@ export class FooterDataProvider {
 		return () => this.branchChangeCallbacks.delete(callback);
 	}
 
-	setExtensionStatus(key: string, text: string | undefined, tone?: StatusTone): void {
+	setFeatureStatus(key: string, text: string | undefined, tone?: StatusTone): void {
 		const entry = text === undefined ? undefined : statusEntry(text, tone);
-		if (sameStatus(this.extensionStatuses.get(key), entry)) return;
+		if (sameStatus(this.featureStatuses.get(key), entry)) return;
 		// Copy on write: a snapshot taken earlier keeps the statuses it had.
-		const next = new Map(this.extensionStatuses);
+		const next = new Map(this.featureStatuses);
 		if (entry === undefined) next.delete(key);
 		else next.set(key, entry);
-		this.extensionStatuses = next;
+		this.featureStatuses = next;
 		this.changed();
 	}
 
-	clearExtensionStatuses(): void {
-		if (this.extensionStatuses.size === 0) return;
-		this.extensionStatuses = new Map();
+	clearFeatureStatuses(): void {
+		if (this.featureStatuses.size === 0) return;
+		this.featureStatuses = new Map();
 		this.changed();
 	}
 
@@ -347,11 +347,11 @@ export class FooterDataProvider {
 }
 
 /**
- * Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose. The host's
+ * Read-only view for features - excludes setFeatureStatus, setAvailableProviderCount and dispose. The host's
  * provider always has `getState`/`subscribe` (a state source of `FooterData`); they are optional for older test doubles.
  */
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
-	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
+	"getGitBranch" | "getFeatureStatuses" | "getAvailableProviderCount" | "onBranchChange"
 > &
 	Partial<Pick<FooterDataProvider, "getState" | "subscribe">>;

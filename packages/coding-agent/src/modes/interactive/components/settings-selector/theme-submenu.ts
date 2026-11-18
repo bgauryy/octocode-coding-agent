@@ -1,14 +1,7 @@
-import {
-	type Component,
-	Container,
-	type SelectItem,
-	type SettingItem,
-	SettingsList,
-	Spacer,
-	Text,
-} from "@octocodeai/octocode-tui";
+import { type Component, Container, type SelectItem, type SettingItem, Spacer, Text } from "@octocodeai/octocode-tui";
 import { SYSTEM_THEME_NAME } from "../../../../theme/system-theme.ts";
-import { getSettingsListTheme, parseAutoThemeSetting, type ThemeAppearance, theme } from "../../../../theme/theme.ts";
+import { parseAutoThemeSetting, type ThemeAppearance, theme } from "../../../../theme/theme.ts";
+import { SettingsListView } from "../settings-list-view.ts";
 import { SelectSubmenu } from "../settings-submenu.ts";
 import type { SettingsCallbacks } from "./types.ts";
 
@@ -198,10 +191,9 @@ export class ThemeSubmenu extends Container {
 			},
 		];
 
-		const settingsList = new SettingsList(
+		const settingsList = new SettingsListView(
 			items,
 			Math.min(items.length, 10),
-			getSettingsListTheme(),
 			(id) => {
 				switch (id) {
 					case "single-mode":

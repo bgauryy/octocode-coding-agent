@@ -227,7 +227,7 @@ describe("team resource bounds", () => {
 			expect(s.store.deadLetters("peer")).toEqual([
 				{ id: question, recipients: ["departing"], read: ["departing"], text: "which option?" },
 			]);
-			expect(deadLetterText(s.store.deadLetters("peer")[0])).toContain("was read but not answered");
+			expect(deadLetterText(s.store.deadLetters("peer")[0])).toContain("which option?");
 			const later = Date.now() + 25 * 3_600_000;
 			s.store.renew(s.id, later);
 			expect(s.store.replyTarget(question)).toBeDefined();

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { createAppWindow, type WebWindowMode } from "../browser/app-window.ts";
 import { say } from "../shared/commands.ts";
 import type { SessionAttach } from "./attach-register.ts";
@@ -13,7 +13,7 @@ import { daemonRequest, ensureWebDaemon, waitForSession, type LaunchedDaemon, ty
  */
 export async function attachedDaemon(
 	attach: SessionAttach,
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	options: LaunchOptions & { sessionWaitMs?: number } = {},
 ): Promise<LaunchedDaemon & { sessionId: string }> {
 	const endpoint = await attach.ensure(ctx);
@@ -45,7 +45,7 @@ export function daemonOpener(
 		window?: () => WebWindowMode;
 		sessionWaitMs?: number;
 	} = {},
-): (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<void> {
+): (ctx: FeatureContext, view: "board" | "activity", item?: string) => Promise<void> {
 	// The daemon outlives this session, so its window is never closed with it: it ends with the browser, and a profile
 	// left by an earlier crash is removed at the next launch.
 	const appWindow = createAppWindow(options.window ? { mode: options.window } : {});

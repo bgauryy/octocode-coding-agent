@@ -1,10 +1,10 @@
-import { getKeybindings } from "../keybindings.ts";
 import { GLYPH } from "../tokens/design.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { stripTerminalSequences } from "../utils/ansi-codes.ts";
 import { stripControlCharacters } from "../utils/chars.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
+import { ListView } from "./list-view.ts";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
 const PRIMARY_COLUMN_GAP = 2;
@@ -55,7 +55,6 @@ export interface SelectListOptions {
 const BOLD_ON = "\x1b[1m";
 const BOLD_OFF = "\x1b[22m";
 const bold = (text: string): string => `${BOLD_ON}${text}${BOLD_OFF}`;
-const HINT_SEPARATOR = "  ";
 
 export interface SelectListTruncatePrimaryContext {
 	text: string;
@@ -73,13 +72,13 @@ export interface SelectListLayoutOptions {
 
 export class SelectList implements Component {
 	private items: SelectItem[] = [];
-	private filteredItems: SelectItem[] = [];
-	private selectedIndex: number = 0;
-	private mousePressedIndex: number | undefined;
-	private maxVisible: number = 5;
 	private theme: SelectListTheme;
 	private layout: SelectListLayoutOptions;
 	private options: SelectListOptions;
+	/** Cursor, window, page keys, mouse and foot; this class only draws the rows. */
+	private readonly list: ListView<SelectItem>;
+	/** The primary column width for the rows in view, measured once per render. */
+	private primaryColumnWidth = DEFAULT_PRIMARY_COLUMN_WIDTH;
 
 	public onSelect?: (item: SelectItem) => void;
 	public onCancel?: () => void;
@@ -94,143 +93,75 @@ export class SelectList implements Component {
 	) {
 		this.options = options;
 		this.items = items;
-		this.filteredItems = items;
-		this.maxVisible = maxVisible;
 		this.theme = theme;
 		this.layout = layout;
+		this.list = new ListView<SelectItem>({
+			items,
+			maxRows: maxVisible,
+			mark: false,
+			wrap: true,
+			window: "center",
+			clickConfirms: "first",
+			theme: {
+				cursor: identity,
+				position: (text) =>
+					(this.options.hint ? (this.theme.hint ?? this.theme.scrollInfo) : this.theme.scrollInfo)(text),
+				empty: (text) => this.theme.noMatch(text),
+			},
+			row: (item, { selected, width }) => {
+				const description = item.description ? normalizeToSingleLine(item.description) : undefined;
+				return this.renderItem(item, selected, width, description, this.primaryColumnWidth);
+			},
+		});
+		this.applyOptions();
+		this.list.onSelect = (item) => this.onSelect?.(item);
+		this.list.onCancel = () => this.onCancel?.();
+		this.list.onSelectionChange = (item) => this.onSelectionChange?.(item);
 	}
 
 	/** Replaces the empty-state row, e.g. with an indexing progress line. */
 	setEmptyText(text: string | undefined): void {
 		this.options = { ...this.options, emptyText: text };
+		this.applyOptions();
 	}
 
 	setFilter(filter: string): void {
-		this.filteredItems = this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase()));
-		this.selectedIndex = 0;
+		this.list.setItems(this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase())));
+		this.list.setSelectedIndex(0);
 	}
 
 	setSelectedIndex(index: number): void {
-		this.selectedIndex = Math.max(0, Math.min(index, this.filteredItems.length - 1));
+		this.list.setSelectedIndex(index);
 	}
 
-	invalidate(): void {
-		// No cached state to invalidate currently
-	}
+	invalidate(): void {}
 
 	render(width: number): string[] {
-		const lines: string[] = [];
-
-		// If no items match filter, show message
-		if (this.filteredItems.length === 0) {
-			lines.push(this.theme.noMatch(`  ${toDisplayLine(this.options.emptyText ?? "No matching commands")}`));
-			return lines;
-		}
-
-		const { startIndex, endIndex } = this.getVisibleRange();
-		const primaryColumnWidth = this.getPrimaryColumnWidth(startIndex, endIndex);
-
-		for (let i = startIndex; i < endIndex; i++) {
-			const item = this.filteredItems[i];
-			if (!item) continue;
-
-			const isSelected = i === this.selectedIndex;
-			const descriptionSingleLine = item.description ? normalizeToSingleLine(item.description) : undefined;
-			lines.push(this.renderItem(item, isSelected, width, descriptionSingleLine, primaryColumnWidth));
-		}
-
-		const scrolls = startIndex > 0 || endIndex < this.filteredItems.length;
-		const scrollText = scrolls ? `  (${this.selectedIndex + 1}/${this.filteredItems.length})` : "";
-		const hint = this.options.hint;
-		const hintText = hint ? (scrolls ? HINT_SEPARATOR : "  ") + hint : "";
-		if (hint && visibleWidth(scrollText + hintText) <= width - 2) {
-			lines.push((this.theme.hint ?? this.theme.scrollInfo)(scrollText + hintText));
-		} else if (scrolls) {
-			// Truncate if too long for terminal
-			lines.push(this.theme.scrollInfo(truncateToWidth(scrollText, width - 2, "")));
-		}
-
-		return lines;
+		const { start, end } = this.list.visibleRange();
+		this.primaryColumnWidth = this.getPrimaryColumnWidth(start, end);
+		return this.list.render(width);
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		if (this.filteredItems.length === 0) return undefined;
-		if (event.type === "wheel" && event.wheelDelta) {
-			const delta = event.wheelDelta < 0 ? -1 : 1;
-			const previousIndex = this.selectedIndex;
-			this.selectedIndex = Math.max(0, Math.min(this.filteredItems.length - 1, this.selectedIndex + delta));
-			if (this.selectedIndex !== previousIndex) this.notifySelectionChange();
-			return { handled: true, render: this.selectedIndex !== previousIndex };
-		}
-		// Hover must not change selection: the visible range is centered on it.
-		if (event.button !== "left" || (event.type !== "press" && event.type !== "click")) return undefined;
-		const { startIndex, endIndex } = this.getVisibleRange();
-		const itemIndex = startIndex + event.y;
-		if (itemIndex < startIndex || itemIndex >= endIndex) return undefined;
-
-		if (event.type === "press") {
-			this.mousePressedIndex = itemIndex;
-			if (this.selectedIndex !== itemIndex) {
-				this.selectedIndex = itemIndex;
-				this.notifySelectionChange();
-			}
-			return { handled: true, focus: true };
-		}
-		if (event.type === "click") {
-			const clickedIndex = this.mousePressedIndex ?? itemIndex;
-			this.mousePressedIndex = undefined;
-			const changed = this.selectedIndex !== clickedIndex;
-			this.selectedIndex = clickedIndex;
-			if (changed) this.notifySelectionChange();
-			const selectedItem = this.filteredItems[this.selectedIndex];
-			if (selectedItem) this.onSelect?.(selectedItem);
-			return { handled: true };
-		}
-		return undefined;
+		return this.list.handleMouse(event);
 	}
 
 	handleInput(keyData: string): void {
-		const kb = getKeybindings();
-		if (this.filteredItems.length === 0 && !kb.matches(keyData, "tui.select.cancel")) return;
-		if (kb.matches(keyData, "tui.select.up")) this.moveSelection(-1);
-		else if (kb.matches(keyData, "tui.select.down")) this.moveSelection(1);
-		else if (kb.matches(keyData, "tui.select.pageUp")) this.movePage(-1);
-		else if (kb.matches(keyData, "tui.select.pageDown")) this.movePage(1);
-		else if (kb.matches(keyData, "tui.select.confirm")) {
-			const selectedItem = this.filteredItems[this.selectedIndex];
-			if (selectedItem && this.onSelect) {
-				this.onSelect(selectedItem);
-			}
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
-			if (this.onCancel) {
-				this.onCancel();
-			}
-		}
+		this.list.handleInput(keyData);
 	}
 
 	/** Moves the selection one row, wrapping at both ends. */
 	moveSelection(delta: -1 | 1): void {
-		const count = this.filteredItems.length;
-		if (count === 0) return;
-		this.selectedIndex = (this.selectedIndex + delta + count) % count;
-		this.notifySelectionChange();
+		this.list.move(delta, true);
 	}
 
-	private movePage(direction: -1 | 1): void {
-		const previousIndex = this.selectedIndex;
-		this.setSelectedIndex(this.selectedIndex + direction * this.maxVisible);
-		if (this.selectedIndex !== previousIndex) this.notifySelectionChange();
+	getSelectedItem(): SelectItem | null {
+		return this.list.getSelectedItem() ?? null;
 	}
 
-	private getVisibleRange(): { startIndex: number; endIndex: number } {
-		const startIndex = Math.max(
-			0,
-			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredItems.length - this.maxVisible),
-		);
-		return {
-			startIndex,
-			endIndex: Math.min(startIndex + this.maxVisible, this.filteredItems.length),
-		};
+	private applyOptions(): void {
+		this.list.setEmpty({ message: toDisplayLine(this.options.emptyText ?? "No matching commands") });
+		this.list.setHint(this.options.hint);
 	}
 
 	private renderItem(
@@ -315,9 +246,12 @@ export class SelectList implements Component {
 	/** The widest label among the rows in view, within the layout's bounds: a long label elsewhere in the list does not narrow these rows' descriptions. */
 	private getPrimaryColumnWidth(startIndex: number, endIndex: number): number {
 		const { min, max } = this.getPrimaryColumnBounds();
-		const widestPrimary = this.filteredItems.slice(startIndex, endIndex).reduce((widest, item) => {
-			return Math.max(widest, visibleWidth(this.getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
-		}, 0);
+		const widestPrimary = this.list
+			.getItems()
+			.slice(startIndex, endIndex)
+			.reduce((widest, item) => {
+				return Math.max(widest, visibleWidth(this.getDisplayValue(item)) + PRIMARY_COLUMN_GAP);
+			}, 0);
 
 		return clamp(widestPrimary, min, max);
 	}
@@ -351,18 +285,6 @@ export class SelectList implements Component {
 
 	private getDisplayValue(item: SelectItem): string {
 		return toDisplayLine(item.label || item.value);
-	}
-
-	private notifySelectionChange(): void {
-		const selectedItem = this.filteredItems[this.selectedIndex];
-		if (selectedItem && this.onSelectionChange) {
-			this.onSelectionChange(selectedItem);
-		}
-	}
-
-	getSelectedItem(): SelectItem | null {
-		const item = this.filteredItems[this.selectedIndex];
-		return item || null;
 	}
 }
 

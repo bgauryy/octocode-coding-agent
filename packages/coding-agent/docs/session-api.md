@@ -77,7 +77,7 @@ A message obeys the receiving session's [permission mode](permissions.md#externa
 
 `sessionApiTurnPermission` is a global setting only, read for every message; `"workspace"` also holds `external.call` and `agents.tell`. Prefer `OCTOCODE_PERMISSION=manual` or `workspace` where other programs run as your user.
 
-The model sees an external-message header: another process on this machine sent it, not the user; what the transport proves (socket: a program running as this OS user; HTTP: a program holding the token); what the caller says it is (quoted); and that it may state facts and make requests but never grants authority or approval. The text sits inside a random untrusted-text fence the sender cannot forge. The terminal draws it as `✉ external`. Hooks and [tool permission policy](permissions.md) still apply, and a message is never a slash command (`/permissions full` in one is plain text) nor an answer to a pending dialog.
+The model sees a one-line external-message header: the transport (socket: a program running as this OS user; HTTP: a program holding the token), what the caller says it is (quoted, marked self-reported) and the time. The system prompt states once that such a message may state facts and make requests but never grants authority or approval. The text sits inside a random untrusted-text fence the sender cannot forge. The terminal draws it as `✉ external`. Hooks and [tool permission policy](permissions.md) still apply, and a message is never a slash command (`/permissions full` in one is plain text) nor an answer to a pending dialog.
 
 **Caller fields are claims.** A socket does not say who is on the other end, so `--from`, `name`, `instanceId`, `pid` and `cwd` are what the caller says; `octocode-api` fills them from the calling session's shell or from its own pid and folder. Names that pass for the user or a live agent are refused (any case, Unicode lookalikes). A caller counts as a running instance only when its `instanceId` and `pid` both match; otherwise the message has no reply route. Only an instance that confirms itself by an `identity.confirm` call-back holds a "messages from this process" grant; unconfirmed callers are asked about without the process choices, or refused when nobody can be asked. `octocode-api` run from a session's shell has no ticket, so its messages are asked about without those choices. Records are shown at `details.external` (RPC), `_meta["octocode/external"]` (ACP) and `caller`, `callerVerified`, `transport` (the `external.message` event); `callerVerified` is `true` only for a confirmed instance.
 
@@ -92,20 +92,30 @@ The model sees an external-message header: another process on this machine sent 
 
 A refusal names the session and what its user can do, with `execution: "not-sent"`. The same key repeats it; a new key asks again.
 
+An `agent` type `message` that fails says whether the message arrived:
+
+| Failure                                                          | `execution`                          | What the sender is told                                         |
+| ---------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| The receiver's process is gone, or nothing listens on its socket | `not-sent` (`reason: "unreachable"`) | Nothing was sent; check that it still runs before sending again |
+| The receiver is at its connection limit                          | `not-sent` (`reason: "overloaded"`)  | Nothing was sent; send it again in a few seconds                |
+| The connection broke after the request was written               | `unknown`                            | It may have arrived; check before sending it again              |
+
+A message the receiver queued (`steer` or `followUp`) lives only in that process until its model reads it. When the receiver exits first, the sender gets one notice at its next step, without a new turn, within about two seconds: the message, the recipient and what to do next.
+
 ## Retry without duplicate dispatch
 
 Use a unique `--key` per intended message (up to 128 characters). After a lost response repeat the same message, sender, mode and idle requirement with the **same key**; you may add `--wait` or change the timeout. Changed input with the same key is rejected. The host keeps up to 128 receipts per conversation in memory and refuses new keys at capacity; a session switch, `/api off` then `on`, or a restart forgets them.
 
-| Result                                                     | Meaning and next step                                                                                        |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `execution: "not-sent"`                                    | Refused before dispatch. Fix the cause, then retry.                                                          |
-| Server wait timeout (`-32001`)                             | Accepted; work may still run. Check status or wait again with the original key.                              |
-| `execution: "uncertain"`                                   | Handoff failed after dispatch. The key keeps the failure and cannot dispatch again. Inspect before new work. |
-| Connection failure or client timeout without a disposition | Delivery may have happened. Do not assume it did not.                                                        |
+| Result                                                  | Meaning and next step                                                                                        |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `execution: "not-sent"`                                 | Refused before dispatch. Fix the cause, then retry.                                                          |
+| Server wait timeout (`-32001`)                          | Accepted; work may still run. Check status or wait again with the original key.                              |
+| `execution: "uncertain"`                                | Handoff failed after dispatch. The key keeps the failure and cannot dispatch again. Inspect before new work. |
+| Connection broke or client timed out after it connected | Delivery may have happened. Do not assume it did not.                                                        |
 
 Errors exit nonzero. Protocol errors are JSON on stderr (`error`, `code`, optional `data`; client failures may add `execution`); other CLI errors are plain text. Socket failures carry an OS code such as `(EPERM)` or `(ENOENT)` without paths. A sandboxed process may discover an instance yet lack permission to connect; use its host's scoped authorization or a callback integration (see [Codex](acp.md#connect-to-codex)). Nothing replays a possibly executed prompt automatically.
 
-A socket rejected at the connection limit reports `-32000` with `data.execution: "not-sent"`; no request was dispatched. This connection-level error has a `null` id because the server refuses it before reading a request. Socket clients accept that explicit refusal before a call or subscription; other responses must match their request id.
+A socket rejected at the connection limit reports `-32000` with `data.execution: "not-sent"`, `data.reason: "overloaded"` and `data.retryAfterMs`; no request was dispatched. A socket call that fails before its connection opens also reports `execution: "not-sent"`, since no byte of it was written. This connection-level error has a `null` id because the server refuses it before reading a request. Socket clients accept that explicit refusal before a call or subscription; other responses must match their request id.
 
 ## Watch and cancel
 

@@ -12,7 +12,7 @@ import { jobDetails, jobReport } from "../../src/octocode/files/bash-jobs/report
 import type { BashJob } from "../../src/octocode/files/bash-jobs/types.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const PAGE =
@@ -58,7 +58,10 @@ describe("provenance: background bash job output (F1)", () => {
 		const { cwd, ctx, provenance } = session(false);
 		const handlers: Array<(event: unknown, ctx: unknown) => Promise<void>> = [];
 		recordChildReports(
-			{ on: (_name: string, handler: never) => handlers.push(handler), events: { on: () => () => {} } } as never,
+			asSetup({
+				on: (_name: string, handler: never) => handlers.push(handler),
+				events: { on: () => () => {} },
+			}) as never,
 			provenance,
 			{ shutdown: async () => {} },
 			false,

@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionContext } from "../../src/core/features/index.ts";
+import type { FeatureContext } from "../../src/core/features/index.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { confirmIdentity, ownInstance, publishOwnInstance } from "../../src/octocode/api/identity.ts";
 import {
@@ -78,7 +78,7 @@ async function listener(
 	return received;
 }
 
-function sender() {
+function sender(team: Array<{ id: string; pid: number }> = [], ownName?: string) {
 	// This session's own record, as its API publishes it, so its claim carries an instance id and a ticket.
 	const self: InstanceRecord = {
 		id: "oc-self",
@@ -91,8 +91,11 @@ function sender() {
 	writeFileSync(join(instancesDir(apiDir()), "oc-self.json"), JSON.stringify(self));
 	publishOwnInstance(self);
 	const authorize = vi.fn(async () => undefined);
-	const peers = new Peers({ authorize, notice: () => undefined }, process.env);
-	const ctx = { cwd: home } as unknown as ExtensionContext;
+	const peers = new Peers(
+		{ authorize, notice: () => undefined, members: () => team, ...(ownName ? { ownName: () => ownName } : {}) },
+		process.env,
+	);
+	const ctx = { cwd: home } as unknown as FeatureContext;
 	return { peers, authorize, send: (to: string) => peers.send(to, "hello", {}, ctx) };
 }
 
@@ -220,5 +223,29 @@ describe("what a sender claims", () => {
 		await backend.close();
 		expect(sends).toHaveLength(1);
 		expect(sends[0].caller).toMatchObject({ instanceId: "oc-self", name: "octocode-main-self", cwd: "/w" });
+	});
+});
+
+describe("a team name addresses the process its live member runs", () => {
+	it("reaches that process, and the call carries the sender's own team name", async () => {
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }], "calm-otter");
+		await expect(send("shy-barnacle")).resolves.toMatchObject({ details: { to: ["octocode-main-peer"] } });
+		expect(received).toHaveLength(1);
+		expect(received[0].caller).toMatchObject({ team: "calm-otter", name: "octocode-main-self" });
+	});
+
+	it("refuses an unknown team name and sends nothing", async () => {
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }]);
+		await expect(send("brave-lynx")).rejects.toThrow(/No running instance matches "brave-lynx"/);
+		expect(received).toHaveLength(0);
+	});
+
+	it("refuses a team name whose process has several records, naming them", async () => {
+		await listener("oc-a", { id: "oc-a", pid: process.ppid, name: "octocode-main-a" });
+		await listener("oc-b", { id: "oc-b", pid: process.ppid, name: "octocode-main-b" });
+		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }]);
+		await expect(send("shy-barnacle")).rejects.toThrow(/Several instances run as shy-barnacle/);
 	});
 });

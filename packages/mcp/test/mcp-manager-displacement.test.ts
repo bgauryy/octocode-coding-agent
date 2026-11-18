@@ -6,7 +6,8 @@ import { initTheme } from "../../coding-agent/src/theme/theme.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { registerMcpHost } from "../src/index.ts";
 import * as manager from "../src/manager.ts";
-import type { McpExtensionState } from "../src/state.ts";
+import type { McpFeatureState } from "../src/state.ts";
+import { testFeatures } from "../../coding-agent/test/helpers/features.ts";
 
 const entry: McpServerEntry = {
 	name: "octocode",
@@ -24,7 +25,7 @@ beforeAll(() => initTheme("dark"));
 /** `/mcp` in the terminal manager when something else takes the editor slot. */
 describe("the /mcp manager view displaced by another dialog, selector or the reset", () => {
 	const harnesses: Harness[] = [];
-	const states: McpExtensionState[] = [];
+	const states: McpFeatureState[] = [];
 	const hosts: SlotHost[] = [];
 	afterEach(async () => {
 		vi.restoreAllMocks();
@@ -37,30 +38,32 @@ describe("the /mcp manager view displaced by another dialog, selector or the res
 	async function openMcp() {
 		const env = createSlotHost();
 		hosts.push(env);
-		let state!: McpExtensionState;
+		let state!: McpFeatureState;
 		const harness = await createHarness({
 			initialActiveToolNames: [],
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
 					state = registerMcpHost(
 						{
 							...api,
-							registerCommand: (name, definition) =>
-								api.registerCommand(name, {
-									...definition,
-									handler: (args, ctx) => definition.handler(args, { ...ctx, mode: "tui" }),
-								}),
+							commands: {
+								register: (name, definition) =>
+									api.commands.register(name, {
+										...definition,
+										handler: (args, ctx) => definition.handler(args, { ...ctx, mode: "tui" }),
+									}),
+							},
 						},
 						{
 							loadConfig: (ctx) => ({ servers: [entry], errors: [], globalConfig: join(ctx.cwd, "agent", "mcp.json") }),
 						},
 					);
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		states.push(state);
-		await harness.session.bindExtensions({ uiContext: createTestUiContext({ custom: env.custom }) });
+		await harness.session.bindFeatures({ uiContext: createTestUiContext({ custom: env.custom }) });
 		await state.pending;
 
 		const manage = manager.manage;
@@ -91,12 +94,12 @@ describe("the /mcp manager view displaced by another dialog, selector or the res
 
 	it("an extension dialog taking the slot ends the manager and unsubscribes its menu", async () => {
 		const opened = await openMcp();
-		const answer = opened.env.host.showExtensionSelector("Extension question", ["yes", "no"]);
+		const answer = opened.env.host.showSelectorDialog("Extension question", ["yes", "no"]);
 		expect(await opened.env.screen()).toContain("Extension question");
 		await expectReleased(opened);
 		// The dialog that displaced the manager stays open and answers normally.
 		expect(await settled(answer)).toBe(PENDING);
-		opened.env.host.hideExtensionSelector();
+		opened.env.host.hideSelectorDialog();
 		expect(await settled(answer)).toBeUndefined();
 		expect(opened.env.editorContainer.children).toEqual([opened.env.editor]);
 	});
@@ -117,7 +120,7 @@ describe("the /mcp manager view displaced by another dialog, selector or the res
 
 	it("the reset on reload or session replacement ends the manager", async () => {
 		const opened = await openMcp();
-		opened.env.host.resetExtensionUI();
+		opened.env.host.resetFeatureUI();
 		await expectReleased(opened);
 		expect(await opened.env.screen()).not.toContain("MCP servers");
 	});

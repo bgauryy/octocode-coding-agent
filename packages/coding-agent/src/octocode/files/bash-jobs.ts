@@ -69,6 +69,7 @@ export class BashJobs {
 			verification,
 			reason,
 			item,
+			unsandboxed = false,
 		}: {
 			env?: NodeJS.ProcessEnv;
 			shell?: ShellSettings;
@@ -76,13 +77,19 @@ export class BashJobs {
 			verification?: VerificationReceipt;
 			reason?: string;
 			item?: string;
+			/** The user allowed this command outside the command sandbox (`shell.unsandboxed`). */
+			unsandboxed?: boolean;
 		} = {},
 	): Promise<BashJob> {
 		if (!fs.existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
 		const timeout = clampTimeoutSeconds(asked);
 		const shell = resolveBashShell(settings);
-		const child = await spawnShell(shell, shellScript(command, settings), { cwd, env: nonInteractiveEnv(env) });
+		const child = await spawnShell(shell, shellScript(command, settings), {
+			cwd,
+			env: nonInteractiveEnv(env),
+			unsandboxed,
+		});
 		if (child.pid === undefined) {
 			// Spawning failed (no shell, EAGAIN, EMFILE): the 'error' event that follows names the cause. Nothing ran.
 			const cause = await new Promise<unknown>((resolve) => child.once("error", resolve));
@@ -154,7 +161,7 @@ export class BashJobs {
 		},
 	): BashJob {
 		const id = `bash-${++this.next}`;
-		// Job ids restart with each extension instance (a /reload), so the start time keeps an earlier log.
+		// Job ids restart with each feature instance (a /reload), so the start time keeps an earlier log.
 		let log: string;
 		let output: RotatingLog;
 		try {
@@ -302,7 +309,7 @@ export class BashJobs {
 		return this.dir ? [this.dir] : sessionBashDirs();
 	}
 
-	/** At a /reload (same process, same session), records the jobs it stops so the next extension instance can name them. */
+	/** At a /reload (same process, same session), records the jobs it stops so the next feature instance can name them. */
 	noteReload(stopped: readonly BashJob[]): void {
 		if (stopped.length === 0) return;
 		try {

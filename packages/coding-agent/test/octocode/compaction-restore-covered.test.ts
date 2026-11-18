@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { deliverRestoredFiles, RESTORE_TOTAL_CHARS } from "../../src/octocode/compaction/restore.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 const call = (id: string, args: Record<string, unknown>) => ({
 	role: "assistant",
@@ -32,8 +33,8 @@ function restoreAfter(file: string, dir: string, reads: Array<{ offset: number; 
 		},
 	};
 	const sent: unknown[] = [];
-	const api = { sendMessage: (message: unknown) => void sent.push(message) };
-	return { pending: deliverRestoredFiles(api as never, [{ file }], ctx as never, RESTORE_TOTAL_CHARS), sent };
+	const api = asSetup({ sendMessage: (message: unknown) => void sent.push(message) });
+	return { pending: deliverRestoredFiles(api, [{ file }], ctx as never, RESTORE_TOTAL_CHARS), sent };
 }
 
 describe("a file the kept tail's partial reads cover", () => {

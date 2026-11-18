@@ -19,7 +19,7 @@ it("tells extensions an overflow was not recovered when the automatic compaction
 		compactionPolicy: { keepRecentTokens: 1 },
 		builtinCompactionFactories: [
 			(api) => {
-				api.on("session_compact_failed", (event) => {
+				api.bus.on("session_compact_failed", (event) => {
 					failures.push({ reason: event.reason, errorMessage: event.errorMessage, willRetry: event.willRetry });
 				});
 			},

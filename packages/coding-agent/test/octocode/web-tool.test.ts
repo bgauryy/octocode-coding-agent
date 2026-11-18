@@ -3,7 +3,6 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
 import { IMAGE_MAX_CHARS } from "../../src/octocode/shared/spill.ts";
@@ -12,8 +11,8 @@ import type * as importedModule1 from "@octocodeai/octocode-common/web-guard";
 import type { PublicFetchInit } from "@octocodeai/octocode-common/web-guard";
 import * as importedModule2 from "../../src/octocode/web/search.ts";
 import { search } from "../../src/octocode/web/search.ts";
-import { registerWebTool, webSummary } from "../../src/octocode/web/web.ts";
-import { fakeCtx, fakePermission, theme } from "./fake-host.ts";
+import { registerWebTool, webSummary } from "../../src/octocode/native/tools/web/tool.ts";
+import { fakeCtx, fakePermission, theme, asSetup } from "./fake-host.ts";
 import { asText, noisyPng, pixelSize, tmp } from "./helpers.ts";
 import { publishRoles, RESEARCH, RESEARCH_ENTRY } from "./fake-research-roles.ts";
 
@@ -69,13 +68,13 @@ const privateOk = { private: true };
 function webTool(active: string[] = [], permission: Permission = fakePermission("full"), model?: unknown): WebTool {
 	let tool: (WebTool & { execute: (...args: unknown[]) => Promise<ToolResult> }) | undefined;
 	registerWebTool(
-		{
+		asSetup({
 			registerTool: (definition: typeof tool) => {
 				tool = definition;
 				return tool;
 			},
 			getActiveTools: () => active,
-		} as unknown as ExtensionAPI,
+		}),
 		permission,
 	);
 	const definition = tool!;
@@ -359,9 +358,7 @@ describe("web tool", () => {
 		await expect(tool.execute("id", { url: "https://example.com", query: "different source" })).rejects.toThrow(
 			"Provide exactly one of url or query.",
 		);
-		await expect(tool.execute("id", { query: "   " })).rejects.toThrow(
-			"Provide url or query. url reads one page; query searches the web.",
-		);
+		await expect(tool.execute("id", { query: "   " })).rejects.toThrow('only "query" (blank or not a web argument)');
 		expect(fetch).not.toHaveBeenCalled();
 	});
 	beforeEach(() => {
@@ -375,7 +372,11 @@ describe("web tool", () => {
 		});
 		const tool = webTool();
 		expect(text(await tool.execute("id", { url: `${base}/` }))).toBe("hello from the page");
-		await expect(tool.execute("id", {})).rejects.toThrow("Provide url or query.");
+		await expect(tool.execute("id", {})).rejects.toThrow(
+			'Provide url or query: got no arguments. One string each, one call per page or search: {"url":"https://example.com/docs"} reads a page; {"query":"search terms"} searches the web.',
+		);
+		// An array form the schema lacks (or a misspelt key) is named in the refusal, not silently dropped.
+		await expect(tool.execute("id", { urls: ["https://example.com"] })).rejects.toThrow('only "urls"');
 	});
 
 	it("names the research server's search and reader tools this session has for reading the saved page", async () => {

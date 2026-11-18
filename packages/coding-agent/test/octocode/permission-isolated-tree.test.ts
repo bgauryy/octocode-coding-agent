@@ -62,6 +62,12 @@ describe.each(["full", "workspace", "manual"] as const)("isolated subagent in %s
 		expect(await attempt("bash", { command: `rm ${target}` })).toMatch(/isolated.*main tree/);
 	});
 
+	it("refuses a line naming the main tree whose program a variable may swap", async () => {
+		const { main, attempt } = isolated(mode);
+		expect(await attempt("bash", { command: `PATH=${main}/bin cat a.ts` })).toMatch(/isolated.*main tree/);
+		expect((await attempt("bash", { command: 'f=a.ts; cat "$f"' })) ?? "").not.toMatch(/main tree/);
+	});
+
 	it("allows its own worktree and its scratch folder in the main tree", async () => {
 		const { worktree, scratch, attempt } = isolated(mode);
 		const own = await attempt("file", write(path.join(worktree, "a.ts")));

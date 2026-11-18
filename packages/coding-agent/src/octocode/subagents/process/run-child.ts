@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { getCliInvocation } from "../../../config.ts";
-import { writeRolePrompt } from "../../instructions/role.ts";
+import { writeRolePrompt } from "../../native/prompts/role.ts";
 import { sessionOutputDir } from "../../shared/home.ts";
 import { prepareTree } from "../../../utils/process-tree.ts";
 import { requestBudgetHistory } from "../budget-history.ts";

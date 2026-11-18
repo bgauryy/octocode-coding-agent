@@ -4,7 +4,7 @@
  * `modes/interactive/interactive-mode/provider-ui.ts`.
  */
 
-import type { ExtensionUIContext } from "../../core/features/index.ts";
+import type { SessionUI } from "../../core/features/index.ts";
 import type { ManagePageOptions } from "../../theme/manage-page.ts";
 
 export type { PageRow, PageSection } from "../../theme/manage-page.ts";
@@ -20,7 +20,7 @@ export interface PageChoice {
  * component loads on first use: it paints with the terminal UI package, which a headless session never loads.
  */
 export async function showCommandPage(
-	ui: Pick<ExtensionUIContext, "custom">,
+	ui: Pick<SessionUI, "custom">,
 	options: Omit<ManagePageOptions, "onSelect" | "onKey" | "onCancel">,
 ): Promise<PageChoice | undefined> {
 	const { ManagePageComponent } = await import("../../theme/manage-page.ts");

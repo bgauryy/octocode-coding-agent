@@ -2,7 +2,7 @@ import "../bundle.ts";
 import { describe, expect, it } from "vitest";
 import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
 import { cacheReadRatio } from "../../src/context.ts";
-import { script, type Responder } from "../../src/gateway.ts";
+import { script, scripts, type Responder } from "../../src/gateway.ts";
 import { gateway, mcp, searchTool } from "../helpers.ts";
 import { requireBundle } from "./support.ts";
 
@@ -91,23 +91,23 @@ describe("octocodecode guards (scripted gateway, real bundle)", () => {
 
 	it("subagent flow: the agent tool (type task) starts a child whose report returns to main", async (ctx) => {
 		requireBundle(ctx);
-		// Every request reaches the gateway as agent "main" (no per-agent header on a provider); the child is the
-		// session without the main-only `backlog` tool.
+		// The harness sends no per-agent header: the gateway infers the child from the spawn call's task text and
+		// routes its requests to the `task` script. The child is also the session without the main-only `backlog` tool.
 		const isChild = (tools: string[]): boolean => !tools.includes("backlog");
-		let mainTurns = 0;
-		const responder: Responder = ({ request }) => {
-			if (isChild(request.tools)) return { text: "done. CHILD-REPORT-7" };
-			return mainTurns++ === 0
-				? {
-						toolCalls: [
-							{
-								name: "agent",
-								args: { type: "task", reason: "guard", goal: "Check a thing", task: "Reply CHILD-REPORT-7" },
-							},
-						],
-					}
-				: { text: "main finished" };
-		};
+		const responder: Responder = scripts({
+			main: [
+				{
+					toolCalls: [
+						{
+							name: "agent",
+							args: { type: "task", reason: "guard", goal: "Check a thing", task: "Reply CHILD-REPORT-7" },
+						},
+					],
+				},
+				{ text: "main finished" },
+			],
+			task: [{ text: "done. CHILD-REPORT-7" }],
+		});
 		const gw = await gateway({ responder });
 		const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "delegate a check", timeoutMs: 80_000 });
 		expect(run.exitCode).toBe(0);
@@ -124,5 +124,11 @@ describe("octocodecode guards (scripted gateway, real bundle)", () => {
 		expect(reqs.at(-1)).toBe(main.at(-1));
 		expect(gw.trace.of("answer").at(-1)?.data).toBe("main finished");
 		expect(gw.errors).toEqual([]);
+		// The lineage agrees with the tool-set heuristic, and the flow matchers work on the real harness.
+		expect(gw.trace.agent("task").requests.every((r) => isChild(r.tools))).toBe(true);
+		expect(gw.trace.agent("main").requests.every((r) => !isChild(r.tools))).toBe(true);
+		expect(gw.trace).toHaveSpawned("task", { times: 1 });
+		expect(gw.trace).toHaveHandedOff("main", "task");
+		expect(gw.trace).toHaveNoOrphanAgents();
 	});
 });

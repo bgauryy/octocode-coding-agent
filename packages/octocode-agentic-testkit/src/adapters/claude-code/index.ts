@@ -1,8 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AdapterContext, AgentAdapter } from "../../adapter.ts";
+import { sandboxFor, singlePrompt, type AdapterContext, type AgentAdapter } from "../../adapter.ts";
+import { runProcess, writeFiles, type ProcessRun } from "../../process.ts";
+import type { SandboxOptions } from "../../sandbox.ts";
 
 export interface ClaudeCodeOptions {
 	/** Executable name or path (default `claude`). */
@@ -12,20 +14,24 @@ export interface ClaudeCodeOptions {
 	args?: string[];
 	/** Keep the temp HOME and workspace (default: removed on close). */
 	keep?: boolean;
+	/**
+	 * OS sandbox for the `claude` process (`runProcess`). Default: on when the gateway forwards to a real model,
+	 * because the adapter runs with `--permission-mode bypassPermissions`; `false` opts out.
+	 */
+	sandbox?: false | SandboxOptions;
+	/** Skills by name, written to `<CLAUDE_CONFIG_DIR>/skills/<name>/SKILL.md` (frontmatter included). */
+	skills?: Record<string, string>;
 }
 
-export interface ExternalRun {
-	exitCode: number | null;
-	signal: string | null;
-	timedOut: boolean;
-	durationMs: number;
-	stdout: string;
-	stderr: string;
-	/** Parsed JSON lines of stdout; non-JSON lines are skipped. */
-	events: Record<string, unknown>[];
-	home: string;
-	workspace: string;
+export { CLAUDE_CODE_LIMITS } from "./limits.ts";
+
+/** `{ name: SKILL.md text }` as files `<name>/SKILL.md`, for a harness's skills directory. */
+export function skillFiles(skills: Record<string, string> | undefined): Record<string, string> {
+	return Object.fromEntries(Object.entries(skills ?? {}).map(([name, body]) => [`${name}/SKILL.md`, body]));
 }
+
+/** Result of one external CLI run. */
+export type ExternalRun = ProcessRun;
 
 /** Why the CLI cannot run here, or undefined when `<command> --version` succeeds. */
 export function cliMissing(command: string): string | undefined {
@@ -37,62 +43,6 @@ export function claudeCodeMissing(command = "claude"): string | undefined {
 	return cliMissing(command);
 }
 
-/** Runs a prepared command in its own process group; resolves with the captured output and parsed JSON lines. */
-export function runProcess(
-	command: string,
-	args: string[],
-	o: { env: Record<string, string>; cwd: string; timeoutMs: number; home: string },
-): Promise<ExternalRun> {
-	const started = Date.now();
-	return new Promise((done, fail) => {
-		const child = spawn(command, args, { cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true, env: o.env });
-		let stdout = "";
-		let stderr = "";
-		let timedOut = false;
-		child.stdout.on("data", (c: Buffer) => (stdout += c.toString("utf8")));
-		child.stderr.on("data", (c: Buffer) => (stderr += c.toString("utf8")));
-		const killGroup = (): void => {
-			try {
-				process.kill(-child.pid!, "SIGKILL");
-			} catch {
-				// already gone
-			}
-		};
-		const timer = setTimeout(() => {
-			timedOut = true;
-			killGroup();
-		}, o.timeoutMs);
-		child.on("error", (e) => {
-			clearTimeout(timer);
-			fail(e);
-		});
-		child.on("close", (exitCode, signal) => {
-			clearTimeout(timer);
-			killGroup();
-			const events: Record<string, unknown>[] = [];
-			for (const line of stdout.split("\n")) {
-				try {
-					const v = JSON.parse(line) as unknown;
-					if (v && typeof v === "object") events.push(v as Record<string, unknown>);
-				} catch {
-					// not a JSON line
-				}
-			}
-			done({
-				exitCode,
-				signal,
-				timedOut,
-				durationMs: Date.now() - started,
-				stdout,
-				stderr,
-				events,
-				home: o.home,
-				workspace: o.cwd,
-			});
-		});
-	});
-}
-
 /**
  * Claude Code as an agent: `claude -p` with `ANTHROPIC_BASE_URL` at the gateway, a dummy key, an isolated
  * HOME / CLAUDE_CONFIG_DIR and the mock MCP servers through `--strict-mcp-config --mcp-config`.
@@ -100,6 +50,7 @@ export function runProcess(
 export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): AgentAdapter<ExternalRun> {
 	return {
 		name: "claude-code",
+		unavailable: () => cliMissing(opts.command ?? "claude"),
 		async start(ctx: AdapterContext) {
 			const command = opts.command ?? "claude";
 			const root = mkdtempSync(join(tmpdir(), "testkit-claude-"));
@@ -107,9 +58,11 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): AgentAdapter<Ex
 			const config = join(root, "claude-config");
 			const workspace = ctx.workdir ?? join(root, "workspace");
 			for (const d of [home, config, workspace, join(root, "tmp")]) mkdirSync(d, { recursive: true });
+			writeFiles(workspace, ctx.files ?? {});
+			writeFiles(join(config, "skills"), skillFiles(opts.skills));
 			const mcpServers: Record<string, unknown> = {};
-			for (const [name, url] of Object.entries(ctx.mcpUrls ?? {}))
-				mcpServers[name] = { type: "http", url, headers: { "x-testkit-agent": "main", "x-testkit-span": "main" } };
+			// No identity headers: the mock attributes each call to the agent whose model asked for it (gateway lineage).
+			for (const [name, url] of Object.entries(ctx.mcpUrls ?? {})) mcpServers[name] = { type: "http", url };
 			const mcpFile = join(root, "mcp.json");
 			writeFileSync(mcpFile, JSON.stringify({ mcpServers }));
 			const env = {
@@ -117,6 +70,8 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): AgentAdapter<Ex
 				HOME: home,
 				CLAUDE_CONFIG_DIR: config,
 				TMPDIR: join(root, "tmp"),
+				// Its Bash tool writes under /tmp/claude-<uid> otherwise, outside the sandbox's writable paths.
+				CLAUDE_CODE_TMPDIR: join(root, "tmp"),
 				ANTHROPIC_BASE_URL: ctx.gatewayUrl,
 				ANTHROPIC_API_KEY: "testkit",
 				DISABLE_AUTOUPDATER: "1",
@@ -126,6 +81,7 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): AgentAdapter<Ex
 				CI: "1",
 				...ctx.env,
 			};
+			const sandbox = await sandboxFor(opts.sandbox, ctx, root);
 			const flags = opts.args ?? [
 				"--output-format",
 				"stream-json",
@@ -135,13 +91,16 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): AgentAdapter<Ex
 				"bypassPermissions",
 			];
 			return {
-				run: (prompt) =>
-					runProcess(command, ["-p", prompt, ...flags, "--strict-mcp-config", "--mcp-config", mcpFile], {
-						env,
+				run: async (input) => {
+					const i = singlePrompt("claude-code", input);
+					return runProcess(command, ["-p", i.prompt, ...flags, "--strict-mcp-config", "--mcp-config", mcpFile], {
+						env: { ...env, ...i.env },
 						cwd: workspace,
-						timeoutMs: opts.timeoutMs ?? 120_000,
+						timeoutMs: i.timeoutMs ?? opts.timeoutMs ?? 120_000,
 						home,
-					}),
+						sandbox,
+					});
+				},
 				close: async () => {
 					if (!opts.keep) rmSync(root, { recursive: true, force: true });
 				},

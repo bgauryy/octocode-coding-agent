@@ -89,7 +89,6 @@ describe("running work note after a compaction", () => {
 		const content = `Keep the release constraint ${"middle requirement ".repeat(10_000)} Run the final suite`;
 		const [note] = await compacted([{ ...request, message: { role: "user", content } }], undefined);
 		expect(note.length).toBeLessThan(2_000);
-		expect(note).toContain("Latest user request excerpt");
 		expect(note).toContain("Keep the release constraint");
 		expect(note).toContain("Run the final suite");
 		expect(note).toContain("characters omitted");

@@ -41,16 +41,16 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		if (process.env[name]) env[name] = process.env[name];
 	}
 	try {
-		const profileDir = join(packageDir, "dist/octocode/instructions/roles");
+		const profileDir = join(packageDir, "dist/octocode/native/agents");
 		if (!existsSync(profileDir) || !readdirSync(profileDir).some((name) => name.endsWith(".md"))) {
 			throw new Error("Installed Octocode package is missing bundled subagent profiles");
 		}
-		// The policy prompt is Markdown read at runtime (`getInstructionsDir`); without it every session fails to build its prompt.
-		if (!existsSync(join(packageDir, "dist/octocode/instructions/policy/work.md"))) {
+		// The policy prompt is Markdown read at runtime (`getNativeDir`); without it every session fails to build its prompt.
+		if (!existsSync(join(packageDir, "dist/octocode/native/prompts/policy/work.md"))) {
 			throw new Error("Installed Octocode package is missing the bundled prompt instructions");
 		}
 		for (const skill of ["octocode-context-optimization", "octocode-debugging", "resume-external-harness"]) {
-			if (!existsSync(join(packageDir, `dist/octocode/native-skills/${skill}/SKILL.md`))) {
+			if (!existsSync(join(packageDir, `dist/octocode/native/skills/${skill}/SKILL.md`))) {
 				throw new Error(`Installed Octocode package is missing the bundled ${skill} skill`);
 			}
 		}

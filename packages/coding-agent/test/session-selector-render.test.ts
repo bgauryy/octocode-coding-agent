@@ -92,9 +92,8 @@ describe("session picker layout", () => {
 			return selector.render(120).map(plain);
 		})();
 		const out = (await lines).join("\n");
-		expect(out).toContain("Resume session (1 of 3)");
-		expect(out).toContain("◉ This folder ○ All");
-		expect(out).toContain("Sort: Recent");
+		expect((await lines)[1]).toBe(` Resume session${" ".repeat(84)}this folder · recent `);
+		expect(out).not.toMatch(/[◉○]|\(1 of 3\)/);
 		expect(out).toMatch(/Today[\s\S]*Task number 0/);
 		expect(out).toMatch(/This week|Yesterday/);
 		expect(out).toMatch(/Older[\s\S]*Task number 240/);
@@ -176,7 +175,7 @@ describe("session picker layout", () => {
 		expect(other).toBeGreaterThan(title);
 		expect(out[title + 1]).not.toContain("matched in transcript");
 		expect(out[other + 1]).toContain("matched in transcript");
-		expect(out.join("\n")).toContain("(1 of 2)");
+		expect(selector.getSessionList().getCounts()).toMatchObject({ position: 1, shown: 2 });
 	});
 
 	it("previews the selected session with space, and types a space once there is a query", async () => {

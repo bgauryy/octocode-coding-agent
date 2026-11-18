@@ -16,21 +16,43 @@ describe("an operator's flags in a child's arguments", () => {
 	it("adds nothing without them", () => {
 		const args = buildAgentArgs(undefined, undefined, SESSION);
 		expect(args).not.toContain("--no-mcp");
-		expect(excluded(args)).toEqual(["mcp__browser__*"]);
+		expect(excluded(args)).toEqual(["mcp__browser__*", "mcp__freellama__*"]);
 	});
 
 	it("carries --exclude-tools and --no-mcp, including what a profile may not remove", () => {
 		recordOperatorLimits({ excludeTools: ["bash", "file", "mcp__github__*"], noMcp: true });
 		const args = buildAgentArgs(undefined, undefined, SESSION);
 		expect(args).toContain("--no-mcp");
-		expect(excluded(args)).toEqual(["bash", "file", "mcp__github__*", "mcp__browser__*"]);
+		expect(excluded(args)).toEqual(["bash", "file", "mcp__github__*", "mcp__browser__*", "mcp__freellama__*"]);
 	});
 
 	it("keeps a profile's own excludes beside them", () => {
 		recordOperatorLimits({ excludeTools: ["bash"] });
 		const args = buildAgentArgs({ name: "p", excludeTools: "web" } as never, undefined, SESSION);
-		expect(excluded(args)).toEqual(["bash", "web", "mcp__browser__*"]);
+		expect(excluded(args)).toEqual(["bash", "web", "mcp__browser__*", "mcp__freellama__*"]);
 		expect(args).not.toContain("--no-mcp");
+	});
+});
+
+describe("the local-model server in a child's arguments", () => {
+	const profile = (tools: string) => ({ name: "p", tools }) as never;
+
+	it("stays with the main session: a child excludes it", () => {
+		expect(excluded(buildAgentArgs(undefined, undefined, SESSION))).toContain("mcp__freellama__*");
+	});
+
+	it("is kept by a profile that names it", () => {
+		const args = buildAgentArgs(profile("mcp__freellama__*"), undefined, SESSION);
+		expect(excluded(args)).not.toContain("mcp__freellama__*");
+	});
+
+	it("is kept when the task names the server", () => {
+		const args = buildAgentArgs(undefined, undefined, SESSION, [], undefined, ["freellama"]);
+		expect(excluded(args)).not.toContain("mcp__freellama__*");
+	});
+
+	it("is not selected by a broad mcp__* entry", () => {
+		expect(excluded(buildAgentArgs(profile("mcp__*"), undefined, SESSION))).toContain("mcp__freellama__*");
 	});
 });
 

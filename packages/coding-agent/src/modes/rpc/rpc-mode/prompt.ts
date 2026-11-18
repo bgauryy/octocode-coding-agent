@@ -6,7 +6,7 @@ import type { RpcCommand } from "../rpc-types.ts";
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";
 
-/** Ordinary RPC clients get acceptance; completion-aware clients also await extension-dispatched work. */
+/** Ordinary RPC clients get acceptance; completion-aware clients also await feature-dispatched work. */
 export function handlePrompt(
 	session: AgentSession,
 	command: Extract<RpcCommand, { type: "prompt" }>,

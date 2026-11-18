@@ -31,5 +31,5 @@ export function mcpServerSource(
 	short: (file: string) => string = (file) => file,
 ): string {
 	if (entry.scope === "default") return "built in";
-	return entry.scope === "extension" ? `plugin ${short(entry.source)}` : short(entry.source);
+	return entry.scope === "feature" ? `plugin ${short(entry.source)}` : short(entry.source);
 }

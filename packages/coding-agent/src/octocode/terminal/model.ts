@@ -1,16 +1,16 @@
 import type { NextCommandRequest } from "../../../../terminal/src/index.ts";
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
 const NONE = "NONE";
 /** A command fits in far fewer; the cap only stops a model that ignores the format. */
 const MAX_TOKENS = 128;
 
-/** The prompt for one suggestion (`instructions/workflows/shell-suggest.md`). */
+/** The prompt for one suggestion (`native/prompts/workflows/shell-suggest.md`). */
 export function suggestionPrompt(request: NextCommandRequest): string {
 	const strip = (text: string) => text.replaceAll("</", "<\\/");
-	return renderInstruction("workflows/shell-suggest.md", {
+	return renderPrompt("workflows/shell-suggest.md", {
 		none: NONE,
 		shell: request.shell,
 		platform: request.platform,
@@ -30,8 +30,8 @@ export function suggestionPrompt(request: NextCommandRequest): string {
  * model is available or the call fails.
  */
 export async function askSmallModel(
-	api: Pick<ExtensionAPI, "recordUsage">,
-	ctx: ExtensionContext,
+	api: SetupPick<"usage", "record">,
+	ctx: FeatureContext,
 	request: NextCommandRequest,
 	signal: AbortSignal,
 	complete?: CompleteSmall,
@@ -44,7 +44,7 @@ export async function askSmallModel(
 	});
 	if ("error" in reply) return undefined;
 	try {
-		api.recordUsage("shell_suggestion", reply.provider, reply.modelId, reply.usage);
+		api.usage.record("shell_suggestion", reply.provider, reply.modelId, reply.usage);
 	} catch {
 		// A session that cannot record usage still gets the suggestion.
 	}

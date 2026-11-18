@@ -130,7 +130,7 @@ describe("messages carried over a session switch", () => {
 			{ text: "carried follow", mode: "followUp", carried: true },
 		]),
 		session: { isCompacting, prompt: vi.fn().mockResolvedValue(undefined), followUp: vi.fn(), steer: vi.fn() },
-		isExtensionCommand: () => false,
+		isFeatureCommand: () => false,
 		showError: vi.fn(),
 		showStatus: vi.fn(),
 	});

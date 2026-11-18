@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generatedDir, serverGeneratedDir, writeGenerated } from "../../../mcp/src/compact/store.ts";
+import { serverGeneratedDir } from "../../../mcp/src/compact/store.ts";
 import { getNativeSkillsDir } from "../../src/config.ts";
-import type { ExtensionAPI } from "../../src/core/features/index.ts";
+import type { FeatureSetup } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { runContextCommand } from "../../src/octocode/context-optimization/command.ts";
@@ -127,7 +127,7 @@ describe("context optimization", () => {
 		const register = (isSubagent: boolean, cwd = project) => {
 			const handlers = new Map<string, Handler>();
 			registerSkillDescriptions(
-				{ on: (event: string, handler: Handler) => handlers.set(event, handler) } as unknown as ExtensionAPI,
+				{ bus: { on: (event: string, handler: Handler) => handlers.set(event, handler) } } as unknown as FeatureSetup,
 				{ isSubagent, agentDir: () => agentDir },
 			);
 			const notices: string[] = [];
@@ -188,7 +188,7 @@ describe("context optimization", () => {
 			const event = { systemPromptOptions: { skills: [userSkill(), projectSkill()] } };
 			const handlers = new Map<string, Handler>();
 			registerSkillDescriptions(
-				{ on: (name: string, handler: Handler) => handlers.set(name, handler) } as unknown as ExtensionAPI,
+				{ bus: { on: (name: string, handler: Handler) => handlers.set(name, handler) } } as unknown as FeatureSetup,
 				{ isSubagent: true, agentDir: () => agentDir },
 			);
 			await handlers.get("before_agent_start")?.(event, { cwd: project, hasUI: false, ui: {} });
@@ -280,59 +280,15 @@ describe("context optimization", () => {
 			expect(Object.keys(readSkillsStore(userDir).skills).sort()).toEqual(["gone", "live"]);
 		});
 
-		it("marks MCP records stale when no configured server has the name, and keeps the files", async () => {
-			const dir = generatedDir(agentDir);
-			for (const server of ["live", "gone"])
-				writeGenerated(dir, server, "text", {
-					hash: "h",
-					generatorVersion: 1,
-					generatedAt: "2026-01-01T00:00:00.000Z",
-				});
-			fs.writeFileSync(
-				path.join(agentDir, "mcp.json"),
-				JSON.stringify({ mcpServers: { live: { command: "live-server" } } }),
-			);
-			expect((await run("list")).out).toMatch(/mcp gone .*stale/);
-			expect((await run("list")).out).not.toMatch(/mcp live .*stale/);
-			const json = JSON.parse((await run("list", "--json")).out) as {
-				scopes: Array<{ scope: string; mcp: Array<{ server: string; stale: boolean }> }>;
-			};
-			const user = json.scopes.find((scope) => scope.scope === "user");
-			expect(user?.mcp.map((row) => [row.server, row.stale])).toEqual([
-				["gone", true],
-				["live", false],
-			]);
-			expect(
-				fs
-					.readdirSync(dir)
-					.filter((file) => file.endsWith(".json"))
-					.sort(),
-			).toEqual(["gone.json", "live.json"]);
-		});
-
-		it("check warns when a configured server's instructions or the context files pass 1% of the window, and cuts nothing", async () => {
+		it("check warns when the context files pass 1% of the window, and cuts nothing", async () => {
 			writeSkillsStore(
 				userDir,
 				syncSkills(readSkillsStore(userDir), [{ name: "a", description: "A long source", file: "/a" }]).store,
 			);
 			const file = path.join(root, "overrides.json");
 			fs.writeFileSync(file, JSON.stringify({ skills: { a: "A" } }));
-			const meta = { hash: "h", generatorVersion: 1, generatedAt: "2026-01-01T00:00:00.000Z" };
-			const dir = generatedDir(agentDir);
-			const generated = (instructions: string) =>
-				`/** ${instructions} */\ndeclare namespace s {\n/** ${"tool docs ".repeat(2_000)} */\nfunction t(): void;\n}\n`;
-			// Only the instructions count, not the typed functions after them; a record no server uses counts for nothing.
-			writeGenerated(dir, "long", generated("i".repeat(8_001)), meta);
-			writeGenerated(dir, "short", generated("i".repeat(8_000)), meta);
-			writeGenerated(dir, "gone", generated("i".repeat(9_000)), meta);
-			fs.writeFileSync(
-				path.join(agentDir, "mcp.json"),
-				JSON.stringify({ mcpServers: { long: { command: "x" }, short: { command: "y" } } }),
-			);
 			const quiet = await run("check", "--overrides", file);
 			expect(quiet.code).toBe(0);
-			expect(quiet.out).toContain("Warning: MCP server long instructions too long: 8001 chars, budget 8000");
-			expect(quiet.out).not.toMatch(/MCP server (short|gone)/);
 			expect(quiet.out).not.toContain("Context files too long");
 			expect(quiet.out).toContain("0 problems.");
 
@@ -352,19 +308,9 @@ describe("context optimization", () => {
 	});
 
 	describe("MCP files", () => {
-		it("moves the folder earlier releases used", () => {
-			const legacy = path.join(agentDir, "mcp-generated");
-			fs.mkdirSync(legacy, { recursive: true });
-			fs.writeFileSync(path.join(legacy, "server.json"), "{}");
-			const dir = generatedDir(agentDir);
-			expect(dir).toBe(path.join(userDir, "mcp"));
-			expect(fs.existsSync(path.join(dir, "server.json"))).toBe(true);
-			expect(fs.existsSync(legacy)).toBe(false);
-		});
-
 		it("keeps a workspace server's file in its project", () => {
 			expect(serverGeneratedDir(agentDir, project, "project")).toBe(path.join(projectDir, "mcp"));
-			for (const scope of ["global", "default", "extension", undefined])
+			for (const scope of ["global", "default", "feature", undefined])
 				expect(serverGeneratedDir(agentDir, project, scope)).toBe(path.join(userDir, "mcp"));
 		});
 	});

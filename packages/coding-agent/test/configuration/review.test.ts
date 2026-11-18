@@ -174,7 +174,7 @@ describe("a core skill the Octocode collection also ships", () => {
 			);
 			expect(listed).toHaveLength(2);
 			const loaded = listed.find((entry) => entry.id === "skill:octocode-debugging");
-			expect(loaded?.detail).toContain("native-skills");
+			expect(loaded?.detail).toContain("native/skills");
 			expect(loaded?.detail).not.toMatch(/^shadowed/);
 			const shadowed = listed.find((entry) => entry !== loaded);
 			expect(shadowed?.id).toMatch(/^skill:.*octocode-debugging[/\\]SKILL\.md$/);
@@ -187,7 +187,7 @@ describe("a core skill the Octocode collection also ships", () => {
 			);
 			// The pattern is relative to each skills folder, so it matches the collection copy too: the name is off.
 			expect(after.find((entry) => entry.id === "skill:octocode-debugging")).toMatchObject({ value: false });
-			expect(after.find((entry) => entry.id === "skill:octocode-debugging")?.detail).toContain("native-skills");
+			expect(after.find((entry) => entry.id === "skill:octocode-debugging")?.detail).toContain("native/skills");
 			expect(after.map((entry) => entry.value)).toEqual([false, false]);
 			expect(after.some((entry) => entry.detail?.startsWith("shadowed"))).toBe(false);
 		},
@@ -214,19 +214,6 @@ describe("project overrides cycle", () => {
 		expect(await value()).toBe(true);
 		expect(JSON.stringify(projectSettings())).not.toBe(off);
 		expect((await run("unset skill:cycler --local")).ok).toBe(true);
-		expect(await value()).toBe(true);
-	});
-
-	it("cycles the built-in llama.cpp extension: project off, on, inherit", async () => {
-		const value = async () =>
-			(await configuration(sandbox).list({ kinds: ["extension"] })).find((entry) => entry.id === "extension:llama.cpp")
-				?.value;
-		expect(await value()).toBe(true);
-		expect((await run("disable extension:llama.cpp --local")).ok).toBe(true);
-		expect(await value()).toBe(false);
-		expect((await run("enable extension:llama.cpp --local")).ok).toBe(true);
-		expect(await value()).toBe(true);
-		expect((await run("unset extension:llama.cpp --local")).ok).toBe(true);
 		expect(await value()).toBe(true);
 	});
 });

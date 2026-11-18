@@ -399,7 +399,7 @@ describe("session end with held wakes", () => {
 			return true;
 		});
 		try {
-			(s.fake.api as unknown as { sendMessage: () => never }).sendMessage = () => {
+			(s.fake.api.session as unknown as { sendMessage: () => never }).sendMessage = () => {
 				throw new Error("session is closed");
 			};
 			const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true }) as Promise<void>;
@@ -476,12 +476,12 @@ describe("woke row lines", () => {
 
 	it("takes a line back when its send throws, so the next run is not shown as woken by it", async () => {
 		const s = setup();
-		const send = s.fake.api.sendMessage;
-		(s.fake.api as unknown as { sendMessage: () => never }).sendMessage = () => {
+		const send = s.fake.api.session.sendMessage;
+		(s.fake.api.session as unknown as { sendMessage: () => never }).sendMessage = () => {
 			throw new Error("not ready");
 		};
 		expect(() => s.gate.emit(mail(1), msg, { triggerTurn: true })).toThrow("not ready");
-		(s.fake.api as unknown as { sendMessage: typeof send }).sendMessage = send;
+		(s.fake.api.session as unknown as { sendMessage: typeof send }).sendMessage = send;
 		await s.fake.emit("agent_start", {}, s.ctx);
 		expect(s.fake.entries).toHaveLength(0);
 	});
@@ -489,7 +489,7 @@ describe("woke row lines", () => {
 	it("takes a line back when its send is rejected, and keeps the line of a duplicate that was accepted", async () => {
 		const s = setup();
 		let reject: (error: Error) => void = () => undefined;
-		(s.fake.api as unknown as { sendMessage: () => Promise<void> }).sendMessage = () =>
+		(s.fake.api.session as unknown as { sendMessage: () => Promise<void> }).sendMessage = () =>
 			new Promise<void>((_resolve, fail) => {
 				reject = fail;
 			});
@@ -512,7 +512,7 @@ describe("woke row lines", () => {
 	it("takes a line back when a held send fails at release", async () => {
 		vi.useFakeTimers();
 		const s = setup({ subagents: { wakeHoldSeconds: 2 } });
-		(s.fake.api as unknown as { sendMessage: () => never }).sendMessage = () => {
+		(s.fake.api.session as unknown as { sendMessage: () => never }).sendMessage = () => {
 			throw new Error("closed");
 		};
 		const held = s.gate.emit(mail(3), msg, { triggerTurn: true }) as Promise<void>;

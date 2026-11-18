@@ -12,7 +12,6 @@ import {
 } from "./types.ts";
 
 const AUTO_KINDS: ReadonlyArray<readonly [ConfigKind, ResourceType]> = [
-	["extension", "extensions"],
 	["skill", "skills"],
 	["prompt", "prompts"],
 	["theme", "themes"],

@@ -97,7 +97,7 @@ async function probe(
 }
 
 describe("provider prompt cache through the real bundle", () => {
-	it("probe harness: the proxy records every request and the stop call changes the tool list (scripted)", async (ctx) => {
+	it("probe harness: the proxy records every request and a stopped server's tools are held to the next span (scripted)", async (ctx) => {
 		requireBundle(ctx);
 		const upstream = await gateway({
 			responder: script([
@@ -119,7 +119,10 @@ describe("provider prompt cache through the real bundle", () => {
 		expect(run.exitCode, run.stderr.slice(-2000)).toBe(0);
 		expect(requests).toHaveLength(4);
 		expect(requests[2].tools).toContain("mcp__docs__search");
-		expect(requests[3].tools).not.toContain("mcp__docs__search");
+		// openai-completions cannot change tools in place: the stopped server's tools stay declared (the model is told they
+		// are off) until the next span, so the cached tool prefix is unchanged.
+		expect(requests[3].tools).toContain("mcp__docs__search");
+		expect(requests[3].toolsHash).toBe(requests[2].toolsHash);
 	}, 120_000);
 
 	for (const target of TARGETS) {

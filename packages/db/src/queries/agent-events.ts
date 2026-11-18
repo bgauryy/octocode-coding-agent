@@ -157,6 +157,24 @@ export function get(db: DatabaseSync, workspace: string, id: string): EventRow |
 	return row ? decode(row) : undefined;
 }
 
+/**
+ * The newest `delete` event of each of `names`, in any workspace: the last row each agent that left the team recorded
+ * (`endData`). An agent that never left, or whose events were purged, has none.
+ */
+export function lastDeletes(db: DatabaseSync, names: readonly string[]): EventRow[] {
+	if (names.length === 0) return [];
+	const rows = db
+		.prepare(
+			`SELECT * FROM agent_events WHERE workspace_id IN (SELECT id FROM workspaces)
+			 AND name IN (${names.map(() => "?").join(", ")}) AND type = 'delete' ORDER BY seq DESC`,
+		)
+		.all(...names) as Row[];
+	const latest = new Map<string, EventRow>();
+	for (const event of rows.map(decode))
+		if (event.name !== null && !latest.has(event.name)) latest.set(event.name, event);
+	return [...latest.values()];
+}
+
 export function member(db: DatabaseSync, id: string): Row | undefined {
 	return db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
 }
@@ -203,6 +221,7 @@ function runData(db: DatabaseSync, row: Row, run: AgentRun | undefined): Record<
 		...(run ? { runId: run.runId } : {}),
 		...(run?.parentSessionId ? { parentSessionId: run.parentSessionId } : {}),
 		...(row.cwd ? { cwd: row.cwd } : {}),
+		...(row.tmux_pane ? { tmuxPane: row.tmux_pane } : {}),
 		...(row.branch ? { branch: row.branch } : {}),
 		...(row.process_title ? { processTitle: row.process_title } : {}),
 		...(row.mailbox === "pull" ? { mailbox: "pull" } : {}),

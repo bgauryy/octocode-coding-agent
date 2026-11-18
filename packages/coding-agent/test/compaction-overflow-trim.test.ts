@@ -3,7 +3,10 @@ import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
 import { generateSummaryWithUsage, generateTurnPrefixSummary } from "../src/core/compaction/index.ts";
 import { SUMMARY_MAX_OUTPUT_TOKENS } from "../src/core/compaction/settings.ts";
-import { instructionSource } from "../src/core/prompt-template.ts";
+import { promptSource } from "../src/core/prompt-template.ts";
+
+/** The part of the dropped-messages note after its count, read from the template. */
+const DROPPED_NOTE = promptSource("workflows/compaction/dropped-messages.md").split("{{dropped}}")[1].split("\n")[0];
 
 const model = {
 	id: "m",
@@ -99,12 +102,12 @@ describe("summarization retries on context overflow", () => {
 		expect(prompts[2]).not.toContain("OLDEST");
 		expect(prompts[2]).toContain("<previous-summary>\\nOLDER-SUMMARY\\n</previous-summary>");
 		// The update prompt, not the first-summary one: its opening line, read from its template.
-		expect(prompts[2]).toContain(instructionSource("workflows/compaction/summarize-update.md").split("\n")[0]);
+		expect(prompts[2]).toContain(promptSource("workflows/compaction/summarize-update.md").split("\n")[0]);
 		expect(prompts[2]).not.toContain("PREVIOUS-SUMMARY");
 		// Every message reached the summarizer in one of the two parts, and nothing was left out.
 		for (const text of ["OLDEST", "second", "third", "fourth", "NEWEST"])
 			expect(prompts.slice(1).filter((prompt) => prompt.includes(text))).toHaveLength(1);
-		for (const prompt of prompts) expect(prompt).not.toContain("did not fit this request");
+		for (const prompt of prompts) expect(prompt).not.toContain(DROPPED_NOTE);
 	});
 
 	it("starts a first summary from the older part when the conversation had none", async () => {
@@ -164,9 +167,9 @@ describe("summarization retries on context overflow", () => {
 		expect(prompts[1]).toContain("OLDEST");
 		expect(prompts[2]).not.toContain("OLDEST");
 		expect(prompts[2]).toContain("PREVIOUS-SUMMARY");
-		expect(prompts[2]).toContain("oldest messages of this conversation did not fit this request");
+		expect(prompts[2]).toContain(DROPPED_NOTE);
 		expect(prompts[3]).toContain("NEWEST");
-		expect(prompts[3]).not.toContain("did not fit this request");
+		expect(prompts[3]).not.toContain(DROPPED_NOTE);
 	});
 
 	it("gives up after three trims of the older part and reports the overflow", async () => {

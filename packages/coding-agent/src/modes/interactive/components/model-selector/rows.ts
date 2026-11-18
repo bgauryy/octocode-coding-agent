@@ -1,62 +1,41 @@
-import { GLYPH, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
-import { windowList } from "../../../../theme/page-kit.ts";
+import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
 import type { ModelItem } from "./model-items.ts";
 import { plainText } from "../styled-line.ts";
+import { cursorMark } from "../../../../theme/theme-tui-helpers.ts";
 
 /** A model row's provider badge: the provider and, when known, its kind, as in `[openai · subscription]`. */
 export const providerBadge = (provider: string, kind?: string): string =>
 	`[${kind ? `${provider} · ${kind}` : provider}]`;
 
 /** What a model row marks beside its id. */
-interface ModelRowState {
-	selected: boolean;
+export interface ModelRowMarks {
 	current: boolean;
 	isDefault: boolean;
 	kind?: string;
 }
 
-/** One row of the model selector: cursor, current mark, the id, its provider badge and the default mark. */
-function modelRow(id: string, state: ModelRowState, width: number): string {
-	const cursor = state.selected ? theme.fg("accent", `${GLYPH.cursor} `) : "  ";
+/** One row of the model selector: cursor, current mark, the id and the default mark. */
+function modelRow(id: string, state: ModelRowMarks & { selected: boolean }, width: number): string {
+	const cursor = cursorMark(state.selected);
 	const currentMarker = state.current ? theme.fg("accent", "✓ ") : "  ";
 	const defaultBadge = state.isDefault ? theme.fg("accent", " · default") : "";
 	const label = truncateToWidth(plainText(id), Math.max(0, width - 4 - visibleWidth(defaultBadge)), "…");
-	const modelText = state.selected ? theme.fg("accent", label) : label;
+	const modelText = state.selected ? theme.fg("accent", theme.bold(label)) : label;
 	return truncateToWidth(`${cursor}${currentMarker}${modelText}${defaultBadge}`, width, "…");
 }
 
 /**
- * The visible window of the list around the selection: a provider heading where the provider changes, one row per
- * model (`mark` says what each row marks), and the position when the list scrolls.
+ * A model's lines in the list: the provider heading (indent 1) when `heading` says the provider starts here or the
+ * window starts on this row, then the model row. The row draws its own `› ` cursor so the heading never takes it.
  */
-export function modelListLines(
-	items: readonly ModelItem[],
-	selectedIndex: number,
-	mark: (item: ModelItem) => Omit<ModelRowState, "selected">,
-	maxVisible = 4,
-	width = 120,
+export function modelRowLines(
+	item: ModelItem,
+	state: { selected: boolean; width: number; heading: boolean },
+	marks: ModelRowMarks,
 ): string[] {
-	const { start, end } = windowList(items.length, selectedIndex, maxVisible);
-	const lines: string[] = [];
-	for (let i = start; i < end; i++) {
-		const item = items[i];
-		if (i === start || items[i - 1].provider !== item.provider) {
-			const state = mark(item);
-			lines.push(
-				truncateToWidth(
-					theme.fg(
-						"accent",
-						theme.bold(`${plainText(item.provider)}${state.kind ? ` · ${plainText(state.kind)}` : ""}`),
-					),
-					width,
-					"…",
-				),
-			);
-		}
-		lines.push(modelRow(item.id, { ...mark(item), selected: i === selectedIndex }, width));
-	}
-	if (start > 0 || end < items.length)
-		lines.push(truncateToWidth(theme.fg("muted", `  (${selectedIndex + 1}/${items.length})`), width, ""));
-	return lines;
+	const row = modelRow(item.id, { ...marks, selected: state.selected }, state.width);
+	if (!state.heading) return [row];
+	const title = `${plainText(item.provider)}${marks.kind ? ` · ${plainText(marks.kind)}` : ""}`;
+	return [truncateToWidth(` ${theme.fg("accent", theme.bold(title))}`, state.width, "…"), row];
 }

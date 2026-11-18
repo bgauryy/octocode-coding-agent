@@ -5,7 +5,7 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { contentText, type Message } from "@octocodeai/octocode-ai";
 import { convertToLlm } from "../messages.ts";
-import { renderInstruction } from "../prompt-template.ts";
+import { renderPrompt } from "../prompt-template.ts";
 
 // File Operation Tracking
 // ============================================================================
@@ -146,7 +146,7 @@ const LATER_LINE = /(\r\n|[\n\v\f\r\u001c-\u001e\u2028\u2029\u0085])(?=[^\n\v\f\
 
 /**
  * Serialize session messages for a summarizer: as `serializeConversation` after `convertToLlm`, except that a custom
- * message (an extension's note or an external message) is labeled with its type, never as the user's, and every later
+ * message (a feature's note or an external message) is labeled with its type, never as the user's, and every later
  * non-empty line of its body is indented, so a role label inside it (`[User]:`, `[Assistant]:`) never starts a line.
  * Every line terminator counts (CRLF, LF, CR, U+2028, U+2029, U+0085), since a model may read any of them as a break.
  * Text that came from outside the conversation must not read to the summarizer as the user's own words.
@@ -165,5 +165,5 @@ export function serializeMessages(messages: AgentMessage[]): string {
 // Summarization System Prompt
 // ============================================================================
 
-/** The summarizer's system prompt (`octocode/instructions/workflows/summarization.md`). */
-export const SUMMARIZATION_SYSTEM_PROMPT = renderInstruction("workflows/summarization.md");
+/** The summarizer's system prompt (`octocode/native/prompts/workflows/summarization.md`). */
+export const SUMMARIZATION_SYSTEM_PROMPT = renderPrompt("workflows/summarization.md");

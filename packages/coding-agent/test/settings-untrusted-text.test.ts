@@ -1,16 +1,15 @@
 import type { Model } from "@octocodeai/octocode-ai";
 import { setKeybindings } from "@octocodeai/octocode-tui";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { AgentSession } from "../src/core/agent-session.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
-import { coordinatorFooterLines } from "../src/modes/interactive/components/footer-coordinator.ts";
 import { ScopedModelsSelectorComponent } from "../src/modes/interactive/components/scoped-models-selector.ts";
 import {
 	type SettingsCallbacks,
 	type SettingsConfig,
 	SettingsSelectorComponent,
 } from "../src/modes/interactive/components/settings-selector.ts";
-import { initTheme } from "../src/theme/theme.ts";
+import { footerLines } from "../src/octocode/ui/footer/rows.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
 
 // Model ids, names and refresh errors come from vendor model lists and the remote catalog (network text): a clipboard
 // write (OSC 52), a screen clear written with ESC and with the one-byte C1 CSI, a title change and a bidi override.
@@ -67,16 +66,13 @@ describe("model settings views drawing network text", () => {
 		expect(unsafe(lines)).toEqual([]);
 	});
 
-	it("the coordinator footer draws the selected and routed model without terminal controls", () => {
-		const session = {
-			state: { model: model(`id${HOSTILE}`, `prov${HOSTILE}`, "n"), thinkingLevel: "off" },
-			routedModel: { model: model(`routed${HOSTILE}`, `rprov${HOSTILE}`, "r"), thinkingLevel: "low" },
-			modelRuntime: { getProviderKind: () => "API key" },
-		} as unknown as AgentSession;
+	it("the footer draws the model and its effort without terminal controls", () => {
+		const usage = { input: 0, output: 0, cacheRead: 0, cost: 0, unpriced: false };
+		const state = { usage, cwd: "/tmp", model: `id${HOSTILE}`, thinking: `low${HOSTILE}` };
 		for (const width of [200, 40]) {
-			const lines = coordinatorFooterLines(session, width);
+			const lines = footerLines(state, null, new Map(), theme, width);
 			expect(unsafe(lines)).toEqual([]);
-			expect(lines.join("\n")).toContain("Latest route");
+			expect(lines.join("\n")).toContain("id");
 		}
 	});
 });

@@ -1,5 +1,5 @@
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { hintText, interruptKey } from "../../theme/theme-tui-helpers.ts";
 import { rewritePrompt } from "./rewrite.ts";
@@ -16,7 +16,7 @@ const CANCEL = "Cancel";
 
 /** What the helper call came to: the rewrite, or why there is none (`Esc` skipped it, it timed out, or it failed). */
 async function requestRewrite(
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	prompt: string,
 ): Promise<{ text: string; model: string } | { error: string }> {
 	const skip = new AbortController();
@@ -50,7 +50,7 @@ async function requestRewrite(
  * edit of it, or the original. A helper that fails or is skipped is reported and the original offered. Undefined when the
  * user dismisses a dialog or cancels: nothing is sent, and the caller keeps the prompt.
  */
-export async function reviewPrompt(ctx: ExtensionContext, prompt: string): Promise<string | undefined> {
+export async function reviewPrompt(ctx: FeatureContext, prompt: string): Promise<string | undefined> {
 	const result = await requestRewrite(ctx, prompt);
 	if ("error" in result) {
 		const choice = await ctx.ui.select(

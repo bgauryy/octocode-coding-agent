@@ -14,7 +14,7 @@ import {
 } from "../../src/octocode/team/peer-leases.ts";
 import { PEER_REGISTRY_GRACE_MS, PEER_REGISTRY_VERSION, PeerRegistry } from "../../src/octocode/team/peer-registry.ts";
 import { Team } from "../../src/octocode/team/session.ts";
-import { registerCollab } from "../../src/octocode/team/tools.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 

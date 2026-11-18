@@ -21,8 +21,8 @@ describe("CLI value completion", () => {
 		expect(completeCli(["--exclude-tools", "file,bro"])).toEqual([]);
 	});
 	it("follows nested commands and does not suggest flags in free text or after --", () => {
-		// docs/mcp-reference.md: `/mcp exposure <server> <direct|deferred|hidden>`.
-		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "deferred", "hidden"]);
+		// docs/mcp-reference.md: `/mcp exposure <server> <direct|deferred|onDemand|hidden>`.
+		expect(completeCli(["mcp", "exposure", "server", ""])).toEqual(["direct", "deferred", "onDemand", "hidden"]);
 		expect(completeCli(["auth", ""])).toContain("check");
 		expect(completeCli(["models", ""])).toContain("discover");
 		expect(completeCli(["--api-key", ""])).toEqual([]);

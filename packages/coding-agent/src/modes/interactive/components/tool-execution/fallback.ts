@@ -1,10 +1,12 @@
-import { type Component, Container, Text } from "@octocodeai/octocode-tui";
+import { Box, type Component } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import type { ToolRenderContext } from "../../../../core/features/types.ts";
+import { resultBlock } from "../../../../octocode/render/tool.ts";
+import { outputLanguage } from "../../../../theme/output-style.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { colorToolOutput } from "../../../../theme/output-style.ts";
-import { foldHint, TOOL_PREVIEW_LINES } from "../../../../theme/theme-tui-helpers.ts";
+import { genericCall } from "./generic.ts";
 
-/** One line naming a renderer failure. Extension renderers are untrusted: the text is sanitized and kept to its first line. */
+/** One line naming a renderer failure. Feature renderers are untrusted: the text is sanitized and kept to its first line. */
 function rendererError(error: unknown): string {
 	let text: string;
 	try {
@@ -15,71 +17,48 @@ function rendererError(error: unknown): string {
 	return (sanitizeTerminalText(text).split("\n")[0] ?? "").trim().slice(0, 200) || "unknown error";
 }
 
+/** The generic header of a tool whose definition draws no call, or whose call renderer threw (named in a sub-line). */
+export function callFallback(toolName: string, args: unknown, context: ToolRenderContext, error?: unknown): Component {
+	const note = error === undefined ? [] : [theme.fg("warning", `Call renderer failed: ${rendererError(error)}`)];
+	return genericCall(toolName, args, theme, context, note);
+}
+
+/** The plain `⎿` result of a tool whose definition draws no result; undefined when it has no output. */
+export function resultFallback(output: string, context: ToolRenderContext): Component | undefined {
+	if (!output) return undefined;
+	const language = context.isError ? undefined : outputLanguage(output);
+	return resultBlock(theme, context, {
+		summary: "",
+		body: output,
+		expanded: context.expanded,
+		...(language ? { language } : {}),
+	});
+}
+
 /**
- * The plain fallback of a renderer slot that threw, followed by a warning that names the error, so a broken renderer
- * degrades visibly instead of silently.
+ * The result of a row whose renderer threw: a failed `⎿` outcome naming the error, then the plain output, so a broken
+ * renderer degrades visibly instead of silently. `label` names what failed (`Result`, or the tool).
  */
-export function rendererFailure(
-	slot: "renderCall" | "renderResult",
-	error: unknown,
-	fallback: Component | undefined,
-): Component {
-	const container = new Container();
-	if (fallback) container.addChild(fallback);
-	container.addChild(
-		new Text(
-			theme.fg("warning", `${slot === "renderCall" ? "Call" : "Result"} renderer failed: ${rendererError(error)}`),
-			0,
-			0,
-		),
-	);
-	return container;
+export function rendererFailure(label: string, error: unknown, output: string, context: ToolRenderContext): Component {
+	return resultBlock(theme, context, {
+		summary: `${label} renderer failed: ${rendererError(error)}${output ? " · showing plain output" : ""}`,
+		body: output,
+		error: true,
+		stopped: false,
+		expanded: context.expanded,
+	});
 }
 
-/** Plain-text result preview for tools whose definition has no result renderer, or whose renderer threw. */
-export function createResultFallback(output: string, expanded: boolean): Component | undefined {
-	if (!output) {
-		return undefined;
-	}
-
-	const clean = sanitizeTerminalText(output);
-	const lines = clean.split("\n");
-	const displayLines = expanded ? lines : lines.slice(0, TOOL_PREVIEW_LINES);
-	const remaining = lines.length - displayLines.length;
-	// Diffs, JSON and key lines come coloured, the folded rest plain (`colorToolOutput`); anything else is flat.
-	let text =
-		colorToolOutput(theme, clean, { expanded, previewLines: TOOL_PREVIEW_LINES })
-			?.split("\n")
-			.slice(0, displayLines.length)
-			.join("\n") ?? displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
-	if (remaining > 0) {
-		text += `\n${foldHint(remaining)}`;
-	}
-	return new Text(text, 0, 0);
-}
-
-/** A row whose components threw while drawing: a notice naming the error above the generic display. */
-export function rendererFailureText(
+/** A row whose components threw while drawing: the generic header and the failure outcome, padded like a tool row. */
+export function rendererFailureRow(
 	error: unknown,
 	toolName: string,
-	args: unknown,
+	context: ToolRenderContext,
 	output: string,
-	expanded: boolean,
-): string {
-	return `${theme.fg("warning", `${toolName} renderer failed: ${rendererError(error)}`)}\n${formatToolExecution(toolName, args, output, expanded)}`;
-}
-
-/** Generic display for a tool with no renderer definition: title, JSON arguments and text output. */
-function formatToolExecution(toolName: string, args: unknown, output: string, expanded = false): string {
-	let text = theme.fg("toolTitle", theme.bold(sanitizeTerminalText(toolName)));
-	const content = JSON.stringify(args, null, 2);
-	if (content) {
-		text += `\n\n${sanitizeTerminalText(content)}`;
-	}
-	if (output) {
-		const lines = sanitizeTerminalText(output).split("\n");
-		text += `\n${(expanded ? lines : lines.slice(0, TOOL_PREVIEW_LINES)).join("\n")}`;
-		if (!expanded && lines.length > TOOL_PREVIEW_LINES) text += `\n${foldHint(lines.length - TOOL_PREVIEW_LINES)}`;
-	}
-	return text;
+	pad: number,
+): Component {
+	const box = new Box(pad, 0);
+	box.addChild(callFallback(toolName, context.args, { ...context, lastComponent: undefined }));
+	box.addChild(rendererFailure(toolName, error, output, { ...context, lastComponent: undefined }));
+	return box;
 }

@@ -1,9 +1,12 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { formatCost } from "../shared/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
-import { agentEvents, backlog, dbStamp, timers, type TimerRow } from "../../../../db/src/api.ts";
+import { backlog, dbStamp, timers, type TimerRow } from "../../../../db/src/api.ts";
+import { BACKLOG_CHANGE_CHANNEL, type BacklogChange, type BacklogChangeNotice } from "../shared/backlog-change.ts";
+import { backlogDeps } from "./backlog-deps.ts";
+import { peerEnd } from "./peer-end.ts";
 import { getAgentDir } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { say } from "../shared/commands.ts";
@@ -15,12 +18,17 @@ import { conditionChecker, conditionWatcher } from "./condition.ts";
 import type { ConditionDeps } from "./conditions/types.ts";
 import { CHECK_CAPS, Judge, type SmallModel } from "./judge.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
+import { cronCommand, loopCommand } from "./cron-command.ts";
+import { cronOf } from "./cron.ts";
+import { cronOverspend, cronSettings, sessionCostUsd } from "./cron-guard.ts";
 import { wakeDetails, wakeEvent, wakeText } from "./model.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import type { Subcommands } from "../shared/commands.ts";
 import { wakeGateOf } from "../wake/gate.ts";
 import { renderTimerMessage } from "./render.ts";
 import { timerWorkRows } from "./work.ts";
 import { TimerScheduler } from "./scheduler.ts";
-import { timerTool } from "./tool.ts";
+import { timerTool } from "../native/tools/wait/tool.ts";
 
 /** `timer.check.enabled` from the global settings; unreadable settings keep it off. */
 function checkEnabledSetting(agentDir: string = getAgentDir()): boolean {
@@ -50,6 +58,10 @@ export interface TimerOptions {
 	agentDir?: string;
 	/** The route of a `check`'s judging model (`subagents/`'s `small` purpose); without it a `check` cannot be set. */
 	small?: SmallModel;
+	/** A subagent may not set a cron schedule: it ends with its report. */
+	isSubagent?: boolean;
+	/** Where `/cron` and `/loop` register; without it neither exists (a session that owns no command line). */
+	commands?: Subcommands;
 }
 
 const itemSeq = (ref: string) => {
@@ -63,15 +75,22 @@ const itemSeq = (ref: string) => {
  * and leaves them active at shutdown for a resumed session. `settle()` lets a headless run's hold wait for the next wake
  * of a timer this run set; timers from an earlier run never hold an exit.
  */
-export function registerTimers(api: ExtensionAPI, options: TimerOptions): { settle(): Promise<unknown> } {
+export function registerTimers(
+	api: FeatureSetup,
+	options: TimerOptions,
+): { settle(): Promise<unknown>; endOwn(): number } {
 	const env = options.env ?? process.env;
 	const now = options.now ?? Date.now;
 	const db = () => sharedAgentDb(env);
-	let current: ExtensionContext | undefined;
+	let current: FeatureContext | undefined;
 	let scheduler: TimerScheduler | undefined;
 	/** The user said yes to judging once this session, with `timer.check.enabled` off. */
 	let approved = false;
 	let approvalGeneration = 0;
+	/** The user said yes to scheduled tasks once this session, with `timer.cron.enabled` off. */
+	let cronApproved = false;
+	/** Cron timers whose last run was sent and may still be queued or running: while the session is busy, a second due run of the same timer is not queued behind it. */
+	const queuedRuns = new Set<number>();
 	/** Read from the global settings only, as `bash.inheritProviderKeys` is: a project file must not start paid calls. */
 	const checkAllowed = () => approved || checkEnabledSetting(options.agentDir);
 	const follower = new DatabaseFollower(() => dbStamp(db().file));
@@ -83,9 +102,28 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		sessionSpend: (sessionId) => timers.sessionSpend(db().db, sessionId),
 		allowed: checkAllowed,
 		small,
-		recordUsage: (kind, provider, model, usage) => api.recordUsage(kind, provider, model, usage),
+		recordUsage: (kind, provider, model, usage) => api.usage.record(kind, provider, model, usage),
 	});
+	// The main session's backlog feed announces every audited change here; a subagent runs no feed and polls the file instead.
+	const changeListeners = new Set<(change: BacklogChange) => void>();
+	if (!options.isSubagent)
+		api.channels.on(BACKLOG_CHANGE_CHANNEL, (value) => {
+			for (const listener of changeListeners) listener((value as BacklogChangeNotice).change);
+		});
 	const deps: ConditionDeps = {
+		backlog: backlogDeps({
+			db,
+			workspace,
+			own: (by) => by === current?.sessionManager.getSessionId() || by === options.agent(),
+			...(options.isSubagent
+				? {}
+				: {
+						subscribe: (listener) => {
+							changeListeners.add(listener);
+							return () => changeListeners.delete(listener);
+						},
+					}),
+		}),
 		reservation: options.reservation,
 		context: () => current,
 		item(ref) {
@@ -97,33 +135,22 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			const seq = itemSeq(ref);
 			return seq === undefined ? undefined : backlog.openPrerequisites(db().db, workspace(), seq);
 		},
-		agentEnd(name) {
-			const [event] = agentEvents.list(db().db, workspace(), Number.MAX_SAFE_INTEGER, 1, {
-				agentId: name,
-				eventType: "delete",
-			});
-			if (!event) return undefined;
-			const { reason, detail } = event.data;
-			return {
-				reason: typeof reason === "string" ? reason : "ended",
-				...(typeof detail === "string" ? { detail } : {}),
-			};
-		},
+		agentEnd: (name) => peerEnd(db().db, workspace(), name),
 		watchDatabase: (poke) => follower.subscribe(poke),
 		judge: (request) => judge.judge(request),
 	};
 	const check = conditionChecker(deps);
 	const watch = conditionWatcher(deps);
 	/** What `set` must settle before a `check` wait starts: the setting or the user's first-use answer, and a cheaper model. */
-	const checkRefusal = async (ctx: ExtensionContext): Promise<string | undefined> => {
+	const checkRefusal = async (ctx: FeatureContext): Promise<string | undefined> => {
 		if (!checkAllowed()) {
 			const generation = approvalGeneration;
 			if (!ctx.hasUI)
 				return "check spends money on a small model and is off: set timer.check.enabled to true, or use a deterministic event.";
 			const caps = `at most ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session`;
 			const yes = await ctx.ui.confirm(
-				"Let waits ask a small model?",
-				`A wait with check calls a cheaper model to judge a condition, ${caps}. Allow for this session?`,
+				"Allow paid judging for waits?",
+				`A wait with check pays a cheaper model to judge its question once the event holds, ${caps}. Allow for this session?`,
 			);
 			if (generation !== approvalGeneration)
 				return "The session changed while awaiting judging approval. Nothing was set.";
@@ -132,7 +159,41 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		}
 		return small.label(ctx) ? undefined : "check needs a cheaper model than this session's, and none is available.";
 	};
-	const warn = (ctx: ExtensionContext | undefined, text: string) => {
+	/** What `set` with cron must settle first: subagents and screenless sessions are refused, and the user confirms once per session. */
+	const cronRefusal = async (ctx: FeatureContext, schedule: string, firstRun: number): Promise<string | undefined> => {
+		if (options.isSubagent) return renderPrompt("notices/timer/cron-subagent.md");
+		const settings = cronSettings(options.agentDir);
+		if (settings.enabled || cronApproved) return undefined;
+		if (!ctx.hasUI) return renderPrompt("notices/timer/cron-headless.md");
+		const generation = approvalGeneration;
+		const yes = await ctx.ui.confirm(
+			"Allow scheduled tasks?",
+			`The agent wants to run a prompt on a schedule (cron ${schedule}, first run ${new Date(firstRun).toLocaleString()}). Each run is a model turn with nobody watching, once this session is idle, for at most 20 runs or 7 days, and stops past $${settings.maxUsd.toFixed(2)} of spending in this session. Allow scheduled tasks for this session?`,
+		);
+		if (generation !== approvalGeneration) return renderPrompt("notices/timer/cron-changed.md");
+		if (!yes) return renderPrompt("notices/timer/cron-declined.md");
+		cronApproved = true;
+		return undefined;
+	};
+	const sessionUsd = (ctx: Pick<FeatureContext, "sessionManager">) => sessionCostUsd(ctx.sessionManager.getEntries());
+	/** Why a due cron timer ends instead of running: the session spent more than its cap since the first cron timer. */
+	const cronStop = (row: TimerRow): string | undefined => {
+		if (!current) return undefined;
+		const settings = cronSettings(options.agentDir);
+		const rows = timers.forSession(db().db, row.session_id, true).filter((each) => cronOf(each));
+		const spent = cronOverspend(rows, sessionUsd(current), settings.maxUsd);
+		if (spent === undefined) return undefined;
+		warn(
+			current,
+			renderPrompt("notices/timer/cron-budget.md", {
+				id: row.id,
+				spent: spent.toFixed(2),
+				cap: settings.maxUsd.toFixed(2),
+			}),
+		);
+		return "budget";
+	};
+	const warn = (ctx: FeatureContext | undefined, text: string) => {
 		try {
 			if (ctx) say(ctx, text, "warning");
 		} catch {
@@ -141,13 +202,23 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 	};
 	const wake = (row: TimerRow) => {
 		const context = current;
-		const failed = (error: unknown) =>
+		// A cron run is a standalone prompt: it waits for the session to be idle (followUp) instead of joining a turn (steer).
+		const cron = cronOf(row) !== undefined;
+		if (cron) {
+			// An idle session has nothing queued ahead of this run; a busy one that still holds the timer's previous run takes no second.
+			if (context?.isIdle()) queuedRuns.delete(row.id);
+			else if (queuedRuns.has(row.id)) return;
+			queuedRuns.add(row.id);
+		}
+		const failed = (error: unknown) => {
+			queuedRuns.delete(row.id);
 			warn(context, `Wait ${row.id} could not wake this session: ${errorMessage(error)}`);
+		};
 		try {
 			const sending = wakeGateOf(api).emit(
 				wakeEvent(row),
 				{ customType: TIMER_TYPE, content: wakeText(row), display: true, details: wakeDetails(row) },
-				{ triggerTurn: true, deliverAs: "steer" },
+				{ triggerTurn: true, deliverAs: cron ? "followUp" : "steer" },
 			);
 			if (sending && typeof sending.then === "function") void Promise.resolve(sending).catch(failed);
 		} catch (error) {
@@ -171,7 +242,7 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			// The session was replaced.
 		}
 	};
-	const refresh = (ctx?: ExtensionContext) => {
+	const refresh = (ctx?: FeatureContext) => {
 		try {
 			scheduler?.refresh();
 		} catch (error) {
@@ -179,10 +250,12 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 		}
 	};
 
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		scheduler?.stop();
 		approvalGeneration++;
 		approved = false;
+		cronApproved = false;
+		queuedRuns.clear();
 		current = ctx;
 		const sessionId = ctx.sessionManager.getSessionId();
 		// Waits whose deadline passed while their session was not running can no longer be met in time: end them now, not at a later session's check.
@@ -200,22 +273,33 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 			wrote: () => follower.rebase(),
 			forget: (id) => judge.forget(id),
 			wake,
+			cronStop,
+			cronEvent: (event) => {
+				if (event.kind === "skipped")
+					warn(
+						current,
+						renderPrompt("notices/timer/cron-skipped.md", {
+							id: event.row.id,
+							next: new Date(event.next).toLocaleString(),
+						}),
+					);
+			},
 			changed: showTimers,
 			failed: (error) => warn(current, `A wait pass failed: ${errorMessage(error)}`),
 		});
 		refresh(ctx);
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		approvalGeneration++;
 		work.set("timer", []);
 		scheduler?.stop();
 		scheduler = undefined;
 		current = undefined;
 	});
-	api.registerMessageRenderer(TIMER_TYPE, (message, { expanded, outputPad }, theme) =>
+	api.renderers.message(TIMER_TYPE, (message, { expanded, outputPad }, theme) =>
 		renderTimerMessage(message.details, contentText(message.content), expanded, theme, outputPad ?? 1),
 	);
-	api.registerTool(
+	api.tools.register(
 		timerTool({
 			db,
 			workspaceId: (ctx) => registeredWorkspace(ctx.cwd, db()).id,
@@ -231,11 +315,42 @@ export function registerTimers(api: ExtensionAPI, options: TimerOptions): { sett
 				].join("; ");
 			},
 			checkRefusal,
+			cronRefusal,
+			cronCap: () => cronSettings(options.agentDir).maxUsd,
+			sessionUsd: (ctx) => sessionUsd(ctx),
 			changed: (ctx, set) => {
 				if (set) scheduler?.hold(set.id);
 				refresh(ctx);
 			},
 		}),
 	);
-	return { settle: () => scheduler?.settle() ?? Promise.resolve() };
+	const commandHost = {
+		db,
+		workspaceId: (ctx: { cwd: string }) => registeredWorkspace(ctx.cwd, db()).id,
+		agent: options.agent,
+		now,
+		sessionUsd,
+		cap: () => cronSettings(options.agentDir).maxUsd,
+		changed: (ctx: FeatureContext, row?: TimerRow) => {
+			if (row) scheduler?.hold(row.id);
+			refresh(ctx);
+		},
+	};
+	if (options.commands && !options.isSubagent) {
+		options.commands.add("cron", cronCommand(commandHost));
+		options.commands.add("loop", loopCommand(commandHost));
+	}
+	return {
+		settle: () => scheduler?.settle() ?? Promise.resolve(),
+		/** Cancels every active wait of this session (a subagent that reported needs none) and releases the run's hold; returns how many. */
+		endOwn() {
+			const sessionId = current?.sessionManager.getSessionId();
+			if (!sessionId) return 0;
+			const ended = timers.cancelAll(db().db, sessionId, now());
+			if (ended.length === 0) return 0;
+			for (const row of ended) judge.forget(row.id);
+			refresh();
+			return ended.length;
+		},
+	};
 }

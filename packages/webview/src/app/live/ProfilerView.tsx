@@ -7,6 +7,7 @@ import { Drawer } from "./profiler/Drawer.tsx";
 import { CachePanel } from "./profiler/CachePanel.tsx";
 import type { Evidence } from "./profiler/insight-model.ts";
 import { InsightsPanel } from "./profiler/InsightsPanel.tsx";
+import { messageCursor } from "./profiler/message-model.ts";
 import { MessagesPanel } from "./profiler/MessagesPanel.tsx";
 import { type Navigate, OverviewPanel } from "./profiler/OverviewPanel.tsx";
 import type { PanelProps } from "./profiler/panel-props.ts";
@@ -31,6 +32,8 @@ function panelOf(value: string | undefined): PanelName {
 	return PANELS.find((panel) => panel.name === name)?.name ?? "overview";
 }
 const DRAWER_DEFAULT = 380;
+/** Team messages each "load older" adds. */
+const OLDER_PAGE = 30;
 const TAB_KEYS = ["ArrowRight", "ArrowLeft", "Home", "End"];
 
 /**
@@ -43,6 +46,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 	const [error, setError] = useState<string>();
 	const [loaded, setLoaded] = useState(false);
 	const [reload, setReload] = useState(0);
+	const [olderLoading, setOlderLoading] = useState(false);
 	const [drawerWidth, setDrawerWidth] = useState(DRAWER_DEFAULT);
 	/** The finding last opened from Insights: the Trace rings all of its evidence. */
 	const [evidence, setEvidence] = useState<readonly Evidence[]>();
@@ -109,6 +113,19 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 		return () => controller.abort();
 	}, [api, nextId, nextCount, nextMore]);
 
+	// The next page of messages from the cursor the last one returned; the first page starts below the live list's oldest message.
+	const loadOlder = () => {
+		const { older } = latest.current;
+		const first = (latest.current.timeline?.messages ?? []).filter((item) => !item.internal)[0];
+		const before = older.loaded ? older.next : first && messageCursor(first);
+		setOlderLoading(true);
+		api
+			.profilerMessages(OLDER_PAGE, before)
+			.then((value) => dispatch({ type: "older", value }))
+			.catch((reason: unknown) => setError(errorMessage(reason)))
+			.finally(() => setOlderLoading(false));
+	};
+
 	const agents = useMemo(() => agentTree(core.agents).map((row) => row.agent), [core.agents]);
 	const requests = useMemo(() => sessionRequestMap(session), [session]);
 	const findings = useMemo(() => visibleFindings(session), [session]);
@@ -127,6 +144,7 @@ export function ProfilerView({ params, setParams }: ViewProps) {
 		range: session.range,
 		onRange: (range) => dispatch({ type: "range", value: range }),
 		filter: session.filter,
+		older: { more: !session.older.loaded || session.older.next !== undefined, loading: olderLoading, load: loadOlder },
 	};
 	const navigate: Navigate = (target, options) => {
 		if (options?.filter !== undefined) dispatch({ type: "filter", value: options.filter });

@@ -29,7 +29,7 @@ export function listHints(keys: KeybindingsManager, view: { overview: boolean; m
 	const { overview, mcpTools } = view;
 	return pageHints("list", {
 		nested: false,
-		enter: overview ? "open" : mcpTools ? "inspect" : "toggle",
+		enter: overview || mcpTools ? "open" : "toggle",
 		confirmKey: shortcutText("tui.select.confirm", keys),
 		cancelKey: shortcutText("tui.select.cancel", keys),
 		extras: [moveHint(2), ["←/→", "section", 1]],

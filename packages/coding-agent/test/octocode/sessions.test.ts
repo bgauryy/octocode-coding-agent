@@ -492,7 +492,7 @@ describe("resume brief", () => {
 				"- 2 more: B2, B1",
 			].join("\n"),
 		);
-		expect(text).toContain("`backlog get` shows the rest of each");
+		expect(text).toContain("backlog get");
 		expect(text).not.toMatch(/Because|src\/a\.ts/);
 	});
 

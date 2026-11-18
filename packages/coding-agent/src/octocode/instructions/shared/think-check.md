@@ -1,2 +1,0 @@
-- Loop: set goal and check (an outcome, not activity), act, verify, report; keep, adjust or revert by the result.
-- Before acting, check current state, not memory: what it touches, who holds it, how to undo it. Scale checks to risk.

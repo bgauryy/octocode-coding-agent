@@ -1,8 +1,8 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { GOAL_HEADING, summarySection } from "../../core/compaction/summary-format.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
-import { renderInstruction } from "../../core/prompt-template.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 
@@ -20,8 +20,8 @@ const MAX_TRIES = 3;
 /** What the model replies when the quoted request names no task. */
 const NO_TASK = "NONE";
 
-/** The title request (`instructions/workflows/title.md`). */
-const TITLE_PROMPT = renderInstruction("workflows/title.md", { noTask: NO_TASK });
+/** The title request (`native/prompts/workflows/title.md`). */
+const TITLE_PROMPT = renderPrompt("workflows/title.md", { noTask: NO_TASK });
 
 /** The part of `session_compact` the titler reads. */
 type CompactedEvent = { compactionEntry: { summary: string } };
@@ -29,7 +29,7 @@ type CompactedEvent = { compactionEntry: { summary: string } };
 export type CompleteTitle = CompleteSmall;
 
 /** The texts of the session's user messages with text, oldest first. */
-function userMessages(ctx: ExtensionContext): string[] {
+function userMessages(ctx: FeatureContext): string[] {
 	const texts: string[] = [];
 	for (const entry of ctx.sessionManager.getEntries?.() ?? []) {
 		if (entry.type !== "message" || entry.message.role !== "user") continue;
@@ -57,7 +57,7 @@ export function titleFromReply(reply: string): string | undefined {
  * is connected), the model cannot be authenticated, the call fails or its reply is empty. Never rejects.
  */
 async function requestTitle(
-	ctx: ExtensionContext,
+	ctx: FeatureContext,
 	request: string,
 	signal: AbortSignal,
 	complete?: CompleteTitle,
@@ -85,11 +85,11 @@ async function requestTitle(
  * from the summary's Goal section, once per session in the process; an auto title is never replaced.
  */
 export function createAutoTitler(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	options: { enabled: () => boolean; complete?: CompleteTitle; timeoutMs?: number },
 ): {
-	onAgentEnd(ctx: ExtensionContext): Promise<void>;
-	onCompact(ctx: ExtensionContext, event: CompactedEvent): Promise<void>;
+	onAgentEnd(ctx: FeatureContext): Promise<void>;
+	onCompact(ctx: FeatureContext, event: CompactedEvent): Promise<void>;
 	cancel(): void;
 } {
 	/** Per session: the index of the next user message to title; `MAX_TRIES` or more means done. */
@@ -104,13 +104,13 @@ export function createAutoTitler(
 		running = undefined;
 	};
 	/** An unnamed, saved, interactive or RPC session with titles on. */
-	const wantsTitle = (ctx: ExtensionContext): boolean =>
+	const wantsTitle = (ctx: FeatureContext): boolean =>
 		options.enabled() &&
 		(ctx.mode === "tui" || ctx.mode === "rpc") &&
 		!ctx.sessionManager.getSessionName() &&
 		Boolean(ctx.sessionManager.getSessionFile());
 	/** One call for `request`; names the session unless the call says no task, fails, or the session changed meanwhile. */
-	const attempt = async (ctx: ExtensionContext, id: string, request: string): Promise<"none" | undefined> => {
+	const attempt = async (ctx: FeatureContext, id: string, request: string): Promise<"none" | undefined> => {
 		const mine = epoch;
 		const controller = new AbortController();
 		running = controller;
@@ -126,10 +126,10 @@ export function createAutoTitler(
 			ctx.sessionManager.getSessionName()
 		)
 			return undefined;
-		api.setSessionName(result.title, "auto");
+		api.session.setName(result.title, "auto");
 		return undefined;
 	};
-	const onAgentEnd = async (ctx: ExtensionContext): Promise<void> => {
+	const onAgentEnd = async (ctx: FeatureContext): Promise<void> => {
 		try {
 			if (!wantsTitle(ctx)) return;
 			const id = ctx.sessionManager.getSessionId();
@@ -143,7 +143,7 @@ export function createAutoTitler(
 			// The title is a nicety: a stale context or a failed call leaves the session as it is.
 		}
 	};
-	const onCompact = async (ctx: ExtensionContext, event: CompactedEvent): Promise<void> => {
+	const onCompact = async (ctx: FeatureContext, event: CompactedEvent): Promise<void> => {
 		try {
 			if (!wantsTitle(ctx)) return;
 			const id = ctx.sessionManager.getSessionId();

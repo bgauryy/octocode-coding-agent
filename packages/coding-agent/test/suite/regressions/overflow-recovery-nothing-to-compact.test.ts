@@ -2,6 +2,7 @@ import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionCompactFailedEvent } from "../../../src/core/features/index.ts";
 import { createHarness, type Harness } from "../harness.ts";
+import { testFeatures } from "../../helpers/features.ts";
 
 describe("overflow recovery with nothing to compact", () => {
 	const harnesses: Harness[] = [];
@@ -13,13 +14,13 @@ describe("overflow recovery with nothing to compact", () => {
 	it("reports that recovery failed instead of giving up silently after hiding the failed attempt", async () => {
 		const failed: SessionCompactFailedEvent[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.on("session_compact_failed", async (event) => {
+					api.bus.on("session_compact_failed", async (event) => {
 						failed.push(event);
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 		// The only message is the oversized prompt: once the failed response is omitted, no span can be summarized.
@@ -46,7 +47,7 @@ describe("overflow recovery with nothing to compact", () => {
 				reason: "overflow",
 				aborted: false,
 				willRetry: false,
-				fromExtension: false,
+				fromFeature: false,
 				errorMessage: expect.stringMatching(/^Context overflow recovery failed/),
 			}),
 		]);

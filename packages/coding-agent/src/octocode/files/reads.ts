@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CLEARED_RESULTS_TYPE } from "../shared/cleared-results.ts";
 import { readPaths, resolveToolPath } from "../shared/home.ts";
@@ -81,7 +81,7 @@ export function sessionCleared(session: BranchSource): ReadonlyMap<string, strin
 }
 
 /** The messages of the model's current context (after the last compaction, on this branch), each with the entry that owns it. */
-export function contextMessages(ctx: Pick<ExtensionContext, "sessionManager">): MessageRef[] {
+export function contextMessages(ctx: Pick<FeatureContext, "sessionManager">): MessageRef[] {
 	return ctx.sessionManager
 		.buildSessionProjection()
 		.entries.flatMap((entry) => entry.messages.map((message) => ({ id: entry.sourceEntry.id, message })));
@@ -262,7 +262,7 @@ function changedFiles(details: unknown, cwd: string): ChangedFile[] {
 
 /** The files the model's current context shows (a cleared result shows none), with when each was last shown, for `FileGuard.restore`. */
 export function contextReads(
-	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 ): Array<{ file: string; at: number; partial?: boolean; lines?: LineRange[] }> {
 	const cleared = new Set(sessionCleared(ctx.sessionManager).keys());
 	return [...seenFiles(contextMessages(ctx), ctx.cwd, cleared).values()].flatMap((seen) =>

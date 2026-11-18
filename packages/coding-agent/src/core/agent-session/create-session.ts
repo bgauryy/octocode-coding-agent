@@ -9,7 +9,7 @@ import { formatNoModelsAvailableMessage } from "../auth-guidance.ts";
 import { CacheWarmer } from "../cache-warmer.ts";
 import { forkPromptCacheKey } from "../session-manager/cache-key.ts";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.ts";
-import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "../features/index.ts";
+import type { FeatureHost, LoadedFeatures, SessionStartEvent, ToolDefinition } from "../features/index.ts";
 import { findInitialModel } from "../model-resolver.ts";
 import type { RuntimeSimpleStreamOptions } from "../model-runtime/requests.ts";
 import { defaultToolNames as getDefaultToolNames } from "../native-tools.ts";
@@ -25,7 +25,7 @@ import { listenerErrorReporter } from "../listener-diagnostics.ts";
 export interface CreateSessionFromServicesOptions {
 	services: AgentSessionServices;
 	sessionManager: SessionManager;
-	/** Session start event metadata for extension runtime startup. */
+	/** Session start event metadata for feature runtime startup. */
 	sessionStartEvent?: SessionStartEvent;
 	/** Model to use. Default: restored from the session, else from settings, else the first available. */
 	model?: Model<any>;
@@ -42,14 +42,14 @@ export interface CreateSessionFromServicesOptions {
 	 * Default tool suppression when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in Octocode tools but keep extension and custom tools enabled
+	 * - "builtin": disable the default built-in Octocode tools but keep feature and custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Allowlist of tool names or patterns, where `*` matches any characters.
 	 *
 	 * When omitted, the `defaultTools` setting selects the initial tools when configured; otherwise the default
-	 * built-in tools of the loaded runtime are enabled, including native Octocode tools. Extension and custom tools
+	 * built-in tools of the loaded runtime are enabled, including native Octocode tools. Feature and custom tools
 	 * remain enabled unless `noTools` changes that default. When provided, only matching tools are enabled, MCP tools
 	 * included; an MCP server whose tools no entry can match is not started. An empty list, like `noTools: "all"`,
 	 * disables MCP tools too.
@@ -67,8 +67,8 @@ export interface CreateSessionFromServicesOptions {
 
 export interface CreateSessionResult {
 	session: AgentSession;
-	/** Extensions result (for UI context setup in interactive mode). */
-	extensionsResult: LoadExtensionsResult;
+	/** Features result (for UI context setup in interactive mode). */
+	featuresResult: LoadedFeatures;
 	/** Warning if the session was restored with a different model than saved. */
 	modelFallbackMessage?: string;
 }
@@ -167,7 +167,7 @@ export async function createSessionFromServices(
 	const tools = options.tools;
 	const toolListError = tools ? getToolListError(tools) : undefined;
 	if (toolListError) throw new Error(`Invalid tools option: ${toolListError}`);
-	const builtinDefaults = getDefaultToolNames(resourceLoader.getExtensions().extensions);
+	const builtinDefaults = getDefaultToolNames(resourceLoader.getFeatures().features);
 	const defaultToolNames = options.noTools ? [] : (settingsManager.getDefaultTools(builtinDefaults) ?? builtinDefaults);
 	// A `tools` list of only `+name`/`-name` entries changes the default selection instead of
 	// replacing it, like the `defaultTools` setting.
@@ -185,12 +185,12 @@ export async function createSessionFromServices(
 	// Create convertToLlm wrapper that filters images if blockImages is enabled (defense-in-depth)
 	const convertToLlmWithBlockImages = createConvertToLlmWithBlockImages(settingsManager);
 
-	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const featureHostRef: { current?: FeatureHost } = {};
 	const cacheWarmer = new CacheWarmer(
 		modelRuntime,
 		sessionManager,
 		() => settingsManager.getCacheWarmingMode(),
-		async (event) => extensionRunnerRef.current?.emitCacheWarmingDecision(event) ?? event.action,
+		async (event) => featureHostRef.current?.emitCacheWarmingDecision(event) ?? event.action,
 	);
 	// Resolved once per session id: walking the fork chain reads parent headers from disk.
 	let forkKey: { sessionId: string; key: string | undefined } | undefined;
@@ -216,6 +216,8 @@ export async function createSessionFromServices(
 			// A virtual model's request is resolved for the model it routes to.
 			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,
+			// One setting bounds silence on both layers: the HTTP dispatcher's body timeout and the provider stream reader.
+			streamIdleTimeoutMs: options.streamIdleTimeoutMs ?? httpIdleTimeoutMs,
 			maxRetries: options.maxRetries ?? providerRetrySettings.maxRetries,
 			maxRetryDelayMs: options.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 			transformHeaders: async (requestHeaders) =>
@@ -223,7 +225,7 @@ export async function createSessionFromServices(
 		};
 	};
 	// Warm only requests for the selected model. Requests a virtual selection routed, or that an
-	// extension redirected, may not be repeated by the next request, so warming them could be wasted.
+	// feature redirected, may not be repeated by the next request, so warming them could be wasted.
 	const cacheContextIsCurrent = (requestModel: Model<any>) => {
 		const messages = agent.state.messages;
 		const systemPrompt = agent.state.systemPrompt;
@@ -273,7 +275,7 @@ export async function createSessionFromServices(
 		},
 		sessionId: sessionManager.getSessionId(),
 		transformContext: async (messages) => {
-			const runner = extensionRunnerRef.current;
+			const runner = featureHostRef.current;
 			if (!runner) return messages;
 			return runner.emitContext(messages);
 		},
@@ -282,9 +284,9 @@ export async function createSessionFromServices(
 		transport: settingsManager.getTransport(),
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
-		onListenerError: listenerErrorReporter(() => extensionRunnerRef.current, "agent"),
+		onListenerError: listenerErrorReporter(() => featureHostRef.current, "agent"),
 	});
-	resourceLoader.reportHandlerErrorsTo?.(listenerErrorReporter(() => extensionRunnerRef.current, "event bus"));
+	resourceLoader.reportHandlerErrorsTo?.(listenerErrorReporter(() => featureHostRef.current, "event bus"));
 
 	// Restore missing settings metadata for older sessions, and record a level the caller chose on resume so a later
 	// reopen keeps it. A restored level that was only clamped to another model stays unrecorded.
@@ -317,18 +319,18 @@ export async function createSessionFromServices(
 		defaultToolModifiers: toolModifiers,
 		allowedToolNames,
 		excludedToolNames,
-		extensionRunnerRef,
+		featureHostRef,
 		sessionStartEvent: options.sessionStartEvent ?? {
 			type: "session_start",
 			reason: resumedSession ? "resume" : "startup",
 		},
 	});
 
-	const extensionsResult = resourceLoader.getExtensions();
+	const featuresResult = resourceLoader.getFeatures();
 
 	return {
 		session,
-		extensionsResult,
+		featuresResult,
 		modelFallbackMessage,
 	};
 }

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "../../core/features/index.ts";
+import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { parseCommandArgs } from "../../core/prompt-templates.ts";
 import { hintText, interruptKey } from "../../theme/theme-tui-helpers.ts";
 import { type Subcommand, type Subcommands, say } from "../shared/commands.ts";
@@ -18,7 +18,7 @@ const STATUS_KEY = "octocode-cli";
  * Without a terminal to hand over (RPC, web, a piped session) the CLI runs with stdin closed and its output becomes the
  * command result. Esc in the terminal or `ctx.signal` stops it.
  */
-async function captured(ctx: ExtensionCommandContext, bin: string, argv: string[], label: string): Promise<void> {
+async function captured(ctx: CommandContext, bin: string, argv: string[], label: string): Promise<void> {
 	const cancel = new AbortController();
 	const stopListening = ctx.ui.onTerminalInput((data) => {
 		if (data !== "\x1b") return undefined;
@@ -53,7 +53,7 @@ async function captured(ctx: ExtensionCommandContext, bin: string, argv: string[
 }
 
 /** Sends text to the agent as a prompt the user typed. */
-export type SendPrompt = (text: string, ctx: ExtensionCommandContext) => void;
+export type SendPrompt = (text: string, ctx: CommandContext) => void;
 
 /**
  * `/octocode <args>`: the research CLI, run with the arguments exactly as typed (quotes group words, as in a shell); no
@@ -98,19 +98,19 @@ export const createOctocodeCommand = (
  * cancels a check still running; a cancelled check runs again with the next session.
  */
 export function registerOctocodeCli(
-	api: ExtensionAPI,
+	api: FeatureSetup,
 	commands: Subcommands,
 	record?: (command: string, cwd: string) => void,
 ): void {
 	commands.add(
 		"octocode",
 		createOctocodeCommand(record, (text, ctx) =>
-			api.sendUserMessage(text, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
+			api.session.sendUserMessage(text, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
 		),
 	);
 	let done = false;
 	let running: AbortController | undefined;
-	api.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (_event, ctx) => {
 		if (done || running || !ctx.hasUI) return;
 		const check = new AbortController();
 		running = check;
@@ -127,7 +127,7 @@ export function registerOctocodeCli(
 			}
 		});
 	});
-	api.on("session_shutdown", async () => {
+	api.bus.on("session_shutdown", async () => {
 		running?.abort();
 		running = undefined;
 	});

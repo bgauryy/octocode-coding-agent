@@ -1,5 +1,5 @@
 import { type AssistantMessage, isContextOverflow } from "@octocodeai/octocode-ai";
-import type { AgentActivityOutcome, ContextEditEntryDraft, ExtensionContext } from "../../core/features/index.ts";
+import type { AgentActivityOutcome, ContextEditEntryDraft, FeatureContext } from "../../core/features/index.ts";
 import { notify } from "../shared/commands.ts";
 import { type ContextEntry, contextChars, isRequestTooLarge, planTooLargeRecovery } from "./images.ts";
 
@@ -25,7 +25,7 @@ export class TooLargeRecovery {
 		message: unknown,
 		messageEntryId: string,
 		entries: ContextEntry[],
-		ctx: Pick<ExtensionContext, "hasUI" | "ui" | "model">,
+		ctx: Pick<FeatureContext, "hasUI" | "ui" | "model">,
 	): ContextEditEntryDraft[] | undefined {
 		if (!isRequestTooLarge(message)) {
 			this.streak = 0;

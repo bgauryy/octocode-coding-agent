@@ -1,10 +1,11 @@
 import { type JsonRpcMessage, LATEST_PROTOCOL_VERSION, McpSessionExpiredError } from "../src/client/index.ts";
 import { createInMemoryTransportPair } from "../src/client/testing/index.ts";
 import { expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "../../coding-agent/src/core/features/types.ts";
+import type { FeatureSetup } from "../../coding-agent/src/core/features/types.ts";
 import { getMcpHookCaller } from "../src/hook-caller.ts";
-import { createMcpExtension } from "../src/index.ts";
+import { createMcpFeature } from "../src/index.ts";
 import { createHarness } from "../../coding-agent/test/suite/harness.ts";
+import { testFeatures } from "../../coding-agent/test/helpers/features.ts";
 
 const authorize = async () => {};
 
@@ -27,17 +28,17 @@ it("uses the configured MCP connection for hook calls without recursive tool eve
 		void pair.server.send({ jsonrpc: "2.0", id: message.id, result });
 	});
 	await pair.server.start();
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	let recursive = 0;
 	const authorized: unknown[] = [];
 	const harness = await createHarness({
 		initialActiveToolNames: [],
-		extensionFactories: [
+		features: testFeatures([
 			(host) => {
-				host.on("tool_call", () => {
+				host.bus.on("tool_call", () => {
 					recursive++;
 				});
-				return createMcpExtension({
+				return createMcpFeature({
 					loadConfig: () => ({
 						servers: [{ name: "policy", config: { command: "unused" }, source: "fixture" }],
 						errors: [],
@@ -49,11 +50,11 @@ it("uses the configured MCP connection for hook calls without recursive tool eve
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
-		const call = getMcpHookCaller(api.events);
+		await harness.session.bindFeatures({});
+		const call = getMcpHookCaller(api.channels);
 		expect(call).toBeDefined();
 		const result = await call!({
 			server: "policy",
@@ -126,11 +127,11 @@ it("refuses a hook call the host's gate refuses, and a tool that is hidden or no
 		void pair.server.send({ jsonrpc: "2.0", id: message.id, result });
 	});
 	await pair.server.start();
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const harness = await createHarness({
 		initialActiveToolNames: [],
-		extensionFactories: [
-			createMcpExtension({
+		features: testFeatures([
+			createMcpFeature({
 				loadConfig: () => ({
 					servers: [
 						{ name: "db", config: { command: "unused", toolExposure: { secret: "hidden" } }, source: "fixture" },
@@ -143,11 +144,11 @@ it("refuses a hook call the host's gate refuses, and a tool that is hidden or no
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
-		const call = getMcpHookCaller(api.events)!;
+		await harness.session.bindFeatures({});
+		const call = getMcpHookCaller(api.channels)!;
 		const request = (tool: string, authorize: (call: { toolName: string }) => Promise<void>) =>
 			call({
 				server: "db",
@@ -206,11 +207,11 @@ it("runs a hook call through the connection's request path, retrying once on an 
 	};
 	const transports = [transport(true), transport(false)];
 	let opened = 0;
-	let api!: ExtensionAPI;
+	let api!: FeatureSetup;
 	const harness = await createHarness({
 		initialActiveToolNames: [],
-		extensionFactories: [
-			createMcpExtension({
+		features: testFeatures([
+			createMcpFeature({
 				loadConfig: () => ({
 					servers: [{ name: "policy", config: { command: "unused" }, source: "fixture" }],
 					errors: [],
@@ -221,11 +222,11 @@ it("runs a hook call through the connection's request path, retrying once on an 
 			(host) => {
 				api = host;
 			},
-		],
+		]),
 	});
 	try {
-		await harness.session.bindExtensions({});
-		const result = await getMcpHookCaller(api.events)!({
+		await harness.session.bindFeatures({});
+		const result = await getMcpHookCaller(api.channels)!({
 			server: "policy",
 			tool: "check",
 			input: {},

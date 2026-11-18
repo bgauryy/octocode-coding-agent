@@ -1,6 +1,6 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerBashTool } from "../../src/octocode/files/bash.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { tmp } from "./helpers.ts";
@@ -184,7 +184,7 @@ describe("a context-only notice during a long tool", () => {
 		const running = live.session.prompt("work");
 		await long.started;
 		// The subagent "done" notice (subagents/handoff.ts) and team notices are sent this way.
-		live.api.sendMessage(
+		live.api.session.sendMessage(
 			{ customType: "notice-test", content: "MAIL: a child finished", display: false, details: {} },
 			{ triggerTurn: false, deliverAs: "steer" },
 		);
@@ -229,7 +229,7 @@ describe("a background report (follow-up) during a long tool", () => {
 		]);
 		const running = live.session.prompt("work");
 		await long.started;
-		live.api.sendMessage(
+		live.api.session.sendMessage(
 			{ customType: "report-test", content: "MAIL: job finished", display: true, details: { id: "j1" } },
 			{ deliverAs: "followUp", triggerTurn: true },
 		);

@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "../../core/features/index.ts";
+import type { CommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, type PageRow, type PageSection, showCommandPage } from "../shared/page.ts";
 import {
@@ -17,7 +17,7 @@ import { renderReport, sortReviews, visible } from "./report.ts";
 import { badge, type Review } from "./types.ts";
 
 /**
- * `/security`: what the extension guard found this session, each item's report, and the user's decisions. Decisions
+ * `/security`: what the feature guard found this session, each item's report, and the user's decisions. Decisions
  * made in one visit share one reload when the page closes, so the tool list and the prompt cache change once.
  */
 
@@ -43,7 +43,7 @@ function sections(reviews: readonly Review[]): PageSection[] {
 }
 
 /** One report page; resolves with the decision taken, or undefined for back. */
-async function reviewPage(ctx: ExtensionCommandContext, review: Review): Promise<"approve" | "deny" | undefined> {
+async function reviewPage(ctx: CommandContext, review: Review): Promise<"approve" | "deny" | undefined> {
 	const choice = await showCommandPage(ctx.ui, {
 		title: `Security · ${visible(review.item.label)}`,
 		notes: renderReport(review).split("\n"),
@@ -73,7 +73,7 @@ async function reviewPage(ctx: ExtensionCommandContext, review: Review): Promise
 }
 
 /** The terminal page: the list, then a report per row; returns whether a decision changed what loads. */
-async function page(ctx: ExtensionCommandContext): Promise<boolean> {
+async function page(ctx: CommandContext): Promise<boolean> {
 	let changed = false;
 	let current: string | undefined;
 	for (;;) {
@@ -103,7 +103,7 @@ async function page(ctx: ExtensionCommandContext): Promise<boolean> {
 }
 
 /** Runs one text verb; returns whether a decision changed what loads. */
-function runVerb(ctx: ExtensionCommandContext, sub: string, words: string[]): boolean {
+function runVerb(ctx: CommandContext, sub: string, words: string[]): boolean {
 	const reviews = refreshed(knownReviews());
 	if (sub === "list" || sub === "check") {
 		say(ctx, sub === "list" ? listText(reviews, enforced, words.join(" ") || undefined) : checkTable(reviews));

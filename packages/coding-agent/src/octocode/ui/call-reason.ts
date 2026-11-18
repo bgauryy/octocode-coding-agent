@@ -6,7 +6,7 @@ import { callReason, isInformativeReason } from "../shared/reason.ts";
 /**
  * The text a tool call's one-line reason states. Native tools and the `mcp` tool require a `reason`, read from the
  * call's arguments. An MCP tool's input belongs to its server, so its line shows only the goal or reason the server's
- * returned data states (`returnedPurpose` of the result's `structuredContent`), never one from the arguments. Extension
+ * returned data states (`returnedPurpose` of the result's `structuredContent`), never one from the arguments. Feature
  * tools define their own arguments, so a `reason` there may mean something else: none. None either when there is no
  * reason or one too short to say more than the title (`Edit`).
  *

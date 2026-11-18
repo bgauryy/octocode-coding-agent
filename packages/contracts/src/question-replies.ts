@@ -31,7 +31,13 @@ function checkedReply(question: Question, raw: Record<string, unknown>): Reply |
 	if (question.type !== "multi" && picks.length > 1) return undefined;
 	// A confirmation or approval is decided by an option; its note rides beside it (an approval's deny-with-note).
 	if ((question.type === "confirm" || question.type === "approval") && picks.length !== 1) return undefined;
-	return { id: question.id, picks, ...(text !== undefined ? { text } : {}) };
+	return {
+		id: question.id,
+		picks,
+		...(text !== undefined ? { text } : {}),
+		// A host that counted the question down itself marks the picks it took; the model is told they are no approval.
+		...(raw.auto === true && question.type !== "approval" ? { auto: true } : {}),
+	};
 }
 
 /**

@@ -1,16 +1,15 @@
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
-import type { ExtensionAPI, InputEvent } from "../../src/core/features/index.ts";
+import type { FeatureSetup, InputEvent } from "../../src/core/features/index.ts";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getAssistantTexts, getMessageText, getUserTexts, type Harness } from "./harness.ts";
+import { testFeatures } from "../helpers/features.ts";
 
 async function createWaitingHarness(
 	options: {
 		tools?: AgentTool[];
-		extensionFactories?: Harness["session"]["extensionRunner"] extends never
-			? never
-			: Array<(api: ExtensionAPI) => void>;
+		factories?: Harness["session"]["featureHost"] extends never ? never : Array<(api: FeatureSetup) => void>;
 	} = {},
 ): Promise<{
 	harness: Harness;
@@ -37,7 +36,7 @@ async function createWaitingHarness(
 	};
 	const harness = await createHarness({
 		tools: [waitTool, ...(options.tools ?? [])],
-		extensionFactories: options.extensionFactories,
+		features: testFeatures(options.factories ?? []),
 	});
 
 	const waitForToolStart = new Promise<void>((resolve) => {
@@ -69,16 +68,16 @@ describe("AgentSession queue characterization", () => {
 	it("dispatches extension commands immediately when prompted while idle", async () => {
 		const commandRuns: string[] = [];
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.registerCommand("testcmd", {
+					api.commands.register("testcmd", {
 						description: "Test command",
 						handler: async (args) => {
 							commandRuns.push(args);
 						},
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
@@ -90,11 +89,11 @@ describe("AgentSession queue characterization", () => {
 	});
 
 	it("delivers extension-origin steering messages before the next LLM call", async () => {
-		let extensionApi: ExtensionAPI | undefined;
+		let featureApi: FeatureSetup | undefined;
 		const waiting = await createWaitingHarness({
-			extensionFactories: [
+			factories: [
 				(api) => {
-					extensionApi = api;
+					featureApi = api;
 				},
 			],
 		});
@@ -114,7 +113,7 @@ describe("AgentSession queue characterization", () => {
 		await waitForToolStart;
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		extensionApi?.sendUserMessage("steer now", { deliverAs: "steer" });
+		featureApi?.session.sendUserMessage("steer now", { deliverAs: "steer" });
 		releaseToolExecution();
 		await promptPromise;
 
@@ -158,9 +157,9 @@ describe("AgentSession queue characterization", () => {
 	it("runs direct steering and follow-up messages through input handlers", async () => {
 		const inputEvents: Array<Pick<InputEvent, "text" | "source" | "streamingBehavior">> = [];
 		const waiting = await createWaitingHarness({
-			extensionFactories: [
+			factories: [
 				(api) => {
-					api.on("input", (event) => {
+					api.bus.on("input", (event) => {
 						inputEvents.push({
 							text: event.text,
 							source: event.source,
@@ -433,14 +432,14 @@ describe("AgentSession queue characterization", () => {
 
 	it("throws when queueing an extension command with steer", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.registerCommand("testcmd", {
+					api.commands.register("testcmd", {
 						description: "Test command",
 						handler: async () => {},
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
@@ -451,14 +450,14 @@ describe("AgentSession queue characterization", () => {
 
 	it("throws when queueing an extension command with followUp", async () => {
 		const harness = await createHarness({
-			extensionFactories: [
+			features: testFeatures([
 				(api) => {
-					api.registerCommand("testcmd", {
+					api.commands.register("testcmd", {
 						description: "Test command",
 						handler: async () => {},
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 
@@ -470,15 +469,15 @@ describe("AgentSession queue characterization", () => {
 	it("delivers follow-ups queued during agent_end", async () => {
 		let sent = false;
 		const harness = await createHarness({
-			extensionFactories: [
-				(api: ExtensionAPI) => {
-					api.on("agent_end", async () => {
+			features: testFeatures([
+				(api: FeatureSetup) => {
+					api.bus.on("agent_end", async () => {
 						if (sent) return;
 						sent = true;
-						api.sendUserMessage("conflict report", { deliverAs: "followUp" });
+						api.session.sendUserMessage("conflict report", { deliverAs: "followUp" });
 					});
 				},
-			],
+			]),
 		});
 		harnesses.push(harness);
 

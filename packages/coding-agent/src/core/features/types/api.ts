@@ -1,18 +1,16 @@
-/** The API passed to extension factory functions. */
+/** What a feature may do while it is composed (`FeatureSetup`) and its slices. */
 
 import type { ThinkingLevel, EventBus } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, Provider, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { KeyId } from "@octocodeai/octocode-tui";
 import type { TSchema } from "typebox";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../../cache-warmer.ts";
-import type { ExecOptions, ExecResult } from "../../exec.ts";
 import type { McpServerConfig, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { CustomMessage } from "../../messages.ts";
 import type { Settings } from "../../settings-manager.ts";
 import type { SkillResourceSnapshot } from "../../skill-resource-snapshot.ts";
 import type { SlashCommandInfo } from "../../slash-commands.ts";
 import type * as AgentEvents from "./agent-events.ts";
-import type { ExtensionContext } from "./context.ts";
+import type { FeatureContext } from "./context.ts";
 import type {
 	BeforeAgentStartEventResult,
 	ContextEventResult,
@@ -33,344 +31,202 @@ import type {
 	UserInputEvent,
 	UserInputEventResult,
 } from "./input-events.ts";
-import type { ExtensionVirtualModel, ProviderConfig } from "./provider.ts";
-import type { EntryRenderer, MarkdownTransformer, MessageRenderer, RegisteredCommand } from "./rendering.ts";
+import type { ProviderConfig } from "./provider.ts";
+import type { EntryRenderer, MessageRenderer, RegisteredCommand } from "./rendering.ts";
 import type * as SessionEvents from "./session-events.ts";
 import type { ToolCallEvent, ToolResultEvent } from "./tool-events.ts";
 import type { ToolDefinition, ToolInfo, ToolRendererResolver } from "./tools.ts";
-
-// Extension API
-// ============================================================================
-
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows bare return statements
-type ExtensionHandler<E, R = undefined> = (event: E, ctx: ExtensionContext) => Promise<R | void> | R | void;
+type FeatureHandler<E, R = undefined> = (event: E, ctx: FeatureContext) => Promise<R | void> | R | void;
 
-/**
- * ExtensionAPI passed to extension factory functions.
- */
-export interface ExtensionAPI {
-	// Event Subscription
-	// =========================================================================
-
+/** Subscribes a feature's handlers to session events; each `on()` returns the function that removes it. */
+export interface BusSubscriber {
 	on(
 		event: "resources_discover",
-		handler: ExtensionHandler<SessionEvents.ResourcesDiscoverEvent, SessionEvents.ResourcesDiscoverResult>,
+		handler: FeatureHandler<SessionEvents.ResourcesDiscoverEvent, SessionEvents.ResourcesDiscoverResult>,
 	): () => void;
-	on(event: "session_start", handler: ExtensionHandler<SessionEvents.SessionStartEvent>): () => void;
-	on(event: "session_info_changed", handler: ExtensionHandler<SessionEvents.SessionInfoChangedEvent>): () => void;
+	on(event: "session_start", handler: FeatureHandler<SessionEvents.SessionStartEvent>): () => void;
+	on(event: "session_info_changed", handler: FeatureHandler<SessionEvents.SessionInfoChangedEvent>): () => void;
 	on(
 		event: "session_before_switch",
-		handler: ExtensionHandler<SessionEvents.SessionBeforeSwitchEvent, SessionBeforeSwitchResult>,
+		handler: FeatureHandler<SessionEvents.SessionBeforeSwitchEvent, SessionBeforeSwitchResult>,
 	): () => void;
 	on(
 		event: "session_before_fork",
-		handler: ExtensionHandler<SessionEvents.SessionBeforeForkEvent, SessionBeforeForkResult>,
+		handler: FeatureHandler<SessionEvents.SessionBeforeForkEvent, SessionBeforeForkResult>,
 	): () => void;
 	on(
 		event: "session_before_quit",
-		handler: ExtensionHandler<SessionEvents.SessionBeforeQuitEvent, SessionBeforeSwitchResult>,
+		handler: FeatureHandler<SessionEvents.SessionBeforeQuitEvent, SessionBeforeSwitchResult>,
 	): () => void;
 	on(
 		event: "session_before_compact",
-		handler: ExtensionHandler<SessionEvents.SessionBeforeCompactEvent, unknown>,
+		handler: FeatureHandler<SessionEvents.SessionBeforeCompactEvent, unknown>,
 	): () => void;
-	on(event: "session_compact_prewarm", handler: ExtensionHandler<SessionEvents.SessionCompactPrewarmEvent>): () => void;
-	on(event: "session_compact", handler: ExtensionHandler<SessionEvents.SessionCompactEvent>): () => void;
-	on(event: "session_compact_failed", handler: ExtensionHandler<SessionEvents.SessionCompactFailedEvent>): () => void;
-	on(event: "session_shutdown", handler: ExtensionHandler<SessionEvents.SessionShutdownEvent>): () => void;
-	on(event: "mcp_servers_change", handler: ExtensionHandler<SessionEvents.McpServersChangeEvent>): () => void;
+	on(event: "session_compact_prewarm", handler: FeatureHandler<SessionEvents.SessionCompactPrewarmEvent>): () => void;
+	on(event: "session_compact", handler: FeatureHandler<SessionEvents.SessionCompactEvent>): () => void;
+	on(event: "session_compact_failed", handler: FeatureHandler<SessionEvents.SessionCompactFailedEvent>): () => void;
+	on(event: "session_shutdown", handler: FeatureHandler<SessionEvents.SessionShutdownEvent>): () => void;
+	on(event: "mcp_servers_change", handler: FeatureHandler<SessionEvents.McpServersChangeEvent>): () => void;
 	on(
 		event: "session_before_tree",
-		handler: ExtensionHandler<SessionEvents.SessionBeforeTreeEvent, SessionBeforeTreeResult>,
+		handler: FeatureHandler<SessionEvents.SessionBeforeTreeEvent, SessionBeforeTreeResult>,
 	): () => void;
-	on(event: "session_tree", handler: ExtensionHandler<SessionEvents.SessionTreeEvent>): () => void;
-	on(event: "context", handler: ExtensionHandler<AgentEvents.ContextEvent, ContextEventResult>): () => void;
+	on(event: "session_tree", handler: FeatureHandler<SessionEvents.SessionTreeEvent>): () => void;
+	on(event: "context", handler: FeatureHandler<AgentEvents.ContextEvent, ContextEventResult>): () => void;
 	on(
 		event: "cache_warming_decision",
-		handler: ExtensionHandler<CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult>,
+		handler: FeatureHandler<CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult>,
 	): () => void;
 	on(
 		event: "before_agent_start",
-		handler: ExtensionHandler<AgentEvents.BeforeAgentStartEvent, BeforeAgentStartEventResult>,
+		handler: FeatureHandler<AgentEvents.BeforeAgentStartEvent, BeforeAgentStartEventResult>,
 	): () => void;
-	on(event: "agent_start", handler: ExtensionHandler<AgentEvents.AgentStartEvent>): () => void;
-	on(event: "agent_end", handler: ExtensionHandler<AgentEvents.AgentEndEvent>): () => void;
+	on(event: "agent_start", handler: FeatureHandler<AgentEvents.AgentStartEvent>): () => void;
+	on(event: "agent_end", handler: FeatureHandler<AgentEvents.AgentEndEvent>): () => void;
 	on(
 		event: "agent_before_settle",
-		handler: ExtensionHandler<AgentEvents.AgentBeforeSettleEvent, AgentEvents.BoundaryResult>,
+		handler: FeatureHandler<AgentEvents.AgentBeforeSettleEvent, AgentEvents.BoundaryResult>,
 	): () => void;
-	on(event: "agent_interrupted", handler: ExtensionHandler<AgentEvents.AgentInterruptedEvent>): () => void;
-	on(event: "agent_settled", handler: ExtensionHandler<AgentEvents.AgentSettledEvent>): () => void;
-	on(event: "ui_prompt_start", handler: ExtensionHandler<AgentEvents.UIPromptStartEvent>): () => void;
-	on(event: "ui_prompt_end", handler: ExtensionHandler<AgentEvents.UIPromptEndEvent>): () => void;
-	on(event: "turn_start", handler: ExtensionHandler<AgentEvents.TurnStartEvent>): () => void;
-	on(event: "turn_prompt", handler: ExtensionHandler<AgentEvents.TurnPromptEvent>): () => void;
-	on(event: "turn_end", handler: ExtensionHandler<AgentEvents.TurnEndEvent, AgentEvents.BoundaryResult>): () => void;
-	on(event: "message_start", handler: ExtensionHandler<AgentEvents.MessageStartEvent>): () => void;
-	on(event: "message_update", handler: ExtensionHandler<AgentEvents.MessageUpdateEvent>): () => void;
-	on(event: "message_end", handler: ExtensionHandler<AgentEvents.MessageEndEvent, MessageEndEventResult>): () => void;
-	on(event: "tool_execution_start", handler: ExtensionHandler<AgentEvents.ToolExecutionStartEvent>): () => void;
-	on(event: "tool_execution_update", handler: ExtensionHandler<AgentEvents.ToolExecutionUpdateEvent>): () => void;
-	on(event: "tool_execution_end", handler: ExtensionHandler<AgentEvents.ToolExecutionEndEvent>): () => void;
-	on(event: "model_select", handler: ExtensionHandler<ModelSelectEvent>): () => void;
-	on(event: "thinking_level_select", handler: ExtensionHandler<ThinkingLevelSelectEvent>): () => void;
-	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): () => void;
+	on(event: "agent_interrupted", handler: FeatureHandler<AgentEvents.AgentInterruptedEvent>): () => void;
+	on(event: "agent_settled", handler: FeatureHandler<AgentEvents.AgentSettledEvent>): () => void;
+	on(event: "agent_settle_end", handler: FeatureHandler<AgentEvents.AgentSettleEndEvent>): () => void;
+	on(event: "ui_prompt_start", handler: FeatureHandler<AgentEvents.UIPromptStartEvent>): () => void;
+	on(event: "ui_prompt_end", handler: FeatureHandler<AgentEvents.UIPromptEndEvent>): () => void;
+	on(event: "turn_start", handler: FeatureHandler<AgentEvents.TurnStartEvent>): () => void;
+	on(event: "turn_prompt", handler: FeatureHandler<AgentEvents.TurnPromptEvent>): () => void;
+	on(event: "turn_end", handler: FeatureHandler<AgentEvents.TurnEndEvent, AgentEvents.BoundaryResult>): () => void;
+	on(event: "message_start", handler: FeatureHandler<AgentEvents.MessageStartEvent>): () => void;
+	on(event: "message_update", handler: FeatureHandler<AgentEvents.MessageUpdateEvent>): () => void;
+	on(event: "message_end", handler: FeatureHandler<AgentEvents.MessageEndEvent, MessageEndEventResult>): () => void;
+	on(event: "tool_execution_start", handler: FeatureHandler<AgentEvents.ToolExecutionStartEvent>): () => void;
+	on(event: "tool_execution_update", handler: FeatureHandler<AgentEvents.ToolExecutionUpdateEvent>): () => void;
+	on(event: "tool_execution_end", handler: FeatureHandler<AgentEvents.ToolExecutionEndEvent>): () => void;
+	on(event: "model_select", handler: FeatureHandler<ModelSelectEvent>): () => void;
+	on(event: "thinking_level_select", handler: FeatureHandler<ThinkingLevelSelectEvent>): () => void;
+	on(event: "tool_call", handler: FeatureHandler<ToolCallEvent, ToolCallEventResult>): () => void;
 	/** Synchronous, with `toolExecution.earlyStart` on: may this model call start before its message ended (every handler true)? */
 	on(
 		event: "tool_call_early_start",
-		handler: (event: Omit<ToolCallEvent, "type">, ctx: ExtensionContext) => boolean,
+		handler: (event: Omit<ToolCallEvent, "type">, ctx: FeatureContext) => boolean,
 	): () => void;
 	/** An early-started call was discarded (its message did not complete); its `tool_call` checks saw a call that never ran. */
 	on(event: "tool_call_discarded", handler: (event: { toolCallId: string }) => void): () => void;
-	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): () => void;
-	on(event: "user_bash", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): () => void;
-	on(event: "input", handler: ExtensionHandler<InputEvent, InputEventResult>): () => void;
-	on(event: "user_input", handler: ExtensionHandler<UserInputEvent, UserInputEventResult>): () => void;
+	on(event: "tool_result", handler: FeatureHandler<ToolResultEvent, ToolResultEventResult>): () => void;
+	on(event: "user_bash", handler: FeatureHandler<UserBashEvent, UserBashEventResult>): () => void;
+	on(event: "input", handler: FeatureHandler<InputEvent, InputEventResult>): () => void;
+	on(event: "user_input", handler: FeatureHandler<UserInputEvent, UserInputEventResult>): () => void;
+}
 
-	// Tool Registration
-	// =========================================================================
-
-	/** Register a tool that the LLM can call. */
-	registerTool<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(
+/** Registers a feature's tools and reads or changes which tools the model sees. */
+export interface ToolRegistrar {
+	/** Register a tool the model can call. A later registration under the same name replaces it. */
+	register<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(
 		tool: ToolDefinition<TParams, TDetails, TState>,
 	): void;
+	/** Register several tools at once: all are validated before any is stored, and tools refresh once. */
+	registerAll<TDetails = unknown>(tools: readonly ToolDefinition<TSchema, TDetails>[]): void;
+	/** The names of the tools the model sees now. */
+	getActive(): string[];
+	/** Tools that are declared to the provider but hidden from the model's listing. */
+	getHiddenDeclarations(): string[];
+	/** Every registered tool with its name, description, parameters and source. */
+	getAll(): ToolInfo[];
+	/** Set the tools the model sees, by name. */
+	setActive(toolNames: string[]): void;
+	/** Whether the session's tool selection names tools with `prefix`; without a selection, `activeByDefault`. */
+	selects(prefix: string, activeByDefault: boolean): boolean;
+}
 
-	/** Register a catalog of tools with one registry refresh instead of one per tool; all are validated first. */
-	registerTools<TDetails = unknown>(tools: readonly ToolDefinition<TSchema, TDetails>[]): void;
+/** Registers slash commands. */
+interface CommandRegistrar {
+	register(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
+}
 
-	// Command, Shortcut, Flag Registration
-	// =========================================================================
+/** Registers how custom messages, entries and tool calls are drawn. */
+interface RendererRegistrar {
+	/** Draw custom messages of `customType`. */
+	message<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
+	/** Draw custom session entries of `customType`. */
+	entry<T = unknown>(customType: string, renderer: EntryRenderer<T>): void;
+	/** Choose renderers for tool calls; resolvers chain in feature load order. */
+	tool(resolver: ToolRendererResolver): void;
+}
 
-	registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void;
+/** Registers model providers; registrations during composition apply when the session binds. */
+interface ProviderRegistrar {
+	register(provider: Provider): void;
+	register(name: string, config: ProviderConfig): void;
+}
 
-	registerShortcut(
-		shortcut: KeyId,
-		options: {
-			description?: string;
-			handler: (ctx: ExtensionContext) => Promise<void> | void;
-		},
-	): void;
+/** Registers MCP servers, validated when registered and applied when the feature's registration succeeds. */
+interface McpServerRegistrar {
+	register(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
+	list(): RegisteredMcpServer[];
+}
 
-	// Message Rendering
-	// =========================================================================
-
-	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
-
-	/**
-	 * Register a transformer for user and assistant Markdown before Octocode renders it in the interactive transcript.
-	 * It receives sanitized Markdown and its result is sanitized again; Mermaid diagrams are drawn after it, so it sees
-	 * a Mermaid block as its fenced source.
-	 */
-	registerMarkdownTransformer(transformer: MarkdownTransformer): void;
-
-	/** Register a custom renderer for CustomEntry. Custom entries do not participate in LLM context. */
-	registerEntryRenderer<T = unknown>(customType: string, renderer: EntryRenderer<T>): void;
-
-	/** Choose how tool calls are drawn. Resolvers run in extension load order. */
-	registerToolRenderer(resolver: ToolRendererResolver): void;
-
-	// Actions
-	// =========================================================================
-
-	/** Send a custom message. The runtime returns a promise so callers can observe asynchronous failure; it also reports errors for callers that do not await. */
+/** The session a feature writes to: messages, entries, name and labels. */
+interface SessionPort {
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 	): void | Promise<void>;
-
-	/**
-	 * Send a user message to the agent. Always triggers a turn.
-	 * When the agent is streaming, use deliverAs to specify how to queue the message.
-	 * Set expandPromptTemplates to dispatch extension commands and expand skill commands and prompt templates.
-	 */
 	sendUserMessage(
 		content: string | (TextContent | ImageContent)[],
 		options?: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean },
 	): void;
-
-	/** Append a custom entry to the session for state persistence (not sent to LLM). */
+	/** Save a record in the session that no model sees. */
 	appendEntry<T = unknown>(customType: string, data?: T): void;
-
-	/** Capture the current session before auxiliary requests; record each completed response once, including reported failed usage. */
-	createUsageRecorder(kind: string): (message: AssistantMessage) => void;
-
-	/** Add one side call's spend (a call that is not an assistant turn, such as a timer `check`) to the session's cost total, once. */
-	recordUsage(kind: string, provider: string, model: string, usage: Usage): void;
-
-	// Session Metadata
-	// =========================================================================
-
-	/** Set the session display name (shown in session selector); `source` defaults to `user` (see `SessionNameSource`). */
-	setSessionName(name: string, source?: SessionEvents.SessionInfoChangedEvent["source"]): void;
-
-	getSessionName(): string | undefined;
-
-	/** Set or clear a label on an entry. Labels are user-defined markers for bookmarking/navigation. */
+	setName(name: string, source?: SessionEvents.SessionInfoChangedEvent["source"]): void;
+	getName(): string | undefined;
 	setLabel(entryId: string, label: string | undefined): void;
-
-	/** Execute a shell command. */
-	exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
-
-	/** Get the names of the active tools, which are the tools declared to the model. */
-	getActiveTools(): string[];
-
-	/** Get the names of the active tools that requests leave undeclared, because declaring them is not worth the tokens. */
-	getHiddenDeclarations(): string[];
-
-	/** Get all configured tools with parameter schema, prompt guidelines, exposure, and source metadata. */
-	getAllTools(): ToolInfo[];
-
-	/** Get a copy of the effective settings (global and project settings merged, with overrides). */
-	getSettings(): Settings;
-
-	/** Set the active tools by name. Unknown and `hidden` tools are ignored. */
-	setActiveTools(toolNames: string[]): void;
-	/** Whether the tool selection (`--tools`, `--exclude-tools`, `defaultTools`) can activate tools named `<prefix>…` that register with `defaultActive` = `activeByDefault`; a source whose tools it cannot activate need not start. */
-	selectsTools(prefix: string, activeByDefault: boolean): boolean;
-
-	/** Get available slash commands in the current session. */
-	getCommands(): SlashCommandInfo[];
-
-	/** Get canonical reference directories for loaded skills, independent of slash-command visibility. */
-	getSkillDirectories(): string[];
-	/** Capture accepted skill resources after runtime initialization. Omit names for all; command names select a subset; [] is empty. No discovery or plugin activation. */
-	getSkillResourceSnapshot(names?: readonly string[]): SkillResourceSnapshot;
-
-	// Model and Thinking Level
-	// =========================================================================
-
-	/**
-	 * Set the model for the current session without changing the configured default for new sessions.
-	 * Returns false if authentication is not configured for the model's provider.
-	 */
-	setModel(model: Model<any>): Promise<boolean>;
-
-	getThinkingLevel(): ThinkingLevel;
-
-	/**
-	 * Set the thinking level (clamped to model capabilities) for the current session without changing the configured default
-	 * for new sessions.
-	 * @deprecated No native feature calls it; it may be removed in a future release.
-	 */
-	setThinkingLevel(level: ThinkingLevel): void;
-
-	// Provider Registration
-	// =========================================================================
-
-	/**
-	 * Register or override a model provider.
-	 *
-	 * If `models` is provided: replaces all existing models for this provider.
-	 * If only `baseUrl` is provided: overrides the URL for existing models.
-	 * If `oauth` is provided: registers OAuth provider for /providers support.
-	 * If `streamSimple` is provided: registers a custom API stream handler.
-	 *
-	 * During initial extension load this call is queued and applied once the
-	 * runner has bound its context. After that it takes effect immediately, so
-	 * it is safe to call from command handlers or event callbacks without
-	 * requiring a `/reload`.
-	 *
-	 * @example
-	 * // Register a new provider with custom models
-	 * api.registerProvider("my-proxy", {
-	 *   baseUrl: "https://proxy.example.com",
-	 *   apiKey: "$PROXY_API_KEY",
-	 *   api: "anthropic-messages",
-	 *   models: [
-	 *     {
-	 *       id: "claude-sonnet-4-20250514",
-	 *       name: "Claude 4 Sonnet (proxy)",
-	 *       reasoning: false,
-	 *       input: ["text", "image"],
-	 *       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-	 *       contextWindow: 200000,
-	 *       maxTokens: 16384
-	 *     }
-	 *   ]
-	 * });
-	 *
-	 * @example
-	 * // Override baseUrl for an existing provider
-	 * api.registerProvider("anthropic", {
-	 *   baseUrl: "https://proxy.example.com"
-	 * });
-	 *
-	 * @example
-	 * // Register provider with OAuth support
-	 * api.registerProvider("corporate-ai", {
-	 *   baseUrl: "https://ai.corp.com",
-	 *   api: "openai-responses",
-	 *   models: [...],
-	 *   oauth: {
-	 *     name: "Corporate AI (SSO)",
-	 *     async login(callbacks) { ... },
-	 *     async refreshToken(credentials) { ... },
-	 *     getApiKey(credentials) { return credentials.access; }
-	 *   }
-	 * });
-	 */
-	registerProvider(provider: Provider): void;
-	registerProvider(name: string, config: ProviderConfig): void;
-
-	/**
-	 * Unregister a previously registered provider.
-	 *
-	 * Removes all models belonging to the named provider and restores any
-	 * built-in models that were overridden by it. Has no effect if the provider
-	 * is not currently registered.
-	 *
-	 * Like `registerProvider`, this takes effect immediately when called after
-	 * the initial load phase.
-	 *
-	 * @example
-	 * api.unregisterProvider("my-proxy");
-	 */
-	unregisterProvider(name: string): void;
-
-	// MCP Servers
-	// =========================================================================
-
-	/**
-	 * Register an MCP server for this session, with the same config as an `mcpServers` entry in
-	 * `mcp.json`. The server connects next to the configured servers: on `session_start` when
-	 * registered during extension load, right away when registered later. Registering a name again
-	 * replaces the extension's earlier registration.
-	 *
-	 * The registration is not saved; register again on every load. A server of the same name in
-	 * `mcp.json` takes precedence. Throws for invalid configs and for names another extension
-	 * registered. When no loaded extension handles MCP servers (for example because another MCP
-	 * extension replaced the built-in one), the registration is reported as an extension error.
-	 *
-	 * `options.inherited` marks a server handed over by a parent session: another extension's registration of
-	 * the same name replaces it, and it never replaces another extension's server.
-	 *
-	 * @example
-	 * api.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
-	 */
-	registerMcpServer(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;
-
-	/** Remove an MCP server this extension registered and close its connection. */
-	unregisterMcpServer(name: string): void;
-
-	/** Every MCP server registered by extensions. For extensions that connect MCP servers. */
-	getMcpServers(): RegisteredMcpServer[];
-
-	/**
-	 * Register a virtual model: a selectable catalog entry that routes each request to a physical
-	 * model. The selection (`ctx.model`, `model_change` entries) names the virtual model; assistant
-	 * messages record the physical model and thinking level the router picked.
-	 *
-	 * `provider` may be any provider id, including one with physical models, and may list several
-	 * virtual models. Registering the same provider and id again replaces the virtual model.
-	 */
-	registerVirtualModel<TState = unknown>(model: ExtensionVirtualModel<TState>): void;
-
-	/**
-	 * Remove a virtual model registered with `registerVirtualModel()`.
-	 * @deprecated No native feature calls it; it may be removed in a future release.
-	 */
-	unregisterVirtualModel(provider: string, id: string): void;
-
-	/** Shared event bus for extension communication. */
-	events: EventBus;
 }
+
+/** Records model usage that runs outside the session's turns. */
+interface UsagePort {
+	createRecorder(kind: string): (message: AssistantMessage) => void;
+	record(kind: string, provider: string, model: string, usage: Usage): void;
+}
+
+/** The session's model and thinking level. */
+interface ModelPort {
+	setModel(model: Model<any>): Promise<boolean>;
+	getThinkingLevel(): ThinkingLevel;
+}
+
+/** The effective settings, read-only. */
+interface SettingsView {
+	get(): Settings;
+}
+
+/** Commands and skills the session has loaded. */
+interface ResourcesPort {
+	getCommands(): SlashCommandInfo[];
+	getSkillDirectories(): string[];
+	getSkillResourceSnapshot(names?: readonly string[]): SkillResourceSnapshot;
+}
+
+/**
+ * What a feature may do while it is composed: subscribe to the session bus, register into the registries, and use the
+ * session's services. A feature module takes only the slices it uses.
+ */
+export interface FeatureSetup {
+	readonly bus: BusSubscriber;
+	readonly tools: ToolRegistrar;
+	readonly commands: CommandRegistrar;
+	readonly renderers: RendererRegistrar;
+	readonly providers: ProviderRegistrar;
+	readonly mcpServers: McpServerRegistrar;
+	readonly session: SessionPort;
+	readonly usage: UsagePort;
+	readonly models: ModelPort;
+	readonly settings: SettingsView;
+	readonly resources: ResourcesPort;
+	/** Named channels between features, unsubscribed when the session is replaced. */
+	readonly channels: EventBus;
+}
+
+/** Some members of one setup slice: `SetupPick<"session", "sendMessage">`. Intersect them for several slices. */
+export type SetupPick<S extends keyof FeatureSetup, M extends keyof FeatureSetup[S]> = {
+	readonly [K in S]: Pick<FeatureSetup[K], M>;
+};

@@ -174,7 +174,6 @@ export const PackageSourceSchema = Type.Union(
 			autoload: Type.Optional(
 				Type.Boolean({ description: "When false, start empty and only apply explicit resource patterns." }),
 			),
-			extensions: Type.Optional(Type.Array(Type.String())),
 			skills: Type.Optional(Type.Array(Type.String())),
 			prompts: Type.Optional(Type.Array(Type.String())),
 			themes: Type.Optional(Type.Array(Type.String())),

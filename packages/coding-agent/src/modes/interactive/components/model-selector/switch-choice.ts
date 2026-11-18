@@ -1,11 +1,16 @@
-import { Container, SelectList, Spacer, Text } from "@octocodeai/octocode-tui";
+import { Container, ListView, Spacer, Text } from "@octocodeai/octocode-tui";
 import type { Model } from "@octocodeai/octocode-ai";
 import { theme } from "../../../../theme/theme.ts";
-import { getSelectListTheme } from "../../../../theme/theme-tui-helpers.ts";
+import { listTheme } from "../list-kit.ts";
 
 export type SwitchChoice = "chat" | "default" | "both";
 
-const ITEMS = [
+interface ChoiceItem {
+	value: SwitchChoice;
+	label: string;
+}
+
+const ITEMS: readonly ChoiceItem[] = [
 	{ value: "chat", label: "Switch this chat" },
 	{ value: "default", label: "Set as default for new chats" },
 	{ value: "both", label: "Both" },
@@ -13,13 +18,18 @@ const ITEMS = [
 
 /** The inline question shown under the model list after Enter: what to do with the highlighted model. */
 export class SwitchChoicePrompt extends Container {
-	private readonly list: SelectList;
+	private readonly list: ListView<ChoiceItem>;
 
 	constructor(model: Model<any>, onChoose: (choice: SwitchChoice) => void, onBack: () => void) {
 		super();
-		this.addChild(new Text(theme.fg("accent", `Use ${model.provider}/${model.id}:`), 0, 0));
-		this.list = new SelectList(ITEMS, ITEMS.length, getSelectListTheme());
-		this.list.onSelect = (item) => onChoose(item.value as SwitchChoice);
+		this.addChild(new Text(theme.fg("accent", `Use ${model.provider}/${model.id}:`), 1, 0));
+		this.list = new ListView<ChoiceItem>({
+			items: ITEMS,
+			maxRows: ITEMS.length,
+			theme: listTheme(),
+			row: (item, state) => (state.selected ? theme.fg("accent", theme.bold(item.label)) : item.label),
+		});
+		this.list.onSelect = (item) => onChoose(item.value);
 		this.list.onCancel = onBack;
 		this.addChild(this.list);
 	}

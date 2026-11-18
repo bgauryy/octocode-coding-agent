@@ -8,6 +8,7 @@ import {
 } from "../../src/octocode/compaction/loaded-skills.ts";
 import { writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { tmp } from "./helpers.ts";
+import { asSetup } from "./fake-host.ts";
 
 const model = { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 10_000, contextWindow: 200_000 };
 const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
@@ -31,13 +32,13 @@ const compaction = (id: string, details: unknown, firstKeptEntryId = id) => ({
 const message = (id: string, value: unknown) => ({ type: "message", id, message: value });
 
 function summarize(messages: unknown[], branch: unknown[] = [], previousSummary?: string) {
-	const api = {
+	const api = asSetup({
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
 		getSettings: () => ({}),
 		createUsageRecorder: () => () => {},
 		appendEntry: () => {},
-	} as never;
+	}) as never;
 	const ctx = {
 		model,
 		modelRegistry: {

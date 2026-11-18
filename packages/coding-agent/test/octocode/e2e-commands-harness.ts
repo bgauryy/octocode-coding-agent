@@ -9,23 +9,25 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import type { Terminal } from "@octocodeai/octocode-tui";
-import { getApplicationPort } from "../../src/core/application/index.ts";
 import {
 	type CreateAgentSessionRuntimeFactory,
 	createSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
 } from "../../src/core/agent-session-runtime.ts";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 // As `interactive-mode.ts` does before building the host: MCP's terminal UI port.
 import "../../src/modes/interactive/mcp-ui-install.ts";
 import { createInteractiveModeHost } from "../../src/modes/interactive/interactive-mode/create-host.ts";
 import type { InteractiveModeHost } from "../../src/modes/interactive/interactive-mode/host.ts";
+import { submitPrompt } from "../../src/modes/interactive/interactive-mode/refused-input.ts";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
 import { daemonRequest, findWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * The real interactive mode (editor, command dispatch, extension UI) over a terminal that draws nothing, with a real
@@ -151,8 +153,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		provider: "faux",
 		models: (options.models ?? ["faux-1"]).map((id) => ({ id, contextWindow: 200_000, maxTokens: 4_096 })),
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -168,7 +170,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			agentDir,
 			settingsManager,
 			resourceLoaderOptions: {
-				extensionFactories: [{ name: "faux-provider", factory: provider }],
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([{ name: "faux-provider", factory: provider }]),
 				noPromptTemplates: true,
 				noThemes: true,
 				noContextFiles: true,
@@ -199,7 +202,7 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			if (stopped) return;
 			busy = true;
 			try {
-				await getApplicationPort(host.session).invoke("prompt", input, { attachImagePaths: true });
+				await submitPrompt(host, input);
 			} catch (error: unknown) {
 				host.showError(error instanceof Error ? error.message : String(error));
 			} finally {
@@ -249,11 +252,12 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		while (same < before.length && same < after.length && before[same] === after[same]) same++;
 		return after.slice(same).join("\n");
 	};
-	const editorOnly = () => host.editorContainer.render(120).join("\n");
+	// A selector or dialog takes the editor's place in its container; the editor's own rows change too (the empty-prompt
+	// hint returns in a fresh session), so they cannot tell a dialog apart.
+	const dialogOpen = () => !host.editorContainer.children.includes(host.editor);
 
 	const submit = async (text: string, timeoutMs = 15_000): Promise<Outcome> => {
 		const before = transcript();
-		const idleEditor = editorOnly();
 		const dialogs: string[] = [];
 		let settled = false;
 		let error: string | undefined;
@@ -266,9 +270,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			});
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-			const open = editorOnly() !== idleEditor && host.editor !== host.defaultEditor;
-			if (open || host.activeSelectorDispose) {
+			await new Promise((resolve) => setTimeout(resolve, 15));
+			if (dialogOpen() || host.activeSelectorDispose) {
 				// A selector or dialog replaced the editor: note what it shows (title, rows and hint line), then dismiss it as a user would.
 				dialogs.push(screen().split("\n").filter(Boolean).slice(-16).join("\n"));
 				press("\x1b");

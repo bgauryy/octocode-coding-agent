@@ -62,7 +62,7 @@ export async function handleBashCommand(
 		);
 	} catch (error) {
 		host.bashComponent?.setComplete(undefined, false);
-		// A failing `user_bash` handler was already reported as an extension error, and nothing ran.
+		// A failing `user_bash` handler was already reported as a feature error, and nothing ran.
 		if (!(error instanceof UserBashHookError)) host.showError(`Bash command failed: ${errorMessage(error)}`);
 	}
 

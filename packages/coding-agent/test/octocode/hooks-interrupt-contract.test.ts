@@ -106,9 +106,9 @@ it.each([' {"systemMessage":"MCP interruption notice"}', '{"continue":false}'])(
 			}),
 		);
 		const fake = fakeHost(HOOK_SETTINGS);
-		fake.api.events = createEventBus();
+		Object.assign(fake.api, { channels: createEventBus() });
 		let called = false;
-		const unregister = registerMcpHookCaller(fake.api.events, async (request) => {
+		const unregister = registerMcpHookCaller(fake.api.channels, async (request) => {
 			called = true;
 			expect(request.signal?.aborted).toBe(false);
 			expect(request.input).toEqual({

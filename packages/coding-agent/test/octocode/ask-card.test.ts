@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { ExtensionUIDialogOptions } from "../../src/core/features/types.ts";
-import { ExtensionSelectorComponent } from "../../src/modes/interactive/components/extension-selector.ts";
-import { askInTerminal } from "../../src/modes/interactive/interactive-mode/extension-ask.ts";
+import type { DialogOptions } from "../../src/core/features/types.ts";
+import { DialogSelectorComponent } from "../../src/modes/interactive/components/dialog-selector.ts";
+import { askInTerminal } from "../../src/modes/interactive/interactive-mode/ask-dialog.ts";
 import type { SelectorCard } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { renderAskCard } from "../../src/octocode/ask/card.ts";
 import { questionView } from "../../src/octocode/ask/dialog/view.ts";
 import { fromAskUser } from "../../src/octocode/ask/question.ts";
-import { registerAskUser } from "../../src/octocode/ask/tool.ts";
+import { registerAskUser } from "../../src/octocode/native/tools/ask-user/tool.ts";
 import type { AskView } from "../../src/octocode/shared/ask-view.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import type { PermissionRequest } from "../../src/octocode/permission/request.ts";
@@ -38,7 +38,7 @@ const claim = (text = BODY) => ({
 interface Asked {
 	title: string;
 	options: string[];
-	opts: ExtensionUIDialogOptions | undefined;
+	opts: DialogOptions | undefined;
 	/** What the footer reports while the selector is open. */
 	blocked?: { kind: string; message: string } | undefined;
 	/** The card the terminal draws over the selector. */
@@ -51,10 +51,9 @@ function terminal(
 	input: () => Promise<string | undefined> = async () => undefined,
 ) {
 	return askInTerminal({
-		showExtensionSelector: async (title, options, opts, blocked, card) =>
-			record({ title, options, opts, blocked, card }),
-		showExtensionInput: input,
-		showExtensionConfirm: async () => false,
+		showSelectorDialog: async (title, options, opts, blocked, card) => record({ title, options, opts, blocked, card }),
+		showInputDialog: input,
+		showConfirmDialog: async () => false,
 	});
 }
 
@@ -82,7 +81,7 @@ function session(answer: (asked: Asked) => string | undefined | Promise<string |
 /** Draws `asked` as the terminal does and drives `keys`; resolves with what the user chose. */
 function drive(asked: Asked, keys: string[], width = 80): { chosen: string | undefined; frames: string[][] } {
 	let chosen: string | undefined;
-	const selector = new ExtensionSelectorComponent(
+	const selector = new DialogSelectorComponent(
 		asked.title,
 		asked.options,
 		(option) => (chosen = option),
@@ -199,7 +198,10 @@ describe("askUser card", () => {
 	const forwarded = {
 		question: "jolly asks (message #7):\nA\nB\nC\nD\nE\n\nWhich scope?",
 		forwarded: { label: "jolly asks (message #7):", text: "A\nB\nC\nD\nE", ask: "Which scope?" },
-		options: [{ label: "Small (Recommended)", description: "One file" }, { label: "Large" }],
+		options: [
+			{ label: "Small (Recommended)", description: "One file" },
+			{ label: "Large", description: "Whole repo" },
+		],
 	};
 
 	it("renders the child's name and verbatim question above the parent question without collapsing it", () => {
@@ -218,6 +220,7 @@ describe("askUser card", () => {
 			"› 1. Small (Recommended) ★",
 			"     One file",
 			"  2. Large",
+			"     Whole repo",
 			"  3. Write an answer ✎",
 		]);
 		const expanded = plain(renderAskCard(view, { cursor: 2, expanded: true }, theme, 80));
@@ -232,19 +235,19 @@ describe("askUser card", () => {
 		const seen: string[][] = [];
 		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A"] } });
 		const select = ctx.ui.select.bind(ctx.ui);
-		Reflect.set(ctx.ui, "select", (title: string, options: string[], opts?: ExtensionUIDialogOptions) => {
+		Reflect.set(ctx.ui, "select", (title: string, options: string[], opts?: DialogOptions) => {
 			seen.push(options);
 			return select(title, options, opts);
 		});
 		const labels = ["A", "A", "Other", "B", "C", "D", "E", "F", "G"];
 		const result = await tool!.execute(
 			"c",
-			{ questions: [{ question: "Which?", options: labels.map((label) => ({ label })) }] },
+			{ questions: [{ question: "Which?", options: labels.map((label) => ({ label, description: `why ${label}` })) }] },
 			undefined,
 			undefined,
 			ctx,
 		);
-		expect(seen[0]).toEqual(["1. A", "2. B", "3. C", "4. D", "Write an answer"]);
+		expect(seen[0]).toEqual(["1. A — why A", "2. B — why B", "3. C — why C", "4. D — why D", "Write an answer"]);
 		expect(result.content[0]).toMatchObject({
 			text: expect.stringContaining(
 				'(Not asked: 1 duplicate option and 1 "Other" option (the UI adds a write-in) and 3 options past the first 4.)',

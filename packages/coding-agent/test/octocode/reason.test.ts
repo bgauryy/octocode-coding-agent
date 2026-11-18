@@ -133,7 +133,7 @@ describe("a native call without a reason", () => {
 	const register = () => {
 		const fake = fakeHost();
 		const execute = vi.fn(empty);
-		withNativePermissionOwners(fake.api).registerTool({
+		withNativePermissionOwners(fake.api).tools.register({
 			name: "bash",
 			label: "bash",
 			description: "test",
@@ -193,7 +193,7 @@ describe("a native call without a reason", () => {
 	it("drops a nested reason from an object argument before validation, so strict arguments pass", async () => {
 		const fake = fakeHost();
 		const execute = vi.fn(empty);
-		withNativePermissionOwners(fake.api).registerTool({
+		withNativePermissionOwners(fake.api).tools.register({
 			name: "backlog",
 			label: "backlog",
 			description: "test",

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../browser/launcher.ts";
 import { STATUS } from "../shared/status.ts";
@@ -8,27 +8,38 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { backlogCommand } from "./command.ts";
 import { registerBacklogDigest } from "./digest.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
+import type { CompletionGate } from "./completion-gate.ts";
+import type { Holdings } from "./done-guard.ts";
 import { countsText, sessionTaskTally, taskProgressText } from "./format.ts";
 import { refreshItemTitles } from "./title-lookup.ts";
-import { registerBacklogPlanTool } from "./plan-tool.ts";
-import { registerBacklogTool } from "./tool.ts";
+import { registerBacklogPlanTool } from "../native/tools/backlog-plan/tool.ts";
+import { registerBacklogTool } from "../native/tools/backlog/tool.ts";
 import { sharedWorkspaceWeb } from "./shared-web.ts";
 import { releaseOwn, restoreOwn } from "./lifetime.ts";
 import { registerTaskEvents } from "./task-events.ts";
+import { type BacklogFeed, type PeerWakes, type Reservations, startBacklogFeed } from "./peers.ts";
 
 interface RegisterBacklogOptions extends BacklogOptions {
 	openWeb?: OpenBacklogWeb;
 	commands: Subcommands;
 	/** Opens the HTML page (`/backlog html`); the system's default application unless replaced. */
 	open?: (file: string) => Promise<void>;
+	/** The paths other live agents reserve: a claim over them wakes the holder. */
+	reservations?: Reservations;
+	/** Runs the TaskCompleted hooks before an item is completed or closed; a reason refuses the write. */
+	completing?: CompletionGate;
+	/** What this session still runs, so `done` waits for it (`done-guard.ts`); without it `done` checks only the hooks. */
+	holdings?: Holdings;
+	/** How the peer notifier wakes this session; without it no peer wake is sent. */
+	wakes?: PeerWakes;
 }
 
 /** What the web commands need of the backlog. */
 export interface BacklogWebHooks {
 	/** Opens this session's own workspace server (the fallback when the web daemon cannot start); resolves to its address. */
-	open: (ctx: ExtensionContext, view: "board" | "activity", item?: string) => Promise<string>;
+	open: (ctx: FeatureContext, view: "board" | "activity", item?: string) => Promise<string>;
 	/** Repaints the footer counts; the web daemon asks for it after an edit on its page. */
-	refresh: (ctx: ExtensionContext) => void;
+	refresh: (ctx: FeatureContext) => void;
 }
 
 /**
@@ -36,10 +47,10 @@ export interface BacklogWebHooks {
  * `commands` is registered; `/backlog web` runs `/web backlogs` when that is registered) and footer counts with a
  * persistent `/web` hint for backlogs and activity.
  */
-export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptions): BacklogWebHooks {
-	const { commands, open, ...backlogOptions } = options;
+export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptions): BacklogWebHooks {
+	const { commands, open, reservations, completing, holdings, wakes, ...backlogOptions } = options;
 
-	let currentContext: ExtensionContext | undefined;
+	let currentContext: FeatureContext | undefined;
 	let lastAudit: number | undefined;
 	let stopFollowing: (() => void) | undefined;
 	let stopRunFollowing: (() => void) | undefined;
@@ -55,7 +66,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 			return "unreadable";
 		}
 	});
-	const refresh = (ctx: ExtensionContext, changedOnly = false) => {
+	const refresh = (ctx: FeatureContext, changedOnly = false) => {
 		currentContext = ctx;
 		if (!ctx.hasUI || options.isSubagent) return;
 		try {
@@ -79,7 +90,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 
 	const launch = webLauncher(api, open);
 	const openWeb = options.openWeb ? sharedWorkspaceWeb(options.openWeb, backlogOptions.env) : undefined;
-	const openView = async (ctx: ExtensionContext, view: "board" | "activity", item?: string) => {
+	const openView = async (ctx: FeatureContext, view: "board" | "activity", item?: string) => {
 		const backlog = openBacklog(ctx, backlogOptions);
 		return launch(
 			backlog.store.repo + ":" + backlog.session,
@@ -92,7 +103,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 			item,
 		);
 	};
-	registerBacklogTool(api, { ...backlogOptions, changed: refresh });
+	registerBacklogTool(api, { ...backlogOptions, changed: refresh, completing, holdings });
 	registerBacklogPlanTool(api, { ...backlogOptions, changed: refresh });
 	if (!options.isSubagent)
 		commands.add(
@@ -108,7 +119,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 		);
 	if (!options.isSubagent)
 		// Claims follow the session: a resume takes back what its exit returned, before the digest and the counts read the board.
-		api.on("session_start", (event, ctx) => {
+		api.bus.on("session_start", (event, ctx) => {
 			if (event.reason !== "startup" && event.reason !== "resume") return;
 			try {
 				const { store, actor } = openBacklog(ctx, backlogOptions);
@@ -118,13 +129,18 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 			}
 		});
 	// Foreign changes and the task line, for subagents too; registered before the digest, so the digest stays the turn's last result.
-	const events = registerTaskEvents(api, backlogOptions);
+	let feed: BacklogFeed | undefined;
+	const events = registerTaskEvents(api, backlogOptions, () => feed?.fyi());
 	if (!options.isSubagent) registerBacklogDigest(api, backlogOptions);
-	api.on("session_start", (_event, ctx) => {
+	api.bus.on("session_start", (_event, ctx) => {
 		stopFollowing?.();
 		stopRun();
+		feed?.stop();
+		feed = undefined;
 		lastAudit = undefined;
 		refresh(ctx);
+		// Every main session follows the change feed (hooks, pings), with or without a UI.
+		if (!options.isSubagent) feed = startBacklogFeed(api, ctx, backlogOptions, follower, reservations, wakes);
 		// The footer repaints while a main session with a UI is open.
 		stopFollowing =
 			ctx.hasUI && !options.isSubagent
@@ -134,14 +150,16 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 				: undefined;
 	});
 	// Every session, subagents included, hears a foreign change to a held item during a run, not only after a tool result.
-	api.on("agent_start", (_event, ctx) => {
+	api.bus.on("agent_start", (_event, ctx) => {
 		stopRun();
 		stopRunFollowing = follower.subscribe(() => events.poke(ctx));
 	});
-	api.on("session_shutdown", (event, ctx) => {
+	api.bus.on("session_shutdown", (event, ctx) => {
 		stopFollowing?.();
 		stopFollowing = undefined;
 		stopRun();
+		feed?.stop();
+		feed = undefined;
 		currentContext = undefined;
 		// A reload continues this session; any other end returns its claims (a subagent holds none).
 		if (options.isSubagent || event.reason === "reload") return;
@@ -153,7 +171,7 @@ export function registerBacklog(api: ExtensionAPI, options: RegisterBacklogOptio
 		}
 	});
 	// Another session or agent may have changed the board: repaint at the end of every run.
-	api.on("agent_end", (_event, ctx) => {
+	api.bus.on("agent_end", (_event, ctx) => {
 		stopRun();
 		refresh(ctx);
 	});

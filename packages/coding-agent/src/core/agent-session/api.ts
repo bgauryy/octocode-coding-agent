@@ -6,15 +6,15 @@ import type { RepositoryDiff } from "../../utils/repository-diff.ts";
  * in `api-state.ts` (state, tools, models) and `api-run.ts` (prompting, compaction, retry, bash).
  */
 
-import type { ContextUsage, ExtensionRunner, ReplacedSessionContext } from "../features/index.ts";
+import type { ContextUsage, FeatureHost, ReplacedSessionContext } from "../features/index.ts";
 import type { SessionNameSource } from "../session-manager.ts";
 import type { SessionStats } from "../session-stats.ts";
 import type { AgentSessionPromptingApi, AgentSessionRecoveryApi } from "./api-run.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi, AgentSessionToolsApi } from "./api-state.ts";
 import type { NavigateTreeOptions, NavigateTreeResult } from "./tree-navigation.ts";
-import type { AgentSessionEventListener, ExtensionBindings } from "./types.ts";
+import type { AgentSessionEventListener, ModeBindingOptions } from "./types.ts";
 
-/** Event subscription, session management, export and the extension system of `AgentSession`. */
+/** Event subscription, session management, export and the feature system of `AgentSession`. */
 export interface AgentSessionApi
 	extends
 		AgentSessionStateApi,
@@ -37,7 +37,7 @@ export interface AgentSessionApi
 	 */
 	dispose(): void;
 
-	bindExtensions(bindings: ExtensionBindings): Promise<void>;
+	bindFeatures(bindings: ModeBindingOptions): Promise<void>;
 
 	reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
 
@@ -111,9 +111,9 @@ export interface AgentSessionApi
 	createReplacedSessionContext(): ReplacedSessionContext;
 
 	/**
-	 * Check if extensions have handlers for a specific event type.
+	 * Check if features have handlers for a specific event type.
 	 */
-	hasExtensionHandlers(eventType: string): boolean;
+	hasFeatureHandlers(eventType: string): boolean;
 
 	/** Answer the dialog a run is blocked on (`awaiting.id`) for a client other than this mode's UI. */
 	answerDialog(
@@ -121,8 +121,11 @@ export interface AgentSessionApi
 		answer: { choice?: string; text?: string; replies?: unknown },
 	): { ok: true } | { ok: false; reason: string };
 
+	/** A client started answering the dialog `id`: stop the countdown over it. */
+	holdDialog(id: string): { ok: true } | { ok: false; reason: string };
+
 	/**
-	 * Get the extension runner (for setting UI context and error handlers).
+	 * Get the feature runner (for setting UI context and error handlers).
 	 */
-	readonly extensionRunner: ExtensionRunner;
+	readonly featureHost: FeatureHost;
 }

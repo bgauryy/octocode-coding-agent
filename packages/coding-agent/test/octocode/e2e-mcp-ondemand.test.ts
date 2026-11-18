@@ -11,12 +11,14 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
-import type { ExtensionFactory } from "../../src/core/features/index.ts";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { trustFolder } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A workspace MCP server whose tool has `toolExposure: "onDemand"`, on a scripted model. Where the transport adds tools
@@ -67,8 +69,8 @@ async function startSession(capable: boolean) {
 		...(capable ? { api: "anthropic-messages" } : {}),
 		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
 	});
-	const provider: ExtensionFactory = (api) => {
-		api.registerProvider("faux", {
+	const provider: FeatureRegister = (api) => {
+		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
 			baseUrl: "http://127.0.0.1:0",
@@ -88,7 +90,8 @@ async function startSession(capable: boolean) {
 		cwd,
 		agentDir,
 		settingsManager,
-		extensionFactories: [{ name: "faux-provider", factory: provider }],
+		nativeFeatures: nativeFeatureSet(),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
@@ -112,7 +115,7 @@ async function startSession(capable: boolean) {
 		else process.env.OCTOCODE_PERMISSION = saved.permission;
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await agent.bindExtensions({ mode: "json", shutdownHandler: () => undefined } as never);
+	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 
 	return { agent, faux };

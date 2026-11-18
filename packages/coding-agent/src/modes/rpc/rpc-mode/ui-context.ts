@@ -1,11 +1,6 @@
 import * as crypto from "node:crypto";
 import { checkedReplies, type Question, type Reply } from "@octocodeai/octocode-contracts";
-import type {
-	ExtensionUIContext,
-	ExtensionUIDialogOptions,
-	ExtensionWidgetOptions,
-	WorkingIndicatorOptions,
-} from "../../../core/features/index.ts";
+import type { SessionUI, DialogOptions, WidgetOptions, WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import { type DialogUi, degrade } from "../../../octocode/ask/degrade.ts";
 import { plainTitle, viewOf } from "../../../octocode/ask/question.ts";
@@ -20,8 +15,8 @@ import type {
 /** Writes one protocol object to stdout. */
 export type RpcOutput = (obj: RpcResponse | RpcExtensionUIRequest | RpcExtensionUIDismiss | object) => void;
 
-/** Pending extension UI requests waiting for response */
-export type PendingExtensionRequests = Map<string, { resolve: (response: RpcExtensionUIResponse) => void }>;
+/** Pending feature UI requests waiting for response */
+export type PendingUiRequests = Map<string, { resolve: (response: RpcExtensionUIResponse) => void }>;
 
 /**
  * Helper for dialog methods with signal/timeout support. A dialog settled by anything but the host's response (its signal
@@ -29,8 +24,8 @@ export type PendingExtensionRequests = Map<string, { resolve: (response: RpcExte
  */
 function createDialogPromise<T>(
 	output: RpcOutput,
-	pendingExtensionRequests: PendingExtensionRequests,
-	opts: ExtensionUIDialogOptions | undefined,
+	pendingUiRequests: PendingUiRequests,
+	opts: DialogOptions | undefined,
 	defaultValue: T | (() => T),
 	request: Record<string, unknown>,
 	parseResponse: (response: RpcExtensionUIResponse) => T,
@@ -45,7 +40,7 @@ function createDialogPromise<T>(
 		const cleanup = () => {
 			if (timeoutId) clearTimeout(timeoutId);
 			opts?.signal?.removeEventListener("abort", dismiss);
-			pendingExtensionRequests.delete(id);
+			pendingUiRequests.delete(id);
 		};
 
 		const dismiss = () => {
@@ -59,7 +54,7 @@ function createDialogPromise<T>(
 			timeoutId = setTimeout(dismiss, opts.timeout);
 		}
 
-		pendingExtensionRequests.set(id, {
+		pendingUiRequests.set(id, {
 			resolve: (response: RpcExtensionUIResponse) => {
 				cleanup();
 				resolve(parseResponse(response));
@@ -85,7 +80,7 @@ const cancelledAll = (questions: readonly Question[], cancelled: "declined" | "a
  * `header` (`AskOptions.header`), the parent's way to answer it without a dialog (see `subagents/relay.ts`).
  */
 const rpcAsk =
-	(output: RpcOutput, pending: PendingExtensionRequests): NonNullable<ExtensionUIContext["ask"]> =>
+	(output: RpcOutput, pending: PendingUiRequests): NonNullable<SessionUI["ask"]> =>
 	(questions, opts) =>
 		createDialogPromise<Reply[]>(
 			output,
@@ -106,28 +101,28 @@ const rpcAsk =
 		);
 
 /**
- * Create an extension UI context that uses the RPC protocol.
+ * Create a feature UI context that uses the RPC protocol.
  */
-export const createExtensionUIContext = (
+export const createSessionUI = (
 	output: RpcOutput,
-	pendingExtensionRequests: PendingExtensionRequests,
+	pendingUiRequests: PendingUiRequests,
 	options: RpcUiOptions = {},
-): ExtensionUIContext => {
-	const ui = dialogContext(output, pendingExtensionRequests);
+): SessionUI => {
+	const ui = dialogContext(output, pendingUiRequests);
 	return {
 		...ui,
 		// A client that did not declare `ask` gets the questions as select, confirm and input requests, as it always has.
 		ask: options.ask
-			? rpcAsk(output, pendingExtensionRequests)
-			: (questions, opts) => degrade(wireDialogs(output, pendingExtensionRequests, ui), questions, opts),
+			? rpcAsk(output, pendingUiRequests)
+			: (questions, opts) => degrade(wireDialogs(output, pendingUiRequests, ui), questions, opts),
 	};
 };
 
 /** The dialogs a client without `ask` answers, and an approval as the `select` request that says it is one. */
 const wireDialogs = (
 	output: RpcOutput,
-	pending: PendingExtensionRequests,
-	ui: Pick<ExtensionUIContext, "select" | "confirm" | "input">,
+	pending: PendingUiRequests,
+	ui: Pick<SessionUI, "select" | "confirm" | "input">,
 ): DialogUi => ({
 	...ui,
 	approve: async (question, dialog) => {
@@ -156,11 +151,11 @@ const wireDialogs = (
 	},
 });
 
-const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExtensionRequests): ExtensionUIContext => ({
+const dialogContext = (output: RpcOutput, pendingUiRequests: PendingUiRequests): SessionUI => ({
 	select: (title, options, opts) =>
 		createDialogPromise(
 			output,
-			pendingExtensionRequests,
+			pendingUiRequests,
 			opts,
 			undefined,
 			{
@@ -175,7 +170,7 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 	confirm: (title, message, opts) =>
 		createDialogPromise(
 			output,
-			pendingExtensionRequests,
+			pendingUiRequests,
 			opts,
 			false,
 			{ method: "confirm", title, message, timeout: opts?.timeout },
@@ -185,7 +180,7 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 	input: (title, placeholder, opts) =>
 		createDialogPromise(
 			output,
-			pendingExtensionRequests,
+			pendingUiRequests,
 			opts,
 			undefined,
 			{ method: "input", title, placeholder, timeout: opts?.timeout },
@@ -224,19 +219,11 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 		// Working message not supported in RPC mode - requires TUI loader access
 	},
 
-	setWorkingVisible(_visible: boolean): void {
-		// Working visibility not supported in RPC mode - requires TUI loader access
-	},
-
 	setWorkingIndicator(_options?: WorkingIndicatorOptions): void {
 		// Working indicator customization not supported in RPC mode - requires TUI loader access
 	},
 
-	setHiddenThinkingLabel(_label?: string): void {
-		// Hidden thinking label not supported in RPC mode - requires TUI message rendering access
-	},
-
-	setWidget(key: string, content: unknown, options?: ExtensionWidgetOptions): void {
+	setWidget(key: string, content: unknown, options?: WidgetOptions): void {
 		// Only support string arrays in RPC mode - factory functions are ignored
 		if (content === undefined || Array.isArray(content)) {
 			output({
@@ -274,11 +261,6 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 		return undefined;
 	},
 
-	pasteToEditor(text: string): void {
-		// Paste handling not supported in RPC mode - falls back to setEditorText
-		this.setEditorText(text);
-	},
-
 	setEditorText(text: string): void {
 		// Fire and forget - host can implement editor control
 		output({
@@ -289,16 +271,10 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 		});
 	},
 
-	getEditorText(): string {
-		// Synchronous method can't wait for RPC response
-		// Host should track editor state locally if needed
-		return "";
-	},
-
 	editor: (title, prefill, opts) =>
 		createDialogPromise(
 			output,
-			pendingExtensionRequests,
+			pendingUiRequests,
 			opts,
 			undefined,
 			{ method: "editor", title, prefill, timeout: opts?.timeout },
@@ -331,10 +307,6 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 		return theme;
 	},
 
-	getAllThemes() {
-		return [];
-	},
-
 	getTheme(_name: string) {
 		return undefined;
 	},
@@ -342,14 +314,5 @@ const dialogContext = (output: RpcOutput, pendingExtensionRequests: PendingExten
 	setTheme(_theme: string | Theme) {
 		// Theme switching not supported in RPC mode
 		return { success: false, error: "Theme switching not supported in RPC mode" };
-	},
-
-	getToolsExpanded() {
-		// Tool expansion not supported in RPC mode - no TUI
-		return false;
-	},
-
-	setToolsExpanded(_expanded: boolean) {
-		// Tool expansion not supported in RPC mode - no TUI
 	},
 });
