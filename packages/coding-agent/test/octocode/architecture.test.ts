@@ -151,7 +151,8 @@ const ALLOWED: Record<string, string[]> = {
 	profiler: ["shared", "team"],
 	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],
 	// The harness page previews a scan through the harness domain's renderer.
-	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser", "harness"],
+	// `guard`, `hooks`: the Security panel lists what the session loaders find (`security-collect.ts`, which `/security` shares) and records decisions.
+	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser", "harness", "guard", "hooks"],
 	remote: ["shared", "web-daemon", "workspace"],
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
 	// `backlog`: start recall also searches the active item's goal (`memory/active-goal.ts`).

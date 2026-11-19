@@ -25,6 +25,7 @@ import {
 	RpcError,
 	stringParam,
 } from "./protocol.ts";
+import { agentReceiptStore } from "./receipt-store.ts";
 import { type RunResult, SendReceipts } from "./receipts.ts";
 import {
 	apiDir,
@@ -61,7 +62,7 @@ export class OctocodeApi {
 	/** The last run's final assistant text, handed to `wait` callers when Octocode settles. */
 	private lastResult: RunResult | undefined;
 	private counter = 0;
-	private readonly receipts = new SendReceipts();
+	private readonly receipts: SendReceipts;
 	private lastAssistantText = "";
 	private pendingDelta = "";
 
@@ -83,6 +84,7 @@ export class OctocodeApi {
 		this.agents = agents;
 		this.version = version;
 		this.env = env;
+		this.receipts = new SendReceipts(agentReceiptStore(env));
 		this.ceilings = new TurnCeilings(operations);
 		this.operations = this.ceilings.operations;
 

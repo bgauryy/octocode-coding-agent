@@ -774,14 +774,14 @@ describe("bash rendering", () => {
 					executionStarted: false,
 				}),
 			),
-		).toBe("○ Bash(yarn test)");
+		).toBe("⏺ Bash(yarn test)");
 		expect(
 			rendered(
 				tool.renderCall({ command: "sleep 1", timeout: 30 }, theme, { lastComponent: undefined, isPartial: true }),
 			),
-		).toBe("○ Bash(sleep 1) · timeout 30s");
+		).toBe("⏺ Bash(sleep 1) · timeout 30s");
 		expect(rendered(tool.renderCall({ command: "serve", background: true }, theme, done({ durationMs: 4_000 })))).toBe(
-			"✓ Bash(serve) · background · 4s",
+			"⏺ Bash(serve) · background · 4s",
 		);
 	});
 
@@ -972,10 +972,10 @@ describe("bash rendering", () => {
 		const job = [...renderers.values()][0];
 		const message = { content: "Background bash bash-1 finished after 3s: yarn build\nLog: /tmp/j.log\nok" };
 		expect(rendered(job(message, { expanded: false }, theme))).toBe(
-			" ✓ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
+			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
 		);
 		expect(rendered(job(message, { expanded: true }, theme))).toBe(
-			" ✓ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
+			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
 		);
 		// A report that opens with the status header names its log there instead of on a `Log:` line.
 		const headed = {
@@ -983,7 +983,7 @@ describe("bash rendering", () => {
 				"[exit 0 · 3s · 1 line · 3 B · log: /tmp/j.log]\nBackground bash bash-1 finished after 3s: yarn build\nok",
 		};
 		expect(rendered(job(headed, { expanded: true }, theme))).toBe(
-			" ✓ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
+			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
 		);
 		// A job the user killed is interrupted, not failed.
 		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };
@@ -994,7 +994,8 @@ describe("bash rendering", () => {
 				colored,
 			),
 		);
-		expect(killed).toContain("<warning>◼");
-		expect(killed).not.toContain("<error>");
+		// A stopped light is red like a failed one: the row says it was stopped by name, never `Error:`.
+		expect(killed).toContain("<error>⏺");
+		expect(killed).not.toContain("Error:");
 	});
 });

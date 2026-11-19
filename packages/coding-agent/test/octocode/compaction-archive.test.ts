@@ -423,11 +423,13 @@ describe("the archive pointer", () => {
 
 	it("lists the newest earlier segments by file name with their TL;DR, newest first, and counts the rest", () => {
 		for (let n = 1; n <= POINTER_SEGMENTS + 3; n++) file(n);
-		const lines = archivePointer(POINTER_SEGMENTS + 4);
+		const current = POINTER_SEGMENTS + 4;
+		const lines = archivePointer(current);
 		expect(lines).toHaveLength(3 + POINTER_SEGMENTS + 1);
-		expect(lines[2]).toMatch(/segment 9: `9-\*\.md`; earlier, newest first:$/);
-		expect(lines[3]).toBe(`${path.basename(segmentPath(8)!)} · segment 8 work`);
-		expect(lines[2 + POINTER_SEGMENTS]).toBe(`${path.basename(segmentPath(4)!)} · segment 4 work`);
+		expect(lines[2]).toMatch(new RegExp(`segment ${current}: \`${current}-\\*\\.md\`; earlier, newest first:$`));
+		expect(lines[3]).toBe(`${path.basename(segmentPath(current - 1)!)} · segment ${current - 1} work`);
+		const oldest = current - POINTER_SEGMENTS;
+		expect(lines[2 + POINTER_SEGMENTS]).toBe(`${path.basename(segmentPath(oldest)!)} · segment ${oldest} work`);
 		expect(lines.at(-1)).toBe("+3 earlier segments are in LIBRARY.md.");
 		// A segment that is not yet an earlier one is never listed.
 		expect(archivePointer(2).filter((line) => line.includes(" · "))).toEqual([

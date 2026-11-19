@@ -1,7 +1,7 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import type { ToolChange, ToolEffect } from "../../core/features/types.ts";
-import { fileShapeError } from "../files/tool/shape.ts";
+import { fileShapeError } from "./file-shape.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";

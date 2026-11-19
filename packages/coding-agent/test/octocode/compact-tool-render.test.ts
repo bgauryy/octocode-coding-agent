@@ -50,8 +50,9 @@ describe("compact tool row", () => {
 		expect(row).toContain("Compaction refused: the context was compacted one turn ago.");
 		expect(row).not.toContain("Continue the task");
 		expect(row).not.toContain("Error:");
-		// The header reads the stopped state the result recorded: `\u25fc`, not the failure mark.
-		expect(rendered(tool().renderCall({}, theme, ctx))).toContain("\u25fc");
+		// The header reads the stopped state the result recorded: the light in the stopped colour (`error`), not the failed one, which the plain result row confirms.
+		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` } as never;
+		expect(rendered(tool().renderCall({}, colored, ctx))).toContain("<error>\u23fa");
 	});
 
 	it("wraps a long refusal at a narrow width instead of cutting it", () => {

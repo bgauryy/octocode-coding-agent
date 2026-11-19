@@ -96,15 +96,36 @@ export function viewSummary(summary: string): SummaryView {
 
 /** A kept user message shows its first line, clipped. */
 const KEPT_MESSAGE_CHARS = 100;
+/** A kept answer's question is cut shorter, so the answer stays visible. */
+const KEPT_QUESTION_CHARS = 48;
+/** A first line that is only a source label (`[askUser answer]`): its entries follow, one per line. */
+const LABEL_LINE = /^\[[^\]\n]+\]$/;
+/** One `askUser` entry: `"question" → answer`. */
+const ANSWER_ENTRY = /^"(.*)" → (.*)$/;
 
 function tokenCount(count: number): string {
 	if (count < 1_000) return String(count);
 	return `${Math.round(count / 100) / 10}k`.replace(/\.0k$/, "k");
 }
 
-function keptLine(text: string): string {
-	const line = text.split("\n")[0].trim();
-	return line.length > KEPT_MESSAGE_CHARS ? `${line.slice(0, KEPT_MESSAGE_CHARS - 1)}\u2026` : line;
+function cut(text: string, max: number): string {
+	return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
+}
+
+/**
+ * A kept message as one list line: its first line, clipped. A labeled entry (an `askUser` answer) shows its label and
+ * first entry, the question cut so the answer shows, and counts the rest.
+ */
+export function keptLine(text: string): string {
+	const [first = "", ...rest] = text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (!LABEL_LINE.test(first) || rest.length === 0) return cut(first, KEPT_MESSAGE_CHARS);
+	const entry = ANSWER_ENTRY.exec(rest[0]);
+	const lead = entry ? `"${cut(entry[1], KEPT_QUESTION_CHARS)}" \u2192 ${entry[2]}` : rest[0];
+	const more = rest.length > 1 ? ` (+${rest.length - 1} more)` : "";
+	return `${cut(`${first} ${lead}`, KEPT_MESSAGE_CHARS - more.length)}${more}`;
 }
 
 /**

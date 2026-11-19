@@ -7,5 +7,5 @@ readOnly: true
 model: small:medium
 ---
 
-- After the outcome word: the answer, supporting source locations and unresolved gaps.
-- Read board items you are given by id with `backlog` `get`, or find them with `backlogPlan` `list`; both only read, and the board stays your coordinator's to change. Cover only the ids you were assigned.
+- After the outcome word: the answer, its source locations and open gaps.
+- Read board items you are given by id with `octocode backlog get <id>` (or `octocode backlog list --query <text>`) in bash. These commands only read; the board stays your coordinator's to change. Cover only your assigned ids.

@@ -68,6 +68,15 @@ describe("the live state a compaction summary carries", () => {
 		expect(liveStateLines(ctx(), [], 0)).toEqual([]);
 	});
 
+	it("says no job or subagent runs once every earlier one reported, and stays quiet in a session that started none", () => {
+		seed();
+		const reported = [{ type: "custom_message", customType: "octocode-agent-result", details: { id: "kind-fox" } }];
+		expect(liveStateLines(ctx(), reported, 0).join("\n")).toContain(
+			"no background job or subagent you started is running",
+		);
+		expect(liveStateLines(ctx(), [], 0).join("\n")).not.toContain("is running");
+	});
+
 	it("says none when the session holds nothing, so an id the summary invented is not confirmed", () => {
 		const [line] = liveStateLines(ctx(), [], 0);
 		expect(line).toContain(renderPrompt("notices/recovery/live-items.md"));
@@ -124,7 +133,8 @@ describe("the live state a compaction summary carries", () => {
 			},
 			sessionManager: {
 				getSessionId: () => SESSION,
-				getSessionFile: () => "/sessions/s.jsonl",
+				// A writable session file: the paid summary is saved beside it.
+				getSessionFile: () => path.join(dir, "s.jsonl"),
 				getBranch: () => [],
 				buildSessionProjection: () => ({ entries: [], messages: [] }),
 			},

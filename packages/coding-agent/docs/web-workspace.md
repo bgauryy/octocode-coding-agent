@@ -34,13 +34,13 @@ Run `/web` again to reopen a disconnected workspace. Over SSH, or on Linux with 
 
 If the daemon cannot start or this session cannot reach it, `/web` warns with the reason and opens the session's own server instead. That fallback page closes with its session.
 
-| Web daemon (default)                                                                            | Session's own server (fallback)                |
-| ----------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| One daemon for every session; keeps running after the launching session closes                  | One server per session; closes with it         |
-| Lists live sessions (blocked ones first), opens the current one, every repository's board and reports | That session and its repository's board        |
-| Board edits from the launch page and control links, never view links                            | Board edits from the launch page               |
-| Settings on the session's page and a Settings tab for every repository                          | Settings view for this repository              |
-| [`/remote`](remote.md) publishes it to another device                                           | Not available                                  |
+| Web daemon (default)                                                                                  | Session's own server (fallback)         |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| One daemon for every session; keeps running after the launching session closes                        | One server per session; closes with it  |
+| Lists live sessions (blocked ones first), opens the current one, every repository's board and reports | That session and its repository's board |
+| Board edits from the launch page and control links, never view links                                  | Board edits from the launch page        |
+| Settings on the session's page and a Settings tab for every repository                                | Settings view for this repository       |
+| [`/remote`](remote.md) publishes it to another device                                                 | Not available                           |
 
 A board edit on either page is recorded the same way (you, on the web, under the session whose page sent it) and repaints the backlog counts in that session's footer; an edit on the daemon page repaints every attached session of that repository.
 
@@ -48,15 +48,18 @@ A board edit on either page is recorded the same way (you, on the web, under the
 
 A session's page has a Settings view for that session and its repository, on the daemon and on the fallback server alike. The daemon's own Settings tab (no session) lists every repository. Choose a workspace at the bottom to see its trust and its own settings. Writes work from the page `/web` opened, not from a [published link](remote.md).
 
-| Panel                | Shows                                                                                  | Change it here                                     |
-| -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Provider sources     | Octocode and Pi, on or off                                                             | Pi on or off ([providers](providers.md))           |
-| Provider credentials | Where each provider's key comes from, never its value                                  | Set or clear a key, sign in, turn a provider off   |
-| Settings             | Default provider and model, with the file that sets them                               | Global or workspace value                          |
-| Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions | Turn each on or off, globally or for the workspace |
-| Tools                | How much of each native and MCP tool a session sends to the model, and what decided it | Pin a tool, globally or for the workspace          |
+| Panel                | Shows                                                                                                                           | Change it here                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Provider sources     | Octocode and Pi, on or off                                                                                                      | Pi on or off ([providers](providers.md))           |
+| Provider credentials | Where each provider's key comes from, never its value                                                                           | Set or clear a key, sign in, turn a provider off   |
+| Settings             | Default provider and model, with the file that sets them                                                                        | Global or workspace value                          |
+| Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions                                          | Turn each on or off, globally or for the workspace |
+| Security             | Every hook, MCP server and skill from outside Octocode, with its state, rating, findings and what changed since you approved it | Approve, deny or forget, as `/security` does       |
+| Tools                | How much of each native and MCP tool a session sends to the model, and what decided it                                          | Pin a tool, globally or for the workspace          |
 
 The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
+
+The Security panel lists what `/security` lists and records decisions through the same guard, so a decision made here holds in the terminal and the reverse. Approving or denying asks for a confirmation of the content shown. Like the Harness panel, only the page opened from the terminal sees it.
 
 The Tools panel has one table for the native tools and one per enabled MCP server. Each row shows the tool's state, what decided it, and its pin ([what the states mean](configuration.md#tool-exposure)).
 
@@ -82,13 +85,13 @@ Other views: **Profiler** ([below](#profiler)), **Settings** ([below](#settings-
 
 ## Profiler
 
-| Panel | Shows |
-| --- | --- |
-| Overview | Agent hierarchy, current activity, context by layer, token usage and findings |
-| Cache | Each agent's cumulative cache usage beside its latest request, context, recorded cache group and lifetime; **Inspect layers** opens the request evidence |
-| Trace | Requests, tool calls, waits and timing phases on a shared timeline |
-| Messages | Delivery and reply state between agents |
-| Insights | Findings with evidence to inspect before deciding on a fix |
+| Panel    | Shows                                                                                                                                                    |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview | Agent hierarchy, current activity, context by layer, token usage and findings                                                                            |
+| Cache    | Each agent's cumulative cache usage beside its latest request, context, recorded cache group and lifetime; **Inspect layers** opens the request evidence |
+| Trace    | Requests, tool calls, waits and timing phases on a shared timeline                                                                                       |
+| Messages | Delivery and reply state between agents                                                                                                                  |
+| Insights | Findings with evidence to inspect before deciding on a fix                                                                                               |
 
 Cache segments use provider-reported prompt tokens; output is separate. Context uses the latest completed request plus its reply. A missing window or unavailable profile is shown as unknown. Layer estimates are labelled. A recorded cache lifetime does not guarantee a future hit.
 

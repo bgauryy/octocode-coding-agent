@@ -165,10 +165,10 @@ describe("what the team shows about an agent", () => {
 		// The root row is grid row 0 in the same columns; an agent with no stats yet adds no stats line.
 		// The spend and the detail line's cells after the model end at the terminal's edge.
 		const shapes = [
-			/^ 🦑 salty-squid ○  · main        · ship the release +1m$/,
-			/^ ├ ⠋ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/,
+			/^ 🦑 salty-squid ⏺  · main        · ship the release +1m$/,
+			/^ ├ ⏺ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/,
 			/^ │   claude-opus-5-5 +56 tool calls · 20 locks$/,
-			/^ └ ○ deep-nautilus · reviewer    · review parser changes +45s$/,
+			/^ └ ⏺ deep-nautilus · reviewer    · review parser changes +45s$/,
 		];
 		expect(lines).toHaveLength(shapes.length);
 		for (const [index, line] of lines.entries()) {
@@ -195,27 +195,27 @@ describe("what the team shows about an agent", () => {
 		const kept = ["claude-opus-5-5", "107k tok", "94% cached", "20 locks"];
 		// A short action beside a whole goal: nothing is cut.
 		const wide = at(100);
-		expect(wide[1]).toMatch(/^ ├ ⠋ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/);
+		expect(wide[1]).toMatch(/^ ├ ⏺ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/);
 		for (const text of [...kept, "56 tool calls"]) expect(wide[2]).toContain(text);
 		// The action no longer fits whole: it moves to a ↳ line and the goal stays whole.
 		const medium = at(80);
-		expect(medium[1]).toBe(" ├ ⠋ inky-kraken   · implementer · audit auth token refresh         ≈$2.28 8m38s");
+		expect(medium[1]).toBe(" ├ ⏺ inky-kraken   · implementer · audit auth token refresh         ≈$2.28 8m38s");
 		expect(medium[2]).toContain("56 tool calls");
 		// Under the goal column, which keeps room for it.
 		expect(medium[3]).toMatch(/^ │ +↳ Thinking$/);
 		expect(medium[3].indexOf("↳")).toBe(medium[1].indexOf("audit"));
 		// Then the elapsed time leaves every row (the cost stays), and the stats line drops its tool calls.
 		const narrow = at(70);
-		expect(narrow[1]).toBe(" ├ ⠋ inky-kraken   · implementer · audit auth token refresh     ≈$2.28");
+		expect(narrow[1]).toBe(" ├ ⏺ inky-kraken   · implementer · audit auth token refresh     ≈$2.28");
 		expect(narrow[2]).not.toContain("tool calls");
 		// Then the role is cut (its level would stay) and the cost leaves.
 		const tighter = at(60);
-		expect(tighter[1]).toBe(" ├ ⠋ inky-kraken   · impleme… · audit auth token refresh");
+		expect(tighter[1]).toBe(" ├ ⏺ inky-kraken   · impleme… · audit auth token refresh");
 		for (const lines of [wide, medium, narrow, tighter]) for (const text of kept) expect(lines[2]).toContain(text);
 		// Below 60 columns, the narrow form: `mark name · role`, the goal, the stats, then `↳ action`.
 		const compact = at(59);
 		expect(compact.slice(1, 5)).toEqual([
-			" ├ ⠋ inky-kraken · implementer",
+			" ├ ⏺ inky-kraken · implementer",
 			" │   audit auth token refresh",
 			" │   claude-opus-5-5       107k tok · 94% cached · 20 locks",
 			" │   ↳ Thinking",

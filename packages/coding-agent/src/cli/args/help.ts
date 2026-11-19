@@ -26,6 +26,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} trust <list|add|remove>   Show, grant or revoke folder trust
   ${APP_NAME} security <list|check|approve|deny> Review the hooks, MCP servers and skills a folder would load
   ${APP_NAME} profile [--insights]      Show where a session's requests, cache and waits went
+  ${APP_NAME} backlog <get|list|export> Read this folder's backlog board without changing it
   ${APP_NAME} remote <list|link|stop>   List sessions the web daemon reaches; publish or stop a remote link
   ${APP_NAME} context <command>         Show and store the skill descriptions agents read
   ${APP_NAME} marketplace <command>     Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)

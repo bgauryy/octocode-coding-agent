@@ -38,6 +38,8 @@ export const GLYPH = {
 	/** From one value to another (`A → B`), a state change or a question's answer. */
 	arrow: "→",
 	userBar: "▎",
+	/** The state light: one dot every state shares, coloured by `LIGHT_COLOR` and lit while it runs (agent rows, work rows). */
+	light: "⏺",
 } as const;
 
 /**

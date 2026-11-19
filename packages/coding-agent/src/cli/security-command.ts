@@ -10,7 +10,7 @@ import {
 	refreshed,
 	SecurityCommandError,
 } from "../octocode/guard/actions.ts";
-import { collectReviews } from "../octocode/guard/collect.ts";
+import { collectReviews } from "../octocode/web-daemon/security-collect.ts";
 import { isWithheld, resetGateRecords } from "../octocode/guard/registry.ts";
 import { renderReport } from "../octocode/guard/report.ts";
 import type { GuardOptions } from "../octocode/guard/store.ts";

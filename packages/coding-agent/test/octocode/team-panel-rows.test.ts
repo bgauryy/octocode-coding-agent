@@ -63,7 +63,7 @@ describe("agents panel rows", () => {
 	it("roots the tree at this session: name, mark, role and clock in the grid's columns, with no cost and no tally", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(lines[0]).toBe(
-			" 🦑 tidal-whale ○ · main                                                                                                                                                                           4m49s",
+			" 🦑 tidal-whale ⏺ · main                                                                                                                                                                           4m49s",
 		);
 		expect(lines.join("\n")).not.toMatch(/working|idle|≈\$0\.00/);
 	});
@@ -71,7 +71,7 @@ describe("agents panel rows", () => {
 	it("shows who, role, spend, goal and action on the row; model, tokens, cache, tools and locks on the open detail line", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(rowOf(lines, "inky-kraken")).toBe(
-			" ├ ⠋ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
+			" ├ ⏺ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
 		);
 		expect(rowOf(lines, "plucky-otter")).toContain(
 			"Checking timeout handling in serve_client.rs ✉ 1 › localFetch serve_client.rs",
@@ -121,9 +121,9 @@ describe("agents panel rows", () => {
 	it("draws the tree: ├ for a child with later siblings, └ for the last, │ continuing beside a grandchild", () => {
 		const nested = [...team, agent("zesty-eel", "general", { parentId: "inky-kraken", goal: "Read routing.rs" })];
 		const lines = widgetLines(nested, "tidal-whale", NOW, theme, 200);
-		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ⠋ inky-kraken/);
-		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ⠋ zesty-eel/);
-		expect(rowOf(lines, "brave-squid")).toMatch(/^ └ ○ brave-squid/);
+		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ⏺ inky-kraken/);
+		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ⏺ zesty-eel/);
+		expect(rowOf(lines, "brave-squid")).toMatch(/^ └ ⏺ brave-squid/);
 		expect(lines.join("\n")).not.toContain("🐙");
 	});
 

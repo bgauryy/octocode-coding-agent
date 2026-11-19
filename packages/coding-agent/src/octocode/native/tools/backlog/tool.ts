@@ -1,4 +1,3 @@
-import { readOnlyChild } from "../../../backlog/read-only-role.ts";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import type { CloseInput } from "@octocodeai/octocode-contracts/backlogs";
@@ -121,11 +120,7 @@ export function registerBacklogTool(
 			// A child declares `backlog` only when its task names the item it may update (BACKLOG_ITEM_ENV, set by the parent):
 			// without one it has nothing to update and puts follow-ups in its report. Registered either way, so the store
 			// rules and RPC callers are unchanged; the main session always declares it.
-			// A read-only child (reviewer, researcher) declares it too, to `get` items by id; the role refuses its writes.
-			defaultActive:
-				!subagent ||
-				Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]) ||
-				readOnlyChild(options.env ?? process.env),
+			defaultActive: !subagent || Boolean((options.env ?? process.env)[BACKLOG_ITEM_ENV]),
 			parameters,
 			validationParameters: withReason(accepted),
 			// A `get` runs beside other reads; a write runs alone in its message and after every earlier write.

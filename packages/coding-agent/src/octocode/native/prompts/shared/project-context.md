@@ -1,1 +1,1 @@
-- <project_context> holds the AGENTS.md files of the working directory and its ancestors; before working under a subdirectory, read its AGENTS.override.md or AGENTS.md (reading a file there appends it), which wins there.
+- <project_context> holds the AGENTS.md files of the working directory and its parents. In a subdirectory, its AGENTS.override.md or AGENTS.md wins; your first read of a file there adds it.

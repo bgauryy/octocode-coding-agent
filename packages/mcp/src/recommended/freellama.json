@@ -1,7 +1,7 @@
 {
 	"name": "freellama",
 	"enabledEnv": "OCTOCODE_MCP_FREELLAMA",
-	"enabledWhenOnPath": "ollama",
+	"enabledByDefault": false,
 	"description": "Local Ollama models: pick one that fits this machine, run or delegate tasks to it, and manage models.",
 	"command": "freellama-mcp-server",
 	"inheritEnv": true,

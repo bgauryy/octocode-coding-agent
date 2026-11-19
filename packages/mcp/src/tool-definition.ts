@@ -3,6 +3,7 @@ import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
+import { createOutputChecker } from "./client/output-check.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import type { McpExposure } from "./config.ts";
 import { deferredParameters } from "./deferred-schema.ts";
@@ -87,6 +88,8 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const { compact } = options;
 	const prepare: PrepareCall = async (args, ctx) => (await options.presentation?.prepareCall?.(args, ctx)) ?? { args };
 	let lastFailure: string | undefined;
+	// A definition is built from one tool list, so its checker lives exactly as long as the declared schema.
+	const outputMismatch = tool.outputSchema ? createOutputChecker(tool.outputSchema) : undefined;
 	const definition: McpToolDefinition<TSchema, McpToolDetails> = {
 		name: options.name,
 		label,
@@ -173,9 +176,29 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 				},
 			});
 			const result = call.review ? call.review(reply) : reply;
-			return options.presentation
-				? options.presentation.convertResult(result, ctx)
-				: convertMcpResult(server, tool.name, result);
+			const converted = options.presentation
+				? await options.presentation.convertResult(result, ctx)
+				: await convertMcpResult(server, tool.name, result);
+			// The result still reaches the model; the note says its structured part broke the server's declared contract.
+			// A tool that declares an outputSchema must return structuredContent (MCP spec); leaving it out breaks that too.
+			const mismatch =
+				!outputMismatch || result.isError
+					? undefined
+					: result.structuredContent === undefined
+						? "structuredContent is missing"
+						: outputMismatch(result.structuredContent);
+			return mismatch
+				? {
+						...converted,
+						content: [
+							...converted.content,
+							{
+								type: "text",
+								text: `Note: structuredContent does not match the tool's outputSchema (${visibleControls(mismatch)}).`,
+							},
+						],
+					}
+				: converted;
 		},
 	};
 	return Object.assign(definition, { [PREPARE_CALL]: prepare });

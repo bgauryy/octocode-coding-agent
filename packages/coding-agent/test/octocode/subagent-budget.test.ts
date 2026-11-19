@@ -347,7 +347,7 @@ describe("budgetOutcome", () => {
 		);
 		expect(outcome.text.split("\n")).toEqual([
 			"partial: stopped at the model request budget (15 requests; limit 12, hard limit 15).",
-			"To continue it: `agent` type `task` with `resume: x-1`, a `goal` and a `task` for what is left. That resume gives it 9 more requests. It ran isolated: the resume recreates its worktree from its saved ref, and is refused when that ref is gone; then start a new task that cites `report:x-1`.",
+			"To continue it: `agent` type `task` with `resume: x-1`, a `goal` and a `task` for what is left. That resume gives it 9 more requests. It ran isolated. The resume recreates its worktree from its saved ref. If that ref is gone, the resume is refused: then start a new task that cites `report:x-1`.",
 		]);
 		expect(outcome.budget).toEqual({ requests: 15, limit: 12 });
 	});

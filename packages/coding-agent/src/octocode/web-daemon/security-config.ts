@@ -1,6 +1,6 @@
 import { type SecurityAction, type SecurityItem, type SecurityList } from "@octocodeai/octocode-contracts/config";
 import { decideOne, refreshed, SecurityCommandError } from "../guard/actions.ts";
-import { collectReviews } from "../guard/collect.ts";
+import { collectReviews } from "./security-collect.ts";
 import { renderChanges } from "../guard/diff.ts";
 import { isWithheld } from "../guard/registry.ts";
 import { sortReviews } from "../guard/report.ts";

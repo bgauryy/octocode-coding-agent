@@ -17,6 +17,7 @@ afterEach(() => {
 describe("one-shot subcommands", () => {
 	it("are one table of names, each loaded on use", () => {
 		expect(Object.keys(SUBCOMMANDS).sort()).toEqual([
+			"backlog",
 			"context",
 			"marketplace",
 			"mcp",

@@ -1,5 +1,5 @@
 import type { ScrollView } from "../components/scroll-view.ts";
-import type { LayoutFrame, ScrollbarGeometry } from "../layout/types.ts";
+import type { LayoutBox, LayoutFrame, ScrollbarGeometry } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
 import { isImageLine } from "../terminal-image.ts";
 import { getWordSegmenter, visibleWidth } from "../utils/width.ts";
@@ -117,19 +117,72 @@ export function scrollScrollbarToPointer(
 	scrollView.scrollToFraction(maxThumbOffset === 0 ? 0 : thumbOffset / maxThumbOffset);
 }
 
+/** The selection point at a pointer position over a scroll view's visible rows, anchored while rows are estimated. */
+export function scrollSelectionPoint(
+	visible: { box: LayoutBox; visibleTop: number; visibleBottom: number },
+	scrollView: ScrollView,
+	x: number,
+	y: number,
+): SelectionPoint {
+	const { box, visibleTop, visibleBottom } = visible;
+	const pointerRow = Math.max(visibleTop, Math.min(visibleBottom, y));
+	const maxContentRow = Math.max(0, (box.scrollContentHeight ?? box.scrollContentLines?.length ?? 1) - 1);
+	const row = Math.max(0, Math.min(maxContentRow, scrollView.scrollTop + pointerRow - box.rect.y));
+	const point: SelectionPoint = { row, col: Math.max(0, Math.min(box.rect.width - 1, x - box.rect.x)), scrollView };
+	const anchor = box.scrollContentAnchor?.(row);
+	if (anchor) point.anchor = anchor;
+	return point;
+}
+
+/** The text of the row a point is on; a row in view is read without measuring the rest of a virtualized view. */
+export function selectionSourceLine(
+	point: SelectionPoint,
+	layout: LayoutFrame | undefined,
+	previousScreen: readonly string[],
+): string {
+	if (point.scrollView && layout) {
+		const box = getScrollViewBox(layout, point.scrollView);
+		const row = box?.scrollContentRow?.(point.row);
+		if (row !== undefined) return row;
+		const lines = box?.scrollContentLines;
+		if (lines) return lines[point.row] ?? "";
+	}
+	return previousScreen[point.row] ?? "";
+}
+
+/** The point with its row re-derived from its anchor; it loses the anchor once the view's rows are exact. */
+export function rebasePoint(point: SelectionPoint, box: LayoutBox | undefined): SelectionPoint {
+	if (!point.anchor || !box) return point;
+	const row = box.scrollContentRowOf?.(point.anchor);
+	if (row === undefined) return point;
+	const rebased = { ...point, row };
+	if (!box.scrollContentAnchor?.(row)) delete rebased.anchor;
+	return rebased;
+}
+
+function rebaseSelection(
+	selection: { start: SelectionPoint; end: SelectionPoint },
+	box: LayoutBox,
+): { start: SelectionPoint; end: SelectionPoint } {
+	return { start: rebasePoint(selection.start, box), end: rebasePoint(selection.end, box) };
+}
+
 /** Selected plain-text rows, so a bounded clipboard can stop before reading the rest of a selection. */
 export function* selectedTextLines(
-	selection: { start: SelectionPoint; end: SelectionPoint } | undefined,
+	bounds: { start: SelectionPoint; end: SelectionPoint } | undefined,
 	previousScreen: readonly string[],
 	currentLayout: LayoutFrame | undefined,
 ): Generator<string> {
-	if (!selection) return;
+	if (!bounds) return;
+	let selection = bounds;
 	let sourceLines: readonly string[] = previousScreen;
 	if (selection.start.scrollView) {
 		if (!currentLayout) return;
 		const box = getScrollViewBox(currentLayout, selection.start.scrollView);
 		if (!box?.scrollContentLines) return;
 		sourceLines = box.scrollContentLines;
+		// Reading the lines measured every row: the points' rows are exact now.
+		selection = rebaseSelection(selection, box);
 	}
 	for (let row = selection.start.row; row <= selection.end.row; row++) {
 		const line = sourceLines[row] ?? "";
@@ -172,8 +225,6 @@ export function applySelectionToScreen(
 		if (!layout) return screen;
 		const box = getScrollViewBox(layout, selection.start.scrollView);
 		if (!box) return screen;
-		// Selection rows count the whole content: a virtualized frame measures it first, settling the scroll position.
-		box.materialize?.();
 		minRow = Math.max(0, box.rect.y, box.clip.y);
 		maxRow = Math.min(screen.length - 1, box.rect.y + box.rect.height - 1, box.clip.y + box.clip.height - 1);
 		minColumn = Math.max(0, box.rect.x, box.clip.x);

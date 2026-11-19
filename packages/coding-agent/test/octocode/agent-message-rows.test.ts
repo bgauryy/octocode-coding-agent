@@ -47,15 +47,15 @@ describe("outgoing agent message rows", () => {
 		);
 
 	it("names sender, recipient and kind on the call row", () => {
-		expect(call({ to: "parent", message: "m" })).toBe("✓ Send(you → parent · FYI)");
-		expect(call({ to: "ink", message: "m", replyRequired: true })).toBe("✓ Send(you → ink · request)");
-		expect(call({ replyTo: 17, message: "m" })).toBe("✓ Send(you → sender of #17 · reply)");
-		expect(call({ to: "ink", replyTo: 17, message: "m" })).toBe("✓ Send(you → ink · reply to #17)");
-		expect(call({ to: "kelp", message: "m", interrupt: true })).toBe("✓ Send(you → kelp · interrupt)");
-		expect(call({ to: "kelp", message: "m", wake: true })).toBe("✓ Send(you → kelp · FYI)");
-		expect(call({ to: "kelp", message: "m", wake: false })).toBe("✓ Send(you → kelp · FYI · no wake)");
-		expect(call({ replyTo: 17, message: "m", wake: true })).toBe("✓ Send(you → sender of #17 · reply · wake)");
-		expect(call({ to: "eel", forward: 17 })).toBe("✓ Send(you → eel · forward #17)");
+		expect(call({ to: "parent", message: "m" })).toBe("⏺ Send(you → parent · FYI)");
+		expect(call({ to: "ink", message: "m", replyRequired: true })).toBe("⏺ Send(you → ink · request)");
+		expect(call({ replyTo: 17, message: "m" })).toBe("⏺ Send(you → sender of #17 · reply)");
+		expect(call({ to: "ink", replyTo: 17, message: "m" })).toBe("⏺ Send(you → ink · reply to #17)");
+		expect(call({ to: "kelp", message: "m", interrupt: true })).toBe("⏺ Send(you → kelp · interrupt)");
+		expect(call({ to: "kelp", message: "m", wake: true })).toBe("⏺ Send(you → kelp · FYI)");
+		expect(call({ to: "kelp", message: "m", wake: false })).toBe("⏺ Send(you → kelp · FYI · no wake)");
+		expect(call({ replyTo: 17, message: "m", wake: true })).toBe("⏺ Send(you → sender of #17 · reply · wake)");
+		expect(call({ to: "eel", forward: 17 })).toBe("⏺ Send(you → eel · forward #17)");
 	});
 
 	it("shows the number and resolved recipients, the body previewed collapsed and whole expanded", () => {

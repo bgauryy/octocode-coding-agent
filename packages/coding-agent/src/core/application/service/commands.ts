@@ -93,22 +93,25 @@ export function dispatchCommand(dispatch: CommandDispatch): void {
 			throw new Error("Run changed before dispatch");
 		return dispatch.invoke();
 	});
+	// The outcome is saved before it is published; that save waits for another process's write lock without blocking.
 	Promise.resolve(work)
 		.then(
-			() => {
+			async () => {
 				if (!dispatch.isCurrent()) return;
 				receipt.status = "completed";
-				receiptStore?.finish(command.id, "completed");
+				await receiptStore?.finish(command.id, "completed");
+				if (!dispatch.isCurrent()) return;
 				dispatch.publishDomain({
 					type: "command.receipt",
 					receipt: { ...receipt },
 				});
 			},
-			(error) => {
+			async (error) => {
 				if (!dispatch.isCurrent()) return;
 				receipt.status = "failed";
 				receipt.message = error instanceof Error ? redactSecrets(error.message).slice(0, 1000) : "Command failed";
-				receiptStore?.finish(command.id, "failed", receipt.message);
+				await receiptStore?.finish(command.id, "failed", receipt.message);
+				if (!dispatch.isCurrent()) return;
 				dispatch.publishDomain({
 					type: "command.receipt",
 					receipt: { ...receipt },

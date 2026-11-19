@@ -1,4 +1,4 @@
-import { animationClock, SPINNER } from "@octocodeai/octocode-tui";
+import { animationClock } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { showAskDialog } from "./ask-dialog-helper.ts";
@@ -31,13 +31,13 @@ describe("waiting on you: the ask tool", () => {
 	const tool = fake.tools.get("askUser");
 	const args = { questions: [{ question: "Keep it?", header: "Export" }] };
 
-	it("draws an open question as a still ◇ in warning when motion is reduced", () => {
+	it("draws an open question as a still ⏺ in warning when motion is reduced", () => {
 		animationClock.setReducedMotion(true);
 		const open = row({ isPartial: true, executionStarted: true });
-		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>◇ /);
+		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>⏺ /);
 	});
 
-	it("shows answered ✓ in success, declined ✗ in error and interrupted ◼ in warning, on the header and the result", () => {
+	it("shows answered ⏺ in success, declined ⏺ in error and interrupted ⏺ in warning, on the header and the result", () => {
 		const cases = [
 			{
 				details: { cancelled: false, answers: [{ question: "Keep it?", answer: "Yes", custom: false }] },
@@ -51,8 +51,10 @@ describe("waiting on you: the ask tool", () => {
 			const context = row();
 			const result = tool.renderResult({ content: [], details }, {}, tagged, context);
 			expect(result.render(120).join("\n")).toContain(mark);
-			// The header reads the same state back from the row.
-			expect(first(tool.renderCall(args, tagged, context))).toContain(mark);
+			// The header reads the same state back from the row, as the light: red when stopped.
+			expect(first(tool.renderCall(args, tagged, context))).toContain(
+				`${mark === "<warning>◼" ? "<error>" : mark.slice(0, mark.indexOf(">") + 1)}⏺`,
+			);
 		}
 	});
 });
@@ -64,7 +66,7 @@ describe("waiting on you: the question dialog tabs", () => {
 	];
 	const tui = { requestRender: () => undefined, terminal: { rows: 40, columns: 100 } };
 
-	it("marks an unanswered tab ◇ and an answered one ✓, and breathes only while one waits", async () => {
+	it("marks an unanswered tab ⏺ and an answered one ✓, and breathes only while one waits", async () => {
 		animationClock.setReducedMotion(false);
 		const frames: string[] = [];
 		const running: boolean[] = [];
@@ -136,7 +138,7 @@ describe("agent rows", () => {
 		expect(agentState({ status: "background" })).toBe("done");
 	});
 
-	it("spins while a foreground agent works, and waits (◇) while its child asks the user", () => {
+	it("shows the success light while a foreground agent works, and the warning light while its child asks the user", () => {
 		animationClock.setReducedMotion(true);
 		const call = (context: unknown) => first(renderAgentCall(args, tagged, context as never));
 		const working = row({ isPartial: true, executionStarted: true });
@@ -146,7 +148,7 @@ describe("agent rows", () => {
 			tagged,
 			working,
 		);
-		expect(call(working)).toContain(`<accent>${SPINNER.braille[0]}`);
+		expect(call(working)).toContain("<success>⏺");
 		const asking = row({ isPartial: true, executionStarted: true });
 		renderAgentResult(
 			{ content, details: details({ status: "running", waiting: true }) },
@@ -154,13 +156,13 @@ describe("agent rows", () => {
 			tagged,
 			asking,
 		);
-		expect(call(asking)).toBe("<warning>◇ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
+		expect(call(asking)).toBe("<warning>⏺ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
 	});
 
 	it.each([
-		["done", {}, "<success>✓"],
-		["blocked", { outcome: "blocked" as const }, "<warning>◇"],
-		["failed", { outcome: "failed" as const }, "<error>✗"],
+		["done", {}, "<success>⏺"],
+		["blocked", { outcome: "blocked" as const }, "<warning>⏺"],
+		["failed", { outcome: "failed" as const }, "<error>⏺"],
 	])("draws a finished %s foreground run's header mark", (_name, extra, mark) => {
 		animationClock.setReducedMotion(true);
 		const context = row();
@@ -171,9 +173,9 @@ describe("agent rows", () => {
 	});
 
 	it.each([
-		["done", "<success>✓"],
-		["failed", "<error>✗"],
-		["stopped", "<warning>◼"],
+		["done", "<success>⏺"],
+		["failed", "<error>⏺"],
+		["stopped", "<error>⏺"],
 	])("draws a background report that %s with its mark", (status, mark) => {
 		const message = renderAgentMessage(
 			{ content: "Done", details: { id: "general-0001", status, summary: "x" } } as never,

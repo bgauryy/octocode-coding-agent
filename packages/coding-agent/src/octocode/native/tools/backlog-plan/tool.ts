@@ -1,4 +1,3 @@
-import { readOnlyChild } from "../../../backlog/read-only-role.ts";
 import { isItemType, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { FeatureSetup, FeatureContext } from "../../../../core/features/index.ts";
@@ -68,8 +67,7 @@ export function registerBacklogPlanTool(
 			roleVariant: true,
 			label: "Backlog plan",
 			...prompt,
-			// A read-only child declares it to `list` items; the role refuses its `add` and `edit`.
-			defaultActive: !subagent || readOnlyChild(options.env ?? process.env),
+			defaultActive: !subagent,
 			parameters,
 			validationParameters: withReason(accepted),
 			// A `list` runs beside other reads; a write runs alone in its message and after every earlier write.

@@ -72,7 +72,8 @@ export function waitingText(plan: ReservationPlan): string {
 /**
  * Waits until the children `plan` names have released, then plans again, until no child of this session blocks it any
  * longer, and hands that plan to `use` in the same turn of the event loop: two starts woken by one release must not both
- * find the paths free and then both claim them, so nothing awaits between the last plan and what `use` reserves. The plan
+ * find the paths free and then both claim them, so nothing awaits between the last plan and what `use` reserves (its
+ * first reservation attempt runs in that turn; a retry after a busy database meets a sibling's claim as a conflict). The plan
  * again throws the refusal when something else holds a path by then. Holds nothing while it waits, and `signal` ends the
  * wait. `onWait` hears each plan that waits.
  */
@@ -96,8 +97,8 @@ export async function awaitSiblings<T>(
 }
 
 /** Reserves for the claimed run; its `release` then gives them back. Whether it could, and the conflicts when not. */
-function reserve(team: Team, run: Run, paths: string[]): LeaseConflict[] {
-	const result = team.childLeases.reserve(run.identity, paths);
+async function reserve(team: Team, run: Run, paths: string[], signal?: AbortSignal): Promise<LeaseConflict[]> {
+	const result = await team.childLeases.reserve(run.identity, paths, signal);
 	if (!result.ok) return result.conflicts;
 	run.identity.reservedPaths = result.paths;
 	const release = run.release;
@@ -110,14 +111,21 @@ function reserve(team: Team, run: Run, paths: string[]): LeaseConflict[] {
 
 /**
  * Takes the planned reservation; the text for the launch result. Throws the refusal on a conflict (one that appeared
- * since the plan, such as a sibling started in the same turn). Any other failure starts the child without them, and says so.
+ * since the plan, such as a sibling started in the same turn). Rejects when `signal` aborts. Any other failure starts the
+ * child without them, and says so.
  */
-export function takeReservation(team: Team, run: Run, plan: ReservationPlan): string {
+export async function takeReservation(
+	team: Team,
+	run: Run,
+	plan: ReservationPlan,
+	signal?: AbortSignal,
+): Promise<string> {
 	if (plan.paths.length === 0) return plan.note;
 	let conflicts: LeaseConflict[];
 	try {
-		conflicts = run.identity.parentId ? reserve(team, run, plan.paths) : [];
+		conflicts = run.identity.parentId ? await reserve(team, run, plan.paths, signal) : [];
 	} catch (error) {
+		if (signal?.aborted) throw error;
 		return skipped(errorMessage(error));
 	}
 	if (conflicts.length > 0) throw refusal(team, conflicts);
@@ -128,16 +136,17 @@ export function takeReservation(team: Team, run: Run, plan: ReservationPlan): st
 /**
  * A lingering child held nothing while no process ran for it; a follow-up takes its reservations again. A conflict does
  * not refuse the follow-up: the file guard still refuses its edits, naming the holder. The text for the resume's
- * receipt when they could not be taken.
+ * receipt when they could not be taken. Rejects when `signal` aborts.
  */
-export function retakeReservation(team: Team, run: Run): string {
+export async function retakeReservation(team: Team, run: Run, signal?: AbortSignal): Promise<string> {
 	const paths = run.identity.reservedPaths;
 	if (!paths?.length) return "";
 	try {
-		const conflicts = reserve(team, run, [...paths]);
+		const conflicts = await reserve(team, run, [...paths], signal);
 		if (conflicts.length === 0) return "";
 		return visibleControls(` Its reservations were not taken again:\n${conflictText(team, conflicts).join("\n")}`);
 	} catch (error) {
+		if (signal?.aborted) throw error;
 		return ` Its reservations were not taken again: ${errorMessage(error)}.`;
 	}
 }

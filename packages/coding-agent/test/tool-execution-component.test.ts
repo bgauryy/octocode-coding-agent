@@ -113,18 +113,19 @@ describe("ToolExecutionComponent parity", () => {
 		}
 	});
 
-	test("marks a tool without a renderer like every other row: pending, spinner, then done or failed", () => {
+	test("marks a tool without a renderer like every other row: pending, lit, then done or failed", () => {
 		const draw = (component: ToolExecutionComponent) => stripAnsi(component.render(120).join("\n"));
 		const pending = new ToolExecutionComponent("mcp_x", "a", {}, {}, undefined, createFakeTui(), process.cwd());
-		expect(draw(pending)).toContain("○ mcp_x");
+		expect(draw(pending)).toContain("⏺ mcp_x");
 		pending.markExecutionStarted();
-		expect(draw(pending)).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] mcp_x/);
+		expect(draw(pending)).toContain("⏺ mcp_x");
+		expect(draw(pending)).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
 		pending.updateResult({ content: [{ type: "text", text: "bad" }], isError: true });
-		expect(draw(pending)).toContain("✗ mcp_x");
+		expect(draw(pending)).toContain("⏺ mcp_x");
 		expect(animationClock.isRunning()).toBe(false);
 		const restored = new ToolExecutionComponent("mcp_x", "b", {}, {}, undefined, createFakeTui(), process.cwd());
 		restored.updateResult({ content: [{ type: "text", text: "ok" }], isError: false });
-		expect(draw(restored)).toContain("✓ mcp_x");
+		expect(draw(restored)).toContain("⏺ mcp_x");
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {
@@ -342,7 +343,7 @@ describe("ToolExecutionComponent parity", () => {
 		// The recorded duration, shown once in the header, not again under it.
 		for (const live of [true, false]) {
 			const text = render(live);
-			expect(text).toContain("✓ Bash(sleep 4) · 4.2s");
+			expect(text).toContain("⏺ Bash(sleep 4) · 4.2s");
 			expect(text.match(/4\.2s/g)).toHaveLength(1);
 			expect(text).not.toContain("Took");
 		}
@@ -614,10 +615,29 @@ describe("ToolExecutionComponent parity", () => {
 			return component.render(80).join("\n");
 		};
 		const failed = finished(true);
-		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1\.2s)/);
+		expect(stripAnsi(failed)).toMatch(/⏺ plain_tool.*(?: · 1\.2s)/);
 		expect(failed).toContain(theme.fg("error", "kaboom"));
 		const passed = finished(false);
-		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1\.2s)/);
+		expect(stripAnsi(passed)).toMatch(/⏺ plain_tool.*(?: · 1\.2s)/);
 		expect(passed).toContain(theme.fg("toolOutput", "kaboom"));
+	});
+});
+
+describe("ToolExecutionComponent running mark", () => {
+	test("a running bash row draws the ⏺ light in the success colour, never a braille frame", () => {
+		const bash = new ToolExecutionComponent(
+			"bash",
+			"b",
+			{ command: "make" },
+			{},
+			undefined,
+			createFakeTui(),
+			process.cwd(),
+		);
+		bash.markExecutionStarted();
+		const drawn = bash.render(120).join("\n");
+		expect(stripAnsi(drawn)).toContain("⏺");
+		expect(stripAnsi(drawn)).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+		bash.dispose?.();
 	});
 });

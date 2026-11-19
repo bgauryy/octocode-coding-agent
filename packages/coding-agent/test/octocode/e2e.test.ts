@@ -344,7 +344,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(next.toolContracts).toEqual(turn.toolContracts);
 	}, 60_000);
 
-	it("leaves rare tools undeclared until first use where the transport adds tools in place", async () => {
+	it("declares every Octocode MCP tool and leaves rare native tools undeclared until first use where the transport adds tools in place", async () => {
 		const capable = await startSession({}, { capable: true });
 		try {
 			const turn = (await capable.run("hello", [say("ready")])).at(-1)!;
@@ -355,11 +355,10 @@ describe("with Octocode MCP (default)", () => {
 			expect(own, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
 				ON_DEMAND_OWN_CEILING,
 			);
-			// The bundled preset's GitHub and package registry tools and the rare native tools are listed, not declared.
-			for (const name of ["ghSearchRepo", "ghSearchCode", "ghGetFileContent", "artifactSearch", "ghCloneRepo"]) {
-				expect(turn.tools).not.toContain(`mcp__octocode__${name}`);
-				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
-			}
+			// The bundled preset declares every tool its server serves, GitHub and package registry tools included.
+			for (const name of ["ghSearchRepo", "ghSearchCode", "ghGetFileContent", "artifactSearch", "ghCloneRepo"])
+				expect(turn.tools).toContain(`mcp__octocode__${name}`);
+			// The rare native tools are listed, not declared.
 			for (const name of ["archive", "models"]) {
 				expect(turn.tools).not.toContain(name);
 				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));

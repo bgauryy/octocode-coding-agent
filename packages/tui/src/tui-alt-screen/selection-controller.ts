@@ -11,6 +11,9 @@ import {
 	getSelectionBounds,
 	getSelectionText,
 	getWordSelection,
+	rebasePoint,
+	scrollSelectionPoint,
+	selectionSourceLine,
 	selectedTextLines,
 } from "./selection.ts";
 import { collectSelectionText, NATIVE_CLIPBOARD_BYTES, TERMINAL_CLIPBOARD_BYTES } from "./selection-copy.ts";
@@ -105,14 +108,7 @@ export class AltScreenSelection {
 	private getScrollSelectionPoint(scrollView: ScrollView, x: number, y: number): SelectionPoint | undefined {
 		const visible = this.getVisibleScrollViewRows(scrollView);
 		if (!visible || visible.visibleBottom < visible.visibleTop) return undefined;
-		const { box, visibleTop, visibleBottom } = visible;
-		const pointerRow = Math.max(visibleTop, Math.min(visibleBottom, y));
-		const maxContentRow = Math.max(0, (box.scrollContentLines?.length ?? 1) - 1);
-		return {
-			row: Math.max(0, Math.min(maxContentRow, scrollView.scrollTop + pointerRow - box.rect.y)),
-			col: Math.max(0, Math.min(box.rect.width - 1, x - box.rect.x)),
-			scrollView,
-		};
+		return scrollSelectionPoint(visible, scrollView, x, y);
 	}
 
 	private getSelectionPoint(event: SgrMouseEvent, scrollView?: ScrollView): SelectionPoint {
@@ -127,12 +123,7 @@ export class AltScreenSelection {
 	}
 
 	private getSelectionSourceLine(point: SelectionPoint): string {
-		const currentLayout = this.host.getCurrentLayout();
-		if (point.scrollView && currentLayout) {
-			const lines = getScrollViewBox(currentLayout, point.scrollView)?.scrollContentLines;
-			if (lines) return lines[point.row] ?? "";
-		}
-		return this.host.getPreviousScreen()[point.row] ?? "";
+		return selectionSourceLine(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
 	}
 
 	private getWordSelection(point: SelectionPoint): SelectionRange | undefined {
@@ -239,6 +230,7 @@ export class AltScreenSelection {
 	}
 
 	handleSelectionMouseEvent(event: SgrMouseEvent): void {
+		this.syncSelectionRows();
 		const button = event.button & 3;
 		if (button !== 0 && !(event.release && button === 3)) return;
 		const anchorScrollView = this.selectionAnchor?.scrollView;
@@ -317,7 +309,19 @@ export class AltScreenSelection {
 		this.host.requestRender();
 	}
 
-	getSelectionBounds(): { start: SelectionPoint; end: SelectionPoint } | undefined {
+	/** Re-derive the rows of anchored points: a virtualized view's rows move as items above them are measured. */
+	private syncSelectionRows(layout: LayoutFrame | undefined = this.host.getCurrentLayout()): void {
+		if (!layout) return;
+		const rebase = (point: SelectionPoint | undefined): SelectionPoint | undefined =>
+			point?.anchor && point.scrollView ? rebasePoint(point, getScrollViewBox(layout, point.scrollView)) : point;
+		this.selectionAnchor = rebase(this.selectionAnchor);
+		this.selectionFocus = rebase(this.selectionFocus);
+		const initial = this.selectionInitialRange;
+		if (initial) this.selectionInitialRange = { start: rebase(initial.start)!, end: rebase(initial.end)! };
+	}
+
+	getSelectionBounds(layout?: LayoutFrame): { start: SelectionPoint; end: SelectionPoint } | undefined {
+		this.syncSelectionRows(layout);
 		return getSelectionBounds(this.selectionAnchor, this.selectionFocus);
 	}
 
@@ -380,6 +384,6 @@ export class AltScreenSelection {
 	}
 
 	applySelection(screen: string[], layout: LayoutFrame | undefined): string[] {
-		return applySelectionToScreen(screen, this.getSelectionBounds(), layout, this.host.getTerminal().columns);
+		return applySelectionToScreen(screen, this.getSelectionBounds(layout), layout, this.host.getTerminal().columns);
 	}
 }

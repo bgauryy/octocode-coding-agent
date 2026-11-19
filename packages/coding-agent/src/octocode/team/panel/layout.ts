@@ -1,6 +1,5 @@
-import { animationClock, GLYPH, SPINNER } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { spinnerMs } from "../../../theme/status.ts";
+import { stateMark } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import type { WorkRow } from "../../shared/running-work.ts";
 import { needsYou } from "./attention.ts";
@@ -9,17 +8,17 @@ import { peers as peerSessions, roster } from "./roster.ts";
 import { agentLines, type Detail, frame, gridRows, moreLine, peerLines, rootLines } from "./rows.ts";
 import type { PanelEntry } from "./state.ts";
 import { sentMessages } from "./traffic.ts";
-import { workRows } from "./work.ts";
+import { type Marks, workRows } from "./work.ts";
 
 /** At most this many agents and peer sessions get a row of their own. */
 const MAX_AGENTS = 6;
 const MAX_PEERS = 2;
 
-/** The mark of a running work row: the spinner frame the agents' marks use for `now`, a still dot in reduced motion. */
-const workMark = (now: number): string =>
-	animationClock.isReducedMotion()
-		? GLYPH.live
-		: SPINNER.braille[Math.floor(now / spinnerMs(true)) % SPINNER.braille.length];
+/** The marks of work rows: the state light the agents' rows use, breathing while the work runs; a timer's holds still. */
+const workMarks = (theme: Theme, now: number): Marks => ({
+	live: stateMark(theme, "running", { now, light: true }),
+	waiting: stateMark(theme, "waiting", { now, light: true, since: 0 }),
+});
 
 type Step = Detail & { peers: "rows" | "one" | "none" };
 /**
@@ -71,7 +70,7 @@ export function widgetRows(
 		now,
 		theme,
 		width,
-		{ live: workMark(now), waiting: animationClock.isReducedMotion() ? GLYPH.waiting : workMark(now) },
+		workMarks(theme, now),
 		others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
 		precise,
 	);

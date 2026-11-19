@@ -24,7 +24,13 @@ const ref = (item: SnapshotItem) => `B${item.seq}`;
  */
 export function activeItem(snap: Snapshot, session: string, item?: string): SnapshotItem | undefined {
 	if (item) return snap.items.find((row) => ref(row) === item);
-	return snap.items.find((row) => row.state === "ongoing" && row.assignee === session);
+	const held = heldItems(snap, session);
+	// A held epic and its held child: the child is the work in hand.
+	return held.find((row) => !held.some((other) => other.parent_seq === row.seq)) ?? held[0];
+}
+
+function heldItems(snap: Snapshot, session: string): SnapshotItem[] {
+	return snap.items.filter((row) => row.state === "ongoing" && row.assignee === session);
 }
 
 /** What follows the active item's ref: ` — goal: … — next: T3 …`, each part only when there is one. */
@@ -64,6 +70,8 @@ export function backlogIndex(agent: AgentDb, repo: string, session: string, item
 	const shownOpen = open.slice(0, Math.max(0, MAX_REFS - shownOngoing.length)).map((row) => entry(row, session, true));
 	const rest = snap.items.length - shownOngoing.length - shownOpen.length;
 	return renderPrompt("notices/backlog-digest.md", {
+		open: snap.items.length,
+		running: snap.items.filter((row) => row.state === "ongoing").length,
 		todo: snap.items.filter((row) => row.state === "todo").length,
 		proposed: snap.items.filter((row) => row.state === "backlog").length,
 		ongoing: shownOngoing.join("; "),
@@ -74,8 +82,10 @@ export function backlogIndex(agent: AgentDb, repo: string, session: string, item
 /** `active B42 v7 ongoing · open 5 · changed: B43`: the per-turn task line; `changed` lists foreign changes since the last line. */
 export function taskLine(snap: Snapshot, session: string, changed: readonly string[], item?: string): string {
 	const active = activeItem(snap, session, item);
+	const others = item ? [] : heldItems(snap, session).filter((row) => row !== active);
+	const more = others.length > 0 ? ` (+${others.map(ref).join(", ")})` : "";
 	return [
-		...(active ? [`active ${ref(active)} v${active.version} ${active.state}`] : []),
+		...(active ? [`active ${ref(active)} v${active.version} ${active.state}${more}`] : []),
 		`open ${snap.items.length}`,
 		...(changed.length > 0 ? [`changed: ${changed.join(", ")}`] : []),
 	].join(" \u00b7 ");

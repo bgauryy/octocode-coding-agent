@@ -6,7 +6,7 @@ import freellamaPreset from "../../../../mcp/src/recommended/freellama.json" wit
 
 /**
  * The first request as a user's home serves it, for the size guard (`served-first-request.test.ts`): the recommended
- * FreeLlama preset on (a machine with `ollama` on PATH), the octocode-mcp tools declared as a workspace that has used
+ * FreeLlama preset on (a user who opted in), the octocode-mcp tools declared as a workspace that has used
  * its research tools declares them (`mcpExposure: "usage"`, the default, promoting them), and a model whose transport cannot add tools
  * mid-conversation, so every on-demand tool is declared deferred.
  */

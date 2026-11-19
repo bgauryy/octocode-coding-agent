@@ -261,7 +261,7 @@ describe("team tools on a fake Octocode", () => {
 		);
 		await expect(run(send, { replyTo: 987654, message: "x" }, a.ctx)).rejects.toThrow(/No message #987654/);
 		expect(rendered(send.renderCall({ replyTo: 41, message: "m" }, theme, {}))).toBe(
-			"○ Send(you → sender of #41 · reply)",
+			"⏺ Send(you → sender of #41 · reply)",
 		);
 		const properties = send.parameters.properties;
 		expect(send.parameters.required ?? []).toEqual([]);
@@ -387,12 +387,12 @@ describe("team tools on a fake Octocode", () => {
 
 		const coordinate = a.tools.get("coordinate");
 		expect(rendered(coordinate.renderCall({ action: "lock", paths: ["a.ts", "b/"], goal: "n" }, theme, {}))).toBe(
-			'○ Coordinate(lock 2 paths "n")',
+			'⏺ Coordinate(lock 2 paths "n")',
 		);
 		expect(rendered(coordinate.renderCall({ action: "unlock", paths: ["a.ts"] }, theme, {}))).toBe(
-			"○ Coordinate(unlock a.ts)",
+			"⏺ Coordinate(unlock a.ts)",
 		);
-		expect(rendered(coordinate.renderCall({}, theme, {}))).toBe("○ Coordinate");
+		expect(rendered(coordinate.renderCall({}, theme, {}))).toBe("⏺ Coordinate");
 		const listed = await run(coordinate, { action: "list" }, a.ctx);
 		expect(listed.details).toMatchObject({ summary: expect.stringMatching(/^\d+ agents? · \d+ working$/) });
 		const listRow = rendered(
@@ -416,16 +416,16 @@ describe("team tools on a fake Octocode", () => {
 		).toBe("  ⎿  Error: Not reserved; nothing was locked:\n     - a.ts is covered");
 		const send = a.tools.get("sendMessage");
 		const long = `hello\n${"x".repeat(500)}`;
-		expect(rendered(send.renderCall({ to: "all", message: long }, theme, {}), 1_000)).toBe("○ Send(you → all · FYI)");
+		expect(rendered(send.renderCall({ to: "all", message: long }, theme, {}), 1_000)).toBe("⏺ Send(you → all · FYI)");
 		expect(rendered(send.renderCall({ to: "x", replyTo: 41, message: "m" }, theme, {}))).toBe(
-			"○ Send(you → x · reply to #41)",
+			"⏺ Send(you → x · reply to #41)",
 		);
-		expect(rendered(send.renderCall({}, theme, {}))).toBe("○ Send");
+		expect(rendered(send.renderCall({}, theme, {}))).toBe("⏺ Send");
 		// Queueing is instant: a duration under a second is not shown, a slower send keeps its time.
 		const done = { isPartial: false, durationMs: 24 };
-		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, done))).toMatch(/^✓ Send\(you → x · FYI\)$/);
+		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, done))).toMatch(/^⏺ Send\(you → x · FYI\)$/);
 		expect(rendered(send.renderCall({ to: "x", message: "m" }, theme, { ...done, durationMs: 1_500 }))).toMatch(
-			/^✓ Send\(you → x · FYI\) · 1\.5s$/,
+			/^⏺ Send\(you → x · FYI\) · 1\.5s$/,
 		);
 		const delivered = {
 			content: [{ type: "text", text: "Queued message #42 for b." }],
@@ -595,10 +595,10 @@ describe("AgentsView", () => {
 			const widget = factory({ requestRender }, theme);
 			widget.invalidate();
 			const lines = widget.render(120).join("\n");
-			// No summary line: each agent's mark says its state (⠼ working, ○ idle).
+			// No summary line: each agent's mark says its state (⠼ working, ⏺ idle).
 			// The elapsed time counts from `now`, taken when the suite started; the spinner frame follows the clock.
-			expect(lines).toMatch(/\n ├ [\u2800-\u28ff] reviewer-1a2b · review the parser › localSearch foo +\d+s\n/);
-			expect(lines).toMatch(/\n └ ○ tester-3c4d   · review the parser +\d+s$/);
+			expect(lines).toMatch(/\n ├ ⏺ reviewer-1a2b · review the parser › localSearch foo +\d+s\n/);
+			expect(lines).toMatch(/\n └ ⏺ tester-3c4d   · review the parser +\d+s$/);
 			expect(lines).not.toContain("1 working · 1 idle");
 			// Only traffic between subagents: this session's own messages are already in its transcript.
 			expect(lines).toContain("#3");
@@ -617,8 +617,8 @@ describe("AgentsView", () => {
 			expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 			const done = widget.render(120).join("\n");
 			// No summary line: each row turns idle (○) and says `left` on its own ↳ line.
-			expect(done).toMatch(/\n ├ ○ reviewer-1a2b · review the parser +\d+s\n │   ↳ left\n/);
-			expect(done).toMatch(/\n └ ○ tester-3c4d   · review the parser +\d+s\n     ↳ left$/);
+			expect(done).toMatch(/\n ├ ⏺ reviewer-1a2b · review the parser +\d+s\n │   ↳ left\n/);
+			expect(done).toMatch(/\n └ ⏺ tester-3c4d   · review the parser +\d+s\n     ↳ left$/);
 			expect(done).not.toContain("2 left");
 			expect(done).not.toContain("working");
 			expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();

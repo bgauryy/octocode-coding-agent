@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { compactionSummaryText, viewSummary } from "../src/core/compaction/summary-view.ts";
+import { compactionSummaryText, keptLine, viewSummary } from "../src/core/compaction/summary-view.ts";
 import { compactionSummaryDisplay } from "../src/core/messages.ts";
 import { writtenSummary } from "./octocode/fixtures/compaction-summary.ts";
 
@@ -20,6 +20,14 @@ it("shows a person the summary without the model's tags and Recovery instruction
 	expect(text).not.toContain("<user-message>");
 	expect(text).not.toContain("## Recovery");
 	expect(text).not.toContain("Search it with");
+});
+
+it("lists a kept askUser answer by its question and answer, not its bare label", () => {
+	const one = keptLine('[askUser answer]\n"Which state gets which colour of the subagent light?" → Green working');
+	expect(one).toMatch(/^\[askUser answer\] "Which state.*" → Green working$/);
+	const two = keptLine('[askUser answer]\n"Keep v1?" → No\n"Ship now?" → Yes');
+	expect(two).toBe('[askUser answer] "Keep v1?" → No (+1 more)');
+	expect(keptLine("fix the login bug\nit fails on Safari")).toBe("fix the login bug");
 });
 
 it("keeps a summary written by anything else whole", () => {

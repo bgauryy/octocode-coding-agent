@@ -55,7 +55,7 @@ describe("SecurityPanel", () => {
 
 	it("sends a confirmed decision and shows the fresh list", async () => {
 		const act = vi.fn(async (_command: SecurityActionCommand): Promise<SecurityList> => ({
-			items: [{ ...list.items[1]!, state: "approved", withheld: false }],
+			items: [{ ...list.items[1], state: "approved", withheld: false }],
 			message: "Approved demo.",
 		}));
 		render(<SecurityPanel api={{ list: async () => list, act }} repoId="r1" reloadKey="k" />);

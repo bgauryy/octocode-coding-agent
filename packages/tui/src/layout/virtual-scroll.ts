@@ -32,6 +32,25 @@ function documentFor(node: ScrollLayoutNode): VirtualDocument {
 
 type ScrollContent = Pick<LayoutBox, "scrollContentLines" | "scrollContentRow" | "scrollContentHeight" | "materialize">;
 
+/** Anchors for the rows of a virtualized view, read from the document's table without measuring the rest. */
+function rowAnchors(
+	node: ScrollLayoutNode,
+	width: number,
+): Pick<LayoutBox, "scrollContentAnchor" | "scrollContentRowOf"> {
+	const document = documents.get(node.state);
+	if (!document) return {};
+	const usable = (): boolean =>
+		document.width === width && (document.tableCurrent || document.pendingCount === 0) && !document.duplicates;
+	return {
+		scrollContentAnchor: (row) => {
+			if (!document.tableCurrent || !usable()) return undefined;
+			const { index, offset } = document.locate(row);
+			return { item: index, offset };
+		},
+		scrollContentRowOf: (anchor) => (usable() ? document.rowOf(anchor.item, anchor.offset) : undefined),
+	};
+}
+
 function scrollBox(
 	context: LayoutContext,
 	node: ScrollLayoutNode,
@@ -44,11 +63,13 @@ function scrollBox(
 	const scrollView = node.state as ScrollView;
 	if (node.state.primary || !context.primaryScrollView) context.primaryScrollView = scrollView;
 	const childClip = intersect(clip, rect);
+	const anchors = rowAnchors(node, childBox.rect.width);
 	// Descriptors, not a spread: a virtualized frame's content is a getter that measures only when read.
 	const box = Object.defineProperties(
 		{ component, rect, clip: childClip, children: [childBox], scrollView, layer: 0 },
 		Object.getOwnPropertyDescriptors(content),
 	) as LayoutBox;
+	Object.assign(box, anchors);
 	childBox.parent = box;
 	updateClips(childBox, childClip);
 	return box;

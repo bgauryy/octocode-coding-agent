@@ -5,8 +5,8 @@ import { SettingsManager } from "../../core/settings-manager.ts";
 import { NATIVE_FEATURES } from "../../main/native-features.ts";
 import { loadHooks } from "../hooks/config.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
-import { enforces, knownReviews } from "./registry.ts";
-import type { Review } from "./types.ts";
+import { enforces, knownReviews } from "../guard/registry.ts";
+import type { Review } from "../guard/types.ts";
 
 /**
  * Runs the loaders a session runs for `cwd`, without starting one, and returns what the guard found. `/security`'s

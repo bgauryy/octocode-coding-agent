@@ -111,7 +111,7 @@ describe("in manual mode", () => {
 		answer(receiver.run, tool.id, "Deny");
 		await until(() => requestsOf(endpoint, first).some((request) => request.step >= 1), "the rest of the turn");
 		expect(fs.existsSync(marker)).toBe(false);
-		// A send still being prepared when a run settles is refused (nothing sent): send the next one after this run.
+		// A send still being prepared when a run settles is delivered as a new turn; this one waits for the next run anyway.
 		await until(() => settledRuns(receiver.run) === 1, "the receiver's first run to settle");
 
 		// Once meant once.

@@ -68,6 +68,7 @@ describe("skills the application ships", () => {
 		expect(skills.map((skill) => skill.name).sort()).toEqual([
 			"octocode-backlog",
 			"octocode-clasify",
+			"octocode-code-review",
 			"octocode-context-optimization",
 			"octocode-critical-thinking",
 			"octocode-debugging",

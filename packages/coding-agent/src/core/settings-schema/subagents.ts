@@ -73,6 +73,13 @@ export const SubagentSettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.subagents.peerOverlapWake,
 			}),
 		),
+		skillCatalog: Type.Optional(
+			Type.Union([Type.Literal("all"), Type.Literal("role")], {
+				description:
+					"Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed.",
+				default: SETTINGS_DEFAULTS.subagents.skillCatalog,
+			}),
+		),
 	},
 	{
 		description: "Limits on the subagents a session starts, and how they are checked on.",

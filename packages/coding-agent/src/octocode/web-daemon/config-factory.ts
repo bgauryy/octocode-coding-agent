@@ -17,7 +17,6 @@ import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { listHarness, switchHarness } from "./harness-config.ts";
 import { previewHarness } from "./harness-preview.ts";
-import { actSecurity, listSecurity } from "./security-config.ts";
 import { writeConfigProvider } from "./provider-write.ts";
 import { listToolExposure, pinTool, type NativeToolsLive } from "./tool-exposure.ts";
 
@@ -25,6 +24,9 @@ function checkedHarness<T>(list: T): T {
 	if (!Value.Check(HarnessListSchema, list)) throw new Error("The harness list is invalid.");
 	return list;
 }
+
+/** Loaded on first use: the guard's collector reaches the loaders that this module's callers are part of. */
+const securityModule = () => import("./security-config.ts");
 
 function checkedSecurity<T>(list: T): T {
 	if (!Value.Check(SecurityListSchema, list)) throw new Error("The security list is invalid.");
@@ -85,10 +87,14 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 		writeHarness: async (command, repo) =>
 			checkedHarness(await switchHarness(command, { agentDir: getAgentDir(), cwd: repo?.root, actor: actor(), audit })),
 		security: async (repo) =>
-			checkedSecurity(await listSecurity({ agentDir: getAgentDir(), cwd: repo?.root, guard: { env } })),
+			checkedSecurity(
+				await (await securityModule()).listSecurity({ agentDir: getAgentDir(), cwd: repo?.root, guard: { env } }),
+			),
 		writeSecurity: async (command, repo) =>
 			checkedSecurity(
-				await actSecurity(command.id, command.action, { agentDir: getAgentDir(), cwd: repo?.root, guard: { env } }),
+				await (
+					await securityModule()
+				).actSecurity(command.id, command.action, { agentDir: getAgentDir(), cwd: repo?.root, guard: { env } }),
 			),
 		// A session's own answer (`live`) wins over this process's: the daemon has no tools of its own.
 		tools: async (repo, live) =>

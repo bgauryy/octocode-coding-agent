@@ -153,8 +153,8 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		OCTOCODE_MODELS_DEV: "0",
 		// The default follows the machine, and the rendered tool descriptions must not.
 		OCTOCODE_MAX_SUBAGENTS: "6",
-		// The FreeLlama server is on only where `ollama` is on PATH: the fixture capture turns it off, so it is the same on
-		// every machine; a served capture turns it on and replays its recorded listing (`served.ts`).
+		// The FreeLlama server is off unless the user opts in: the fixture capture keeps it off, and a served capture opts in
+		// and replays its recorded listing (`served.ts`).
 		OCTOCODE_MCP_FREELLAMA: fx.served ? "1" : "0",
 		...(fx.served ? { OCTOCODE_MCP_RECENT_TOOLS: JSON.stringify(SERVED_RECENT_TOOLS) } : {}),
 		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the

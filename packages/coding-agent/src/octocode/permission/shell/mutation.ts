@@ -84,6 +84,9 @@ function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undef
 	if (other.afterUnjoinedCd) into.afterUnjoinedCd = true;
 }
 
+/** `octocode backlog get|list`: the product's board reads, which start no session and change nothing (`cli/backlog-command.ts`). */
+const readsBoard = (rest: Word[]): boolean => rest[0] === "backlog" && (rest[1] === "get" || rest[1] === "list");
+
 /** The words `readerWritingOptions` reads: a `git` reader's subcommand first, then its words; another reader's words. */
 const readerWords = (name: string, sub: Word, rest: Word[]): string[] =>
 	(name === "git" ? [sub, ...rest] : rest).filter((word): word is string => word !== undefined);
@@ -172,7 +175,7 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 		// Whichever `octocode` runs (the product or another program by that name), the guard does not model it: the product
 		// starts a session of its own, with none of this role's limits. `octocode-cli`, the research CLI agent shells put on
 		// PATH (`cli/shim.ts`), runs tools the guard does not model either.
-		if (name === "octocode" || name === "octocode-cli") found.opaque.push(name);
+		if (name === "octocode-cli" || (name === "octocode" && !readsBoard(rest))) found.opaque.push(name);
 		// Words read at run time may be operands or options (`-delete`, `-o f`): a program judged by its words cannot be judged.
 		const input = fed.get(at);
 		if (input && inputMayWrite(name, rest, input)) {

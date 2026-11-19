@@ -1,6 +1,6 @@
 import type { AltScreenSearchComponent, AltScreenSearchIndex, AltScreenSearchMatch } from "./search-index.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
-import type { ScrollbarGeometry } from "../layout/types.ts";
+import type { ScrollRowAnchor, ScrollbarGeometry } from "../layout/types.ts";
 import type { OverlayHandle } from "../tui.ts";
 import type { WheelScrollLines } from "../wheel-scroll.ts";
 
@@ -14,6 +14,8 @@ export interface SelectionPoint {
 	row: number;
 	col: number;
 	scrollView?: ScrollView;
+	/** The row's item while a virtualized view estimates rows: `row` is re-derived from it as items are measured. */
+	anchor?: ScrollRowAnchor;
 	/** Whether this point lies between terminal cells rather than on a cell. */
 	boundary?: boolean;
 }

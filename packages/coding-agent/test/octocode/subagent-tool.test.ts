@@ -364,7 +364,7 @@ describe("agent tool with a scripted child", () => {
 		expect(failed).toBe("  ⎿  Subagent x failed\n     detail");
 		expect(
 			rendered(s.agent.renderCall({ task: "look\nmore", profile: "researcher", goal: "map the auth flow" }, theme, {})),
-		).toBe("○ Agent(map the auth flow)");
+		).toBe("⏺ Agent(map the auth flow)");
 		expect(
 			rendered(
 				s.agent.renderCall({ task: "bg", background: true }, theme, {
@@ -373,8 +373,8 @@ describe("agent tool with a scripted child", () => {
 					isError: false,
 				}),
 			),
-		).toMatch(/^✓ Agent · background/);
-		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ Agent");
+		).toMatch(/^⏺ Agent · background/);
+		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("⏺ Agent");
 	});
 
 	it("routes the model: profile preference, parent provider first, fallback to the parent's model, strict explicit", async () => {
@@ -1003,7 +1003,7 @@ describe("agent tool with a scripted child", () => {
 		const shown = rendered(renderer(answer.message, { expanded: false }, theme));
 		// A finished row names its time only from 1s on; this scripted run's time depends on machine load.
 		expect(shown).toMatch(
-			/^ ✓ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
+			/^ ⏺ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
 		);
 		expect(shown).toContain("report");
 
@@ -1018,7 +1018,7 @@ describe("agent tool with a scripted child", () => {
 			summary: "Failed: provider down",
 		});
 		expect(rendered(renderer(s.sent[1].message, { expanded: false }, theme))).toMatch(
-			/^ ✗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
+			/^ ⏺ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
 		);
 
 		const kill = {
@@ -1057,7 +1057,7 @@ describe("agent tool with a scripted child", () => {
 		expect(s.sent[2].message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
-			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
+			/^ ⏺ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
 		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});

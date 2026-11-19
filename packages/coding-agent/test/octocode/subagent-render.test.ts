@@ -170,7 +170,7 @@ describe("subagent renderers", () => {
 		// The duration shows once, in the header; the outcome does not repeat it.
 		expect(finished).toContain("⎿  Done · general-0001 · 2 tool calls\n");
 		expect(finished).not.toContain("1m30s");
-		expect(rendered(renderAgentCall({ task: "x" }, theme, ctx({ durationMs: 90_000 })))).toBe("✓ Agent · 1m30s");
+		expect(rendered(renderAgentCall({ task: "x" }, theme, ctx({ durationMs: 90_000 })))).toBe("⏺ Agent · 1m30s");
 		const bare = rendered(
 			renderAgentResult(
 				{ content: [{ type: "text", text: "Subagent failed\ndetail" }], details: undefined },
@@ -301,7 +301,7 @@ describe("subagent renderers", () => {
 		expect(failed).not.toContain("Error: Failed");
 	});
 
-	it("draws any stop as an interruption (◼ warning), never as a failure", () => {
+	it("draws any stop as a red light with the warning-toned summary", () => {
 		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };
 		const stopped = (requested: boolean) =>
 			rendered(
@@ -319,9 +319,9 @@ describe("subagent renderers", () => {
 				) as never,
 			);
 		for (const requested of [true, false]) {
-			// A stop is an interruption: the warning tone, like an agent that needs the user, never the error tone.
-			expect(stopped(requested)).toContain("<warning>◼");
-			expect(stopped(requested)).not.toContain("<error>");
+			// A stopped agent's light is red like a failed one; its words stay in the warning tone.
+			expect(stopped(requested)).toContain("<error>⏺");
+			expect(stopped(requested)).toContain("<warning>Stopped");
 		}
 	});
 });

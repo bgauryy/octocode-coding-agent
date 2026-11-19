@@ -8,6 +8,12 @@ export interface LayoutRect {
 	height: number;
 }
 
+/** A scroll-content row named by its item and the row within it: it survives items above being measured. */
+export interface ScrollRowAnchor {
+	item: number;
+	offset: number;
+}
+
 export interface LayoutBox {
 	component: Component;
 	rect: LayoutRect;
@@ -23,6 +29,10 @@ export interface LayoutBox {
 	scrollContentHeight?: number;
 	/** One row of a scroll view's content near the rows in view, without measuring the rest. */
 	scrollContentRow?: (row: number) => string | undefined;
+	/** The anchor of a content row while a virtualized frame still estimates rows; undefined once rows are exact. */
+	scrollContentAnchor?: (row: number) => ScrollRowAnchor | undefined;
+	/** The content row an anchor names now, without measuring the rest; undefined when it cannot be told. */
+	scrollContentRowOf?: (anchor: ScrollRowAnchor) => number | undefined;
 	/** Measure a virtualized scroll view's whole content now, settling its scroll position. */
 	materialize?: () => void;
 	layer: number;

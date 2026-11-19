@@ -63,7 +63,7 @@ octocode-api send --to <instance-id> --session <session-id> \
 | `--from`         | A sender name added to the caller's claim                                                                                                                                                        |
 | `--`             | Ends flags so text can begin with a dash                                                                                                                                                         |
 
-Without `--wait`, stdout is the receipt, for example `{"id":"x1","queued":"turn"}` (`queued` is `turn`, `steer` or `followUp`). Acceptance means the host took it, not that the model read it or finished. Concurrent senders share one conversation.
+Without `--wait`, stdout is the receipt, for example `{"id":"x1","queued":"turn"}` (`queued` is `turn`, `steer` or `followUp`). `queued` is how the session took it when it went out: a message prepared (verified, or held for the user's decision) while the receiver's run ended is delivered as a new turn (`turn`), never refused for that. Acceptance means the host took it, not that the model read it or finished. Concurrent senders share one conversation.
 
 ## What the session sees
 

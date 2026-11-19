@@ -943,7 +943,12 @@ describe("durable length recovery", () => {
 
 		expect(harness.faux.state.callCount).toBe(2);
 		expect(harness.eventsOfType("auto_retry_end")).toContainEqual(
-			expect.objectContaining({ success: false, attempt: 1, finalError: "invalid_api_key" }),
+			// The final error names how many requests the run made and over how long.
+			expect.objectContaining({
+				success: false,
+				attempt: 1,
+				finalError: expect.stringMatching(/^invalid_api_key \(2 attempts over \d+s\)$/),
+			}),
 		);
 	});
 

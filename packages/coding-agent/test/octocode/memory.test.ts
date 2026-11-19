@@ -525,26 +525,26 @@ describe("memory tool", () => {
 	it("renders its operations, sanitizes titles and shows saved notes and errors", async () => {
 		const { tool } = setup();
 		expect(rendered(tool.renderCall({ op: "search", query: "rewind flow" }, theme, {}))).toBe(
-			"○ Memory(search rewind flow)",
+			"⏺ Memory(search rewind flow)",
 		);
 		expect(rendered(tool.renderCall({ op: "set", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}))).toBe(
-			"○ Memory(set red text)",
+			"⏺ Memory(set red text)",
 		);
-		expect(rendered(tool.renderCall({ op: "get", id: "M7" }, theme, {}))).toBe("○ Memory(get M7)");
+		expect(rendered(tool.renderCall({ op: "get", id: "M7" }, theme, {}))).toBe("⏺ Memory(get M7)");
 		// A stored session's `archive` call from before the split still renders as it did.
 		const host = fakeHost();
 		registerArchiveTool(host.api);
 		const archive = host.tools.get("archive");
 		expect(rendered(archive.renderCall({ op: "search", source: "memories", query: "rewind flow" }, theme, {}))).toBe(
-			"○ Archive(search memories rewind flow)",
+			"⏺ Archive(search memories rewind flow)",
 		);
 		expect(
 			rendered(
 				archive.renderCall({ op: "set", source: "memories", title: "red \u001b[31mtext\u001b[0m\nnext" }, theme, {}),
 			),
-		).toBe("○ Archive(set memories red text)");
+		).toBe("⏺ Archive(set memories red text)");
 		expect(rendered(archive.renderCall({ op: "get", source: "memories", id: "M7" }, theme, {}))).toBe(
-			"○ Archive(get memories M7)",
+			"⏺ Archive(get memories M7)",
 		);
 		const saved = await run(tool, { op: "set", title: "Render this note" });
 		expect(rendered(tool.renderResult(saved, { expanded: false }, theme, {}))).toContain("Saved M1 (workspace");

@@ -22,6 +22,7 @@ export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
 	trust: async (args, { cwd }) => (await import("../cli/trust-command.ts")).runTrustCommand(args, { cwd }),
 	security: async (args, { cwd, agentDir }) =>
 		(await import("../cli/security-command.ts")).runSecurityCommand(args, { cwd, agentDir }),
+	backlog: async (args, { cwd }) => (await import("../cli/backlog-command.ts")).runBacklogCommand(args, { cwd }),
 	profile: async (args, { cwd }) => (await import("../cli/profile-command.ts")).runProfileCommand(args, { cwd }),
 	marketplace: async (args, { cwd }) =>
 		(await import("../octocode/plugins/marketplace/command.ts")).runMarketplaceCommand(args, { cwd }),

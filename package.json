@@ -42,6 +42,7 @@
 		"prepublishOnly": "yarn run clean && yarn run build && yarn run check",
 		"publish": "yarn run prepublishOnly && node scripts/publish.mjs",
 		"publish:dry": "yarn run prepublishOnly && node scripts/publish.mjs --dry-run",
+		"pack-smoke:testkit": "node scripts/pack-smoke.mjs",
 		"release:local": "node scripts/local-release.mjs",
 		"measure:unfocused-cpu": "node scripts/measure-unfocused-cpu.mjs",
 		"pack:packages": "node scripts/pack-packages.mjs",

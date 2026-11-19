@@ -1,14 +1,11 @@
 import { GLYPH, type MarkdownTheme } from "@octocodeai/octocode-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
-import { viewSummary } from "../../../core/compaction/summary-view.ts";
+import { keptLine, viewSummary } from "../../../core/compaction/summary-view.ts";
 import { formatTokens } from "../../../octocode/shared/format.ts";
 import { shortPath } from "../../../utils/display-path.ts";
 import { clip, plural } from "../../../octocode/shared/text.ts";
 import { getMarkdownTheme } from "../../../theme/theme.ts";
 import { SummaryMessageComponent, type SummaryMessageText } from "./summary-message.ts";
-
-/** A kept user message shows its first line, clipped. */
-const KEPT_MESSAGE_CHARS = 100;
 
 /** What a compaction message says: the tokens summarized and the summary's size, where the full record is, the kept user messages. */
 function compactionText(message: CompactionSummaryMessage): SummaryMessageText {
@@ -30,7 +27,7 @@ function compactionText(message: CompactionSummaryMessage): SummaryMessageText {
 			...(kept > 0
 				? [
 						`Kept ${plural(kept, "user message")} word for word${view.omitted > 0 ? `; ${view.omitted} earlier not kept` : ""}:`,
-						...view.messages.map((text) => `- ${clip(text, KEPT_MESSAGE_CHARS)}`),
+						...view.messages.map((text) => `- ${clip(keptLine(text), Number.MAX_SAFE_INTEGER)}`),
 					]
 				: []),
 		],

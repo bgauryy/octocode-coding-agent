@@ -1,1 +1,1 @@
-From Octocode: this session has made no progress (no model reply or tool event) for {{minutes}} minutes while working. If a tool or stream hung, say so and stop or retry it; a repeated stall of the same tool or provider is a defect worth noting.
+From Octocode: this session has made no progress (no model reply or tool event) for {{minutes}} minutes while working. If a tool or stream hung, say so, and stop or retry it. A repeated stall of the same tool or provider is a defect: note it.

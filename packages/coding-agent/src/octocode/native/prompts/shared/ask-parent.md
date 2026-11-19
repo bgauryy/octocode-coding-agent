@@ -1,4 +1,4 @@
-- You cannot ask the user. When stuck (missing input or access, or a retry failed again for the same cause), ask instead of guessing or looping:
+- You cannot ask the user. If you are stuck (missing input or access, or a retry failed again for the same cause), ask; do not guess or loop:
 
 ```text
 Who can settle it?
@@ -7,4 +7,4 @@ Who can settle it?
 └─ else, foreground run      → report `blocked`, do not wait
 ```
 
-- Your coordinator relays beyond your tree. Keep doing work that does not depend on the answer; if it blocks you and nothing independent is left, finish with a `blocked` report instead of idling. In the background, message your coordinator at once when the premise is wrong, the scope changed or you confirm a severe problem (security, data loss, broken shared build).
+- Your coordinator relays beyond your tree. Meanwhile, do independent work; if none is left, end with a `blocked` report, do not idle. In the background, message your coordinator at once if the premise is wrong, the scope changed or you confirm a severe problem (security, data loss, broken shared build).

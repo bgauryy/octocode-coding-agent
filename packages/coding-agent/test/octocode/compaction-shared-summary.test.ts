@@ -754,7 +754,7 @@ describe("writeSummary with the shared path", () => {
 		const before = await writeSummary(api, automatic(), ctx);
 		expect(before).toEqual({
 			cancel: true,
-			failure: expect.stringMatching(/^The compaction was not committed because it would free nothing/),
+			failure: expect.stringMatching(/^The compaction was not committed: it would free nothing/),
 		});
 		expect(calls).toHaveLength(0);
 		// A larger stretch is worth asking for; a reply as large as what it replaces is still not committed.

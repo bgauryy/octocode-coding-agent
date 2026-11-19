@@ -174,7 +174,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 	const syntax = Object.entries(verbs).map(([name, verb]) => `${name}${verb.args ? ` ${verb.args}` : ""}`);
 	const usage = `[${[...syntax, `<id> [${itemActions.join("|")}]`].join(" | ")}]`;
 	return {
-		description: "Open the backlog board in the web workspace (tui: in the terminal)",
+		description: "Open the backlog board (web; tui: in the terminal)",
 		argumentHint: usage,
 		complete: (prefix) => {
 			const words = prefix.split(/\s+/);

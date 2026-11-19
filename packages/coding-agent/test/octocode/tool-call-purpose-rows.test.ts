@@ -109,7 +109,7 @@ describe("one purpose line style for every tool call", () => {
 	it("gives MCP calls the shared header: state mark, label and a short summary", () => {
 		const [title] = rows(MCP, { queries: queries(2) }, mcpTool(MCP));
 		// The title is the tool's own name; its server follows as meta.
-		expect(title.trim()).toBe("○ localSearch(2 queries) · octocode");
+		expect(title.trim()).toBe("⏺ localSearch(2 queries) · octocode");
 		expect(title).not.toContain("queries=[");
 		expect(title).not.toContain("mainGoal");
 	});

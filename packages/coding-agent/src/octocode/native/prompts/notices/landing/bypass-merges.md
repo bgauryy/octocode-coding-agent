@@ -1,1 +1,1 @@
-Worktree merges run without asking in this mode, after a readiness check: the worktree is clean, no agent still works in it, no backlog item held there is open, no file it changes is reserved and git predicts no conflict. Each merge is announced and recorded (`/permissions log`).
+Worktree merges run without asking in this mode, after a readiness check. The worktree must be clean, no agent still works in it, no backlog item held there is open, no file that it changes is reserved, and git predicts no conflict. Each merge is announced and recorded (`/permissions log`).

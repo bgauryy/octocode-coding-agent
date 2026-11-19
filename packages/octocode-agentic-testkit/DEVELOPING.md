@@ -21,11 +21,11 @@ file and never prints a key. Paid tests are named `*.live.test.ts`: `yarn test` 
 
 ## Package checks
 
-| Goal                                       | Command                                                                | Cost |
-| ------------------------------------------ | ---------------------------------------------------------------------- | ---- |
-| the package as a consumer sees it (linked) | `yarn build && yarn check:consumer`                                    | $0   |
-| the packed tarball in a fresh project      | `node scripts/pack-smoke.mjs --build` (repository root, needs network) | $0   |
-| the real-provider forwarding runs          | `TESTKIT_LIVE=1 yarn test:live test/live/forward-wires.live.test.ts`   | paid |
+| Goal                                       | Command                                                              | Cost |
+| ------------------------------------------ | -------------------------------------------------------------------- | ---- |
+| the package as a consumer sees it (linked) | `yarn build && yarn check:consumer`                                  | $0   |
+| the packed tarball in a fresh project      | `yarn pack-smoke:testkit --build` (repository root, needs network)   | $0   |
+| the real-provider forwarding runs          | `TESTKIT_LIVE=1 yarn test:live test/live/forward-wires.live.test.ts` | paid |
 
 `pack-smoke.mjs` packs the package, installs the tarball and Vitest into a temporary project, takes `vitest.config.ts`
 and the quickstart test from the README, and runs them.

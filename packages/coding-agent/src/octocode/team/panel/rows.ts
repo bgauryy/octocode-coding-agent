@@ -1,5 +1,6 @@
 import { GLYPH, SEPARATOR, truncateToWidth } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
+import { LIGHT_COLOR } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { ENTITY } from "../../shared/entity.ts";
 import { row, type RowKind } from "./cells.ts";
@@ -165,13 +166,14 @@ export function peerLines(f: Frame, peers: readonly GridRow[], hidden: number, o
 /** Each state's mark in the order the `+N more` row counts them: what waits first. */
 const MORE_ORDER = ["waiting", "failed", "running", "done", "stopped", "pending"] as const;
 
-/** `+N more · ◇ 1 ⠋ 2 ✓ 1`: the agents left out, counted by their marks; in warning while one of them waits. */
+/** `+N more · ⏺ 1 ⏺ 2 ⏺ 1`: the agents left out, counted by their lights (steady, in each state's colour); in warning while one of them waits. */
 export function moreLine(hidden: PanelEntry[], now: number, theme: Theme, width: number): string {
 	const states = hidden.map((entry) => panelState(entry, now).state);
+	const tone = (text: string) => theme.fg(states.includes("waiting") ? "warning" : "muted", text);
 	const counts = MORE_ORDER.flatMap((state) => {
 		const count = states.filter((shown) => shown === state).length;
-		return count ? [`${GLYPH[state]} ${count}`] : [];
+		return count ? [`${theme.fg(LIGHT_COLOR[state], GLYPH.light)}${tone(` ${count}`)}`] : [];
 	});
-	const text = ` +${hidden.length} more${counts.length ? `${SEPARATOR}${counts.join(" ")}` : ""}`;
-	return truncateToWidth(theme.fg(states.includes("waiting") ? "warning" : "muted", text), Math.max(1, width), "…");
+	const lead = tone(` +${hidden.length} more${counts.length ? SEPARATOR : ""}`);
+	return truncateToWidth(`${lead}${counts.join(tone(" "))}`, Math.max(1, width), "…");
 }

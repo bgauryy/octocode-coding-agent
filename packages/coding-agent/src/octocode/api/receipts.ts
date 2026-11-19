@@ -23,11 +23,13 @@ interface Waiter {
  */
 export interface SendReceipt {
 	phase: "preparing" | "accepted" | "uncertain" | "cancelled" | "settled";
-	/** Still preparing because the session's user is deciding whether to let the message in: a run settling meanwhile does not void it. */
+	/** Still preparing because the session's user is deciding whether to let the message in. */
 	waitingForUser?: boolean;
 	/** The asynchronous host handoff failed after an acknowledgement; retries must not dispatch again. */
 	failure?: Error;
 	reject(error: Error): void;
+	/** Where the keyed receipt is stored, when it is. */
+	durable?: { sessionId: string; key: string };
 	controller: AbortController;
 	ready: Promise<void>;
 	fingerprint: string;
@@ -35,6 +37,22 @@ export interface SendReceipt {
 	settlement: Promise<RunResult>;
 	/** Resolves `ready` once the message is dispatched. */
 	resolveReady(): void;
+}
+
+/** Where keyed receipts outlive the process, so a retry after a restart learns what became of its message. */
+export interface ReceiptStore {
+	save(sessionId: string, key: string, row: Omit<StoredReceipt, "updatedAt">): void;
+	setPhase(sessionId: string, key: string, phase: StoredReceipt["phase"]): void;
+	find(sessionId: string, key: string): StoredReceipt | undefined;
+	forget(sessionId: string, key: string): void;
+}
+
+export interface StoredReceipt {
+	fingerprint: string;
+	messageId: string;
+	queued: string;
+	phase: "preparing" | "accepted" | "uncertain";
+	updatedAt: number;
 }
 
 const SEND_RECEIPT_LIMIT = 128;
@@ -56,8 +74,22 @@ export class SendReceipts {
 	private readonly waiters = new Set<Waiter>();
 	/** A settlement or session replacement invalidates late host-promise rejections, including unkeyed sends. */
 	private completedVersion = 0;
+	private readonly store: ReceiptStore | undefined;
 	/** The key of the receipt that owns the run in progress. */
 	activeKey: string | undefined;
+
+	constructor(store?: ReceiptStore) {
+		this.store = store;
+	}
+
+	/** What an earlier process recorded for `key` in this session, when no receipt of this process holds it. */
+	persisted(key: string): StoredReceipt | undefined {
+		return this.sessionId === undefined ? undefined : this.store?.find(this.sessionId, key);
+	}
+
+	private forgetStored(receipt: SendReceipt): void {
+		if (receipt.durable) this.store?.forget(receipt.durable.sessionId, receipt.durable.key);
+	}
 
 	get settlementVersion(): number {
 		return this.completedVersion;
@@ -114,7 +146,7 @@ export class SendReceipts {
 		this.activeKey = undefined;
 	}
 
-	/** Starts a receipt in `preparing`; with a `key` it is kept for retries, and owns the run when the session was idle. */
+	/** Starts a receipt in `preparing`; with a `key` it is kept for retries, and owns the run when the session was idle (`accept` settles it again). */
 	open(
 		fingerprint: string,
 		accepted: SendReceipt["accepted"],
@@ -149,6 +181,15 @@ export class SendReceipts {
 		};
 		this.preparing.add(receipt);
 		if (key) {
+			if (this.store && this.sessionId !== undefined) {
+				receipt.durable = { sessionId: this.sessionId, key };
+				this.store.save(this.sessionId, key, {
+					fingerprint,
+					messageId: accepted.id,
+					queued: accepted.queued,
+					phase: "preparing",
+				});
+			}
 			this.byKey.set(key, receipt);
 			if (!busy) this.activeKey = key;
 		}
@@ -160,10 +201,24 @@ export class SendReceipts {
 		this.byKey.set(key, receipt);
 	}
 
-	/** The message is going out: the receipt leaves `preparing`. A keyed send (or one that waits) keeps its waiter for the run's end; otherwise nobody waits. */
-	accept(receipt: SendReceipt, waiter: Waiter, keep: boolean): void {
+	/**
+	 * The message is going out: the receipt leaves `preparing`. A keyed send (or one that waits) keeps its waiter for the
+	 * run's end; otherwise nobody waits. `queued` is how the session takes it now (`"turn"` when it is idle), which may
+	 * differ from what was promised when the send opened: a run can have ended or begun while it was prepared. A keyed
+	 * send that starts the turn owns the run.
+	 */
+	accept(receipt: SendReceipt, waiter: Waiter, keep: boolean, queued: string, key?: string): void {
 		this.preparing.delete(receipt);
 		receipt.phase = "accepted";
+		receipt.accepted.queued = queued;
+		if (key && queued === "turn" && this.activeKey === undefined) this.activeKey = key;
+		if (receipt.durable)
+			this.store?.save(receipt.durable.sessionId, receipt.durable.key, {
+				fingerprint: receipt.fingerprint,
+				messageId: receipt.accepted.id,
+				queued: receipt.accepted.queued,
+				phase: "accepted",
+			});
 		if (keep) this.waiters.add(waiter);
 		else waiter.resolve({ text: "" });
 	}
@@ -186,10 +241,14 @@ export class SendReceipts {
 		if (outcome === "dispatched") {
 			receipt.phase = "uncertain";
 			receipt.failure = failure;
+			if (receipt.durable) this.store?.setPhase(receipt.durable.sessionId, receipt.durable.key, "uncertain");
 			// This receipt cannot own turn.abort now, and a rejected handoff may never emit agent_settled.
 			// The session's actual idle/pending state still controls whether a new send may start.
-		} else if (outcome === "refused") receipt.phase = "cancelled";
-		else if (key) this.byKey.delete(key);
+		} else {
+			this.forgetStored(receipt);
+			if (outcome === "refused") receipt.phase = "cancelled";
+			else if (key) this.byKey.delete(key);
+		}
 		if (this.activeKey === key) this.activeKey = undefined;
 	}
 
@@ -202,6 +261,7 @@ export class SendReceipts {
 	cancelPreparation(receipt: SendReceipt, message: string): void {
 		if (receipt.phase !== "preparing") return;
 		receipt.phase = "cancelled";
+		this.forgetStored(receipt);
 		receipt.controller.abort();
 		receipt.reject(new RpcError(ERR.unavailable, message, { execution: "not-sent" }));
 		if (this.active() === receipt) this.activeKey = undefined;
@@ -224,14 +284,14 @@ export class SendReceipts {
 		return "owner";
 	}
 
-	/** Octocode settled: sends still being prepared are void (the session ran meanwhile), accepted ones are settled, and every waiter gets the result. */
+	/**
+	 * Octocode settled: accepted receipts are settled and every waiter gets the result. A send still being prepared is
+	 * kept, as if the run had ended a moment earlier: it goes out as a new turn at `accept`.
+	 */
 	settle(result: RunResult): void {
 		this.completedVersion++;
-		for (const receipt of this.preparing)
-			if (!receipt.waitingForUser)
-				this.cancelPreparation(receipt, "The session ran while the message was being prepared");
 		for (const receipt of this.byKey.values()) if (receipt.phase === "accepted") receipt.phase = "settled";
-		this.activeKey = undefined;
+		if (this.active()?.phase !== "preparing") this.activeKey = undefined;
 		for (const waiter of Array.from(this.waiters)) {
 			this.waiters.delete(waiter);
 			waiter.resolve(result);

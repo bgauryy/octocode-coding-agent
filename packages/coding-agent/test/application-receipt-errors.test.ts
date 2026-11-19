@@ -23,8 +23,8 @@ function session(id: string): AgentSession {
 
 /** A receipt store whose database fails when it records the outcome. */
 const failingStore = {
-	begin: (command: { id: string }) => ({ fresh: true, receipt: { id: command.id, status: "accepted" as const } }),
-	finish: () => {
+	begin: async (command: { id: string }) => ({ fresh: true, receipt: { id: command.id, status: "accepted" as const } }),
+	finish: async () => {
 		throw new Error(`database is locked (${SECRET})`);
 	},
 };

@@ -315,6 +315,12 @@ export class VirtualDocument {
 		return this.rows.locate(row);
 	}
 
+	/** The row at the top of item `index`, with the item's height as the table has it. */
+	rowOf(index: number, offset: number): number {
+		const height = this.heights[index] ?? 0;
+		return this.rows.before(index) + Math.min(offset, Math.max(0, height - 1));
+	}
+
 	/** Whether the items are still the ones in the table. */
 	matches(root: Component): boolean {
 		if (this.listUnchanged()) return true;

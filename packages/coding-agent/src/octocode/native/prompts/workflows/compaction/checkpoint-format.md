@@ -11,10 +11,10 @@ Use these headings in order:
 - [x] [Completed work needed to continue: outcome and evidence reference]
 
 ### In Progress
-- [ ] [Active work, owner, item/agent/job ids and dependencies; pending effects and how to check before retrying]
+- [ ] [Active work, owner, item/agent/job ids and dependencies; pending effects and how to check before retrying. Give each agent you name its state: live, done or left]
 
 ### Blocked
-- [What prevents progress, if anything]
+- [What prevents progress, if anything; for a step you asked the user to take, whether it was done]
 
 ## Key Decisions
 - **[Decision]**: [Brief rationale, evidence and unverified assumptions]

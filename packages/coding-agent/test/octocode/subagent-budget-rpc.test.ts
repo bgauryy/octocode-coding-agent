@@ -136,7 +136,7 @@ describe("a subagent child over its request budget", () => {
 				.filter((line) => line.startsWith("prompt "))
 				.at(-1),
 		).toContain(
-			"Your coordinator continued you after 6 model requests; the run is stopped at 11. Do this task and report before that:",
+			"Your coordinator continued you after 6 model requests. The run stops at 11. Do this task and report before that:",
 		);
 		// A peer's relayed message is no grant: past the hard limit it runs nothing, and the report says how to continue.
 		const transcript = fs.readFileSync(childSessionFile(session)!, "utf8");

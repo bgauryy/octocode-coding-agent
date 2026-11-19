@@ -9,10 +9,11 @@ import { type Layers, measureLayers } from "./agent-context/layers.ts";
  * shrinks, and raise one only for an intended change a reviewer can weigh against its cost on every request.
  */
 const CEILINGS: Record<string, Omit<Layers, "freellama">> = {
+	// skills: the octocode-code-review core skill (user request) measured 7,905.
 	main: {
 		system: 23_300,
 		mcpInstructions: 9_700,
-		skills: 7_850,
+		skills: 8_300,
 		nativeTools: 18_650,
 		mcpTools: 64_550,
 		total: 124_000,
@@ -33,21 +34,24 @@ const CEILINGS: Record<string, Omit<Layers, "freellama">> = {
 		mcpTools: 51_150,
 		total: 86_000,
 	},
+	// Octocode MCP declares every tool by default (gh, clone, package, security): mcpTools measured 49,101, total 86,650.
 	implementer: {
 		system: 21_250,
 		mcpInstructions: 4_900,
 		skills: 2_850,
 		nativeTools: 10_350,
-		mcpTools: 43_500,
-		total: 82_700,
+		mcpTools: 50_050,
+		total: 88_350,
 	},
+	// Octocode MCP declares every tool by default (gh, clone, package, security): mcpTools measured 49,101, total 83,311.
+	// skills: octocode-code-review in the reviewer's catalog (its working method) measured 1,560.
 	reviewer: {
 		system: 19_300,
 		mcpInstructions: 4_900,
-		skills: 1_350,
+		skills: 1_640,
 		nativeTools: 10_350,
-		mcpTools: 43_500,
-		total: 79_300,
+		mcpTools: 50_050,
+		total: 84_950,
 	},
 };
 

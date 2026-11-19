@@ -1,1 +1,1 @@
-Before changing code, read {{ref}} with the backlog tool and follow every Next page to read all comments, notes and changes. Recheck its goal, plan, dependencies and linked context: the snapshot below may have changed while this request was queued. {{> shared/item-authority.md}}
+Before you change code, read {{ref}} with the backlog tool and follow every Next page to read all comments, notes and changes. Recheck its goal, plan, dependencies and linked context: the snapshot below may have changed while this request was queued. {{> shared/item-authority.md}}

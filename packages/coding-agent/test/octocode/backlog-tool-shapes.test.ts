@@ -414,13 +414,13 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 	it("still draws: a stored session replays the old arguments and result for display", async () => {
 		const { tool } = await former();
 		expect(rendered(tool.renderCall({ op: "list", query: "search", states: ["todo"] }, theme, {}))).toBe(
-			'○ Backlog(list "search")',
+			'⏺ Backlog(list "search")',
 		);
 		expect(rendered(tool.renderCall({ op: "add", title: "Old item", from: "B1" }, theme, {}))).toBe(
-			'○ Backlog(add from B1 "Old item")',
+			'⏺ Backlog(add from B1 "Old item")',
 		);
 		expect(rendered(tool.renderCall({ op: "update", id: "B2", state: "ongoing" }, theme, {}))).toBe(
-			"○ Backlog(update B2 → ongoing)",
+			"⏺ Backlog(update B2 → ongoing)",
 		);
 		const row = (args: Record<string, unknown>, text: string, details: Record<string, unknown> = {}) =>
 			rendered(

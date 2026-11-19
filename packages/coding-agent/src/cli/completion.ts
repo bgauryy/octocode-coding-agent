@@ -23,6 +23,7 @@ const commands: Record<string, readonly string[]> = {
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	trust: ["list", "add", "remove"],
+	backlog: ["get", "list", "export"],
 	profile: [],
 	marketplace: ["add", "list", "update", "remove"],
 	plugin: ["install", "update", "remove", "list"],
@@ -166,6 +167,9 @@ export function completeCli(words: string[], cwd = process.cwd()): string[] {
 					"--",
 				);
 		}
+		if (command === "backlog" && action === "get") flags.push("--limit", "--offset", "--changes");
+		if (command === "backlog" && action === "list")
+			flags.push("--query", "--states", "--ids", "--type", "--under", "--tag", "--sort", "--limit", "--offset");
 		if (command === "profile")
 			flags.push("--session", "--json", "--insights", "--agent", "--request", "--detail", "--timeline", "--trace");
 		if (["install", "remove", "config", "list", "update"].includes(command)) flags.push("--trust");

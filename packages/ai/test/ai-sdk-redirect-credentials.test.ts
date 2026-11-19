@@ -55,7 +55,10 @@ describe("provider credentials across a cross-origin redirect", () => {
 			(origin: string) => google(model("google-generative-ai", "google", origin), context, options),
 		],
 		["openai-responses", (origin: string) => responses(model("openai-responses", "openai", origin), context, options)],
-		["mistral-conversations", (origin: string) => mistral(model("mistral-conversations", "mistral", origin), context, options)],
+		[
+			"mistral-conversations",
+			(origin: string) => mistral(model("mistral-conversations", "mistral", origin), context, options),
+		],
 	])("%s fails once on a redirect and never forwards its key", async (_api, run) => {
 		const seen: IncomingHttpHeaders[] = [];
 		const target = await listen((request, response) => {

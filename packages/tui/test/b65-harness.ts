@@ -55,17 +55,19 @@ const PARAGRAPHS = [
 	"The change is small. It touches three files and one test; nothing else imports the helper, so the blast radius is the `render` path only.",
 	"Short answer: yes. The cost is `O(rows)` once, then constant per frame, see [the notes](https://example.com/notes) for the numbers.",
 ];
-const LIST = "- first check: *typecheck* clean\n- second check: `vitest` 81 passed\n- third check: lint, with a [link](https://example.com)";
-const CODE = "```ts\nexport function settle(rows: number): number {\n\tlet measured = 0;\n\twhile (measured < rows) measured += 48;\n\treturn measured;\n}\n```";
+const LIST =
+	"- first check: *typecheck* clean\n- second check: `vitest` 81 passed\n- third check: lint, with a [link](https://example.com)";
+const CODE =
+	"```ts\nexport function settle(rows: number): number {\n\tlet measured = 0;\n\twhile (measured < rows) measured += 48;\n\treturn measured;\n}\n```";
 const TABLE = "| rows | cold | steady |\n| --- | --- | --- |\n| 1k | 20 ms | 0.001 ms |\n| 10k | 144 ms | 0 ms |";
 
 /** Assistant-style Markdown: paragraphs, lists, code blocks and tables, varying by index; `salt` keeps token caches apart. */
 export function markdownRow(index: number, salt = 0): string {
-	const parts = [`### Step ${index} (${salt})`, PARAGRAPHS[index % PARAGRAPHS.length]!];
+	const parts = [`### Step ${index} (${salt})`, PARAGRAPHS[index % PARAGRAPHS.length]];
 	if (index % 2 === 0) parts.push(LIST);
 	if (index % 3 === 0) parts.push(CODE);
 	if (index % 7 === 0) parts.push(TABLE);
-	parts.push(PARAGRAPHS[(index + 1) % PARAGRAPHS.length]!);
+	parts.push(PARAGRAPHS[(index + 1) % PARAGRAPHS.length]);
 	return parts.join("\n\n");
 }
 
@@ -105,6 +107,8 @@ export function createHarness(options: HarnessOptions) {
 		primary: true,
 		overscroll: "chain",
 		scrollbar: "auto",
+		// A transient scrollbar that fades mid-settle would make the virtual and exact screens differ by timing alone.
+		scrollbarHideDelayMs: 600_000,
 		virtualize: options.virtualize,
 	});
 	tui.setLayoutRoot(
@@ -212,7 +216,10 @@ export function createHarness(options: HarnessOptions) {
 const normalizeRow = (row: string) => row.replace(/id=oc[0-9-]+;/g, "id=;");
 
 /** The first differing row of two screens, or undefined when equal. */
-export function firstScreenDifference(a: readonly string[] | undefined, b: readonly string[] | undefined): string | undefined {
+export function firstScreenDifference(
+	a: readonly string[] | undefined,
+	b: readonly string[] | undefined,
+): string | undefined {
 	if (!a || !b) return "missing screen";
 	for (let row = 0; row < Math.max(a.length, b.length); row++) {
 		if (a[row] !== b[row]) return `row ${row}: ${JSON.stringify(a[row])} vs ${JSON.stringify(b[row])}`.slice(0, 600);

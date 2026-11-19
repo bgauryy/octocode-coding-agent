@@ -12,7 +12,7 @@ describe("SendReceipts", () => {
 		expect(receipts.get("k1")).toBe(receipt);
 		expect(receipts.activeKey).toBe("k1");
 		expect(receipts.busy).toBe(true);
-		receipts.accept(receipt, waiter, true);
+		receipts.accept(receipt, waiter, true, "turn", "k1");
 		expect(receipt.phase).toBe("accepted");
 		expect(receipts.preparingCount).toBe(0);
 		expect(receipts.busy).toBe(true);
@@ -26,7 +26,7 @@ describe("SendReceipts", () => {
 		const receipts = new SendReceipts();
 		const { receipt, waiter } = receipts.open("f", accepted("x1"), "k", true);
 		expect(receipts.activeKey).toBeUndefined();
-		receipts.accept(receipt, waiter, false);
+		receipts.accept(receipt, waiter, false, "steer");
 		await expect(receipt.settlement).resolves.toEqual({ text: "" });
 	});
 
@@ -40,7 +40,7 @@ describe("SendReceipts", () => {
 		await expect(before.receipt.ready).rejects.toBe(failure);
 
 		const after = receipts.open("f", accepted("x2"), "k2", false);
-		receipts.accept(after.receipt, after.waiter, true);
+		receipts.accept(after.receipt, after.waiter, true, "turn", "k2");
 		receipts.fail(after.receipt, after.waiter, "k2", failure, "dispatched");
 		expect(receipts.get("k2")?.phase).toBe("uncertain");
 	});
@@ -55,26 +55,29 @@ describe("SendReceipts", () => {
 		await expect(receipts.get("k1")?.ready).rejects.toBe(failure);
 	});
 
-	it("a run settling does not void a send waiting for the user, and the sender's timeout says what it waited for", async () => {
+	it("a run settling does not void a send being prepared, with or without the user deciding", async () => {
 		const receipts = new SendReceipts();
-		const { receipt } = receipts.open("f", accepted("x1"), "k1", true);
-		receipt.waitingForUser = true;
+		const asking = receipts.open("f", accepted("x1"), "k1", true);
+		asking.receipt.waitingForUser = true;
+		const preparing = receipts.open("f2", accepted("x2"), "k2", false);
 		receipts.settle({ text: "another run" });
-		expect(receipt.phase).toBe("preparing");
-		await expect(receipts.wait(receipt, 1)).rejects.toThrow("did not answer the permission dialog");
+		expect(asking.receipt.phase).toBe("preparing");
+		expect(preparing.receipt.phase).toBe("preparing");
+		expect(preparing.receipt.controller.signal.aborted).toBe(false);
+		expect(receipts.activeKey).toBe("k2");
+		await expect(receipts.wait(asking.receipt, 1)).rejects.toThrow("did not answer the permission dialog");
 	});
 
-	it("cancels a send still being prepared when the run settles, and says nothing was sent", async () => {
+	it("accepts a send prepared across the run's end as a new turn that owns the run", async () => {
 		const receipts = new SendReceipts();
-		const { receipt } = receipts.open("f", accepted("x1"), "k", false);
-		receipts.settle({ text: "" });
-		expect(receipt.phase).toBe("cancelled");
-		expect(receipt.controller.signal.aborted).toBe(true);
-		await expect(receipt.settlement).rejects.toMatchObject({
-			message: "The session ran while the message was being prepared",
-			data: { execution: "not-sent" },
-		});
-		expect(receipts.activeKey).toBeUndefined();
+		const { receipt, waiter } = receipts.open("f", accepted("x1"), "k1", true);
+		receipts.settle({ text: "ended" });
+		receipts.accept(receipt, waiter, true, "turn", "k1");
+		expect(receipt.accepted.queued).toBe("turn");
+		expect(receipts.activeKey).toBe("k1");
+		receipts.settle({ text: "the new turn" });
+		expect(receipt.phase).toBe("settled");
+		await expect(receipt.settlement).resolves.toEqual({ text: "the new turn" });
 	});
 
 	it("lets only the owner abort the run, and cancels a send still being prepared instead", () => {
@@ -84,7 +87,7 @@ describe("SendReceipts", () => {
 		expect(receipts.abort("k")).toBe("cancelled");
 		expect(receipt.phase).toBe("cancelled");
 		const next = receipts.open("f2", accepted("x2"), "k2", false);
-		receipts.accept(next.receipt, next.waiter, true);
+		receipts.accept(next.receipt, next.waiter, true, "turn", "k2");
 		expect(receipts.abort("k2")).toBe("owner");
 		receipts.settle({ text: "" });
 		expect(() => receipts.abort("k2")).toThrow("This request does not own the active run");
@@ -102,7 +105,7 @@ describe("SendReceipts", () => {
 		const receipts = new SendReceipts();
 		receipts.follow("s1");
 		const a = receipts.open("f", accepted("x1"), "k", false);
-		receipts.accept(a.receipt, a.waiter, true);
+		receipts.accept(a.receipt, a.waiter, true, "turn", "k");
 		const b = receipts.open("g", accepted("x2"), undefined, true);
 		receipts.follow("s1");
 		expect(receipts.get("k")).toBe(a.receipt);
@@ -123,7 +126,7 @@ describe("SendReceipts", () => {
 		vi.useFakeTimers();
 		const receipts = new SendReceipts();
 		const a = receipts.open("f", accepted("x1"), "k", false);
-		receipts.accept(a.receipt, a.waiter, true);
+		receipts.accept(a.receipt, a.waiter, true, "turn", "k");
 		const late = receipts.wait(a.receipt, 1_000).catch((error: unknown) => error);
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(await late).toMatchObject({ code: ERR.timeout, data: { id: "x1", execution: "accepted" } });

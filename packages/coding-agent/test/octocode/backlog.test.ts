@@ -767,13 +767,13 @@ describe("backlog tool", () => {
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "done", id: "B1", completion: completed(), note: "ok" }, ctx);
 		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
-		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("○ Backlog(done B1)");
+		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("⏺ Backlog(done B1)");
 		// A call stored before the tool was split (`op` update with a state) still draws as it did.
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
-			"○ Backlog(update B1 → done)",
+			"⏺ Backlog(update B1 → done)",
 		);
 		expect(rendered(t.plan.renderCall({ op: "edit", id: "B1", state: "todo" }, theme, {}))).toBe(
-			"○ Backlog plan(edit B1 → todo)",
+			"⏺ Backlog plan(edit B1 → todo)",
 		);
 		const row = async (params: Record<string, unknown>) =>
 			rendered(

@@ -3,10 +3,9 @@ import {
 	withItemTitles,
 	withItemTitlesIn,
 	withItemTitlesInMarkdown,
-	type ItemTitleStyle,
 } from "@octocodeai/octocode-common/item-titles";
 
-export { TITLE_CAP, withItemTitles, withItemTitlesIn, withItemTitlesInMarkdown, type ItemTitleStyle };
+export { TITLE_CAP, withItemTitles, withItemTitlesIn, withItemTitlesInMarkdown };
 
 let titles: ReadonlyMap<string, string> = new Map();
 

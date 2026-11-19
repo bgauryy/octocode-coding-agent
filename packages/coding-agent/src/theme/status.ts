@@ -25,6 +25,18 @@ export const STATE_COLOR = {
 	stopped: "warning",
 } as const satisfies Readonly<Record<UiState, ThemeColor>>;
 
+/**
+ * The colour role of each state on the state light (`MarkOptions.light`, the ⏺ of agent and work rows): green while it
+ * works, yellow when it needs the user, red when it failed or was stopped, dim when idle or gone. It differs from
+ * `STATE_COLOR` only where the light reads at a glance: `running` is `success` (the spinner stays `accent`) and
+ * `stopped` is `error`.
+ */
+export const LIGHT_COLOR = {
+	...STATE_COLOR,
+	running: "success",
+	stopped: "error",
+} as const satisfies Readonly<Record<UiState, ThemeColor>>;
+
 /** A footer status (text and tone as data) painted in the live theme; a status without a tone as written. */
 export function paintStatus(
 	status: { text: string; tone?: ThemeColor },
@@ -48,6 +60,8 @@ export interface MarkOptions {
 	since?: number;
 	/** A mark of work running in the background: it spins at `MOTION.backgroundSpinnerMs`, its owner repaints at that pace. */
 	background?: boolean;
+	/** Draw the state light (⏺ in `LIGHT_COLOR`, breathing while `running`) instead of the state's glyph and spinner. */
+	light?: boolean;
 }
 
 function concrete(theme: MarkTheme, token: ThemeColor): Color | undefined {
@@ -75,6 +89,7 @@ export const WAIT_PULSE_MS = 4_000;
 export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions = {}): string {
 	const reduced = animationClock.isReducedMotion();
 	const now = options.now ?? animationClock.decorationTime();
+	if (options.light) return lightMark(theme, state, options, reduced, now);
 	const color = STATE_COLOR[state];
 	if (reduced) return theme.fg(color, GLYPH[state]);
 	switch (state) {
@@ -98,9 +113,35 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
 	}
 }
 
+/** The brightest the breathing light of a running mark gets toward the light colour (0..1). */
+const LIGHT_BREATH = 0.6;
+
+/** The lit ⏺: `running` breathes toward the light colour, `waiting` pulses then holds, `done` settles; the rest are steady. */
+function lightMark(theme: MarkTheme, state: UiState, options: MarkOptions, reduced: boolean, now: number): string {
+	const color = LIGHT_COLOR[state];
+	if (reduced) return theme.fg(color, GLYPH.light);
+	const toward = theme.appearance === "light" ? concrete(theme, "text") : rgbColor(255, 255, 255);
+	switch (state) {
+		case "running":
+			return glow(theme, color, toward, LIGHT_BREATH * breathe(now), GLYPH.light);
+		case "waiting":
+			if (options.since !== undefined && now - options.since >= WAIT_PULSE_MS) return theme.fg(color, GLYPH.light);
+			return glow(theme, color, concrete(theme, "dim"), 0.7 * breathe(now), GLYPH.light);
+		case "done":
+			return glow(
+				theme,
+				color,
+				toward,
+				0.65 * (options.since === undefined ? 0 : settle(now, options.since)),
+				GLYPH.light,
+			);
+		default:
+			return theme.fg(color, GLYPH.light);
+	}
+}
+
 /**
- * Whether a mark in `state` still moves at `now`: owners subscribe to the animation clock (`kind: "decor"`, every
- * `MOTION.spinnerMs` for running, `MOTION.glowFrameMs` otherwise) only while this holds, so a still screen writes nothing.
+ * Whether a mark in `state` still moves at `now`: owners subscribe to the animation clock (`kind: "decor"`, at `markFrameMs`) only while this holds, so a still screen writes nothing.
  */
 export function markMoves(state: UiState, options: MarkOptions = {}): boolean {
 	if (animationClock.isReducedMotion()) return false;
@@ -113,11 +154,15 @@ export function markMoves(state: UiState, options: MarkOptions = {}): boolean {
 }
 
 /** A running mark's spinner frame interval: slower for work in the background (see `MarkOptions.background`). */
-export const spinnerMs = (background = false): number => (background ? MOTION.backgroundSpinnerMs : MOTION.spinnerMs);
+const spinnerMs = (background = false): number => (background ? MOTION.backgroundSpinnerMs : MOTION.spinnerMs);
 
-/** The frame interval a moving mark needs. */
-export function markFrameMs(state: UiState, background = false): number {
-	return state === "running" ? spinnerMs(background) : MOTION.glowFrameMs;
+/**
+ * The frame interval a moving mark needs. A running light breathes slowly and can burn for hours, so it repaints at
+ * the background pace (never faster than `MOTION.glowFrameMs`) wherever it is drawn.
+ */
+export function markFrameMs(state: UiState, options: Pick<MarkOptions, "background" | "light"> = {}): number {
+	if (state !== "running") return MOTION.glowFrameMs;
+	return options.light ? Math.max(MOTION.glowFrameMs, MOTION.backgroundSpinnerMs) : spinnerMs(options.background);
 }
 
 /** What `liveShimmer` needs from a theme: concrete colours and their colour mode. */

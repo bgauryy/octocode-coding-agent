@@ -123,7 +123,8 @@ describe("live state after a compaction", () => {
 				sessionManager: {
 					getSessionId: () => SESSION,
 					getHeader: () => null,
-					getSessionFile: () => "/sessions/s.jsonl",
+					// A writable session file: the paid summary is saved beside it.
+					getSessionFile: () => path.join(root, "s.jsonl"),
 					getBranch: () => [],
 					buildSessionProjection: () => ({ entries: [], messages: [] }),
 				},

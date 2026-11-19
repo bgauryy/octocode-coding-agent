@@ -100,6 +100,14 @@ export const PROMPTS: Record<string, { fire: string; nearMiss: string }> = {
 		fire: "Write an RFC for migrating our job queue to a new broker, with tasks, validation and rollout.",
 		nearMiss: "What does RFC 2616 define?",
 	},
+	"octocode-security-review": {
+		fire: "/security flagged the hook my-formatter as high risk. Explain the report: what it does and what approval grants.",
+		nearMiss: "What is a security review in general? One sentence.",
+	},
+	"octocode-code-review": {
+		fire: "Review the diff on this branch against main before I merge it: bugs, missing tests, and is it ready?",
+		nearMiss: "What does LGTM mean in a code review? One sentence.",
+	},
 	"octocode-roast": {
 		fire: "Roast this code brutally: give me a harsh teardown of src/server.ts.",
 		nearMiss: "Give me gentle, friendly feedback on src/server.ts naming.",

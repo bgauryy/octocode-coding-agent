@@ -19,7 +19,7 @@ describe("scroll view transitions: virtual or exact path, and the same screen", 
 				const v = await runScript(virtual, rows);
 				const e = await runScript(exact, rows);
 				const startup = v.samples.get("startup")!;
-				assert.strictEqual(startup[0]!.path, "virtual", "the first frame lays out only the rows in view");
+				assert.strictEqual(startup[0].path, "virtual", "the first frame lays out only the rows in view");
 				assert.strictEqual(startup.at(-1)!.path, "exact", "the layout settles");
 				assert.ok(e.samples.get("startup")!.every((frame) => frame.path === "exact"));
 				for (const name of TRANSITIONS) {
@@ -32,7 +32,10 @@ describe("scroll view transitions: virtual or exact path, and the same screen", 
 				// After settling, interaction frames never go back to the virtual layout.
 				for (const name of TRANSITIONS.slice(1, 6)) {
 					const frames: FrameSample[] = v.samples.get(name)!;
-					assert.ok(frames.every((frame) => frame.path === "exact"), `${name} stays exact`);
+					assert.ok(
+						frames.every((frame) => frame.path === "exact"),
+						`${name} stays exact`,
+					);
 				}
 				assert.ok(virtual.searchOpen() && exact.searchOpen());
 			} finally {

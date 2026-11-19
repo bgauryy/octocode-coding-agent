@@ -165,7 +165,7 @@ describe("the agent tool's goal", () => {
 
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {
 		expect(rendered(renderAgentCall({ task: "x", goal: GOAL, profile: "reviewer" }, theme, {}))).toBe(
-			`○ Agent(${GOAL})`,
+			`⏺ Agent(${GOAL})`,
 		);
 		expect(rendered(renderAgentCall({ goal: "a\u001b[2Jb" }, theme, {}))).not.toContain("\u001b");
 		const s = setup();

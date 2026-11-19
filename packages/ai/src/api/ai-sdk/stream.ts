@@ -1,5 +1,5 @@
 import {
-	streamText,
+	experimental_streamTextLowMemory as streamText,
 	type ModelMessage,
 	type ToolSet,
 	type ToolChoice,
@@ -42,6 +42,24 @@ export interface SdkMapping {
 	/** Builds the SDK model itself, for Node-only providers kept out of the shared (browser-visible) factory. */
 	model?: (fetch: typeof globalThis.fetch) => LanguageModel;
 	onPart?: (part: TextStreamPart<ToolSet>, output: AssistantMessage, stream: AssistantMessageEventStream) => boolean;
+}
+
+/**
+ * The parts of the SDK's single-consumer stream. Leaving early only releases the reader: cancelling that stream sends an
+ * `undefined` reason into SDK promises nobody awaits (unhandled rejections), and the abort in `streamSdk`'s `finally`
+ * already ends the call.
+ */
+async function* partsOf<T>(stream: ReadableStream<T>): AsyncGenerator<T> {
+	const reader = stream.getReader();
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) return;
+			yield value;
+		}
+	} finally {
+		reader.releaseLock();
+	}
 }
 
 export function streamSdk(
@@ -89,6 +107,8 @@ export function streamSdk(
 						)
 					: observeSdkResponse(response, completions, model, options, signal.signal);
 			};
+			// One consumer reads `result.stream` once: the default result keeps a replay branch that buffers every part (raw
+			// provider chunks included) until the reply ends, about 1 GB over a 300,000-delta reply.
 			const result = streamText({
 				// Errors arrive through the stream and leave as redacted error events; the SDK default would print raw APICallError (with secrets) to stderr.
 				onError: () => {},
@@ -124,7 +144,7 @@ export function streamSdk(
 			const process = sdkEventProcessor(output, stream, completions.emptyToolInputs);
 			let started = false;
 			let streamError: unknown;
-			for await (const part of result.stream) {
+			for await (const part of partsOf(result.stream)) {
 				if (mapping?.onPart?.(part, output, stream)) continue;
 				if (part.type === "error") {
 					streamError ??= part.error;

@@ -1,11 +1,11 @@
-import { animationClock, GLYPH, MOTION, SPINNER, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
-import { WAIT_PULSE_MS } from "../../src/theme/status.ts";
+import { markFrameMs, WAIT_PULSE_MS } from "../../src/theme/status.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -42,8 +42,7 @@ describe("panel state", () => {
 		expect(panelState(gone, NOW)).toEqual({ state: "pending", label: "left" });
 	});
 
-	it("draws the state marks: spinner frame for working, ○ for idle and departed", () => {
-		const frame = SPINNER.braille[Math.floor(NOW / MOTION.backgroundSpinnerMs) % SPINNER.braille.length];
+	it("draws the state marks: the light for every state, working or not", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("busy-aaaa", { parentId: "main-aaaaaa", status: "working" }),
@@ -55,9 +54,9 @@ describe("panel state", () => {
 		const edge = (left: string, right: string) =>
 			`${left}${" ".repeat(120 - visibleWidth(left) - visibleWidth(right))}${right}`;
 		expect(rows).toEqual([
-			edge(" 🦑 main-aaaaaa ○ · general", "1m"),
-			edge(` ├ ${frame} busy-aaaa    · general`, "1m"),
-			edge(" └ ○ rest-bbbb    · general", "1m"),
+			edge(" 🦑 main-aaaaaa ⏺ · general", "1m"),
+			edge(` ├ ⏺ busy-aaaa    · general`, "1m"),
+			edge(" └ ⏺ rest-bbbb    · general", "1m"),
 		]);
 		const tree = [
 			{ member: team[1], depth: 0 },
@@ -65,13 +64,13 @@ describe("panel state", () => {
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
 		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 5));
-		expect(compact).toEqual([` ├ ${frame} `, " ├ ○ ", " └ ○ "]);
+		expect(compact).toEqual([` ├ ⏺ `, " ├ ⏺ ", " └ ⏺ "]);
 	});
 
-	it("freezes the spinner on its first frame in reduced motion", () => {
+	it("holds the light steady in reduced motion", () => {
 		animationClock.setReducedMotion(true);
 		const state = panelState({ member: member("a", { status: "working" }), depth: 0 }, NOW);
-		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.running);
+		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.light);
 	});
 
 	it("keeps the root row free of a tally: each agent's mark says it works, and `left` is on the ↳ line", () => {
@@ -83,10 +82,10 @@ describe("panel state", () => {
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
 		expect(lines).toEqual([
-			" 🦑 main-aaaaaa ○ · general                                                                                           1m",
-			" ├ ⠋ a-1111       · general                                                                                           1m",
-			" ├ ⠋ b-2222       · general                                                                                           1m",
-			" └ ○ c-3333       · general                                                                                          59s",
+			" 🦑 main-aaaaaa ⏺ · general                                                                                           1m",
+			" ├ ⏺ a-1111       · general                                                                                           1m",
+			" ├ ⏺ b-2222       · general                                                                                           1m",
+			" └ ⏺ c-3333       · general                                                                                          59s",
 			"     ↳ left",
 		]);
 	});
@@ -134,6 +133,22 @@ describe("panel motion", () => {
 		expect(motion.active).toBe(false);
 		vi.advanceTimersByTime(1_000);
 		expect(repaint.mock.calls.length).toBe(painted);
+		expect(animationClock.isRunning()).toBe(false);
+	});
+
+	it("repaints a running light at the calm light cadence, and stops once nothing moves", () => {
+		vi.useFakeTimers();
+		let marks: Moving[] = [working];
+		const repaint = vi.fn();
+		const motion = new PanelMotion(() => marks, repaint);
+		motion.sync();
+		vi.advanceTimersByTime(2_000);
+		const frames = repaint.mock.calls.length;
+		expect(frames).toBeGreaterThanOrEqual(Math.floor(2_000 / markFrameMs("running", { light: true })) - 1);
+		expect(frames).toBeLessThanOrEqual(Math.ceil(2_000 / MOTION.backgroundSpinnerMs));
+		marks = [{ state: "failed" }, { state: "waiting", since: NOW - 60_000 }];
+		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs);
+		expect(motion.active).toBe(false);
 		expect(animationClock.isRunning()).toBe(false);
 	});
 

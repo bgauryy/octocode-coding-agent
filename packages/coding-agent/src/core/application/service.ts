@@ -18,7 +18,7 @@ import {
 } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { type ApplicationOperations, type ApplicationSession, invokeOperation } from "./session-port.ts";
-import { acceptApplicationCommand } from "./service/accept.ts";
+import { acceptApplicationCommand, type RecordingCommand } from "./service/accept.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { publishLifecycle } from "./service/lifecycle.ts";
@@ -67,6 +67,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 
 	private receiptStore?: ApplicationReceiptStore;
+	private readonly recording = new Map<string, RecordingCommand>();
 	setReceiptStore(store: ApplicationReceiptStore): void {
 		this.receiptStore = store;
 	}
@@ -268,17 +269,19 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	async execute(command: ApplicationCommand): Promise<ApplicationReceipt> {
 		this.attach();
-		return this.delivery.request(() => this.acceptCommand(command));
-	}
-	private acceptCommand(command: ApplicationCommand): ApplicationReceipt {
-		this.attach();
-		this.checkSession();
 		return acceptApplicationCommand(command, {
 			state: this.state,
 			assets: this.transcript.assets,
 			session: this.session,
 			receiptStore: this.receiptStore,
-			currentSession: this.currentSession,
+			recording: this.recording,
+			deliver: (work) =>
+				this.delivery.request(() => {
+					this.attach();
+					this.checkSession();
+					return work();
+				}),
+			currentSession: () => this.currentSession,
 			isOpen: () => !this.disposed,
 			sessionId: () => this.sessionId,
 			publish: (event) => this.publish(event),

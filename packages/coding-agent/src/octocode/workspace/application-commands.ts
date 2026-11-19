@@ -4,7 +4,7 @@ import {
 	type ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
 import type { ApplicationReceiptStore } from "../../core/application/index.ts";
-import { type AgentDb, commands } from "../../../../db/src/api.ts";
+import { type AgentDb, commands, transactionWhenReady } from "../../../../db/src/api.ts";
 import { redactSecrets, storedSecret } from "@octocodeai/octocode-common/sanitize";
 
 export class ApplicationCommands implements ApplicationReceiptStore {
@@ -17,12 +17,13 @@ export class ApplicationCommands implements ApplicationReceiptStore {
 		this.repo = repo;
 	}
 
-	begin(command: ApplicationCommand): { fresh: boolean; receipt: ApplicationReceipt } {
+	/** The lookup and the insert are one transaction, entered once the write lock is free (`transactionWhenReady`). */
+	async begin(command: ApplicationCommand): Promise<{ fresh: boolean; receipt: ApplicationReceipt }> {
 		const input = applicationCommandFingerprint(command);
 		if (storedSecret({ command: input })) throw new Error("Remove credentials from this command.");
 		if (this.session && this.session !== command.sessionId) throw new Error("Receipt store belongs to another session");
 		this.session = command.sessionId;
-		return this.db.transaction(() => {
+		return transactionWhenReady<{ fresh: boolean; receipt: ApplicationReceipt }>(this.db, () => {
 			const previous = commands.byId(this.db.db, this.repo, command.sessionId, `application:${command.id}`);
 			if (previous) {
 				if (previous.input !== input) throw new Error("Request ID already used with another command");
@@ -45,10 +46,13 @@ export class ApplicationCommands implements ApplicationReceiptStore {
 		});
 	}
 
-	finish(id: string, status: "completed" | "failed", message?: string): ApplicationReceipt {
-		if (!this.session) throw new Error("No command session");
+	async finish(id: string, status: "completed" | "failed", message?: string): Promise<ApplicationReceipt> {
+		const session = this.session;
+		if (!session) throw new Error("No command session");
 		const safeMessage = message === undefined ? undefined : redactSecrets(message);
-		commands.setStatus(this.db.db, this.repo, this.session, `application:${id}`, status, safeMessage ?? "");
+		await transactionWhenReady(this.db, () =>
+			commands.setStatus(this.db.db, this.repo, session, `application:${id}`, status, safeMessage ?? ""),
+		);
 		return { id, status, ...(safeMessage ? { message: safeMessage } : {}) };
 	}
 }

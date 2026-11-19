@@ -11,7 +11,7 @@ export interface Moving {
 const COARSE_SLOP_MS = 1000;
 
 /**
- * Repaints the panel on the animation clock only while one of its marks moves: a spinner while an agent works, a glow
+ * Repaints the panel on the animation clock only while one of its marks moves: a breathing light while an agent works, a glow
  * just after one finished. Once every mark is still the subscription ends, so an idle panel writes nothing; the panel's
  * 1 s data refresh stays its own.
  */
@@ -48,9 +48,10 @@ export class PanelMotion {
 	/** Match the subscription to the marks as they are now: subscribe, change cadence, or let go. */
 	sync(now: number = Date.now(), ticked = false): void {
 		const moving = this.marks(now).filter((mark) =>
-			markMoves(mark.state, { now, ...(mark.since === undefined ? {} : { since: mark.since }) }),
+			markMoves(mark.state, { now, light: true, ...(mark.since === undefined ? {} : { since: mark.since }) }),
 		);
-		const fineMs = moving.length === 0 ? 0 : Math.min(...moving.map((mark) => markFrameMs(mark.state, true)));
+		const fineMs =
+			moving.length === 0 ? 0 : Math.min(...moving.map((mark) => markFrameMs(mark.state, { light: true })));
 		const everyMs = fineMs > 0 ? fineMs : (this.coarse?.(now) ?? 0);
 		const fine = fineMs > 0;
 		// A coarse tick still ahead is kept unless the boundary moved earlier (an older row appeared): a sync right at the

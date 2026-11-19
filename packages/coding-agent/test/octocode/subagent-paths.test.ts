@@ -376,9 +376,9 @@ describe("releasing when the run ends", () => {
 		await reservedThen(s, () => s.emit("session_shutdown", {}, s.ctx));
 	});
 
-	it("when the run ends after the session ended with the child still closing", () => {
+	it("when the run ends after the session ended with the child still closing", async () => {
 		const s = setup();
-		expect(s.team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
+		expect(await s.team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
 			ok: true,
 		});
 		expect(s.leases()).toHaveLength(1);
@@ -395,9 +395,9 @@ describe("releasing when the run ends", () => {
 		expect(() => s.team.childLeases.release("kid-one")).not.toThrow();
 	});
 
-	it("drops a child's leases, not its row, when the row names the child's own process", () => {
+	it("drops a child's leases, not its row, when the row names the child's own process", async () => {
 		const s = setup();
-		s.team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"]);
+		await s.team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"]);
 		const started = processStartTime(process.ppid);
 		expect(
 			s.store.join(member("kid-one", { pid: process.ppid, ...(started ? { started } : {}) }), {
@@ -491,7 +491,7 @@ describe("the child's process taking its row over", () => {
 
 	it("keeps the reservation, in another real process, and it ends when that process leaves", async () => {
 		const s = setup();
-		s.team.childLeases.reserve({ id: "kid-real", role: "general", goal: "edit a" }, ["a.ts"]);
+		await s.team.childLeases.reserve({ id: "kid-real", role: "general", goal: "edit a" }, ["a.ts"]);
 		const env = subagentProcessEnv(undefined, process.env, { id: "kid-real", parentId: s.team.id, goal: "edit a" });
 		const child = spawn(
 			process.execPath,
@@ -569,7 +569,11 @@ describe("a child that stays reachable", () => {
 		const reserve = vi.spyOn(s.team.childLeases, "reserve");
 		const sent = await s.team.send(details.id, "linger again", { replyRequired: false });
 		expect(sent).toMatchObject({ resumed: expect.stringMatching(/report\.$/) });
-		expect(reserve).toHaveBeenCalledWith(expect.objectContaining({ id: details.id }), ["a.ts"]);
+		expect(reserve).toHaveBeenCalledWith(
+			expect.objectContaining({ id: details.id }),
+			["a.ts"],
+			expect.any(AbortSignal),
+		);
 		await s.control.settle();
 		expect(s.leases()).toEqual([]);
 		expect(s.rows()).toEqual([]);

@@ -27,9 +27,10 @@ const CEILING = {
 		/** The date rollover: one `environment` section update, no head edit. */
 		dateDeltaBytes: 580,
 	},
-	/** Fewer top-level tools (MCP tools listed in `mcps`); the connect adds an in-place tool block. */
+	/** Rare native tools listed, not declared; the connect adds an in-place tool block. */
 	changes: {
-		toolsBytes: 31_600,
+		/** Every bundled Octocode MCP tool is declared up front (user decision), GitHub and package tools included. */
+		toolsBytes: 39_600,
 		systemBytes: 33_000,
 		mcpToolDeltaBytes: 320,
 		mcpMessageDeltaBytes: 6_600,

@@ -1,1 +1,1 @@
-- Never bypass a hook, a safety check (`--no-verify`), a permission refusal or a security review, also not by retrying through another tool.{{#unless lean}} A failing MCP tool is no reason to stop work or disable its server.{{/unless}}
+- Never bypass a hook, a safety check (`--no-verify`), a permission refusal or a security review, also not through another tool.{{#unless lean}} If an MCP tool fails, say so, restart its server and fall back to other tools; never stop work or disable the server for it.{{/unless}}

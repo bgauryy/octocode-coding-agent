@@ -31,4 +31,11 @@ export class RowHeights {
 		}
 		return { index, offset: index < this.sums.length - 1 ? row - top : 0, top };
 	}
+
+	/** Rows before item `index`; the total height for an index past the last item. */
+	before(index: number): number {
+		let total = 0;
+		for (let at = Math.min(index, this.sums.length - 1); at > 0; at -= at & -at) total += this.sums[at];
+		return total;
+	}
 }

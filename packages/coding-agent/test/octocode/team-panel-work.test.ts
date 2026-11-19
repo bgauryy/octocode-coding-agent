@@ -9,6 +9,7 @@ import { AgentsView } from "../../src/octocode/team/panel.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { liveMembers, roster } from "../../src/octocode/team/panel/roster.ts";
+import { markFrameMs } from "../../src/theme/status.ts";
 import { PanelMotion, type Moving } from "../../src/octocode/team/panel/motion.ts";
 import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel/work.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -18,7 +19,7 @@ import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
-const MARKS = { live: "●", waiting: "◇" };
+const MARKS = { live: "⏺", waiting: "⏺" };
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: id.replace(/-[0-9a-f]{4,6}$/, ""),
@@ -489,12 +490,10 @@ describe("repainting the work clock", () => {
 		expect(frame()).toMatch(/20s\s*$/m);
 		expect(frame()).toMatch(/in 30s\s*$/m);
 		const before = repaints();
-		const first = frame().split("\n")[0];
 		vi.advanceTimersByTime(3_000);
 		expect(repaints()).toBeGreaterThan(before + 10);
 		expect(frame()).toMatch(/23s\s*$/m);
 		expect(frame()).toMatch(/in 27s\s*$/m);
-		expect(frame().split("\n")[0].slice(0, 3)).not.toBe(first.slice(0, 3));
 		work.set("bash", []);
 		work.set("timer", []);
 		expect(animationClock.isRunning()).toBe(false);
@@ -569,8 +568,9 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		motion.sync();
 		expect(motion.precise).toBe(true);
 		vi.advanceTimersByTime(1_000);
-		// A moving mark repaints at the background spinner's cadence.
-		expect(repaints).toBeGreaterThanOrEqual(Math.floor(1_000 / MOTION.backgroundSpinnerMs));
+		// A moving light repaints at its calm cadence, no faster than the background spinner and no slower than a glow frame.
+		expect(repaints).toBeGreaterThanOrEqual(Math.floor(1_000 / markFrameMs("running", { light: true })));
+		expect(repaints).toBeLessThanOrEqual(Math.ceil(1_000 / MOTION.backgroundSpinnerMs));
 		marks = [];
 		vi.advanceTimersByTime(1_000);
 		expect(motion.precise).toBe(false);

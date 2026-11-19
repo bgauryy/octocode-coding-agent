@@ -62,6 +62,7 @@ export const SETTINGS_DEFAULTS = {
 		checkInSeconds: MONITOR_DEFAULTS.checkInSeconds,
 		wakeHoldSeconds: 0,
 		peerOverlapWake: true,
+		skillCatalog: "all" as "all" | "role",
 	},
 	monitor: MONITOR_DEFAULTS,
 	externalAgents: false,

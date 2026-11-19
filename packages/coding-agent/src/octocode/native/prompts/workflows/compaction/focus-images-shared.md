@@ -1,1 +1,1 @@
-An image you can see above will not reach the next model: write what it shows that the work depends on (values, layout, errors, visible state) and keep its path. For an image you cannot see, keep its path and what was said about it.
+An image you can see above will not reach the next model. Write what it shows that the work depends on (values, layout, errors, visible state). Keep its path. For an image you cannot see, keep its path and what was said about it.

@@ -233,11 +233,11 @@ it("reads durable receipts without executing uncertain requests again", async ()
 	const f = fixture();
 	const service = getApplicationPort(f.session);
 	service.setReceiptStore({
-		begin: (command) => ({
+		begin: async (command) => ({
 			fresh: false,
 			receipt: { id: command.id, status: "accepted" },
 		}),
-		finish: () => {
+		finish: async () => {
 			throw new Error("must not finish");
 		},
 	});

@@ -110,7 +110,7 @@ describe("a long job command never costs its id, reason or log (B)", () => {
 });
 
 describe("job lines are said once per compaction (C)", () => {
-	async function compact(withRequest: boolean) {
+	async function compact(withRequest: boolean, reply?: string) {
 		const sm = SessionManager.create(cwd(), path.join(dir, "sessions"));
 		const fake = fakeHost();
 		const context = fakeCtx({ cwd: cwd(), mode: "tui" }) as unknown as Record<string, any>;
@@ -144,6 +144,24 @@ describe("job lines are said once per compaction (C)", () => {
 			details: { job: "bash-1", log: "/logs/bash-1.log" },
 			timestamp: Date.now(),
 		} as never);
+		if (reply)
+			sm.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: reply }],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "m",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: Date.now(),
+			} as never);
 		await fake.emit("session_compact", { type: "session_compact", compactionEntry: undefined }, context);
 		return fake.sent.map((item) => String(item.message.content)).join("\n");
 	}
@@ -157,6 +175,17 @@ describe("job lines are said once per compaction (C)", () => {
 
 	it("sends no session-state message when only jobs would be in it", async () => {
 		expect(await compact(false)).toBe("");
+	});
+
+	it("carries the lead of the last reply the compaction folded away, cut to a bound", async () => {
+		const sent = await compact(
+			true,
+			`Fixed the lexer; next I run the parser tests.\n\n| Test | Result |\n| --- | --- |\n| lexer | pass |`,
+		);
+		expect(sent).toContain('Your last reply before the compaction: "Fixed the lexer; next I run the parser tests."');
+		expect(sent).not.toContain("| Test |");
+		const long = await compact(true, `Fixed it. ${"detail ".repeat(400)}`);
+		expect(long.length).toBeLessThan(1_500);
 	});
 });
 

@@ -269,6 +269,8 @@ describe("context flows (scripted gateway, real bundle)", () => {
 					r.messages.some((m) => m.role === "user" && textOf(m.content).includes("T6 short")),
 				);
 				expect(short.length, "the short prompt reached the model").toBeGreaterThan(0);
+				const summaries = run.requests.filter((r) => r.tools.length === 0);
+				expect(summaries.length, "the big turns were compacted").toBeGreaterThan(0);
 			} finally {
 				await gw.close();
 			}

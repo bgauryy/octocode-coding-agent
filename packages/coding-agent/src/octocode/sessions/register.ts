@@ -42,7 +42,7 @@ import {
 	totals,
 } from "./session-scan.ts";
 import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
-import { compactionRequestBrief, keptAfterCompaction } from "./compaction-brief.ts";
+import { compactionRequestBrief, keptAfterCompaction, lastReplyBrief } from "./compaction-brief.ts";
 import { backlogIndex } from "../backlog/task-source.ts";
 
 /** Custom message type of the resume brief. */
@@ -92,8 +92,9 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 		const at = latestRequestIndex(branch);
 		const latest = keptAfterCompaction(branch, at, event.compactionEntry) ? undefined : latestRequest(branch);
 		const request = latest ? compactionRequestBrief(latest, event.compactionEntry, source) : undefined;
+		const reply = request ? lastReplyBrief(branch, event.compactionEntry) : undefined;
 		if (ongoing.length === 0 && held.length === 0 && !request) return;
-		const lines = [...ongoing, ...held, ...(request ? [request] : [])];
+		const lines = [...ongoing, ...held, ...(reply ? [reply] : []), ...(request ? [request] : [])];
 		const content = renderPrompt("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
 			void api.session.sendMessage(

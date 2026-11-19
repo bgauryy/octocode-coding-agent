@@ -3,6 +3,7 @@ import { heldChildMember } from "../identity.ts";
 import type { LeaseConflict, LeaseRequest } from "../model.ts";
 import { resolveLockPath } from "../routing.ts";
 import type { TeamStore } from "../store.ts";
+import { patiently } from "../store/patient.ts";
 import { pathKey } from "../store/workspace.ts";
 import { leaseKind, leaseRequests, type ReservationHost } from "./reservations.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -91,23 +92,35 @@ export class ChildLeases {
 		}
 	}
 
-	/** Reserves `paths` for `child`, all or none; the paths it holds, as given. Throws when the database is unusable. */
-	reserve(
+	/**
+	 * Reserves `paths` for `child`, all or none; the paths it holds, as given. Rejects when the database is unusable, stays
+	 * locked by another process past the usual busy wait, or `signal` aborts. Each attempt repeats the whole join, check
+	 * and lock (the check and the lock are one transaction), never waiting inside SQLite (`patiently`): the first runs in
+	 * the caller's turn, and while another process holds the database the next waits on a timer, so this thread keeps drawing.
+	 */
+	async reserve(
 		child: { id: string; role: string; goal: string },
 		paths: string[],
-	): { ok: true; paths: string[] } | { ok: false; conflicts: LeaseConflict[] } {
+		signal?: AbortSignal,
+	): Promise<{ ok: true; paths: string[] } | { ok: false; conflicts: LeaseConflict[] }> {
 		const host = this.host();
-		const parent = host.join();
 		const db = host.store();
-		const kept = distinctPaths(db.workspace, host.cwd(), paths);
-		const { requests, asGiven } = leaseRequests(host.cwd(), kept, storedText(child.goal, REASON_MAX));
-		const peers = peerConflicts(host, requests);
-		if (peers.length > 0) return { ok: false, conflicts: peers.map(asGiven) };
-		const row = heldChildMember(parent, child, Date.now());
-		const result = db.lock(child.id, requests, row.joinedAt, row);
-		if (!result.ok) return { ok: false, conflicts: result.conflicts.map(asGiven) };
-		this.rows.set(child.id, { row, db });
-		return { ok: true, paths: kept };
+		return patiently(
+			db,
+			(): { ok: true; paths: string[] } | { ok: false; conflicts: LeaseConflict[] } => {
+				const parent = host.join();
+				const kept = distinctPaths(db.workspace, host.cwd(), paths);
+				const { requests, asGiven } = leaseRequests(host.cwd(), kept, storedText(child.goal, REASON_MAX));
+				const peers = peerConflicts(host, requests);
+				if (peers.length > 0) return { ok: false, conflicts: peers.map(asGiven) };
+				const row = heldChildMember(parent, child, Date.now());
+				const result = db.lock(child.id, requests, row.joinedAt, row);
+				if (!result.ok) return { ok: false, conflicts: result.conflicts.map(asGiven) };
+				this.rows.set(child.id, { row, db });
+				return { ok: true, paths: kept };
+			},
+			signal,
+		);
 	}
 
 	/**

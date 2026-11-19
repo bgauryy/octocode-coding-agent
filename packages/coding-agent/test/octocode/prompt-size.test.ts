@@ -160,17 +160,15 @@ const MAIN_CEILING = 33_200;
 const SPECIALIST_CEILING = 22_200;
 
 /**
- * Measured 19,346 (MCP 11,750 + skills 7,596); 0.8% over. Raised from 19,500 (user-approved) for the user-requested
- * research, classify and maintenance skills, with octocode-research hidden on this host (measured 20,103).
+ * Measured 29,890 (main: MCP 22,267 + skills 7,623); 1.9% over. Octocode MCP declares every tool by default (gh, clone,
+ * package, security), whose text Octocode may not rewrite.
  */
-// Lowered to 19_000 (measured 18_686: MCP 11,239 + skills 7,447) after the concise skill descriptions and tool text.
-const MCP_SKILLS_MAIN = 19_000;
+const MCP_SKILLS_MAIN = 30_450;
 /**
- * Measured 12,904 at most (reviewer: MCP 11,750 + a 2-skill catalog 1,154; researcher 12,838); 3.8% over. Raised from 12,600
- * because the bundled octocode-mcp tool text grew from 10,724 to 11,750, which Octocode may not rewrite.
+ * Measured 23,728 at most (researcher: MCP 22,267 + skills 1,461; reviewer 23,545); 2% over. Octocode MCP declares every
+ * tool by default (gh, clone, package, security), whose text Octocode may not rewrite.
  */
-// Lowered to 13_000 (measured 12_700: researcher MCP 11,239 + skills 1,461) after the same pass.
-const MCP_SKILLS_FILTERED = 13_000;
+const MCP_SKILLS_FILTERED = 24_200;
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -284,6 +282,43 @@ describe("declared MCP tools and skills catalog", () => {
 			expect(declared.some(isMcpTool)).toBe(true);
 		},
 	);
+
+	const OCTOCODE_TOOLS = [
+		"localSearch",
+		"localFetch",
+		"structureSearch",
+		"astSearch",
+		"lspSearch",
+		"ghSearchRepo",
+		"ghSearchCode",
+		"ghStructure",
+		"ghGetFileContent",
+		"ghSearchHistory",
+		"ghGetHistoryItem",
+		"ghCloneRepo",
+		"artifactSearch",
+		"securityCheck",
+	].map((tool) => `mcp__octocode__${tool}`);
+	it.each(["main", "general", "implementer", "researcher", "reviewer"])(
+		"%s declares every Octocode MCP tool and the web tool, and no browser tool",
+		(name) => {
+			const declared = named(name).tools.map((tool) => tool.name);
+			for (const tool of [...OCTOCODE_TOOLS, "web"]) expect(declared, name).toContain(tool);
+			expect(
+				declared.filter((tool) => tool.startsWith("mcp__browser__")),
+				name,
+			).toEqual([]);
+		},
+	);
+
+	it("only the browser role declares browser tools, and the lean role has no web tool", () => {
+		const browser = named("browser").tools.map((tool) => tool.name);
+		expect(browser.some((tool) => tool.startsWith("mcp__browser__"))).toBe(true);
+		expect(browser).toContain("web");
+		const lean = named("lean").tools.map((tool) => tool.name);
+		expect(lean).not.toContain("web");
+		expect(lean.some((tool) => tool.startsWith("mcp__"))).toBe(false);
+	});
 
 	it("the main session adds the coordinator tools to the same core", () => {
 		const declared = named("main").tools.map((tool) => tool.name);

@@ -29,8 +29,7 @@ import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
-import { chainPlan, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
-import type { QueuedRun } from "./spawn-chain.ts";
+import { chainPlan, type QueuedRun, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
 import { refuseSecondChild as refuseSecond } from "./second-child.ts";
 import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
@@ -128,7 +127,8 @@ export async function spawnAgent(
 		const row = waitingUpdate(params.profile, goal, 0);
 		onUpdate?.({ ...row, content: [{ type: "text", text: waitingText(waiting) }] });
 	};
-	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands());
+	const roleOnly = api.settings.get().subagents?.skillCatalog === "role";
+	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands(), roleOnly);
 	const skillResources = api.resources.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
 	let referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
@@ -196,8 +196,6 @@ export async function spawnAgent(
 	}
 	const run = claimed;
 	const queued = !slot.held;
-	// A queued run measures no silence and shows as queued until it starts; `release` clears this on every exit.
-	if (queued) team.approvals.noteQueued(run.identity.id);
 	const isolation = new Isolation(run.identity.id, linked?.ref, resumed?.worktree);
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
@@ -224,14 +222,9 @@ export async function spawnAgent(
 				queuedChild?.finish();
 			}));
 	let handedOff = false;
-	// From the claim on, every failure goes through `finish`: the slot and the name are given back.
+	// From the claim on, every failure goes through `finish`; the item is registered before the reservation's wait (one batch, one child).
+	const waitsForSiblings = reserving.waitOn.length > 0;
 	try {
-		const waitsForSiblings = reserving.waitOn.length > 0;
-		const reserved = chained
-			? ""
-			: waitsForSiblings
-				? `\n\n(${waitingText(reserving)}.)`
-				: takeReservation(team, run, reserving);
 		configureIdentity(run, runs, api, permission, ctx, {
 			resultContract,
 			linked,
@@ -241,6 +234,11 @@ export async function spawnAgent(
 			grants,
 			background: params.background,
 		});
+		const reserved = chained
+			? ""
+			: waitsForSiblings
+				? `\n\n(${waitingText(reserving)}.)`
+				: await takeReservation(team, run, reserving, launchSignal);
 		const host = env.relayHost(ctx);
 		const session = resumed?.session ?? childSession(run.identity);
 		const details = runDetails(run, session);
@@ -331,17 +329,16 @@ export async function spawnAgent(
 				if (waitsForSiblings || queuedChild) {
 					// Leases first, then the slot: the run holds no lease while it waits here, and takes them in one step.
 					lateNote += await awaitSiblings(team, reserving, replan, queueSignal, undefined, (clear) =>
-						takeReservation(team, run, clear),
+						takeReservation(team, run, clear, queueSignal),
 					);
 				}
 				await startGate.wait(queueSignal);
 				await runs.slots.take(queueSignal);
 				slot.held = true;
 				queueSignal.throwIfAborted();
-				team.approvals.noteStarted(run.identity.id, Date.now());
 				const started = await begin(queueSignal);
 				lateNote = `${lateNote}${started.warning}`;
-				details.startedAt = Date.now();
+				team.approvals.noteStarted(run.identity.id, (details.startedAt = Date.now()));
 				delete details.queued;
 				delete details.after;
 				queuedChild?.started();

@@ -32,6 +32,7 @@ const compaction = (id: string, details: unknown, firstKeptEntryId = id) => ({
 const message = (id: string, value: unknown) => ({ type: "message", id, message: value });
 
 function summarize(messages: unknown[], branch: unknown[] = [], previousSummary?: string) {
+	const sessionFile = `${tmp()}/s.jsonl`;
 	const api = asSetup({
 		getThinkingLevel: () => "off",
 		getActiveTools: () => [],
@@ -55,7 +56,8 @@ function summarize(messages: unknown[], branch: unknown[] = [], previousSummary?
 		},
 		sessionManager: {
 			getSessionId: () => "s",
-			getSessionFile: () => "/sessions/s.jsonl",
+			// A writable session file: the paid summary is saved beside it.
+			getSessionFile: () => sessionFile,
 			getBranch: () => [],
 			buildSessionProjection: () => ({ entries: [], messages: [] }),
 		},

@@ -169,7 +169,7 @@ armShutdownDeadline(7, 60000);
 });
 
 describe("child leases when the session ends", () => {
-	it("stay until the child's run ends", () => {
+	it("stay until the child's run ends", async () => {
 		const cwd = fs.realpathSync(tmp("octocode-exit-kill-cwd-"));
 		const team = new Team(fakeHost().api);
 		const ctx = fakeCtx({ cwd, hasUI: true });
@@ -178,7 +178,7 @@ describe("child leases when the session ends", () => {
 		const store = TeamStore.open(cwd, process.env.OCTOCODE_AGENT_DB);
 		try {
 			const held = () => store.leases().map((lease) => `${lease.owner}:${lease.path}`);
-			expect(team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
+			expect(await team.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
 				ok: true,
 			});
 			team.stop();

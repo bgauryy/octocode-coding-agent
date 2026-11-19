@@ -1,1 +1,1 @@
-[After compaction] The input schemas (JSON Schema) of the deferred tools you called earlier in this session, most recent first. They are still declared with their field names only; send arguments that match these schemas.
+[After compaction] The input schemas (JSON Schema) of the deferred tools you called earlier in this session, most recent first. They are still declared with their field names only. Send arguments that match these schemas.

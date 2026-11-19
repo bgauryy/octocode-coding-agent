@@ -1374,6 +1374,20 @@
           "type": "boolean",
           "description": "Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
           "default": true
+        },
+        "skillCatalog": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "string",
+              "const": "role"
+            }
+          ],
+          "description": "Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed.",
+          "default": "all"
         }
       },
       "description": "Limits on the subagents a session starts, and how they are checked on.",

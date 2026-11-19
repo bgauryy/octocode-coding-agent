@@ -58,11 +58,11 @@ function setup() {
 }
 
 describe("a headless child whose parent holds its reservations", () => {
-	function run(holds: boolean) {
+	async function run(holds: boolean) {
 		const s = setup();
 		const parent = s.start({});
 		const me = parent.join();
-		expect(parent.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
+		expect(await parent.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).toMatchObject({
 			ok: true,
 		});
 		const started = processStartTime(process.pid);
@@ -76,8 +76,8 @@ describe("a headless child whose parent holds its reservations", () => {
 		return { ...s, parent, child, me };
 	}
 
-	it("keeps its leases at settle until the parent releases the run, then frees them", () => {
-		const { store, parent, child } = run(true);
+	it("keeps its leases at settle until the parent releases the run, then frees them", async () => {
+		const { store, parent, child } = await run(true);
 		expect(store.lock("peer", A).ok).toBe(false);
 		child.onAgentSettled("completed");
 		expect(store.names()).toContain("kid-one");
@@ -89,8 +89,8 @@ describe("a headless child whose parent holds its reservations", () => {
 		expect(store.lock("peer", A).ok).toBe(true);
 	});
 
-	it("dead-letters mail sent to it after it settled", () => {
-		const { store, me, child } = run(true);
+	it("dead-letters mail sent to it after it settled", async () => {
+		const { store, me, child } = await run(true);
 		child.onAgentSettled("completed");
 		expect(store.send(me.id, ["kid-one"], "one more thing", { replyRequired: false })).toMatchObject({
 			id: undefined,
@@ -98,16 +98,16 @@ describe("a headless child whose parent holds its reservations", () => {
 		});
 	});
 
-	it("dead-letters mail it had not read when it settled", () => {
-		const { store, me, child } = run(true);
+	it("dead-letters mail it had not read when it settled", async () => {
+		const { store, me, child } = await run(true);
 		const sent = store.send(me.id, ["kid-one"], "unread", { replyRequired: false });
 		expect(sent.id).toBeDefined();
 		child.onAgentSettled("completed");
 		expect(store.deadLetters(me.id).flatMap((letter) => letter.recipients)).toContain("kid-one");
 	});
 
-	it("still leaves at once when the parent reserved nothing for it", () => {
-		const { store, child } = run(false);
+	it("still leaves at once when the parent reserved nothing for it", async () => {
+		const { store, child } = await run(false);
 		child.onAgentSettled("completed");
 		expect(store.names()).not.toContain("kid-one");
 		expect(store.lock("peer", A).ok).toBe(true);

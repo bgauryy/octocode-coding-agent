@@ -139,7 +139,7 @@ describe("worktree root and compact rows", () => {
 	it("collapsed panel rows mark the worktree; the opened stats line names the folder", () => {
 		const entry = { member: isolated, depth: 0, isolated: { folder: isolated.cwd! } };
 		const [row] = collapsedRows([entry], 10, theme, 120);
-		expect(row).toMatch(/^ └ ⠋ iso-1 · general · worktree +0s$/);
+		expect(row).toMatch(/^ └ ⏺ iso-1 · general · worktree +0s$/);
 		expect(visibleWidth(row)).toBe(120);
 		const { agents } = gridRows(main, "main", [entry], [], 10, theme);
 		expect(detailLine(theme, agents[0], 120)).toBe(

@@ -54,6 +54,21 @@ flowchart TD
 
 A still screen writes nothing: marks that no longer move stop requesting repaints. Elapsed-time counters tick once per second even in reduced motion.
 
+### The state light
+
+Every transcript tool row (bash, file, MCP, Agent cards and background reports), the footer's agent and work rows, and the `+N more` counts draw one dot, `⏺`, in place of the state glyphs above. The moving braille spinner stays on the main working line (the reasoning label and working verb) and the terminal title only.
+
+| State     | Light color | Motion                                                       |
+| --------- | ----------- | ------------------------------------------------------------ |
+| `running` | `success`   | Lit: breathes toward the light color, at a calm repaint pace |
+| `waiting` | `warning`   | Pulses for 4 s, then steady                                  |
+| `done`    | `success`   | Glows briefly, then steady                                   |
+| `failed`  | `error`     | Steady                                                       |
+| `stopped` | `error`     | Steady                                                       |
+| `pending` | `dim`       | Unlit                                                        |
+
+Reduced motion draws every light steady in its color. The `+N more` row counts hidden agents with the same lights.
+
 ### Page badges
 
 Management pages (such as `/mcp`) summarize an item with one badge of glyph, word and tone, and a legend that names only the states on screen, once each.

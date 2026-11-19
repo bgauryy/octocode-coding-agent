@@ -209,6 +209,48 @@ describe("per-task skills", () => {
 		expect(taskSkillPlan(specialist, ["beta"], [])).toEqual({ names: ["beta"], inTask: true, inline: false });
 	});
 
+	it("list only the role's skills and the named ones when the catalog setting is role, else keep the whole catalog", () => {
+		const skill = (name: string) =>
+			({ name, source: "skill", sourceInfo: { path: `/s/${name}/SKILL.md` } }) as unknown as SlashCommandInfo;
+		const commands = [skill("alpha"), skill("beta")];
+		// Off (the default): unchanged, the child inherits the session catalog and the role's skills are inlined.
+		expect(taskSkillPlan(specialist, undefined, commands, false)).toEqual(
+			taskSkillPlan(specialist, undefined, commands),
+		);
+		expect(taskSkillPlan(specialist, undefined, commands, false)).toEqual({
+			inTask: false,
+			inline: false,
+			roleSkills: ["alpha"],
+		});
+		// On: no catalog; the role's skills ride in the task, a skill the session cannot load is left out.
+		expect(taskSkillPlan(specialist, undefined, commands, true)).toEqual({
+			names: ["alpha"],
+			inTask: true,
+			inline: false,
+		});
+		expect(taskSkillPlan(specialist, undefined, [skill("beta")], true)).toEqual({
+			names: [],
+			inTask: true,
+			inline: false,
+		});
+		expect(taskSkillPlan(undefined, undefined, commands, true)).toEqual({ names: [], inTask: true, inline: false });
+		// Task-named skills win either way; a lean child is unchanged.
+		expect(taskSkillPlan(specialist, ["beta"], commands, true)).toEqual({
+			names: ["beta"],
+			inTask: true,
+			inline: false,
+		});
+		expect(taskSkillPlan(lean, undefined, commands, true)).toEqual(taskSkillPlan(lean, undefined, commands));
+		// The snapshot for those names lists exactly them.
+		const loaded = skills();
+		const real = loaded.skills.map(
+			(s) => ({ name: s.name, source: "skill", sourceInfo: s.sourceInfo }) as unknown as SlashCommandInfo,
+		);
+		const text = taskSkillText(captureSkillResourceSnapshot(loaded, ["alpha"], real), false);
+		expect(text).toContain("alpha");
+		expect(text).not.toContain("beta");
+	});
+
 	it("are listed for the skill tool, or inlined whole for a lean child", () => {
 		const snapshot = captureSkillResourceSnapshot(skills());
 		const listed = taskSkillText(snapshot, false);

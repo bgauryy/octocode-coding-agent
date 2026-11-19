@@ -1,1 +1,1 @@
-`{{expr}}` runs {{gap}} apart at its closest; a scheduled run is a model turn, so the gap is at least {{minutes}} minutes. Use `every` for a shorter fixed interval, or `until` to wait for a condition. Nothing was set.
+`{{expr}}` runs {{gap}} apart at its closest. A scheduled run is a model turn, so the gap must be at least {{minutes}} minutes. Use `every` for a shorter fixed interval, or `until` to wait for a condition. Nothing was set.

@@ -153,7 +153,7 @@ export function fullTextIn(segment: number | undefined, earlier = false): string
 }
 
 /** How many of the newest earlier segments the pointer names; the library has the rest. */
-export const POINTER_SEGMENTS = 5;
+export const POINTER_SEGMENTS = 3;
 
 /**
  * The archive as the lines of the summary's Recovery section (and of the message that carries them after a default

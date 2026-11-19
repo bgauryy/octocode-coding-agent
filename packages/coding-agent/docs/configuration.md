@@ -234,7 +234,7 @@ What decides the state, first match wins:
 }
 ```
 
-`onDemand` applies only where the model's provider can add a tool after the cached prompt (Anthropic and OpenAI models that support it); elsewhere such a tool is `deferred`, and a switch to such a model declares the unused ones `deferred`. The bundled Octocode server sets it for its GitHub, package-registry and security tools, and `archive` and `models` take it whenever they would be `deferred`; a `nativeToolExposure` pin opts one out. A resumed session declares again what it had loaded. The Tools panel shows `onDemand` tools as `deferred`.
+`onDemand` applies only where the model's provider can add a tool after the cached prompt (Anthropic and OpenAI models that support it); elsewhere such a tool is `deferred`, and a switch to such a model declares the unused ones `deferred`. The bundled Octocode server leaves every tool to `mcpExposure` and its own environment; `archive` and `models` take it whenever they would be `deferred`; a `nativeToolExposure` pin opts one out. A resumed session declares again what it had loaded. The Tools panel shows `onDemand` tools as `deferred`.
 
 See each tool's state and pin it on the Tools panel of the [web Settings page](web-workspace.md#settings-page), or edit the files; `/harness mcp` → the server → **Default for tools** sets a whole server. A pin applies from the next session. Details: [MCP tool exposure](mcp.md#control-tool-exposure).
 
@@ -628,6 +628,14 @@ A child's report, a background job's exit or team mail starts a turn of an idle 
 A wake costs up to that many seconds of latency, so leave it off unless several children or jobs routinely finish within seconds of each other. A session that is already running a turn is not delayed. When the session ends inside the window, what is held is delivered without starting a turn.
 
 Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
+
+## Child skill catalog
+
+By default a subagent started without named skills lists this session's whole skill catalog in its prompt, so it can load any skill on its own. `subagents.skillCatalog` (`"all"` by default) set to `"role"` lists only its role's skills and the skills the task names; the built-in roles name none, so their children list no catalog and the prompt is smaller. Children of a lean role are unchanged. A role skill this session cannot load is left out. Applies to children started after the change.
+
+```json
+{ "subagents": { "skillCatalog": "role" } }
+```
 
 ## Related-agent pings
 

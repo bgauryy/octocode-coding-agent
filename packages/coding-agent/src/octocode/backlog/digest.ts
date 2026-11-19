@@ -50,6 +50,8 @@ function backlogDigest(store: BacklogStore, session: string, options: BacklogOpt
 	const active = activeItem(backlogQueries.snapshot(agent.db, store.repo), session);
 	const detail = active ? `. Active: B${active.seq} v${active.version}${activeDetail(agent, store.repo, active)}` : "";
 	return renderPrompt("notices/backlog-digest.md", {
+		open: todo + proposed + running,
+		running,
 		todo,
 		proposed,
 		ongoing: shown.join("; ") + detail,

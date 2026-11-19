@@ -5,7 +5,7 @@ import { reasonSchema } from "../../shared/reason.ts";
 import { elisionMarkers } from "../../shared/util.ts";
 import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 import type { QueryOutcome } from "../outcome.ts";
-import { fileShapeError } from "./shape.ts";
+import { fileShapeError } from "../../tool-input/file-shape.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 

@@ -1,11 +1,6 @@
+import type { Member } from "@octocodeai/octocode-contracts/team";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Slots } from "../../src/octocode/subagents/claim.ts";
-import {
-	pendingReportsDir,
-	releasePendingReports,
-	takePendingReports,
-} from "../../src/octocode/subagents/handoff/pending.ts";
 import { SUBAGENT_STOP_GRACE_MS, type SubagentOutcome } from "../../src/octocode/subagents/process/outcome.ts";
 import type { ChildRun } from "../../src/octocode/subagents/process/run-phase.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
@@ -102,8 +97,8 @@ describe("a child queued for a slot", () => {
 		expect(queued.details.queued).toBe(true);
 		const id = s.control
 			.running()
-			.find((name) => s.team.approvals.overlay({ members: [{ id: name } as never] }).members[0].activity)!;
-		const shown = () => s.team.approvals.overlay({ members: [{ id } as never] }).members[0];
+			.find((name) => s.team.approvals.overlay({ members: [{ id: name }] as Member[] }).members[0].activity)!;
+		const shown = () => s.team.approvals.overlay({ members: [{ id }] as Member[] }).members[0];
 		expect(shown().activity).toBe(QUEUED_FOR_SLOT);
 		await vi.advanceTimersByTimeAsync(10 * 60_000);
 		expect(s.team.approvals.lastOutput(id)).toBeUndefined();

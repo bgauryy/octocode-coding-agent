@@ -1,6 +1,14 @@
-import { animationClock, GLYPH, MOTION, rgbColor, SPINNER } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, MOTION, rgbColor, SPINNER, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
-import { markMoves, STATE_COLOR, stateMark, type UiState } from "../src/theme/status.ts";
+import {
+	LIGHT_COLOR,
+	markFrameMs,
+	markMoves,
+	STATE_COLOR,
+	stateMark,
+	WAIT_PULSE_MS,
+	type UiState,
+} from "../src/theme/status.ts";
 
 const tagged = {
 	fg: (color: string, text: string) => `<${color}>${text}`,
@@ -44,5 +52,49 @@ describe("stateMark", () => {
 		const plain = { fg: tagged.fg };
 		expect(stateMark(plain, "waiting", { now: MOTION.breathePeriodMs / 2 })).toBe(`<warning>${GLYPH.waiting}`);
 		expect(stateMark(plain, "done", { now: 100, since: 100 })).toBe(`<success>${GLYPH.done}`);
+	});
+});
+
+describe("the state light", () => {
+	afterEach(() => animationClock.setReducedMotion(false));
+	const light = (state: UiState, options = {}) => stateMark(tagged, state, { light: true, ...options });
+
+	it("measures one cell wide", () => {
+		expect(visibleWidth(GLYPH.light)).toBe(1);
+		expect(GLYPH.light).toBe("\u23FA");
+	});
+
+	it("draws ⏺ in each state's light colour: green works, yellow waits, red fails or stops, dim is unlit", () => {
+		animationClock.setReducedMotion(true);
+		expect(states.map((state) => light(state))).toEqual([
+			"<dim>⏺",
+			"<success>⏺",
+			"<warning>⏺",
+			"<success>⏺",
+			"<error>⏺",
+			"<error>⏺",
+		]);
+		expect(LIGHT_COLOR.running).toBe("success");
+		expect(states.map((state) => markMoves(state, { light: true }))).toEqual(states.map(() => false));
+	});
+
+	it("breathes while running, holds a waiting light after its pulse, and settles after done", () => {
+		const start = light("running", { now: 0 });
+		const mid = light("running", { now: MOTION.breathePeriodMs / 2 });
+		expect(start).toBe("<success>⏺");
+		expect(mid).toMatch(/^<rgb .*>⏺$/);
+		expect(mid).not.toBe(start);
+		expect(light("waiting", { now: WAIT_PULSE_MS + 1, since: 0 })).toBe("<warning>⏺");
+		expect(light("waiting", { now: MOTION.breathePeriodMs / 2, since: 0 })).toMatch(/^<rgb .*>⏺$/);
+		expect(light("done", { now: 100, since: 100 })).toMatch(/^<rgb .*>⏺$/);
+		expect(light("done", { now: 100 + MOTION.flashMs, since: 100 })).toBe("<success>⏺");
+		expect(light("running", { now: 0 })).not.toContain(SPINNER.braille[0]);
+	});
+
+	it("repaints a running light calmly: at the background pace, never faster than a glow frame", () => {
+		const ms = markFrameMs("running", { light: true });
+		expect(ms).toBeGreaterThanOrEqual(MOTION.glowFrameMs);
+		expect(ms).toBeGreaterThanOrEqual(MOTION.backgroundSpinnerMs);
+		expect(markFrameMs("running")).toBe(MOTION.spinnerMs);
 	});
 });

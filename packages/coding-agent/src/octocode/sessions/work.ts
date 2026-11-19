@@ -43,6 +43,16 @@ function whyOf(input: Record<string, unknown>): { why?: string } {
 	return why ? { why } : {};
 }
 
+/** Whether any background job or subagent of this session has reported: then "none running" is worth saying. */
+export function hadReportedWork(entries: readonly unknown[]): boolean {
+	return entries.some(
+		(entry) =>
+			isRecord(entry) &&
+			entry.type === "custom_message" &&
+			(entry.customType === JOB_TYPE || entry.customType === AGENT_RESULT_TYPE),
+	);
+}
+
 /** The unreported work in `entries`, oldest first; with `since` (ms), only work started at or after it. */
 export function unreportedWork(entries: readonly unknown[], since?: number): BackgroundWork[] {
 	const args = new Map<string, Record<string, unknown>>();

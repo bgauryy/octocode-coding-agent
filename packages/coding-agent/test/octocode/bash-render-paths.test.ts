@@ -74,7 +74,7 @@ describe("bash result rows", () => {
 				const rows = text(coreRow(result, expanded), width).split("\n");
 				const at = `expanded=${expanded} width=${width}`;
 				// A blank row above the block, then the marked header and the outcome under the gutter, each once.
-				expect(rows[1]?.trimEnd(), at).toBe(" ✗ Bash(x)");
+				expect(rows[1]?.trimEnd(), at).toBe(" ⏺ Bash(x)");
 				expect(rows[2]?.trimEnd(), at).toBe("   ⎿  Error: exit 1 · 3000 lines");
 				const flat = rows.join(" ").replace(/\s+/g, " ");
 				expect(flat.match(/exit 1/g), at).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("background job messages", () => {
 				theme,
 			),
 		);
-		expect(stopped).toContain("◼");
+		expect(stopped).toContain("⏺");
 		expect(text(renderJobMessage("something else\nline two", false, theme))).toContain("something else");
 	});
 });

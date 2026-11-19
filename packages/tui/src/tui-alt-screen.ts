@@ -294,10 +294,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.disposeExitRestore = undefined;
 	}
 
-	/**
-	 * Paint the next frame whole. The last layout stays: until that frame it describes what the screen shows, so the
-	 * wheel keeps scrolling the transcript instead of the implicit document.
-	 */
+	/** Paint the next frame whole. The last layout stays: it describes the screen until then, so the wheel scrolls it. */
 	protected override resetRenderState(): void {
 		this.previousScreen = [];
 		this.previousScreenWidth = 0;

@@ -7,7 +7,9 @@
 	"env": {
 		"WORKSPACE_ROOT": "${workspace}",
 		"ALLOWED_PATHS": "${researchRoots}",
-		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}",
+		"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}"
+	},
+	"envDefaults": {
 		"OCTOCODE_ENABLE_CLONE": "true"
 	},
 	"install": {
@@ -15,17 +17,6 @@
 		"version": "20.2.0",
 		"bin": "octocode-mcp",
 		"hostDependency": true
-	},
-	"toolExposure": {
-		"ghSearchRepo": "onDemand",
-		"ghSearchCode": "onDemand",
-		"ghStructure": "onDemand",
-		"ghGetFileContent": "onDemand",
-		"ghSearchHistory": "onDemand",
-		"ghGetHistoryItem": "onDemand",
-		"ghCloneRepo": "onDemand",
-		"artifactSearch": "onDemand",
-		"securityCheck": "onDemand"
 	},
 	"roles": {
 		"reader": ["localFetch"],

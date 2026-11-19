@@ -84,6 +84,27 @@ describe("recommended servers", () => {
 		for (const { config } of presets) expect(config && "install" in config && config.install?.version).toBeTruthy();
 	});
 
+	it("leave every Octocode tool to the server: no exposure override, the inherited environment plus clone", () => {
+		const octocode = recommendedPresets({}).find(({ name }) => name === "octocode")?.config;
+		expect(octocode).toMatchObject({ enabled: true, inheritEnv: true, env: { OCTOCODE_ENABLE_CLONE: "true" } });
+		expect(octocode && "toolExposure" in octocode).toBe(false);
+		expect(octocode && "exposure" in octocode).toBe(false);
+		// Graph tools and clasify follow the user's own environment and Octocode configuration, which the server loads.
+		const env = (octocode as { env?: Record<string, string> } | undefined)?.env ?? {};
+		for (const key of ["OCTOCODE_BETA", "OCTOCODE_CLASSIFICATION_API", "OCTOCODE_HOME", "ENABLE_LOCAL"])
+			expect(env).not.toHaveProperty(key);
+	});
+
+	it("turn clone on by default, but leave a clone setting in the user's own environment to reach the server", () => {
+		const envOf = (env: NodeJS.ProcessEnv) =>
+			(recommendedPresets(env).find(({ name }) => name === "octocode")?.config as { env?: Record<string, string> })
+				?.env;
+		expect(envOf({})).toMatchObject({ OCTOCODE_ENABLE_CLONE: "true" });
+		// The server inherits the user's value; ours would override it, so it is left out.
+		expect(envOf({ OCTOCODE_ENABLE_CLONE: "false" })).not.toHaveProperty("OCTOCODE_ENABLE_CLONE");
+		expect(envOf({ OCTOCODE_ENABLE_CLONE: "false" })).toMatchObject({ WORKSPACE_ROOT: "${workspace}" });
+	});
+
 	it("turn off through their environment flag", () => {
 		const data = { name: "rec", enabledEnv: "REC_FLAG", command: "x" };
 		expect(recommendedPreset(data, { REC_FLAG: "0" }).config?.enabled).toBe(false);
@@ -91,28 +112,26 @@ describe("recommended servers", () => {
 		expect(() => recommendedPreset({ name: "rec", command: 1 })).toThrow(/recommended server data/);
 	});
 
-	it("with enabledWhenOnPath, are on only while that command is on PATH and the session is online", () => {
+	it("with enabledByDefault false, stay off until their environment flag turns them on", () => {
+		const data = { name: "rec", enabledEnv: "REC_FLAG", enabledByDefault: false, command: "x" };
+		const enabled = (env: NodeJS.ProcessEnv) => recommendedPreset(data, env).config?.enabled;
+		expect(enabled({})).toBe(false);
+		expect(enabled({ REC_FLAG: "1" })).toBe(true);
+		expect(enabled({ REC_FLAG: "0" })).toBe(false);
+		expect(() => recommendedPreset({ ...data, enabledByDefault: "no" }, {})).toThrow(/enabledByDefault must be/);
+	});
+
+	it("include FreeLlama, off by default even where ollama is installed, on through OCTOCODE_MCP_FREELLAMA", () => {
 		const bin = mkdtempSync(join(tmpdir(), "octocode-rec-path-"));
+		const ollama = join(bin, "ollama");
+		writeFileSync(ollama, "#!/bin/sh\n");
+		chmodSync(ollama, 0o755);
+		const freellama = (env: NodeJS.ProcessEnv) => recommendedPresets(env).find(({ name }) => name === "freellama");
 		try {
-			const tool = join(bin, "localtool");
-			writeFileSync(tool, "#!/bin/sh\n");
-			chmodSync(tool, 0o755);
-			const data = { name: "rec", enabledEnv: "REC_FLAG", enabledWhenOnPath: "localtool", command: "x" };
-			const enabled = (env: NodeJS.ProcessEnv) => recommendedPreset(data, env).config?.enabled;
-			expect(enabled({ PATH: bin })).toBe(true);
-			expect(enabled({})).toBe(false);
-			expect(enabled({ PATH: bin, OCTOCODE_OFFLINE: "1" })).toBe(false);
-			// The environment flag decides either way.
-			expect(enabled({ PATH: bin, REC_FLAG: "0" })).toBe(false);
-			expect(enabled({ REC_FLAG: "1" })).toBe(true);
-			expect(() => recommendedPreset({ ...data, enabledWhenOnPath: 1 }, {})).toThrow(/enabledWhenOnPath must be/);
+			expect(freellama({ PATH: bin })?.config?.enabled).toBe(false);
 		} finally {
 			rmSync(bin, { recursive: true, force: true });
 		}
-	});
-
-	it("include FreeLlama, on by default only where ollama is installed", () => {
-		const freellama = (env: NodeJS.ProcessEnv) => recommendedPresets(env).find(({ name }) => name === "freellama");
 		expect(freellama({})?.config).toMatchObject({
 			enabled: false,
 			install: { npm: "@octocodeai/freellama-mcp-server", bin: "freellama-mcp-server" },

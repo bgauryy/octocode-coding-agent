@@ -318,7 +318,8 @@ export class Lingering {
 				permission: { mode: permission.mode, grants: [...new Set([...grants, ...permission.childGrants()])] },
 			};
 			run = claimRun(runs, last, { goal: last.identity.goal }, ctx, [], identity);
-			retaken = retakeReservation(runs.team, run);
+			retaken = await retakeReservation(runs.team, run, launchSignal);
+			launchSignal.throwIfAborted();
 			// Retire the parked address before launching. A crash here never auto-replays uncertain execution.
 			this.forget(id);
 			try {

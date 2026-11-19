@@ -1,1 +1,1 @@
-- Trace a bug to its owning cause; test an unclear cause against its strongest rival and name what would disprove it. After a failure, change approach and check existing effects before retrying.{{#if readOnly}} Report blockers; never hide errors.{{/if}}
+- Trace a bug to its owning cause. Test an unclear cause against its strongest rival; name what would disprove it. After a failure, check existing effects and change the approach before a retry.{{#if readOnly}} Report blockers; do not hide errors.{{/if}}

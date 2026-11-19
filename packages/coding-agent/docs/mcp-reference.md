@@ -201,7 +201,7 @@ Model MCP calls use the normal tool pipeline and permission gates; hook-initiate
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--no-mcp`                        | MCP off for one run (children inherit); it cannot be switched off persistently. Turn servers off in `/mcp`, `/configuration` or `mcp.json` |
 | `OCTOCODE_MCP=0`                  | Disables the default `octocode` server unless file configuration overrides it                                                              |
-| `OCTOCODE_MCP_FREELLAMA=0` or `1` | Turns the default `freellama` server off or on, replacing its check for `ollama` on `PATH` and offline mode; a saved switch still wins     |
+| `OCTOCODE_MCP_FREELLAMA=0` or `1` | Turns the default `freellama` server off or on (unset: off); a saved switch still wins                                                     |
 
 The shell `octocode mcp` commands do not start a session.
 

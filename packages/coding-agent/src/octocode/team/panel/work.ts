@@ -27,7 +27,7 @@ const TYPE: Record<WorkKind, { label: string; color: Color; mark: keyof Marks }>
 	external: { label: "ext", color: "accent", mark: "live" },
 };
 
-/** The glyphs in front of a row: presence (`GLYPH.live`) and waiting (`GLYPH.waiting`). */
+/** The painted marks in front of a row: work that runs (the state light, lit) and work that waits (the light, steady). */
 export interface Marks {
 	live: string;
 	waiting: string;
@@ -122,8 +122,8 @@ export function workRows(
 		const type = TYPE[row.kind];
 		const label = type.label + " ".repeat(Math.max(0, LABEL_WIDTH - visibleWidth(type.label)));
 		const color: Color = row.mark ? "warning" : type.color;
-		const glyph = row.mark ? WAIT_MARK[row.mark] : marks[type.mark];
-		const lead = ` ${theme.fg(color, glyph)} ${theme.fg(color, label)}${GAP}${theme.fg("text", ids[index] + " ".repeat(Math.max(0, idWidth - visibleWidth(ids[index]))))}`;
+		const glyph = row.mark ? theme.fg(color, WAIT_MARK[row.mark]) : marks[type.mark];
+		const lead = ` ${glyph} ${theme.fg(color, label)}${GAP}${theme.fg("text", ids[index] + " ".repeat(Math.max(0, idWidth - visibleWidth(ids[index]))))}`;
 		const right = clocks[index] ? GAP + clocks[index].padStart(clockWidth) : "";
 		const room = width - visibleWidth(lead) - GAP.length - visibleWidth(right);
 		const [title, tail] = room >= TEXT_MIN ? fitText(safe(row.title), safe(row.detail), room) : ["", ""];

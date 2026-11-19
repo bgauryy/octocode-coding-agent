@@ -134,4 +134,21 @@ describe("backlog task line", () => {
 		expect((await t.prompt("custom")).get(BACKLOG_EVENTS_TYPE)).toBeUndefined();
 		expect((await t.prompt()).get(BACKLOG_EVENTS_TYPE)).toMatch(/open 3/);
 	});
+
+	it("names the held child, not its held epic, as active, and counts the other held items", async () => {
+		const t = setup();
+		await t.call({
+			op: "add",
+			items: [
+				{ ...READY, title: "Epic", type: "epic", state: "ongoing" },
+				{ ...READY, title: "Child", parentId: "Epic", state: "ongoing" },
+			],
+		});
+		await t.start("startup");
+		await t.call({ op: "add", items: [{ ...READY, title: "Later" }] });
+		expect((await t.prompt()).get(BACKLOG_EVENTS_TYPE)).toMatch(/^active B2 v\d+ ongoing \(\+B1\) · open 3$/m);
+		// The index counts the open items in the same word as the task line.
+		const index = backlogIndex(sharedAgentDb(), registeredWorkspace(t.cwd).id, "session-test");
+		expect(index).toContain("3 open (2 ongoing, 0 to do, 1 proposed)");
+	});
 });

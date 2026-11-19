@@ -74,6 +74,7 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `subagents.silenceMinutes` | number |  | Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off. |
 | `subagents.wakeHoldSeconds` | number | `0` | Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. |
 | `subagents.peerOverlapWake` | boolean | `true` | Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead. |
+| `subagents.skillCatalog` | `"all" \| "role"` | `"all"` | Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed. |
 
 ## Shell and packages
 

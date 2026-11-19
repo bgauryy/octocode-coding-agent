@@ -13,7 +13,8 @@ import { type AgentProfile, profileTools } from "./profiles.ts";
  * profile's skills (`roleSkills`) are inlined in its role section (`withRoleSkills`), so a role never narrows what the
  * child can load. Otherwise the named skills (the task's `skills`, or a lean profile's) ride in its task (`inTask`):
  * listed for its `skill` tool, or inlined whole for a lean child, which has no skill tool (`inline`). A lean child gets
- * none unless some are named.
+ * none unless some are named. With `roleOnly` (`subagents.skillCatalog: "role"`) a non-lean child without named skills is
+ * handled as if its role's skills were named: it lists those, not the session catalog.
  */
 export interface TaskSkillPlan {
 	names?: string[];
@@ -26,13 +27,14 @@ export function taskSkillPlan(
 	profile: AgentProfile | undefined,
 	requested: string[] | undefined,
 	commands?: readonly SlashCommandInfo[],
+	roleOnly = false,
 ): TaskSkillPlan {
 	const inline = profile?.lean === true;
 	// A role's skills are defaults: one this session cannot load (not installed, skills off) is left out rather than
 	// failing the start. Skills the task names are the caller's choice and still fail when unknown.
 	const loadable = commands && new Set(commands.filter((c) => c.source === "skill").map((c) => c.name));
 	const fromRole = loadable ? profile?.skills?.filter((name) => loadable.has(name)) : profile?.skills;
-	const names = requested ?? (inline ? (fromRole ?? []) : undefined);
+	const names = requested ?? (inline || roleOnly ? (fromRole ?? []) : undefined);
 	if (names !== undefined) return { names, inTask: true, inline };
 	return fromRole?.length ? { inTask: false, inline, roleSkills: fromRole } : { inTask: false, inline };
 }

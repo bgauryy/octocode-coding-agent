@@ -107,6 +107,22 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 		if (prior.phase === "uncertain") throw prior.failure!;
 		return prior.accepted;
 	}
+	const earlier = key ? host.receipts.persisted(key) : undefined;
+	if (earlier) {
+		// An earlier process took this key. Its message is in the session (`accepted`), failed after dispatch
+		// (`uncertain`), or never left preparation (`preparing`): nothing was sent, so this call sends it.
+		if (earlier.fingerprint !== fingerprint)
+			throw new RpcError(ERR.invalidParams, "The message key was already used for different input; nothing was sent", {
+				execution: "not-sent",
+			});
+		if (earlier.phase === "uncertain")
+			throw new RpcError(ERR.unavailable, "The session could not take the message", {
+				execution: "uncertain",
+				id: earlier.messageId,
+				queued: earlier.queued,
+			});
+		if (earlier.phase === "accepted") return { id: earlier.messageId, queued: earlier.queued, key };
+	}
 	const busy = !ctx.isIdle() || ctx.hasPendingMessages() || host.receipts.busy;
 	if (requireIdle && busy)
 		throw new RpcError(ERR.unavailable, "The session is busy; nothing was sent", { execution: "not-sent" });
@@ -167,8 +183,9 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			if (typeof given !== "string") throw new RpcError(ERR.unavailable, given.error);
 			text = given;
 			clearTimeout(preparingTimer);
-			if (receipt.waitingForUser) accepted.queued = !ctx.isIdle() || ctx.hasPendingMessages() ? deliverAs : "turn";
-			host.receipts.accept(receipt, waiter, key !== undefined || wait);
+			// A run may have ended or begun while the message was prepared (or the user decided): it is queued or starts a turn as the session is now.
+			const queued = !ctx.isIdle() || ctx.hasPendingMessages() ? deliverAs : "turn";
+			host.receipts.accept(receipt, waiter, key !== undefined || wait, queued, key);
 			outcome = "dispatched";
 			const settlementVersion = host.receipts.settlementVersion;
 			// The turn this call starts runs its tools under the ceiling until the session settles; read now, not at the first check, so a refused or failed hand-off can release it.

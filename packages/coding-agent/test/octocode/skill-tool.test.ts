@@ -179,7 +179,7 @@ describe("skill tool", () => {
 		it("draws the call as `Skill(<name>)` and the result as one compact, expandable line", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toMatch(
-				/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Skill\(alpha\)/,
+				/^⏺ Skill\(alpha\)/,
 			);
 			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill(alpha)");
 			const result = await call("alpha");

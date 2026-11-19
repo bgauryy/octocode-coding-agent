@@ -1,2 +1,2 @@
 [After compaction]
-Octocode's own summary failed, so the summary above is Octocode's default one; what Octocode appends to a summary follows here.
+Octocode's own summary failed. The summary above is Octocode's default summary. What Octocode appends to a summary follows here.

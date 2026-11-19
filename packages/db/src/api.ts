@@ -35,6 +35,7 @@ export * as configAudits from "./queries/config-audits.ts";
 export * as history from "./queries/history.ts";
 export * as trust from "./queries/trust.ts";
 export * as guard from "./queries/guard.ts";
+export * as apiReceipts from "./queries/api-receipts.ts";
 export * as openings from "./queries/openings.ts";
 export type { Opening } from "./queries/openings.ts";
 export * as processSamples from "./queries/process-samples.ts";

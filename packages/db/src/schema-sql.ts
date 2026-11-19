@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS worktree_openings (
 `;
 
 /**
+ * `api_message_receipts`: the keyed `message.send` calls of the external API, one row per session and key, so a retry
+ * after a restart finds what became of the message (`queries/api-receipts.ts`). Written with IF NOT EXISTS so a file
+ * created before the table existed gains it at first use (`apiReceipts.ensure`) without a schema version change.
+ */
+export const API_MESSAGE_RECEIPTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS api_message_receipts (
+  session_id TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL, message_id TEXT NOT NULL, queued TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('preparing','accepted','uncertain')), updated_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, key));
+`;
+
+/**
  * `item_reviews`: the user's review decisions about hooks, MCP servers and skills that Octocode did not ship, one row
  * per item and scope (`queries/guard.ts`). Written with IF NOT EXISTS so a file created before the table existed gains
  * it at first use (`guard.ensure`) without a schema version change, which would set the whole file aside.
@@ -360,6 +372,7 @@ CREATE INDEX session_forks_parent ON session_forks(parent_id);
 ${ITEM_REVIEWS_SCHEMA}
 ${SHELL_HISTORY_SCHEMA}
 ${WORKTREE_OPENINGS_SCHEMA}
+${API_MESSAGE_RECEIPTS_SCHEMA}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

@@ -371,6 +371,8 @@ export function claimRun(
 	if (scratch) identity.scratch = scratch;
 	// Taken last: a throw above leaves no name behind (the caller gives the slot back when nothing is claimed).
 	runs.running.set(identity.id, undefined);
+	// A queued run has no progress to measure and shows as queued until it starts (`team/session/approvals.ts`).
+	if (!slot.held) runs.team.approvals.noteQueued(identity.id);
 	// A resumed run still works its item: the link is dropped once it is not running (`idle-items.ts`).
 	if (identity.item) runs.items.set(identity.id, identity.item);
 	const release = () => {

@@ -5,6 +5,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { shownLine } from "../sessions/store.ts";
 import { runningWorkBrief } from "../sessions/compaction-brief.ts";
+import { hadReportedWork, unreportedWork } from "../sessions/work.ts";
 import { timerWorkRows } from "../timer/work.ts";
 
 /**
@@ -41,6 +42,8 @@ export function liveStateLines(
 	}
 	const work = runningWorkBrief(entries, since, ctx.sessionManager.getSessionFile());
 	if (work.length > 0) lines.push(renderPrompt("notices/recovery/live-work.md", { work: work.join("; ") }));
+	else if (hadReportedWork(entries) && unreportedWork(entries).length === 0)
+		lines.push(renderPrompt("notices/recovery/live-none.md"));
 	const active = activeTimers(ctx);
 	if (active.length > 0) lines.push(renderPrompt("notices/recovery/live-timers.md", { timers: active.join("; ") }));
 	return lines;

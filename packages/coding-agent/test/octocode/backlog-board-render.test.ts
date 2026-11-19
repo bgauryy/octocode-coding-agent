@@ -262,7 +262,7 @@ describe("the board's header", () => {
 		for (const [state, label] of [
 			["ongoing", "ongoing"],
 			["todo", "todo"],
-			["backlog", "to triage"],
+			["backlog", "backlog"],
 		] as const) {
 			const n = s.counts().items[state];
 			expect(header).toContain(`${n} ${state}`);
