@@ -3,6 +3,12 @@ export interface TokenColors {
 	fg(color: string, text: string): string;
 }
 
+/** A piece of a JSON document: `color` is the theme token that colours it, absent for layout (indentation, spacing). */
+export interface JsonSpan {
+	color?: string;
+	text: string;
+}
+
 /** The colours code blocks give JSON tokens (keys, strings, numbers and `true`/`false`/`null`, punctuation). */
 const KEY = "syntaxVariable";
 const STRING = "syntaxString";
@@ -29,16 +35,17 @@ export function isJsonDocument(text: string): boolean {
 }
 
 /**
- * `json` (a document `isJsonDocument` accepted) coloured token by token. `indent` lays it out two spaces per level;
+ * `json` (a document `isJsonDocument` accepted) split token by token. `indent` lays it out two spaces per level;
  * otherwise the server's own layout stays. Tokens are copied as sent, never parsed, so no number loses precision.
  * With `maxChars`, only the tokens that start before that offset are coloured (and `indent` should be off).
  */
-export function colorJson(json: string, theme: TokenColors, indent: boolean, maxChars = Infinity): string {
-	const out: string[] = [];
-	const mark = (text: string) => out.push(theme.fg(PUNCTUATION, text));
+export function jsonSpans(json: string, indent: boolean, maxChars = Infinity): JsonSpan[] {
+	const out: JsonSpan[] = [];
+	const paint = (color: string, text: string) => out.push({ color, text });
+	const mark = (text: string) => paint(PUNCTUATION, text);
 	let depth = 0;
 	const newline = () => {
-		if (indent) out.push(`\n${"  ".repeat(depth)}`);
+		if (indent) out.push({ text: `\n${"  ".repeat(depth)}` });
 	};
 	const nextSolid = (from: number) => {
 		let at = from;
@@ -49,14 +56,14 @@ export function colorJson(json: string, theme: TokenColors, indent: boolean, max
 	while (i < json.length) {
 		// Past `maxChars` (a collapsed row's visible part) the rest is copied as sent, uncoloured.
 		if (i >= maxChars) {
-			out.push(json.slice(i));
+			out.push({ text: json.slice(i) });
 			break;
 		}
 		const ch = json[i];
 		if (ch === '"') {
 			let end = i + 1;
 			while (end < json.length && json[end] !== '"') end += json[end] === "\\" ? 2 : 1;
-			out.push(theme.fg(json[nextSolid(end + 1)] === ":" ? KEY : STRING, json.slice(i, end + 1)));
+			paint(json[nextSolid(end + 1)] === ":" ? KEY : STRING, json.slice(i, end + 1));
 			i = end + 1;
 		} else if (ch === "{" || ch === "[") {
 			const close = ch === "{" ? "}" : "]";
@@ -81,18 +88,25 @@ export function colorJson(json: string, theme: TokenColors, indent: boolean, max
 			i++;
 		} else if (ch === ":") {
 			mark(ch);
-			if (indent) out.push(" ");
+			if (indent) out.push({ text: " " });
 			i++;
 		} else if (isSpace(ch)) {
 			const end = nextSolid(i);
-			if (!indent) out.push(json.slice(i, end));
+			if (!indent) out.push({ text: json.slice(i, end) });
 			i = end;
 		} else {
 			let end = i;
 			while (end < json.length && !isSpace(json[end]) && !",:]}".includes(json[end])) end++;
-			out.push(theme.fg(VALUE, json.slice(i, end)));
+			paint(VALUE, json.slice(i, end));
 			i = end;
 		}
 	}
-	return out.join("");
+	return out;
+}
+
+/** `jsonSpans` as one string, each coloured token wrapped by the theme. */
+export function colorJson(json: string, theme: TokenColors, indent: boolean, maxChars = Infinity): string {
+	return jsonSpans(json, indent, maxChars)
+		.map(({ color, text }) => (color ? theme.fg(color, text) : text))
+		.join("");
 }

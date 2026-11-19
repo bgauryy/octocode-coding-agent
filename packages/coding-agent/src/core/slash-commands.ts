@@ -9,6 +9,8 @@ export interface SlashCommandInfo {
 	argumentHint?: string;
 	source: SlashCommandSource;
 	sourceInfo: SourceInfo;
+	/** A skill command's `metadata.triggers`. */
+	triggers?: readonly string[];
 }
 
 export interface BuiltinSlashCommand {
@@ -18,8 +20,11 @@ export interface BuiltinSlashCommand {
 	argumentHint?: string;
 	argumentValues?: readonly string[];
 	argumentKind?: "path";
-	/** An alias typed from habit: it runs, but the `/` menu and the /help picker leave it out. */
-	menuHidden?: true;
+	/**
+	 * A name typed from habit that runs like this other command: it runs, but the `/` menu and the /help picker list it
+	 * only as another name on that command's row.
+	 */
+	menuAliasOf?: string;
 }
 
 export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
@@ -27,7 +32,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "permissions",
 		requiresNative: true,
 		description: "What Octocode asks before it acts",
-		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
+		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log|plan [off]]",
 	},
 	{
 		name: "agents",
@@ -162,7 +167,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "providers",
 		description: "Connect, enable or disable AI providers",
-		argumentHint: "[provider|pi]",
+		argumentHint: "[provider|pi|runner:<id>]",
 	},
 	{ name: "logout", description: "Remove a saved provider credential", argumentHint: "[provider]" },
 	{
@@ -175,13 +180,13 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "clear",
 		description: "Start a new session (same as /new)",
 		argumentHint: "[name-for-current-session]",
-		menuHidden: true,
+		menuAliasOf: "new",
 	},
 	{
 		name: "reset",
 		description: "Start a new session (same as /new)",
 		argumentHint: "[name-for-current-session]",
-		menuHidden: true,
+		menuAliasOf: "new",
 	},
 	{ name: "compact", description: "Summarize older turns to free context", argumentHint: "[instructions]" },
 	{ name: "resume", description: "Reopen a recent session in this folder", argumentHint: "[all] [<query>|B<n>]" },

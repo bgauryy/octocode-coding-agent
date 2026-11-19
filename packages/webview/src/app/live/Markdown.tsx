@@ -98,10 +98,17 @@ function isPlainLine(text: string): boolean {
 }
 
 /** Rendered Markdown with a source toggle; parsing reruns only when the text changes. */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({
+	text,
+	decorate,
+}: {
+	text: string;
+	/** Rewrites the Markdown for display only; the source view and Copy keep `text`. */
+	decorate?: (markdown: string) => string;
+}) {
 	const [showSource, setShowSource] = useState(false);
 	const [copied, copy] = useCopy(text);
-	const content = useMemo(() => renderMarkdown(text), [text]);
+	const content = useMemo(() => renderMarkdown(decorate ? decorate(text) : text), [text, decorate]);
 	if (isPlainLine(text))
 		return (
 			<div className="markdown-view">

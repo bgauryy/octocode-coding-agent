@@ -1,3 +1,4 @@
+// Request projection, not compaction-only: the fence applies to every request (see README.md).
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";

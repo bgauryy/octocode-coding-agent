@@ -34,15 +34,16 @@ Project skills can tell the model to run scripts or edit files: review unfamilia
 
 ### Frontmatter
 
-| Field                      | Meaning                                                                                                     |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `name`                     | Command and display name: lowercase letters, digits and single hyphens, up to 64 characters                 |
-| `description`              | Routing text shown to the model, up to 1,024 characters; required                                           |
-| `disable-model-invocation` | `true` hides the skill from the model's list; you can still invoke it                                       |
-| `user-invocable`           | `false` removes `/name` and `$name` for you; the model can still load it                                    |
-| `license`, `compatibility` | Informational only                                                                                          |
-| `allowed-tools`            | Informational; grants no permission                                                                         |
-| `metadata`                 | Key-value data; `excluded-hosts: octocode-code` (space-separated list) silently skips the skill in Octocode |
+| Field                      | Meaning                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                     | Command and display name: lowercase letters, digits and single hyphens, up to 64 characters                                                             |
+| `description`              | Routing text shown to the model, up to 1,024 characters; required                                                                                       |
+| `disable-model-invocation` | `true` hides the skill from the model's list; you can still invoke it                                                                                   |
+| `user-invocable`           | `false` removes `/name` and `$name` for you; the model can still load it                                                                                |
+| `license`, `compatibility` | Informational only                                                                                                                                      |
+| `allowed-tools`            | Informational; grants no permission                                                                                                                     |
+| `metadata`                 | Key-value data; `excluded-hosts: octocode-agent` (space-separated list) silently skips the skill in Octocode; the earlier id `octocode-code` also works |
+| `metadata.triggers`        | List of extra words the prompt editor highlights as pointing to this skill, besides the parts of its name; other types are ignored with a warning       |
 
 A skill without a description, or with malformed frontmatter, is not loaded. A name that differs from its folder still loads, but other Agent Skills tools may reject it. Under `.claude/skills` and in Claude plugins a missing description falls back to the first body line, and `yes`/`no`, `on`/`off`, `1`/`0` count as booleans. Claude-only fields (`context`, `model`, `hooks`, scoped permissions, dynamic shell expansion) are ignored: loading the text does not activate them.
 
@@ -115,6 +116,7 @@ Two skills load themselves on first use, once per session, when the model has no
 | `octocode-context-optimization` | Rewrite skill descriptions concisely, keeping every point ([optimized descriptions](#optimized-descriptions))                                                                                                                                |
 | `octocode-critical-thinking`    | Stress-test a consequential decision, plan or claim with the mental models that apply (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's Law), scaled to the stakes; ends with conclusion, key risks and confidence |
 | `octocode-debugging`            | Debug and profile programs through `bash`: lldb, gdb, pdb, a Node inspector script, crash and hang stacks, CPU and heap profiles                                                                                                             |
+| `octocode-security-review`      | Explain a `/security` report to the user in plain words (findings, what approval grants, what changed, what the scan did not cover) without approving, denying or calling anything safe                                                      |
 | `octocode-subagents` *          | Decide whether to delegate, pick the child kind and model, plan waves of children, brief, integrate, recover, relay and merge; run multi-step workflows; design, debug and evaluate agent systems                                            |
 | `octocode-memory` *             | Decide whether a fact belongs in memory, a session note, AGENTS.md, a backlog item or nowhere, and word it as a rule                                                                                                                         |
 | `octocode-output`               | Shape a reply by its data: tables for comparisons and numbers, trees, diagrams, status marks, findings and recommendations                                                                                                                   |

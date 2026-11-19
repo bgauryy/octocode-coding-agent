@@ -506,7 +506,7 @@ describe("memory tool", () => {
 		expect(subcommands.get("memory")).toBeUndefined();
 	});
 
-	it("keeps its prompt lean: at most 4 short guidelines (1 in a subagent), every field described", () => {
+	it("keeps its prompt lean: at most 4 short guidelines (1 in a subagent), every field described or an enum", () => {
 		for (const [subagent, max] of [
 			[false, 4],
 			[true, 1],
@@ -515,9 +515,10 @@ describe("memory tool", () => {
 			expect(tool.promptGuidelines.length).toBeLessThanOrEqual(max);
 			for (const line of tool.promptGuidelines as string[]) expect(line.length, line).toBeLessThanOrEqual(230);
 			for (const [name, schema] of Object.entries(
-				tool.parameters.properties as Record<string, { description?: string }>,
+				tool.parameters.properties as Record<string, { description?: string; enum?: string[] }>,
 			))
-				expect(schema.description, name).toBeTruthy();
+				// An enum whose values alone say what it does needs no description.
+				expect(schema.description || schema.enum?.length, name).toBeTruthy();
 		}
 	});
 

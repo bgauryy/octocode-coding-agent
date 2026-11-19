@@ -9,6 +9,7 @@ import { ATTENTION_RULES } from "../../../src/octocode/monitor/attention/rules.t
 import { monitorLedgerOf } from "../../../src/octocode/monitor/ledger.ts";
 import { registerCollab } from "../../../src/octocode/native/tools/coordinate/tool.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../../src/octocode/shared/messages.ts";
+import { describeMembers } from "../../../src/octocode/team/member-list.ts";
 import { sessionPhaseOf } from "../../../src/octocode/shared/session-phase.ts";
 import { STATUS } from "../../../src/octocode/shared/status.ts";
 import { SELF_IDLE_TYPE } from "../../../src/octocode/team/session/idle.ts";
@@ -183,6 +184,24 @@ describe("idle-agent: a child", () => {
 		waiting.store.save(member("g-1", "working", "c-1"));
 		waiting.check(20);
 		expect(waiting.parentTold()).toEqual([]);
+	});
+
+	it("does not measure a child resumed into a full pool until it starts, and lists it as queued", async () => {
+		const s = await session({ child: "working" });
+		// Its previous run's output is old; the resume waits for a slot.
+		s.team.approvals.noteQueued("c-1");
+		for (const minutes of [5, 6, 10, 30]) s.check(minutes);
+		expect(s.parentTold()).toEqual([]);
+		const listed = s.team.snapshot().members.find((row) => row.id === "c-1")!;
+		expect(listed.lastOutputAt).toBeUndefined();
+		expect(describeMembers([listed], "p-1", Date.now())).toContain("queued");
+		expect(describeMembers([listed], "p-1", Date.now())).not.toContain("stalled");
+		// A slot frees at 30 minutes: silence counts from the start, and normal detection resumes.
+		s.team.approvals.noteStarted("c-1", Date.now());
+		s.check(34);
+		expect(s.parentTold()).toEqual([]);
+		s.check(35);
+		expect(s.parentTold()).toHaveLength(1);
 	});
 
 	it("is off at 0, and reads idleAgentMinutes before the deprecated silence keys", async () => {

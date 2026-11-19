@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -177,5 +178,68 @@ describe("watchFileChanges", () => {
 		replace(file, '{"changed":true}');
 		await vi.waitFor(() => expect(onChange).toHaveBeenCalled(), { timeout: 3000 });
 		expect(watchers).toHaveLength(1);
+	});
+	describe("backstop for a silent native watcher", () => {
+		function silentWatcher() {
+			const closes: Array<() => void> = [];
+			vi.spyOn(fs, "watch").mockImplementation((() => {
+				const silent = Object.assign(new EventEmitter(), { close: vi.fn() });
+				closes.push(silent.close);
+				return silent;
+			}) as unknown as typeof fs.watch);
+			return closes;
+		}
+
+		it("adopts another process's save within two backstop intervals while the watcher delivers nothing", async () => {
+			const file = path.join(tempDir(), "settings.json");
+			fs.writeFileSync(file, "{}");
+			silentWatcher();
+			const onChange = watch(file, { backstopMs: 40 });
+			replace(file, '{"disabled":true}');
+			await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 40 * 2 + 400 });
+			// Later saves are still caught, and an unchanged file is not reported again.
+			onChange.mockClear();
+			await settle(200);
+			expect(onChange).not.toHaveBeenCalled();
+			replace(file, '{"disabled":false}');
+			await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 40 * 2 + 400 });
+		});
+
+		it("sees a file created or removed while silent", async () => {
+			const file = path.join(tempDir(), "auth.json");
+			silentWatcher();
+			const onChange = watch(file, { backstopMs: 40 });
+			replace(file, "{}");
+			await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 800 });
+			onChange.mockClear();
+			fs.rmSync(file);
+			await vi.waitFor(() => expect(onChange).toHaveBeenCalledOnce(), { timeout: 800 });
+		});
+
+		it("stays idle while native events arrive more often than the backstop interval", async () => {
+			const file = path.join(tempDir(), "settings.json");
+			fs.writeFileSync(file, "{}");
+			const polls = vi.spyOn(fs.promises, "stat");
+			const onChange = watch(file, { backstopMs: 400 });
+			for (let n = 0; n < 6; n++) {
+				replace(file, `{"n":${n}}`);
+				await settle(120);
+			}
+			expect(onChange).toHaveBeenCalled();
+			expect(polls).not.toHaveBeenCalled();
+		});
+
+		it("stops the backstop when closed", async () => {
+			vi.useFakeTimers();
+			const file = path.join(tempDir(), "settings.json");
+			fs.writeFileSync(file, "{}");
+			silentWatcher();
+			const onChange = watch(file, { backstopMs: 40 });
+			stops.pop()?.();
+			expect(vi.getTimerCount()).toBe(0);
+			replace(file, '{"x":1}');
+			await vi.advanceTimersByTimeAsync(500);
+			expect(onChange).not.toHaveBeenCalled();
+		});
 	});
 });

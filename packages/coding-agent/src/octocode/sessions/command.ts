@@ -16,7 +16,7 @@ import { checkoutText } from "../../core/worktree-path.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { agentRuns, workspaces } from "../../../../db/src/api.ts";
+import { agentRunChildren, workspaces } from "../../../../db/src/api.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import fs from "node:fs";
 
@@ -46,15 +46,7 @@ interface ListedSession {
 
 /** How many child agents each of `ids` started itself, from the agent run history; sessions with none are absent. */
 function childCounts(index: SessionIndex | undefined, ids: readonly string[]): Map<string, number> {
-	const counts = new Map<string, number>();
-	if (!index) return counts;
-	for (const id of ids) {
-		const n = agentRuns
-			.inSessionTree(index.agent.db, id)
-			.filter((run) => run.kind === "child" && run.parentSessionId === id).length;
-		if (n > 0) counts.set(id, n);
-	}
-	return counts;
+	return index ? agentRunChildren.countBySession(index.agent.db, ids) : new Map();
 }
 
 /** Whether a session's process is running now (this one included). */

@@ -503,6 +503,8 @@ describe("virtualized scroll view", () => {
 				assert.ok(box?.materialize, "the frame is virtualized");
 				const shownTop = anchoredTop(box, views.virtual.items(), views.exact.items(), 61);
 				assert.ok(shownTop !== undefined);
+				// The plain twin takes the width change first (it anchors its top item), then goes to the same row.
+				renderLayoutFrame(views.exact.root, 61, 20, () => {});
 				views.exact.scroll.scrollTo(shownTop, { disableFollow: true });
 				assert.deepStrictEqual(virtual.lines, renderLayoutFrame(views.exact.root, 61, 20, () => {}).lines);
 				box.materialize();

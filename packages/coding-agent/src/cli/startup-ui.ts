@@ -31,7 +31,7 @@ import {
 } from "../theme/theme.ts";
 import { requestTerminalColors } from "../modes/interactive/theme/theme-controller.ts";
 
-const OFFICIAL_PACKAGE_NAME = "@octocodeai/octocodecode";
+const OFFICIAL_PACKAGE_NAME = "@octocodeai/octocode-agent";
 const OFFICIAL_APP_NAME = "octocode";
 const OFFICIAL_CONFIG_DIR_NAME = ".octocode";
 

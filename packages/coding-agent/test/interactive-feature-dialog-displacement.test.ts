@@ -4,7 +4,7 @@ import { TuiMainScreen } from "../../tui/src/tui-main-screen.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
 import * as extensionDialogs from "../src/modes/interactive/interactive-mode/dialogs.ts";
-import type { DialogSelectorComponent } from "../src/modes/interactive/components/dialog-selector.ts";
+import { AskDialog } from "../src/octocode/ask/dialog/component.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { getEditorTheme, initTheme } from "../src/theme/theme.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
@@ -30,7 +30,9 @@ function createDialogHost() {
 	const editorContainer = new Container();
 	editorContainer.addChild(editor);
 	const setBlocked = vi.fn();
-	const host = createFakeHost({
+	const host: ReturnType<typeof createFakeHost> = createFakeHost({
+		showCustomDialog: (factory: Parameters<typeof extensionDialogs.showCustomDialog>[1], options: never) =>
+			extensionDialogs.showCustomDialog(host, factory, options),
 		ui,
 		editor,
 		editorContainer,
@@ -65,23 +67,74 @@ describe("extension dialogs share one editor slot", () => {
 		expect(setBlocked).toHaveBeenLastCalledWith("feature-dialog", expect.objectContaining({ kind: "question" }));
 	});
 
-	test("a confirmation is the ask card approvals use: question, quoted message, numbered No then Yes", async () => {
-		const { host } = createDialogHost();
-		const answer = extensionDialogs.showConfirmDialog(host, "Allow paid judging?", "Costs at most $0.05.");
-		// The fake host declares the slot empty; the dialog fills it.
-		const selector = host.selectorDialog as unknown as DialogSelectorComponent;
-		const shown = selector
+	/** The component the open confirmation put in the editor slot: the tabbed ask dialog. */
+	const openDialog = (editorContainer: Container) => editorContainer.children[0] as unknown as AskDialog;
+	const plain = (dialog: AskDialog) =>
+		dialog
 			.render(80)
 			.join("\n")
 			.replace(/\x1b\[[0-9;]*m/g, "");
+
+	test("a confirmation is the tabbed ask dialog: question, message, No then Yes", async () => {
+		const { host, editorContainer } = createDialogHost();
+		const answer = extensionDialogs.showConfirmDialog(host, "Allow paid judging?", "Costs at most $0.05.");
+		await settled(answer);
+		const dialog = openDialog(editorContainer);
+		expect(dialog).toBeInstanceOf(AskDialog);
+		const shown = plain(dialog);
 		expect(shown).toContain("Allow paid judging?");
-		expect(shown).toContain("│ Costs at most $0.05.");
+		expect(shown).toContain("Costs at most $0.05.");
 		expect(shown).toMatch(/› 1\. No[\s\S]*2\. Yes/);
-		expect(shown).toContain("1-2 pick · enter confirm");
-		expect(shown).not.toContain("choose");
-		selector.handleInput("2");
-		selector.handleInput("\r");
+		expect(shown).not.toMatch(/Write an answer|Type your own/i);
+		dialog.handleInput("2");
+		dialog.handleInput("\r");
 		expect(await settled(answer)).toBe(true);
+	});
+
+	test("a confirmation answered No is false, and Enter on the first row is No", async () => {
+		const { host, editorContainer, setBlocked } = createDialogHost();
+		const answer = extensionDialogs.showConfirmDialog(host, "Sure?", "");
+		await settled(answer);
+		openDialog(editorContainer).handleInput("\r");
+		expect(await settled(answer)).toBe(false);
+		expect(setBlocked).toHaveBeenLastCalledWith("feature-dialog", undefined);
+	});
+
+	test("a dismissed confirmation is false", async () => {
+		const { host, editorContainer } = createDialogHost();
+		const answer = extensionDialogs.showConfirmDialog(host, "Sure?", "msg");
+		await settled(answer);
+		openDialog(editorContainer).handleInput("\x1b");
+		expect(await settled(answer)).toBe(false);
+	});
+
+	test("an aborted confirmation is false, also when aborted before it opens", async () => {
+		const { host, editor, editorContainer } = createDialogHost();
+		const controller = new AbortController();
+		const answer = extensionDialogs.showConfirmDialog(host, "Sure?", "msg", { signal: controller.signal });
+		await settled(answer);
+		controller.abort();
+		expect(await settled(answer)).toBe(false);
+		expect(editorContainer.children).toEqual([editor]);
+		expect(await extensionDialogs.showConfirmDialog(host, "Sure?", "msg", { signal: controller.signal })).toBe(false);
+	});
+
+	test("a confirmation's timeout shows its countdown, survives a key press and answers false", async () => {
+		vi.useFakeTimers();
+		try {
+			const { host, editorContainer } = createDialogHost();
+			const answer = extensionDialogs.showConfirmDialog(host, "Sure?", "msg", { timeout: 5000 });
+			await vi.advanceTimersByTimeAsync(0);
+			const dialog = openDialog(editorContainer);
+			expect(plain(dialog)).toMatch(/auto: No in 5s/);
+			dialog.handleInput("\x1b[B");
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(plain(dialog)).toMatch(/auto: No in 3s/);
+			await vi.advanceTimersByTimeAsync(3001);
+			expect(await answer).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	test("a dialog displaced by another one answers undefined instead of waiting forever", async () => {
@@ -103,7 +156,7 @@ describe("extension dialogs share one editor slot", () => {
 		const confirm = extensionDialogs.showConfirmDialog(host, "Replace", "Continue?");
 		expect(await settled(selector)).toBeUndefined();
 
-		host.hideSelectorDialog();
+		host.activeSelectorDispose?.();
 		expect(await settled(confirm)).toBe(false);
 		expect(editorContainer.children).toEqual([editor]);
 		expect(setBlocked).toHaveBeenLastCalledWith("feature-dialog", undefined);

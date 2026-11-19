@@ -1,1 +1,1 @@
-Ask the user what only they can answer, a child's question too; never as reply text
+Ask the user what only they can answer, a child's question too

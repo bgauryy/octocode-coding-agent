@@ -1,6 +1,6 @@
 ---
 name: octocode-debugging
-description: "Debug crashes, hangs, deadlocks or wrong values with breakpoints, stacks and locals. Use for profiling, bottlenecks, leaks or unexplained slowness: CPU/functions/callers, memory/allocations, processes, timing, event-loop/GC, I/O and browser/GPU."
+description: "Use to debug crashes, hangs, deadlocks, wrong values with breakpoints, stacks, locals; or to profile bottlenecks, leaks, unexplained slowness: CPU/functions/callers, memory/allocations, processes, timing, event-loop/GC, I/O, browser/GPU."
 ---
 
 # Octocode Debugging

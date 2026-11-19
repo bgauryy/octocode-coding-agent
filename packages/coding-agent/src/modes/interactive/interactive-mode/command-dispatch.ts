@@ -13,7 +13,7 @@ import { runTerminalAction } from "../terminal-actions.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
-import { unknownCommandWarning } from "./command-suggestion.ts";
+import { retiredInputNotice, unknownCommandWarning } from "./command-suggestion.ts";
 import {
 	argumentWordRefusal,
 	clearRefused,
@@ -322,8 +322,14 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		const parsed = parseSlashCommand(text);
 		const builtin = parsed && getBuiltinCommand(parsed.name);
 		// Text that starts with `/` may be a message about a command: a refusal keeps it, and Enter again sends it.
-		const refusal = parsed && slashRefusal(host, text, parsed.name, parsed.args);
 		const input = refusedInput(host);
+		// A retired name is a pointer to its replacement, not a message about a command: one notice, no Enter-again send.
+		const retired = parsed && !builtin && retiredInputNotice(text, parsed.name, host.getSlashCommands(true));
+		if (retired) {
+			clearRefused(input);
+			return refuseWith(input, text, retired);
+		}
+		const refusal = parsed && slashRefusal(host, text, parsed.name, parsed.args);
 		if (refusal) return handleRefused(input, text, refusal);
 		clearRefused(input);
 		if (builtin) {

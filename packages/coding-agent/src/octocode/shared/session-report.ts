@@ -17,7 +17,10 @@ const PLAIN_STYLE: ReportStyle = { bold: (text) => text, dim: (text) => text };
 
 export interface SessionReportInput {
 	stats: SessionStats;
+	/** Every entry of the session, all branches: totals (cost, cache) cover all that was spent. */
 	entries: SessionEntry[];
+	/** The current branch, root first: $/turn counts only the turns the conversation still holds. */
+	branch: SessionEntry[];
 	prices: ModelPriceSource;
 	/** `provider/id` of the selected model; a single usage entry for it is not listed again under Cost. */
 	selectedModelKey: string;
@@ -93,7 +96,7 @@ export function formatSessionReport(input: SessionReportInput, style: ReportStyl
 					: `\n${dim("Estimated cache re-billing:")} ${detail}`;
 		}
 	}
-	const perTurn = formatTurnCosts(turnCosts(input.entries), dim);
+	const perTurn = formatTurnCosts(turnCosts(input.branch), dim);
 	if (perTurn) info += `\n\n${bold("Turns")}\n${perTurn.trimEnd()}`;
 	return info;
 }

@@ -91,6 +91,8 @@ export class AgentsView {
 	private runningStatus: string | undefined;
 	private unwork: (() => void) | undefined;
 	private ctx: FeatureContext | undefined;
+	/** True while `paint` runs: the count it publishes must not start a second paint. */
+	private painting = false;
 
 	private readonly team: Team;
 	private readonly work: RunningWork;
@@ -106,13 +108,55 @@ export class AgentsView {
 		this.ctx = ctx;
 		this.showRunning(ctx);
 		this.unwork = this.work.subscribe(() => {
+			// The paint in progress publishes the count it just changed and renders once itself.
+			if (this.painting) return;
 			this.showRunning(ctx);
 			// A change of work mounts or repaints the widget now; the team's ticker is not what moves it.
 			if (ctx.mode === "tui") this.paint(ctx, true);
 		});
-		// A terminal widget: RPC clients ignore component factories, so the 1 s ticker would feed nothing there.
-		if (ctx.mode !== "tui") return;
+		// A terminal widget: RPC clients ignore component factories, so there the ticker only keeps the live agents and the footer count.
+		if (ctx.mode !== "tui") {
+			this.unwatch = this.team.watch(() => this.track(ctx));
+			return;
+		}
 		this.unwatch = this.team.watch(() => this.paint(ctx));
+	}
+
+	/** Without a widget: follows the team's live agents for the footer count. */
+	private track(ctx: FeatureContext): void {
+		const { members, error } = this.team.view;
+		this.members = members;
+		this.refreshLive(error);
+		this.showRunning(ctx);
+	}
+
+	/** This session's live agents: a finished parent still links its running children, as the roster draws them. */
+	private refreshLive(error: unknown): Member[] {
+		const now = Date.now();
+		const self = this.team.id;
+		const compute = (): Member[] => {
+			const known = new Set(this.members.map((member) => member.id));
+			const left = this.finished.finished
+				.filter((entry) => now - entry.at <= FINISHED_MS && !known.has(entry.member.id))
+				.map((entry) => entry.member);
+			// A finished parent only bridges to its running children: it is not live itself.
+			const leftIds = new Set(left.map((member) => member.id));
+			return liveMembers(
+				descendants([...this.members, ...left], self).filter((member) => !leftIds.has(member.id)),
+				now,
+			);
+		};
+		let live = compute();
+		if (!error) {
+			// An agent that just left becomes a finished row first, so its running children stay linked in this very pass.
+			this.finished.update(self, this.members, live, now);
+			live = compute();
+			this.finished.update(self, this.members, live, now);
+			// The footer's one total adds what these agents spent until their results reach this session's ledger.
+			publishLiveAgents(live);
+		}
+		this.liveIds = new Set(live.map((member) => member.id));
+		return live;
 	}
 
 	/** The background subagents this session runs now: one without a team row yet (queued, starting, team off) still shows. */
@@ -133,13 +177,12 @@ export class AgentsView {
 
 	/** Background subagents with no live team row: the rows the work block draws for them. */
 	private unlisted(): WorkRow[] {
-		// A child that just finished (or still has a row) is a team row, not also a work row.
+		// A child that just finished is a team row, not also a work row; one whose heartbeat stalled has no live row and still shows here.
 		const gone = new Set(this.finished.finished.map((entry) => entry.member.id));
-		const present = new Set(this.members.map((member) => member.id));
 		const queued = new Map(this.work.queued().map((row) => [row.id, row]));
 		return this.work
 			.background()
-			.filter((name) => !this.liveIds.has(name) && !gone.has(name) && !present.has(name))
+			.filter((name) => !this.liveIds.has(name) && !gone.has(name))
 			.map((id): WorkRow => {
 				const wait = queued.get(id);
 				return wait
@@ -265,6 +308,7 @@ export class AgentsView {
 
 	/** `force`: the work rows changed, so repaint even when the team shows nothing new. */
 	private paint(ctx: FeatureContext, force = false): void {
+		this.painting = true;
 		try {
 			const { members, traffic, error, retrying } = this.team.view;
 			const said = this.outage.next(error, retrying);
@@ -276,11 +320,7 @@ export class AgentsView {
 			this.traffic = traffic.map((message) => withEndpoints(message, { members, ...(root ? { root } : {}) }));
 			// The same liveness filter as widgetLines: a widget with no rows is never mounted.
 			const now = Date.now();
-			const live = descendants(liveMembers(this.members, now), self);
-			this.liveIds = new Set(live.map((member) => member.id));
-			// The footer's one total adds what these agents spent until their results reach this session's ledger.
-			if (!error) publishLiveAgents(live);
-			if (!error) this.finished.update(self, this.members, live, now);
+			const live = this.refreshLive(error);
 			const teamVisible = live.length > 0 || this.finished.finished.some((entry) => now - entry.at <= FINISHED_MS);
 			const hasWork = this.workItems().length > 0;
 			this.showRunning(ctx, teamVisible);
@@ -306,6 +346,8 @@ export class AgentsView {
 			if (teamVisible || force || mounted) this.render?.();
 		} catch {
 			// The session was replaced while painting.
+		} finally {
+			this.painting = false;
 		}
 	}
 }

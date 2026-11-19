@@ -6,6 +6,7 @@ import { privateDir } from "../../common/src/file-mode.ts";
 import { beginImmediate, isBusy, loadSqlite, RETRY_MS } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
 import { withFileLockSync } from "../../common/src/file-write-lock.ts";
+import { refuseIfInUse } from "./in-use.ts";
 import * as agentEvents from "./queries/agent-events.ts";
 import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
 import * as archiveIndex from "./queries/archive-index.ts";
@@ -179,6 +180,7 @@ function openConnection(target: string, privateParent: boolean, kind: FileKind, 
 				return connect(target, privateParent, kind, waitMs);
 			} catch (error) {
 				if (!(error instanceof AgentDbRetiredError)) throw error;
+				refuseIfInUse(target, error.version);
 				retire(target, error.version);
 				return connect(target, privateParent, kind, waitMs);
 			}

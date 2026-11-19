@@ -89,3 +89,6 @@ export { escapeHtml, renderResultsHtml } from "./results-html.ts";
 export * from "./compare.ts";
 export * from "./user-sim.ts";
 export { findSuspicious, SUSPICIOUS_RULES, type SuspiciousMatch, type SuspiciousRule } from "./surface-poison.ts";
+export { redTeamAttacks } from "./redteam/attacks.ts";
+export { runAttack, type AttackRun, type RunAttackOptions } from "./redteam/run.ts";
+export type { Attack, AttackKind, ForbiddenCall, Lure } from "./redteam/types.ts";

@@ -1,4 +1,5 @@
 import { linearSrgbToRgb, okhslToRgb, oklabToLinearSrgb, rgbToOkhsl, rgbToOklab } from "./oklab.ts";
+import { ansi16Code, rgbToAnsi16 } from "./ansi16.ts";
 import type { RgbColor } from "./terminal-colors.ts";
 
 export interface IndexedColor {
@@ -26,7 +27,7 @@ export type Color = IndexedColor | RgbColorValue | OklchColorValue;
  * How much color the terminal gets: `"none"` writes no color sequence at all (NO_COLOR, `TERM=dumb`), while text
  * attributes (bold, dim, underline, inverse) still apply.
  */
-export type TerminalColorMode = "none" | "256color" | "truecolor";
+export type TerminalColorMode = "none" | "16color" | "256color" | "truecolor";
 export type ColorMixSpace = "oklch" | "srgb";
 
 export interface OklchChannels {
@@ -310,6 +311,10 @@ export function isColorDisabled(env: Readonly<Record<string, string | undefined>
 
 function colorAnsi(color: Color, mode: TerminalColorMode, background: boolean): string {
 	if (mode === "none") return "";
+	if (mode === "16color") {
+		const index = color.kind === "indexed" && color.index < 16 ? color.index : rgbToAnsi16(colorToRgb(color));
+		return `\x1b[${ansi16Code(index, background)}m`;
+	}
 	if (color.kind === "indexed") return `\x1b[${background ? 48 : 38};5;${color.index}m`;
 
 	const rgb = colorToRgb(color);

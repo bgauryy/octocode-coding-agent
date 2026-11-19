@@ -64,10 +64,17 @@ describe("OpenRouter OAuth", { concurrent: false }, () => {
 		let authorizeUrl: URL | undefined;
 		let callbackResponse: Promise<Response> | undefined;
 		let manualSignal: AbortSignal | undefined;
+		let manualAborted: Promise<void> = Promise.reject(new Error("The manual prompt never started"));
+		manualAborted.catch(() => undefined);
 		const credential = await openRouterOAuth.login({
 			signal: neverAbortedSignal,
 			prompt: (prompt) => {
-				manualSignal = prompt.signal;
+				const signal = prompt.signal;
+				manualSignal = signal;
+				manualAborted = new Promise<void>((resolve) => {
+					if (!signal || signal.aborted) resolve();
+					else signal.addEventListener("abort", () => resolve(), { once: true });
+				});
 				return new Promise<string>(() => {});
 			},
 			notify: (event) => {
@@ -86,6 +93,7 @@ describe("OpenRouter OAuth", { concurrent: false }, () => {
 			expires: Number.MAX_SAFE_INTEGER,
 		});
 		expect((await callbackResponse)?.status).toBe(200);
+		await manualAborted;
 		expect(manualSignal?.aborted).toBe(true);
 		expect(authorizeUrl?.origin).toBe("https://openrouter.ai");
 		expect(authorizeUrl?.pathname).toBe("/auth");

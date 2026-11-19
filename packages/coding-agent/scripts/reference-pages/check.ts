@@ -18,6 +18,6 @@ const stale = [...renderReferences()]
 
 if (stale.length > 0) {
 	console.error(`Stale reference pages:\n${stale.map((page) => `  ${page}`).join("\n")}`);
-	console.error("Run: yarn workspace @octocodeai/octocodecode run generate:references");
+	console.error("Run: yarn workspace @octocodeai/octocode-agent run generate:references");
 	process.exitCode = 1;
 } else console.log("Reference pages match their generators.");

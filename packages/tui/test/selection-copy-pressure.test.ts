@@ -67,26 +67,38 @@ for (const rows of [1_000, 10_000, 100_000]) {
 		const selection = new AltScreenSelection(copyHost(screen, copied, messages));
 		selection.selectionAnchor = { row: 0, col: 0 };
 		selection.selectionFocus = { row: rows - 1, col: 1000 };
-		let ticks = 0;
-		let last = performance.now();
+		// Extraction yields after each time slice. A clock that moves 1 ms a reading makes the yield count independent of
+		// host speed; the event-loop gap is measured on the real monotonic clock.
+		const realNow = performance.now.bind(performance);
+		const realImmediate = globalThis.setImmediate;
+		let clock = realNow();
+		let yields = 0;
+		performance.now = () => (clock += 1);
+		globalThis.setImmediate = ((...args: Parameters<typeof setImmediate>) => {
+			yields++;
+			return realImmediate(...args);
+		}) as typeof setImmediate;
+		const realMs = () => Number(process.hrtime.bigint()) / 1e6;
+		let last = realMs();
 		let maxGap = 0;
 		const timer = setInterval(() => {
-			const now = performance.now();
+			const now = realMs();
 			maxGap = Math.max(maxGap, now - last);
 			last = now;
-			ticks++;
 		}, 1);
 		try {
 			assert.equal(await selection.copySelectionToClipboard(), true);
 		} finally {
 			clearInterval(timer);
+			performance.now = realNow;
+			globalThis.setImmediate = realImmediate;
 		}
 		assert.equal(copied.length, 1);
 		assert.equal(copied[0].split("\n").length, rows);
 		assert.equal(copied[0].split("\n")[rows - 1], `行${rows - 1} 界界界界 text`);
 		assert.deepEqual(messages, ["Copied!"]);
 		if (rows >= 100_000) {
-			assert.ok(ticks > 5, `timers ran during extraction (${ticks})`);
+			assert.ok(yields > 5, `extraction yielded to the event loop (${yields})`);
 			assert.ok(maxGap < 150, `event loop gap ${maxGap}ms`);
 		}
 	});

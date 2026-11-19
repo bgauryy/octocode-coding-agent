@@ -204,5 +204,5 @@ A page (`/trust`, `/security`, `/memory`, `/mcp` lists, provider details) shows 
 ## Key hints
 
 - Show keys as you configured them; the interrupt key reads `esc`, not `escape`.
-- A hint is `key verb`: the key in `dim`, the verb in `muted`. Use `interrupt` for the running agent and `cancel` for a dialog.
+- A hint is `key verb`: the key in `dim`, the verb in `muted`. Use `interrupt` on the working line of the agent run and `cancel` for a dialog or an operation that ends with no output (retry wait, compaction, shell command).
 - A page footer says what Enter does with one of ten verbs: `open`, `run`, `select`, `toggle`, `inspect`, `edit`, `confirm`, `review`, `submit` or `close`.

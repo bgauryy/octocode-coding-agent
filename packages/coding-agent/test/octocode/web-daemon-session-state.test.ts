@@ -26,6 +26,19 @@ const event = (sequence: number, body: Record<string, unknown>): ApplicationFram
 	({ ...at(sequence), type: "event", event: body }) as ApplicationFrame;
 
 describe("session watch", () => {
+	it("reports a frame it cannot read and reconnects instead of going quiet", async () => {
+		const session = fakeSession("s");
+		const report = vi.fn();
+		const watch = new SessionWatch(session.workspace.application!, "s", () => {}, report);
+		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
+		session.push({ ...at(1), type: "snapshot" } as unknown as ApplicationFrame);
+		await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(session.connects).toHaveLength(2), { timeout: 3000 });
+		session.push(snapshot(true));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
+		watch.close();
+	});
+
 	it("knows nothing until the first snapshot, then follows runs and the dialog they block on", async () => {
 		const session = fakeSession("s");
 		const changes = vi.fn();

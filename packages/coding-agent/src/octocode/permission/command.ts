@@ -75,7 +75,7 @@ function logLines(ctx: FeatureContext, permission: Permission): string {
 }
 
 /**
- * `/permissions [manual|workspace|full|grants [clear]|log]`. The command works everywhere, RPC included; the
+ * `/permissions [manual|workspace|full|grants [clear]|log|plan [off]]`. The command works everywhere, RPC included; the
  * editor shortcut lives in `ui/editor`.
  */
 export function registerPermissionCommand(
@@ -91,7 +91,7 @@ export function registerPermissionCommand(
 
 	commands.add("permissions", {
 		description: builtinDescription("permissions"),
-		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log]",
+		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log|plan [off]]",
 		complete: (prefix) =>
 			wordCompletions(
 				[...CHOOSABLE_MODES, "grants", "grants clear", "grants clear messages", "log", "plan", "plan off"],

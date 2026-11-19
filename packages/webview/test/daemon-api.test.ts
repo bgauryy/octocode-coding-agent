@@ -19,6 +19,7 @@ function stubDaemon() {
 		[DAEMON_ROUTES.configSettings]: snapshot("settings"),
 		[DAEMON_ROUTES.configSignin]: { status: "pending", events: [] },
 		[DAEMON_ROUTES.configHarness]: { rows: [] },
+		[DAEMON_ROUTES.configHarnessPreview]: { id: "harness:claude", label: "Claude Code", items: 0, lines: [] },
 		[DAEMON_ROUTES.configTools]: { groups: [], setting: "tools" },
 	};
 	const fetch = vi.fn(async (url: string, _options: RequestInit) => ({
@@ -111,6 +112,8 @@ it("posts each command as JSON with the bearer header and adds repoId only where
 	expect(last()).toEqual({ url: DAEMON_ROUTES.configSignin, method: "POST", headers: WRITE, body: command });
 	expect(await api.setHarness(command)).toEqual({ rows: [] });
 	expect(last()).toEqual({ url: DAEMON_ROUTES.configHarness, method: "POST", headers: WRITE, body: command });
+	await api.previewHarness("harness:claude", "r1");
+	expect(last().url).toBe(`${DAEMON_ROUTES.configHarnessPreview}?id=harness%3Aclaude&repoId=r1`);
 	expect(await api.pinTool(command)).toEqual({ groups: [], setting: "tools" });
 	expect(last()).toEqual({ url: DAEMON_ROUTES.configTools, method: "POST", headers: WRITE, body: command });
 	expect(await api.saveSetting(command)).toEqual(snapshot("settings"));

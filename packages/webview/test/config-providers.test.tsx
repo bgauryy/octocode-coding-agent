@@ -69,6 +69,23 @@ describe("ConfigView provider sources and switches", () => {
 		expect(screen.getByText(/Billed by plan/)).toBeInTheDocument();
 		expect(screen.getByRole("status")).toHaveTextContent("Paused: Temporarily paused");
 	});
+	it("shows each provider's route", async () => {
+		render(
+			<ConfigView
+				load={async () => ({
+					...base,
+					providers: [
+						{ provider: "metered", configured: true, sources: [], route: "config" },
+						{ provider: "plan", configured: true, sources: [], route: "subscription" },
+						{ provider: "runner", configured: true, sources: [], route: "external" },
+					],
+				})}
+			/>,
+		);
+		expect(await screen.findByText("Route: config")).toBeInTheDocument();
+		expect(screen.getByText("Route: subscription")).toBeInTheDocument();
+		expect(screen.getByText("Route: external")).toBeInTheDocument();
+	});
 	it("shows the sources and where each provider is configured", async () => {
 		render(<ConfigView load={async () => base} saveProvider={vi.fn()} />);
 		const sources = await screen.findByRole("list", { name: "Provider sources" });

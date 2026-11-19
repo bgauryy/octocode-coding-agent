@@ -82,19 +82,22 @@ export function createMemoryTool(
 		promptSnippet: renderPrompt("tools/memory/snippet.md"),
 		// One description for every role (it leads the cached tool list); `op` and the field texts say what this one may do.
 		description:
-			"Short notes: session (this session only, survive compaction) or workspace/project/global for later sessions; list shows pinned first. Near-duplicates in the scope are refused: update them. Global or pinned changes ask the user first.",
+			"Short notes: session (this session only, survives compaction) or workspace/project/global for later sessions; list shows pinned first. A near-duplicate in the scope is refused: update it. Global or pinned changes ask the user first.",
 		promptGuidelines: renderPrompt("tools/memory/guidelines.md", { subagent }).split("\n"),
 		parameters: Type.Object({
-			op: StringEnum(ops, {
-				description: subagent ? "search, get or list" : "set: add a memory (needs title), or update id",
-			}),
+			// A subagent's `op` enum (search, get, list) needs no description.
+			op: StringEnum(ops, subagent ? {} : { description: "set: add a memory (needs title), or update id" }),
 			id: Type.Optional(
-				Type.String({ description: "M<n>, or S<n> for a session note (set it with a durable scope: moves it there)" }),
+				Type.String({
+					description: subagent
+						? "M<n>, or S<n> for a session note"
+						: "M<n>, or S<n> for a session note (set it with a durable scope: moves it there)",
+				}),
 			),
 			query: Type.Optional(
 				Type.String({
 					description:
-						"search: case-insensitive regex filter (max 200 chars; nested repeats like (a+)+ and backreferences are rejected)",
+						"search: case-insensitive regex filter (max 200 chars; nested repeats like (a+)+ and backreferences refused)",
 				}),
 			),
 			keywords: Type.Optional(
@@ -130,7 +133,7 @@ export function createMemoryTool(
 						),
 						pinned: Type.Optional(
 							Type.Boolean({
-								description: "set: always inject this memory (keep pinned ones few and short)",
+								description: "set: always inject it (keep pins few and short)",
 							}),
 						),
 					}),

@@ -4,6 +4,8 @@ import { WAKE_INTERVAL_MS, WakePace } from "../team/wake-pace.ts";
 interface Held {
 	notice: string;
 	carried: boolean;
+	/** The run the notice is about: its notice is dropped once that run's state moves on (`retract`). */
+	about?: string | undefined;
 }
 
 /**
@@ -79,8 +81,14 @@ export class GraphWake {
 	}
 
 	/** A graph notice no report carries (a change made outside this process): sent now when the pace allows, else later. */
-	tell(notice: string): void {
-		if (this.running && this.admit({ notice, carried: false })) this.send(notice);
+	tell(notice: string, about?: string): void {
+		if (this.running && this.admit({ notice, carried: false, about })) this.send(notice);
+	}
+
+	/** Run `about` moved on (a held child started or was stopped): its notices still waiting for the pace are stale and dropped. */
+	retract(about: string): void {
+		const kept = this.held.filter((entry) => entry.about !== about);
+		this.held.splice(0, this.held.length, ...kept);
 	}
 
 	/**

@@ -15,7 +15,8 @@ import { Trace } from "../src/trace.ts";
  * test skips with a reason when the server's CLI (or Claude Code) is not installed.
  */
 
-const TARGET = { command: "octocode", args: ["mcp"] };
+// Inside an Octocode Agent shell, `octocode` runs the agent and the research CLI is `octocode-cli`.
+const TARGET = { command: cliMissing("octocode-cli") ? "octocode" : "octocode-cli", args: ["mcp"] };
 const FILES = {
 	"src/config.ts": "export function parseConfig(text: string) {\n\treturn JSON.parse(text);\n}\n",
 	"src/app.ts": 'import { parseConfig } from "./config";\nexport const cfg = parseConfig("{}");\n',

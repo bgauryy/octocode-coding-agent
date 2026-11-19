@@ -47,6 +47,12 @@ describe("/remote", () => {
 		expect(control.message).not.toContain(token);
 		expect(control.message).toContain("can send commands and answer approvals");
 		expect(control.message).toMatch(/[█▀▄]/);
+		// A read-only link asks too: declining publishes nothing.
+		await command.handler("view", ctx);
+		expect(ctx.ui.notes.at(-1)).toEqual({ message: "Cancelled: nothing was published.", type: "info" });
+		await command.handler("status", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).not.toContain("view link");
+		ctx.ui.confirms.push(true);
 		await command.handler("view", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain(`#access=${server.viewToken}`);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("can read every session on this machine");
@@ -77,9 +83,13 @@ describe("/remote", () => {
 		const { origin, token } = await daemon();
 		const headless = fakeCtx({ cwd: "/tmp", hasUI: false });
 		const command = remoteCommand(host(async () => ({ origin, token })));
+		// Nobody can agree to a view link either: refused, nothing published.
 		await command.handler("view", headless);
-		expect(headless.ui.notes.at(-1)!.message).toContain("http://");
-		expect(headless.ui.notes.at(-1)!.message).not.toMatch(/[█▀▄]/);
+		expect(headless.ui.notes.at(-1)).toEqual({
+			message: expect.stringContaining("octocode remote link view"),
+			type: "warning",
+		});
+		expect(headless.ui.notes.at(-1)!.message).not.toContain("http://");
 		// Nobody can agree to a control link: it is refused and points to the explicit command.
 		await command.handler("", headless);
 		expect(headless.ui.notes.at(-1)).toEqual({
@@ -98,6 +108,7 @@ describe("/remote", () => {
 			),
 		);
 		const ctx = fakeCtx({ cwd: "/tmp" });
+		ctx.ui.confirms.push(true);
 		await command.handler("view", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(
 			/Open on the other device: http:\/\/127\.0\.0\.1:1\/relay\/#k=[\w-]{43}/,

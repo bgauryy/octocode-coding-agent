@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateCallToolResult } from "../../src/client/client/results.ts";
+import { McpError } from "../../src/client/protocol/jsonrpc.ts";
 
 const content = (...blocks: unknown[]) => validateCallToolResult({ content: blocks }).content;
 
@@ -53,5 +54,16 @@ describe("tool result resources", () => {
 		{ type: "resource_link", uri: "x://a", name: "a", size: "big" },
 	])("rejects a malformed resource block %#", (block) => {
 		expect(() => content(block)).toThrow("Invalid MCP tool content");
+	});
+});
+
+describe("tool result isError", () => {
+	it.each(["true", 1, null, {}])("rejects a non-boolean isError (%j) as a protocol error", (isError) => {
+		expect(() => validateCallToolResult({ content: [], isError })).toThrow(McpError);
+	});
+
+	it("keeps a boolean isError and allows it absent", () => {
+		expect(validateCallToolResult({ content: [], isError: true }).isError).toBe(true);
+		expect(validateCallToolResult({ content: [] })).not.toHaveProperty("isError");
 	});
 });

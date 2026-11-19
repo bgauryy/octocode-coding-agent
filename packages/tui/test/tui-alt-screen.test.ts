@@ -101,9 +101,11 @@ describe("TuiAltScreen", () => {
 	it("shows a clickable jump-to-end indicator on the transcript's last row while scrolled up", async () => {
 		const terminal = new VirtualTerminal(30, 6);
 		const rowsBelow: number[] = [];
+		const percents: number[] = [];
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
-			scrollToEndIndicator: (count) => {
+			scrollToEndIndicator: (count, percent) => {
 				rowsBelow.push(count);
+				percents.push(percent);
 				return "\x1b[7m ↓ Jump to end \x1b[27m";
 			},
 		});
@@ -126,6 +128,8 @@ describe("TuiAltScreen", () => {
 		assert.strictEqual(transcript.isFollowingEnd, false);
 		assert.strictEqual(terminal.getViewport()[3]?.trimEnd(), "line 7  ↓ Jump to end");
 		assert.equal(rowsBelow.at(-1), 1);
+		// Scrolled to row 3 of the 4 the transcript overflows by (8 rows in a 4-row view).
+		assert.equal(percents.at(-1), 75);
 		assert.strictEqual(terminal.getViewport()[4]?.trimEnd(), "editor");
 
 		// Pressing next to the label starts a selection instead of jumping.

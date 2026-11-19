@@ -138,11 +138,11 @@ export function registerCompactTool(api: FeatureSetup, requests: CompactRequests
 			label: "Compact",
 			promptSnippet: renderPrompt("tools/compact/snippet.md"),
 			description:
-				"Summarize older turns to free context once this reply ends; the task then resumes from the summary, so end your reply after calling it.",
+				"Summarize older turns to free context when this reply ends; the task resumes from the summary, so end the reply after calling it.",
 			parameters: Type.Object({
 				// No schema bound (tool schemas carry none, `schema-shape.test`): the length is applied in `execute`.
 				focus: Type.Optional(
-					Type.String({ description: "What you need after the summary: next step, open questions, files in work" }),
+					Type.String({ description: "What you need next: next step, open questions, files in work" }),
 				),
 			}),
 			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

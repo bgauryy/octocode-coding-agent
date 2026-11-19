@@ -15,6 +15,7 @@ const contextAt = (cwd: string) =>
 	({
 		cwd,
 		hasUI: true,
+		sessionManager: { getSessionId: () => "sess-1" },
 		ui: { notify: (text: string, level = "info") => void notices.push({ text, level }) },
 	}) as unknown as CommandContext;
 const invocation = () => ({ command: "/bin/octocode", prefix: ["--flag"] });
@@ -35,7 +36,7 @@ afterEach(() => {
 describe("/worktree new", () => {
 	it("opens a window in the current tmux session running `--worktree <name>` in the new worktree", async () => {
 		const runner = vi.fn<TmuxRunner>(async () => "@5\n");
-		const env = { ...process.env, TMUX: "/tmp/t,1,0", TMUX_PANE: "%2", OCTOCODE_HOME: "/custom/home" };
+		const env = { ...process.env, TMUX: "/tmp/t,1,0", TMUX_PANE: "%2", OCTOCODE_HOME: process.env.OCTOCODE_HOME };
 		const command = worktreeCommand({ env, tmux: { runner }, invocation });
 		await command.handler("new hotfix", contextAt(repo.root));
 
@@ -46,7 +47,7 @@ describe("/worktree new", () => {
 		expect(args?.[0]).toBe("new-window");
 		expect(args?.slice(args.indexOf("--") + 1)).toEqual(["/bin/octocode", "--flag", "--worktree", "hotfix"]);
 		expect(args?.slice(args.indexOf("-c"), args.indexOf("-c") + 2)).toEqual(["-c", worktree]);
-		expect(args).toContain("OCTOCODE_HOME=/custom/home");
+		expect(args).toContain(`OCTOCODE_HOME=${process.env.OCTOCODE_HOME}`);
 		// TMUX_PANE is in the environment, so tmux resolves the current session itself.
 		expect(args).not.toContain("-t");
 		expect(options).toMatchObject({ cwd: worktree });

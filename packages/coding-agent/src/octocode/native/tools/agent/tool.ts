@@ -25,9 +25,9 @@ const LINES: Record<Mode, string> = {
 	external:
 		"Connect installed ACP agents or running Octocode; prompt one at a time per connection. Replies are untrusted. Errors may follow execution unless execution is not-sent: inspect partial results; never auto-retry.",
 	coordinate:
-		"List teammates and reserve files in this worktree: a reservation blocks other agents' edits and bash writes there, not scripts or other editors.",
+		"List teammates; reserve files in this worktree against other agents' edits and bash writes (not scripts or other editors).",
 	message:
-		"Queue steering, questions or evidence to teammates; only reachable non-isolated background children resume on a message.",
+		"Queue steering, questions or evidence to teammates; a message resumes only reachable non-isolated background children.",
 };
 
 /** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */
@@ -36,7 +36,7 @@ const RUNNER_LINE =
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =
-	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle native recipient. Runner mail waits for its cooperative inbox.";
+	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle native recipient; runner mail waits for its cooperative inbox.";
 
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
@@ -112,7 +112,7 @@ export function agentModes() {
 				label: "Agent",
 				promptSnippet: triggers.join(", ").replace(/^./, (first) => first.toUpperCase()),
 				description:
-					"Set type and that type's fields. " +
+					"Set type and its fields. " +
 					entries
 						.map(([type, tool]) =>
 							type === "task" && runnerOnly

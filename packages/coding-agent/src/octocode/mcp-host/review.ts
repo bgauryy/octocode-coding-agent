@@ -2,7 +2,7 @@ import type { McpHostPorts } from "../../../../mcp/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { mcpItem } from "../guard/items.ts";
-import { visible } from "../guard/report.ts";
+import { visible } from "../guard/visible.ts";
 import { scan } from "../guard/scan.ts";
 import { enforces, recordGate } from "../guard/registry.ts";
 import { gate, scopeFor } from "../guard/store.ts";

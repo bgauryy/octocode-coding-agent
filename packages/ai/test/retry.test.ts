@@ -6,6 +6,9 @@ import {
 	isRetryableAssistantError,
 	RATE_LIMIT_MIN_RETRIES,
 	RATE_LIMIT_WINDOW_MS,
+	TIMEOUT_RETRY_WINDOW_MS,
+	describeRetryOutcome,
+	mayRetry,
 	type RetryPolicy,
 	retryAssistantCall,
 	retryBudget,
@@ -460,5 +463,44 @@ describe("retryAssistantCall", () => {
 			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }));
 		expect(retryable("Upstream returned 502.")).toBe(true);
 		expect(retryable("cost is 502.25 dollars")).toBe(false);
+	});
+});
+
+describe("timeout retries", () => {
+	const timedOut = "Model stream idle: no data received for 300000ms (timed out)";
+
+	it("allows configured attempts until the first request's age reaches the timeout window", () => {
+		expect(mayRetry(1, 3, timedOut, 0, TIMEOUT_RETRY_WINDOW_MS - 1)).toBe(true);
+		expect(mayRetry(1, 3, timedOut, 0, TIMEOUT_RETRY_WINDOW_MS)).toBe(false);
+		// Other failures keep every configured attempt however long the requests took.
+		expect(mayRetry(3, 3, "503 Service Unavailable", 0, TIMEOUT_RETRY_WINDOW_MS * 5)).toBe(true);
+	});
+
+	it("bounds a loop of stalled requests to the window, not to the configured attempts", async () => {
+		const real = Date.now.bind(Date);
+		let offset = 0;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+		let calls = 0;
+		try {
+			const policy: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 1 };
+			const result = await retryAssistantCall(
+				async () => {
+					calls++;
+					offset += 300_000;
+					return fauxAssistantMessage("", { stopReason: "error", errorMessage: timedOut });
+				},
+				policy,
+				undefined,
+			);
+			expect(result.stopReason).toBe("error");
+			expect(calls).toBe(2);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it("describes attempts and elapsed time", () => {
+		expect(describeRetryOutcome("boom", 3, 905_400)).toBe("boom (3 attempts over 905s)");
+		expect(describeRetryOutcome("boom", 1, 1000)).toBe("boom (1 attempt over 1s)");
 	});
 });

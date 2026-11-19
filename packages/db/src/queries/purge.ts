@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import * as compactions from "./compactions.ts";
 import * as machineSamples from "./machine-samples.ts";
+import * as openings from "./openings.ts";
 import * as processSamples from "./process-samples.ts";
 import { eraseMirror, eraseRows } from "./sessions.ts";
 import { inTransaction } from "./transaction.ts";
@@ -189,6 +190,7 @@ export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOption
 		counts.process_samples = processSamples.keepOnly(db, keep);
 		// Machine-wide figures belong to no session, so none is kept.
 		counts.machine_samples = machineSamples.clear(db);
+		counts.worktree_openings = openings.clear(db);
 	});
 	return counts;
 }

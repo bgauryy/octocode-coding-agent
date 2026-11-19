@@ -42,6 +42,8 @@ export class CustomEditor extends Editor {
 	public onPasteText?: (text: string) => string | undefined;
 	/** Up in an empty editor without autocomplete; return true to take it, false to browse prompt history as usual. */
 	public onEmptyUp?: () => boolean;
+	/** `?` typed in an empty editor (the shortcut list); the key is consumed and nothing is inserted. */
+	public onEmptyQuestion?: () => void;
 
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: CustomEditorOptions) {
 		super(tui, theme, options);
@@ -133,10 +135,15 @@ export class CustomEditor extends Editor {
 			...this.actionHandlers.keys(),
 		];
 		if (this.onEmptyUp) appKeys.push("tui.editor.cursorUp");
+		if (char === "?" && this.takesQuestionMark()) return false;
 		// A typed ASCII character: the bindings it matches are known, most often none.
 		const typed = this.keybindings.typedBindings(char);
 		if (typed) return !appKeys.some((action) => typed.has(action));
 		return !appKeys.some((action) => this.keybindings.matches(char, action));
+	}
+
+	private takesQuestionMark(): boolean {
+		return this.onEmptyQuestion !== undefined && this.getText().length === 0;
 	}
 
 	protected override typedRunInput(): (data: string) => void {
@@ -228,6 +235,11 @@ export class CustomEditor extends Editor {
 			this.keybindings.matches(data, "tui.editor.cursorUp") &&
 			this.onEmptyUp()
 		) {
+			return;
+		}
+
+		if (data === "?" && this.takesQuestionMark()) {
+			this.onEmptyQuestion?.();
 			return;
 		}
 

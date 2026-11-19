@@ -18,8 +18,8 @@ export default defineConfig({
 			"packages/*/vitest.config.ts",
 			"!packages/acp/vitest.config.ts",
 			project("acp", "vitest.config.ts", 1),
-			project("coding-agent", "vitest.octocode.config.ts", 1, "octocodecode-native"),
-			project("coding-agent", "vitest.e2e.config.ts", 2, "octocodecode-e2e"),
+			project("coding-agent", "vitest.octocode.config.ts", 1, "octocode-agent-native"),
+			project("coding-agent", "vitest.e2e.config.ts", 2, "octocode-agent-e2e"),
 		],
 	},
 });

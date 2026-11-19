@@ -8,7 +8,9 @@ import {
 	ConfigCredentialCommandSchema,
 	ConfigProviderCommandSchema,
 	ConfigSettingCommandSchema,
+	HarnessIdSchema,
 	HarnessSwitchCommandSchema,
+	SecurityActionCommandSchema,
 	SignInCommandSchema,
 	SignInStateSchema,
 	ToolPinCommandSchema,
@@ -16,6 +18,7 @@ import {
 	type ConfigProviderCommand,
 	type ConfigSettingCommand,
 	type HarnessSwitchCommand,
+	type SecurityActionCommand,
 	type SignInCommand,
 	type SignInState,
 	type ToolPinCommand,
@@ -47,8 +50,14 @@ export interface ConfigRoutes {
 	signIn?: (command: SignInCommand) => Promise<SignInState>;
 	/** Lists the Harness panel's switches for the workspace; the caller validates its shape. */
 	harness?: (repo: Repo) => Promise<unknown>;
+	/** Scans what switching harness row `id` on would bring; the caller validates its shape. Throws when the scan fails. */
+	previewHarness?: (id: string, repo: Repo) => Promise<unknown>;
 	/** Switches one Harness row and returns the fresh list; throws `ConfigWriteError` for a refusal. */
 	writeHarness?: (command: HarnessSwitchCommand, repo: Repo) => Promise<unknown>;
+	/** Lists the Security panel's reviewed items for the workspace; the caller validates its shape. */
+	security?: (repo: Repo) => Promise<unknown>;
+	/** Approves, denies or forgets one reviewed item and returns the fresh list; throws `ConfigWriteError` for a refusal. */
+	writeSecurity?: (command: SecurityActionCommand, repo: Repo) => Promise<unknown>;
 	/**
 	 * Lists the Tools panel's rows (each tool's exposure state and pin) for the workspace; the caller validates its shape.
 	 * `live` is what the running session declares, when the page belongs to one.
@@ -187,8 +196,20 @@ const TOOLS_PANEL = (routes: ConfigRoutes): AdminPanel<ToolPinCommand> => ({
 	},
 });
 
+const SECURITY_PANEL = (routes: ConfigRoutes): AdminPanel<SecurityActionCommand> => ({
+	list: routes.security,
+	write: routes.writeSecurity,
+	isCommand: (body): body is SecurityActionCommand => Value.Check(SecurityActionCommandSchema, body),
+	words: {
+		list: "This daemon cannot list security reviews.",
+		write: "This daemon cannot record security decisions.",
+		invalid: "Invalid security action",
+		failed: "The decision could not be saved.",
+	},
+});
+
 /**
- * `GET` and `POST` of `/api/admin/config/harness` and `/api/admin/config/tools`: rows carry ids with file paths or the
+ * `GET` and `POST` of `/api/admin/config/harness`, `/api/admin/config/security` and `/api/admin/config/tools`: rows carry ids with file paths or the
  * names of configured servers, so both methods are launch-capability only.
  */
 async function handlePanel<Command extends { repoId?: string }>(
@@ -228,6 +249,30 @@ async function handlePanel<Command extends { repoId?: string }>(
 	}
 }
 
+/** `GET /api/admin/config/harness/preview?id=&repoId=`: the scan of switching one harness on; launch capability only, writes nothing. */
+async function handleHarnessPreview(
+	req: http.IncomingMessage,
+	url: URL,
+	access: TokenAccess,
+	routes: ConfigRoutes,
+	reply: Reply,
+): Promise<void> {
+	if (!canWrite(access))
+		return reply(403, { error: "This link cannot change settings. Use the page opened from the Octocode terminal." });
+	if (req.method !== "GET") return reply(405, { error: "Method not allowed" });
+	if (!routes.previewHarness) return reply(501, { error: "This daemon cannot preview harness switches." });
+	const id = url.searchParams.get("id") ?? "";
+	if (!Value.Check(HarnessIdSchema, id)) return reply(400, { error: "Invalid switch id" });
+	const repoParam = url.searchParams.get("repoId");
+	const repo = repoParam ? routes.catalog.resolve(repoParam) : undefined;
+	if (repoParam && !repo) return reply(404, { error: "Unknown repository" });
+	try {
+		reply(200, await routes.previewHarness(id, repo));
+	} catch (error) {
+		reply(500, { error: `The scan failed: ${redactSecrets(errorMessage(error)).slice(0, 400)}` });
+	}
+}
+
 /**
  * `GET /api/config` (every capability) and `POST /api/admin/config/settings` (launch capability only: the admin prefix
  * is refused to other tokens before this runs, and the check here keeps it true if the prefix gate moves). The write
@@ -251,8 +296,16 @@ export async function handleConfigRequest(
 		await handleMcpAddRequest(req, url, access, routes, reply);
 		return true;
 	}
+	if (url.pathname === DAEMON_ROUTES.configHarnessPreview) {
+		await handleHarnessPreview(req, url, access, routes, reply);
+		return true;
+	}
 	if (url.pathname === DAEMON_ROUTES.configHarness) {
 		await handlePanel(req, url, access, routes.catalog, HARNESS_PANEL(routes), reply);
+		return true;
+	}
+	if (url.pathname === DAEMON_ROUTES.configSecurity) {
+		await handlePanel(req, url, access, routes.catalog, SECURITY_PANEL(routes), reply);
 		return true;
 	}
 	if (url.pathname === DAEMON_ROUTES.configTools) {

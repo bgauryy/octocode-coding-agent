@@ -16,7 +16,7 @@ import { recordedUsage, runAgent, startRecordingProxy, type ProbeProvider, type 
  */
 
 const LIVE = process.env.TESTKIT_LIVE === "1";
-const BUNDLE = process.env.TESTKIT_OCTOCODECODE_BUNDLE ?? "";
+const BUNDLE = process.env.TESTKIT_OCTOCODE_AGENT_BUNDLE ?? "";
 const MODELS_JSON = process.env.TESTKIT_LIVE_MODELS_JSON ?? join(homedir(), ".octocode", "octocodecode", "models.json");
 
 /** Cheapest chat model per provider, by the shipped model data (USD per MTok input / cache read / cache write). */

@@ -39,5 +39,5 @@ export function renderMessages(context: AgentContext): string {
 /** The folder's `README.md`: what it is and one link per agent. */
 export function renderIndex(): string {
 	const agents = AGENTS.map((agent) => `- [\`${agent.name}/\`](${agent.name}/system.md): ${agent.about}`).join("\n");
-	return `# Rendered agent contexts\n\nWritten by every build, and by \`yarn workspace @octocodeai/octocodecode run generate:prompts\`; do not edit. Each folder holds the system prompt, tools and first messages one agent receives.\n\n${agents}\n`;
+	return `# Rendered agent contexts\n\nWritten by every build, and by \`yarn workspace @octocodeai/octocode-agent run generate:prompts\`; do not edit. Each folder holds the system prompt, tools and first messages one agent receives.\n\n${agents}\n`;
 }

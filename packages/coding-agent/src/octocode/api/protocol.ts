@@ -86,6 +86,12 @@ export const success = (id: RpcId, result: unknown): RpcResponse => ({ jsonrpc: 
 
 /** `queued` of a send still waiting for the receiving session's user to allow it. */
 export const WAITING_FOR_USER = "waiting-for-user";
+/** What a keyed `message.send` that does not wait answers when its preparation is still running after `SEND_ACK_MS`. */
+export const PREPARING = "preparing";
+/** How long a keyed send that does not wait prepares before the receiver acknowledges it as `PREPARING`. */
+export const SEND_ACK_MS = 5_000;
+/** How long a sender waits for that answer: the acknowledgement, plus time for the connection and the reply. */
+export const SEND_REPLY_MS = 20_000;
 
 /** An event the instance publishes. `seq` is per instance and strictly increasing, so a client can resume with `since`. */
 export interface ApiEvent {

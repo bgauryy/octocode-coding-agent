@@ -56,14 +56,14 @@ export function registerAskUser(api: FeatureSetup, storedQuestion?: StoredQuesti
 			roleVariant: true,
 			label: "Ask user",
 			promptSnippet: renderPrompt("tools/ask-user/snippet.md"),
-			description: `Ask the user anything (decision, approval, fact, what they meant); answers arrive this turn. Never write a user question in a reply. Batch related, self-contained questions; at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options (none for free text); put the recommendation supported by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in. timeout takes the recommended option unanswered: only routine go-on questions with a safe default, never costly, irreversible or authorizing ones.`,
+			description: `Ask the user anything (decision, approval, fact, what they meant); answers arrive this turn. Never write a user question in a reply. Batch related, self-contained questions, at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options, each with its trade-off, the recommendation backed by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in. timeout takes the recommended option when unanswered: only for routine go-on questions with a safe default, never costly, irreversible or authorizing ones.`,
 			parameters: Type.Object({
 				forward: Type.Optional(
 					Type.Number({
-						description: "A child's message number: its question, verbatim, above your first",
+						description: "A child's message number: its question goes verbatim above your first",
 					}),
 				),
-				timeout: Type.Optional(Type.Integer({ description: "Seconds until the recommended option is taken" })),
+				timeout: Type.Optional(Type.Integer({ description: "Seconds" })),
 				questions: Type.Array(
 					Type.Object({
 						question: Type.String({ description: "One short sentence" }),
@@ -76,12 +76,16 @@ export function registerAskUser(api: FeatureSetup, storedQuestion?: StoredQuesti
 							Type.Array(
 								Type.Object({
 									label: Type.String({ description: "A few words" }),
-									description: Type.String({ description: "Why pick it: its evidence or trade-off" }),
+									description: Type.String({
+										description: "Why pick it: its trade-off (gain vs cost or risk) and evidence",
+									}),
 								}),
 							),
 						),
 						type: Type.Optional(
-							StringEnum(QUESTION_TYPES, { description: "multi: pick several; default choice, text without options" }),
+							StringEnum(QUESTION_TYPES, {
+								description: "multi: pick several; default: choice, or text without options",
+							}),
 						),
 					}),
 				),

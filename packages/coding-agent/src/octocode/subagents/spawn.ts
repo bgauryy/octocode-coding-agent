@@ -196,6 +196,8 @@ export async function spawnAgent(
 	}
 	const run = claimed;
 	const queued = !slot.held;
+	// A queued run measures no silence and shows as queued until it starts; `release` clears this on every exit.
+	if (queued) team.approvals.noteQueued(run.identity.id);
 	const isolation = new Isolation(run.identity.id, linked?.ref, resumed?.worktree);
 	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
@@ -336,6 +338,7 @@ export async function spawnAgent(
 				await runs.slots.take(queueSignal);
 				slot.held = true;
 				queueSignal.throwIfAborted();
+				team.approvals.noteStarted(run.identity.id, Date.now());
 				const started = await begin(queueSignal);
 				lateNote = `${lateNote}${started.warning}`;
 				details.startedAt = Date.now();

@@ -51,18 +51,22 @@ describe("a request still over the window after compaction", () => {
 		// The compaction before the prompt summarizes the earlier turn; the prompt's own request must not follow.
 		harness.setResponses([
 			fauxAssistantMessage("summary of the earlier turn"),
+			fauxAssistantMessage("summary of the failed turn"),
 			fauxAssistantMessage("must not be requested"),
 		]);
 
 		// The newest turn alone is about 3,000 tokens: no kept tail can fit, so the compaction fails before summarizing.
 		await harness.session.prompt(`next prompt ${"x".repeat(9_000)}`);
 
-		expect(harness.faux.state.callCount).toBe(1);
+		// The prompt's own request is never sent; the only later request summarizes the turn that failed, so the next
+		// prompt starts from room instead of from a context the window cannot hold.
+		expect(harness.faux.state.callCount).toBe(2);
 		const last = harness.session.agent.state.messages.at(-1) as AssistantMessage;
 		expect(last.stopReason).toBe("error");
 		expect(last.errorMessage).toMatch(/more than faux-small's 1,000-token window/);
 		expect(last.errorMessage).toMatch(/start a new session with \/new/);
-		const failed = harness.eventsOfType("compaction_end").at(-1);
-		expect(failed?.errorMessage).toMatch(/leaves no room for a summary/);
+		const ends = harness.eventsOfType("compaction_end");
+		expect(ends.find((end) => end.errorMessage)?.errorMessage).toMatch(/leaves no room for a summary/);
+		expect(ends.at(-1)?.result?.summary).toBe("summary of the failed turn");
 	});
 });

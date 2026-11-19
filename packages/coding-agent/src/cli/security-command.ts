@@ -1,9 +1,5 @@
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
-import { loadMcpConfig } from "../../../mcp/src/api.ts";
-import { effectivePlugins } from "../core/extensibility/toggles.ts";
-import { DefaultResourceLoader } from "../core/resource-loader.ts";
-import { SettingsManager } from "../core/settings-manager.ts";
 import {
 	approveAll,
 	checkTable,
@@ -14,14 +10,11 @@ import {
 	refreshed,
 	SecurityCommandError,
 } from "../octocode/guard/actions.ts";
-import { enforces, isWithheld, knownReviews, resetGateRecords } from "../octocode/guard/registry.ts";
+import { collectReviews } from "../octocode/guard/collect.ts";
+import { isWithheld, resetGateRecords } from "../octocode/guard/registry.ts";
 import { renderReport } from "../octocode/guard/report.ts";
 import type { GuardOptions } from "../octocode/guard/store.ts";
-import type { Review } from "../octocode/guard/types.ts";
-import { NATIVE_FEATURES } from "../main/native-features.ts";
-import { loadHooks } from "../octocode/hooks/config.ts";
 import { belowSession, insideSessionShell, sessionShellRefusal } from "../octocode/trust/session-shell.ts";
-import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 
 const USAGE = `Usage:
   ${APP_NAME} security list [text]
@@ -46,30 +39,6 @@ export interface SecurityCommandIo {
 	err?: (text: string) => void;
 	/** Whether a running session started this process; the process tree by default. */
 	belowSession?: () => boolean;
-}
-
-/** Runs the loaders a session runs, without starting one, and returns what the guard found. */
-async function collect(cwd: string, agentDir: string): Promise<{ reviews: Review[]; trusted: boolean }> {
-	resetGateRecords();
-	const trusted = resolveFolderTrust(cwd).state === "trusted";
-	const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: trusted });
-	const settings = settingsManager.getSettings();
-	loadHooks(cwd, trusted, undefined, {
-		plugins: effectivePlugins(settings, cwd),
-		toggles: settings.toggles ?? {},
-		gate: { enforce: enforces(settingsManager.getGlobalSettings(), "hook") },
-	});
-	loadMcpConfig({ agentDir, cwd, projectTrusted: trusted });
-	await new DefaultResourceLoader({
-		cwd,
-		agentDir,
-		settingsManager,
-		// The skills a session lists include the ones Octocode ships.
-		nativeFeatures: NATIVE_FEATURES,
-		noThemes: true,
-		noContextFiles: true,
-	}).loadSkillsOnly();
-	return { reviews: knownReviews(), trusted };
 }
 
 /** Runs `octocode security ...` and returns the exit code: 0 done, 1 refused or failed. */
@@ -101,7 +70,8 @@ export async function runSecurityCommand(args: string[], io: SecurityCommandIo):
 	}
 	try {
 		await prepareAgentDb();
-		const found = await collect(io.cwd, io.agentDir ?? getAgentDir());
+		resetGateRecords();
+		const found = await collectReviews(io.cwd, io.agentDir ?? getAgentDir());
 		if (!found.trusted)
 			err(
 				"This folder is not trusted, so its own hooks, MCP servers and skills are not listed: `octocode trust add` first.",

@@ -1,3 +1,4 @@
+import { MAIL_MESSAGE_TYPE } from "@octocodeai/octocode-contracts/team";
 export interface MessageEnvelope {
 	channel: "internal" | "external";
 	direction: "outbound" | "inbound";
@@ -13,7 +14,7 @@ export interface MessageEnvelope {
 	/** The message stops the recipient's current step; set when known. */
 	interrupt?: boolean;
 }
-export const INTERNAL_MESSAGE_TYPE = "octocode-agent-message";
+export const INTERNAL_MESSAGE_TYPE = MAIL_MESSAGE_TYPE;
 export const EXTERNAL_MESSAGE_TYPE = "octocode-external-message";
 /** The custom message a background bash job sends its session when it ends (`native/tools/bash/tool.ts`); subagent reports read it too. */
 export const JOB_TYPE = "octocode-bash-job";

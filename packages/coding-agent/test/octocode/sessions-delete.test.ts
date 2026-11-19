@@ -78,6 +78,17 @@ describe("deleting sessions from the picker", () => {
 		expect(index.get("s-one")).toBeUndefined();
 	});
 
+	it("removes the paid compaction summary kept beside the transcript", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const [gone, other] = [session("s-paid"), session("s-other")];
+		const sidecar = (file: string) => `${file}.paid-summary.json`;
+		for (const file of [gone.file, other.file]) fs.writeFileSync(sidecar(file), "{}");
+		const outcome = await pickerRemoval(index, () => undefined)([gone.info]);
+		expect(outcome.problems).toEqual([]);
+		expect(fs.existsSync(sidecar(gone.file))).toBe(false);
+		expect(fs.existsSync(sidecar(other.file))).toBe(true);
+	});
+
 	it("refuses a session another process runs, and the current one, and says why", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const [busy, current, plain] = [session("s-busy", process.pid), session("s-current"), session("s-plain")];

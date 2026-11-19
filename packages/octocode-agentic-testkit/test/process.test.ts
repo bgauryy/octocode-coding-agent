@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { octocodecodeAdapter } from "../src/adapters/octocodecode/index.ts";
+import { octocodeAgentAdapter } from "../src/adapters/octocode-agent/index.ts";
 import { claudeCodeAdapter } from "../src/adapters/claude-code/index.ts";
 import { codexAdapter } from "../src/adapters/codex/index.ts";
 import { referenceAdapter } from "../src/adapters/reference/index.ts";
@@ -108,10 +108,10 @@ console.error("leak "+process.env.TESTKIT_PROVIDER_KEY);`,
 	return file;
 }
 
-describe("octocodecode adapter options", () => {
+describe("octocode-agent adapter options", () => {
 	it("writes skills, settings, provider, mcp config; passes prompts, thinking and the key privately", async () => {
 		const gw = await gateway({ responder: script([{ text: "x" }]) });
-		const session = await octocodecodeAdapter({
+		const session = await octocodeAgentAdapter({
 			bundle: fakeBundle(),
 			skills: { s1: "# skill" },
 			settings: { theme: "x" },
@@ -157,7 +157,7 @@ describe("octocodecode adapter options", () => {
 	});
 
 	it("defaults to the testkit provider and string input", async () => {
-		const session = await octocodecodeAdapter({ bundle: fakeBundle() }).start({
+		const session = await octocodeAgentAdapter({ bundle: fakeBundle() }).start({
 			gatewayUrl: "http://127.0.0.1:9",
 			files: { "w/f.txt": "ctx" },
 		});
@@ -170,7 +170,7 @@ describe("octocodecode adapter options", () => {
 	});
 
 	it("persistSession drops --no-session", async () => {
-		const session = await octocodecodeAdapter({ bundle: fakeBundle(), persistSession: true }).start({
+		const session = await octocodeAgentAdapter({ bundle: fakeBundle(), persistSession: true }).start({
 			gatewayUrl: "http://127.0.0.1:9",
 		});
 		const r = await session.run("solo");

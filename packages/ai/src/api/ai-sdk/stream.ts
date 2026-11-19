@@ -180,6 +180,9 @@ export function streamSdk(
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 		} catch (caught) {
 			const error = completions.error ?? caught;
+			// Usage the endpoint already reported is billed even when the stream never reaches its finish chunk.
+			if (model.api === "openai-completions" && completions.usage)
+				output.usage = parseChunkUsage(completions.usage, model as Model<"openai-completions">);
 			output.stopReason =
 				options.signal?.aborted || (error instanceof Error && error.name === "AbortError") ? "aborted" : "error";
 			output.errorMessage =

@@ -81,9 +81,13 @@ const fetchTool: ToolDef = {
  * Compaction: T1 edits `src/edited.ts` and writes a scratch file under `.octocode/tmp` with `file`, and reads
  * `src/read.ts` whole through an MCP tool declared as a reader (or, with `editFile: false`, only reads both). T2 brings
  * about 25k estimated tokens and the agent calls `compact`: the recent-token tail keeps T2, so the compaction
- * summarizes exactly T1, and the 96k window leaves room for the turn to continue after it.
+ * summarizes exactly T1, and the 96k window leaves room for the turn to continue after it. With `overflow`, no turn
+ * calls `compact` and the window is 58k, the middle of the band (56k-60k at the current prompt size) where exactly the
+ * checks before T3 and T4 cross the threshold and the restore still fits: T2 brings about 80 KB, T3 and T4 about 50 KB each. The check before T3 compacts T1 and T2, the
+ * one before T4 compacts T3, whose span holds the files only as the first compaction's read-back. (A T3 of 80 KB leaves
+ * no room for the second summary in this window: the compaction fails.)
  */
-async function compactionRun(opts: { summary: string; editFile?: boolean }) {
+async function compactionRun(opts: { summary: string; editFile?: boolean; overflow?: boolean }) {
 	const files = { "src/read.ts": READ_ONLY, "src/edited.ts": EDITED };
 	if (opts.editFile !== false) files["src/edited.ts"] = "export const edited = 0;\n";
 	const editStep: Step =
@@ -110,7 +114,7 @@ async function compactionRun(opts: { summary: string; editFile?: boolean }) {
 	const script = byTurn(
 		{
 			T1: [editStep, { toolCalls: [{ name: "mcp__src__fetch", args: { path: "src/read.ts" } }] }, { text: "T1 done" }],
-			T2: [{ toolCalls: [{ name: "compact", args: { reason: "boundary" } }] }],
+			...(opts.overflow ? {} : { T2: [{ toolCalls: [{ name: "compact", args: { reason: "boundary" } }] }] }),
 		},
 		opts.summary,
 	);
@@ -121,9 +125,16 @@ async function compactionRun(opts: { summary: string; editFile?: boolean }) {
 		.mockImplementation((args) => ({ path: args.path, content: files[String(args.path) as keyof typeof files] }));
 	try {
 		const run = await runFlow(gw, {
-			turns: ["T1 edit and read", `T2 ${block("FILL-T2", 250)}`],
+			turns: opts.overflow
+				? [
+						"T1 edit and read",
+						`T2 ${block("FILL-T2", 200)}`,
+						`T3 ${block("FILL-T3", 125)}`,
+						`T4 ${block("FILL-T4", 125)}`,
+					]
+				: ["T1 edit and read", `T2 ${block("FILL-T2", 250)}`],
 			files: { ...files },
-			contextWindow: 96_000,
+			contextWindow: opts.overflow ? 58_000 : 96_000,
 			mcp: { src: { url: await src.listen(), roles: { reader: ["fetch"] } } },
 		});
 		return { run, summaryRequests: script.summaryRequests };
@@ -212,6 +223,20 @@ describe("context flows (scripted gateway, real bundle)", () => {
 			expect(measured.injected).toBeLessThanOrEqual(INJECTED_SUMMARY_MAX);
 		}, 180_000);
 
+		it("after a second compaction, the file edited before the first still comes back whole", async (ctx) => {
+			requireBundle(ctx);
+			const { run, summaryRequests } = await compactionRun({ summary: SUMMARY, overflow: true });
+			expect(run.exitCode, run.stderr).toBe(0);
+			expect(summaryRequests.length, "two compactions").toBe(2);
+			const expectation = {
+				whole: { "src/edited.ts": EDITED },
+				notWhole: { "src/read.ts": READ_ONLY },
+				absent: { scratch: "SCRATCH-BODY" },
+			};
+			const found = summaryRequests.map((request) => restoreViolations(afterCompaction(run, request), expectation));
+			expect(found, "after the first and the second compaction").toEqual([[], []]);
+		}, 180_000);
+
 		it("negative: a file only read, never edited, does not come back whole", async (ctx) => {
 			requireBundle(ctx);
 			const { run, summaryRequests } = await compactionRun({ summary: SUMMARY, editFile: false });
@@ -228,6 +253,25 @@ describe("context flows (scripted gateway, real bundle)", () => {
 			const { run, summaryRequests } = await compactionRun({ summary: long });
 			expect(run.exitCode, run.stderr).toBe(0);
 			expect(summaryBytes(run, summaryRequests).injected).toBeGreaterThan(INJECTED_SUMMARY_MAX);
+		}, 180_000);
+	});
+
+	describe("prompts that each nearly fill a small window", () => {
+		it("leave the session able to answer a short prompt after them", async (ctx) => {
+			requireBundle(ctx);
+			const gw = await gateway({ responder: sequence([]) });
+			try {
+				// Five prompts of about 80 KB on a 64k window: the newest turn kept whole leaves no room for a summary.
+				const big = [1, 2, 3, 4, 5].map((i) => `T${i} ${block(`BIG-${i}`, 200)}`);
+				const run = await runFlow(gw, { turns: [...big, "T6 short"], files: {}, contextWindow: 64_000 });
+				expect(run.exitCode, run.stderr).toBe(0);
+				const short = mainRequests(run.requests).filter((r) =>
+					r.messages.some((m) => m.role === "user" && textOf(m.content).includes("T6 short")),
+				);
+				expect(short.length, "the short prompt reached the model").toBeGreaterThan(0);
+			} finally {
+				await gw.close();
+			}
 		}, 180_000);
 	});
 

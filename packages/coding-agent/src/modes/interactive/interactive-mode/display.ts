@@ -7,6 +7,7 @@ import { GLYPH, type MarkdownTheme, Spacer, ThemedText, TONE } from "@octocodeai
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MarkdownTransformer, ToolRenderers } from "../../../core/features/index.ts";
 import { withBuiltInRenderers } from "../../../octocode/files/built-in-renderers.ts";
+import { itemTitle, withItemTitlesInMarkdown } from "../../../octocode/render/item-titles.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
@@ -74,8 +75,12 @@ export function getRegisteredToolDefinition(host: DisplayHost, toolName: string)
 	);
 }
 
+/** A backlog ID in a reply is drawn with its title (`B12 “Title”`) at its first mention; the stored reply is unchanged. */
+const itemTitleTransformer: MarkdownTransformer = (markdown, context) =>
+	context.messageType === "assistant" ? withItemTitlesInMarkdown(markdown, itemTitle) : markdown;
+
 export function getMarkdownTransformers(host: DisplayHost): MarkdownTransformer[] {
-	return [host.mermaidMarkdownTransformer];
+	return [itemTitleTransformer, host.mermaidMarkdownTransformer];
 }
 
 export function clearEditor(host: DisplayHost): void {

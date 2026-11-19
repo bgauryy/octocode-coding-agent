@@ -2,7 +2,7 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts";
 
 export interface AgentNode {
 	agent: Member;
-	/** The host marked it `waiting` for the user, messages wait on its answer, or a message to it is still awaiting reply. */
+	/** The host marked it `waiting` for the user, messages wait on its answer, or a message to it, not a child's request to its parent, is still awaiting reply. */
 	attention: boolean;
 	/** The newest message this agent sent or received. */
 	last: Traffic | undefined;
@@ -36,13 +36,25 @@ const order = (a: AgentNode, b: AgentNode) => rank(a) - rank(b) || a.agent.id.lo
  * is not listed is a root, and members of a parent cycle are rooted at the first one met so none disappears.
  */
 export function buildRoster(agents: readonly Member[], traffic: readonly Traffic[]): AgentNode[] {
-	const waiting = new Set(traffic.filter((message) => message.state === "awaiting reply").flatMap((m) => m.to));
+	const parentOf = new Map(agents.map((agent) => [agent.id, agent.parentId]));
+	// A child asking its parent waits on the parent, not the user: the terminal panel labels it "asks parent".
+	const fromChild = (message: Traffic, recipient: string) => parentOf.get(message.from) === recipient;
+	const waiting = new Map<string, number>();
+	const fromChildren = new Map<string, number>();
+	for (const message of traffic) {
+		if (message.state !== "awaiting reply") continue;
+		for (const id of message.to) {
+			const counts = fromChild(message, id) ? fromChildren : waiting;
+			counts.set(id, (counts.get(id) ?? 0) + 1);
+		}
+	}
 	const nodes = new Map<string, AgentNode>(
 		agents.map((agent) => [
 			agent.id,
 			{
 				agent,
-				attention: Boolean(agent.waiting) || (agent.pending ?? 0) > 0 || waiting.has(agent.id),
+				attention:
+					Boolean(agent.waiting) || (agent.pending ?? 0) > (fromChildren.get(agent.id) ?? 0) || waiting.has(agent.id),
 				last: lastMessage(agent.id, traffic),
 				children: [],
 			},

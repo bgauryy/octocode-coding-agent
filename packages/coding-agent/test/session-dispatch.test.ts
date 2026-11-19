@@ -201,7 +201,7 @@ it("cancels pending preflight before it can start a model run and preserves the 
 		await h.session.abort();
 		release.resolve();
 		await vi.waitFor(() => expect(responses).toHaveLength(1));
-		expect(responses[0]).toMatchObject({ success: false, error: "Prompt dispatch cancelled" });
+		expect(responses[0]).toMatchObject({ success: true, data: { outcome: { status: "aborted" } } });
 		expect(h.events.some((event) => event.type === "agent_start")).toBe(false);
 		h.setResponses([fauxAssistantMessage("next answer")]);
 		handlePrompt(h.session, { type: "prompt", message: "next", waitForCompletion: true }, (value) =>

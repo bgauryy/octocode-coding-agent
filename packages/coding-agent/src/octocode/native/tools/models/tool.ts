@@ -51,15 +51,13 @@ export function registerModelsTool(
 		description:
 			"Session model and all connected models: price, context, abilities, thinking, cutoff, credential mark. Filters combine and add purpose/profile routes.",
 		parameters: Type.Object({
-			routes: Type.Optional(Type.Boolean({ description: "Include purpose/profile routes without a filter" })),
-			provider: Type.Optional(Type.String({ description: "List this provider's models or external vendor/runner ID" })),
+			routes: Type.Optional(Type.Boolean({ description: "Add the routes without a filter" })),
+			provider: Type.Optional(Type.String({ description: "This provider's models, or an external vendor/runner ID" })),
 			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
-			query: Type.Optional(
-				Type.String({ description: "Keep models whose provider/id or external route identity contains this text" }),
-			),
+			query: Type.Optional(Type.String({ description: "Text in provider/id or external route identity" })),
 			check: Type.Optional(
 				Type.Boolean({
-					description: "true: check credentials by listing or small requests (may cost)",
+					description: "true: test credentials by listing or small requests (may cost)",
 				}),
 			),
 			scope: Type.Optional(

@@ -28,14 +28,14 @@ describe("backlog discovery in the native footer", () => {
 		expect(top).not.toContain("/web");
 		expect(top).toContain("15.5k tok (↑12.4k ↓3.1k)");
 		expect(bottom).toMatch(/^model-x · Fix login · 2 compactions /);
-		if (counts.ongoing) expect(bottom).toContain("2 ongoing · 4 todo · 3 to triage");
+		if (counts.ongoing) expect(bottom).toContain("2 ongoing · 4 todo · 3 backlog");
 	});
 
-	it("shows this session's open tasks after the counts and still shortens to the hint", () => {
+	it("shows the open counts, never the closed total, and still shortens to the hint", () => {
 		const statuses = new Map([
-			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 }), 5) }],
+			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],
 		]);
-		expect(footerLines(state, "main", statuses, theme, 200)[1]).toContain("2 ongoing · 4 todo · 3 to triage · 5 tasks");
+		expect(footerLines(state, "main", statuses, theme, 200)[1]).toContain("2 ongoing · 4 todo · 3 backlog");
 		expect(footerLines(state, "main", statuses, theme, 60)[1]).toContain("/web");
 	});
 

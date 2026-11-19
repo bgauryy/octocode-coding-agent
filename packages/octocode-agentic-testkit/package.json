@@ -83,11 +83,11 @@
 			"import": "./dist/adapters/codex/index.js",
 			"default": "./dist/adapters/codex/index.js"
 		},
-		"./adapters/octocodecode": {
-			"source": "./src/adapters/octocodecode/index.ts",
-			"types": "./dist/adapters/octocodecode/index.d.ts",
-			"import": "./dist/adapters/octocodecode/index.js",
-			"default": "./dist/adapters/octocodecode/index.js"
+		"./adapters/octocode-agent": {
+			"source": "./src/adapters/octocode-agent/index.ts",
+			"types": "./dist/adapters/octocode-agent/index.d.ts",
+			"import": "./dist/adapters/octocode-agent/index.js",
+			"default": "./dist/adapters/octocode-agent/index.js"
 		}
 	},
 	"files": [
@@ -131,8 +131,8 @@
 		"@anthropic-ai/sandbox-runtime": "0.0.83"
 	},
 	"peerDependencies": {
-		"vitest": ">=5.1.0 <6",
-		"@types/node": ">=24"
+		"@types/node": ">=24",
+		"vitest": ">=5.1.0 <6"
 	},
 	"peerDependenciesMeta": {
 		"@types/node": {

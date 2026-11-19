@@ -39,7 +39,7 @@ export interface HarnessWriteOptions extends HarnessConfigOptions {
 const KINDS: ReadonlySet<string> = new Set(HARNESS_ROW_KINDS);
 const isRowKind = (kind: string): kind is HarnessRowKind => KINDS.has(kind);
 
-function open(options: HarnessConfigOptions) {
+export function open(options: HarnessConfigOptions) {
 	const trusted = options.cwd !== undefined && resolveFolderTrust(options.cwd).state === "trusted";
 	const cwd = options.cwd ?? options.agentDir;
 	const settings = SettingsManager.create(cwd, options.agentDir, { projectTrusted: trusted });

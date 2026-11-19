@@ -21,6 +21,8 @@ export const APPLICATION_EVENT_ROUTES = {
 	compaction_start: "status+activity",
 	// Once a second while a summary streams: the status line shows it; the activity log would only repeat it.
 	compaction_progress: "status",
+	// Refreshed every few seconds while a request is quiet: the status line shows it; the activity log would only repeat it.
+	model_wait: "status",
 	compaction_end: "status+activity",
 	entry_appended: "activity",
 	session_info_changed: "activity",

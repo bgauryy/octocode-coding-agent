@@ -6,7 +6,17 @@ import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SEND
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { capChars } from "../../shared/util.ts";
 import type { EventLog } from "../events.ts";
-import { ERR, MESSAGE_KEY_MAX, numberParam, RpcError, stringParam, WAIT_MS, WAITING_FOR_USER } from "../protocol.ts";
+import {
+	ERR,
+	MESSAGE_KEY_MAX,
+	numberParam,
+	PREPARING,
+	RpcError,
+	SEND_ACK_MS,
+	stringParam,
+	WAIT_MS,
+	WAITING_FOR_USER,
+} from "../protocol.ts";
 import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
 import { sessionApiTurnCeiling } from "../enabled.ts";
 import { admission, callerFrom, type ExternalFacts, externalFacts, externalFooter, externalHeader } from "./caller.ts";
@@ -85,7 +95,14 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 				execution: "not-sent",
 			});
 		if (wait) return { ...prior.accepted, ...(await host.receipts.wait(prior, timeout)) };
-		await prior.ready;
+		let ackTimer: NodeJS.Timeout | undefined;
+		const stillPreparing = await Promise.race([
+			prior.ready.then(() => false),
+			new Promise<boolean>((resolve) => {
+				ackTimer = setTimeout(() => resolve(true), Math.min(SEND_ACK_MS, timeout));
+			}),
+		]).finally(() => clearTimeout(ackTimer));
+		if (stillPreparing) return { ...prior.accepted, queued: PREPARING, key };
 		// `fail` records the failure whenever it marks a receipt uncertain.
 		if (prior.phase === "uncertain") throw prior.failure!;
 		return prior.accepted;
@@ -235,9 +252,20 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	})();
 	if (!wait) {
 		// A caller that does not wait hears at once that the user decides; a retry with its key gets the outcome.
-		if (await Promise.race([delivery.then(() => false), asking.then(() => true)])) {
+		// A keyed one is also acknowledged when its preparation outlasts the acknowledgement window: the receipt holds
+		// the message, and a retry with the key gets the outcome instead of dispatching it again.
+		let ackTimer: NodeJS.Timeout | undefined;
+		const slow = new Promise<"slow">((resolve) => {
+			if (key) ackTimer = setTimeout(() => resolve("slow"), Math.min(SEND_ACK_MS, timeout));
+		});
+		const early = await Promise.race([
+			delivery.then(() => undefined),
+			asking.then(() => WAITING_FOR_USER),
+			slow.then(() => PREPARING),
+		]).finally(() => clearTimeout(ackTimer));
+		if (early) {
 			delivery.catch(() => undefined);
-			return { ...accepted, queued: WAITING_FOR_USER, key: key ?? id };
+			return { ...accepted, queued: early, key: key ?? id };
 		}
 		return accepted;
 	}

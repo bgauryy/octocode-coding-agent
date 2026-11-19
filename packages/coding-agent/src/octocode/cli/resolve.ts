@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { installedPackageDir, readManifest } from "@octocodeai/octocode-common/package";
 import { isBunBinary } from "../../config.ts";
 
-/** The research CLI `octocode` that `@octocodeai/octocodecode` depends on: its entry script and package version. */
+/** The research CLI `octocode` that `@octocodeai/octocode-agent` depends on: its entry script and package version. */
 export interface OctocodeCli {
 	bin: string;
 	version: string;

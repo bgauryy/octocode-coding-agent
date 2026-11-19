@@ -1,5 +1,5 @@
 {
-	"name": "@octocodeai/octocodecode",
+	"name": "@octocodeai/octocode-agent",
 	"version": "1.3.0",
 	"description": "Octocode coding agent CLI with native tools, subagents, and session management",
 	"type": "module",

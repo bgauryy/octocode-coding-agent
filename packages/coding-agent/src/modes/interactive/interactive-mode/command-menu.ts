@@ -7,13 +7,19 @@ import { BUILTIN_SLASH_COMMANDS, COMMAND_ALIASES, SLASH_MENU_ORDER } from "../..
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-const HIDDEN = new Set(BUILTIN_SLASH_COMMANDS.filter((command) => command.menuHidden).map((command) => command.name));
+/** Every name the menu lists only on another command's row, with that command: Claude Code aliases and hidden builtins. */
+const MENU_ALIASES: ReadonlyMap<string, string> = new Map([
+	...COMMAND_ALIASES,
+	...BUILTIN_SLASH_COMMANDS.flatMap((command) =>
+		command.menuAliasOf ? [[command.name, command.menuAliasOf] as const] : [],
+	),
+]);
 /** Argument values /help lists for one command; more are reachable through completion. */
 const USAGE_VALUES = 20;
 
-/** `command` carrying the Claude Code names that run it: they match in the menu and its row says "also /name". */
+/** `command` carrying the other names that run it: they match in the menu and its row says "also /name". */
 function withAliases(command: SlashCommand): SlashCommand {
-	const aliases = [...COMMAND_ALIASES].filter(([, target]) => target === command.name).map(([alias]) => alias);
+	const aliases = [...MENU_ALIASES].filter(([, target]) => target === command.name).map(([alias]) => alias);
 	if (aliases.length === 0) return command;
 	const also = `also ${aliases.map((alias) => `/${alias}`).join(" ")}`;
 	return { ...command, aliases, description: command.description ? `${command.description} · ${also}` : also };
@@ -28,7 +34,7 @@ export function menuCommands(commands: readonly SlashCommand[]): SlashCommand[] 
 	};
 	// Array.prototype.sort is stable, so equal ranks keep registration order.
 	return commands
-		.filter((command) => !HIDDEN.has(command.name))
+		.filter((command) => command.skill || !MENU_ALIASES.has(command.name))
 		.map((command) => (command.skill ? command : withAliases(command)))
 		.sort((a, b) => rank(a) - rank(b));
 }

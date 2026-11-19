@@ -1,6 +1,6 @@
 # @octocodeai/octocode-agent-core
 
-The agent loop: a stateful `Agent` that streams a model response, runs tool calls, queues steering input and emits events. It builds on `@octocodeai/octocode-ai` and receives models, tools and policy from its host. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. Application files and settings: [configuration](../coding-agent/docs/configuration.md).
+The agent loop: a stateful `Agent` that streams a model response, runs tool calls, queues steering input and emits events. It builds on `@octocodeai/octocode-ai` and receives models, tools and policy from its host. The package is private and bundled into `@octocodeai/octocode-agent`; contributors import it as a workspace. Application files and settings: [configuration](../coding-agent/docs/configuration.md).
 
 ## Quick start
 

@@ -75,3 +75,20 @@ export const HarnessSwitchCommandSchema = Type.Object(
 	{ additionalProperties: false },
 );
 export type HarnessSwitchCommand = Static<typeof HarnessSwitchCommandSchema>;
+
+/**
+ * `GET /api/admin/config/harness/preview?id=&repoId=`: what switching a harness source on would bring, scanned now
+ * by the host (the static scan `/harness` shows before a switch). Nothing is started or saved. `lines` is the host's
+ * rendered text, worst item first; it is empty when the row has no source to scan (the switch then needs no preview).
+ */
+export const HarnessPreviewSchema = Type.Object(
+	{
+		id: HarnessIdSchema,
+		label: Type.String({ maxLength: 512 }),
+		/** Items the scan found (skills, MCP servers, hooks); 0 for an empty scan. */
+		items: Type.Integer({ minimum: 0 }),
+		lines: Type.Array(Type.String({ maxLength: 2048 }), { maxItems: 64 }),
+	},
+	{ additionalProperties: false },
+);
+export type HarnessPreview = Static<typeof HarnessPreviewSchema>;

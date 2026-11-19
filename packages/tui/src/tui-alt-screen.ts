@@ -70,7 +70,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly modes: AltScreenTerminalModes;
 	private readonly searchMatchStyle: (text: string) => string;
 	private readonly searchCurrentMatchStyle: (text: string) => string;
-	private readonly scrollToEndIndicator?: (rowsBelow: number) => string;
+	private readonly scrollToEndIndicator?: (rowsBelow: number, percent: number) => string;
 	private copyOnSelect: boolean;
 
 	constructor(
@@ -336,8 +336,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	protected override doRender(): void {
 		if (this.stopped || !this.altScreenActive) return;
-		const width = Math.max(1, this.terminal.columns);
-		const height = Math.max(1, this.terminal.rows);
+		// While a resize waits for its settled frame, paint at the size of the last frame: a size change repaints the
+		// whole screen, so a window drag repaints once when it pauses, not at every frame a spinner or stream asks.
+		const holdSize = this.resizePending && this.previousScreenWidth > 0 && this.previousScreenHeight > 0;
+		const width = holdSize ? this.previousScreenWidth : Math.max(1, this.terminal.columns);
+		const height = holdSize ? this.previousScreenHeight : Math.max(1, this.terminal.rows);
 		const root = this.layoutRoot ?? this.implicitScrollView;
 		let nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
 		if (this.search.refreshSearch(nextLayout)) {
@@ -350,7 +353,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			nextLayout,
 			this.search.activeSearch,
 			this.implicitScrollView,
-			this.terminal.columns,
+			width,
 			(text, current) => applySearchTextHighlight(text, current ? this.searchCurrentMatchStyle : this.searchMatchStyle),
 		);
 		const indicator = compositeScrollToEndIndicator(

@@ -68,10 +68,13 @@ export function validateCallToolResult(value: unknown): CallToolResult {
 	if (!isObject(value) || (value.content !== undefined && !Array.isArray(value.content))) {
 		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid MCP tools/call result");
 	}
+	if (value.isError !== undefined && typeof value.isError !== "boolean") {
+		throw new McpError(JSON_RPC_ERROR_CODES.invalidRequest, "Invalid MCP tools/call result: isError must be a boolean");
+	}
 	return {
 		content: (value.content ?? []).map(contentBlock),
 		...(value.structuredContent !== undefined ? { structuredContent: value.structuredContent } : {}),
-		...(typeof value.isError === "boolean" ? { isError: value.isError } : {}),
+		...(value.isError !== undefined ? { isError: value.isError } : {}),
 	};
 }
 

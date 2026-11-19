@@ -1,6 +1,6 @@
 ---
 name: octocode-backlog
-description: "Use when filing, updating, splitting, closing or grooming backlog items: what an item needs, research plans, follow-ups, and a sprint-review pass that checks each open item's state, age, relevance and evidence; closes done, obsolete or duplicate items, releases stale claims, reprioritizes, assigns or comments, and reports the board before and after."
+description: "Use to file, update, split, close or groom backlog items (what an item needs, research plans, follow-ups) or run a sprint-review pass: checks each open item for state, age, relevance, evidence; closes done, obsolete or duplicate items, releases stale claims, reprioritizes, assigns, comments, reports the board before and after."
 metadata:
   audience: coordinator
 ---

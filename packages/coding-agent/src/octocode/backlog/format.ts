@@ -281,17 +281,15 @@ export function taskProgressText(tally: TaskTally): string | undefined {
 	return `${tally.done}/${total} steps done${tally.dropped ? ` · ${tally.dropped} dropped` : ""}`;
 }
 
-/** Keep the web workspace discoverable even when there are no open items; append live backlog counts and this session's open tasks. */
-export function countsText(counts: BacklogCounts, tasks = 0): string {
+/** Keep the web workspace discoverable even when there are no open items; append the open backlog counts (closed items stay in `/backlog`). */
+export function countsText(counts: BacklogCounts): string {
 	const { items } = counts;
 	const epics = openEpics(counts);
 	const parts = [
 		items.ongoing ? `${items.ongoing} ongoing` : "",
 		items.todo ? `${items.todo} todo` : "",
-		items.backlog ? `${items.backlog} to triage` : "",
+		items.backlog ? `${items.backlog} backlog` : "",
 		epics ? `${epics} epic${epics === 1 ? "" : "s"}` : "",
-		counts.closed ? `${counts.closed} closed` : "",
-		tasks ? `${tasks} task${tasks === 1 ? "" : "s"}` : "",
 	].filter(Boolean);
 	return ["/web · backlogs & activity", ...parts].join(" · ");
 }

@@ -134,6 +134,18 @@ export function validateForkFlags(parsed: Args): void {
 }
 
 export function validateSessionIdFlags(parsed: Args): void {
+	if (parsed.noSession) {
+		const selectors = [
+			parsed.session ? "--session" : undefined,
+			parsed.continue ? "--continue" : undefined,
+			parsed.resume ? "--resume" : undefined,
+			parsed.sessionId !== undefined ? "--session-id" : undefined,
+		].filter((flag): flag is string => flag !== undefined);
+		if (selectors.length > 0) {
+			console.error(chalk.red(`Error: --no-session cannot be combined with ${selectors.join(", ")}`));
+			process.exit(1);
+		}
+	}
 	if (parsed.sessionId === undefined) return;
 
 	const conflictingFlags = [

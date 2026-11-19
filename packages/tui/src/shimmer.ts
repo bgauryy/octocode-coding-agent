@@ -1,6 +1,6 @@
 import { type Color, foregroundAnsi, mixColors, type TerminalColorMode } from "./colors.ts";
 import { animationClock } from "./tokens/clock.ts";
-import { visibleWidth } from "./utils/width.ts";
+import { graphemeSegments, graphemeWidth, visibleWidth } from "./utils/width.ts";
 
 export interface ShimmerOptions {
 	/** Color of the text outside the band. */
@@ -41,7 +41,7 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 	let out = "";
 	let current: string | undefined;
 	let cell = 0;
-	for (const char of text) {
+	for (const char of graphemeSegments(text)) {
 		const distance = Math.abs(cell + 0.5 - center);
 		const glow = distance >= halfWidth ? 0 : 0.5 * (1 + Math.cos((Math.PI * distance) / halfWidth));
 		const step = Math.round(glow * STEPS);
@@ -55,7 +55,7 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 			current = code;
 		}
 		out += char;
-		cell += visibleWidth(char);
+		cell += graphemeWidth(char);
 	}
 	return `${out}\x1b[39m`;
 }

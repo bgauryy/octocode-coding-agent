@@ -2,7 +2,7 @@
 
 Octocode exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Octocode's user configuration.
 
-Run `/keys` to see the active shortcuts for the main editor and application.
+Run `/keys`, or type `?` in an empty editor, to see the active shortcuts for the main editor and application.
 
 ## Assign keybindings
 
@@ -110,17 +110,17 @@ When ghost text shows after the cursor (a suggested `!` command, see [shell comp
 
 #### Text editing
 
-| Keybinding id                   | Default                                        | Description                           |
-| ------------------------------- | ---------------------------------------------- | ------------------------------------- |
-| `tui.editor.deleteCharBackward` | `backspace`                                    | Delete character backward             |
-| `tui.editor.deleteCharForward`  | `delete`, `ctrl+d`                             | Delete character forward              |
-| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace`                      | Delete word backward                  |
-| `tui.editor.deleteWordForward`  | `alt+d`, `alt+delete`                          | Delete word forward                   |
-| `tui.editor.deleteToLineStart`  | `ctrl+u`                                       | Delete to line start                  |
-| `tui.editor.deleteToLineEnd`    | `ctrl+k`                                       | Delete to line end                    |
-| `tui.editor.yank`               | `ctrl+y`                                       | Paste most recently deleted text      |
-| `tui.editor.yankPop`            | `alt+y`                                        | Cycle through deleted text after yank |
-| `tui.editor.undo`               | `ctrl+-` (`ctrl+z` on Windows; `alt+z` on WSL) | Undo last edit                        |
+| Keybinding id                   | Default                                        | Description                                                                                    |
+| ------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `tui.editor.deleteCharBackward` | `backspace`                                    | Delete character backward                                                                      |
+| `tui.editor.deleteCharForward`  | `delete`, `ctrl+d`                             | Delete character forward                                                                       |
+| `tui.editor.deleteWordBackward` | `ctrl+w`, `alt+backspace`                      | Delete word backward                                                                           |
+| `tui.editor.deleteWordForward`  | `alt+d`, `alt+delete`                          | Delete word forward                                                                            |
+| `tui.editor.deleteToLineStart`  | `ctrl+u`                                       | Delete from the cursor to line start (text after the cursor stays; `ctrl+c` clears the editor) |
+| `tui.editor.deleteToLineEnd`    | `ctrl+k`                                       | Delete to line end                                                                             |
+| `tui.editor.yank`               | `ctrl+y`                                       | Paste most recently deleted text                                                               |
+| `tui.editor.yankPop`            | `alt+y`                                        | Cycle through deleted text after yank                                                          |
+| `tui.editor.undo`               | `ctrl+-` (`ctrl+z` on Windows; `alt+z` on WSL) | Undo last edit                                                                                 |
 
 #### Input and selection
 

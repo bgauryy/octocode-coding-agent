@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { methods, PROTOCOL_VERSION, type RequestPermissionRequest } from "@agentclientprotocol/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseArgs } from "../src/cli/args.ts";
+import { runAcpMain } from "../src/main/acp-host.ts";
 import { acpWorkerArguments } from "../../acp/src/server/acp-mode.ts";
 import { choose, startAcpAgent, type AcpAgent } from "./helpers/feature-host-acp.ts";
 import {
@@ -53,6 +54,22 @@ describe("ACP CLI", () => {
 		expect(() => acpWorkerArguments(args, parseArgs(args))).toThrow(
 			"receives prompts and new-session requests over stdin",
 		);
+	});
+
+	it("prints one refusal and exits non-zero for invalid ACP arguments, without a stack", async () => {
+		const args = ["--mode", "acp", "--print"];
+		const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const exitCode = process.exitCode;
+		try {
+			await runAcpMain(args, parseArgs(args));
+			expect(process.exitCode).toBe(1);
+			expect(errors.mock.calls).toHaveLength(1);
+			expect(String(errors.mock.calls[0][0])).toContain("ACP mode receives prompts");
+			expect(String(errors.mock.calls[0][0])).not.toContain("\n    at ");
+		} finally {
+			process.exitCode = exitCode;
+			errors.mockRestore();
+		}
 	});
 
 	it.each(process.platform === "win32" ? (["session/close"] as const) : (["session/close", "SIGTERM"] as const))(

@@ -1,1 +1,1 @@
-History/compaction summaries; context/cache/latency diagnosis: op list, source profile; agentId lists requests, request selects layers. Events: coordinator-only. Search stops at match/time budget; follow cursor. Narrow: sessionId/file/since; keywords ranks, query filters.
+History/compaction summaries; context/cache/latency diagnosis: op list, source profile; agentId lists requests, request selects layers. Events: coordinator-only. Search stops at match/time budget; follow cursor. Narrow: sessionId/file/since.

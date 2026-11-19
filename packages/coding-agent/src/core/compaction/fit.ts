@@ -31,12 +31,15 @@ function summaryRoomTokens(reserveTokens: number, available: number): number {
  * `preparation`, or one that keeps a shorter tail of `branchEntries` when what it keeps leaves no room at all for a
  * summary in `contextWindow` less the reserve. A shorter tail is sized to leave a checkpoint's least room; a tail that
  * leaves some room already is kept as it is. An unknown window (0 or less) changes nothing. Throws
- * {@link CompactionFitError} when even the newest turn with the prompt and tools leaves no room.
+ * {@link CompactionFitError} when even the newest turn with the prompt and tools leaves no room. A newest turn that
+ * already ended in an error is not kept: it is summarized too, so a session whose prompts fill the window recovers.
  */
 export function fitCompactionToWindow(
 	branchEntries: SessionEntry[],
 	preparation: CompactionPreparation,
 	contextWindow: number,
+	/** Summarize a newest turn that already failed when it alone fills the window; not while that turn is being retried. */
+	summarizeFailedTurn = false,
 ): CompactionPreparation {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return preparation;
 	const { settings } = preparation;
@@ -57,8 +60,22 @@ export function fitCompactionToWindow(
 		fitted = { ...next, settings };
 		retained = retainedBy(fitted);
 	}
+	if (retained >= available && summarizeFailedTurn && endsWithFailedTurn(branchEntries)) {
+		// The newest turn is oversized and already failed: nothing waits on it whole, so it is summarized with the rest.
+		const all = prepareCompaction(branchEntries, settings, { summarizeAll: true });
+		if (all) {
+			fitted = all;
+			retained = retainedBy(fitted);
+		}
+	}
 	if (retained >= available) throw new CompactionFitError(cannotFit(retained, contextWindow, settings.reserveTokens));
 	return fitted;
+}
+
+/** The branch ends with an assistant reply that failed: the turn before it was answered with an error. */
+function endsWithFailedTurn(branchEntries: SessionEntry[]): boolean {
+	const last = branchEntries.at(-1);
+	return last?.type === "message" && last.message.role === "assistant" && last.message.stopReason === "error";
 }
 
 function cannotFit(retained: number, contextWindow: number, reserveTokens: number): string {

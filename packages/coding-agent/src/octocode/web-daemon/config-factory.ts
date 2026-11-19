@@ -1,5 +1,11 @@
 import { Value } from "typebox/value";
-import { ConfigSnapshotSchema, HarnessListSchema, ToolExposureListSchema } from "@octocodeai/octocode-contracts/config";
+import {
+	ConfigSnapshotSchema,
+	HarnessListSchema,
+	HarnessPreviewSchema,
+	SecurityListSchema,
+	ToolExposureListSchema,
+} from "@octocodeai/octocode-contracts/config";
 import { configAudits } from "../../../../db/src/api.ts";
 import { getAgentDir } from "../../config.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
@@ -10,11 +16,18 @@ import { buildConfigSnapshot } from "./config-status.ts";
 import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { listHarness, switchHarness } from "./harness-config.ts";
+import { previewHarness } from "./harness-preview.ts";
+import { actSecurity, listSecurity } from "./security-config.ts";
 import { writeConfigProvider } from "./provider-write.ts";
 import { listToolExposure, pinTool, type NativeToolsLive } from "./tool-exposure.ts";
 
 function checkedHarness<T>(list: T): T {
 	if (!Value.Check(HarnessListSchema, list)) throw new Error("The harness list is invalid.");
+	return list;
+}
+
+function checkedSecurity<T>(list: T): T {
+	if (!Value.Check(SecurityListSchema, list)) throw new Error("The security list is invalid.");
 	return list;
 }
 
@@ -64,8 +77,19 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 		writeProvider: (command) => writeConfigProvider(command, { agentDir: getAgentDir(), env, actor: actor(), audit }),
 		signIn: (command) => signIns.handle(command),
 		harness: async (repo) => checkedHarness(await listHarness({ agentDir: getAgentDir(), cwd: repo?.root })),
+		previewHarness: async (id, repo) => {
+			const preview = await previewHarness(id, { agentDir: getAgentDir(), cwd: repo?.root });
+			if (!Value.Check(HarnessPreviewSchema, preview)) throw new Error("The harness preview is invalid.");
+			return preview;
+		},
 		writeHarness: async (command, repo) =>
 			checkedHarness(await switchHarness(command, { agentDir: getAgentDir(), cwd: repo?.root, actor: actor(), audit })),
+		security: async (repo) =>
+			checkedSecurity(await listSecurity({ agentDir: getAgentDir(), cwd: repo?.root, guard: { env } })),
+		writeSecurity: async (command, repo) =>
+			checkedSecurity(
+				await actSecurity(command.id, command.action, { agentDir: getAgentDir(), cwd: repo?.root, guard: { env } }),
+			),
 		// A session's own answer (`live`) wins over this process's: the daemon has no tools of its own.
 		tools: async (repo, live) =>
 			checkedTools(await listToolExposure({ agentDir: getAgentDir(), cwd: repo?.root, native, ...live })),

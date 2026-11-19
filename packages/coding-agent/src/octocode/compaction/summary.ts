@@ -1,12 +1,6 @@
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
-import {
-	type CompactionResult,
-	compact,
-	inlineSummaryTokens,
-	persistCheckpointText,
-	spillFileLists,
-} from "../../core/compaction/index.ts";
+import { compact, inlineSummaryTokens, persistCheckpointText, spillFileLists } from "../../core/compaction/index.ts";
 import type { SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
@@ -40,6 +34,7 @@ import {
 import { sessionCachePreferences, sharedSummary, type SummaryApi } from "./shared-summary.ts";
 import { previousFileLists } from "./previous-file-lists.ts";
 import { noGainReason } from "./summary-gain.ts";
+import { keepPaidSummary, paidSummaryOf } from "./paid-summary.ts";
 import { paidSummaryKey } from "./summary-cache.ts";
 import { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText } from "./summary-text.ts";
 
@@ -105,16 +100,6 @@ function notifyStandalone(ctx: Pick<FeatureContext, "hasUI" | "ui">, reason: str
 }
 
 export { SUMMARY_METHOD_DETAILS, summaryMethodOf };
-
-/** The model's summary of one input, kept so a failure after the paid call does not repeat it. */
-interface PaidSummary {
-	key: string;
-	result: CompactionResult;
-	method: { method: string; reason?: string; early?: { requestedAt: string; waitedMs: number } };
-}
-
-/** The last paid summary of each session (by its session manager). */
-const paid = new WeakMap<object, PaidSummary>();
 
 /**
  * What code appends after `summary` (the model's text): the saved-results block, the user's messages word for word
@@ -240,7 +225,7 @@ export async function writeSummary(
 		const forced = event.summaryRequest?.forceSystemPrompt;
 		const level = api.models.getThinkingLevel();
 		const key = paidSummaryKey(model, event.preparation, event.customInstructions, level, forced);
-		let paidSummary = paid.get(ctx.sessionManager);
+		let paidSummary = paidSummaryOf(ctx.sessionManager);
 		// The summary requested ahead of the threshold (`early-summary.ts`): ready, or waited for what is left of it.
 		const earlyNote = (text: string) => recordCompactionNote(api, "early-summary", text);
 		if (paidSummary?.key !== key && !summaryModel && event.reason === "threshold" && !event.customInstructions) {
@@ -257,7 +242,7 @@ export async function writeSummary(
 			if (event.signal.aborted) return undefined;
 			if (taken) {
 				paidSummary = { key, result: taken.result, method: { method: "cache-shared", early: taken.early } };
-				paid.set(ctx.sessionManager, paidSummary);
+				keepPaidSummary(ctx.sessionManager, paidSummary);
 			}
 		} else
 			discardEarlySummary(ctx.sessionManager, skipReason(paidSummary?.key === key, !!summaryModel, event), earlyNote);
@@ -324,7 +309,7 @@ export async function writeSummary(
 				result: written,
 				method: shared ? { method: "cache-shared" } : { method: "standalone", reason: fallback },
 			};
-			paid.set(ctx.sessionManager, paidSummary);
+			keepPaidSummary(ctx.sessionManager, paidSummary);
 		}
 		const { result, method } = paidSummary;
 		const { saved, skills, body, messages, note } = codeSections(

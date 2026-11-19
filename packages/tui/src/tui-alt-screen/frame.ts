@@ -96,7 +96,10 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 			imageProtocol === "kitty" && hadUploadedKittyImages
 				? deleteAllKittyPlacements()
 				: deleteKittyImagesFor(imageProtocol);
-		buffer += `${clearImages}\x1b[2J`;
+		// Every row is rewritten below with its own erase: the screen clear only matters for image cleanup, and
+		// without synchronized output it shows as a blank flash.
+		const imagesOnScreen = imageProtocol !== null || hadUploadedKittyImages;
+		buffer += imagesOnScreen ? `${clearImages}\x1b[2J` : clearImages;
 	} else if (imagesNeedRedraw) {
 		if (imageProtocol === "iterm2") buffer += "\x1b[2J";
 		else if (imageProtocol === "kitty") buffer += deleteAllKittyPlacements();

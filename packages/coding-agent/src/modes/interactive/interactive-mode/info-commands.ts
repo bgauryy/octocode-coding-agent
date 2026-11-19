@@ -59,6 +59,7 @@ export function handleSessionCommand(host: InfoCommandsHost): void {
 			{
 				stats,
 				entries,
+				branch: host.sessionManager.getBranch(),
 				prices: host.session.modelRuntime,
 				selectedModelKey: `${model?.provider}/${model?.id}`,
 				name: sessionName,

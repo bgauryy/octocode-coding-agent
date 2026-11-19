@@ -52,6 +52,8 @@ export type AgentSessionEvent =
 			elapsedMs: number;
 			receivedChars: number;
 	  }
+	/** A model request has sent nothing for `idleMs` (refreshed every few seconds); 0 once it answers or ends. */
+	| { type: "model_wait"; idleMs: number }
 	| { type: "entry_appended"; entry: SessionEntry }
 	| { type: "session_info_changed"; name: string | undefined; source?: SessionNameSource }
 	| { type: "session_context_changed" }

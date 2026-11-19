@@ -70,9 +70,6 @@ function policyFlags(input: PromptInputs) {
 	const web = input.canWeb !== false;
 	const days = input.scratchDays ?? resolveRetention().days;
 	const research = input.research;
-	const bare = (tool: string) =>
-		`\`${research && tool.startsWith(research.prefix) ? tool.slice(research.prefix.length) : tool}\``;
-	const search = (research?.search ?? []).map(bare);
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
 		main,
@@ -83,8 +80,6 @@ function policyFlags(input: PromptInputs) {
 		// Tools this request holds.
 		research: research !== undefined,
 		"research.prefix": research?.prefix ?? "",
-		"research.reader": research ? bare(research.reader) : "",
-		"research.search": search.length > 1 ? `${search.slice(0, -1).join(", ")} or ${search.at(-1)}` : (search[0] ?? ""),
 		shell,
 		web,
 		mcp: input.canMcp !== false,

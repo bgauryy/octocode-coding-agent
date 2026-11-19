@@ -1,6 +1,6 @@
 # Customize Octocode with themes
 
-Themes control the colors Octocode uses in interactive mode and HTML exports. By default, Octocode follows your terminal's appearance with `octocode-light` and `octocode-dark`. You can also choose `system` to use your terminal's colors, the legacy `light` and `dark` palettes, or a custom theme.
+Themes control the colors Octocode uses in interactive mode and HTML exports. By default, Octocode follows your terminal's appearance with `octocode-light` and `octocode-dark`. You can also choose `system` to use your terminal's colors, `octocode-colorblind` (a dark palette), the legacy `light` and `dark` palettes, or a custom theme.
 
 ```mermaid
 flowchart TD
@@ -36,6 +36,14 @@ The theme adapts to what the terminal reports:
 | Nothing                    | ANSI color indices and the terminal's default colors, which the terminal renders itself. Secondary text is faint, and panels have no background color. |
 
 Octocode asks the terminal for its colors when it starts. Terminals usually answer within a few milliseconds, and Octocode waits at most 100 ms before showing the startup header. If the terminal does not answer in time, Octocode uses the ANSI color fallback, and it still applies the colors if they arrive later, for example over a slow SSH connection. `system` is a reserved name: a custom theme with that name is ignored.
+
+## Colorblind-safe theme
+
+`octocode-colorblind` is a dark theme built on the Okabe-Ito palette. Success and added lines are blue, errors and removed lines are orange, and warnings are yellow, so no state depends on telling red from green. Its text keeps the same 4.5:1 contrast as `octocode-dark`. Select it with `{ "theme": "octocode-colorblind" }`.
+
+## Terminals with 16 colors
+
+On a terminal that names itself 16-color (`TERM=linux`, `ansi`, `vt100`, `xterm-color` or `*-16color`) and does not report truecolor, Octocode maps every theme color to the nearest of the 16 ANSI colors. Set `OCTOCODE_TRUE_COLOR=1` to force truecolor.
 
 <a id="selecting-a-theme"></a>
 

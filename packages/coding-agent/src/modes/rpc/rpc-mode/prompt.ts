@@ -1,7 +1,12 @@
 import type { AgentSession, PromptDisposition } from "../../../core/agent-session.ts";
-import { completeSessionDispatch, hasSessionDispatch } from "../../../core/agent-session/dispatch.ts";
+import {
+	completeSessionDispatch,
+	hasSessionDispatch,
+	PromptDispatchCancelled,
+} from "../../../core/agent-session/dispatch.ts";
 import { AuthRequiredError } from "../../../core/auth-guidance.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { createRunOutcome, type RunOutcome } from "../../../core/agent-session/run-outcome.ts";
 import type { RpcCommand } from "../rpc-types.ts";
 import { error, success } from "./responses.ts";
 import type { RpcOutput } from "./ui-context.ts";
@@ -42,6 +47,16 @@ export function handlePrompt(
 				);
 		},
 		(failure: unknown) => {
+			// An abort is a run outcome, not a failed command: answer it as the settled run did.
+			if (command.waitForCompletion && failure instanceof PromptDispatchCancelled) {
+				output(
+					success(command.id, "prompt", {
+						disposition: disposition ?? "handled",
+						outcome: abortedOutcome(session.lastRunOutcome),
+					}),
+				);
+				return;
+			}
 			if (command.waitForCompletion || disposition === undefined)
 				output({
 					...error(command.id, "prompt", errorMessage(failure)),
@@ -51,4 +66,9 @@ export function handlePrompt(
 			else output({ type: "run_error", id: command.id, error: errorMessage(failure) });
 		},
 	);
+}
+
+/** The settled run's outcome when it was aborted; an abort before any run started has none, so it reports a bare one. */
+function abortedOutcome(last: RunOutcome | undefined): RunOutcome {
+	return last?.status === "aborted" ? last : { ...createRunOutcome(), status: "aborted" };
 }

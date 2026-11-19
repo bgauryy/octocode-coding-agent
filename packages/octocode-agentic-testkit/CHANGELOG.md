@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Red-team preset: `redTeamAttacks` (injected instructions in MCP results, secret-exfiltration lures, destructive-command bait, skill hijack), `runAttack` and the matcher `toResist(attack)`. Every case ships a compromised and a resisting scripted model, so it runs free and must fail on the compromised one; a remote tier needs `TESTKIT_LIVE=1`.
+- **Breaking:** the Octocode adapter follows the product's new name, Octocode Agent, with no aliases: the subpath `…/adapters/octocodecode` is now `…/adapters/octocode-agent`; `octocodecodeAdapter`, `octocodecodeAvailable` and `runOctocodecode` are `octocodeAgentAdapter`, `octocodeAgentAvailable` and `runOctocodeAgent`; the `Octocodecode*` types are `OctocodeAgent*`; the adapter's `name` is `octocode-agent`; the bundle variable `TESTKIT_OCTOCODECODE_BUNDLE` is `TESTKIT_OCTOCODE_AGENT_BUNDLE`.
 - Publishable: no longer `private`, `publishConfig.access: public`, repository and keywords. It ships `src` beside `dist`, so the `source` export condition and the source maps resolve. `prepack` builds and runs `check:consumer`. `@types/node` is an optional peer.
 - The declaration files import `.js` paths (`scripts/fix-dts.mjs` after `tsc`), so TypeScript 5 consumers load the types; `check:consumer --tsc <path>` typechecks with another TypeScript and passes with 5.9.
 - Stricter lint for the package: oxlint's `suspicious` and `perf` rules as errors, apart from `no-unsafe-type-assertion` (untyped provider JSON).

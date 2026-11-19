@@ -41,3 +41,21 @@ describe("Text hanging indent", () => {
 		);
 	});
 });
+
+describe("Text hanging indent with a path longer than a row", () => {
+	it("keeps the characters of the path contiguous and indents every continuation row alike at 60 columns", () => {
+		const path = "/Users/someone/code/octocodecode/packages/coding-agent/src/octocode/native-skills";
+		const warning = `\x1b[33m⚠ 1 duplicate skill skipped, kept ${path} (ctrl+o lists)\x1b[39m`;
+		const text = new Text(warning, 0, 0);
+		text.setHangingIndent(true);
+		const rows = plain(text.render(60));
+		assert.strictEqual(
+			rows.slice(1).join("").replace(/ /g, "").includes(path.replace(/ /g, "")),
+			true,
+			rows.join("\n"),
+		);
+		for (const row of rows) assert.ok(!/\S \S*native-skills/.test(row) || row.startsWith("⚠"), row);
+		for (const row of rows.slice(1)) assert.ok(row.startsWith("  ") && row[2] !== " ", row);
+		assert.strictEqual(rows.join("\n").includes("oc tocode"), false);
+	});
+});

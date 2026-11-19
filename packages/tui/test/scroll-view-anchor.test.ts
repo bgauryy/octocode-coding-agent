@@ -1,6 +1,8 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { ScrollView } from "../src/components/scroll-view.ts";
+import { Text } from "../src/components/text.ts";
+import { Container } from "../src/tui/container.ts";
 import { renderLayoutFrame } from "../src/layout.ts";
 import { stripTerminalSequences } from "../src/utils.ts";
 
@@ -37,6 +39,44 @@ describe("ScrollView keepRowsInView", () => {
 		lines.unshift("earlier");
 		view.keepRowsInView();
 		assert.deepStrictEqual(visible(view, 5), ["row 15", "row 16", "row 17", "row 18", "row 19"]);
+		assert.strictEqual(view.isFollowingEnd, true);
+	});
+});
+
+describe("ScrollView width change", () => {
+	function numbered(count: number): Container {
+		const content = new Container();
+		for (let index = 0; index < count; index++) {
+			const label = String(index).padStart(3, "0");
+			content.addChild(new Text(`${label} ${"word ".repeat(10)}`.trim(), 0, 0));
+		}
+		return content;
+	}
+	const topItem = (view: ScrollView, width: number): string | undefined =>
+		/^\d{3}/.exec(
+			stripTerminalSequences(
+				renderLayoutFrame(view, width, 10, () => {}).lines.find((line) => /^\s*\d{3}/.test(line)) ?? "",
+			),
+		)?.[0];
+
+	for (const [from, to] of [
+		[61, 40],
+		[40, 90],
+	]) {
+		it(`keeps the top item of a non-virtual view scrolled up from ${from} to ${to} columns`, () => {
+			const view = new ScrollView(numbered(200), { follow: "end" });
+			renderLayoutFrame(view, from, 10, () => {});
+			view.scrollTo(100);
+			const before = topItem(view, from);
+			assert.ok(before);
+			assert.strictEqual(topItem(view, to), before);
+		});
+	}
+
+	it("leaves a view that follows the end at the end", () => {
+		const view = new ScrollView(numbered(50), { follow: "end" });
+		renderLayoutFrame(view, 61, 10, () => {});
+		renderLayoutFrame(view, 40, 10, () => {});
 		assert.strictEqual(view.isFollowingEnd, true);
 	});
 });

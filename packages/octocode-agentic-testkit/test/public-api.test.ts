@@ -8,10 +8,10 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type { claudeCodeAdapter, ClaudeCodeOptions, ExternalRun } from "../src/adapters/claude-code/index.ts";
 import type { codexAdapter, CodexOptions } from "../src/adapters/codex/index.ts";
 import type {
-	octocodecodeAdapter,
-	OctocodecodeAdapterOptions,
-	OctocodecodeRun,
-} from "../src/adapters/octocodecode/index.ts";
+	octocodeAgentAdapter,
+	OctocodeAgentAdapterOptions,
+	OctocodeAgentRun,
+} from "../src/adapters/octocode-agent/index.ts";
 import { testkitConfig } from "../src/config.ts";
 import * as root from "../src/index.ts";
 import {
@@ -149,12 +149,14 @@ const ROOT = [
 	"probeRouting",
 	"promptShape",
 	"recordMcp",
+	"redTeamAttacks",
 	"redact",
 	"referenceAdapter",
 	"renderResult",
 	"renderResultsHtml",
 	"repeatedSentences",
 	"resetCacheEvents",
+	"runAttack",
 	"runComparison",
 	"runInproc",
 	"runInput",
@@ -211,7 +213,12 @@ const SUBPATHS: Record<string, string[]> = {
 		"skillFiles",
 	],
 	"./adapters/codex": ["codexAdapter", "codexMissing"],
-	"./adapters/octocodecode": ["octocodecodeAdapter", "octocodecodeAvailable", "parseSkillListing", "runOctocodecode"],
+	"./adapters/octocode-agent": [
+		"octocodeAgentAdapter",
+		"octocodeAgentAvailable",
+		"parseSkillListing",
+		"runOctocodeAgent",
+	],
 };
 
 describe("runtime exports", () => {
@@ -374,8 +381,8 @@ describe("public types", () => {
 		expectTypeOf<typeof claudeCodeAdapter>().returns.toEqualTypeOf<AgentAdapter<ExternalRun>>();
 		expectTypeOf<typeof codexAdapter>().parameters.toEqualTypeOf<[opts?: CodexOptions]>();
 		expectTypeOf<typeof codexAdapter>().returns.toEqualTypeOf<AgentAdapter<ExternalRun>>();
-		expectTypeOf<typeof octocodecodeAdapter>().parameters.toEqualTypeOf<[opts?: OctocodecodeAdapterOptions]>();
-		expectTypeOf<typeof octocodecodeAdapter>().returns.toEqualTypeOf<AgentAdapter<OctocodecodeRun>>();
+		expectTypeOf<typeof octocodeAgentAdapter>().parameters.toEqualTypeOf<[opts?: OctocodeAgentAdapterOptions]>();
+		expectTypeOf<typeof octocodeAgentAdapter>().returns.toEqualTypeOf<AgentAdapter<OctocodeAgentRun>>();
 	});
 
 	it("defineAdapter returns the adapter and infers an inline adapter's run result", async () => {

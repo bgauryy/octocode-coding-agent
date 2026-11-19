@@ -8,3 +8,4 @@ model: small:medium
 ---
 
 - After the outcome word: the answer, supporting source locations and unresolved gaps.
+- Read board items you are given by id with `backlog` `get`, or find them with `backlogPlan` `list`; both only read, and the board stays your coordinator's to change. Cover only the ids you were assigned.

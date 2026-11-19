@@ -38,4 +38,12 @@ describe("shimmerText", () => {
 	it("returns empty text unchanged", () => {
 		assert.strictEqual(shimmerText("", { base, peak, mode: "truecolor" }), "");
 	});
+	it("treats a ZWJ emoji as one two-cell cell, painted like any two-cell character", () => {
+		const family = "👨‍👩‍👧";
+		const at = (text: string, now: number) =>
+			shimmerText(text, { base, peak, mode: "truecolor", now, padding: 10, halfWidth: 3 });
+		for (const now of [200, 600, 1000, 1400]) {
+			assert.strictEqual(at(`${family}ab`, now).replace(family, "🐙"), at("🐙ab", now), `now ${now}`);
+		}
+	});
 });

@@ -169,6 +169,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				}
 				host.renderSessionEntries(retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)));
 				for (const entryId of entriesAfterCompaction) host.entriesRenderedByRebuild.add(entryId);
+				// `compaction_end` follows for this entry: it finds the transcript already rebuilt.
+				host.entriesRenderedByRebuild.add(event.entry.id);
 				host.ui.requestRender();
 			}
 			break;

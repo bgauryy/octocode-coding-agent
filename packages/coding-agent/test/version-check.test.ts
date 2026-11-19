@@ -47,7 +47,7 @@ describe("version checks", () => {
 
 		await expect(getLatestOctocodeRelease("1.2.3")).resolves.toMatchObject({ version: "1.2.4" });
 		expect(fetchMock).toHaveBeenCalledWith(
-			"https://registry.npmjs.org/@octocodeai%2Foctocodecode/latest",
+			"https://registry.npmjs.org/@octocodeai%2Foctocode-agent/latest",
 			expect.objectContaining({
 				headers: expect.objectContaining({
 					"User-Agent": expect.stringMatching(/^octocode\/1\.2\.3 /),

@@ -25,6 +25,18 @@ export const OFFLINE_MAX_GAP_MS = 30_000;
 /** Upper bound on retries of a no-route network failure; the window ends them first unless each attempt fails at once. */
 const OFFLINE_MAX_RETRIES = 40;
 
+/**
+ * Wall-clock time from the first request's start after which a failure that is a timeout is final. A timeout means the
+ * request already waited out its whole idle or deadline window, so each further attempt costs that window again:
+ * the configured attempts alone would stack to several windows.
+ */
+export const TIMEOUT_RETRY_WINDOW_MS = 600_000;
+
+/** Whether the error is a request, header or stream-idle timeout (as the transport words them). */
+function isTimeoutText(errorText: string): boolean {
+	return /timed out/i.test(errorText);
+}
+
 /** Retries allowed for this failure: the configured budget, raised for a failure that clears by waiting unless retries are off. */
 export function retryBudget(maxRetries: number, errorText: string): number {
 	if (maxRetries > 0 && isOfflineText(errorText)) return Math.max(maxRetries, OFFLINE_MAX_RETRIES);
@@ -35,10 +47,19 @@ export function retryBudget(maxRetries: number, errorText: string): number {
 /**
  * Whether retry number `attempt` (1-indexed) may run, `elapsedMs` after the first failure. The configured attempts are
  * always allowed; the window bounds only the ones a failure that clears by waiting adds on top, and it is wall clock,
- * so time spent inside each failed request counts as much as time spent sleeping.
+ * so time spent inside each failed request counts as much as time spent sleeping. A timeout is also final once
+ * `sinceRequestStartMs` (time since the first request began, defaulting to `elapsedMs`) reaches
+ * {@link TIMEOUT_RETRY_WINDOW_MS}, configured attempts included.
  */
-export function mayRetry(attempt: number, maxRetries: number, errorText: string, elapsedMs: number): boolean {
+export function mayRetry(
+	attempt: number,
+	maxRetries: number,
+	errorText: string,
+	elapsedMs: number,
+	sinceRequestStartMs: number = elapsedMs,
+): boolean {
 	if (attempt > retryBudget(maxRetries, errorText)) return false;
+	if (isTimeoutText(errorText) && sinceRequestStartMs >= TIMEOUT_RETRY_WINDOW_MS) return false;
 	const windowMs = isOfflineText(errorText) ? OFFLINE_WINDOW_MS : RATE_LIMIT_WINDOW_MS;
 	return attempt <= maxRetries || elapsedMs < windowMs;
 }
@@ -197,6 +218,7 @@ export async function retryAssistantCall(
 	const maxRetries = policy?.enabled ? policy.maxRetries : 0;
 
 	let attempt = 0;
+	const startedAt = Date.now();
 	let firstFailureAt: number | undefined;
 	let lastRetry: { attempt: number; errorMessage: string } | undefined;
 	for (;;) {
@@ -217,7 +239,10 @@ export async function retryAssistantCall(
 		// Non-retryable, or budget exhausted: return the final error message.
 		const errorText = response.errorMessage ?? "";
 		const elapsedMs = firstFailureAt === undefined ? 0 : Date.now() - firstFailureAt;
-		if (!isRetryableAssistantError(response) || !mayRetry(attempt + 1, maxRetries, errorText, elapsedMs)) {
+		if (
+			!isRetryableAssistantError(response) ||
+			!mayRetry(attempt + 1, maxRetries, errorText, elapsedMs, Date.now() - startedAt)
+		) {
 			if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
 			return response;
 		}
@@ -242,4 +267,10 @@ export async function retryAssistantCall(
 		}
 		await callbacks?.onRetryAttemptStart?.();
 	}
+}
+
+/** Appends how long a retried request series ran and how many attempts it made, so a long stall explains itself. */
+export function describeRetryOutcome(errorMessage: string, attempts: number, elapsedMs: number): string {
+	const seconds = Math.round(elapsedMs / 1000);
+	return `${errorMessage} (${attempts} attempt${attempts === 1 ? "" : "s"} over ${seconds}s)`;
 }

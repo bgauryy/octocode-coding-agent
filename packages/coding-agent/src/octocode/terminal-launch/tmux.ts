@@ -53,7 +53,15 @@ const runTmux: TmuxRunner = (args, { cwd, env, signal }) =>
 	tmuxExec(args, { cwd, env, ...(signal ? { signal } : {}), timeoutMs: TMUX_TIMEOUT_MS });
 
 /** One pane of the tmux server: where it is (`work:2.0`), its process and its current directory. */
-export type TmuxPane = { id: string; label: string; pid: number; command: string; cwd: string };
+export type TmuxPane = {
+	id: string;
+	label: string;
+	pid: number;
+	command: string;
+	cwd: string;
+	/** The window holding it (`@3`): what `new-window` printed, so a window a session opened is found by it. */
+	windowId?: string;
+};
 
 const PANE_FORMAT = [
 	"#{pane_id}",
@@ -61,6 +69,7 @@ const PANE_FORMAT = [
 	"#{pane_pid}",
 	"#{pane_current_command}",
 	"#{pane_current_path}",
+	"#{window_id}",
 ].join("\t");
 
 /** Every pane of the tmux server `env` reaches; none when tmux is not installed, not running or fails. */
@@ -76,8 +85,10 @@ export async function listTmuxPanes(dependencies: TmuxLaunchDependencies = {}): 
 		return [];
 	}
 	return out.split("\n").flatMap((line) => {
-		const [id = "", label = "", pid = "", command = "", cwd = ""] = line.split("\t");
-		return /^%\d+$/u.test(id) && label && cwd ? [{ id, label, pid: Number(pid) || 0, command, cwd }] : [];
+		const [id = "", label = "", pid = "", command = "", cwd = "", windowId = ""] = line.split("\t");
+		return /^%\d+$/u.test(id) && label && cwd
+			? [{ id, label, pid: Number(pid) || 0, command, cwd, ...(/^@\d+$/u.test(windowId) ? { windowId } : {}) }]
+			: [];
 	});
 }
 

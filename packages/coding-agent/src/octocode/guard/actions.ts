@@ -1,4 +1,5 @@
-import { renderList, sortReviews, visible } from "./report.ts";
+import { renderList, sortReviews } from "./report.ts";
+import { visible } from "./visible.ts";
 import { decide, forget, type GuardOptions, resolveReviews, ReviewRefusedError } from "./store.ts";
 import { badge, REVIEW_KINDS, type Review, type ReviewKind } from "./types.ts";
 

@@ -1,6 +1,6 @@
 ---
 name: octocode-local-research
-description: "Use before searching or reading code in this checkout: where it is defined, how it works, who calls it, what a change affects, its type. Search, minimal reads, LSP drill-downs. Not GitHub or packages (octocode-github-research) or runtime failures (octocode-debugging)."
+description: "Use before searching or reading code in this checkout: where it is defined, how it works, who calls it, what a change affects, its type; search, minimal reads, LSP drill-downs. Not GitHub or packages (octocode-github-research) or runtime failures (octocode-debugging)."
 ---
 
 # Local research

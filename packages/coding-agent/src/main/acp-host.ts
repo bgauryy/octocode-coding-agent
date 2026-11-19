@@ -138,6 +138,15 @@ export const acpServerHost: AcpServerHost = {
 export async function runAcpMain(args: string[], parsed: AcpLaunchOptions): Promise<void> {
 	// The broker has no session to be named for, and it is not a main session: each of its workers is `octocode-rpc-<id>`.
 	setProcessTitle(processTitle("acp", String(process.pid)));
-	const { acpWorkerArguments, runAcpMode } = await import("../../../acp/src/server/acp-mode.ts");
-	await runAcpMode(acpServerHost, acpWorkerArguments(args, parsed));
+	const { AcpUsageError, acpWorkerArguments, runAcpMode } = await import("../../../acp/src/server/acp-mode.ts");
+	let workerArgs: string[];
+	try {
+		workerArgs = acpWorkerArguments(args, parsed);
+	} catch (error) {
+		if (!(error instanceof AcpUsageError)) throw error;
+		console.error(`Error: ${error.message}`);
+		process.exitCode = 1;
+		return;
+	}
+	await runAcpMode(acpServerHost, workerArgs);
 }

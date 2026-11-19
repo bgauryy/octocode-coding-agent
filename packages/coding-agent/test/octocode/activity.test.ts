@@ -634,3 +634,19 @@ it("shows only activity details, never a step clock, and keeps no timers", async
 	await fake.emit("session_shutdown", {}, ctx);
 	expect(vi.getTimerCount()).toBe(0);
 });
+
+describe("Activity: nested dialogs", () => {
+	it("keeps waiting for the outer dialog after the inner one closes, whichever closes first", () => {
+		const activity = new Activity();
+		activity.start(0);
+		activity.promptStart("Pick", 1, "outer");
+		activity.promptStart("Type your own", 2, "inner");
+		activity.promptEnd("inner");
+		expect(activity.describe()).toBe("Waiting for you: Pick");
+		activity.promptStart("Type your own", 3, "inner2");
+		activity.promptEnd("outer");
+		expect(activity.describe()).toBe("Waiting for you: Type your own");
+		activity.promptEnd("inner2");
+		expect(activity.describe()).toBeUndefined();
+	});
+});

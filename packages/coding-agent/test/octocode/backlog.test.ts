@@ -812,7 +812,7 @@ describe("backlog tool", () => {
 describe("backlog status", () => {
 	it("names every open state and keeps the web hint when there are no open items", () => {
 		expect(countsText(itemCounts({ ongoing: 2, todo: 4, backlog: 1, done: 9 }))).toBe(
-			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 to triage",
+			"/web · backlogs & activity · 2 ongoing · 4 todo · 1 backlog",
 		);
 		expect(countsText(itemCounts({ ongoing: 0, todo: 0, backlog: 0, done: 3 }))).toBe("/web · backlogs & activity");
 	});

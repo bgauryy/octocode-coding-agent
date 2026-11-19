@@ -11,7 +11,7 @@ import { diffStats, querySize } from "../../src/octocode/files/outcome.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { validateFileInput } from "../../src/octocode/tool-input/file-input.ts";
 import { BASH_READER, FileGuard, mcpReader, returnedContent } from "../../src/octocode/files/tool/guard.ts";
-import { formatOutcomes } from "../../src/octocode/files/tool/queries.ts";
+import { formatOutcomes, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
@@ -28,10 +28,22 @@ const researchGuard = () => Object.assign(new FileGuard(), { reader: mcpReader(R
 describe("file input shape", () => {
 	it("teaches the queries and patch forms when a call has neither, or both", () => {
 		const taught =
-			/file takes either queries \(an array, one object per change: \{type, path, edits\|content\}\) or patch .*not both\. Set reason once on the call\. Wrap a single change as queries:\[\{\.\.\.\}\]\./;
+			/file takes either queries \(an array, one object per change: \{type, path, edits\|content\}\) or patch .*not both\. (Send one\.|This call had neither\.) .*Corrected call:/s;
 		// The flat form a small model tries first: one change's fields at the top level.
 		expect(() => validateFileInput({ type: "write", path: "a.txt", content: "x", reason: "r" })).toThrow(taught);
 		expect(() => validateFileInput({ patch: "*** Begin Patch\n*** End Patch", queries: [] })).toThrow(taught);
+		// The hook path gives the same corrected-call refusal as the tool's own argument preparation.
+		const both = { reason: "r", patch: "*** Begin Patch", queries: [{ type: "delete", path: "a.txt" }] };
+		const refusal = (run: () => unknown) => {
+			try {
+				run();
+			} catch (error) {
+				return (error as Error).message;
+			}
+		};
+		const viaHook = refusal(() => validateFileInput(both));
+		expect(viaHook).toMatch(/Corrected call:/);
+		expect(viaHook).toBe(refusal(() => renameReasoning(both)));
 		expect(() =>
 			validateFileInput({ queries: [{ type: "write", path: "a.txt", content: "x", reason: "r" }] }),
 		).not.toThrow();

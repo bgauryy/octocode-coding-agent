@@ -38,6 +38,7 @@ export function statusCommand(
 					contextUsage: ctx.getContextUsage(),
 				}),
 				entries: ctx.sessionManager.getEntries(),
+				branch: ctx.sessionManager.getBranch(),
 				prices: { getModel: (provider, id) => ctx.modelRegistry.find(provider, id) },
 				selectedModelKey: `${model?.provider}/${model?.id}`,
 				name: ctx.sessionManager.getSessionName(),

@@ -27,6 +27,17 @@ CREATE INDEX shell_history_recent ON shell_history(last_at);
 `;
 
 /**
+ * `worktree_openings`: who opened a worktree or a tmux window or pane, one row per thing (`queries/openings.ts`).
+ * Written with IF NOT EXISTS so a file created before the table existed gains it at first use (`openings.ensure`)
+ * without a schema version change, which would set the whole file aside.
+ */
+export const WORKTREE_OPENINGS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS worktree_openings (
+  kind TEXT NOT NULL CHECK(kind IN ('worktree','tmux')), ref TEXT NOT NULL, opener TEXT NOT NULL, session_id TEXT,
+  opened_at INTEGER NOT NULL, PRIMARY KEY (kind, ref));
+`;
+
+/**
  * `item_reviews`: the user's review decisions about hooks, MCP servers and skills that Octocode did not ship, one row
  * per item and scope (`queries/guard.ts`). Written with IF NOT EXISTS so a file created before the table existed gains
  * it at first use (`guard.ensure`) without a schema version change, which would set the whole file aside.
@@ -38,6 +49,9 @@ CREATE TABLE IF NOT EXISTS item_reviews (
   rating TEXT NOT NULL, findings TEXT NOT NULL DEFAULT '[]', label TEXT NOT NULL, path TEXT NOT NULL,
   decided_at INTEGER NOT NULL, decided_via TEXT NOT NULL, absent_at INTEGER,
   UNIQUE(kind, identity, scope));
+CREATE TABLE IF NOT EXISTS item_review_snapshots (
+  kind TEXT NOT NULL, identity TEXT NOT NULL, scope TEXT NOT NULL, files TEXT NOT NULL,
+  PRIMARY KEY(kind, identity, scope));
 `;
 
 /** The audit table of agent runs and its indexes. */
@@ -345,6 +359,7 @@ CREATE TABLE session_forks (
 CREATE INDEX session_forks_parent ON session_forks(parent_id);
 ${ITEM_REVIEWS_SCHEMA}
 ${SHELL_HISTORY_SCHEMA}
+${WORKTREE_OPENINGS_SCHEMA}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

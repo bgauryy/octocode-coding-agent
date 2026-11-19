@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { octocodecodeAdapter, octocodecodeAvailable } from "../src/adapters/octocodecode/index.ts";
+import { octocodeAgentAdapter, octocodeAgentAvailable } from "../src/adapters/octocode-agent/index.ts";
 import { referenceAdapter } from "../src/adapters/reference/index.ts";
 import { script } from "../src/gateway.ts";
 import { gateway, mcp, searchTool } from "./helpers.ts";
@@ -20,24 +20,24 @@ console.log(JSON.stringify({ args: process.argv.slice(2), home, cwd: process.cwd
 	return file;
 }
 
-describe("octocodecode adapter", () => {
+describe("octocode-agent adapter", () => {
 	it("needs a configured bundle", async () => {
-		const saved = process.env.TESTKIT_OCTOCODECODE_BUNDLE;
-		delete process.env.TESTKIT_OCTOCODECODE_BUNDLE;
+		const saved = process.env.TESTKIT_OCTOCODE_AGENT_BUNDLE;
+		delete process.env.TESTKIT_OCTOCODE_AGENT_BUNDLE;
 		try {
-			expect(octocodecodeAvailable()).toBe(false);
-			await expect(octocodecodeAdapter().start({ gatewayUrl: "http://x" })).rejects.toThrow(
-				/TESTKIT_OCTOCODECODE_BUNDLE/,
+			expect(octocodeAgentAvailable()).toBe(false);
+			await expect(octocodeAgentAdapter().start({ gatewayUrl: "http://x" })).rejects.toThrow(
+				/TESTKIT_OCTOCODE_AGENT_BUNDLE/,
 			);
 		} finally {
-			if (saved !== undefined) process.env.TESTKIT_OCTOCODECODE_BUNDLE = saved;
+			if (saved !== undefined) process.env.TESTKIT_OCTOCODE_AGENT_BUNDLE = saved;
 		}
 	});
 
 	it("writes models.json and mcp.json from the context, runs the bundle path it was given, and cleans up", async () => {
 		const bundle = fakeBundle();
-		expect(octocodecodeAvailable(bundle)).toBe(true);
-		const session = await octocodecodeAdapter({ bundle, files: { "a/b.txt": "hi" } }).start({
+		expect(octocodeAgentAvailable(bundle)).toBe(true);
+		const session = await octocodeAgentAdapter({ bundle, files: { "a/b.txt": "hi" } }).start({
 			gatewayUrl: "http://127.0.0.1:1234",
 			mcpUrls: { docs: "http://127.0.0.1:9/mcp" },
 			env: { EXTRA: "1" },

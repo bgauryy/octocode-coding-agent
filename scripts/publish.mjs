@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Publishes @octocodeai/octocodecode, the only public package. Run through `yarn run publish` (or `publish:dry`), which
+ * Publishes @octocodeai/octocode-agent, the only public package. Run through `yarn run publish` (or `publish:dry`), which
  * builds and checks first. Every gate runs before anything reaches npm:
  * one public package, a clean tree, the exact dependency versions on npm, a verified tarball with a clean manifest, and a
  * real install and session from that tarball. `--use name@version` tries another dependency version in a dry run.

@@ -155,6 +155,17 @@ A read of another coding agent's credential store asks in `full` too. This is a 
 
 At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers and without the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
 
+### Shell sandbox read denials
+
+While the shell sandbox is on (`sandbox.mode`), a sandboxed command cannot read these, in any permission mode and for read-only subagents too:
+
+| Denied                                 | Where it comes from                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------- |
+| `auth.json`                            | the agent directory (`OCTOCODE_CODING_AGENT_DIR`, else the Octocode home)        |
+| `.ssh`, `.aws`, `.gnupg` and their contents | your home folder (`HOME`)                                                   |
+
+The read fails inside the command and the result names the refused path. A command that really needs one (for example `git push` over SSH) runs outside the sandbox only through the usual `shell.unsandboxed` approval: the agent retries it with `sandbox: false` and you are asked. With the sandbox off, or in `bypass` mode with `sandbox.mode` at `auto`, this list does not apply.
+
 ## Subagent permission asks
 
 A subagent starts in its parent's mode with the kinds you allowed for the parent's session. When it still needs approval, the ask goes to its parent:

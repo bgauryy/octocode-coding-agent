@@ -17,7 +17,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 });
 
 export function bashDescription(): string {
-	return `Run commands in the working directory. Run builds, full test suites, servers or work over a minute in background: get job id, pid and log path, then a completion message. Foreground returns combined output and moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds and servers) or on a user message. Timeouts do not undo effects; inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
+	return `Run commands in the working directory. Builds, full test suites, servers and work over a minute go in background: job id, pid and log path now, a completion message later. Foreground returns combined output; it moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds, servers) or on a user message. A timeout does not undo effects: inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */
@@ -37,7 +37,7 @@ export const bashParameters = Type.Object({
 	command: Type.String({ description: "Command in the selected syntax" }),
 	timeout: Type.Optional(
 		Type.Number({
-			description: `Seconds until the command is stopped (foreground default ${DEFAULT_BASH_TIMEOUT}s, max ${MAX_FOREGROUND_TIMEOUT}s; a background job has none unless set); omit to let a long command move to the background`,
+			description: `Seconds until it stops (foreground: default ${DEFAULT_BASH_TIMEOUT}, max ${MAX_FOREGROUND_TIMEOUT}; background: none unless set); omit: a long command moves to the background`,
 		}),
 	),
 	maxOutputTokens: maxOutputTokensParameter,
@@ -49,18 +49,18 @@ export const bashParameters = Type.Object({
 	verify: Type.Optional(
 		Type.Boolean({
 			description:
-				"Record verification for current edits; later edits make it stale. Zero exit proves only command success.",
+				"Record verification for current edits (later edits make it stale); exit 0 proves only the command succeeded",
 		}),
 	),
 	sandbox: Type.Optional(
 		Type.Boolean({
 			description:
-				"false: run outside the command sandbox, after it refused something the command needs; asks the user each time",
+				"false: run outside the command sandbox after it refused something the command needs; asks the user each time",
 		}),
 	),
 	item: Type.Optional(
 		Type.String({
-			description: "Background: your ongoing backlog item (B<n>) this job serves; it is not idle meanwhile.",
+			description: "Background: your ongoing item (B<n>) this job serves; it is not idle meanwhile",
 		}),
 	),
 	// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.

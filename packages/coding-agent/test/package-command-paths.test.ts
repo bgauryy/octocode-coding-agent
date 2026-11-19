@@ -96,7 +96,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 			"fetch",
 			vi.fn(async (input: string | URL | Request) => {
 				const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-				if (url === "https://registry.npmjs.org/@octocodeai%2Foctocodecode/latest") {
+				if (url === "https://registry.npmjs.org/@octocodeai%2Foctocode-agent/latest") {
 					return Response.json({ packageName: PACKAGE_NAME, version: targetVersion });
 				}
 				const releaseUrl = `https://example.test/api/installer/releases/${targetVersion}`;
@@ -603,7 +603,7 @@ if (process.platform !== "win32") fs.chmodSync(octocodePath, 0o755);
 	it("keeps npm self-updates non-managed when the managed environment is inherited", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
 		const projectPrefix = join(tempDir, "project-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocodecode");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocode-agent");
 		const inheritedManagedRoot = join(tempDir, "inherited-managed-install");
 		mkdirSync(join(inheritedManagedRoot, "releases"), { recursive: true });
 		writeFileSync(
@@ -662,7 +662,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 
 	it("uses the current package name when the update check omits packageName", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocodecode");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocode-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
 		const recordPath = join(tempDir, "self-update.json");
 		mkdirSync(selfPackageDir, { recursive: true });
@@ -708,7 +708,7 @@ else fs.writeFileSync(${JSON.stringify(recordPath)},JSON.stringify(args));
 
 	it("updates its own package even if metadata names a different package", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocodecode");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocode-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
 		const recordPath = join(tempDir, "self-update.json");
 		mkdirSync(selfPackageDir, { recursive: true });
@@ -758,7 +758,7 @@ else {
 
 	it("prints a pnpm metadata hint when self-update fails", async () => {
 		const globalRoot = join(tempDir, "pnpm", "global", "v11");
-		const selfPackageDir = join(globalRoot, "node_modules", "@octocodeai", "octocodecode");
+		const selfPackageDir = join(globalRoot, "node_modules", "@octocodeai", "octocode-agent");
 		const fakeBinDir = join(tempDir, "bin");
 		const fakePnpmPath = join(fakeBinDir, process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 		mkdirSync(selfPackageDir, { recursive: true });
@@ -802,7 +802,7 @@ else {
 
 	it("reports failure when its own npm package update fails", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocodecode");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@octocodeai", "octocode-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm-fail.cjs");
 		const recordPath = join(tempDir, "self-update-fail.json");
 		mkdirSync(selfPackageDir, { recursive: true });

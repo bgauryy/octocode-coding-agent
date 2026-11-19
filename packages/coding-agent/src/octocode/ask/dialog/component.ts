@@ -42,6 +42,8 @@ export class AskDialog {
 	private readonly pointer = new CardPointer();
 	/** askUser's `timeout`: running until any key, click or wheel, an answer or the dialog's end. */
 	private readonly countdown: Countdown | undefined;
+	/** A confirmation's expiry: shown as a countdown that no key stops; when it ends every question times out. */
+	private readonly expiry: { countdown: Countdown; label: string } | undefined;
 	private readonly onAbort = () => this.finish();
 	/** The unanswered tabs' `◇` breathes while any question waits. */
 	private readonly breath = new Breath(() => this.repaint());
@@ -61,6 +63,7 @@ export class AskDialog {
 		requestRender: () => void,
 		done: (replies: Reply[]) => void,
 		signal?: AbortSignal,
+		expiry?: { seconds: number; label: string },
 	) {
 		this.questions = questions;
 		this.views = questions.map(questionView);
@@ -75,6 +78,8 @@ export class AskDialog {
 		this.isMulti = questions.length > 1;
 		const seconds = autoSeconds(questions);
 		if (seconds !== undefined) this.countdown = new Countdown(seconds, this.repaint, this.expire);
+		if (expiry)
+			this.expiry = { countdown: new Countdown(expiry.seconds, this.repaint, this.timeOut), label: expiry.label };
 		this.breath.sync(this.isMulti);
 		this.typing = questions[0]?.type === "text";
 		editor.onSubmit = (value) => this.submitTyped(value);
@@ -102,6 +107,7 @@ export class AskDialog {
 	dispose(): void {
 		this.signal?.removeEventListener("abort", this.onAbort);
 		this.countdown?.stop();
+		this.expiry?.countdown.stop();
 		this.breath.dispose();
 	}
 
@@ -118,6 +124,11 @@ export class AskDialog {
 	/** The time ran out with nothing touched: every question takes its recommended options. */
 	private readonly expire = (): void => {
 		autoReplies(this.questions).forEach((reply, index) => this.replies.set(index, reply));
+		this.finish();
+	};
+
+	private readonly timeOut = (): void => {
+		this.questions.forEach((q, index) => this.replies.set(index, { id: q.id, cancelled: "timeout" }));
 		this.finish();
 	};
 
@@ -350,7 +361,9 @@ export class AskDialog {
 				hideRows: q.type === "text" && this.typing,
 				...(this.countdown?.running
 					? { countdown: countdownText(recommendedLabels(q), this.countdown.remaining()) }
-					: {}),
+					: this.expiry?.countdown.running
+						? { countdown: countdownText([this.expiry.label], this.expiry.countdown.remaining()) }
+						: {}),
 				rowLines: this.cardRows,
 			},
 			this.theme,

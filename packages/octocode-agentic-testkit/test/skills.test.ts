@@ -27,7 +27,7 @@ describe("skill triggers", () => {
 		expect(gw.trace).not.toHaveLoadedSkill("sql");
 	});
 
-	it("detects a SKILL.md read (octocodecode style)", async () => {
+	it("detects a SKILL.md read (octocode-agent style)", async () => {
 		const gw = await gateway({
 			responder: script([{ toolCalls: [{ name: "read", args: { path: "/x/skills/pdf/SKILL.md" } }] }, { text: "ok" }]),
 		});

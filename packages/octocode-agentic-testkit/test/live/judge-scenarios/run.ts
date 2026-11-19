@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { octocodecodeAdapter } from "../../../src/adapters/octocodecode/index.ts";
+import { octocodeAgentAdapter } from "../../../src/adapters/octocode-agent/index.ts";
 import type { AgentRun, ProbeProvider } from "../cache-probe.ts";
 
 export const MODELS_JSON =
@@ -54,7 +54,7 @@ export interface ScenarioRun {
 export async function runScenario(opts: ScenarioRun): Promise<AgentRun> {
 	const p = opts.provider;
 	const servers = Object.entries(opts.mcpServers ?? {});
-	const session = await octocodecodeAdapter({
+	const session = await octocodeAgentAdapter({
 		bundle: opts.bundle,
 		provider: { id: p.id, api: p.api, model: p.model, baseUrl: opts.baseUrl, key: p.key },
 		thinking: "off",

@@ -1,6 +1,6 @@
 ---
 name: octocode-github-research
-description: "Use for code, history or packages outside this checkout: a GitHub repo's files at a ref, who changed what and why (commits, PRs, issues), which repo and ref ship a package version. Not this checkout (octocode-local-research)."
+description: "Use for code, history or packages outside this checkout: GitHub repo files at a ref, who changed what and why (commits, PRs, issues), which repo and ref ship a package version."
 ---
 
 # GitHub and package research

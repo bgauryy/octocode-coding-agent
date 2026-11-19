@@ -118,17 +118,26 @@ export function summarizeProfile(file, top = 20) {
 		}
 		return frames.length > 0 ? frames.join(" < ") : "(no source frame)";
 	};
+	const keyOf = (frame) => `${frame.functionName || "(anonymous)"} ${frame.url}:${frame.lineNumber + 1}`;
+	// Inclusive time: a sample counts once for every distinct function on its stack (a recursive function once).
+	const inclusiveUs = new Map();
+	for (const [id, us] of selfUs) {
+		const seen = new Set();
+		for (let at = id; at !== undefined; at = parent.get(at)) seen.add(keyOf(nodes.get(at).callFrame));
+		for (const key of seen) inclusiveUs.set(key, (inclusiveUs.get(key) ?? 0) + us);
+	}
 	const total = [...selfUs.values()].reduce((sum, value) => sum + value, 0);
 	const functions = new Map();
 	const areas = new Map();
 	for (const [id, us] of selfUs) {
 		const frame = nodes.get(id).callFrame;
-		const key = `${frame.functionName || "(anonymous)"} ${frame.url}:${frame.lineNumber + 1}`;
+		const key = keyOf(frame);
 		const entry = functions.get(key) ?? {
 			name: frame.functionName || "(anonymous)",
 			where: frame.url ? `${short(frame.url)}:${frame.lineNumber + 1}` : "(native)",
 			areas: new Map(),
 			us: 0,
+			totalUs: inclusiveUs.get(key) ?? 0,
 			callers: new Map(),
 		};
 		entry.us += us;
@@ -152,6 +161,8 @@ export function summarizeProfile(file, top = 20) {
 				area: [...entry.areas.entries()].sort((a, b) => b[1] - a[1])[0][0],
 				ms: msOf(entry.us),
 				pct: pct(entry.us),
+				totalMs: msOf(entry.totalUs),
+				totalPct: pct(entry.totalUs),
 				// For a native or Node function, the source frames that called it most.
 				callers: [...entry.callers.entries()]
 					.sort((a, b) => b[1] - a[1])
@@ -178,14 +189,14 @@ export function profileMarkdown(file, summary) {
 	for (const row of summary.areas) lines.push(`| ${row.area} | ${row.ms} | ${row.pct} |`);
 	lines.push(
 		"",
-		`Top ${summary.hotspots.length} functions by self time:`,
+		`Top ${summary.hotspots.length} functions by self time (total = self plus callees, a sample counted once per function on its stack):`,
 		"",
-		"| # | Function | Where | Area | ms | % | Called from |",
-		"| --- | --- | --- | --- | --- | --- | --- |",
+		"| # | Function | Where | Area | self ms | self % | total ms | total % | Called from |",
+		"| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 	);
 	summary.hotspots.forEach((row, index) =>
 		lines.push(
-			`| ${index + 1} | \`${row.name}\` | ${row.where} | ${row.area} | ${row.ms} | ${row.pct} | ${row.callers.join("<br>")} |`,
+			`| ${index + 1} | \`${row.name}\` | ${row.where} | ${row.area} | ${row.ms} | ${row.pct} | ${row.totalMs} | ${row.totalPct} | ${row.callers.join("<br>")} |`,
 		),
 	);
 	return `${lines.join("\n")}\n`;

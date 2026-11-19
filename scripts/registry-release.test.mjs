@@ -22,7 +22,7 @@ const releaseMap = {
 };
 
 const source = {
-	name: "@octocodeai/octocodecode",
+	name: "@octocodeai/octocode-agent",
 	version: "1.3.0",
 	dependencies: {
 		"@octocodeai/octocode-native": "link:../../../octocode/packages/octocode-native",
@@ -104,8 +104,8 @@ test("checks recursive dependencies, optional and nonoptional peers, registry or
 	const lock = {
 		lockfileVersion: 3,
 		packages: {
-			"": { dependencies: { "@octocodeai/octocodecode": "1.3.0" } },
-			"node_modules/@octocodeai/octocodecode": {
+			"": { dependencies: { "@octocodeai/octocode-agent": "1.3.0" } },
+			"node_modules/@octocodeai/octocode-agent": {
 				version: "1.3.0",
 				resolved: `${registry}/cli.tgz`,
 				integrity,
@@ -185,7 +185,7 @@ test("checks recursive dependencies, optional and nonoptional peers, registry or
 		],
 		[
 			(copy) => {
-				copy.packages["node_modules/@octocodeai/octocodecode"].dependencies.child = "^1.0.0";
+				copy.packages["node_modules/@octocodeai/octocode-agent"].dependencies.child = "^1.0.0";
 				copy.packages["node_modules/child"].version = "1.1.0-beta.1";
 			},
 			/Dependency child@\^1.0.0 resolves to 1.1.0-beta.1/,

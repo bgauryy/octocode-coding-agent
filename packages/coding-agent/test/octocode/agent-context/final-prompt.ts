@@ -11,7 +11,7 @@ import { systemText } from "./render.ts";
  * leak through, and a change to our own static text still shows. Only the two bash host lines and the MCP lines of the
  * `<tools>` list are matched by their shape.
  */
-export const REGENERATE_COMMAND = "yarn workspace @octocodeai/octocodecode run generate:prompts";
+export const REGENERATE_COMMAND = "yarn workspace @octocodeai/octocode-agent run generate:prompts";
 
 export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: string }> = [
 	{

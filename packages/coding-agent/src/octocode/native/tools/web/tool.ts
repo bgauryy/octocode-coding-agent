@@ -189,18 +189,18 @@ export function registerWebTool(api: FeatureSetup, permission: Permission): void
 			label: "Web",
 			promptSnippet: renderPrompt("tools/web/snippet.md"),
 			description:
-				"Supply exactly one: query to search, or url to read an http(s) page. Fetches return static text and metadata or formatted JSON; no JavaScript runs. Image URLs (PNG, JPEG, GIF, WebP) return images, resizing large ones and naming saved originals; SVG returns XML. Cross-host redirects name the next URL without following it.",
+				"Give exactly one: query to search, or url to read a public http(s) page. A fetch returns static text and metadata or formatted JSON; no JavaScript runs. Image URLs (PNG, JPEG, GIF, WebP) return images, large ones resized with the saved original named; SVG returns XML. A cross-host redirect names the next URL without following it.",
 			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
 			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
 			// on the selected tools).
 			promptGuidelines: [],
 			parameters: Type.Object({
-				url: Type.Optional(Type.String({ description: "Public http(s) page to read" })),
-				query: Type.Optional(Type.String({ description: "Search terms" })),
-				maxResults: Type.Optional(Type.Integer({ description: "Search result limit (default 8, up to 20)" })),
+				url: Type.Optional(Type.String()),
+				query: Type.Optional(Type.String()),
+				maxResults: Type.Optional(Type.Integer({ description: "Search results (default 8, max 20)" })),
 				maxChars: Type.Optional(
 					Type.Integer({
-						description: `Fetch preview size (default ${DEFAULT_FETCH_CHARS}, between 1,000 and ${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer text is saved to a file: read it by line range`,
+						description: `Fetch preview chars (default ${DEFAULT_FETCH_CHARS}, 1,000–${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer text is saved to a file to read by line range`,
 					}),
 				),
 			}),

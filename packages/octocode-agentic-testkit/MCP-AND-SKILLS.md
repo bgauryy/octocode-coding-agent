@@ -167,12 +167,12 @@ compare two descriptions, run `liveCompare` with `transformTools` setting the va
 A skill is a `SKILL.md` a harness lists by its description and loads when a task matches. Install the skill under
 test into the harness's isolated home:
 
-| Harness      | Option                                            | Lands in                                     |
-| ------------ | ------------------------------------------------- | -------------------------------------------- |
-| Claude Code  | `claudeCodeAdapter({ skills: { name: text } })`   | `<CLAUDE_CONFIG_DIR>/skills/<name>/SKILL.md` |
-| Codex        | `codexAdapter({ skills: { name: text } })`        | `<CODEX_HOME>/skills/<name>/SKILL.md`        |
-| octocodecode | `octocodecodeAdapter({ skills: { name: text } })` | `<agent home>/skills/<name>/SKILL.md`        |
-| your adapter | write the files where your harness reads skills   |                                              |
+| Harness        | Option                                             | Lands in                                     |
+| -------------- | -------------------------------------------------- | -------------------------------------------- |
+| Claude Code    | `claudeCodeAdapter({ skills: { name: text } })`    | `<CLAUDE_CONFIG_DIR>/skills/<name>/SKILL.md` |
+| Codex          | `codexAdapter({ skills: { name: text } })`         | `<CODEX_HOME>/skills/<name>/SKILL.md`        |
+| Octocode Agent | `octocodeAgentAdapter({ skills: { name: text } })` | `<agent home>/skills/<name>/SKILL.md`        |
+| your adapter   | write the files where your harness reads skills    |                                              |
 
 | Question                                                          | How                                                                                                                                                          | Model    |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |

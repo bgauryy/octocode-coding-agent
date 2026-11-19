@@ -80,7 +80,7 @@ describe("per-session settings routes", () => {
 			)?.tools;
 		expect(native(listed.body)).toEqual(
 			expect.arrayContaining([
-				{ name: "web", state: "deferred", decidedBy: "recent" },
+				{ name: "web", state: "deferred", decidedBy: "usage", audit: expect.objectContaining({ reason: "unused" }) },
 				{ name: "bash", state: "direct", decidedBy: "core" },
 			]),
 		);
@@ -95,7 +95,9 @@ describe("per-session settings routes", () => {
 		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ nativeToolExposure: { web: "direct" } });
 		// The session declared it deferred when it registered the tool; the pin waits for the next session.
 		expect(native(pinned.body)).toEqual(
-			expect.arrayContaining([{ name: "web", pin: "direct", state: "deferred", decidedBy: "recent" }]),
+			expect.arrayContaining([
+				expect.objectContaining({ name: "web", pin: "direct", state: "deferred", decidedBy: "usage" }),
+			]),
 		);
 	});
 

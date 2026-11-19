@@ -7,6 +7,11 @@ import type { AcpLaunchOptions, AcpServerHost } from "../host.ts";
 import { AcpBroker, type AcpWorker } from "./broker.ts";
 import { prepareAcpMcpServers } from "./mcp.ts";
 
+/** The command line asks ACP for something it does not do: a refusal for the person, not a fault. */
+export class AcpUsageError extends Error {
+	override readonly name = "AcpUsageError";
+}
+
 /** ACP owns stdin and session selection; normal runtime options belong to its workers. */
 export function acpWorkerArguments(args: string[], parsed: AcpLaunchOptions): string[] {
 	if (
@@ -22,7 +27,7 @@ export function acpWorkerArguments(args: string[], parsed: AcpLaunchOptions): st
 		parsed.export ||
 		parsed.listModels !== undefined
 	) {
-		throw new Error(
+		throw new AcpUsageError(
 			"ACP mode receives prompts and new-session requests over stdin; positional prompts, file arguments and session-selection commands are not supported.",
 		);
 	}
@@ -127,6 +132,7 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 	};
 	// Node emits stream errors separately from write callbacks; both must reach the owned cleanup path.
 	process.stdout.on("error", stopAfterOutputFailure);
+	let stdoutStalled = false;
 	const handlers: Array<[NodeJS.Signals, () => void]> = [];
 	for (const signal of ["SIGINT", "SIGTERM", ...(process.platform === "win32" ? [] : ["SIGHUP"])] as NodeJS.Signals[]) {
 		const handler = () => {
@@ -144,11 +150,35 @@ export async function runAcpMode(host: AcpServerHost, workerArgs: string[]): Pro
 			await broker.close();
 			// The client that disconnected may have closed its end too: a record still queued for it (a closing
 			// session's update) then fails with EPIPE. Nobody is left to read it, so it ends nothing but the wait.
-			if (!outputFailed) await host.stdout.flush().catch(() => undefined);
+			// A reader that stays open but stops reading never completes the write, so the wait has a deadline.
+			if (!outputFailed && !(await flushWithin(host.stdout.flush(), STDOUT_FLUSH_MS))) stdoutStalled = true;
 		} finally {
 			for (const [signal, handler] of handlers) process.off(signal, handler);
 			process.stdout.off("error", stopAfterOutputFailure);
 			process.stdin.pause();
+			// The unwritten output keeps the stdout handle, and so the process, alive: nobody is reading it.
+			if (stdoutStalled) process.exit(process.exitCode ?? 0);
 		}
+	}
+}
+
+const STDOUT_FLUSH_MS = 3_000;
+
+/** Whether the flush ended (successfully or not) before the deadline. */
+async function flushWithin(flush: Promise<void>, ms: number): Promise<boolean> {
+	let timer: NodeJS.Timeout | undefined;
+	const deadline = new Promise<boolean>((resolve) => {
+		timer = setTimeout(() => resolve(false), ms);
+	});
+	try {
+		return await Promise.race([
+			flush.then(
+				() => true,
+				() => true,
+			),
+			deadline,
+		]);
+	} finally {
+		clearTimeout(timer);
 	}
 }

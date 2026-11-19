@@ -71,7 +71,7 @@ export interface McpFeatureOptions {
 	startupWaitMs?: number;
 	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `declared`. */
 	presentation?: McpPresentationMode;
-	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `recent`. */
+	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `usage`. */
 	exposure?: string;
 	/** Tool roles (`roles` in a server's config) whose open tools are deferred in this instance. Default: `OCTOCODE_MCP_DEFER_ROLES` in a subagent, which a profile's `mcpDefer` sets. */
 	deferRoles?: readonly McpDeferRole[];

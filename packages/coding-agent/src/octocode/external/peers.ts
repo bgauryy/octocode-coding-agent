@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { ApiClient } from "../api/client.ts";
 import { issueTicket, ownInstance } from "../api/identity.ts";
 import { probeInstances } from "../api/probe.ts";
-import { CLIENT_MARGIN_MS, WAIT_MS, WAITING_FOR_USER } from "../api/protocol.ts";
+import { CLIENT_MARGIN_MS, PREPARING, SEND_REPLY_MS, WAIT_MS, WAITING_FOR_USER } from "../api/protocol.ts";
 import { ticketTarget } from "../api/registry-integrity.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
@@ -105,6 +106,8 @@ async function placeInRepository(
  */
 export class Peers {
 	private lifetime = new AbortController();
+	/** Keys of sends that got no answer, by target and text. */
+	private readonly keys = new Map<string, string>();
 
 	private readonly policy: PeerPolicy;
 	private readonly env: NodeJS.ProcessEnv;
@@ -226,6 +229,7 @@ export class Peers {
 		const own = ownInstance();
 		// The receiver calls this process back with it (`identity.confirm`) to check the claim is this process's own.
 		const ticket = issueTicket(target.id, target.socket ?? target.http?.url);
+		const memo = target.id;
 		const params = {
 			text,
 			// The same name the reader answers to: the sender's own process name.
@@ -238,37 +242,55 @@ export class Peers {
 			},
 			// The receiver's user may take a while to decide: this bounds that wait, not the receiver's work.
 			timeoutMs: WAIT_MS.max,
+			// The sender may give up before the receiver does: the key lets a retry find the first attempt's outcome.
+			key: this.keyFor(memo, text),
 			...(options.replyRequired ? { replyRequired: true } : {}),
 		};
 		const client = new ApiClient(target);
 		let receipt: unknown;
 		try {
 			receipt = await client.call("message.send", params, {
-				timeoutMs: WAIT_MS.default + CLIENT_MARGIN_MS.default,
+				timeoutMs: SEND_REPLY_MS,
 				...(signal ? { signal } : {}),
 			});
 		} catch (error) {
 			ticket.release();
 			throw sendFailure(name, error);
 		}
+		// The receiver answered: the same text sent again is a new message, not a retry.
+		this.keys.delete(`${memo}\0${text}`);
 		const queued = isRecord(receipt) ? receipt.queued : undefined;
 		// A queued message lives only in the receiver's memory until its model reads it: watch for the receiver exiting first.
 		if (queued === "steer" || queued === "followUp") this.unread.track({ name, text, target });
 		// A follow-up repeats the same params (and ticket) until the receiver's user decides.
-		if (queued === WAITING_FOR_USER && isRecord(receipt))
+		if ((queued === WAITING_FOR_USER || queued === PREPARING) && isRecord(receipt))
 			void this.follow(client, name, { ...params, key: receipt.key }).finally(ticket.release);
 		else ticket.release();
 		const replyPath = own ? "" : " This session's API is off, so it cannot be answered; /api on turns it on.";
 		const fate =
-			queued === WAITING_FOR_USER
-				? `Waiting for ${name}'s user to allow this message. You are told if it is refused; do not send it again.`
-				: queued === "turn"
-					? `Sent to ${name}, which starts a turn on it.`
-					: `Sent to ${name}, which reads it at its next step.`;
+			queued === PREPARING
+				? `${name} has the message and is still preparing it. You are told if it cannot take it; do not send it again.`
+				: queued === WAITING_FOR_USER
+					? `Waiting for ${name}'s user to allow this message. You are told if it is refused; do not send it again.`
+					: queued === "turn"
+						? `Sent to ${name}, which starts a turn on it.`
+						: `Sent to ${name}, which reads it at its next step.`;
 		return {
 			text: `${fate} An answer arrives as a message from ${name}.${replyPath}`,
 			details: { to: [name], queued },
 		};
+	}
+
+	/** The key of a send of `text` to `target`: a repeat after an unanswered send reuses it, so a retry after a lost answer is not delivered twice. */
+	private keyFor(target: string, text: string): string {
+		const id = `${target}\0${text}`;
+		let key = this.keys.get(id);
+		if (!key) {
+			key = randomUUID();
+			if (this.keys.size >= 64) this.keys.delete(this.keys.keys().next().value!);
+			this.keys.set(id, key);
+		}
+		return key;
 	}
 
 	/** The outcome of a send its receiver's user is deciding: the same key waits for it. Only a refusal needs telling. */

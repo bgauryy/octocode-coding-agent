@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { octocodecodeAdapter } from "../../src/adapters/octocodecode/index.ts";
+import { octocodeAgentAdapter } from "../../src/adapters/octocode-agent/index.ts";
 
 /** One provider as the probe runs it: the upstream base URL, the API, one model entry copied from a `models.json`. */
 export interface ProbeProvider {
@@ -258,7 +258,7 @@ export async function runAgent(opts: {
 	env?: Record<string, string>;
 }): Promise<AgentRun> {
 	const p = opts.provider;
-	const session = await octocodecodeAdapter({
+	const session = await octocodeAgentAdapter({
 		bundle: opts.bundle,
 		provider: { id: p.id, api: p.api, model: p.model, baseUrl: opts.baseUrl, key: p.key },
 		thinking: opts.thinking,

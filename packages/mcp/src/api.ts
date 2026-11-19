@@ -2,7 +2,7 @@
  * The MCP workspace's host API: the one door coding-agent (its source and scripts) reaches this workspace through.
  * Everything else in `src/` is private: a host file that needs another name adds it here instead of importing the module
  * that defines it, and `scripts/check-mcp-boundary.mjs` fails on any other `mcp/src/` import. The published client
- * subpaths (`@octocodeai/octocodecode/mcp` and `/mcp/oauth`) re-export `client/index.ts` and `client/oauth/index.ts`
+ * subpaths (`@octocodeai/octocode-agent/mcp` and `/mcp/oauth`) re-export `client/index.ts` and `client/oauth/index.ts`
  * from the bundle entry, and other workspaces use the `exports` of this package.
  */
 

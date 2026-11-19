@@ -1,6 +1,6 @@
 ---
 name: octocode-subagents
-description: "Use before starting, briefing, coordinating or merging subagents, or relaying for other sessions; when running or resuming a multi-step workflow (stages, dependencies, retries, checkpoints, rollback); or when designing, reviewing, debugging or evaluating an AI agent or LLM system (prompts, context and memory, tool and MCP contracts, model choice, guardrails, evals). Covers whether to delegate, child and model choice, waves, briefs, integration, recovery and merges."
+description: "Use before starting, briefing, coordinating or merging subagents or relaying for other sessions; when running or resuming a multi-step workflow (stages, dependencies, retries, checkpoints, rollback); or when designing, reviewing, debugging or evaluating an AI agent or LLM system (prompts, context, memory, tool and MCP contracts, model choice, guardrails, evals). Covers whether to delegate, child and model choice, waves, briefs, integration, recovery, merges."
 metadata:
   audience: coordinator
 ---

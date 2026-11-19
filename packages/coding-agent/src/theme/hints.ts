@@ -56,7 +56,7 @@ export function rawKeyHint(key: string, description: string): string {
 	return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
 }
 
-/** A key and the verb it triggers: `[keyText("tui.select.confirm"), "select"]`. Say `interrupt` for the agent run, `cancel` for a dialog. */
+/** A key and the verb it triggers: `[keyText("tui.select.confirm"), "select"]`. Say `interrupt` on the working line of the agent run, `cancel` for a dialog or an operation that ends with no output (retry wait, compaction, a shell command). */
 export type KeyHintPair = readonly [key: string, verb: string];
 
 /** Plain `key verb · key verb`, for text a caller colors itself or measures. */

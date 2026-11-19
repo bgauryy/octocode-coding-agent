@@ -1,5 +1,5 @@
+import { renderPrompt } from "../../../../core/prompt-template.ts";
 import { textResultDisplay } from "../../../render/display.ts";
-import { coordinateGuidelines } from "./guidelines.ts";
 import path from "node:path";
 import { StringEnum } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
@@ -46,6 +46,10 @@ import { registerRecordedSpend } from "../../../team/tools/spend.ts";
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
 const DEFAULT_CHANGES_LIMIT = 20;
 
+type DescribeWorktrees = (
+	cwd: string,
+	deps: { members: () => Member[]; self?: string | undefined },
+) => Promise<string | undefined>;
 type StopAgent = (id: string, by: string) => string | undefined;
 type MergeAgent = (id: string, ctx: FeatureContext, signal?: AbortSignal) => Promise<{ ok: boolean; text: string }>;
 type MergeBranch = (
@@ -106,7 +110,7 @@ export function registerCollab(
 		beforeLeave?: (reason: string) => Promise<unknown>;
 		registerTool?: FeatureSetup["tools"]["register"];
 		/** The repository's worktrees with the agents in each, for `coordinate list` (wired by `index.ts` from the worktrees domain). */
-		describeWorktrees?: (cwd: string, deps: { members: () => Member[] }) => Promise<string | undefined>;
+		describeWorktrees?: DescribeWorktrees;
 		/** The paths a bash command writes, as far as a parse can name them (wired by `index.ts` from the permission layer). */
 		shellWrites?: (command: string) => Promise<string[]>;
 		/** The paths a bash command that ran wrote, only those the parse names (not the guesses `shellWrites` also checks); recorded as changes. */
@@ -143,6 +147,8 @@ export function registerCollab(
 			return reason ? { block: true, reason: `${POWERSHELL_HELD} ${reason}` } : undefined;
 		}
 		let command = event.toolName === "bash" ? optionalString(input.command) : undefined;
+		const formatRefusal = command === undefined ? undefined : team.repoWideFormatRefusal(command);
+		if (formatRefusal) return { block: true, reason: formatRefusal };
 		// The same rule for inline interpreter code (`python3 -c`, `node -e`, a heredoc fed to `python -`): its writes are not named
 		// either, except for Node under `--permission`, whose runtime refuses them (`interpreterRefusal`); a `node` that lacks
 		// only those flags gets them (`confineNode`), and its result says so. Runs only while a reservation is held: the parse is then worth its cost.
@@ -204,7 +210,7 @@ function registerCoordinateTool(
 		mergeBranch?: MergeBranch | undefined;
 		peers?: PeerRoute | undefined;
 		budgets?: ChildBudgets | undefined;
-		describeWorktrees?: ((cwd: string, deps: { members: () => Member[] }) => Promise<string | undefined>) | undefined;
+		describeWorktrees?: DescribeWorktrees | undefined;
 		registerTool?: FeatureSetup["tools"]["register"] | undefined;
 	},
 ): void {
@@ -220,15 +226,15 @@ function registerCoordinateTool(
 			label: "Coordinate",
 			description:
 				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/code/temp/` scratch are per worktree.",
-			promptGuidelines: coordinateGuidelines(!canStop),
+			promptGuidelines: renderPrompt("tools/coordinate/guidelines.md").split("\n").filter(Boolean),
 			parameters: Type.Object({
 				action: StringEnum(actions, {
 					description:
-						"list: agents and held paths; " +
+						"list: agents, held paths; " +
 						(canStop ? "join: set your goal; leave: unregister, release reservations; " : "") +
-						"lock: reserve paths, all or none; unlock: release (none given: all); " +
+						"lock: reserve paths, all or none; unlock: release (none named: all); " +
 						(canStop
-							? "stop: kill your background child; merge: land isolated child's work here or linked worktree branch in main checkout (asks user); grant: add model requests to your running child for this run; "
+							? "stop: kill your background child; merge: land an isolated child's work here, or a linked worktree branch in the main checkout (asks user); grant: more model requests for your running child this run; "
 							: "") +
 						"changes: recent agent file changes",
 				}),
@@ -236,7 +242,7 @@ function registerCoordinateTool(
 					? {
 							id: Type.Optional(Type.String({ description: "stop, merge, grant: subagent id" })),
 							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch, instead of id" })),
-							requests: Type.Optional(Type.Integer({ description: "grant: model requests to add (positive integer)" })),
+							requests: Type.Optional(Type.Integer({ description: "grant: requests to add (positive integer)" })),
 						}
 					: {}),
 				...(canStop ? { goal: Type.Optional(Type.String({ description: "join: your task goal" })) } : {}),
@@ -245,7 +251,7 @@ function registerCoordinateTool(
 						description: 'lock/unlock: files or "dir/". changes: only under these paths',
 					}),
 				),
-				withinMinutes: Type.Optional(Type.Integer({ description: "changes: window in minutes (default 60)" })),
+				withinMinutes: Type.Optional(Type.Integer({ description: "changes: minutes back (default 60)" })),
 				limit: Type.Optional(Type.Integer({ description: "changes: max files (default 20)" })),
 				// The unified `agent` tool passes its call `reason` here: the lock note others see.
 				reason: Type.Optional(Type.String({ description: "lock: what you will change there" })),
@@ -348,7 +354,7 @@ function registerCoordinateTool(
 				);
 				const queued = budgets?.queued?.() ?? [];
 				const waiting = queued.length ? `\n\nQueued children:\n${queued.map((row) => `  ${row}`).join("\n")}` : "";
-				const worktrees = await describeWorktrees?.(ctx.cwd, { members: () => members });
+				const worktrees = await describeWorktrees?.(ctx.cwd, { members: () => members, self: team.id });
 				const others = peers ? `\n\n${await peers.list(ctx.cwd)}` : "";
 				return textResult(`${agents}${waiting}${worktrees ? `\n\n${worktrees}` : ""}${others}`, {
 					summary: members.length ? `${plural(members.length, "agent")} · ${working} working` : "No agents",

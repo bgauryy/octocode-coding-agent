@@ -15,7 +15,8 @@ const SESSION_REPO_ID = "session";
  */
 export function SettingsPanel({ access, repo }: { access: string; repo: string }) {
 	const api = useMemo(() => createDaemonApi(access, (route) => scopedRoute(route)), [access]);
-	const harness = useMemo(() => ({ list: api.harness, set: api.setHarness }), [api]);
+	const harness = useMemo(() => ({ list: api.harness, set: api.setHarness, preview: api.previewHarness }), [api]);
+	const security = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
 	const tools = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const repos = useMemo(() => [{ id: SESSION_REPO_ID, name: repo }], [repo]);
 	return (
@@ -28,6 +29,7 @@ export function SettingsPanel({ access, repo }: { access: string; repo: string }
 			addMcp={api.addMcp}
 			mcpAddStatus={api.mcpAddStatus}
 			harness={harness}
+			security={security}
 			tools={tools}
 			repos={repos}
 		/>

@@ -49,11 +49,11 @@ Without an `octocode` key, Octocode reads `skills/`, `prompts/` and `themes/`. D
 		"prompts": ["./resources/prompts/*.md"],
 		"themes": ["./resources/themes/*.json"]
 	},
-	"peerDependencies": { "@octocodeai/octocodecode": "*" }
+	"peerDependencies": { "@octocodeai/octocode-agent": "*" }
 }
 ```
 
-Paths are relative to the package root. Arrays accept globs and exclusions; list dot-prefixed or symlinked roots directly, because globs skip them. List host packages such as `@octocodeai/octocodecode` in `peerDependencies`.
+Paths are relative to the package root. Arrays accept globs and exclusions; list dot-prefixed or symlinked roots directly, because globs skip them. List host packages such as `@octocodeai/octocode-agent` in `peerDependencies`.
 
 Octocode installs `dependencies` of npm and git sources; local packages are not installed or modified. Installed packages load with separate module roots, so do not share a dependency instance between packages or resolve another package's undeclared dependency. Design each resource with [Skills](skills.md), [Prompt templates](prompt-templates.md) and [Themes](themes.md).
 

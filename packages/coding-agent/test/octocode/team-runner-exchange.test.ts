@@ -13,14 +13,19 @@ import { tmp } from "./helpers.ts";
 
 const peer = fileURLToPath(new URL("./fixtures/team-runner-acp.mjs", import.meta.url));
 const sleep = () => new Promise((resolve) => setTimeout(resolve, 10));
-const read = (file: string) =>
-	fs.existsSync(file)
-		? fs
-				.readFileSync(file, "utf8")
-				.trim()
-				.split("\n")
-				.map((row) => JSON.parse(row))
-		: [];
+/** Rows of a JSONL file another process is still writing: a last line without its newline yet is not a row. */
+const parseRows = (text: string) => {
+	const lines = text.split("\n");
+	if (!text.endsWith("\n")) lines.pop();
+	return lines.filter((row) => row.trim()).map((row) => JSON.parse(row));
+};
+const read = (file: string) => (fs.existsSync(file) ? parseRows(fs.readFileSync(file, "utf8")) : []);
+it("reads rows without the line another process is still writing", () => {
+	expect(parseRows('{"a":1}\n{"b":2}\n')).toEqual([{ a: 1 }, { b: 2 }]);
+	expect(parseRows('{"a":1}\n{"b":')).toEqual([{ a: 1 }]);
+	expect(parseRows("")).toEqual([]);
+	expect(() => parseRows('{"a":\n{"b":2}\n')).toThrow();
+});
 async function until(check: () => boolean) {
 	const deadline = Date.now() + 5000;
 	while (!check()) {

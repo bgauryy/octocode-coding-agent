@@ -1,7 +1,7 @@
 import type { Theme } from "./theme-class.ts";
 
 // Use globalThis so every module instance of this file sees the same theme
-const THEME_KEY = Symbol.for("@octocodeai/octocodecode:theme");
+const THEME_KEY = Symbol.for("@octocodeai/octocode-agent:theme");
 
 // Export theme as a getter that reads from globalThis
 // This ensures all module instances see the same theme

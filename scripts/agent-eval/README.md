@@ -144,7 +144,7 @@ Each row has the pass or fail with grader evidence, cost, turns (assistant messa
 
 ## Do agents understand their instructions?
 
-[understand.mjs](understand.mjs) is a separate, cheaper check. It decides no release: a wrong answer points at an instruction to improve. It sends a small model each agent's exact system prompt, tools and first message from `.octocode/tmp/agent-prompts/` (written by every `build:offline`, or by `yarn workspace @octocodeai/octocodecode run generate:prompts`), tools off, with a question about how that agent would work, and grades the answer with the `expect` and `forbid` patterns in [understanding.json](understanding.json). Each agent is also asked what in its instructions is unclear, which is reported and not graded.
+[understand.mjs](understand.mjs) is a separate, cheaper check. It decides no release: a wrong answer points at an instruction to improve. It sends a small model each agent's exact system prompt, tools and first message from `.octocode/tmp/agent-prompts/` (written by every `build:offline`, or by `yarn workspace @octocodeai/octocode-agent run generate:prompts`), tools off, with a question about how that agent would work, and grades the answer with the `expect` and `forbid` patterns in [understanding.json](understanding.json). Each agent is also asked what in its instructions is unclear, which is reported and not graded.
 
 Without `--live`, `--max-usd` and `--provider` it prints the number of questions and exits 2, so it spends nothing. Agree a live run with the user first.
 

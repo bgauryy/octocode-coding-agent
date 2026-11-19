@@ -12,6 +12,7 @@ import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { liveEndpoints, type LiveTeam } from "../endpoint-live.ts";
 import { mailRows, sendOutcome, sendPreview, sendSummary } from "./message-rows.ts";
+import { attachmentText } from "../attachment.ts";
 
 /** Shows team mail in the conversation: a header per message, its body previewed while collapsed. */
 export function registerMessageRenderer(api: FeatureSetup, team?: LiveTeam): void {
@@ -117,37 +118,43 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent"; exact ids cross trees. "all": your tree. Omit with replyTo: its sender. Also an Octocode process name, or "coordinator" from a linked worktree (main checkout session; none or several: nothing sent).'
+							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Also an Octocode process name, or from a linked worktree "coordinator" (the main checkout session; none or several: nothing sent).'
 							: 'Agent id, role or "parent" in your tree; parent relays beyond it. "all": whole tree. Omit with replyTo: its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
+				attach: Type.Optional(
+					Type.String({
+						description: "Text file in your worktree (≤64 KB) sent with message; the recipient checks its sha256",
+					}),
+				),
 				forward: Type.Optional(
 					Type.Integer({
 						description:
-							"Stored message # to pass on unchanged; message becomes an optional note; replies go to its sender. Teammates only.",
+							"Stored message # passed on unchanged (message: optional note); replies go to its sender. Teammates only",
 					}),
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: request an answer; wakes each recipient (all: whole tree). Default: FYI",
+						description: "true: asks for an answer, waking each recipient (all: whole tree); default: FYI",
 					}),
 				),
 				wake: Type.Optional(
 					Type.Boolean({
 						description:
-							"Default: a new message to a named agent starts its turn if idle, paced; false: read at its next turn. Not with to: all",
+							"Default: a new message starts an idle named agent's turn, paced; false: read at its next turn. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message number to answer; wakes the asker. Teammates only.",
+						description:
+							"Message number answered: wakes the asker, closes its ask (a broadcast closes none). Teammates only",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop recipient's current step (starter only). Teammates only; default delivery: its next step.",
+							"true: stop the recipient's current step (starter only; with to: all, every recipient must be your subagent); default: its next step. Teammates only",
 					}),
 				),
 			}),
@@ -155,6 +162,8 @@ export function registerSendMessageTool(
 				signal?.throwIfAborted();
 				// A teammate keeps its name: only a `to` no live agent answers to can be another process.
 				const to = params.to;
+				if (params.attach && params.forward !== undefined)
+					throw new Error("attach goes with a new message, not a forward. Nothing was sent.");
 				if (
 					to !== undefined &&
 					peers?.addresses(to) &&
@@ -164,7 +173,10 @@ export function registerSendMessageTool(
 				const me = team.join();
 				if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
 				if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
-				const result = await team.send(params.to, params.message, {
+				const body = params.attach
+					? `${params.message}\n\n${await attachmentText(ctx.cwd, params.attach)}`
+					: params.message;
+				const result = await team.send(params.to, body, {
 					...(signal ? { signal } : {}),
 					...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
 					...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),

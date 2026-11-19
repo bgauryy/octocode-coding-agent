@@ -4,6 +4,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { workspaces } from "../../../../db/src/api.ts";
 import { WORKSPACE_STATE, readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { deleteSessionFile } from "../../core/session-manager/delete-file.ts";
+import { isPaidSummaryOf } from "../../core/session-manager/sidecars.ts";
 import { globalPaths, sessionDirName } from "../shared/home.ts";
 import type { SessionIndex } from "./store.ts";
 import { strictlyInside } from "./sweep-fs.ts";
@@ -57,7 +58,7 @@ function sessionFolders(index: SessionIndex, target: RemovalTarget, env: NodeJS.
 }
 
 /**
- * The files beside a transcript that hold its content: saved checkpoints (`<file>.checkpoint-<id>.md`) and backups taken
+ * The files beside a transcript that hold its content: saved checkpoints (`<file>.checkpoint-<id>.md`), a paid compaction summary kept for a resume (`<file>.paid-summary.json`) and backups taken
  * before a migration or repair (`<file>.bak`, `<file>.<n>.bak`). A backup is a whole transcript, and retention only ever
  * sees `.jsonl` files, so these go when their session goes or nothing ever removes them.
  */
@@ -65,7 +66,12 @@ async function transcriptSiblings(file: string): Promise<string[]> {
 	const base = path.basename(file);
 	const names = await fs.promises.readdir(path.dirname(file)).catch(() => [] as string[]);
 	return names
-		.filter((name) => name.startsWith(`${base}.checkpoint-`) || (name.startsWith(`${base}.`) && name.endsWith(".bak")))
+		.filter(
+			(name) =>
+				name.startsWith(`${base}.checkpoint-`) ||
+				isPaidSummaryOf(file, name) ||
+				(name.startsWith(`${base}.`) && name.endsWith(".bak")),
+		)
 		.map((name) => path.join(path.dirname(file), name));
 }
 

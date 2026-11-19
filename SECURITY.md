@@ -1,4 +1,4 @@
-# Security in octocode-code
+# Security in octocode-agent
 
 Octocode is an independent fork of [Pi](https://github.com/earendil-works/pi). It runs with the operating-system permissions of the user who launches it. Permission checks, file guards, project trust and hook policies control supported agent actions; they are **not** an operating-system sandbox. Use process or container isolation for a stronger boundary.
 

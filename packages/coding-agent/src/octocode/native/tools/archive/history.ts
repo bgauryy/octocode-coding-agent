@@ -131,7 +131,7 @@ export function createHistoryTool() {
 			line: Type.Optional(Type.Integer({ description: "Read from this line" })),
 			errors: Type.Optional(
 				Type.Boolean({
-					description: "true: tool errors in full transcripts, grouped, with rates by tool, model, day",
+					description: "true: tool errors from full transcripts, grouped, with rates by tool, model, day",
 				}),
 			),
 			since: Type.Optional(Type.String({ description: "From this ISO time: errors, or files changed since" })),

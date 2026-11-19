@@ -60,8 +60,14 @@ export interface DaemonServerOptions {
 	signIn?: ConfigRoutes["signIn"];
 	/** Lists the Harness panel's switches (`GET /api/admin/config/harness`). */
 	harness?: ConfigRoutes["harness"];
+	/** Scans one harness switch before it is written (`GET /api/admin/config/harness/preview`). */
+	previewHarness?: ConfigRoutes["previewHarness"];
 	/** Applies a validated `POST /api/admin/config/harness` switch. */
 	writeHarness?: ConfigRoutes["writeHarness"];
+	/** Lists the Security panel's reviewed items (`GET /api/admin/config/security`). */
+	security?: ConfigRoutes["security"];
+	/** Applies a validated `POST /api/admin/config/security` approve, deny or forget. */
+	writeSecurity?: ConfigRoutes["writeSecurity"];
 	/** Lists the Tools panel's rows (`GET /api/admin/config/tools`). */
 	tools?: ConfigRoutes["tools"];
 	/** Applies a validated `POST /api/admin/config/tools` pin. */

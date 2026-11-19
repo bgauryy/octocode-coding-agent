@@ -160,4 +160,25 @@ it("keeps the filtered setting selected when input only moves the query cursor",
 	assert.equal(list.getSearchQuery(), "target");
 	list.handleInput("\r");
 	assert.deepEqual(changes, ["beta"]);
+
+	it("pages the selection with pageUp and pageDown and clamps at the ends", () => {
+		const many = Array.from({ length: 12 }, (_, n) => ({ id: `s${n}`, label: `Setting ${n}`, currentValue: "x" }));
+		const list = new SettingsList(
+			many,
+			5,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		list.handleInput("\x1b[6~");
+		assert.strictEqual(list.getSelectedId(), "s5");
+		list.handleInput("\x1b[6~");
+		list.handleInput("\x1b[6~");
+		assert.strictEqual(list.getSelectedId(), "s11");
+		list.handleInput("\x1b[5~");
+		assert.strictEqual(list.getSelectedId(), "s6");
+		list.handleInput("\x1b[5~");
+		list.handleInput("\x1b[5~");
+		assert.strictEqual(list.getSelectedId(), "s0");
+	});
 });

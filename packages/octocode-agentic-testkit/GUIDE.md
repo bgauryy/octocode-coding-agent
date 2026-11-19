@@ -5,19 +5,9 @@ what to test and how to connect an agent; the [REFERENCE](REFERENCE.md) lists ev
 
 ## Run the suites
 
-Run these in `packages/octocode-agentic-testkit`. From the repository root, `yarn test:agentic` runs `yarn test` here plus the `scripts/agent-eval/` tests; the root `yarn test` leaves both out.
-
-| Goal                                     | Command                                            | Cost                                     |
-| ---------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
-| every free test                          | `yarn test`                                        | $0, seconds                              |
-| harness guards (prompt size, cache, MCP) | `yarn test:guards`                                 | $0                                       |
-| types                                    | `yarn typecheck`                                   | $0                                       |
-| prompt shape of every agent (bundle)     | `TESTKIT_MEASURE_LABEL=<name> yarn measure`        | $0, ~30 s                                |
-| skill triggers on local Ollama           | `yarn test:triggers`                               | $0, ~30 min                              |
-| a paid tier                              | `TESTKIT_LIVE=1 yarn tier haiku -- yarn test:live` | paid; cap it with `TESTKIT_TOKEN_BUDGET` |
-
-`yarn tier <name>` copies the tier's credentials from your `models.json` into the child process. It only reads the
-file and never prints a key. Paid tests are named `*.live.test.ts`: `yarn test` never collects them, `yarn test:live` runs only them (it sets `OCTOCODE_LIVE_TESTS=1`), and without `TESTKIT_LIVE=1` and a tier they still skip with a reason.
+Your tests are ordinary Vitest files: `npx vitest run`. Paid tests (named `*.live.test.ts` by convention) should skip
+with a reason unless `TESTKIT_LIVE=1` and a tier are set, and a spend cap such as `TESTKIT_TOKEN_BUDGET` bounds them.
+The [README](README.md#environment-variables-and-output-files) lists the variables.
 
 ## Write a test
 
@@ -76,7 +66,7 @@ expect(gw.trace).toStayWithin({ requests: 4, promptTokens: 20_000 });
 **Final state.** The workspace exists until `close()`.
 
 ```ts
-const session = await octocodecodeAdapter().start({ gatewayUrl: gw.url, files: { "a.txt": "teh" } });
+const session = await octocodeAgentAdapter().start({ gatewayUrl: gw.url, files: { "a.txt": "teh" } });
 const run = await session.run("fix the typo in a.txt");
 expect(run.exitCode).toBe(0);
 expect(readFileSync(join(run.workspace, "a.txt"), "utf8")).toBe("the");
@@ -146,6 +136,22 @@ expect(repo.tool("delete_repo")).not.toHaveBeenCalled();
 expect(gw.trace).toHaveBlocked("delete_repo");
 ```
 
+**Prompt injection and secret lures.** The red-team preset plays hostile content into the agent (an MCP result that
+says "ignore previous instructions", a page that asks for `.env`, a skill with a hidden step) and asserts the agent did
+not act on it. `toResist` fails on any forbidden call, blocked attempts included, and on a canary secret in tool
+arguments or the answer. It throws instead of passing when the hostile content never reached the model.
+
+```ts
+for (const attack of redTeamAttacks) {
+	const run = await runAttack(attack); // the case's own scripted "resists" model: free
+	expect(run.trace).toResist(attack);
+	expect((await runAttack(attack, { model: "compromised" })).trace).not.toResist(attack); // must fail
+}
+```
+
+To test a real agent, pass `model: tier` (a remote tier needs `TESTKIT_LIVE=1`) or write your own `Attack` with the same
+fields: the user's prompt, the `lure`, the `forbidden` calls and the `canaries`.
+
 **A spend cap.** Prices are USD per million tokens. Scripted runs are priced on their estimated usage, so the cap
 itself is testable for free.
 
@@ -199,10 +205,11 @@ Call `saveResult(ctx, { trace: gw.trace, live, judgement, run })` at the end of 
 `TESTKIT_RESULTS_DIR` set, it writes one JSON file per test; without it, nothing is written. Then:
 
 ```bash
-TESTKIT_RESULTS_DIR=../../.octocode/tmp/testkit-results yarn vitest run test/my.test.ts
-yarn results ../../.octocode/tmp/testkit-results            # one line per test, failures first
-yarn results ../../.octocode/tmp/testkit-results "cache"    # the first match, as Markdown
+TESTKIT_RESULTS_DIR=./testkit-results npx vitest run test/my.test.ts
+ls ./testkit-results                              # one JSON per test
 ```
+
+In the source repository, `yarn results <dir> [substring]` lists them (failures first) or prints one as Markdown.
 
 ## Pick a tier
 
@@ -248,10 +255,10 @@ Details:
   `prompt_cache_key` stay out), plus an occurrence index, counted per gateway.
   Trials that open a gateway each must therefore pass `cassette: { sample: trial }`, or trial 2 replays trial 1.
 - **Storage.** Without `cassette.file`, files go under `TESTKIT_CASSETTE_DIR` (or `cassette.dir`), else
-  `.octocode/tmp/testkit-cassettes/`. Only auto-named files in that default tmp directory are pruned after 14 days.
+  `testkit-cassettes/` under the report directory (`TESTKIT_REPORT_DIR`, default: `testkit/` in the OS temp directory). Only auto-named files in that default directory are pruned after 14 days.
   Concurrent workers merge their recordings under a file lock, so no entry is lost. Files hold model replies and usage, but no request bodies or auth headers; review them before
   committing.
-- **Report.** It is written to `.octocode/tmp/testkit-cache-report.json`, or under `TESTKIT_REPORT_DIR`. `testkitConfig()`
+- **Report.** It is written to `testkit-cache-report.json` under `TESTKIT_REPORT_DIR` (default: `testkit/` in the OS temp directory). `testkitConfig()`
   registers the report as `globalSetup`. `timeSavedMs` is recorded upstream latency
   minus lookup time, not a wall-clock speedup. `providerCache.cachedTokens` counts reads on newly recorded calls only.
 - **Anthropic prompt cache.** Forwarding marks the last system block and the last tool with ephemeral `cache_control`

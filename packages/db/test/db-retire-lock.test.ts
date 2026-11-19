@@ -111,3 +111,30 @@ console.log(JSON.stringify(renames.filter((from) => from === file).length));
 		expect(keys(path.join(dir, retired[0]))).toEqual(["old"]);
 	}, 30_000);
 });
+
+describe("an older agent database in use", () => {
+	it("is refused and left untouched while another connection holds it", () => {
+		const file = path.join(tmp(), "workspaces.db");
+		writeOld(file, "live");
+		const holder = open(file);
+		try {
+			expect(() => open(file, newer)).toThrow(/in use by .*left untouched/);
+			expect(retiredFiles(file)).toEqual([]);
+			expect(keys(file)).toEqual(["live"]);
+			holder.db.prepare("INSERT INTO meta (key, value) VALUES ('more', 'x')").run();
+		} finally {
+			holder.close();
+		}
+		expect(keys(file)).toEqual(["live", "more"]);
+	});
+
+	it("is retired once the holder closes", () => {
+		const file = path.join(tmp(), "workspaces.db");
+		writeOld(file, "idle");
+		const holder = open(file);
+		expect(() => open(file, newer)).toThrow();
+		holder.close();
+		open(file, newer).close();
+		expect(retiredFiles(file)).toHaveLength(1);
+	});
+});

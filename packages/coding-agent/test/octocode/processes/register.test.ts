@@ -127,6 +127,39 @@ describe("memory sampling follows the session", () => {
 	});
 });
 
+describe("a sampling failure after the session context went stale", () => {
+	it("is dropped without an unhandled rejection, and nothing is recorded after shutdown", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => void unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			let release!: () => void;
+			const failing = new Promise<ProcessRow[]>((_resolve, reject) => {
+				release = () => reject(new Error("database is closed"));
+			});
+			const host = live({}, { table: () => failing });
+			const base = ctx("1-aaaaaaaa") as unknown as { ui: { notify: (message: string) => void } };
+			const attempts: string[] = [];
+			base.ui.notify = (message) => {
+				attempts.push(message);
+				throw new Error("This feature ctx is stale after session replacement or reload.");
+			};
+			await host.emit("session_start", { reason: "startup" }, base);
+			release();
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(attempts).toHaveLength(1);
+			expect(unhandled).toEqual([]);
+			await host.emit("session_shutdown", {}, base);
+			const count = processSamples.since(agent.db, 0).length;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(processSamples.since(agent.db, 0)).toHaveLength(count);
+			expect(attempts).toHaveLength(1);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+});
+
 describe("/processes", () => {
 	const NOW = Date.now();
 	const started = (secondsAgo: number) => String(Math.floor(NOW / 1000) - secondsAgo);

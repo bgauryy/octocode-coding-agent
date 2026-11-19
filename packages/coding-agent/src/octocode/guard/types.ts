@@ -4,6 +4,13 @@
  * `octocode security`); this folder keeps the internal name.
  */
 
+/** One stored file of an approval: its text, or `omitted` when it was binary or too large to keep. */
+export interface StoredFile {
+	name: string;
+	text?: string;
+	omitted?: true;
+}
+
 export const REVIEW_KINDS = ["hook", "mcp", "skill"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
@@ -66,6 +73,8 @@ export interface Review {
 	changed: boolean;
 	/** The stored row, when one exists. */
 	rowId?: number;
+	/** The files the earlier approval covered, kept for the diff when the item changed since. */
+	approved?: StoredFile[];
 }
 
 /** The badge every surface prints: `approved`, `denied`, `not checked HIGH`, `not checked · changed HIGH`. */

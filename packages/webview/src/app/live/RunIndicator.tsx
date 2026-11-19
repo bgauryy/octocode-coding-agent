@@ -11,6 +11,7 @@ const LABELS = {
 	writing: "Writing response",
 	compacting: "Compacting context",
 	retrying: "Retrying request",
+	stalled: "Model not answering",
 } as const;
 
 /** The small shape that tells phases apart beside the label, so colour is not the only cue. */
@@ -67,7 +68,7 @@ export function RunIndicator({
 						? jobWords(phase.phase, (startedAt ?? seen) + elapsed)
 						: phase.kind === "waiting"
 							? `Waiting for you${phase.awaiting.id ? "" : " in the terminal"}${phase.awaiting.title ? `: ${phase.awaiting.title}` : ""}`
-							: LABELS[phase.kind]}
+							: ("detail" in phase && phase.detail) || LABELS[phase.kind]}
 			</span>
 			{stale && <span className="muted">last known</span>}
 			<span className="run-elapsed">{span(elapsed)}</span>

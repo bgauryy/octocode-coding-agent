@@ -7,7 +7,7 @@ import { verificationJson, verificationText } from "./verification.ts";
 export function backgroundStarted(job: BashJob, cwd: string, verification: VerificationReceipt | undefined) {
 	const timeout = job.timeout;
 	const text = [
-		`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, stopped after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
+		`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, will be stopped if still running after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
 		...jobLines(job, cwd),
 		...(verification ? [verificationText(verification)].filter(Boolean) : []),
 	].join("\n");

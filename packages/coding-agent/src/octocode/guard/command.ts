@@ -13,7 +13,8 @@ import {
 	SecurityCommandError,
 } from "./actions.ts";
 import { isWithheld, knownReviews } from "./registry.ts";
-import { renderReport, sortReviews, visible } from "./report.ts";
+import { renderReport, sortReviews } from "./report.ts";
+import { visible } from "./visible.ts";
 import { badge, type Review } from "./types.ts";
 
 /**

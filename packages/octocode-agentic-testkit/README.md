@@ -3,7 +3,7 @@
 Behavior tests for AI agents and agent harnesses, in Vitest. Run your agent unchanged against a scripted model and
 mock MCP servers, then check what it did: which tools it called and with what, in what order, whether it recovered
 from a failure, how its prompt cache behaved, what its sub-agents did, what it cost and which files it left. The agent
-can be a CLI (Claude Code, Codex, octocodecode) or an in-process agent (LangChain, the Vercel AI SDK, your own loop),
+can be a CLI (Claude Code, Codex, Octocode Agent) or an in-process agent (LangChain, the Vercel AI SDK, your own loop),
 and the tools any MCP server, real or mocked. Scripted tests are free and deterministic; the same tests run against a
 real model when you need a rate.
 
@@ -50,18 +50,6 @@ Install it with Vitest (and `@types/node` for TypeScript):
 
 ```sh
 npm install --save-dev @octocodeai/octocode-agentic-testkit vitest @types/node
-```
-
-Inside this repository, add the workspace instead:
-
-```json
-{
-	"devDependencies": {
-		"@octocodeai/octocode-agentic-testkit": "workspace:*",
-		"vitest": "5.1.0",
-		"@types/node": "24.19.2"
-	}
-}
 ```
 
 It needs Node 24.15 or later and Vitest 5. `testkitConfig` gives Vitest what the kit needs: the matcher setup, the
@@ -137,6 +125,7 @@ does with it. Add a real model only when the question is what a model chooses.
 | Are my tool descriptions present, small, distinct and free of hidden instructions? | `analyzeSurface`, `toPassSurfaceReview`                                   | none     |
 | Does a prompt route to the right tool or skill?                                    | `probeRouting`, `toHaveLoadedSkill`                                       | real     |
 | Does it never make a dangerous call?                                               | `guards: [never("delete_*")]`, `toHaveBlocked`                            | either   |
+| Does it resist hostile tool results, secret lures and hijacked skills?             | `redTeamAttacks`, `runAttack`, `toResist`                                 | either   |
 | Is the answer well formed, or good?                                                | `toMatchSchema`; `judge`, `judgePanel`                                    | either   |
 | Did it leave the right files, and touch nothing else?                              | `toHaveWorkspace`, `toChangeOnly`, `runVerifier`, `toPassVerifier`        | either   |
 | Does it stay within requests, tokens and dollars?                                  | `toStayWithin`, `caps`, `budgetUsd`                                       | either   |
@@ -214,12 +203,12 @@ expect(server.summary().maxChars).toBeLessThan(20_000); // the largest answer th
 
 ## Connect your agent
 
-| Your agent                                                        | Adapter                                                                        |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Claude Code, Codex or octocodecode                                | bundled: `claudeCodeAdapter`, `codexAdapter`, `octocodecodeAdapter`            |
-| another CLI                                                       | a CLI adapter with `runProcess` ([checklist](REFERENCE.md#plug-in-your-agent)) |
-| LangChain, the Vercel AI SDK or your own loop in the test process | an in-process adapter ([examples](examples/README.md))                         |
-| no harness yet, only tools and prompts                            | `referenceAdapter`, the kit's own small tool loop                              |
+| Your agent                                                        | Adapter                                                                                                                                                        |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code, Codex or Octocode Agent                              | bundled: `claudeCodeAdapter`, `codexAdapter`, `octocodeAgentAdapter` (needs the Octocode Agent CLI bundle: `bundle` option or `TESTKIT_OCTOCODE_AGENT_BUNDLE`) |
+| another CLI                                                       | a CLI adapter with `runProcess` ([checklist](REFERENCE.md#plug-in-your-agent))                                                                                 |
+| LangChain, the Vercel AI SDK or your own loop in the test process | an in-process adapter ([examples](examples/README.md))                                                                                                         |
+| no harness yet, only tools and prompts                            | `referenceAdapter`, the kit's own small tool loop                                                                                                              |
 
 An adapter starts your agent pointed at the gateway and the mock servers, and runs one turn per `run()`:
 
@@ -372,8 +361,8 @@ in steps:
 
 1. **Pick a tier.** `TESTKIT_TIER=haiku` (or `local` for Ollama, `deepseek`, or any name) with
    `TESTKIT_<NAME>_BASE_URL`, `_MODEL`, `_KEY` and `_API` (`openai`, `anthropic` or `responses`).
-   `yarn tier <name> -- <command>` fills them from your `models.json` without printing the key. A missing variable
-   skips with a reason; nothing falls through to a paid tier.
+   Export them in the environment (never on disk). A missing variable skips with a reason; nothing falls through to a
+   paid tier. (`yarn tier` in the source repository fills them from a local `models.json`; see DEVELOPING.md there.)
 2. **Forward the gateway.** `startGateway({ forward: forwardOf(tier) })`. The request goes upstream as your agent sent
    it, and the reply comes back as the provider sent it ([what crosses wires](REFERENCE.md#real-model-runs)).
 3. **Gate and cap.** Paid tests run only with `TESTKIT_LIVE=1`. Cap them with `caps: { maxRequests, maxUsd, pricing }`
@@ -411,33 +400,36 @@ inside its run, cannot read credential paths and reaches only loopback ([REFEREN
 
 ## Imports
 
-| Import                                                         | Gives                                                                                                                                                                                                                                  |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@octocodeai/octocode-agentic-testkit`                         | everything for tests and adapters: gateway, scripts, trace, mocks, `recordMcp`, guards, suites, `live`, `judge`, comparisons, simulated users, workspace grading, surface review, `defineAdapter`, `runProcess`, the reference adapter |
-| `…/config`                                                     | `testkitConfig`                                                                                                                                                                                                                        |
-| `…/setup`                                                      | matcher registration and types                                                                                                                                                                                                         |
-| `…/cache-report`                                               | the run-cache summary (`globalSetup`)                                                                                                                                                                                                  |
-| `…/reporter`                                                   | `AgentReporter` (default export): suite pass rates, spend, mock-tool coverage                                                                                                                                                          |
-| `…/tiers`                                                      | `resolveTier`, `forwardOf`, `Tier`                                                                                                                                                                                                     |
-| `…/adapters/reference`, `claude-code`, `codex`, `octocodecode` | the bundled adapters and their option types                                                                                                                                                                                            |
+| Import                                                           | Gives                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@octocodeai/octocode-agentic-testkit`                           | everything for tests and adapters: gateway, scripts, trace, mocks, `recordMcp`, guards, suites, `live`, `judge`, comparisons, simulated users, workspace grading, surface review, `defineAdapter`, `runProcess`, the reference adapter |
+| `…/config`                                                       | `testkitConfig`                                                                                                                                                                                                                        |
+| `…/setup`                                                        | matcher registration and types                                                                                                                                                                                                         |
+| `…/cache-report`                                                 | the run-cache summary (`globalSetup`)                                                                                                                                                                                                  |
+| `…/reporter`                                                     | `AgentReporter` (default export): suite pass rates, spend, mock-tool coverage                                                                                                                                                          |
+| `…/tiers`                                                        | `resolveTier`, `forwardOf`, `Tier`                                                                                                                                                                                                     |
+| `…/adapters/reference`, `claude-code`, `codex`, `octocode-agent` | the bundled adapters and their option types                                                                                                                                                                                            |
 
 The root exports the types you write tests with: `Trace`, `TraceEvent`, `CapturedRequest`, `Step`, `Responder`,
 `GatewayOptions`, `ToolDef`, `MockMcp`, `RecordedMcp`, `Guard`, `AgentAdapter`, `AgentSuiteOptions`, `Turn`,
 `LiveOptions`, `Judgement`, `SurfaceReport`, `ComparisonSummary`, `VerifierResult` and the rest. The export list is
-pinned by `test/public-api.test.ts`, and `yarn check:consumer` proves a project outside the repository can build and
-run against the built package.
+pinned by the package's own tests; the published tarball is installed into a fresh project and its quickstart run before release.
 
-## Run this package's tests
+## Environment variables and output files
 
-| Goal                              | Command (in this package)                                            | Cost |
-| --------------------------------- | -------------------------------------------------------------------- | ---- |
-| every free test                   | `yarn test` (from the repository root: `yarn test:agentic`)          | $0   |
-| types                             | `yarn typecheck`                                                     | $0   |
-| the package as a consumer sees it | `yarn build && yarn check:consumer`                                  | $0   |
-| a paid tier                       | `TESTKIT_LIVE=1 yarn tier haiku -- yarn test:live`                   | paid |
-| the real-provider forwarding runs | `TESTKIT_LIVE=1 yarn test:live test/live/forward-wires.live.test.ts` | paid |
+Nothing is written outside the directories below, and nothing is written unless a feature that needs it runs.
 
-The [GUIDE](GUIDE.md#run-the-suites) lists the rest.
+| Variable               | Effect                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TESTKIT_REPORT_DIR`   | where the run-cache report (`testkit-cache-report.json`) and the suite report (`testkit-agent-report.json`) go; default: `testkit/` in the OS temp directory |
+| `TESTKIT_CASSETTE_DIR` | where recorded model replies (cassettes) live; point it at a committed directory to replay in CI                                                             |
+| `TESTKIT_RESULTS_DIR`  | one JSON per test saved by `saveResult`; nothing is written without it                                                                                       |
+| `TESTKIT_TIER`         | the model tier (`local`, `haiku`, `deepseek` or any name) with `TESTKIT_<NAME>_BASE_URL`, `_MODEL`, `_KEY`, `_API`                                           |
+| `TESTKIT_LIVE=1`       | allows paid tests; they skip with a reason without it                                                                                                        |
+| `TESTKIT_TOKEN_BUDGET` | caps paid spend in tokens                                                                                                                                    |
+
+Tier variables are in [REFERENCE](REFERENCE.md#outputs). Commands to develop the kit itself (running its own
+suites, paid tiers, the consumer check) are in `DEVELOPING.md` in the source repository; the npm package leaves them out.
 
 ## Rules the kit keeps
 

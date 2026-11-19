@@ -21,7 +21,9 @@ export interface ApplicationRuntimeState {
 	activities: ReadonlyMap<string, ApplicationActivity>;
 	runId: string | undefined;
 	streaming: boolean;
-	status: "idle" | "compacting" | "retrying";
+	status: "idle" | "compacting" | "retrying" | "stalled";
+	/** One line on why `status` is not idle, e.g. how long the model has been quiet. */
+	statusDetail?: string;
 	/** The blocking dialog the run waits on, until it closes. */
 	awaiting?: ApplicationAwaiting;
 	/** What the session is doing, as the host last published it; undefined before the first publication. */
@@ -77,7 +79,7 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 			store.setState({ runId: undefined, streaming: false });
 			break;
 		case "session.status":
-			store.setState({ status: event.status });
+			store.setState({ status: event.status, statusDetail: event.detail });
 			break;
 		case "session.awaiting":
 			store.setState({ awaiting: event.awaiting ? { ...event.awaiting } : undefined });

@@ -127,11 +127,30 @@ export function retireOwned(
 	return true;
 }
 
-/** Retires `id` if its row still names `judged` (`TeamStore.reap`); whether it did. */
-export function reapMember(db: Db, id: string, judged: ProcessIdentity | undefined, now: number): boolean {
+/**
+ * Why a reaper judged a member gone, for the `delete` event's `detail`: its pid no longer runs, its start time differs
+ * from the process table's (a reused pid), or its row is missing. Names the reaping process and its session.
+ */
+function reapDetail(judged: ProcessIdentity | undefined, session: string | undefined): string {
+	const verdict = !judged
+		? "no agent row"
+		: !processAlive(judged.pid)
+			? `pid ${judged.pid} not running`
+			: `pid ${judged.pid} start time ${judged.started ?? "unknown"} does not match the process table`;
+	return `reaped by pid ${process.pid} session ${session ?? "unknown"}: ${verdict}`;
+}
+
+/** Retires `id` if its row still names `judged` (`TeamStore.reap`), recording why in its end (`reapDetail`, with the reaper's `session`); whether it did. */
+export function reapMember(
+	db: Db,
+	id: string,
+	judged: ProcessIdentity | undefined,
+	now: number,
+	session?: string,
+): boolean {
 	const row = agents.processOf(db, id);
 	if (row && (judged === undefined || !sameIdentity(row, judged))) return false;
-	retire(db, id, now, undefined, { fallback: "crashed" });
+	retire(db, id, now, undefined, { fallback: "crashed", detail: reapDetail(judged, session) });
 	return true;
 }
 

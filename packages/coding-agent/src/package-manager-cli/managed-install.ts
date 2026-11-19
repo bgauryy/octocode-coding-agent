@@ -160,7 +160,7 @@ export async function runManagedSelfUpdate(managedRoot: string, version: string)
 		const installerApiBase = process.env.OCTOCODE_INSTALLER_API_BASE?.trim().replace(/\/+$/, "");
 		if (!installerApiBase)
 			throw new Error(
-				"Managed updates require OCTOCODE_INSTALLER_API_BASE. Install @octocodeai/octocodecode with npm instead.",
+				"Managed updates require OCTOCODE_INSTALLER_API_BASE. Install @octocodeai/octocode-agent with npm instead.",
 			);
 		const releaseUrl = `${installerApiBase}/${encodeURIComponent(version)}`;
 		const stagingRoot = join(managedRoot, "staging");

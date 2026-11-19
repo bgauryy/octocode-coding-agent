@@ -183,6 +183,7 @@ export class ModeBindings {
 				description: skill.description,
 				source: "skill",
 				sourceInfo: skill.sourceInfo,
+				...(skill.triggers ? { triggers: skill.triggers } : {}),
 			}));
 
 			return [...featureCommands, ...templates, ...skills];

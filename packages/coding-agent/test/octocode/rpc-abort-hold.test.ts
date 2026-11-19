@@ -77,7 +77,7 @@ await runRpcMode(runtime);
 			if (finish !== "default") {
 				await vi.waitFor(() => expect(response("stop")).toMatchObject({ success: true }));
 				await vi.waitFor(() =>
-					expect(response("work")).toMatchObject({ success: false, error: "Prompt dispatch cancelled" }),
+					expect(response("work")).toMatchObject({ success: true, data: { outcome: { status: "aborted" } } }),
 				);
 				expect(run.process.exitCode).toBeNull();
 				const later = [

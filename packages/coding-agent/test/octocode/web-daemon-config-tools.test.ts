@@ -166,11 +166,18 @@ describe("audit rows of the usage-only native tools", () => {
 describe("tool exposure read model", () => {
 	it("lists the deferrable native tools with their pin and what a new session would declare", async () => {
 		expect([...NATIVE_PINNABLE_TOOLS].sort()).toEqual([...DEFERRABLE_NATIVE_TOOLS].sort());
-		// No setting: `recent`, and a working directory that called nothing defers every deferrable tool.
+		// No setting: `usage`, and with no usage data every deferrable tool is deferred.
 		const unset = await listToolExposure({ agentDir });
 		expect(Value.Check(ToolExposureListSchema, unset)).toBe(true);
-		expect(unset).toMatchObject({ setting: "recent", live: false });
-		expect(group(unset, "native")?.tools).toEqual(
+		expect(unset).toMatchObject({ setting: "usage", live: false });
+		const unsetTools = group(unset, "native")?.tools ?? [];
+		expect(unsetTools.map(({ name }) => name)).toEqual(expect.arrayContaining([...NATIVE_PINNABLE_TOOLS]));
+		for (const row of unsetTools) expect(row).toMatchObject({ state: "deferred", decidedBy: "usage" });
+		// `recent`, and a working directory that called nothing defers every deferrable tool.
+		writeJson(globalSettings(), { mcpExposure: "recent" });
+		const unused = await listToolExposure({ agentDir });
+		expect(unused).toMatchObject({ setting: "recent", live: false });
+		expect(group(unused, "native")?.tools).toEqual(
 			NATIVE_PINNABLE_TOOLS.map((name) => ({ name, state: "deferred", decidedBy: "recent" })),
 		);
 		writeJson(globalSettings(), { mcpExposure: "direct" });
@@ -270,8 +277,8 @@ describe("tool pins", () => {
 		await pinTool({ kind: "native", tool: "web", pin: null, scope: "global" }, options());
 		const cleared = await pinTool({ kind: "native", tool: "archive", pin: null, scope: "global" }, options());
 		expect(readJson(globalSettings())).toEqual({ theme: "dark" });
-		// Unpinned, the default `mcpExposure` (`recent`) decides: never called here, so deferred.
-		expect(tool(cleared, "native", "web")).toEqual({ name: "web", state: "deferred", decidedBy: "recent" });
+		// Unpinned, the default `mcpExposure` (`usage`) decides: no usage data, so deferred.
+		expect(tool(cleared, "native", "web")).toMatchObject({ name: "web", state: "deferred", decidedBy: "usage" });
 		expect(audits.map((entry) => [entry.action, entry.target, entry.afterKind, entry.outcome])).toEqual([
 			["tool.pin", "native:web", "deferred", "ok"],
 			["tool.pin", "native:web", "unpinned", "ok"],

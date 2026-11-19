@@ -100,6 +100,16 @@ describe("the delete event's end record", () => {
 		expect(reasons).toEqual({ "amber-otter": "left", "brisk-lynx": "crashed" });
 	});
 
+	it("names the reaping process and the verdict in a reaped member's delete event", () => {
+		const gone = 2 ** 22 + 12345;
+		store.join(member("brisk-lynx", { pid: gone }));
+		store.sweep(3000);
+		const end = deletes().find((event) => event.name === "brisk-lynx");
+		expect(end?.data.reason).toBe("crashed");
+		expect(end?.data.detail).toContain(`reaped by pid ${process.pid}`);
+		expect(end?.data.detail).toContain(`pid ${gone} not running`);
+	});
+
 	it("keeps a reason for every value of the vocabulary", () => {
 		for (const reason of agentEvents.END_REASONS) {
 			const me = member(`agent-${reason}`);

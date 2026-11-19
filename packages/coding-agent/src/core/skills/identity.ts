@@ -23,6 +23,8 @@ export interface Skill {
 	/** `coordinator`: listed only for the session that answers the user (`metadata.audience`), never for a subagent. */
 	audience?: "coordinator";
 	userInvocable?: boolean;
+	/** `metadata.triggers`: extra words that point the prompt editor's highlight at this skill. */
+	triggers?: string[];
 	argumentStyle?: "claude";
 	claudePluginRoot?: string;
 	claudePluginData?: string;

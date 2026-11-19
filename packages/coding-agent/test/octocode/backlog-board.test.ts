@@ -248,10 +248,9 @@ describe("counts, headless board and resume brief carry the tasks", () => {
 		s.tasks.update("T1", { state: "done" }, USER);
 		expect(openTaskCount(s, SESSION)).toBe(2);
 		expect(openTaskCount(s, "someone-else")).toBe(0);
-		expect(countsText(itemCounts({ backlog: 0, todo: 1, ongoing: 2, done: 0 }), 2)).toBe(
-			"/web · backlogs & activity · 2 ongoing · 1 todo · 2 tasks",
+		expect(countsText(itemCounts({ backlog: 0, todo: 1, ongoing: 2, done: 0 }))).toBe(
+			"/web · backlogs & activity · 2 ongoing · 1 todo",
 		);
-		expect(countsText(itemCounts({ backlog: 0, todo: 0, ongoing: 0, done: 0 }), 1)).toContain("1 task");
 		expect(countsText(itemCounts({ backlog: 0, todo: 0, ongoing: 0, done: 0 }))).toBe("/web · backlogs & activity");
 	});
 

@@ -214,7 +214,9 @@ export type RunPhase =
 	| { kind: "writing" }
 	| { kind: "tool"; name: string }
 	| { kind: "compacting" }
-	| { kind: "retrying" }
+	| { kind: "retrying"; detail?: string }
+	/** A model request has sent nothing for a while; `detail` says for how long. */
+	| { kind: "stalled"; detail?: string }
 	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> }
 	/** No run is active but the job goes on: background agents, a pending wake, or a timer. */
 	| { kind: "job"; phase: JobPhase };
@@ -225,7 +227,9 @@ export type RunPhase =
  */
 export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 	if (snapshot?.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
-	if (snapshot?.status === "compacting" || snapshot?.status === "retrying") return { kind: snapshot.status };
+	if (snapshot?.status === "compacting") return { kind: "compacting" };
+	if (snapshot?.status === "retrying" || snapshot?.status === "stalled")
+		return { kind: snapshot.status, ...(snapshot.statusDetail ? { detail: snapshot.statusDetail } : {}) };
 	if (!snapshot?.streaming) {
 		// The run settled but the host says the job did not end: not idle, and not finished.
 		const job = jobPhaseOf(snapshot?.phase);
@@ -245,6 +249,7 @@ export function sessionBadge(
 	if (snapshot?.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
 	if (snapshot?.status === "compacting") return { state: "running", label: "Compacting", warn: false };
 	if (snapshot?.status === "retrying") return { state: "running", label: "Retrying", warn: true };
+	if (snapshot?.status === "stalled") return { state: "running", label: "Not answering", warn: true };
 	if (snapshot?.streaming) return { state: "running", label: "Running", warn: false };
 	const job = jobPhaseOf(snapshot?.phase);
 	return job ? { state: "running", label: jobWords(job, Date.now()), warn: false } : undefined;

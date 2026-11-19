@@ -15,6 +15,12 @@ export function registerWorktrees(
 	// The session's folder follows `/worktree switch` and `/resume`, which never change the process directory.
 	let cwd: string | undefined;
 	api.bus.on("session_start", async (_event, ctx) => void (cwd = ctx.cwd));
-	registerWorktreeCommand(commands, { members: () => team.members(), parked, cwd: () => cwd, merge });
+	registerWorktreeCommand(commands, {
+		members: () => team.members(),
+		parked,
+		cwd: () => cwd,
+		merge,
+		agentId: () => team.id,
+	});
 	registerWorktreeFooter(api, team);
 }

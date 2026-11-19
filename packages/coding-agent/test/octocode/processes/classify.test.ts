@@ -146,6 +146,32 @@ describe("classifyProcesses", () => {
 		expect(orphans.map((o) => [o.pid, o.kind, o.reason])).toEqual([[110, "subagent", "owner-gone"]]);
 	});
 
+	it("gives a subagent that just ended and whose parent is gone a grace period before it counts as an orphan", () => {
+		const table = [row(110, 1, "9200", "octocode-implementer-nifty-beak")];
+		const ended = (at: number) =>
+			sample({
+				pid: 110,
+				started: "9200",
+				role: "implementer",
+				id: "nifty-beak",
+				ownerPid: 100,
+				ownerStarted: "9000",
+				ended: true,
+				at,
+			});
+		expect(classifyProcesses({ table, samples: [ended(NOW - 1000)], now: NOW }).orphans).toEqual([]);
+		expect(classifyProcesses({ table, samples: [ended(NOW - ORPHAN_GRACE_MS - 1)], now: NOW }).orphans).toHaveLength(1);
+	});
+
+	it("shows a process still named octocode-main or octocode-rpc, before its session id exists", () => {
+		const table = [row(300, 50, "9500", "octocode-main"), row(301, 50, "9501", "octocode-rpc --mode rpc")];
+		const { processes } = classifyProcesses({ table, samples: [], now: NOW });
+		expect(processes.map((entry) => [entry.pid, entry.role])).toEqual([
+			[300, "main"],
+			[301, "rpc"],
+		]);
+	});
+
 	it("never flags a child without a recorded start time", () => {
 		const table = [row(101, 1, "9100", "node s.js")];
 		const samples = [sample({ pid: 100, started: "9000", children: [{ ...child(101, 100, "9100"), started: null }] })];

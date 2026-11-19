@@ -6,10 +6,10 @@
  * as a tool result, so loading never changes the cached prefix.
  *
  * The `mcpExposure` setting decides tools the configuration leaves open (no `exposure`, no matching `toolExposure`):
- * `recent` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where a tool the workspace called in the last 24 hours is
- * direct and any other is deferred; `usage`, where a tool is deferred unless the promotion snapshot names it (the
- * share of declaring sessions across all workspaces that called or loaded it, `common/src/usage-counts.ts`; no data
- * promotes nothing); `direct`; `deferred`; or `auto:<bytes>`, where servers stay direct, in name order, while the text
+ * `usage` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where a tool is deferred unless the promotion snapshot names it
+ * (the share of declaring sessions across all workspaces that called or loaded it, `common/src/usage-counts.ts`; no
+ * data promotes nothing); `recent`, where a tool the workspace called in the last 24 hours is direct and any other is
+ * deferred; `direct`; `deferred`; or `auto:<bytes>`, where servers stay direct, in name order, while the text
  * of the direct blocks fits within that many bytes and are deferred past it (`McpPresentation.describe`). For `recent`
  * and `usage` the set is fixed when the session starts (`McpFeatureState.recentTools`), a resumed session declares
  * the set it saved (`recent-session.ts`) and a child the set of its coordinator. The `auto` budget is in bytes, not a
@@ -42,10 +42,11 @@ export function deferRolesFromEnv(env: NodeJS.ProcessEnv): McpDeferRole[] {
 const AUTO = /^auto:(\d+)$/;
 
 /**
- * The `mcpExposure` setting when none is configured: every MCP tool is deferred until the working directory calls it,
- * and one unused for 24 hours is deferred again. The coding agent's settings defaults name the same value.
+ * The `mcpExposure` setting when none is configured: every MCP tool is deferred unless the promotion snapshot names it,
+ * so only tools that sessions of the same role group often use are declared in full. The coding agent's settings
+ * defaults name the same value.
  */
-export const DEFAULT_MCP_EXPOSURE_SETTING = "recent";
+export const DEFAULT_MCP_EXPOSURE_SETTING = "usage";
 
 /** Whether the setting defers by use (`recent` or `usage`), so the caller knows to supply the in-use set. */
 export const defersByRecentUse = (setting: unknown): boolean => setting === "recent" || setting === "usage";

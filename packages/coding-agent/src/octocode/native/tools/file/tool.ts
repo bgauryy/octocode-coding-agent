@@ -81,7 +81,7 @@ export function registerFileTool(
 					label: "File",
 					promptSnippet: renderPrompt("tools/file/snippet.md"),
 					description:
-						"Apply file changes; this tool does not read. Use queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; patches validate all first, then stop at the first failure. Neither rolls back. Read an existing file before write/delete; writes need all lines read. Bash reads count only unpiped and unredirected; search content rows count for their shown lines. Edits need no read when every oldText matches exactly. Stale files refuse write/delete; paths outside the workspace need approval.",
+						"Applies file changes; it does not read. Send queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; a patch validates everything, then stops at the first failure; neither rolls back. Read an existing file before write (all lines) or delete: only unpiped, unredirected bash reads count, and search content rows count for their shown lines. Edits need no read when every oldText matches exactly. Stale files refuse write/delete; paths outside the workspace need approval.",
 					promptGuidelines: renderPrompt("tools/file/guidelines.md").split("\n"),
 					parameters: Params,
 					prepareArguments: renameReasoning,

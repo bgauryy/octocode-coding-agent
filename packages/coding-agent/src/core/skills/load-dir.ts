@@ -8,6 +8,7 @@ import { claudeArgumentNames } from "../claude-arguments.ts";
 import { parseCodexSkillMetadata } from "../codex-skill-metadata.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "../source-info.ts";
+import { skillTriggers } from "./triggers.ts";
 import type { LoadSkillsFromDirOptions, LoadSkillsResult, Skill, SkillFrontmatter } from "./identity.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -17,13 +18,16 @@ const MAX_NAME_LENGTH = 64;
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
 
-/** This application's id in a skill's `metadata.excluded-hosts`, a space-separated list (Agent Skills metadata is a string map). */
-const SKILL_HOST_ID = "octocode-code";
+/**
+ * This application's ids in a skill's `metadata.excluded-hosts`, a space-separated list (Agent Skills metadata is a
+ * string map). `octocode-code` is the earlier name, still honoured so existing skills keep skipping Octocode.
+ */
+const SKILL_HOST_IDS: ReadonlySet<string> = new Set(["octocode-agent", "octocode-code"]);
 
 function excludesThisHost(metadata: unknown): boolean {
 	if (!metadata || typeof metadata !== "object") return false;
 	const hosts = (metadata as Record<string, unknown>)["excluded-hosts"];
-	return typeof hosts === "string" && hosts.split(/\s+/).includes(SKILL_HOST_ID);
+	return typeof hosts === "string" && hosts.split(/\s+/).some((host) => SKILL_HOST_IDS.has(host));
 }
 
 /** `metadata.audience: coordinator` lists a skill only for the coordinator: its work (delegation, filing items) needs tools subagents lack. */
@@ -291,6 +295,9 @@ export function loadSkillFromFile(
 		return { skill: null, diagnostics };
 	}
 
+	const declared = skillTriggers(frontmatter.metadata, filePath);
+	if (declared.diagnostic) diagnostics.push(declared.diagnostic);
+
 	const skillDir = dirname(filePath);
 	const parentDirName = basename(skillDir);
 
@@ -369,6 +376,7 @@ export function loadSkillFromFile(
 			sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
 			disableModelInvocation: boolean(frontmatter["disable-model-invocation"]) === true || codexImplicitDisabled,
 			...(coordinatorOnly(frontmatter.metadata) ? { audience: "coordinator" as const } : {}),
+			...(declared.triggers ? { triggers: declared.triggers } : {}),
 			...(boolean(frontmatter["user-invocable"]) === false ? { userInvocable: false } : {}),
 			...(protocol === "claude" ? ({ argumentStyle: "claude", argumentNames } as const) : {}),
 		},

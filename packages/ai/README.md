@@ -1,6 +1,6 @@
 # @octocodeai/octocode-ai
 
-Unified LLM API: provider collections, automatic auth resolution, streaming events, token and cost tracking, and context hand-off between models mid-session. The package is private and bundled into `@octocodeai/octocodecode`; contributors import it as a workspace. The coding agent owns `models.json`, stored credentials and model selection: see [CONFIGURATIONS.md](../coding-agent/docs/configuration.md) and the [models guide](../coding-agent/docs/models.md).
+Unified LLM API: provider collections, automatic auth resolution, streaming events, token and cost tracking, and context hand-off between models mid-session. The package is private and bundled into `@octocodeai/octocode-agent`; contributors import it as a workspace. The coding agent owns `models.json`, stored credentials and model selection: see [CONFIGURATIONS.md](../coding-agent/docs/configuration.md) and the [models guide](../coding-agent/docs/models.md).
 
 The chat catalog lists only models that support tool calling. Image and classifier catalogs use their own capabilities.
 

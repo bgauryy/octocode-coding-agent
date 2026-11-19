@@ -395,6 +395,22 @@ describe("agents panel", () => {
 		expect(mixed).toContain("general-live");
 		expect(mixed).not.toContain("general-dead");
 	});
+
+	it("keeps healthy nested agents whose parent's heartbeat stopped", () => {
+		const lines = widgetLines(
+			[
+				member("main-aaaaaa"),
+				member("general-dead", { parentId: "main-aaaaaa", status: "working", updatedAt: NOW - 20_000 }),
+				member("explore-kid", { parentId: "general-dead", status: "working" }),
+			],
+			"main-aaaaaa",
+			NOW,
+			theme,
+			120,
+		).join("\n");
+		expect(lines).toContain("explore-kid");
+		expect(lines).not.toContain("general-dead");
+	});
 });
 
 /** A member whose heartbeat is current in wall-clock time (the store stamps real times). */

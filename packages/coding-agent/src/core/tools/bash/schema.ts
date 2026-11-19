@@ -4,7 +4,7 @@ import { type Static, Type } from "typebox";
 export const maxOutputTokensParameter = Type.Optional(
 	Type.Number({
 		description:
-			"Result token budget (about 4 bytes each; minimum 100); lowers the budget below the bashOutputMaxBytes setting, never raises it. The full output is saved either way.",
+			"Result token budget (~4 bytes each, min 100); lowers the bashOutputMaxBytes budget, never raises it; full output is saved either way",
 	}),
 );
 

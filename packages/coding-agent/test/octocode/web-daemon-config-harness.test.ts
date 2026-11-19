@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HarnessListSchema, type HarnessList } from "@octocodeai/octocode-contracts/config";
+import { HarnessListSchema, HarnessPreviewSchema, type HarnessList } from "@octocodeai/octocode-contracts/config";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigAuditEntry } from "../../../db/src/api.ts";
 import { ConfigWriteError } from "../../src/octocode/web-daemon/config-write.ts";
 import { listHarness, switchHarness } from "../../src/octocode/web-daemon/harness-config.ts";
+import { previewHarness } from "../../src/octocode/web-daemon/harness-preview.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { isolatedEnv } from "./web-daemon-fixture.ts";
 import { approveFixtureMcp } from "./guard-helpers.ts";
@@ -151,5 +152,73 @@ describe("/api/admin/config/harness", () => {
 			{ id: "bad\nid", on: true, scope: "global" },
 		])
 			expect((await call(server.token, bad)).status).toBe(400);
+	});
+});
+
+describe("harness scan preview", () => {
+	it("scans what Claude Code would bring without writing anything", async () => {
+		const preview = await previewHarness("harness:claude", { agentDir, home });
+		expect(Value.Check(HarnessPreviewSchema, preview)).toBe(true);
+		expect(preview.label).toBe("Claude Code");
+		expect(preview.items).toBeGreaterThan(0);
+		expect(preview.lines.join("\n")).toContain("claude-demo");
+		expect(fs.existsSync(path.join(agentDir, "settings.json"))).toBe(false);
+	});
+
+	it("reports an empty scan for a harness with nothing to bring, and no lines for a row without a source", async () => {
+		fs.rmSync(path.join(home, ".claude"), { recursive: true });
+		fs.rmSync(path.join(home, ".claude.json"));
+		const empty = await previewHarness("harness:claude", { agentDir, home });
+		expect(empty.items).toBe(0);
+		expect(empty.lines[0]).toContain("has no skills, MCP servers or hooks");
+		expect(await previewHarness("harness:claude:memory", { agentDir, home })).toMatchObject({ items: 0, lines: [] });
+	});
+
+	describe("route", () => {
+		async function daemon(previewImpl: (id: string) => Promise<unknown>) {
+			const { env } = isolatedEnv();
+			const wrote = vi.fn();
+			const server: DaemonServer = await startDaemonServer({
+				env,
+				onActivity: () => {},
+				config: async () => ({}),
+				previewHarness: previewImpl,
+				writeHarness: async (command) => {
+					wrote(command);
+					return switchHarness(command, options());
+				},
+				onDrain: () => {},
+			});
+			cleanup.push(() => server.close());
+			const get = (token: string, query: string) =>
+				fetch(`http://127.0.0.1:${server.port}/api/admin/config/harness/preview${query}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+			return { server, get, wrote };
+		}
+
+		it("answers the launch token with the scan, refuses other tokens and bad ids, and never writes", async () => {
+			const { server, get, wrote } = await daemon((id) => previewHarness(id, { agentDir, home }));
+			const ok = await get(server.token, "?id=harness:claude");
+			expect(ok.status).toBe(200);
+			expect(Value.Check(HarnessPreviewSchema, await ok.json())).toBe(true);
+			for (const token of [server.remoteToken, server.viewToken])
+				expect((await get(token, "?id=harness:claude")).status).toBe(403);
+			expect((await get(server.token, "")).status).toBe(400);
+			expect((await get(server.token, "?id=bad%0Aid")).status).toBe(400);
+			expect((await get(server.token, "?id=harness:claude&repoId=nope")).status).toBe(404);
+			expect(wrote).not.toHaveBeenCalled();
+			expect(fs.existsSync(path.join(agentDir, "settings.json"))).toBe(false);
+		});
+
+		it("answers 500 with the scan failure and writes nothing", async () => {
+			const { server, get, wrote } = await daemon(async () => {
+				throw new Error("scan exploded");
+			});
+			const failed = await get(server.token, "?id=harness:claude");
+			expect(failed.status).toBe(500);
+			expect(await failed.json()).toMatchObject({ error: expect.stringContaining("scan exploded") });
+			expect(wrote).not.toHaveBeenCalled();
+		});
 	});
 });

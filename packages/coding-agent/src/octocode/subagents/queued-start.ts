@@ -27,7 +27,12 @@ const SUMMARY_CHARS = 600;
  * coordinator started it while held. A failed prerequisite, or a start `prepare` refuses, holds it and tells the
  * coordinator once; the held child takes nothing and waits for `agent` `resume` or `coordinate` `stop`. `finish` leaves the queue.
  */
-export function queueChild(chain: ChainQueue, tell: (notice: string) => void, spec: QueuedSpec) {
+export function queueChild(
+	chain: ChainQueue,
+	tell: (notice: string, about: string) => void,
+	retract: (about: string) => void,
+	spec: QueuedSpec,
+) {
 	const names = spec.after.map(prerequisiteName);
 	let force: (() => void) | undefined;
 	chain.add({
@@ -42,16 +47,21 @@ export function queueChild(chain: ChainQueue, tell: (notice: string) => void, sp
 	const hold = async (why: string, failed: string[], signal: AbortSignal): Promise<void> => {
 		if (chain.hold(spec.id, why, failed)) {
 			spec.onHeld(why);
-			tell(heldNotice(spec.id, spec.item, why));
+			tell(heldNotice(spec.id, spec.item, why), spec.id);
 		}
-		await new Promise<void>((resolve, reject) => {
-			const abort = () => reject(signal.reason);
-			force = () => {
-				signal.removeEventListener("abort", abort);
-				resolve();
-			};
-			signal.addEventListener("abort", abort, { once: true });
-		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const abort = () => reject(signal.reason);
+				force = () => {
+					signal.removeEventListener("abort", abort);
+					resolve();
+				};
+				signal.addEventListener("abort", abort, { once: true });
+			});
+		} finally {
+			// A notice the pace still holds says the child waits; it no longer does, so it must not arrive later.
+			retract(spec.id);
+		}
 		force = undefined;
 		chain.unhold(spec.id);
 		spec.onHeld(undefined);

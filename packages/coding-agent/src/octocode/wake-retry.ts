@@ -19,6 +19,11 @@ import { sendWakeRetry } from "./wake/senders.ts";
 const WAKE_RETRY_TYPE = "octocode-wake-retry";
 
 /** Waits between attempts; past the last the session stops trying and says so. */
+/** `HH:MM`, local time. */
+function clockTime(at: Date): string {
+	return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 export const WAKE_RETRY_MS = [1, 2, 5, 10, 30].map((minutes) => minutes * 60_000);
 
 /** Messages that start a run with nobody at the keyboard: a report or mail recorded as delivered, whatever the turn then did. */
@@ -82,7 +87,8 @@ export function registerWakeRetry(api: FeatureSetup, isSubagent: boolean): void 
 			return;
 		}
 		attempts++;
-		showStatus(ctx, `provider error: retrying in ${delayMs / 60_000}m (a message cancels)`);
+		// A clock time, not a countdown: the status is written once, so "in 30m" would stay on screen for the whole wait.
+		showStatus(ctx, `provider error: retrying at ${clockTime(new Date(Date.now() + delayMs))} (a message cancels)`);
 		publishWait(true);
 		timer = setTimeout(() => {
 			timer = undefined;

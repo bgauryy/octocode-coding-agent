@@ -1,6 +1,7 @@
 import type { Component } from "../tui.ts";
 import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { visibleWidth } from "../utils/width.ts";
+import { sliceByColumn } from "../utils/columns.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
 import { fitHorizontalPadding, frameContentLines } from "../utils.ts";
 
@@ -114,7 +115,12 @@ function wrapWithHangingIndent(line: string, width: number): string[] {
 	const indent = hangingIndentOf(line);
 	const [first = "", ...rest] = wrapTextWithAnsi(line, width);
 	if (rest.length === 0 || indent.length === 0 || indent.length >= width / 2) return [first, ...rest];
-	// Re-wrap what follows the first row in the room the indent leaves.
-	const continued = wrapTextWithAnsi(rest.join(" "), width - indent.length);
+	// Re-wrap what follows the first row in the room the indent leaves. The rest comes from the line itself: rows
+	// joined with a space would split a word the first wrap had to cut.
+	const remainder = sliceByColumn(line, visibleWidth(first), Number.POSITIVE_INFINITY).replace(
+		/^((?:\x1b\[[0-9;]*m)*) +/,
+		"$1",
+	);
+	const continued = wrapTextWithAnsi(remainder, width - indent.length);
 	return [first, ...continued.map((part) => indent + part)];
 }

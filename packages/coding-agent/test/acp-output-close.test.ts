@@ -109,3 +109,48 @@ it("stops every owned ACP worker before exiting when the client closes only its 
 			if ((await processMatch(worker.pid, worker.started)) === "same") await stopTree(worker.pid);
 	}
 }, 60_000);
+
+it.each(["SIGTERM", "SIGINT"] as const)(
+	"exits on %s within a bound while the client holds stdout open but stops reading",
+	async (signal) => {
+		sandbox = createSandbox();
+		const invocation = getCliInvocation();
+		const child = spawn(invocation.command, [...invocation.prefix, "--mode", "acp", ...QUIET_ARGS], {
+			cwd: sandbox.project,
+			stdio: ["pipe", "pipe", "pipe"],
+			env: sandbox.env,
+		});
+		let diagnostics = "";
+		child.stderr.setEncoding("utf8").on("data", (chunk) => {
+			diagnostics += chunk;
+		});
+		child.stdin.on("error", () => {});
+		const exited = once(child, "close");
+		const first = once(child.stdout, "data");
+		const initialize = (id: number) =>
+			`${JSON.stringify({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} } })}\n`;
+		const killer = setTimeout(() => child.kill("SIGKILL"), 40_000);
+		try {
+			child.stdin.write(initialize(0));
+			await first;
+			child.stdout.pause();
+			// Far more responses than a pipe holds, so the child's write callback cannot fire.
+			child.stdin.write(Array.from({ length: 3_000 }, (_, index) => initialize(index + 1)).join(""));
+			await new Promise((resolve) => setTimeout(resolve, 3_000));
+			const signalled = Date.now();
+			child.kill(signal);
+			const [code, killedBy] = await exited;
+			expect({ code, killedBy, boundedMs: Date.now() - signalled < 15_000 }, diagnostics).toEqual({
+				code: signal === "SIGINT" ? 130 : 143,
+				killedBy: null,
+				boundedMs: true,
+			});
+		} finally {
+			clearTimeout(killer);
+			child.stdin.destroy();
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			await exited;
+		}
+	},
+	60_000,
+);

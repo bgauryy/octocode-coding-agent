@@ -12,6 +12,11 @@
 - Run only commands that do not change files.
 {{/if}}
 {{/if}}
+{{#if agentTool}}
+{{#unless readOnly}}
+- Your task's `paths` are reserved for you. Before editing a file outside them, lock it with `agent` type `coordinate`; if a peer holds it, `message` that peer.
+{{/unless}}
+{{/if}}
 {{#if canSave}}
 - Put long output in a file in your scratch folder and cite its path.
 {{/if}}

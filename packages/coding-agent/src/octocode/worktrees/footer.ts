@@ -7,6 +7,8 @@ import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 /** What the worktree command and footer need from the team, passed in so this domain does not depend on `team/`. */
 export interface WorktreeTeam {
 	members(): Member[];
+	/** The session's own agent id; undefined before it joins the team. */
+	readonly id: string | undefined;
 	watch(listener: () => void): () => void;
 	readonly view: { readonly members: readonly Member[] };
 }

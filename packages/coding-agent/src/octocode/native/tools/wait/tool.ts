@@ -29,7 +29,7 @@ const parameters = Type.Object(
 	{
 		op: StringEnum(["set", "on", "off", "list"] as const),
 		note: text("required: what to do on wake"),
-		after: Type.Optional(Type.Number({ description: "set: seconds" })),
+		after: Type.Optional(Type.Number()),
 		every: Type.Optional(
 			Type.Number({
 				description: `set: min ${MIN_EVERY_SECONDS}s; on: poll, min ${MIN_CHECK_SECONDS}s`,
@@ -44,21 +44,19 @@ const parameters = Type.Object(
 					path: Type.Optional(Type.String()),
 					agent: Type.Optional(Type.String()),
 					epic: text("item.changed: items under this epic"),
-					change: text("item.changed: comma-joined change kinds, any when omitted"),
+					change: text("item.changed: comma-joined change kinds; omit: any"),
 					command: text("exit 0"),
 				},
 				{ additionalProperties: false },
 			),
 		),
-		check: text(
-			"on: a question in words a small model judges (paid); omit for a command: filter.command alone is free",
-		),
+		check: text("on: a question a small model judges (paid); omit: filter.command alone, free"),
 		cron: text("set: 5 fields, local time; replaces after/every"),
 		tz: text("set with cron: IANA zone"),
-		once: Type.Optional(Type.Boolean({ description: "on: false repeats" })),
+		once: Type.Optional(Type.Boolean()),
 		maxRuns: Type.Optional(Type.Integer({ description: "default 20" })),
 		deadline: Type.Optional(Type.Number({ description: "seconds; on: 3600" })),
-		id: Type.Optional(Type.Integer({ description: "off: id" })),
+		id: Type.Optional(Type.Integer()),
 		all: Type.Optional(Type.Boolean({ description: "list: ended too; off: all" })),
 	},
 	{ additionalProperties: false },
@@ -106,7 +104,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Wait",
 		promptSnippet: renderPrompt("tools/wait/snippet.md"),
 		description:
-			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list adds what wakes you unasked. check.result runs a command: `test -e path`.",
+			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list also shows what wakes you unasked. check.result runs a command: `test -e path`.",
 		parameters,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();

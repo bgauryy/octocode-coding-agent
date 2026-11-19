@@ -45,13 +45,13 @@ if (args[0] === "workspaces") {
   record("discovery");
   for (const row of [
     { name: "@octocodeai/octocode-monorepo", location: "." },
-    { name: "@octocodeai/octocodecode", location: "packages/coding-agent" },
+    { name: "@octocodeai/octocode-agent", location: "packages/coding-agent" },
     { name: "tail", location: "packages/tail" },
     { name: "no-tests", location: "packages/no-tests" }
   ]) console.log(JSON.stringify(row));
   process.exit(config.discoveryFailure ?? 0);
 }
-if (args[0] === "workspace" && args[1] === "@octocodeai/octocodecode") {
+if (args[0] === "workspace" && args[1] === "@octocodeai/octocode-agent") {
   record("coding-agent");
   const result = spawnSync(process.execPath, [join(root, "scripts/test-coding-agent.mjs"), ...args.slice(4)],
     { cwd: join(root, "packages/coding-agent"), stdio: "inherit" });
@@ -155,7 +155,7 @@ test("isolated launcher uses pinned Yarn, preserves literal arguments and runs e
 		if (row.label !== "discovery") assert.deepEqual(row.args.slice(-args.length), args);
 	}
 	assert.match(result.stderr, /Failed: coding-agent core, coding-agent native, coding-agent e2e/);
-	assert.match(result.stderr, /Failed: scripts, @octocodeai\/octocodecode/);
+	assert.match(result.stderr, /Failed: scripts, @octocodeai\/octocode-agent/);
 	assert.equal(rows[0].cwd, root);
 	assert.equal(rows.find(({ label }) => label === "core").cwd, join(root, "packages/coding-agent"));
 });

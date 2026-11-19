@@ -138,15 +138,15 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 	[/\bgsk_[A-Za-z0-9]{20,}/, "a Groq API key"],
 	[/\bhf_[A-Za-z0-9]{20,}/, "a Hugging Face token"],
 	// `scheme://user:password@host`; `${VAR}` or `<placeholder>` passwords are templates, not secrets.
-	[/\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/${}<>]{3,}@/i, "a password in a URL"],
+	[/(?<![a-z0-9+.-])[a-z][a-z0-9+.-]{0,31}:\/\/[^\s:@/]+:[^\s@/${}<>]{3,}@/i, "a password in a URL"],
 	// `?key=…`, `&access_token=…` inside a URL a fetch error quoted: the name ends in key, token, secret or similar, so `token_type=bearer` passes.
 	[
 		/(?<=[?&])(?:[\w.-]*(?:key|secret|token|password|passwd|signature|credential|authorization)|sig|auth)=[^&\s"'<>#]{2,}/i,
 		"a credential in a URL query",
 	],
-	// `password = s3cretValue`: the value must hold a digit and no code punctuation, so `token = getToken()` passes.
+	// `password = s3cretValue`: the value must hold a digit in its first 256 characters (a bounded scan) and no code punctuation, so `token = getToken()` passes.
 	[
-		new RegExp(`${SECRET_ASSIGNMENT}[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]*\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
+		new RegExp(`${SECRET_ASSIGNMENT}[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]{0,255}\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
 		"a password or key assignment",
 	],
 	[/\bBearer\s+[A-Za-z0-9._~+/-]{20,}/, "a bearer token"],

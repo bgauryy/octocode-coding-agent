@@ -142,7 +142,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			query,
 			(item) => item.aliases.join(" "),
 		);
-		const filtered = [...bareNameMatches, ...fullNameOnlyMatches, ...aliasMatches].map((item) => ({
+		// Enter runs the first row, so the command the query names in full (by its name or an alias) leads.
+		const ranked = [...bareNameMatches, ...fullNameOnlyMatches, ...aliasMatches];
+		const exact = ranked.findIndex((item) => item.name === query || item.aliases.includes(query));
+		if (exact > 0) ranked.unshift(...ranked.splice(exact, 1));
+		const filtered = ranked.map((item) => ({
 			value: item.name,
 			label: item.label,
 			kind: "command" as const,

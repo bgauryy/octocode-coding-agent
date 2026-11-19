@@ -65,6 +65,8 @@ describe("AgentSession retry", () => {
 		errorMessage?: string;
 		retryAfterMs?: number;
 		baseDelayMs?: number;
+		/** Called as a failing call ends, to let a test move its clock; the error's timestamp is the call's start. */
+		onCallFailed?: () => void;
 	}) {
 		const failCount = options?.failCount ?? 1;
 		const maxRetries = options?.maxRetries ?? 3;
@@ -78,10 +80,13 @@ describe("AgentSession retry", () => {
 			initialState: { model, systemPrompt: "Test", tools: [] },
 			streamFn: () => {
 				callCount++;
+				const startedAt = Date.now();
 				const stream = createAssistantMessageEventStream();
 				queueMicrotask(() => {
 					if (callCount <= failCount) {
+						options?.onCallFailed?.();
 						const msg = createAssistantMessage("", {
+							timestamp: startedAt,
 							stopReason: "error",
 							errorMessage: options?.errorMessage ?? "500 internal server error",
 							...(options?.retryAfterMs === undefined ? {} : { retryAfterMs: options.retryAfterMs }),
@@ -332,6 +337,55 @@ describe("AgentSession retry", () => {
 			} finally {
 				zero.mockRestore();
 			}
+		});
+	});
+
+	describe("timeouts", () => {
+		const IDLE_MS = 300_000;
+		function timedOutSession(maxRetries: number) {
+			const real = Date.now.bind(Date);
+			let offset = 0;
+			const clock = vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
+			const finished: Array<{ success: boolean; attempt: number; finalError?: string }> = [];
+			return {
+				clock,
+				finished,
+				create: async () => {
+					const created = await createSession({
+						failCount: 99,
+						maxRetries,
+						errorMessage: `Model stream idle: no data received for ${IDLE_MS}ms (timed out)`,
+						onCallFailed: () => {
+							offset += IDLE_MS;
+						},
+					});
+					created.session.subscribe((event) => {
+						if (event.type === "auto_retry_end") finished.push(event);
+					});
+					return created;
+				},
+			};
+		}
+
+		it("stops retrying idle timeouts once their waits reach the timeout window, and says how long it took", async () => {
+			const setup = timedOutSession(3);
+			try {
+				const created = await setup.create();
+				await created.session.prompt("Test");
+				// 3 configured retries would have waited 4 idle windows (20 minutes): two requests spend the window.
+				expect(created.getCallCount()).toBe(2);
+				expect(setup.finished).toHaveLength(1);
+				expect(setup.finished[0]).toMatchObject({ success: false, attempt: 1 });
+				expect(setup.finished[0].finalError).toMatch(/timed out\) \(2 attempts over 600s\)$/);
+			} finally {
+				setup.clock.mockRestore();
+			}
+		});
+
+		it("keeps retrying a quick failure through every configured attempt", async () => {
+			const created = await createSession({ failCount: 99, maxRetries: 3, errorMessage: "500 internal server error" });
+			await created.session.prompt("Test");
+			expect(created.getCallCount()).toBe(4);
 		});
 	});
 

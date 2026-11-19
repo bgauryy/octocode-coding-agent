@@ -6,7 +6,7 @@ This private workspace owns the MCP protocol client, transports, configuration, 
 
 The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build-coding-agent.mjs` bundles its sources into coding-agent's one bundle file, behind the `/mcp` exports. The MCP SDK license ships with the host.
 
-The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocodecode/mcp` and `/mcp/oauth`; the testing helpers do not ship. Internal workspace exports resolve directly to source.
+The workspace is not published or installed as a runtime dependency. Public consumers continue to import `@octocodeai/octocode-agent/mcp` and `/mcp/oauth`; the testing helpers do not ship. Internal workspace exports resolve directly to source.
 
 coding-agent imports this workspace only through `src/api.ts`; a host file that needs another name adds it there. Other workspaces import the package `exports` by name. `yarn run check:mcp-boundary` fails on any other import into `src/` from outside it (tests may import private modules).
 
@@ -21,7 +21,7 @@ How tools reach the model (`declared`, `compact`, `json`), exposure and assignme
 ## Usage
 
 ```typescript
-import { McpClient, StdioTransport } from "@octocodeai/octocodecode/mcp";
+import { McpClient, StdioTransport } from "@octocodeai/octocode-agent/mcp";
 
 const transport = new StdioTransport({
 	command: "npx",
@@ -49,7 +49,7 @@ Wrapping an MCP tool as an `@octocodeai/octocode-agent-core` `AgentTool`:
 
 ```typescript
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
-import { toLlmContent } from "@octocodeai/octocodecode/mcp";
+import { toLlmContent } from "@octocodeai/octocode-agent/mcp";
 import { Type } from "typebox";
 
 const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
@@ -71,17 +71,17 @@ Hosts can also forward progress and retain `structuredContent` for programmatic 
 
 ### OAuth
 
-`@octocodeai/octocodecode/mcp/oauth` adapts the official SDK's MCP OAuth primitives to the host's credential storage and authorization lifecycle:
+`@octocodeai/octocode-agent/mcp/oauth` adapts the official SDK's MCP OAuth primitives to the host's credential storage and authorization lifecycle:
 
 ```typescript
-import { McpClient, StreamableHttpTransport } from "@octocodeai/octocodecode/mcp";
+import { McpClient, StreamableHttpTransport } from "@octocodeai/octocode-agent/mcp";
 import {
 	adaptOAuthProvider,
 	authorizeMcp,
 	McpOAuthAuthorizationRequiredError,
 	McpOAuthProvider,
 	OAuthCallbackServer,
-} from "@octocodeai/octocodecode/mcp/oauth";
+} from "@octocodeai/octocode-agent/mcp/oauth";
 
 const serverUrl = "https://mcp.example.com/mcp";
 const callback = await OAuthCallbackServer.listen();

@@ -142,7 +142,11 @@ describe("InteractiveMode compaction events", () => {
 			defaultEditor: {},
 			statusContainer: { clear: vi.fn() },
 			chatContainer: { clear: vi.fn(), children: [] },
-			sessionManager: { buildContextEntries: vi.fn().mockReturnValue([latestCompaction, previousCompaction]) },
+			entriesRenderedByRebuild: new Set<string>(),
+			sessionManager: {
+				buildContextEntries: vi.fn().mockReturnValue([latestCompaction, previousCompaction]),
+				getBranch: vi.fn().mockReturnValue([latestCompaction]),
+			},
 			renderSessionEntries: vi.fn(),
 			addMessageToChat: vi.fn(),
 			addCompactionCostNotice: vi.fn(),
@@ -168,6 +172,24 @@ describe("InteractiveMode compaction events", () => {
 
 		expect(fakeThis.chatContainer.clear).toHaveBeenCalledTimes(1);
 		expect(fakeThis.renderSessionEntries).toHaveBeenCalledWith([previousCompaction]);
+
+		// The entry's own event rebuilt the transcript already: `compaction_end` leaves it alone.
+		fakeThis.chatContainer.clear.mockClear();
+		fakeThis.renderSessionEntries.mockClear();
+		fakeThis.addMessageToChat.mockClear();
+		await handleEvent(createFakeHost(fakeThis), { type: "entry_appended", entry: latestCompaction });
+		expect(fakeThis.chatContainer.clear).toHaveBeenCalledTimes(1);
+		const renders = fakeThis.renderSessionEntries.mock.calls.length;
+		await handleEvent(createFakeHost(fakeThis), {
+			type: "compaction_end",
+			reason: "manual",
+			result: { tokensBefore: 123, summary: "summary", usage },
+			aborted: false,
+			willRetry: false,
+		});
+		expect(fakeThis.chatContainer.clear).toHaveBeenCalledTimes(1);
+		expect(fakeThis.renderSessionEntries.mock.calls.length).toBe(renders);
+		expect(fakeThis.flushCompactionQueue).toHaveBeenCalledTimes(2);
 		expect(fakeThis.addMessageToChat).toHaveBeenCalledTimes(1);
 		expect(fakeThis.addMessageToChat).toHaveBeenCalledWith(
 			expect.objectContaining({

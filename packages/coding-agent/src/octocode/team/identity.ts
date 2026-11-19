@@ -49,9 +49,9 @@ export function agentName(taken: Iterable<string> = [], random: () => number = M
  * not content: any length is accepted. `GOAL_SHOWN_CHARS` is the length a goal should aim for, so it reads whole in a
  * narrow panel; a wider terminal shows more of a longer one.
  */
-export const GOAL_SHOWN_CHARS = 48;
+const GOAL_SHOWN_CHARS = 48;
 const GOAL_EXAMPLE = "audit auth token refresh";
-export const GOAL_DESCRIPTION = `Verb phrase for the panel; about ${GOAL_SHOWN_CHARS} characters fit`;
+export const GOAL_DESCRIPTION = `Panel verb phrase; ~${GOAL_SHOWN_CHARS} characters fit`;
 
 /** The goal as it is stored and shown: terminal escapes removed and whitespace collapsed. Only a missing goal is refused. */
 export function checkGoal(input: unknown): string {

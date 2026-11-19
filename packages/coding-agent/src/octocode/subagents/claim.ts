@@ -375,6 +375,7 @@ export function claimRun(
 	if (identity.item) runs.items.set(identity.id, identity.item);
 	const release = () => {
 		if (!runs.running.delete(identity.id)) return;
+		runs.team.approvals.noteStarted(identity.id);
 		if (slot.held) runs.slots.give();
 		const kept = scratch && !dropEmptyScratch(scratch);
 		runs.team.rememberFinished(

@@ -97,7 +97,7 @@ describe("createInteractiveTui", () => {
 		initTheme("dark");
 		const previousKeybindings = getKeybindings();
 		setKeybindings(new KeybindingsManager({ "tui.altScreen.bottom": "ctrl+j" }));
-		const terminal = new RecordingTerminal(50, 4);
+		const terminal = new RecordingTerminal(64, 4);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",
 			showHardwareCursor: false,
@@ -115,7 +115,7 @@ describe("createInteractiveTui", () => {
 			await terminal.waitForRender();
 			terminal.sendInput("\x1b[<64;1;1M");
 			await terminal.waitForRender();
-			expect(terminal.getViewport()[3]).toMatch(/↓ \d+ rows below · Jump to latest message · ctrl\+j/);
+			expect(terminal.getViewport()[3]).toMatch(/↓ \d+ rows below · \d+% · Jump to latest message · ctrl\+j/);
 		} finally {
 			ui.stop();
 			setKeybindings(previousKeybindings);

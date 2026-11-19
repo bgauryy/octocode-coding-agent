@@ -1,6 +1,6 @@
 ---
 name: octocode-output
-description: "Use when a reply holds a comparison, numbers, a flow, a hierarchy, status of parts, findings or a recommendation: picks the table, tree or diagram."
+description: "Use when a reply holds a comparison, numbers, a flow, a hierarchy, part status, findings or a recommendation: picks table, tree or diagram."
 ---
 
 # Output shape

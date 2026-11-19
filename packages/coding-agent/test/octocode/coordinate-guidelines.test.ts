@@ -1,23 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
-import { coordinateGuidelines } from "../../src/octocode/native/tools/coordinate/guidelines.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
+import { leanPromptSections } from "../../src/octocode/native/prompts/lean.ts";
+import { octocodePromptSections } from "../../src/octocode/native/prompts/policy.ts";
 
-const text = (subagent: boolean, env: NodeJS.ProcessEnv) => coordinateGuidelines(subagent, env).join("\n");
+/** What tells an agent to reserve files with the `agent` tool's `coordinate` type. */
+const LOCKS = /type `coordinate`/;
 
-describe("coordinate guideline", () => {
-	it("gives a read-only role no lock or edit guidance", () => {
-		const out = text(true, { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1" });
-		expect(out).toContain("`list`");
-		expect(out).toContain("`changes`");
-		expect(out).not.toMatch(/\block\b|reserved for you|editing|edit wave/);
+const policy = (canDelegate: boolean, readOnly: boolean, canUseAgent = true) =>
+	Object.values(octocodePromptSections({ profiles: [], canDelegate, readOnly, canUseAgent })).join("\n");
+
+describe("coordination guidance", () => {
+	it("keeps the tool's own guideline free of lock guidance, so every role shares one cached base block", () => {
+		expect(renderPrompt("tools/coordinate/guidelines.md")).not.toMatch(LOCKS);
 	});
 
-	it("keeps lock and edit guidance for a writable subagent and the main session", () => {
-		expect(text(true, { [SUBAGENT_ENV]: "1" })).toMatch(/lock those files with `agent` type `coordinate`/);
-		expect(text(false, {})).toMatch(/lock your paths with `agent` type `coordinate`/);
+	it("tells the main session and a writable subagent to lock the files they edit", () => {
+		expect(policy(true, false)).toMatch(LOCKS);
+		expect(policy(false, false)).toMatch(LOCKS);
+		expect(leanPromptSections({ canShell: true, canSave: true, readOnly: false }).lean).toMatch(LOCKS);
 	});
 
-	it("ignores a read-only flag that is not inside a subagent", () => {
-		expect(text(false, { [READ_ONLY_ENV]: "1" })).toMatch(/lock your paths/);
+	it("tells a read-only subagent nothing about locking, lean or not", () => {
+		expect(policy(false, true)).not.toMatch(LOCKS);
+		expect(leanPromptSections({ canShell: true, canSave: false, readOnly: true }).lean).not.toMatch(LOCKS);
+	});
+
+	it("leaves the lock guidance out where the agent tool is not exposed", () => {
+		expect(policy(false, false, false)).not.toMatch(LOCKS);
+		expect(leanPromptSections({ canShell: true, canSave: true, readOnly: false, agentTool: false }).lean).not.toMatch(
+			LOCKS,
+		);
 	});
 });

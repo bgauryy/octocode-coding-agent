@@ -8,7 +8,7 @@ import {
 	type ApplicationAssetPayload,
 } from "./content.ts";
 import { AwaitingSchema } from "./application-awaiting.ts";
-import { ApplicationPhaseSchema } from "./application-phase.ts";
+import { ApplicationPhaseSchema, SessionStatusEventSchema, SessionStatusSchema } from "./application-phase.ts";
 import { ReplySchema } from "./question.ts";
 import { ApplicationToolProgressSchema } from "./tool-progress.ts";
 import { ToolDisplaySchema } from "./tool-display.ts";
@@ -193,7 +193,6 @@ const ApplicationModelSchema = Type.Object({
 	name: Type.String(),
 	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
 });
-const SessionStatusSchema = Type.Union([Type.Literal("idle"), Type.Literal("compacting"), Type.Literal("retrying")]);
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
 	Type.Object({ type: Type.Literal("session.model"), model: Type.Optional(ApplicationModelSchema) }),
@@ -251,7 +250,7 @@ export const ApplicationEventSchema = Type.Union([
 		steering: Type.Array(Type.String()),
 		followUp: Type.Array(Type.String()),
 	}),
-	Type.Object({ type: Type.Literal("session.status"), status: SessionStatusSchema }),
+	SessionStatusEventSchema,
 	Type.Object({
 		type: Type.Literal("session.awaiting"),
 		/** The blocking dialog now open; absent when none is. */
@@ -280,6 +279,7 @@ export const ApplicationSnapshotSchema = Type.Object({
 	errors: Type.Optional(Type.Array(ApplicationErrorSchema)),
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),
+	statusDetail: Type.Optional(Type.String()),
 	awaiting: Type.Optional(AwaitingSchema),
 	/** Absent until the host publishes one (an older host never does). */
 	phase: Type.Optional(ApplicationPhaseSchema),

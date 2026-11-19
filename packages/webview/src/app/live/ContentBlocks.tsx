@@ -23,6 +23,8 @@ interface ContentProps {
 	tools?: readonly ApplicationTool[];
 	loadAsset: AssetLoader;
 	plain?: boolean;
+	/** Rewrites a text block's Markdown for display (backlog IDs with titles); the content itself is unchanged. */
+	decorate?: (markdown: string) => string;
 	ancestors?: readonly string[];
 }
 
@@ -32,6 +34,7 @@ export const ContentBlocks = memo(function ContentBlocks({
 	tools = [],
 	loadAsset,
 	plain,
+	decorate,
 	ancestors = [],
 }: ContentProps) {
 	return (
@@ -41,7 +44,13 @@ export const ContentBlocks = memo(function ContentBlocks({
 					case "text":
 						return (
 							<div key={block.id}>
-								<ExpandedText text={block.text} full={block.full} loadAsset={loadAsset} plain={plain} />
+								<ExpandedText
+									text={block.text}
+									full={block.full}
+									loadAsset={loadAsset}
+									plain={plain}
+									decorate={decorate}
+								/>
 								<Citations annotations={block.annotations} />
 							</div>
 						);
@@ -105,11 +114,13 @@ export function ExpandedText({
 	full,
 	loadAsset,
 	plain,
+	decorate,
 }: {
 	text: string;
 	full?: ApplicationAsset;
 	loadAsset: AssetLoader;
 	plain?: boolean;
+	decorate?: (markdown: string) => string;
 }) {
 	const [expanded, setExpanded] = useState<{ id: string; text: string }>();
 	const fullKey = full && `${full.id}:${full.revision ?? ""}`;
@@ -118,7 +129,7 @@ export function ExpandedText({
 	const value = full && expanded && expanded.id === fullKey ? expanded.text : text;
 	return (
 		<>
-			{value && (plain ? <pre className="text output">{value}</pre> : <Markdown text={value} />)}
+			{value && (plain ? <pre className="text output">{value}</pre> : <Markdown text={value} decorate={decorate} />)}
 			{full && expanded?.id !== fullKey && (
 				<Button
 					size="sm"

@@ -4,6 +4,7 @@ import type { SandboxRuntimeConfig as RuntimeConfig } from "@anthropic-ai/sandbo
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { CommandSandbox, CommandSandboxRequest, SandboxedLaunch } from "../../../utils/command-sandbox.ts";
 import { type SandboxPolicy, sandboxTempDir } from "./policy.ts";
+import { withSocketFriendlyTempDir } from "./socket-dir.ts";
 import { commandDenials } from "./violations.ts";
 
 type Srt = typeof SrtModule;
@@ -61,7 +62,8 @@ function startLibrary(): Promise<Srt> {
 		// srt reads the child's TMPDIR from this name at each wrap; see `sandboxTempDir`.
 		process.env.CLAUDE_CODE_TMPDIR = sandboxTempDir();
 		// The log monitor reports Seatbelt denials, which name the refused path in the command's result.
-		await srt.SandboxManager.initialize(baseConfig(), askHost, true);
+		// The proxy binds a Unix socket in the temporary folder, which a long `TMPDIR` makes too long for a socket path.
+		await withSocketFriendlyTempDir(() => srt.SandboxManager.initialize(baseConfig(), askHost, true));
 		return srt;
 	})().catch((error: unknown) => {
 		library = undefined;

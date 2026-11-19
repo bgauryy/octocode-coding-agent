@@ -85,6 +85,21 @@ describe("built-in slash commands", () => {
 		expect(instance.editor.setText).toHaveBeenLastCalledWith("/stats");
 	});
 
+	it("answers a retired name with one notice that names its replacement and cannot be sent as text", async () => {
+		const instance = mode();
+		const effects: string[] = [];
+		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
+		const harness = { name: "harness", description: "Harness" };
+		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, harness];
+		await instance.defaultEditor.onSubmit("/plugins");
+		await instance.defaultEditor.onSubmit("/plugins");
+		expect(effects).toEqual([]);
+		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual([
+			"/plugins moved to /harness. Run /harness to continue.",
+			"/plugins moved to /harness. Run /harness to continue.",
+		]);
+	});
+
 	it("points retired names, typos and topic words at the owning command, and never at an unrelated short one", async () => {
 		const instance = mode();
 		const effects: string[] = [];

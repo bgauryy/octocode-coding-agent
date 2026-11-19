@@ -143,6 +143,7 @@ describe("plan-billed runner usage", () => {
 		formatSessionReport({
 			stats: spent,
 			entries: list,
+			branch: list,
 			prices: { getModel: () => undefined },
 			selectedModelKey: "x/y",
 		});

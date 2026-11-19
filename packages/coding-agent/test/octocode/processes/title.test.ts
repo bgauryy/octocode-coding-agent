@@ -51,6 +51,9 @@ describe("process titles", () => {
 	it("recognises its own titles, and only them", () => {
 		expect(isProcessTitle("octocode-implementer-nifty-beak")).toBe(true);
 		expect(isProcessTitle("octocode-main-01a1a2c5")).toBe(true);
+		expect(isProcessTitle("octocode-main")).toBe(true);
+		expect(isProcessTitle("octocode-rpc")).toBe(true);
+		expect(isProcessTitle("octocode-mcp")).toBe(false);
 		expect(isProcessTitle("octocode")).toBe(false);
 		expect(isProcessTitle("node /repo/octocode-mcp/dist/index.js")).toBe(false);
 		expect(isProcessTitle("/usr/bin/octocode mcp")).toBe(false);

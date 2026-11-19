@@ -1,3 +1,4 @@
+// Request projection, not compaction-only: `requestMessages` runs on every request (see README.md).
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrustedResults } from "./untrusted-results.ts";
 import { applyClearedResults } from "./clearing.ts";

@@ -11,7 +11,7 @@ import { octocodeShimError } from "./shim.ts";
 
 const MAX_OUTPUT = 20_000;
 const MISSING =
-	"The octocode research CLI is not available: Octocode Code depends on the `octocode` package, which did not resolve or is not built (in a checkout, build ../octocode/packages/octocode).";
+	"The octocode research CLI is not available: Octocode Agent depends on the `octocode` package, which did not resolve or is not built (in a checkout, build ../octocode/packages/octocode).";
 const STATUS_KEY = "octocode-cli";
 
 /**

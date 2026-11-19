@@ -65,7 +65,8 @@ describe("skills", () => {
 					`---\nname: ${name}\ndescription: A skill.\nmetadata:\n  excluded-hosts: "${hosts}"\n---\nBody`,
 				);
 			};
-			skill("elsewhere", "claude-code octocode-code");
+			skill("elsewhere", "claude-code octocode-agent");
+			skill("earlier-name", "octocode-code");
 			skill("here", "claude-code");
 			try {
 				const { skills, diagnostics } = loadSkillsFromDir({ dir: root, source: "test" });

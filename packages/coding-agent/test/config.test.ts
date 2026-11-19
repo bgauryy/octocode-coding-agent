@@ -56,7 +56,7 @@ function createNpmPrefixInstall(template = "octocode-prefix-"): { prefix: string
 	const prefix = mkdtempSync(join(tmpdir(), template));
 	const root = join(prefix, "lib", "node_modules");
 	const scopeDir = join(root, "@octocodeai");
-	const packageDir = join(scopeDir, "octocodecode");
+	const packageDir = join(scopeDir, "octocode-agent");
 	mkdirSync(packageDir, { recursive: true });
 	tempDir = prefix;
 	process.env.OCTOCODE_PACKAGE_DIR = packageDir;
@@ -68,7 +68,7 @@ function createPnpmGlobalInstall(): { root: string; packageDir: string } {
 	const temp = mkdtempSync(join(tmpdir(), "octocode-pnpm-"));
 	const binDir = join(temp, "bin");
 	const root = join(temp, "pnpm", "global", "5", "node_modules");
-	const packageDir = join(root, "@octocodeai", "octocodecode");
+	const packageDir = join(root, "@octocodeai", "octocode-agent");
 	mkdirSync(packageDir, { recursive: true });
 	mkdirSync(binDir, { recursive: true });
 	writeFileSync(join(binDir, process.platform === "win32" ? "pnpm.cmd" : "pnpm"), createFakePnpmScript(root));
@@ -80,10 +80,10 @@ function createPnpmGlobalInstall(): { root: string; packageDir: string } {
 		join(
 			root,
 			".pnpm",
-			"@octocodeai+octocodecode@0.0.0",
+			"@octocodeai+octocode-agent@0.0.0",
 			"node_modules",
 			"@octocodeai",
-			"octocodecode",
+			"octocode-agent",
 			"dist",
 			"cli.js",
 		),
@@ -95,7 +95,7 @@ function createYarnGlobalInstall(): { globalDir: string; packageDir: string } {
 	const temp = mkdtempSync(join(tmpdir(), "octocode-yarn-"));
 	const binDir = join(temp, "bin");
 	const globalDir = join(temp, "yarn", "global");
-	const packageDir = join(globalDir, "node_modules", "@octocodeai", "octocodecode");
+	const packageDir = join(globalDir, "node_modules", "@octocodeai", "octocode-agent");
 	mkdirSync(packageDir, { recursive: true });
 	mkdirSync(binDir, { recursive: true });
 	writeFileSync(join(binDir, process.platform === "win32" ? "yarn.cmd" : "yarn"), createFakeYarnScript(globalDir));
@@ -103,7 +103,7 @@ function createYarnGlobalInstall(): { globalDir: string; packageDir: string } {
 	tempDir = temp;
 	process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
 	process.env.OCTOCODE_PACKAGE_DIR = packageDir;
-	setExecPath(join(globalDir, ".yarn", "@octocodeai", "octocodecode", "dist", "cli.js"));
+	setExecPath(join(globalDir, ".yarn", "@octocodeai", "octocode-agent", "dist", "cli.js"));
 	return { globalDir, packageDir };
 }
 
@@ -113,7 +113,7 @@ function createBunGlobalInstall(): { packageDir: string } {
 	const bunBin = join(prefix, "bin");
 	const root = join(prefix, "install", "global", "node_modules");
 	const scopeDir = join(root, "@octocodeai");
-	const packageDir = join(scopeDir, "octocodecode");
+	const packageDir = join(scopeDir, "octocode-agent");
 	mkdirSync(packageDir, { recursive: true });
 	mkdirSync(bunBin, { recursive: true });
 	writeFileSync(join(bunBin, process.platform === "win32" ? "bun.cmd" : "bun"), createFakeBunScript(bunBin));
@@ -181,12 +181,12 @@ test("launches source subagents from paths with URL delimiters", () => {
 describe("detectInstallMethod", () => {
 	test("detects pnpm from Windows .pnpm install paths", () => {
 		setExecPath(
-			"C:\\Users\\Admin\\Documents\\pnpm-repository\\global\\5\\.pnpm\\@octocodeai+octocodecode@0.67.68\\node_modules\\@octocodeai\\octocodecode\\dist\\cli.js",
+			"C:\\Users\\Admin\\Documents\\pnpm-repository\\global\\5\\.pnpm\\@octocodeai+octocode-agent@0.67.68\\node_modules\\@octocodeai\\octocode-agent\\dist\\cli.js",
 		);
 
 		expect(detectInstallMethod()).toBe("pnpm");
-		expect(getUpdateInstruction("@octocodeai/octocodecode")).toBe(
-			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @octocodeai/octocodecode",
+		expect(getUpdateInstruction("@octocodeai/octocode-agent")).toBe(
+			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @octocodeai/octocode-agent",
 		);
 	});
 
@@ -194,16 +194,16 @@ describe("detectInstallMethod", () => {
 		setExecPath("/usr/local/bin/node");
 
 		expect(detectInstallMethod()).toBe("unknown");
-		expect(getSelfUpdateCommand("@octocodeai/octocodecode")).toBeUndefined();
-		expect(getUpdateInstruction("@octocodeai/octocodecode")).toBe(
-			"Update @octocodeai/octocodecode using the package manager, wrapper, or source checkout that provides this installation.",
+		expect(getSelfUpdateCommand("@octocodeai/octocode-agent")).toBeUndefined();
+		expect(getUpdateInstruction("@octocodeai/octocode-agent")).toBe(
+			"Update @octocodeai/octocode-agent using the package manager, wrapper, or source checkout that provides this installation.",
 		);
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent");
 
 		expect(detectInstallMethod()).toBe("npm");
 		expect(command).toEqual({
@@ -215,18 +215,18 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@octocodeai/octocodecode",
+				"@octocodeai/octocode-agent",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocodecode`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocode-agent`,
 		});
 	});
 
 	test("self-updates exact npm versions without uninstalling the current package", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, {
-			packageName: "@octocodeai/octocodecode",
-			installSpec: "@octocodeai/octocodecode@1.2.3",
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", undefined, {
+			packageName: "@octocodeai/octocode-agent",
+			installSpec: "@octocodeai/octocode-agent@1.2.3",
 		});
 
 		expect(command).toEqual({
@@ -238,26 +238,26 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@octocodeai/octocodecode@1.2.3",
+				"@octocodeai/octocode-agent@1.2.3",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocodecode@1.2.3`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocode-agent@1.2.3`,
 		});
 	});
 
 	test("self-updates renamed packages from the current install prefix", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", undefined, "@new-scope/octocode");
 
 		expect(command).toEqual({
 			command: "npm",
 			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@new-scope/octocode"],
-			display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocodecode && npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/octocode`,
+			display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocode-agent && npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @new-scope/octocode`,
 			steps: [
 				{
 					command: "npm",
-					args: ["--prefix", prefix, "uninstall", "-g", "@octocodeai/octocodecode"],
-					display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocodecode`,
+					args: ["--prefix", prefix, "uninstall", "-g", "@octocodeai/octocode-agent"],
+					display: `npm --prefix ${prefix} uninstall -g @octocodeai/octocode-agent`,
 				},
 				{
 					command: "npm",
@@ -271,7 +271,7 @@ describe("detectInstallMethod", () => {
 	test("self-update respects configured npmCommand", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", ["npm", "--prefix", prefix]);
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", ["npm", "--prefix", prefix]);
 
 		expect(command).toEqual({
 			command: "npm",
@@ -282,16 +282,16 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@octocodeai/octocodecode",
+				"@octocodeai/octocode-agent",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocodecode`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @octocodeai/octocode-agent`,
 		});
 	});
 
 	test("self-update treats empty npmCommand as unset", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", []);
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", []);
 
 		expect(command?.args).toEqual([
 			"--prefix",
@@ -300,60 +300,60 @@ describe("detectInstallMethod", () => {
 			"-g",
 			"--ignore-scripts",
 			"--min-release-age=0",
-			"@octocodeai/octocodecode",
+			"@octocodeai/octocode-agent",
 		]);
 	});
 
 	test("quotes npm self-update display paths", () => {
 		const { prefix } = createNpmPrefixInstall("octocode prefix ");
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent");
 
 		expect(command?.display).toBe(
-			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @octocodeai/octocodecode`,
+			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @octocodeai/octocode-agent`,
 		);
 	});
 
 	test("does not infer Windows npm custom prefixes from package paths", () => {
-		const packageDir = "C:\\Users\\Admin\\npm prefix\\node_modules\\@octocodeai\\octocodecode";
+		const packageDir = "C:\\Users\\Admin\\npm prefix\\node_modules\\@octocodeai\\octocode-agent";
 		process.env.OCTOCODE_PACKAGE_DIR = packageDir;
 		setExecPath(`${packageDir}\\dist\\cli.js`);
 
 		expect(detectInstallMethod()).toBe("npm");
-		expect(getUpdateInstruction("@octocodeai/octocodecode")).toBe(
-			"Run: npm install -g --ignore-scripts --min-release-age=0 @octocodeai/octocodecode",
+		expect(getUpdateInstruction("@octocodeai/octocode-agent")).toBe(
+			"Run: npm install -g --ignore-scripts --min-release-age=0 @octocodeai/octocode-agent",
 		);
 	});
 
 	test("self-updates bun global installs from bun pm bin", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
-			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@octocodeai/octocodecode"],
-			display: "bun install -g --ignore-scripts --minimum-release-age=0 @octocodeai/octocodecode",
+			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@octocodeai/octocode-agent"],
+			display: "bun install -g --ignore-scripts --minimum-release-age=0 @octocodeai/octocode-agent",
 		});
 	});
 
 	test("self-updates renamed pnpm global installs by removing the old package first", () => {
 		createPnpmGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("pnpm");
 		expect(command).toEqual({
 			command: "pnpm",
 			args: ["install", "-g", "--ignore-scripts", "--config.minimumReleaseAge=0", "@new-scope/octocode"],
 			display:
-				"pnpm remove -g @octocodeai/octocodecode && pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/octocode",
+				"pnpm remove -g @octocodeai/octocode-agent && pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @new-scope/octocode",
 			steps: [
 				{
 					command: "pnpm",
-					args: ["remove", "-g", "@octocodeai/octocodecode"],
-					display: "pnpm remove -g @octocodeai/octocodecode",
+					args: ["remove", "-g", "@octocodeai/octocode-agent"],
+					display: "pnpm remove -g @octocodeai/octocode-agent",
 				},
 				{
 					command: "pnpm",
@@ -368,8 +368,8 @@ describe("detectInstallMethod", () => {
 		const temp = mkdtempSync(join(tmpdir(), "octocode-pnpm11-"));
 		const binDir = join(temp, "bin");
 		const root = join(temp, "Library", "pnpm", "global", "v11");
-		const packageName = "@octocodeai/octocodecode";
-		const globalPackageDir = join(root, "11e9a", "node_modules", "@octocodeai", "octocodecode");
+		const packageName = "@octocodeai/octocode-agent";
+		const globalPackageDir = join(root, "11e9a", "node_modules", "@octocodeai", "octocode-agent");
 		const storePackageDir = join(
 			temp,
 			"Library",
@@ -378,12 +378,12 @@ describe("detectInstallMethod", () => {
 			"v11",
 			"links",
 			"@octocodeai",
-			"octocodecode",
+			"octocode-agent",
 			"0.75.0",
 			"hash",
 			"node_modules",
 			"@octocodeai",
-			"octocodecode",
+			"octocode-agent",
 		);
 		mkdirSync(globalPackageDir, { recursive: true });
 		mkdirSync(storePackageDir, { recursive: true });
@@ -410,18 +410,18 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed yarn global installs by removing the old package first", () => {
 		createYarnGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("yarn");
 		expect(command).toEqual({
 			command: "yarn",
 			args: ["global", "add", "--ignore-scripts", "@new-scope/octocode"],
-			display: "yarn global remove @octocodeai/octocodecode && yarn global add --ignore-scripts @new-scope/octocode",
+			display: "yarn global remove @octocodeai/octocode-agent && yarn global add --ignore-scripts @new-scope/octocode",
 			steps: [
 				{
 					command: "yarn",
-					args: ["global", "remove", "@octocodeai/octocodecode"],
-					display: "yarn global remove @octocodeai/octocodecode",
+					args: ["global", "remove", "@octocodeai/octocode-agent"],
+					display: "yarn global remove @octocodeai/octocode-agent",
 				},
 				{
 					command: "yarn",
@@ -435,19 +435,19 @@ describe("detectInstallMethod", () => {
 	test("self-updates renamed bun global installs by removing the old package first", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@octocodeai/octocodecode", undefined, "@new-scope/octocode");
+		const command = getSelfUpdateCommand("@octocodeai/octocode-agent", undefined, "@new-scope/octocode");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
 			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@new-scope/octocode"],
 			display:
-				"bun uninstall -g @octocodeai/octocodecode && bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/octocode",
+				"bun uninstall -g @octocodeai/octocode-agent && bun install -g --ignore-scripts --minimum-release-age=0 @new-scope/octocode",
 			steps: [
 				{
 					command: "bun",
-					args: ["uninstall", "-g", "@octocodeai/octocodecode"],
-					display: "bun uninstall -g @octocodeai/octocodecode",
+					args: ["uninstall", "-g", "@octocodeai/octocode-agent"],
+					display: "bun uninstall -g @octocodeai/octocode-agent",
 				},
 				{
 					command: "bun",
@@ -462,8 +462,8 @@ describe("detectInstallMethod", () => {
 		const { packageDir } = createNpmPrefixInstall();
 		chmodSync(packageDir, 0o500);
 
-		expect(getSelfUpdateCommand("@octocodeai/octocodecode")).toBeUndefined();
-		expect(getSelfUpdateUnavailableInstruction("@octocodeai/octocodecode")).toContain(
+		expect(getSelfUpdateCommand("@octocodeai/octocode-agent")).toBeUndefined();
+		expect(getSelfUpdateUnavailableInstruction("@octocodeai/octocode-agent")).toContain(
 			"the install path is not writable",
 		);
 	});

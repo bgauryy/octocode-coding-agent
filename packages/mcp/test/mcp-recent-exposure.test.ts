@@ -51,8 +51,8 @@ const text = (result: { content: Array<{ type: string; text?: string }> }) =>
 	result.content.map((part) => part.text ?? "").join("");
 
 describe("mcpExposure recent", () => {
-	it("is the default, and no bundled server pins its own exposure past it", () => {
-		expect(DEFAULT_MCP_EXPOSURE_SETTING).toBe("recent");
+	it("is not the default (usage is), and no bundled server pins its own exposure past the setting", () => {
+		expect(DEFAULT_MCP_EXPOSURE_SETTING).toBe("usage");
 		const presets = recommendedPresets();
 		expect(presets.map(({ name }) => name)).toContain("octocode");
 		for (const { name, config } of presets) expect(config?.exposure, name).toBeUndefined();

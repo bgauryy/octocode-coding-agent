@@ -75,6 +75,14 @@ export function retiredCommandReplacement(text: string, commands: readonly strin
 	return foldedReplacement(text, commands);
 }
 
+/** The one message for input in a retired form (`/plugins x moved to /harness. Run /harness x to continue.`), or undefined. */
+export function retiredCommandNotice(text: string, commands: readonly string[]): string | undefined {
+	const to = foldedReplacement(text, commands);
+	if (!to) return undefined;
+	const from = text.trim().split(/\s+/, 1)[0].slice(1);
+	return `/${from} moved to /${RETIRED_COMMANDS[from]}. Run /${to} to continue.`;
+}
+
 export class Subcommands {
 	private readonly entries = new Map<string, Subcommand>();
 	add(name: string, command: Subcommand): void {
@@ -123,13 +131,12 @@ export class Subcommands {
 		// No command has a retired name, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
 		api.bus.on("input", async (event, ctx) => {
 			if (this.has("harness") && /^\/(?:plugins|hooks)(?:\s|$)/.test(event.text.trim())) {
-				const to = foldedReplacement(
+				const notice = retiredCommandNotice(
 					event.text,
 					api.resources.getCommands().map((command) => command.name),
 				);
-				if (!to) return { action: "continue" };
-				const from = event.text.trim().split(/\s+/, 1)[0].slice(1);
-				say(ctx, `/${from} moved to /${RETIRED_COMMANDS[from]}. Run /${to} to continue.`, "warning");
+				if (!notice) return { action: "continue" };
+				say(ctx, notice, "warning");
 				return { action: "handled" };
 			}
 			return { action: "continue" };

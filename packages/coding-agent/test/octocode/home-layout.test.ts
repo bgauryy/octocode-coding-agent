@@ -124,7 +124,7 @@ describe("session folders", () => {
 });
 
 describe("profiles, hooks and skills in .octocode", () => {
-	it("profiles: bundled → Octocode Code home → trusted project", () => {
+	it("profiles: bundled → Octocode Agent home → trusted project", () => {
 		const home = tmp();
 		write(path.join(home, ".octocode", "octocodecode", "agents", "p.md"), profile("p", "octocode-user"));
 		write(path.join(home, ".octocode", "octocodecode", "agents", "q.md"), profile("q", "octocode-user"));

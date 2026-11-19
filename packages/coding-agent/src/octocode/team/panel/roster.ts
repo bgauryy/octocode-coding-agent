@@ -105,7 +105,8 @@ function treeOrder(
 
 /** A killed or hung agent stops its heartbeat: leave it out (the store drops it for good once its process is gone). */
 export function liveMembers(members: Member[], now: number): Member[] {
-	return members.filter((member) => now - member.updatedAt <= UNRESPONSIVE_MS);
+	// A stamp from the future (clock skew between processes) proves nothing: it ages the same as a past one.
+	return members.filter((member) => Math.abs(now - member.updatedAt) <= UNRESPONSIVE_MS);
 }
 
 /**
@@ -136,7 +137,21 @@ export function roster(
 	const live = liveMembers(members, now);
 	const liveIds = new Set(live.map((member) => member.id));
 	const gone = finished.filter((entry) => doneAt.has(entry.member.id) && !liveIds.has(entry.member.id));
-	const others = descendants([...live, ...gone.map((entry) => entry.member)], selfId);
+	// A stale parent still links its live children to this session; only the stale rows are dropped, and their
+	// children hang from the nearest agent that is still shown.
+	const goneIds = new Set(gone.map((entry) => entry.member.id));
+	const stale = new Map(
+		members.filter((member) => !liveIds.has(member.id) && !goneIds.has(member.id)).map((member) => [member.id, member]),
+	);
+	const reparented = (member: Member): Member => {
+		let parentId = member.parentId;
+		for (let hops = 0; parentId && stale.has(parentId) && hops < stale.size; hops++)
+			parentId = stale.get(parentId)!.parentId;
+		return parentId === member.parentId ? member : { ...member, parentId };
+	};
+	const others = descendants([...live, ...gone.map((entry) => entry.member), ...stale.values()], selfId)
+		.filter((member) => !stale.has(member.id))
+		.map(reparented);
 	const ends = new Map(finished.flatMap((entry) => (entry.end ? [[entry.member.id, entry.end] as const] : [])));
 	const home = members.find((member) => member.id === selfId)?.checkout;
 	const extras = (member: Member): Omit<PanelEntry, "member" | "depth"> => {

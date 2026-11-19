@@ -993,10 +993,18 @@ describe("a subagent session with MCP enabled", () => {
 		expect(turn.tools.filter((name) => name.includes("cua"))).toEqual([]);
 		expect(turn.tools).toContain("agent");
 		expect(turn.tools).not.toContain("askUser");
-		// A child reads memories and history; saving, deleting and the diagnostics are the main session's.
-		expect(turn.toolContracts.find((tool) => tool.name === "memory")?.parameters).toMatchObject({
-			properties: { op: { enum: ["search", "get", "list"] } },
-		});
+		// A child reads memories and history; saving, deleting and the diagnostics are the main session's. `memory` is
+		// deferred in a fresh folder (the default `mcpExposure`): a call it rejects returns the child's own ops.
+		const memory = turn.toolContracts.find((tool) => tool.name === "memory")?.parameters as {
+			properties: Record<string, unknown>;
+		};
+		expect(Object.keys(memory.properties)).toContain("op");
+		const saved = (
+			await s.run("save", [calls(nativeCall("memory", { op: "set", reason: "save a note" })), say("ok")])
+		).at(-1)!.lastResults;
+		expect(saved.find((result) => result.toolName === "memory")?.text ?? "").toContain(
+			'"enum":["search","get","list"]',
+		);
 		// `archive` is deferred until this folder calls it (the default `mcpExposure`): the declaration names its fields, and
 		// the child's own schema, without the main session's ops, comes back with a call it rejects.
 		const archive = turn.toolContracts.find((tool) => tool.name === "archive")?.parameters as {

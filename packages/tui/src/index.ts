@@ -52,6 +52,7 @@ export {
 // Components
 export { Box } from "./components/box.ts";
 export { CancellableLoader } from "./components/cancellable-loader.ts";
+export type { EditorWordHighlight, WordRange } from "./components/editor/highlight.ts";
 export type { EditorBorderDecorator, EditorOptions, EditorTheme } from "./components/editor/types.ts";
 export { Editor } from "./components/editor.ts";
 export { HStack } from "./components/h-stack.ts";

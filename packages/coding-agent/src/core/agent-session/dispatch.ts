@@ -36,9 +36,12 @@ export function trackSessionDispatch<T>(
 	operation: () => Promise<T>,
 	changed: (active: boolean, dispatchId: string) => void,
 ): Promise<T> {
-	const inherited = current.getStore();
-	if (inherited?.owner === owner) inherited.controller.signal.throwIfAborted();
-	const scope = inherited?.owner === owner && inherited.open ? inherited : dispatch(owner);
+	const stored = current.getStore();
+	// A scope whose work all finished is only async-context residue (a background job's exit callback): it neither
+	// cancels nor shares this send.
+	const inherited = stored?.owner === owner && stored.open ? stored : undefined;
+	inherited?.controller.signal.throwIfAborted();
+	const scope = inherited ?? dispatch(owner);
 	const state = activity(owner);
 	state.dispatches.add(scope);
 	if (state.count++ === 0) changed(true, scope.id);
@@ -64,6 +67,14 @@ export function trackSessionDispatch<T>(
 	return pending;
 }
 
+/** The reason a dispatch is aborted by an internal stop; the run itself ends with an aborted outcome. */
+export class PromptDispatchCancelled extends Error {
+	constructor() {
+		super("Prompt dispatch cancelled");
+		this.name = "PromptDispatchCancelled";
+	}
+}
+
 export function hasSessionDispatch(owner: object): boolean {
 	return (activities.get(owner)?.count ?? 0) > 0;
 }
@@ -85,7 +96,7 @@ export function settleSessionDispatch(owner: object, operation: () => Promise<vo
 export function abortSessionDispatches(owner: object): void {
 	const caller = current.getStore();
 	for (const scope of activities.get(owner)?.dispatches ?? []) {
-		if (scope !== caller) scope.controller.abort(new Error("Prompt dispatch cancelled"));
+		if (scope !== caller) scope.controller.abort(new PromptDispatchCancelled());
 	}
 }
 

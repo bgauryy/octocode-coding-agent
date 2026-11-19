@@ -102,7 +102,7 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
 }
 
 /**
- * Octocode's look in the TUI: the static "OCTOCODE CODE" banner as the header (in place of the built-in key hints; it
+ * Octocode's look in the TUI: the static "OCTOCODE AGENT" banner as the header (in place of the built-in key hints; it
  * is not in the session, so it stays put across /new, /resume and /fork), a two-line footer, a gradient working
  * spinner, and the generation speed of the last run. Only time spent streaming assistant
  * messages counts toward the speed, so tool calls, subagents and askUser waits don't drag the number down.

@@ -80,7 +80,10 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
 	switch (state) {
 		case "running": {
 			const frames = SPINNER.braille;
-			return theme.fg(color, frames[Math.floor(now / spinnerMs(options.background)) % frames.length]);
+			return theme.fg(
+				color,
+				frames[Math.floor((options.now ?? animationClock.frameTime()) / spinnerMs(options.background)) % frames.length],
+			);
 		}
 		case "waiting":
 			if (options.since !== undefined && now - options.since >= WAIT_PULSE_MS) return theme.fg(color, GLYPH.waiting);

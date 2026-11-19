@@ -1,4 +1,9 @@
-import type { HarnessList, HarnessRow, HarnessSwitchCommand } from "@octocodeai/octocode-contracts/config";
+import type {
+	HarnessList,
+	HarnessPreview,
+	HarnessRow,
+	HarnessSwitchCommand,
+} from "@octocodeai/octocode-contracts/config";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { useEffect, useRef, useState } from "react";
 import { StateMark } from "../ui/StateMark.tsx";
@@ -9,6 +14,8 @@ import { useSwitch } from "./ProviderControls.tsx";
 export interface HarnessApi {
 	list: (repoId?: string) => Promise<HarnessList>;
 	set: (command: HarnessSwitchCommand) => Promise<HarnessList>;
+	/** Scans what turning a harness on would bring; the panel shows it and writes only after a confirmation. */
+	preview?: (id: string, repoId?: string) => Promise<HarnessPreview>;
 }
 
 type Scope = HarnessSwitchCommand["scope"];
@@ -25,8 +32,31 @@ const GROUPS: readonly { title: string; kinds: readonly HarnessRow["kind"][]; op
 
 const SET_BY = { workspace: "Workspace", global: "Global" } as const;
 
-function Row({ row, set }: { row: HarnessRow; set?: (on: boolean) => Promise<void> }) {
-	const toggle = useSwitch(() => set!(!row.on));
+function Row({
+	row,
+	set,
+	preview,
+}: {
+	row: HarnessRow;
+	set?: (on: boolean) => Promise<void>;
+	preview?: () => Promise<HarnessPreview>;
+}) {
+	// Turning a harness source on first shows the host's scan; a failed scan shows its error and writes nothing.
+	const [review, setReview] = useState<HarnessPreview | undefined>();
+	const toggle = useSwitch(async () => {
+		if (!row.on && row.kind === "harness" && preview) {
+			const scanned = await preview();
+			if (scanned.lines.length > 0) {
+				setReview(scanned);
+				return;
+			}
+		}
+		await set!(!row.on);
+	});
+	const confirm = useSwitch(async () => {
+		await set!(true);
+		setReview(undefined);
+	});
 	return (
 		<li className="config-row">
 			<div className="config-row-head">
@@ -52,6 +82,22 @@ function Row({ row, set }: { row: HarnessRow; set?: (on: boolean) => Promise<voi
 				)}
 			</div>
 			{(row.detail || row.locked) && <p className="muted config-methods">{row.locked ?? row.detail}</p>}
+			{review && (
+				<fieldset className="callout" aria-label={`Scan of ${review.label}`}>
+					<pre className="config-methods">{review.lines.join("\n")}</pre>
+					<Button size="sm" onClick={confirm.click} loading={confirm.busy} aria-label={`Confirm turn on ${row.label}`}>
+						Confirm turn on
+					</Button>
+					<Button size="sm" onClick={() => setReview(undefined)} disabled={confirm.busy}>
+						Cancel
+					</Button>
+					{confirm.error && (
+						<p className="callout tone-danger" role="alert">
+							{confirm.error}
+						</p>
+					)}
+				</fieldset>
+			)}
 			{toggle.error && (
 				<p className="callout tone-danger" role="alert">
 					{toggle.error}
@@ -168,7 +214,12 @@ export function HarnessPanel({ api, repoId, reloadKey }: { api?: HarnessApi; rep
 								</summary>
 								<ul className="row-list" aria-label={group.title}>
 									{rows.map((row) => (
-										<Row key={row.id} row={row} set={switchRow(row)} />
+										<Row
+											key={row.id}
+											row={row}
+											set={switchRow(row)}
+											{...(api?.preview ? { preview: () => api.preview!(row.id, repoId) } : {})}
+										/>
 									))}
 								</ul>
 							</details>

@@ -63,7 +63,8 @@ describe("describeWorktrees (the coordinate list Worktrees section)", () => {
 		expect(text).toMatch(/\n {2}busy · branch octocode\/busy · 1 changed, 1 untracked · \.octocode\/worktrees\/busy/u);
 		expect(text).toContain("      agents: main-aaaaaa (main, idle, pid 99, tmux work:1.0)");
 		expect(text).toContain("      tmux: work:2.0 (zsh, pid 5120)");
-		expect(text).toContain("close with /worktree remove <name>: tidy");
+		// Nobody is recorded as the opener of either (made by plain git), so none is named safe to close.
+		expect(text).not.toContain("close with /worktree remove");
 		expect(text).not.toMatch(/remove <name>:.*busy/u);
 	});
 

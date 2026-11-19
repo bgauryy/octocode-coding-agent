@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadTheme } from "../src/theme/theme-loader.ts";
 import type { ThemeToken } from "../src/theme/theme-tokens.ts";
 
-const THEMES = ["light", "dark", "octocode-light", "octocode-dark"] as const;
+const THEMES = ["light", "dark", "octocode-light", "octocode-dark", "octocode-colorblind"] as const;
 
 /** Backgrounds a theme's text can land on: the terminal (guessed black or a common dark grey, or white) and every band. */
 const TERMINAL_BG = {

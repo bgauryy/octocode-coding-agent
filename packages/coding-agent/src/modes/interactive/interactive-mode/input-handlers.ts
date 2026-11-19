@@ -28,6 +28,7 @@ type InputHandlersHost = Pick<
 	| "handleClearCommand"
 	| "handleClipboardPaste"
 	| "handleCopyCommand"
+	| "handleHotkeysCommand"
 	| "handleCtrlC"
 	| "handleCtrlD"
 	| "handleCtrlZ"
@@ -129,6 +130,7 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	host.defaultEditor.onAction("app.session.loadEarlier", () => host.loadEarlierFromKey());
 	// Up in an empty editor manages queued messages when there are any; otherwise it browses prompt history.
 	host.defaultEditor.onEmptyUp = () => hasQueuedMessages(host) && host.showQueueManager("last");
+	host.defaultEditor.onEmptyQuestion = () => host.handleHotkeysCommand();
 	host.defaultEditor.onAction("app.session.new", () => void host.handleClearCommand());
 	host.defaultEditor.onAction("app.session.tree", () => host.showTreeSelector());
 	host.defaultEditor.onAction("app.session.fork", () => host.showUserMessageSelector());

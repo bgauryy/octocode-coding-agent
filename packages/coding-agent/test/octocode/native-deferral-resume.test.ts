@@ -97,6 +97,8 @@ beforeAll(async () => {
 		} as never);
 	};
 	settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+	// The rule under test is `recent` (use in this folder); the default is `usage`.
+	settingsManager.applyOverrides({ mcpExposure: "recent" }, { durable: true });
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
 		const services = await createAgentSessionServices({
 			cwd,
@@ -169,7 +171,8 @@ describe("deferred native tools across a session's starts", () => {
 	}, 120_000);
 
 	it("lets a pin or a setting other than recent decide, on a new session and on resume", async () => {
-		const direct = (declared: Declared) => JSON.stringify(web(declared)).includes("Search terms");
+		// Only the full form carries field notes; the deferred form keeps names and types.
+		const direct = (declared: Declared) => JSON.stringify(web(declared)?.parameters).includes('"description"');
 		await runtime.newSession();
 		await rebind();
 		const recent = await ask();

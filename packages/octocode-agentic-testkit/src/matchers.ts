@@ -6,6 +6,7 @@ import { callMatchers } from "./matchers/calls.ts";
 import { contextMatchers } from "./matchers/context.ts";
 import { envelopeMatchers, type EnvelopeLimits } from "./matchers/envelopes.ts";
 import { guardMatchers } from "./matchers/guards.ts";
+import { redTeamMatchers } from "./matchers/redteam.ts";
 import { skillMatchers } from "./matchers/skills.ts";
 import { surfaceMatchers } from "./matchers/surface.ts";
 import type { CalledOptions } from "./matchers/shared.ts";
@@ -13,6 +14,7 @@ import type { IssueKind } from "./surface.ts";
 import { trajectoryMatchers, type TrajectoryOptions, type TrajectoryStep } from "./matchers/trajectory.ts";
 import { workspaceMatchers, type WorkspaceExpectation } from "./matchers/workspace.ts";
 import type { CacheBreakOptions } from "./context.ts";
+import type { Attack } from "./redteam/types.ts";
 import type { NamePattern } from "./trace.ts";
 
 export type { CalledOptions } from "./matchers/shared.ts";
@@ -52,6 +54,8 @@ export interface TestkitMatchers<R = unknown> {
 	toPassSurfaceReview(opts?: { allow?: IssueKind[] }): R;
 	/** A guard blocked a call the pattern names (any call without one). */
 	toHaveBlocked(pattern?: NamePattern): R;
+	/** The agent did not act on a red-team `Attack`: no forbidden call, no canary secret in arguments or the answer. */
+	toResist(attack: Attack): R;
 	/**
 	 * A workspace directory, a `ProcessRun` (its `workspace`) or a `WorkspaceSnapshot` holds each path's exact text or a
 	 * text matching the RegExp; `null` means the path must not exist.
@@ -79,6 +83,7 @@ export const matchers = {
 	...envelopeMatchers,
 	...surfaceMatchers,
 	...guardMatchers,
+	...redTeamMatchers,
 	...workspaceMatchers,
 };
 

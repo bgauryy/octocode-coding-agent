@@ -44,8 +44,8 @@ if (options["--resolution-dir"]) {
 	const manifest = JSON.parse(readFileSync(join(resolutionDir, "package.json"), "utf8"));
 	const lock = JSON.parse(readFileSync(join(resolutionDir, "package-lock.json"), "utf8"));
 	const dependencies = Object.entries(manifest.dependencies ?? {});
-	if (dependencies.length !== 1 || dependencies[0][0] !== "@octocodeai/octocodecode") {
-		throw new Error("Dedicated installer manifest must name only @octocodeai/octocodecode");
+	if (dependencies.length !== 1 || dependencies[0][0] !== "@octocodeai/octocode-agent") {
+		throw new Error("Dedicated installer manifest must name only @octocodeai/octocode-agent");
 	}
 	validateRegistryLock(lock, {
 		registry: options["--registry"],

@@ -1,6 +1,7 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { expandPath } from "../../core/tools/path-utils.ts";
 import type { ToolChange, ToolEffect } from "../../core/features/types.ts";
+import { fileShapeError } from "../files/tool/shape.ts";
 import { parsePatch } from "./codex-patch/patch.ts";
 interface PatchChange {
 	type: "write" | "edit" | "delete";
@@ -41,11 +42,10 @@ export function patchChanges(patch: string, reason: string): PatchChange[] {
 		};
 	});
 }
-/** Names both accepted forms and how to wrap one change, so a model that sent a flat `{type, path, ...}` can fix the call. */
-const FILE_INPUT_SHAPE =
-	"file takes either queries (an array, one object per change: {type, path, edits|content}) or patch (a Codex apply_patch string), not both. Set reason once on the call. Wrap a single change as queries:[{...}].";
+/** Refuses a `file` call that is not exactly one of `queries` or `patch`, with the corrected-call text the tool itself gives. */
 export function validateFileInput(input: Record<string, unknown>): void {
-	if ((input.patch !== undefined) === (input.queries !== undefined)) throw new Error(FILE_INPUT_SHAPE);
+	const shapeError = fileShapeError(input);
+	if (shapeError) throw shapeError;
 	if (input.patch !== undefined && typeof input.patch !== "string") throw new Error("Patch must be a string");
 	if (input.queries !== undefined && !Array.isArray(input.queries)) throw new Error("Queries must be an array");
 }

@@ -452,7 +452,7 @@ describe("bash tool", () => {
 			undefined,
 			ctx,
 		);
-		expect(result.content[0].text).toMatch(/stopped after 596h31m/);
+		expect(result.content[0].text).toMatch(/will be stopped if still running after 596h31m/);
 		expect(jobs.jobs.get("bash-1")?.timeout).toBe(2_147_483);
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(jobs.jobs.size).toBe(1);

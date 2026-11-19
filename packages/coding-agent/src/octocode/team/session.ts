@@ -9,6 +9,8 @@ import { type EndReason, settleReason } from "./session/end-reason.ts";
 import { claimName, joinAtStart } from "./session/membership.ts";
 import { endWithParent, namedParent, watchParentProcess } from "./session/parent.ts";
 import { isReserved, lockPaths, reservationText, unlockPaths } from "./session/reservations.ts";
+import { repoWideFormat } from "./repo-wide-format.ts";
+import { REPO_WIDE_FORMAT_HELD } from "./tools/held-text.ts";
 import * as refs from "./session/references.ts";
 import { type SendResult, sendMessage } from "./session/send.ts";
 import type { TeamView } from "./ticker.ts";
@@ -239,6 +241,13 @@ export class Team extends TeamState {
 	/** Whether any agent in the team or agents-communication, this one included, holds a live reservation covering the file (with `tree`, or inside it). */
 	reserved(absolute: string, kind?: LeaseKind): boolean {
 		return isReserved(this.reservationHost(), absolute, kind);
+	}
+
+	/** Why a formatter run over the whole repository is refused: it rewrites files outside any reservation, so it waits while this agent or another holds one. */
+	repoWideFormatRefusal(command: string): string | undefined {
+		return repoWideFormat(command) && (this.held.any || this.reservation(undefined, ""))
+			? REPO_WIDE_FORMAT_HELD
+			: undefined;
 	}
 
 	/** Why the file may not be changed (another agent's reservation, in this team or in agents-communication; our lapsed one; or an unreadable team database), or undefined; with no file, any reservation another agent holds. */

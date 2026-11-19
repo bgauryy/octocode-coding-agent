@@ -6,7 +6,7 @@ import { entityOfRole } from "../../shared/entity.ts";
 import { formatClock } from "../../shared/format.ts";
 import { USER_SENDER } from "../../shared/messages.ts";
 import { clip, plural } from "../../shared/text.ts";
-import type { Endpoint } from "@octocodeai/octocode-contracts/team";
+import { type Endpoint, mailKinds } from "@octocodeai/octocode-contracts/team";
 import { endpointMarks, endpointName } from "../endpoint.ts";
 import type { MailDetails } from "../model.ts";
 
@@ -29,28 +29,12 @@ const MAIL_PREVIEW_LINES = 3;
 const text = (value: unknown): string =>
 	typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
 
-interface Kinded {
-	replyRequired?: unknown;
-	replyTo?: unknown;
-	interrupt?: unknown;
-}
-
-/** The kind words of a message: a reply names what it answers (`reply` alone when the recipient already does). */
-function kinds(message: Kinded, replyLinked = true): string[] {
-	const words = [
-		message.replyTo === undefined ? "" : replyLinked ? `reply to #${text(message.replyTo)}` : "reply",
-		message.replyRequired === true ? "request" : "",
-		message.interrupt === true ? "interrupt" : "",
-	].filter(Boolean);
-	return words.length ? words : ["FYI"];
-}
-
 /** The Send header's summary: `you → parent · request`, `you → sender of #17 · reply`, `you → eel · forward #17`. */
 export function sendSummary(args: Record<string, unknown>): string {
 	const named = args.to === undefined ? undefined : text(args.to);
 	const to = named ?? (args.replyTo === undefined ? "" : `sender of #${text(args.replyTo)}`);
 	if (!to && args.forward === undefined && args.message === undefined) return "";
-	const kind = args.forward === undefined ? kinds(args, named !== undefined) : [`forward #${text(args.forward)}`];
+	const kind = args.forward === undefined ? mailKinds(args, named !== undefined) : [`forward #${text(args.forward)}`];
 	// A new message to a named agent wakes it by default, so only a choice that differs is shown: `no wake`, or a waking reply.
 	if (args.wake === false) kind.push("no wake");
 	else if (args.wake === true && args.replyTo !== undefined) kind.push("wake");
@@ -105,7 +89,7 @@ function mailEntry(
 		const marks = endpointMarks(end);
 		return marks.length ? `${endpointName(end)} [${marks.join(", ")}]` : endpointName(end);
 	};
-	const kind = kinds(entry).map((word) =>
+	const kind = mailKinds(entry).map((word) =>
 		theme.fg(word in KIND_COLOR ? KIND_COLOR[word as keyof typeof KIND_COLOR] : "success", word),
 	);
 	const by = typeof entry.forwardedBy === "string" ? clip(entry.forwardedBy, 64) : undefined;

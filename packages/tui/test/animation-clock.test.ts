@@ -35,6 +35,36 @@ describe("animationClock", () => {
 		}
 	});
 
+	it("advances the frame time once per tick whatever the timer jitter", () => {
+		let wall = 1_000_000;
+		mock.timers.enable({ apis: ["setInterval"] });
+		const wallClock = mock.method(Date, "now", () => wall);
+		const frames: number[] = [];
+		const stop = animationClock.subscribe(() => frames.push(Math.floor(animationClock.frameTime() / 80)), {
+			everyMs: 80,
+			kind: "decor",
+		});
+		try {
+			// Ticks land a millisecond either side of their slot, and the slots sit on the frame boundaries.
+			const jitter = [0, 1, -1, 1, -1, 0, -1, 1, 1, -1];
+			let slot = wall;
+			for (let tick = 0; tick < 200; tick++) {
+				slot += 80;
+				wall = slot + jitter[tick % jitter.length];
+				mock.timers.tick(80);
+			}
+			assert.ok(frames.length >= 190);
+			const steps = frames.slice(1).map((frame, index) => frame - frames[index]);
+			assert.ok(
+				steps.every((step) => step === 1),
+				`frame steps: ${[...new Set(steps)]}`,
+			);
+		} finally {
+			stop();
+			wallClock.mock.restore();
+		}
+	});
+
 	it("notifies motion-mode changes from a stable subscription snapshot", () => {
 		let calls = 0;
 		let stop: (() => void) | undefined;

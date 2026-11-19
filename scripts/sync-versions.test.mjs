@@ -34,7 +34,7 @@ test("pins published and private dependencies without touching registry aliases,
 			version: "2.0.0",
 		});
 		await writeManifest(root, "packages/coding-agent", {
-			name: "@octocodeai/octocodecode",
+			name: "@octocodeai/octocode-agent",
 			version: "2.0.0",
 			dependencies: {
 				"@octocodeai/octocode-ai": "^2.0.0",
@@ -51,7 +51,7 @@ test("pins published and private dependencies without touching registry aliases,
 			version: "9.9.9",
 			private: true,
 			dependencies: {
-				"@octocodeai/octocodecode": "^1.0.0",
+				"@octocodeai/octocode-agent": "^1.0.0",
 				"legacy-ai-alias": "npm:@octocodeai/octocode-ai@1.0.0",
 			},
 		});
@@ -60,7 +60,7 @@ test("pins published and private dependencies without touching registry aliases,
 			version: "0.0.0",
 			private: true,
 			dependencies: {
-				"@octocodeai/octocodecode": "^1.0.0",
+				"@octocodeai/octocode-agent": "^1.0.0",
 			},
 		});
 
@@ -72,10 +72,10 @@ test("pins published and private dependencies without touching registry aliases,
 			assert.equal(agentManifest[section]["@octocodeai/octocode-ai"], "2.0.0");
 		}
 		const evalsManifest = await readManifest(root, "packages/evals");
-		assert.equal(evalsManifest.dependencies["@octocodeai/octocodecode"], "2.0.0");
+		assert.equal(evalsManifest.dependencies["@octocodeai/octocode-agent"], "2.0.0");
 		assert.equal(evalsManifest.dependencies["legacy-ai-alias"], "npm:@octocodeai/octocode-ai@1.0.0");
 		const generatedManifest = await readManifest(root, "packages/coding-agent/install-lock");
-		assert.equal(generatedManifest.dependencies["@octocodeai/octocodecode"], "^1.0.0");
+		assert.equal(generatedManifest.dependencies["@octocodeai/octocode-agent"], "^1.0.0");
 
 		const alreadySynced = runSyncVersions(root);
 		assert.equal(alreadySynced.status, 0, alreadySynced.stderr);

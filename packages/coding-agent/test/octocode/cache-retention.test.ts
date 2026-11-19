@@ -166,6 +166,7 @@ describe("$/turn", () => {
 		const text = formatSessionReport({
 			stats,
 			entries,
+			branch: entries,
 			prices: { getModel: () => undefined },
 			selectedModelKey: "x/y",
 		});

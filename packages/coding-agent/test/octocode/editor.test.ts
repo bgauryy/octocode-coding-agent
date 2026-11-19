@@ -323,6 +323,21 @@ describe("Octocode prompt box", () => {
 		expect(lines[1]).toContain(painted(90, "Ask about any code").slice(0, -5));
 	});
 
+	it("shows the skills a word points to in the bottom rule while the cursor is on it, and clears it after", () => {
+		const { tui, input, keys } = terminal();
+		const editor = decorateEditor(
+			new CustomEditor(tui, editorTheme, keys, { embedWorkingStatus: true }),
+			() => tagged,
+			() => false,
+			(line, column) => (line.slice(0, column).endsWith("debug") ? "debug → octocode-debugging" : undefined),
+		);
+		tui.setFocus(editor);
+		input("debug");
+		expect(plain(editor.render(60).at(-1) ?? "")).toContain("debug → octocode-debugging");
+		input(" ");
+		expect(plain(editor.render(60).at(-1) ?? "")).toMatch(/^╰─+╯$/);
+	});
+
 	it("drops the hint on the first keystroke and keeps the typed text inside the box", () => {
 		const { editor, input } = boxed();
 		input("hello");

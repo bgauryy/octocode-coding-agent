@@ -1,6 +1,6 @@
 ---
 name: octocode-critical-thinking
-description: "Use when critical thinking is required: a consequential, costly or hard-to-reverse decision, plan, design, diagnosis or claim resting on unchecked assumptions. Stress-tests it with mental models (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's Law), scaled to the stakes."
+description: "Use when critical thinking is required: a consequential, costly or hard-to-reverse decision, plan, design, diagnosis or claim resting on unchecked assumptions. Stress-tests with mental models (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's law), scaled to the stakes."
 ---
 
 # Octocode Critical Thinking

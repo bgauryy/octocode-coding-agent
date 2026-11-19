@@ -146,3 +146,22 @@ describe("provider:<id> and source:<id>", () => {
 		expect((await catalog.apply({ verb: "disable", id: "source:pi", scope: "run" })).status).toBe("refused");
 	});
 });
+
+describe("provider:<id>", () => {
+	it("disables and lists a provider only models.json defines", async () => {
+		write(
+			join(sandbox.agentDir, "models.json"),
+			JSON.stringify({
+				providers: {
+					mock: { baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", api: "openai-completions", models: [{ id: "m" }] },
+				},
+			}),
+		);
+		const catalog = configuration(sandbox);
+		expect(await catalog.get("provider:mock")).toMatchObject({ value: true });
+		expect((await catalog.apply({ verb: "disable", id: "provider:mock" })).status).toBe("applied");
+		expect(readJson(globalSettingsFile(sandbox))?.disabledProviders).toEqual(["mock"]);
+		expect(await configuration(sandbox).get("provider:mock")).toMatchObject({ value: false, setBy: "global" });
+		expect((await catalog.apply({ verb: "disable", id: "provider:nosuch" })).status).toBe("refused");
+	});
+});

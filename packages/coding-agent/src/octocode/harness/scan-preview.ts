@@ -9,7 +9,7 @@ import { loadSkillsFromDir } from "../../core/skills.ts";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { mcpItem, skillItem } from "../guard/items.ts";
 import { enforces } from "../guard/registry.ts";
-import { visible } from "../guard/report.ts";
+import { visible } from "../guard/visible.ts";
 import { scan } from "../guard/scan.ts";
 import { scopeFor } from "../guard/store.ts";
 import { RATINGS, type Rating, type ReviewItem, type ReviewKind } from "../guard/types.ts";

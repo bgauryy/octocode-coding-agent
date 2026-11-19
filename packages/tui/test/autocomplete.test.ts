@@ -58,6 +58,30 @@ const getSuggestions = (
 ) => provider.getSuggestions(lines, cursorLine, cursorCol, { signal: new AbortController().signal, force });
 
 describe("CombinedAutocompleteProvider", () => {
+	describe("slash command ranking", () => {
+		const commands = [
+			{ name: "modelsettings" },
+			{ name: "configuration", aliases: ["settings"] },
+			{ name: "octocode-roast", skill: true },
+			{ name: "backlog", aliases: ["todos"] },
+			{ name: "tod" },
+		];
+		const first = async (text: string) => {
+			const provider = new CombinedAutocompleteProvider(commands, process.cwd());
+			const result = await provider.getSuggestions([text], 0, text.length, { signal: new AbortController().signal });
+			return result?.items.map((item) => item.value);
+		};
+
+		it("puts the command an alias names in full first, above fuzzy name matches", async () => {
+			assert.strictEqual((await first("/settings"))?.[0], "configuration");
+			assert.strictEqual((await first("/todos"))?.[0], "backlog");
+		});
+
+		it("keeps names first and alias matches last when the query names no alias in full", async () => {
+			assert.deepStrictEqual(await first("/tod"), ["tod", "octocode-roast", "backlog"]);
+		});
+	});
+
 	describe("extractPathPrefix", () => {
 		it("extracts / from 'hey /' when forced", async () => {
 			const provider = new CombinedAutocompleteProvider([], "/tmp");

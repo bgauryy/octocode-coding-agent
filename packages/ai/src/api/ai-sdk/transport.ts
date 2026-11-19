@@ -18,6 +18,19 @@ async function cancelResponseBody(response: Response): Promise<void> {
 	await response.body?.cancel().catch(() => {});
 }
 
+function redirectError(response: Response, url: string): APICallError {
+	const location = response.headers.get("location");
+	const target = location && URL.canParse(location, url) ? new URL(location, url).origin : "an unknown location";
+	return new APICallError({
+		message: `The provider endpoint redirected (HTTP ${response.status}) to ${target}. Credentials were not forwarded; set the base URL to the final endpoint.`,
+		url,
+		requestBodyValues: undefined,
+		statusCode: response.status,
+		responseHeaders: Object.fromEntries(response.headers),
+		isRetryable: false,
+	});
+}
+
 export async function prepareSdkRequest(
 	model: Model<Api>,
 	options: StreamOptions,
@@ -65,7 +78,12 @@ export async function fetchSdkResponse(
 		};
 		let response: Response;
 		try {
-			const pending = (options.fetch ?? globalThis.fetch)(input, { ...request, signal: combined.signal });
+			const pending = (options.fetch ?? globalThis.fetch)(input, {
+				...request,
+				// A redirect would carry non-standard key headers (x-api-key, x-goog-api-key) to another origin.
+				redirect: "manual",
+				signal: combined.signal,
+			});
 			void pending.then(
 				(late) => {
 					if (combined.signal?.aborted) return cancelResponseBody(late);
@@ -85,6 +103,10 @@ export async function fetchSdkResponse(
 				deadline.abort(error);
 				await response.body?.cancel().catch(() => {});
 				throw new ResponseHookError(error);
+			}
+			if (response.status >= 300 && response.status < 400) {
+				await cancelResponseBody(response);
+				throw redirectError(response, url);
 			}
 			if (!response.ok) {
 				const errorBody = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), {

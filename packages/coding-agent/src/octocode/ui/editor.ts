@@ -7,6 +7,7 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { skillWordHighlight, skillWordSources } from "./skill-words.ts";
 import { CustomEditor } from "../../theme/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
 
@@ -86,7 +87,12 @@ function borderTint(text: string, api: (text: string) => string, theme: Paint): 
  * the inner width, and clicks shift by the same inset, so wrapping, scrolling, the cursor marker and click-to-place
  * keep working. Colour is never the only signal: the mode is written next to the tint.
  */
-export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: () => boolean): CustomEditor {
+export function decorateEditor(
+	editor: CustomEditor,
+	theme: () => Paint,
+	hint: () => boolean,
+	wordHint: (line: string, column: number) => string | undefined = () => undefined,
+): CustomEditor {
 	const render = editor.render.bind(editor);
 	const handleMouse = editor.handleMouse.bind(editor);
 	const setIndicator = editor.setWorkingStatusIndicator.bind(editor);
@@ -110,7 +116,11 @@ export function decorateEditor(editor: CustomEditor, theme: () => Paint, hint: (
 	// Scroll markers and Octocode's working line (its own top border) stay as the editor draws them.
 	editor.borderDecorator = (edge, width, hidden, standard) => {
 		if (!boxed || hidden > 0 || (edge === "top" && working)) return standard();
-		return labelledRule(width, edge === "top" ? promptLabel(editor.getText(), theme()) : "", "", rule);
+		const cursor = editor.getCursor();
+		const word = edge === "bottom" ? wordHint(editor.getText().split("\n")[cursor.line] ?? "", cursor.col) : undefined;
+		const label =
+			edge === "top" ? promptLabel(editor.getText(), theme()) : word ? theme().fg("muted", ` ${word} `) : "";
+		return labelledRule(width, label, "", rule);
 	};
 	editor.render = (width: number): string[] => {
 		boxed = width >= BOX_MIN_WIDTH;
@@ -191,11 +201,17 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 						keybindings.matches(char, "app.permission.cycle") || keybindings.matches(char, "app.thinking.toggle"),
 				});
 			}
+			const words = skillWordHighlight(
+				() => skillWordSources(api.resources.getCommands()),
+				(text) => context.ui.theme.fg("accent", text),
+			);
+			if (isEditor(editor)) editor.wordHighlight = words;
 			return isEditor(editor)
 				? decorateEditor(
 						editor,
 						() => context.ui.theme,
 						() => !started,
+						words.hintAt,
 					)
 				: editor;
 		};

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
+import { modelWaitText, retryText } from "../../agent-session/model-wait.ts";
 import { queuePreview } from "./projection.ts";
 
 /** Publish the lifecycle event an engine event maps to, if any. */
@@ -28,8 +29,16 @@ function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEv
 			};
 		case "compaction_start":
 			return { type: "session.status", status: "compacting" };
+		case "model_wait":
+			return event.idleMs > 0
+				? { type: "session.status", status: "stalled", detail: modelWaitText(event.idleMs) }
+				: { type: "session.status", status: "idle" };
 		case "auto_retry_start":
-			return { type: "session.status", status: "retrying" };
+			return {
+				type: "session.status",
+				status: "retrying",
+				detail: retryText(event.attempt, event.maxAttempts, event.delayMs),
+			};
 		case "compaction_end":
 		case "auto_retry_end":
 			return { type: "session.status", status: "idle" };

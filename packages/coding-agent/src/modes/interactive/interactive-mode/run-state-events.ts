@@ -12,6 +12,7 @@ import {
 	CompactionStatusIndicator,
 	RetryStatusIndicator,
 } from "../components/status-indicator.ts";
+import { modelWaitText } from "../../../core/agent-session/model-wait.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -28,7 +29,9 @@ export type RunStateEventsHost = Pick<
 	| "checkShutdownRequested"
 	| "clearStatusIndicator"
 	| "defaultEditor"
+	| "defaultWorkingMessage"
 	| "editor"
+	| "entriesRenderedByRebuild"
 	| "flushCompactionQueue"
 	| "pendingTools"
 	| "renderSessionEntries"
@@ -36,6 +39,7 @@ export type RunStateEventsHost = Pick<
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
+	| "workingMessage"
 	| "showError"
 	| "showStatus"
 	| "showStatusIndicator"
@@ -111,6 +115,17 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			break;
 		}
 
+		case "model_wait": {
+			// The working indicator says the model is quiet; it returns to its own message when the model answers or the request ends.
+			if (host.activeStatusIndicator?.kind === "working") {
+				host.activeStatusIndicator.setMessage(
+					event.idleMs > 0 ? modelWaitText(event.idleMs) : (host.workingMessage ?? host.defaultWorkingMessage),
+				);
+				host.ui.requestRender();
+			}
+			break;
+		}
+
 		case "compaction_progress": {
 			// A retry's countdown stays until its attempt starts; then the new compaction indicator takes the progress.
 			if (host.activeStatusIndicator instanceof CompactionStatusIndicator) {
@@ -138,19 +153,22 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 					if (entries[0]?.type !== "compaction") {
 						throw new Error("Completed compaction is missing from the session context");
 					}
-					disposeTranscript(host.chatContainer);
-					host.chatContainer.clear();
-					// The latest compaction is prepended for model context; append it below at its chronological position.
-					host.renderSessionEntries(entries.slice(1));
-					host.addMessageToChat(
-						createCompactionSummaryMessage(event.result.summary, event.result.tokensBefore, new Date().toISOString()),
-					);
-					if (event.result.usage) {
-						host.addCompactionCostNotice({
-							type: "compaction_cost",
-							kind: "compaction",
-							usage: event.result.usage,
-						});
+					// The appended compaction entry already rebuilt the transcript (agent-events.ts): once per compaction.
+					if (!host.entriesRenderedByRebuild.delete(entries[0].id)) {
+						disposeTranscript(host.chatContainer);
+						host.chatContainer.clear();
+						// The latest compaction is prepended for model context; append it below at its chronological position.
+						host.renderSessionEntries(entries.slice(1));
+						host.addMessageToChat(
+							createCompactionSummaryMessage(event.result.summary, event.result.tokensBefore, new Date().toISOString()),
+						);
+						if (event.result.usage) {
+							host.addCompactionCostNotice({
+								type: "compaction_cost",
+								kind: "compaction",
+								usage: event.result.usage,
+							});
+						}
 					}
 				} else if (event.errorMessage) {
 					// A failed automatic compaction is drawn like a failed manual one: the same notice, not bare red text.

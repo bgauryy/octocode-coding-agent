@@ -5,6 +5,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { repoKey } from "../../utils/git-repository.ts";
+import { parseSnapshot, snapshotOf } from "./diff.ts";
 import { scan } from "./scan.ts";
 import type { Review, ReviewItem, ReviewKind } from "./types.ts";
 
@@ -36,9 +37,11 @@ export function scopeFor(file: string, cwd: string): string {
 
 const rowKey = (kind: string, identity: string, scope: string) => JSON.stringify([kind, identity, scope]);
 
-function reviewOf(item: ReviewItem, row: ReviewRow | undefined): Review {
+function reviewOf(item: ReviewItem, row: ReviewRow | undefined, snapshot: string | undefined): Review {
 	const { hash, rating, findings } = scan(item);
 	const same = item.unreadable === undefined && row?.contentHash === hash;
+	const changed = row !== undefined && !same && row.decision === "approved";
+	const approved = changed && snapshot !== undefined ? parseSnapshot(snapshot) : undefined;
 	const word = same && row.decision !== "seen" ? row.decision : "not checked";
 	return {
 		item,
@@ -46,8 +49,9 @@ function reviewOf(item: ReviewItem, row: ReviewRow | undefined): Review {
 		rating,
 		findings,
 		word,
-		changed: row !== undefined && !same && row.decision === "approved",
+		changed,
 		...(row ? { rowId: row.id } : {}),
+		...(changed && approved ? { approved } : {}),
 	};
 }
 
@@ -57,7 +61,14 @@ export function resolveReviews(items: readonly ReviewItem[], options: GuardOptio
 	const agent = guardDb(options);
 	const rows = guard.list(agent.db, [...new Set(items.map((item) => item.scope))]);
 	const byKey = new Map(rows.map((row) => [rowKey(row.kind, row.identity, row.scope), row]));
-	return items.map((item) => reviewOf(item, byKey.get(rowKey(item.kind, item.identity, item.scope))));
+	const stored = guard.snapshots(agent.db, [...new Set(items.map((item) => item.scope))]);
+	return items.map((item) =>
+		reviewOf(
+			item,
+			byKey.get(rowKey(item.kind, item.identity, item.scope)),
+			stored.get(rowKey(item.kind, item.identity, item.scope)),
+		),
+	);
 }
 
 export interface GateResult {
@@ -105,6 +116,7 @@ function rowInput(review: Review, decision: "approved" | "denied", via: string) 
 		label: review.item.label,
 		path: review.item.path,
 		decidedVia: via,
+		snapshot: snapshotOf(review.item.files),
 	};
 }
 

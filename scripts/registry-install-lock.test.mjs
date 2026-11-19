@@ -11,9 +11,9 @@ test("generates and checks a dedicated registry installer lock without a root np
 	const resolution = join(root, "resolution");
 	const out = join(root, "output");
 	mkdirSync(resolution);
-	const agent = "@octocodeai/octocodecode";
+	const agent = "@octocodeai/octocode-agent";
 	const manifest = {
-		name: "@octocodeai/octocodecode-install",
+		name: "@octocodeai/octocode-agent-install",
 		version: "1.3.0",
 		private: true,
 		dependencies: { [agent]: "1.3.0" },
@@ -46,7 +46,7 @@ test("generates and checks a dedicated registry installer lock without a root np
 test("fixture registry cannot be written to the production installer lock", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-fixture-lock-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
-	const agent = "@octocodeai/octocodecode";
+	const agent = "@octocodeai/octocode-agent";
 	writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies: { [agent]: "1.3.0" } }));
 	writeFileSync(
 		join(root, "package-lock.json"),

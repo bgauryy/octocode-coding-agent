@@ -20,3 +20,7 @@ export const PACKAGE_SCRIPT_REPEAT =
 	"[A reservation is held: this script may have changed a reserved file. Check `coordinate` `changes`.]";
 export const PACKAGE_SCRIPT_NOTE =
 	"[Another agent holds a reservation and this command ran a package script: reservations cannot check what a script writes, so it may have changed a reserved file. Check `coordinate` `changes` before relying on those files.]";
+
+/** A formatter run over the whole repository while reservations are held: it rewrites files outside them. */
+export const REPO_WIDE_FORMAT_HELD =
+	"This command was not run: it formats the whole repository while reservations are held, which rewrites files other agents or sessions are changing. Instead: format only the files you changed with `yarn oxfmt <files>`; `yarn oxfmt --check` and `yarn run format:check` still run.";

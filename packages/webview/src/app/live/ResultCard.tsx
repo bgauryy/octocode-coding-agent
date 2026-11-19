@@ -7,6 +7,9 @@ import { Badge, type BadgeTone, cx } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
 import { ContentBlocks, ToolContent } from "./ContentBlocks.tsx";
+import { MAIL_MESSAGE_TYPE, mailViews } from "@octocodeai/octocode-contracts/team";
+import { MailMessages } from "./MailMessages.tsx";
+import { useItemTitles } from "./item-titles.ts";
 import { JsonDetails } from "./ToolRawData.tsx";
 import { activityCard, type FeedEvent, type Tone } from "./model.ts";
 import { Elapsed, ThoughtFor } from "./RunIndicator.tsx";
@@ -25,6 +28,7 @@ const BADGE_TONES: Record<Tone, BadgeTone> = {
 /** Memoized on the event object; the interner keeps unchanged events identical, so only changed rows render. */
 const ResultCardContent = memo(function ResultCardContent({ event, compact }: { event: FeedEvent; compact?: boolean }) {
 	const { api } = useLive();
+	const withTitles = useItemTitles();
 	const loadAsset = useCallback(
 		(id: string, signal?: AbortSignal) => {
 			if (!event.sessionId) return Promise.reject(new Error("This content has no session reference."));
@@ -51,6 +55,7 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 	const message = expansion.value ?? event.message;
 	const card = activityCard({ ...event, message });
 	const streaming = card.status === "streaming";
+	const mail = message?.customType === MAIL_MESSAGE_TYPE ? mailViews(message.details) : undefined;
 	return (
 		<article className={cx("result-card", `tone-${card.tone}`, compact && "is-compact", streaming && "is-streaming")}>
 			<div className="result-meta">
@@ -73,8 +78,15 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 				<p role="alert">{card.body}</p>
 			) : event.activity ? (
 				<SessionActivityContent activity={event.activity} text={card.body} loadAsset={loadAsset} />
+			) : mail ? (
+				<MailMessages mail={mail} />
 			) : message?.content ? (
-				<ContentBlocks content={message.content} tools={event.tools} loadAsset={loadAsset} />
+				<ContentBlocks
+					content={message.content}
+					tools={event.tools}
+					loadAsset={loadAsset}
+					decorate={message.role === "assistant" ? withTitles : undefined}
+				/>
 			) : event.tool ? (
 				<ToolContent
 					tool={event.tool}

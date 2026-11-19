@@ -81,14 +81,14 @@ A headless run selects a model with `--model` or the RPC `set_model` command.
 
 `/agents`: `tell <agent\|all> [#<message to answer>] <message>` (`#n` answers that question and closes it), `interrupt <id> <message>`, `kill <id>` (asks first), `merge <id>`, `stats`, `history`. `external` takes `list` (includes ACP adapters on PATH), `connect octocode <instance id or process name>`, `connect acp <vendor> <command> [args...]`, `prompt <id> <text>`, `cancel <id>`, `disconnect <id>`; a JSON object can add options such as `model`.
 
-`/backlog`: no argument opens the web board in a UI and prints the board as text headless; `web` is `/web backlogs`; `tui` opens the terminal board. `<id> <backlog\|todo\|ongoing\|done>` transitions (normal metadata still required). `<id> close` asks for a kind (obsolete, duplicate of another item, won't do) and a reason, records you as the actor and never deletes; reopen with a note. `add` takes a title only (epics and parents come from the `backlog` tool or the web board). `do <id>` sends the item's saved context for implementation; saved text grants no permissions. See [backlog view](web-workspace.md#backlog-board).
+`/backlog`: no argument opens the web board in any UI (terminal, RPC) and prints the board as text headless; `web` is `/web backlogs`; `tui` opens the board in the terminal (a select list over RPC, text headless). `<id> <backlog\|todo\|ongoing\|done>` transitions (normal metadata still required). `<id> close` asks for a kind (obsolete, duplicate of another item, won't do) and a reason, records you as the actor and never deletes; reopen with a note. `add` takes a title only (epics and parents come from the `backlog` tool or the web board). `do <id>` sends the item's saved context for implementation; saved text grants no permissions. See [backlog view](web-workspace.md#backlog-board).
 
 ## Workspace, diagnostics and data
 
 | Command                        | Does                                                                                                                                                                                        |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/web [backlogs\|item <id>]`   | Open the live workspace (Activity), its task board, or one item (`/web item B90`). See [web workspace](web-workspace.md)                                                                    |
-| `/remote [view\|status\|stop]` | Publish a link to this machine's web daemon for another device. See [remote access](remote.md)                                                                                              |
+| `/remote [view\|status\|stop]` | Publish a link to this machine's web daemon for another device; asks first, for a read-only `view` link too, and refuses where nobody can answer. See [remote access](remote.md)            |
 | `/api [on [http]\|off]`        | Show the local session API; `on` starts it, `off` stops it                                                                                                                                  |
 | `/status`                      | One report: statistics (messages, tokens, cache, cost), native activity, skills and MCP; not subscription quotas                                                                            |
 | `/diff [path]`                 | Staged, unstaged and untracked repository changes; `/diff --editor <before> <after>` compares two existing files in the configured editor                                                   |
@@ -110,7 +110,7 @@ A headless run selects a model with `--model` or the RPC `set_model` command.
 | [Prompt template](prompt-templates.md) | `/name [arguments]`; reserved or duplicate names get `/prompt:name` or a numbered form                        |
 | Extension                              | Its registered name; conflicts get resolved names such as `/new:1`; `aliases` are refused                     |
 
-`/help`, `/harness list skills` and `/status` show what is loaded. In the terminal, typed text starting with `/` that no command accepts is not sent: the editor keeps it with the reason and says **Enter again sends it as a message**. Pressing Enter again sends it as a plain message, with no command or template expansion. `!<command>` runs a shell command and adds its result to context (header with exit status, time and size, then up to `bashOutputMaxBytes`, the full output saved to a file); `!!<command>` excludes the result from context. Neither is a slash command and both pass the normal execution checks.
+`/help`, `/harness list skills` and `/status` show what is loaded. In the terminal, typed text starting with `/` that no command accepts is not sent: the editor keeps it with the reason and says **Enter again sends it as a message**. Pressing Enter again sends it as a plain message, with no command or template expansion. In the `/` menu, Enter on a command name runs it. Enter on an argument suggestion (`/help com`) only completes the argument, so you can read the full command before the second Enter runs it. `!<command>` runs a shell command and adds its result to context (header with exit status, time and size, then up to `bashOutputMaxBytes`, the full output saved to a file); `!!<command>` excludes the result from context. Neither is a slash command and both pass the normal execution checks.
 
 Hosts: `octocode.getCommands()` and RPC `get_commands` list registered commands, prompts and skills under their resolved names. A terminal-only command sent through `prompt` returns an unavailable-command error. `/agents`, `/permissions` and `/plan` need native features.
 
@@ -120,13 +120,13 @@ Hosts: `octocode.getCommands()` and RPC `get_commands` list registered commands,
 | ------------------------------------------------------ | ----------------------------------------------- |
 | `/settings`, `/config`, `octocode config`              | `/configuration`, `octocode configuration`      |
 | `/mcp enable\|disable`, `octocode mcp enable\|disable` | `/configuration enable\|disable mcp:<server>`   |
-| `/mcp assign`                                          | `/harness mcp` → the server → Available to      |
-| `/mcp exposure`                                        | `/harness mcp` → the server → Default for tools |
+| `/mcp assign`                                          | `/mcp` → the server → Tools › Available to      |
+| `/mcp exposure`                                        | `/mcp` → the server → Tools › Default for tools |
 | `/harness enable\|disable`                             | `/configuration enable\|disable harness:<name>` |
 | `/plugins`, `/hooks`                                   | `/harness`, `/harness hooks`                    |
 | `/login`                                               | `/providers` ("+ Add a provider")               |
 
-Each prints a hint naming its replacement. There is no `/tools`; tools switch with `/configuration enable|disable tool:<name>` or `--tools`.
+Each prints one message naming its replacement. In the terminal a retired command name (`/settings`, `/config`, `/plugins`, `/hooks`, `/login`) stays in the editor, and Enter does not send it as a message. There is no `/tools`; tools switch with `/configuration enable|disable tool:<name>` or `--tools`.
 
 ## Shell entry points
 
@@ -166,7 +166,7 @@ Each prints a hint naming its replacement. There is no `/tools`; tools switch wi
 
 ## How `/name` resolves
 
-The `/` menu lists commands by task: getting started (`/help`, `/model`, `/providers`, `/effort`, `/new`, `/resume`), then the session, agents and work, configuration, and sharing, diagnostics and data. Extension and prompt commands follow, and skills come last. `/clear` and `/reset` still run but are not listed, since `/new` covers them. A tag such as `[u]` or `[p]` marks a command or skill from your user or project folder; Octocode's own entries have none.
+The `/` menu lists commands by task: getting started (`/help`, `/model`, `/providers`, `/effort`, `/new`, `/resume`), then the session, agents and work, configuration, and sharing, diagnostics and data. Extension and prompt commands follow, and skills come last. `/clear` and `/reset` have no rows of their own: `/new`'s row names them, and typing either one runs `/new`. A command name or alias typed in full always heads the list, so Enter runs that command, not a skill whose name happens to match. A tag such as `[u]` or `[p]` marks a command or skill from your user or project folder; Octocode's own entries have none.
 
 ```mermaid
 flowchart TD

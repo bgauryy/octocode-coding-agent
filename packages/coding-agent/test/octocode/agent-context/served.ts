@@ -7,7 +7,7 @@ import freellamaPreset from "../../../../mcp/src/recommended/freellama.json" wit
 /**
  * The first request as a user's home serves it, for the size guard (`served-first-request.test.ts`): the recommended
  * FreeLlama preset on (a machine with `ollama` on PATH), the octocode-mcp tools declared as a workspace that has used
- * its research tools declares them (`mcpExposure: "recent"`, the default), and a model whose transport cannot add tools
+ * its research tools declares them (`mcpExposure: "usage"`, the default, promoting them), and a model whose transport cannot add tools
  * mid-conversation, so every on-demand tool is declared deferred.
  */
 
@@ -24,7 +24,7 @@ export interface FreellamaRecording {
 export const readFreellamaRecording = (): FreellamaRecording =>
 	JSON.parse(fs.readFileSync(RECORDING, "utf8")) as FreellamaRecording;
 
-/** The octocode-mcp tools the workspace called in the last day: declared in full under `recent`. */
+/** The octocode-mcp tools sessions use often: declared in full under `usage` (and, called in the last day, `recent`). */
 export const SERVED_RECENT_TOOLS = [
 	"localSearch",
 	"localFetch",
@@ -83,8 +83,9 @@ export function installFreellamaReplay(agentDir: string): void {
 }
 
 /**
- * What the main session reads for `recent` exposure: the workspace's record of tools called in the last day (a child takes
- * the set from its environment instead: `SERVED_RECENT_TOOLS`). `scopes` are the working directory's spellings.
+ * What a session reads to promote `SERVED_RECENT_TOOLS`: the usage snapshot of each role group (`usage`, the default) and
+ * the workspace's record of tools called in the last day (`recent`; a child takes the set from its environment instead).
+ * `scopes` are the working directory's spellings.
  */
 export function writeRecentUse(agentDir: string, scopes: readonly string[]): void {
 	const at = Date.now();
@@ -92,5 +93,10 @@ export function writeRecentUse(agentDir: string, scopes: readonly string[]): voi
 	fs.writeFileSync(
 		path.join(agentDir, "tool-use.json"),
 		JSON.stringify(Object.fromEntries(scopes.map((scope) => [scope, tools]))),
+	);
+	const snapshot = { at, tools: [...SERVED_RECENT_TOOLS].sort() };
+	fs.writeFileSync(
+		path.join(agentDir, "tool-usage.json"),
+		JSON.stringify({ days: {}, snapshots: { main: snapshot, subagent: snapshot } }),
 	);
 }

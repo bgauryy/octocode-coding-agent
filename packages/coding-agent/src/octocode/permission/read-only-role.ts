@@ -1,3 +1,4 @@
+import { backlogRoleWrite } from "../backlog/read-only-role.ts";
 import { memoryMutation } from "../shared/archive-operation.ts";
 import os from "node:os";
 import path from "node:path";
@@ -93,6 +94,8 @@ export function readOnlyRoleRefusal(
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
 	if (event.toolName === "memory" && memoryMutation(input)) return refusal("Saving shared memory");
+	const boardWrite = backlogRoleWrite(event.toolName, input);
+	if (boardWrite !== undefined) return refusal(`${boardWrite} (a board change)`);
 	if (browserMcpTool(event.toolName) !== undefined) {
 		const { control, outside } = browserEscalations(event.toolName, input, cwd);
 		const first =

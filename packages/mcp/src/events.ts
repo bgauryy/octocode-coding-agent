@@ -8,6 +8,7 @@ import type { McpContext } from "./host/types.ts";
 import { type McpServerEntry, type LoadedMcpConfig, loadMcpConfig } from "./config.ts";
 import { reconnect, reconnectSignedIn, startConnection, waitForDirectServers, waitForServers } from "./connections.ts";
 import { registerMcpHookCaller } from "./hook-caller.ts";
+import { boundHookResult } from "./hook-result.ts";
 import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.ts";
 import { reportProblems } from "./report.ts";
 import { say, sayUntrustedProject } from "./notice.ts";
@@ -159,7 +160,7 @@ export function registerSessionEvents(state: McpFeatureState): void {
 				timeoutMs: connection.timeoutMs,
 				onProgress: () => undefined,
 			});
-			return call.review ? call.review(reply) : reply;
+			return boundHookResult(call.review ? call.review(reply) : reply, `mcp ${request.server}/${request.tool}`);
 		});
 		state.configuredEntries = loaded.servers;
 		const registered = state.registeredServers();

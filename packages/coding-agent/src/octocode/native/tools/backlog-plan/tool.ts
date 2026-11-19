@@ -1,3 +1,4 @@
+import { readOnlyChild } from "../../../backlog/read-only-role.ts";
 import { isItemType, ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { FeatureSetup, FeatureContext } from "../../../../core/features/index.ts";
@@ -51,7 +52,7 @@ const EXAMPLE: Record<Write, string> = { add: "{title, goal, why}", edit: "{id, 
 /**
  * `backlogPlan`: planning and triage. `add` proposes items, `edit` changes their fields, `list` finds them. A session
  * works an item far more often than it plans, so `backlog` carries the work operations and this tool the rest; a
- * subagent registers it without declaring it (it reports follow-ups, its coordinator files them).
+ * subagent registers it without declaring it, unless it is a read-only role that lists items (it reports follow-ups, its coordinator files them).
  */
 export function registerBacklogPlanTool(
 	api: FeatureSetup,
@@ -67,7 +68,8 @@ export function registerBacklogPlanTool(
 			roleVariant: true,
 			label: "Backlog plan",
 			...prompt,
-			defaultActive: !subagent,
+			// A read-only child declares it to `list` items; the role refuses its `add` and `edit`.
+			defaultActive: !subagent || readOnlyChild(options.env ?? process.env),
 			parameters,
 			validationParameters: withReason(accepted),
 			// A `list` runs beside other reads; a write runs alone in its message and after every earlier write.

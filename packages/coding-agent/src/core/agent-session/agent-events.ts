@@ -18,6 +18,7 @@ import type { SessionBoundaries } from "./boundaries.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import { replaceMessageInPlace } from "./messages.ts";
+import type { ModelWaitWatch } from "./model-wait.ts";
 import type { SessionRetry } from "./retry.ts";
 import { recordRunMessage } from "./run-outcome.ts";
 import type { SessionToolCalls } from "./tool-calls.ts";
@@ -26,6 +27,7 @@ import type { AssistantMessage } from "@octocodeai/octocode-ai";
 export interface AgentEventsHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	readonly inputs: SessionInputQueue;
 	readonly retry: SessionRetry;
+	readonly modelWait: ModelWaitWatch;
 	readonly boundaries: SessionBoundaries;
 	readonly toolCalls: SessionToolCalls;
 	/** The session's `_emitFeatureEvent`. */
@@ -45,6 +47,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	if (event.type === "agent_start" && run.agentRunAbortRequested) session.agent.abort();
 	// Record the calls a tool made through ctx.executeTool() and their usage on its result message.
 	host.toolCalls.recordNestedCalls(event);
+	host.modelWait.observe(event);
 	// When a user message starts, check if it's from either queue and remove it BEFORE emitting
 	// This ensures the UI sees the updated queue state
 	if (event.type === "message_start" && event.message.role === "user") {

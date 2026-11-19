@@ -97,9 +97,10 @@ export interface TuiAltScreenOptions {
 	searchNavigationButtonStyle?: (text: string, hovered: boolean) => string;
 	/**
 	 * Render a clickable jump-to-end label. It is centered on the last row of a follow-end
-	 * primary scroll view while that view is scrolled away from its end.
+	 * primary scroll view while that view is scrolled away from its end. `percent` (0-100) is the reader's position
+	 * in the transcript, so the position shows at rest without a scrollbar.
 	 */
-	scrollToEndIndicator?: (rowsBelow: number) => string;
+	scrollToEndIndicator?: (rowsBelow: number, percent: number) => string;
 	/** Open an OSC 8 hyperlink activated with a primary-button click. */
 	openUrl?: (url: string) => void;
 	/** Handle an unmodified secondary-button press for clipboard paste. Currently enabled on Windows only. */

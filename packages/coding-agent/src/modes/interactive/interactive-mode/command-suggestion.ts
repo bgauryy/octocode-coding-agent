@@ -2,7 +2,7 @@
  * The warning for a command-shaped `/name` that no command owns, naming the command the user most likely meant.
  */
 
-import { retiredCommandReplacement } from "../../../octocode/shared/commands.ts";
+import { retiredCommandNotice } from "../../../octocode/shared/commands.ts";
 import { editDistance } from "../../../octocode/skill/catalog.ts";
 
 /** What the suggestion reads of a command: the fields the /help picker searches. */
@@ -56,9 +56,15 @@ function closestCommand(name: string, commands: readonly CommandEntry[]): string
 	return nearest?.command.name;
 }
 
+/** The message for retired input (`/plugins`, `/settings`): where the command moved. A refusal that cannot be sent as text. */
+export function retiredInputNotice(text: string, name: string, commands: readonly CommandEntry[]): string | undefined {
+	const names = commands.map((command) => command.name);
+	return names.includes(name) ? undefined : retiredCommandNotice(text, names);
+}
+
 /**
- * The warning for `text`, whose command `name` no command owns: a retired name points at its replacement, anything
- * else at the closest command, or at /help when none is close. Undefined when `name` is not command-shaped or exists.
+ * The warning for `text`, whose command `name` no command owns: the closest command, or /help when none is close.
+ * Undefined when `name` is not command-shaped or exists.
  */
 export function unknownCommandWarning(
 	text: string,
@@ -68,8 +74,7 @@ export function unknownCommandWarning(
 	if (!/^[a-z][a-z0-9-]*$/i.test(name)) return undefined;
 	const names = commands.map((command) => command.name);
 	if (names.includes(name)) return undefined;
-	const replacement = retiredCommandReplacement(text, names);
-	const suggestion = replacement === undefined ? closestCommand(name, commands) : (replacement ?? undefined);
+	const suggestion = closestCommand(name, commands);
 	return suggestion
 		? `Unknown command /${name}. Did you mean /${suggestion}?`
 		: `Unknown command /${name}. Search commands with /help ${name}.`;

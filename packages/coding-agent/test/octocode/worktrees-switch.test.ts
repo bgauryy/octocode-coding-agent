@@ -20,6 +20,7 @@ function contextAt(cwd: string, options: { idle?: boolean; newSession?: NewSessi
 	return {
 		cwd,
 		hasUI: true,
+		sessionManager: { getSessionId: () => "sess-1" },
 		ui: { notify: say },
 		isIdle: () => options.idle ?? true,
 		newSession: options.newSession ?? (async () => ({ cancelled: false })),

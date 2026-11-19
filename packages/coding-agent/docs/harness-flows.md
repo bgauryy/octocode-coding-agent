@@ -129,13 +129,13 @@ flowchart TD
     A -- no --> F
 ```
 
-| `mcpExposure`        | A tool without a pin is                                                                   | Saves                                        | Costs                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
-| `"recent"` (default) | `direct` if this working directory called it in the last 24 hours, else `deferred`        | Most unused descriptions and schemas         | A first call to a rarely used tool may be refused once for its schema    |
-| `"usage"`            | `deferred` unless the promotion snapshot names it                                         | The same, learned across all your folders    | The same first-call cost; a new install has no data, so all are deferred |
-| `"direct"`           | `direct`                                                                                  | Nothing                                      | Every description and schema in every request                            |
-| `"deferred"`         | `deferred`                                                                                | The most                                     | The same first-call cost for every tool                                  |
-| `"auto:<bytes>"`     | `direct` for servers in name order while their text fits the byte budget, then `deferred` | A fixed ceiling, whatever the model's window | Which servers are direct depends on name order, not on use               |
+| `mcpExposure`       | A tool without a pin is                                                                   | Saves                                        | Costs                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
+| `"recent"`          | `direct` if this working directory called it in the last 24 hours, else `deferred`        | Most unused descriptions and schemas         | A first call to a rarely used tool may be refused once for its schema    |
+| `"usage"` (default) | `deferred` unless the promotion snapshot names it                                         | The same, learned across all your folders    | The same first-call cost; a new install has no data, so all are deferred |
+| `"direct"`          | `direct`                                                                                  | Nothing                                      | Every description and schema in every request                            |
+| `"deferred"`        | `deferred`                                                                                | The most                                     | The same first-call cost for every tool                                  |
+| `"auto:<bytes>"`    | `direct` for servers in name order while their text fits the byte budget, then `deferred` | A fixed ceiling, whatever the model's window | Which servers are direct depends on name order, not on use               |
 
 The `auto` budget counts bytes, not a share of the context window, so changing models never changes the loadout.
 
@@ -152,7 +152,7 @@ The `auto` budget counts bytes, not a share of the context window, so changing m
 | Native tools         | `memory` and `wait` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`                                 |
 | No data              | Nothing is promoted; deleting the counts file defers every tool again                                                                                                      |
 
-The default stays `"recent"`. Counts are a hint: an unreadable file reads as no data.
+`"usage"` is the default: a tool is declared in full only once sessions of its role group use it often, so a tool used once today stays thin. Counts are a hint: an unreadable file reads as no data.
 
 **Usage audit.** Three places show the same numbers per tool: the **Use (7 days)** column of the Tools panel on the [web Settings page](web-workspace.md#settings-page), the `/mcp` → server → **Tools** page, and the `mcp` tool's `tools` listing. Each row shows the share of sessions that used the tool, its calls, the last day used (or "unused in 7 days"), refusals, and for a deferred tool the bytes its thin declaration saves. Under `"usage"` the row also gives the reason: `promoted` (direct because the snapshot named it) or `unused` (deferred and never used in the window).
 

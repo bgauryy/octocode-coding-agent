@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runInproc, type Skill } from "../../src/agents/inproc.ts";
-import { parseSkillListing, runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
+import { parseSkillListing, runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
 import { script } from "../../src/gateway.ts";
 import { NoAnswer, runTrials, type LiveSummary } from "../../src/live.ts";
 import { forwardOf, resolveTier, type Tier } from "../../src/tiers.ts";
@@ -108,7 +108,7 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 
 		// The real skill descriptions come from a captured request of the bundle (isolated HOME, no model).
 		const cap = await gateway({ responder: script([{ text: "ok" }]) });
-		await runOctocodecode({ gatewayUrl: cap.url, prompt: "hi" });
+		await runOctocodeAgent({ gatewayUrl: cap.url, prompt: "hi" });
 		const listed = parseSkillListing(String(cap.trace.requests[0].messages[0].content));
 		expect(listed.length).toBeGreaterThan(0);
 		const skills: Skill[] = listed.map((s) => ({ ...s, body: `${s.name} skill body (instructions omitted).` }));

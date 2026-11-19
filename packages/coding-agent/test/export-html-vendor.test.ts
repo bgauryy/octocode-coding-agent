@@ -11,7 +11,7 @@ it("keeps the vendored export scripts equal to what the installed dependencies g
 	for (const file of await renderVendorFiles()) {
 		expect(
 			readFileSync(join(vendorDir, file.name), "utf8"),
-			`vendor/${file.name} is stale: run \`yarn workspace @octocodeai/octocodecode run generate:vendor\``,
+			`vendor/${file.name} is stale: run \`yarn workspace @octocodeai/octocode-agent run generate:vendor\``,
 		).toBe(file.content);
 	}
 });

@@ -109,9 +109,9 @@ export function queueRun(
 	refusal: () => Promise<string | undefined>,
 	prepare: () => void,
 ): QueuedRun {
-	const tell = (notice: string) => runs.graph?.tell(notice);
+	const tell = (notice: string, about?: string) => runs.graph?.tell(notice, about);
 	const names = after.map(prerequisiteName);
-	const queued = queueChild(runs.chain!, tell, {
+	const queued = queueChild(runs.chain!, tell, (about) => runs.graph?.retract(about), {
 		id: run.identity.id,
 		role: run.identity.role,
 		goal,

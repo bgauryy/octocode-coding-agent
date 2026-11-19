@@ -4,6 +4,7 @@ import { ask } from "../ask/ask.ts";
 import { confirmed } from "../ask/decode.ts";
 import { confirm } from "../ask/question.ts";
 import { teamWorkspace } from "../team/store/workspace.ts";
+import { forgetWorktreeOpening, recordWorktreeOpening } from "../worktrees/openings.ts";
 import { type WorktreeTrustRequest, worktreeTrustTitle } from "../worktrees/approval.ts";
 import type { Identity } from "./process/env.ts";
 import { createWorktree, finishWorktree, isolationReport, reopenWorktree, type Worktree } from "./worktree.ts";
@@ -50,6 +51,8 @@ export class Isolation {
 		this.worktree = this.reopen
 			? await reopenWorktree(ctx.cwd, this.id, this.reopen, this.item, approve)
 			: await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, approve);
+		// The parent made it for the child, so the parent is the opener (a top-level run's own id stands in for none).
+		recordWorktreeOpening(this.worktree.path, { id: identity.parentId ?? identity.id, sessionId: identity.sessionId });
 		identity.isolation = { path: this.worktree.path, repo: this.worktree.repo, cwd: this.worktree.cwd };
 		identity.workspace = teamWorkspace(ctx.cwd);
 		return this.worktree.cwd;
@@ -62,7 +65,13 @@ export class Isolation {
 					(result) => {
 						this.ref = result.ref;
 						this.patch = result.conflict?.patch;
-						return isolationReport(this.id, result);
+						const report = isolationReport(this.id, result);
+						try {
+							forgetWorktreeOpening(worktree.path);
+						} catch (error) {
+							return `${report}\n\nThe opening record of ${worktree.path} could not be dropped: ${errorMessage(error)}`;
+						}
+						return report;
 					},
 					(error: unknown) => isolationReport(this.id, { error: errorMessage(error) }),
 				)

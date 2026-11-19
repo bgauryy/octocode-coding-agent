@@ -310,14 +310,16 @@ describe("agents view", () => {
 
 	it("shows only this session's subagents as a tree, never yourself, and nothing when alone", () => {
 		const now = 100_000;
+		// Stamped at the test's clock: a heartbeat from the future is not a live one.
+		const stamped = (id: string, extra: Partial<Member> = {}) => member(id, { updatedAt: now, ...extra });
 		const foreign = [
-			member("main-cccccc", { status: "working" }),
-			member("c-0003", { parentId: "main-cccccc", status: "working" }),
+			stamped("main-cccccc", { status: "working" }),
+			stamped("c-0003", { parentId: "main-cccccc", status: "working" }),
 		];
 		const list = [
-			member("main-aaaaaa"),
-			member("a-0001", { parentId: "main-aaaaaa", joinedAt: 90_000 }),
-			member("b-0002", { parentId: "a-0001", status: "working", activity: "→ localSearch foo", joinedAt: 40_000 }),
+			stamped("main-aaaaaa"),
+			stamped("a-0001", { parentId: "main-aaaaaa", joinedAt: 90_000 }),
+			stamped("b-0002", { parentId: "a-0001", status: "working", activity: "→ localSearch foo", joinedAt: 40_000 }),
 			...foreign,
 		];
 		const lines = widgetLines(list, "main-aaaaaa", now, theme, 120);
@@ -330,7 +332,7 @@ describe("agents view", () => {
 		expect(
 			widgetLines(
 				[
-					member("a-0001", {
+					stamped("a-0001", {
 						parentId: "main-aaaaaa",
 						status: "working",
 						goal: "Find where tools register",
@@ -347,7 +349,7 @@ describe("agents view", () => {
 		// This session is the root row, never one of the agent rows.
 		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa /);
 		expect(lines.slice(1).join("\n")).not.toContain("main-aaaaaa");
-		expect(widgetLines([member("main-aaaaaa")], "main-aaaaaa", now, theme, 80)).toEqual([]);
+		expect(widgetLines([stamped("main-aaaaaa")], "main-aaaaaa", now, theme, 80)).toEqual([]);
 	});
 
 	it("shows controls in text other agents wrote (conflicts, changes, dead letters) as visible escapes", () => {
@@ -398,7 +400,8 @@ describe("collaboration schema", () => {
 	it("does not expose the removed collaborate field", () => {
 		const tools: Array<{ parameters: { properties: Record<string, { description?: string }> } }> = [];
 		registerAgentTool(
-			asSetup({ getSettings: () => ({}),
+			asSetup({
+				getSettings: () => ({}),
 				registerTool: (tool: never) => tools.push(tool),
 				registerCommand: () => undefined,
 				registerMessageRenderer: () => undefined,
@@ -431,7 +434,8 @@ describe("Team", () => {
 		const inbox = () => [] as Array<{ message: { content: string; details?: unknown }; options: unknown }>;
 		const [mainLog, childLog] = [inbox(), inbox()];
 		const fakeHost = (log: ReturnType<typeof inbox>) =>
-			asSetup({ getSettings: () => ({}),
+			asSetup({
+				getSettings: () => ({}),
 				sendMessage: (message: { content: string }, options: unknown) => log.push({ message, options }),
 				appendEntry: () => undefined,
 				getThinkingLevel: () => "off",
@@ -628,7 +632,8 @@ describe("Team safety", () => {
 		} as never;
 		const log: Array<{ message: { content: string }; options: unknown }> = [];
 		let failing = false;
-		const api = asSetup({ getSettings: () => ({}),
+		const api = asSetup({
+			getSettings: () => ({}),
 			sendMessage: (message: { content: string }, options: unknown) => {
 				if (failing) throw new Error("not ready");
 				log.push({ message, options });
@@ -663,11 +668,11 @@ describe("Team safety", () => {
 			const { Team, cwd, file, env, ctx, main, me } = await setup();
 			const child = new Team(
 				asSetup({
-				sendMessage: () => undefined,
-				appendEntry: () => undefined,
-				getThinkingLevel: () => "off",
-				getSettings: () => ({}),
-			}) as never,
+					sendMessage: () => undefined,
+					appendEntry: () => undefined,
+					getThinkingLevel: () => "off",
+					getSettings: () => ({}),
+				}) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: "researcher-1234",
@@ -714,11 +719,11 @@ describe("Team safety", () => {
 		const started = (id: string, extra: Record<string, string>) => {
 			const team = new Team(
 				asSetup({
-				sendMessage: () => undefined,
-				appendEntry: () => undefined,
-				getThinkingLevel: () => "off",
-				getSettings: () => ({}),
-			}) as never,
+					sendMessage: () => undefined,
+					appendEntry: () => undefined,
+					getThinkingLevel: () => "off",
+					getSettings: () => ({}),
+				}) as never,
 				{
 					...env,
 					OCTOCODE_AGENT_ID: id,
@@ -785,7 +790,8 @@ describe("Team safety", () => {
 			guard.reservedBy = (target) => main.reservation(target, target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				asSetup({ getSettings: () => ({}),
+				asSetup({
+					getSettings: () => ({}),
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
@@ -827,7 +833,8 @@ describe("Team safety", () => {
 			guard.record(target);
 			let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 			registerFileTool(
-				asSetup({ getSettings: () => ({}),
+				asSetup({
+					getSettings: () => ({}),
 					registerTool: (t: typeof tool) => {
 						tool = t;
 						return tool;
@@ -925,7 +932,8 @@ describe("Team safety", () => {
 		guard.record(target);
 		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
 		registerFileTool(
-			asSetup({ getSettings: () => ({}),
+			asSetup({
+				getSettings: () => ({}),
 				registerTool: (t: typeof tool) => {
 					tool = t;
 					return tool;

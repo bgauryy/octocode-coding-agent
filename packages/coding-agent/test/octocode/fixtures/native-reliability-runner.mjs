@@ -44,7 +44,7 @@ export async function runNativeReliability(output = process.env.OCTOCODE_NATIVE_
     evidenceClass: 'Deterministic protocol stress and bounded real-process recovery; no production reliability estimate',
     model: 'Official octocode-ai fauxProvider: simulated model output; real Octocode AgentSession, extension, API and subprocesses',
     node: process.version, platform: process.platform,
-    sdkVersion: JSON.parse(fs.readFileSync(path.join(packageRoot, '../../node_modules/@octocodeai/octocodecode/package.json'), 'utf8')).version,
+    sdkVersion: JSON.parse(fs.readFileSync(path.join(packageRoot, '../../node_modules/@octocodeai/octocode-agent/package.json'), 'utf8')).version,
     aiVersion: JSON.parse(fs.readFileSync(path.join(packageRoot, '../../node_modules/@octocodeai/octocode-ai/package.json'), 'utf8')).version,
     sourceHashes: Object.fromEntries(['external/octocode.ts', 'api/client.ts', 'api/bridge.ts', 'api/registry.ts', 'external/manager.ts', 'team/store.ts'].map((file) => [file, hash(source(file))])),
     fixtureHashes: Object.fromEntries(['native-reliability-worker.mjs', 'native-reliability-runner.mjs'].map((file) => [file, hash(path.join(fixtureDir, file))])),

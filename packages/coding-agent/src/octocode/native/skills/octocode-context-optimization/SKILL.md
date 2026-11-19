@@ -1,6 +1,6 @@
 ---
 name: octocode-context-optimization
-description: "Use when the skills listing is large or stale, or after adding skills. Rewrite skill descriptions concisely via `octocode context`, without dropping any point of the source description."
+description: "Use when the skills listing is large or stale, or after adding skills: rewrite skill descriptions concisely via `octocode context`, dropping no point of the source."
 ---
 
 # Octocode Context Optimization

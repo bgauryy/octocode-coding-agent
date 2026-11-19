@@ -79,7 +79,7 @@ Hook text over 16 KB is saved to a file and shown as head and tail with the path
 
 | Question                                            | How                                                                                                                                                                      |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The exact prompt and tools each built-in agent gets | Contributors: `yarn workspace @octocodeai/octocodecode run generate:prompts`, then read `.octocode/tmp/agent-prompts/<agent>/` (`system.md`, `tools.md`, `request.json`) |
+| The exact prompt and tools each built-in agent gets | Contributors: `yarn workspace @octocodeai/octocode-agent run generate:prompts`, then read `.octocode/tmp/agent-prompts/<agent>/` (`system.md`, `tools.md`, `request.json`) |
 | Tokens per layer in a real session                  | `/context` in the terminal; an agent's `archive` call with `source: profile` and a request number                                                                        |
 | Skill description and MCP file sizes                | `octocode context list`                                                                                                                                                  |
 | Which hooks act and how long they take              | `/harness hooks`                                                                                                                                                         |

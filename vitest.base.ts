@@ -54,8 +54,8 @@ export default defineConfig({
 
 			{ find: /^@octocodeai\/octocode-telemetry$/, replacement: workspaceSourcePaths.telemetryIndex },
 			// The package root exports only the CLI and RPC; extension fixtures import the loader's host module.
-			{ find: /^@octocodeai\/octocodecode\/mcp$/, replacement: workspaceSourcePaths.mcpIndex },
-			{ find: /^@octocodeai\/octocodecode\/mcp\/oauth$/, replacement: workspaceSourcePaths.mcpOAuth },
+			{ find: /^@octocodeai\/octocode-agent\/mcp$/, replacement: workspaceSourcePaths.mcpIndex },
+			{ find: /^@octocodeai\/octocode-agent\/mcp\/oauth$/, replacement: workspaceSourcePaths.mcpOAuth },
 			{ find: /^@octocodeai\/octocode-ai$/, replacement: workspaceSourcePaths.aiIndex },
 			{ find: /^@octocodeai\/octocode-ai\/compat$/, replacement: workspaceSourcePaths.aiCompat },
 			{ find: /^@octocodeai\/octocode-ai\/oauth$/, replacement: workspaceSourcePaths.aiOAuth },

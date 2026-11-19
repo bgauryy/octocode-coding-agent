@@ -3,7 +3,7 @@ import { isOfflineModeEnabled } from "./env-flag.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getOctocodeUserAgent } from "./user-agent.ts";
 
-const LATEST_VERSION_URL = "https://registry.npmjs.org/@octocodeai%2Foctocodecode/latest";
+const LATEST_VERSION_URL = "https://registry.npmjs.org/@octocodeai%2Foctocode-agent/latest";
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
 
 export interface LatestOctocodeRelease {

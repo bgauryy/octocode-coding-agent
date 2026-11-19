@@ -9,6 +9,7 @@ import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { formatMissingSessionCwdPrompt, type MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { DialogEditorComponent } from "../components/dialog-editor.ts";
 import { DialogInputComponent } from "../components/dialog-input.ts";
+import { confirmInAsk } from "../../../octocode/ask/confirm.ts";
 import { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
@@ -33,6 +34,7 @@ type DialogsHost = Pick<
 	| "session"
 	| "settingsManager"
 	| "showConfirmDialog"
+	| "showCustomDialog"
 	| "showSelectorDialog"
 	| "toggleToolOutputExpansion"
 	| "ui"
@@ -167,8 +169,8 @@ export function hideSelectorDialog(host: DialogsHost): void {
 }
 
 /**
- * Show a confirmation dialog: the ask card approvals and askUser use, with the title as its question, the message as its
- * body, and No first.
+ * Show a confirmation in the tabbed ask dialog (`octocode/ask/confirm.ts`): the title as its question, the message as its
+ * body, No first. The footer reports a question while it is open.
  */
 export async function showConfirmDialog(
 	host: DialogsHost,
@@ -176,20 +178,22 @@ export async function showConfirmDialog(
 	message: string,
 	opts?: DialogOptions,
 ): Promise<boolean> {
-	const options = ["No", "Yes"];
-	const view = {
-		question: title,
-		...(message.trim() ? { body: { text: message } } : {}),
-		options: options.map((label) => ({ label })),
-	};
-	const result = await host.showSelectorDialog(
-		`${title}\n${message}`,
-		options,
-		opts,
-		{ kind: "question", message: title },
-		{ view },
-	);
-	return result === "Yes";
+	if (opts?.signal?.aborted) return false;
+	const clear = () => host.programStatus.setBlocked("feature-dialog", undefined);
+	host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
+	try {
+		return await confirmInAsk(
+			{ ui: { custom: (factory, options) => host.showCustomDialog(factory, options) } },
+			title,
+			message,
+			opts,
+			clear,
+		);
+	} catch (error) {
+		// Its factory failed, so nothing disposed the dialog (once open, disposal runs `clear` before a successor reports).
+		clear();
+		throw error;
+	}
 }
 
 export async function promptForMissingSessionCwd(

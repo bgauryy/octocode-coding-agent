@@ -4,6 +4,7 @@ import { liveStdioServerPids } from "../../../../mcp/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { processStartTime } from "../shared/process.ts";
+import { isStaleSessionError } from "../shared/util.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { PARENT_PID_ENV } from "../team/store/env.ts";
 import { processesCommand, type ProcessesCommandOptions } from "./command.ts";
@@ -84,7 +85,12 @@ export function registerProcesses(api: FeatureSetup, options: ProcessesOptions):
 			// One notice per session: a database that cannot be written would otherwise repeat it every interval.
 			if (warned) return;
 			warned = true;
-			ctx.ui.notify(`Process samples are not being recorded: ${errorMessage(error)}`, "warning");
+			try {
+				ctx.ui.notify(`Process samples are not being recorded: ${errorMessage(error)}`, "warning");
+			} catch (stale) {
+				// The session was replaced while a sample was in flight: its context has no UI left to tell. Any other failure surfaces.
+				if (!isStaleSessionError(stale)) throw stale;
+			}
 		};
 		// Not awaited: the first sample's `ps` runs while the session starts, so the first request and the editor never wait for it.
 		try {

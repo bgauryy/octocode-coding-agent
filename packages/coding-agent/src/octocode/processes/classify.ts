@@ -220,7 +220,14 @@ export function classifyProcesses({ table, samples, now, selfPid, apiIds }: Clas
 		const owner = `${record.role}-${record.id}`;
 		const ownerAlive = same(record.pid, record.started);
 		const row = byPid.get(record.pid);
-		if (ownerAlive && record.ownerPid !== null && record.ownerStarted && !same(record.ownerPid, record.ownerStarted)) {
+		const settling = record.ended && now - record.at < ORPHAN_GRACE_MS;
+		if (
+			ownerAlive &&
+			!settling &&
+			record.ownerPid !== null &&
+			record.ownerStarted &&
+			!same(record.ownerPid, record.ownerStarted)
+		) {
 			orphans.set(record.pid, {
 				pid: record.pid,
 				started: record.started!,
@@ -233,7 +240,6 @@ export function classifyProcesses({ table, samples, now, selfPid, apiIds }: Clas
 				reason: "owner-gone",
 			});
 		}
-		const settling = record.ended && now - record.at < ORPHAN_GRACE_MS;
 		for (const child of record.children) {
 			const live = byPid.get(child.pid);
 			if (!live || !same(child.pid, child.started) || identities.has(child.pid) || orphans.has(child.pid)) continue;

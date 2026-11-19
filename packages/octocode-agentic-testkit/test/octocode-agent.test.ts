@@ -1,29 +1,29 @@
 import "./bundle.ts";
 import { describe, expect, it } from "vitest";
 import {
-	octocodecodeAvailable,
+	octocodeAgentAvailable,
 	parseSkillListing,
-	runOctocodecode,
-	type OctocodecodeRun,
-} from "../src/adapters/octocodecode/index.ts";
+	runOctocodeAgent,
+	type OctocodeAgentRun,
+} from "../src/adapters/octocode-agent/index.ts";
 import { cacheReadRatio, duplicateBlocks, prefixBreaks } from "../src/context.ts";
 import { script, type StepSource } from "../src/gateway.ts";
 import { gateway, mcp, searchTool } from "./helpers.ts";
 import { PROMPTS } from "./triggers/matrix.ts";
 
-const SKIP = "octocodecode bundle missing: run `yarn run build:offline` first";
+const SKIP = "octocode-agent bundle missing: run `yarn run build:offline` first";
 
 async function drive(steps: StepSource[], prompt: string, files?: Record<string, string>) {
 	const gw = await gateway({ responder: script(steps) });
-	const run = await runOctocodecode({ gatewayUrl: gw.url, prompt, files, timeoutMs: 90_000 });
+	const run = await runOctocodeAgent({ gatewayUrl: gw.url, prompt, files, timeoutMs: 90_000 });
 	return { gw, run };
 }
 
-function report(label: string, gw: Awaited<ReturnType<typeof drive>>["gw"], run: OctocodecodeRun): void {
+function report(label: string, gw: Awaited<ReturnType<typeof drive>>["gw"], run: OctocodeAgentRun): void {
 	const reqs = gw.trace.requests;
 	const raw0 = reqs[0]?.raw as { tools?: unknown[] } | undefined;
 	console.info(
-		`[octocodecode:${label}] ${JSON.stringify({
+		`[octocode-agent:${label}] ${JSON.stringify({
 			requests: reqs.length,
 			agents: [...new Set(reqs.map((r) => r.agent))],
 			toolCount: reqs[0]?.tools.length,
@@ -40,9 +40,9 @@ function report(label: string, gw: Awaited<ReturnType<typeof drive>>["gw"], run:
 	);
 }
 
-describe("octocodecode via gateway", () => {
+describe("octocode-agent via gateway", () => {
 	it("scripted bash call executes and its result reaches the next request", async (ctx) => {
-		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const { gw, run } = await drive(
 			[{ toolCalls: [{ name: "bash", args: { command: "cat hello.txt" } }] }, { text: "the file says hello" }],
 			"read hello.txt",
@@ -65,7 +65,7 @@ describe("octocodecode via gateway", () => {
 	});
 
 	it("detects a skill load through the skill tool", async (ctx) => {
-		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const { gw, run } = await drive(
 			[
 				{ toolCalls: [{ name: "skill", args: { name: "octocode-local-research", reason: "testkit" } }] },
@@ -79,7 +79,7 @@ describe("octocodecode via gateway", () => {
 	});
 
 	it("the trigger matrix has a fire and a near-miss prompt for every skill the bundle lists", async (ctx) => {
-		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const { gw } = await drive([{ text: "ok" }], "hi");
 		const listed = parseSkillListing(String(gw.trace.requests[0].messages[0].content)).map((s) => s.name);
 		expect(listed.length).toBeGreaterThan(0);
@@ -87,7 +87,7 @@ describe("octocodecode via gateway", () => {
 	});
 
 	it("an unknown tool call gets an error result and the run still finishes", async (ctx) => {
-		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const { gw, run } = await drive(
 			[{ toolCalls: [{ name: "does_not_exist", args: {} }] }, { text: "ok" }],
 			"call a bad tool",
@@ -95,14 +95,14 @@ describe("octocodecode via gateway", () => {
 		report("unknown-tool", gw, run);
 		expect(run.exitCode).toBe(0);
 		console.info(
-			"[octocodecode:unknown-tool] tool result:",
+			"[octocode-agent:unknown-tool] tool result:",
 			JSON.stringify(gw.trace.requests[1]?.messages.at(-1)).slice(0, 300),
 		);
 		expect(gw.trace.requests.length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("calls a mock MCP tool as mcp__<server>__<tool>; failOnce(error) reaches the model", async (ctx) => {
-		if (!octocodecodeAvailable()) return ctx.skip(SKIP);
+		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const gw = await gateway({
 			responder: script([
 				{ toolCalls: [{ name: "mcp__docs__search", args: { query: "cache" } }] },
@@ -112,10 +112,10 @@ describe("octocodecode via gateway", () => {
 		});
 		const docs = mcp(gw, "docs", [searchTool]);
 		docs.tool("search").failOnce("error").returns("RESULT-42");
-		const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "search the docs", mcp: [docs] });
+		const run = await runOctocodeAgent({ gatewayUrl: gw.url, prompt: "search the docs", mcp: [docs] });
 		report("mcp", gw, run);
 		console.info(
-			"[octocodecode:mcp] tools:",
+			"[octocode-agent:mcp] tools:",
 			JSON.stringify(gw.trace.requests[0]?.tools.filter((t) => t.includes("docs"))),
 		);
 		expect(run.exitCode).toBe(0);

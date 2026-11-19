@@ -217,6 +217,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	}
 	dispose(): void {
 		this._stopProviderWatch();
+		this._c.agentEvents.modelWait.stop();
 		clearSideQuestions(this);
 		clearPlanConstraint(this.sessionId);
 		disposeApplicationPort(this);

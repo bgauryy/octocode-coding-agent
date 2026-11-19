@@ -1,4 +1,4 @@
-# Developing octocode-code
+# Developing octocode-agent
 
 For contributors. To use Octocode, read the [README](README.md). Rules for changing code, owners and generated files: [AGENTS.md](AGENTS.md).
 
@@ -36,8 +36,8 @@ flowchart LR
 | `yarn oxfmt <files>`                                                                    | Formats those files (`yarn run format` formats everything)                                                                                                                                                                                                                                                                                                           |
 | `yarn vitest run --config vitest.octocode.config.ts [paths]` in `packages/coding-agent` | Native suite (`test/octocode/`); `yarn run test:changed` runs only tests for changed files                                                                                                                                                                                                                                                                           |
 | `yarn vitest run [paths]` in `packages/coding-agent`                                    | Core suite                                                                                                                                                                                                                                                                                                                                                           |
-| `yarn workspace @octocodeai/octocodecode run test:e2e`                                  | Real sessions on a scripted model, no network; holds the prompt-size ceilings. `OCTOCODE_E2E_CHROME=1` adds the headless-Chrome browser cases, `OCTOCODE_E2E_SOAK=1` the full 320-turn soak                                                                                                                                                                          |
-| `yarn workspace @octocodeai/octocodecode run test:architecture`                         | Layering rules in the coding-agent                                                                                                                                                                                                                                                                                                                                   |
+| `yarn workspace @octocodeai/octocode-agent run test:e2e`                                  | Real sessions on a scripted model, no network; holds the prompt-size ceilings. `OCTOCODE_E2E_CHROME=1` adds the headless-Chrome browser cases, `OCTOCODE_E2E_SOAK=1` the full 320-turn soak                                                                                                                                                                          |
+| `yarn workspace @octocodeai/octocode-agent run test:architecture`                         | Layering rules in the coding-agent                                                                                                                                                                                                                                                                                                                                   |
 | `yarn workspace <name> run test:live`                                                   | Paid tests (`*.live.test.ts`: real provider or model requests, so they cost money) of that workspace; no default `test` script, `./test.sh` or `yarn run check` runs them, whatever keys the shell exports. The tests also need their own credentials and flags (provider API keys, `TESTKIT_LIVE=1`); `ai`, `coding-agent` and `octocode-agentic-testkit` have them |
 | `yarn run test:scripts`                                                                 | Node tests for `scripts/` (not `scripts/agent-eval/`)                                                                                                                                                                                                                                                                                                                |
 | `yarn run test:agentic`                                                                 | Agent-behavior suites: the agentic testkit's free tests and `scripts/agent-eval/` tests; not part of `./test.sh`                                                                                                                                                                                                                                                     |
@@ -48,14 +48,14 @@ flowchart LR
 - Paid tests live in `*.live.test.ts`; every vitest config excludes them unless `OCTOCODE_LIVE_TESTS=1` (set by `test:live`), and `yarn run check:live-tests` fails when a default run would collect one or a test gated on provider credentials. Local Ollama tests are not paid.
 - Run builds and full suites in the background; write long output to `.octocode/tmp/`. Never run two builds or generators at once.
 - One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. To wait for the lock, poll `node scripts/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
-- After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocodecode run generate:prompts` and read `.octocode/tmp/agent-prompts/`.
+- After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocode-agent run generate:prompts` and read `.octocode/tmp/agent-prompts/`.
 - Harness-based session tests: [suite rules](packages/coding-agent/test/suite/README.md).
 - Known flakes: `team-interpreter-parsed` "gates a 2000-stage pipeline quickly" (400 ms limit) under heavy load; the real-browser e2e can leave a Chrome process behind.
 - `octocode-test.sh` runs the agent from source; it is a launcher, not a suite.
 
 ## Release
 
-`@octocodeai/octocodecode` is published with every other workspace compiled into its one bundle, except the agentic
+`@octocodeai/octocode-agent` is published with every other workspace compiled into its one bundle, except the agentic
 testkit, which publishes on its own (below).
 
 ```mermaid
@@ -104,7 +104,7 @@ A disposable-registry result is not a production lock: after the dependency tarb
 
 ## Packages
 
-`coding-agent` is the only published package (`@octocodeai/octocodecode`); every other workspace compiles into its one bundle. A **library** builds its own `dist/`. A **hosted** workspace (`octocodeSource` in its manifest) has no build: its sources compile straight into coding-agent, which reaches it only through its `api.ts` or `host.ts`.
+`coding-agent` is the only published package (`@octocodeai/octocode-agent`); every other workspace compiles into its one bundle. A **library** builds its own `dist/`. A **hosted** workspace (`octocodeSource` in its manifest) has no build: its sources compile straight into coding-agent, which reaches it only through its `api.ts` or `host.ts`.
 
 | Package                                                                 | Kind     | Owns                                                                                                                                                                    |
 | ----------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -93,7 +93,11 @@ export class Activity {
 	private phaseAt = 0;
 	private lastEventAt = 0;
 	private readonly tools = new Map<string, RunningTool>();
-	private prompt: { title: string; at: number } | undefined;
+	/** The dialogs open now by id, outermost first: closing one leaves the others waiting. */
+	private readonly prompts = new Map<string | undefined, { title: string; at: number }>();
+	private get prompt(): { title: string; at: number } | undefined {
+		return this.prompts.values().next().value;
+	}
 	/** The latest consequential call the permission check let through, while its tool runs (`id`: that call, when its check was running). */
 	private action: { id?: string; head: string; text: string; warn: boolean; at: number; more: number } | undefined;
 	private readonly thought = new Thought();
@@ -101,7 +105,7 @@ export class Activity {
 	start(now: number): void {
 		this.tools.clear();
 		this.action = undefined;
-		this.prompt = undefined;
+		this.prompts.clear();
 		this.thought.reset();
 		this.setPhase("model", now);
 	}
@@ -109,7 +113,7 @@ export class Activity {
 	end(): void {
 		this.tools.clear();
 		this.action = undefined;
-		this.prompt = undefined;
+		this.prompts.clear();
 		this.thought.reset();
 		this.phase = "idle";
 	}
@@ -180,12 +184,12 @@ export class Activity {
 		else delete tool.checkingSince;
 	}
 
-	promptStart(title: string | undefined, now: number): void {
-		this.prompt = { title: title ? safeText(title) : "", at: now };
+	promptStart(title: string | undefined, now: number, id?: string): void {
+		this.prompts.set(id, { title: title ? safeText(title) : "", at: now });
 	}
 
-	promptEnd(): void {
-		this.prompt = undefined;
+	promptEnd(id?: string): void {
+		this.prompts.delete(id);
 	}
 
 	/**

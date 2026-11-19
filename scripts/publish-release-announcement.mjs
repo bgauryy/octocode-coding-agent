@@ -9,7 +9,7 @@ import { getPublicWorkspacePackages } from "./release-packages.mjs";
 
 const RELEASES_PREFIX = "releases/v1";
 const INSTALLER_PREFIX = "installer/v1";
-const INSTALLER_PACKAGE_NAME = "@octocodeai/octocodecode-install";
+const INSTALLER_PACKAGE_NAME = "@octocodeai/octocode-agent-install";
 const REGISTRY_URL = "https://registry.npmjs.org";
 const RETRY_DELAY_MS = 5000;
 const RETRY_TIMEOUT_MS = 10 * 60 * 1000;
@@ -217,7 +217,7 @@ function validateInstallerArtifacts(packageJsonPath, packageLockPath, version) {
 		packageLock.lockfileVersion !== 3 ||
 		packageLock.version !== version ||
 		root?.version !== version ||
-		root.dependencies?.["@octocodeai/octocodecode"] !== version
+		root.dependencies?.["@octocodeai/octocode-agent"] !== version
 	) {
 		throw new Error(`Installer package-lock.json must describe Octocode ${version}`);
 	}

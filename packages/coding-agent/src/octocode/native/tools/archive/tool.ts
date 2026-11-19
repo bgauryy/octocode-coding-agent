@@ -103,14 +103,14 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 		),
 		query: Type.Optional(
 			Type.String({
-				description: "Case-insensitive regex. With errors: filters by tool name or error text",
+				description: "Case-insensitive regex filter; with errors: by tool name or error text",
 			}),
 		),
 		agentId: Type.Optional(Type.String({ description: "Events/profile: agent name" })),
 		request: Type.Optional(Type.Integer({ description: "Profile: request index with agentId" })),
 		sessionId: Type.Optional(
 			Type.String({
-				description: "History: session id or current; events/profile: session id, profile defaults to current",
+				description: "Session id (history also: current); profile defaults to current",
 			}),
 		),
 		eventType: Type.Optional(StringEnum(agentEvents.EVENT_TYPES, { description: "Events: transition" })),
@@ -126,7 +126,7 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 				description: "Record collection (default all)",
 			}),
 		),
-		query: Type.Optional(Type.String({ description: "Case-insensitive regex" })),
+		query: Type.Optional(Type.String({ description: "Case-insensitive regex filter" })),
 		agentId: Type.Optional(Type.String({ description: "Profile: agent name from the overview" })),
 		request: main.properties.request,
 	});

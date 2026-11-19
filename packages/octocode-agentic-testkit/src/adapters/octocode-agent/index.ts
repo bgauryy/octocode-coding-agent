@@ -8,19 +8,19 @@ import type { SandboxOptions } from "../../sandbox.ts";
 export { parseSkillListing } from "./skill-listing.ts";
 
 /** Environment variable holding the path of the built CLI bundle. */
-const BUNDLE_ENV = "TESTKIT_OCTOCODECODE_BUNDLE";
+const BUNDLE_ENV = "TESTKIT_OCTOCODE_AGENT_BUNDLE";
 
 /** The configured bundle path, or undefined when neither `bundle` nor the environment names one. */
 function resolveBundle(bundle?: string): string | undefined {
 	return bundle ?? process.env[BUNDLE_ENV] ?? undefined;
 }
 
-export function octocodecodeAvailable(bundle?: string): boolean {
+export function octocodeAgentAvailable(bundle?: string): boolean {
 	const path = resolveBundle(bundle);
 	return path !== undefined && existsSync(path);
 }
 
-export interface OctocodecodeProvider {
+export interface OctocodeAgentProvider {
 	id: string;
 	api: string;
 	/** The model entry written to `models.json`: `id` plus any `compat`, `promptCache`, limits. */
@@ -31,8 +31,8 @@ export interface OctocodecodeProvider {
 	key?: string;
 }
 
-export interface OctocodecodeAdapterOptions {
-	/** Path of the built CLI bundle; default: `$TESTKIT_OCTOCODECODE_BUNDLE`. */
+export interface OctocodeAgentAdapterOptions {
+	/** Path of the built CLI bundle; default: `$TESTKIT_OCTOCODE_AGENT_BUNDLE`. */
 	bundle?: string;
 	/** Files written into the workspace before the first run (relative path -> content). */
 	files?: Record<string, string>;
@@ -51,7 +51,7 @@ export interface OctocodecodeAdapterOptions {
 	/** Written to `<agentHome>/settings.json`. */
 	settings?: Record<string, unknown>;
 	/** Replaces the default `testkit/scripted` provider; `--model` defaults to `<id>/<model.id>`. */
-	provider?: OctocodecodeProvider;
+	provider?: OctocodeAgentProvider;
 	/** Merged into each MCP server entry (by server name) from `AdapterContext.mcpUrls`. */
 	mcp?: Record<string, { toolExposure?: Record<string, string>; description?: string }>;
 	/** Adds `--thinking <value>`. */
@@ -62,8 +62,8 @@ export interface OctocodecodeAdapterOptions {
 	sandbox?: false | SandboxOptions;
 }
 
-/** Result of one octocodecode run. */
-export type OctocodecodeRun = ProcessRun;
+/** Result of one octocode-agent run. */
+export type OctocodeAgentRun = ProcessRun;
 
 const sessionFlags = (persist: boolean | undefined): string[] => [
 	"--mode",
@@ -75,20 +75,20 @@ const sessionFlags = (persist: boolean | undefined): string[] => [
 const PROVIDER_KEY_ENV = "TESTKIT_PROVIDER_KEY";
 
 /**
- * The octocodecode CLI as an agent: an isolated HOME whose `models.json` points a provider at the gateway and whose
+ * The octocode-agent CLI as an agent: an isolated HOME whose `models.json` points a provider at the gateway and whose
  * `mcp.json` lists the mock MCP servers (HTTP; the mock attributes each call through the gateway lineage).
  */
-export function octocodecodeAdapter(opts: OctocodecodeAdapterOptions = {}): AgentAdapter<OctocodecodeRun> {
+export function octocodeAgentAdapter(opts: OctocodeAgentAdapterOptions = {}): AgentAdapter<OctocodeAgentRun> {
 	return {
-		name: "octocodecode",
+		name: "octocode-agent",
 		unavailable: () =>
-			octocodecodeAvailable(opts.bundle)
+			octocodeAgentAvailable(opts.bundle)
 				? undefined
 				: `no built bundle: set \`bundle\` or ${BUNDLE_ENV} (build with \`yarn run build:offline\`)`,
 		async start(ctx: AdapterContext) {
 			const bundle = resolveBundle(opts.bundle);
-			if (!bundle) throw new Error(`octocodecode adapter: set \`bundle\` or ${BUNDLE_ENV} to the built CLI bundle`);
-			const root = mkdtempSync(join(tmpdir(), "testkit-octocodecode-"));
+			if (!bundle) throw new Error(`octocode-agent adapter: set \`bundle\` or ${BUNDLE_ENV} to the built CLI bundle`);
+			const root = mkdtempSync(join(tmpdir(), "testkit-octocode-agent-"));
 			const home = join(root, "home");
 			const workspace = ctx.workdir ?? join(root, "workspace");
 			// With OCTOCODE_HOME set, the agent dir is OCTOCODE_HOME itself (no `octocodecode` subfolder).
@@ -163,26 +163,29 @@ export function octocodecodeAdapter(opts: OctocodecodeAdapterOptions = {}): Agen
 	};
 }
 
-export interface OctocodecodeOptions extends Omit<OctocodecodeAdapterOptions, "mcp"> {
+export interface OctocodeAgentOptions extends Omit<OctocodeAgentAdapterOptions, "mcp"> {
 	/** Gateway origin (`Gateway.url`). */
 	gatewayUrl: string;
 	prompt: string;
 	env?: Record<string, string>;
+	/** Workspace directory; share it between runs to make them one project. Default: a temporary one. */
+	workdir?: string;
 	/** Mock MCP servers to expose to the agent. */
 	mcp?: { name: string; listen(): Promise<string> }[];
 	/** Per-server config merged into the agent's MCP entries (the adapter's `mcp` option). */
-	mcpConfig?: OctocodecodeAdapterOptions["mcp"];
+	mcpConfig?: OctocodeAgentAdapterOptions["mcp"];
 }
 
 /** One-shot convenience: start the adapter, run the prompt once, close. */
-export async function runOctocodecode(opts: OctocodecodeOptions): Promise<OctocodecodeRun> {
+export async function runOctocodeAgent(opts: OctocodeAgentOptions): Promise<OctocodeAgentRun> {
 	const mcpUrls: Record<string, string> = {};
 	// oxlint-disable-next-line no-await-in-loop -- one server at a time: a recorder's listen starts its upstream, so MCP requests keep a fixed order
 	for (const m of opts.mcp ?? []) mcpUrls[m.name] = await m.listen();
-	const session = await octocodecodeAdapter({ ...opts, mcp: opts.mcpConfig }).start({
+	const session = await octocodeAgentAdapter({ ...opts, mcp: opts.mcpConfig }).start({
 		gatewayUrl: opts.gatewayUrl,
 		mcpUrls,
 		env: opts.env,
+		workdir: opts.workdir,
 	});
 	try {
 		return await session.run(opts.prompt);

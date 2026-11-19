@@ -17,7 +17,7 @@ function writePackage(directory, manifest, files) {
 }
 
 function createFixture(t, { importUndeclared = false } = {}) {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "octocodecode-smoke-test-"));
+	const temporaryRoot = mkdtempSync(join(tmpdir(), "octocode-agent-smoke-test-"));
 	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
 	const root = join(temporaryRoot, "fixture with spaces");
 	const repoRoot = join(root, "repo");

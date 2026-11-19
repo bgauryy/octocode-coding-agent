@@ -7,6 +7,7 @@ import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { plural } from "../shared/text.ts";
 import { firstLine } from "../shared/util.ts";
 import { type Ask, asksLabel } from "./asks.ts";
+import { QUEUED_FOR_SLOT } from "./session/approvals.ts";
 import type { BudgetStanding, OpenQuestion } from "./model.ts";
 import { memberWorktree, worktreeLabel } from "../worktree-paths/member-worktree.ts";
 import type { MemberDetails } from "./store/details.ts";
@@ -103,7 +104,8 @@ export function describeMembers(
 							? `waiting on ${plural(children, "agent")}`
 							: "idle";
 				// The header shows the same fact as the detail line; the stored status stays `idle`.
-				const shown = member.status === "idle" && children > 0 ? "waiting" : member.status;
+				const queued = member.activity === QUEUED_FOR_SLOT;
+				const shown = queued ? "queued" : member.status === "idle" && children > 0 ? "waiting" : member.status;
 				const asked = asksLabel(asks?.get(member.id));
 				const waiting = (asks?.get(member.id) ?? []).filter((ask) => !ask.answer);
 				// `lastOutputAt` is the child's last model or tool event (or a heartbeat inside a declared long call), never a stdout byte.

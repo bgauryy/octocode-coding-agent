@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV } from "@octocodeai/octocode-common/env";
 import { isUnderPath } from "@octocodeai/octocode-common/paths";
+import { getAgentDir } from "../../../config.ts";
 import type { SandboxMode } from "../../../core/settings-defaults.ts";
 import { WORKSPACE_STATE } from "../../../storage/workspace.ts";
 import { workspaceRoot } from "../../../utils/git-repository.ts";
@@ -46,6 +47,22 @@ function real(file: string): string {
 		// A path that does not exist yet keeps its own spelling.
 		return file;
 	}
+}
+
+/** Folders under the home folder that hold keys and tokens of other programs. */
+const CREDENTIAL_FOLDERS = [".ssh", ".aws", ".gnupg"];
+
+/**
+ * What no sandboxed command reads: the agent directory's `auth.json` and the home folder's `.ssh`, `.aws` and `.gnupg`.
+ * A command that needs one runs outside the sandbox through `shell.unsandboxed`, which asks. Each path is listed as
+ * given and with symlinks resolved, so a linked home or agent directory stays covered.
+ */
+function credentialPaths(): string[] {
+	const paths = [
+		path.join(getAgentDir(), "auth.json"),
+		...CREDENTIAL_FOLDERS.map((name) => path.join(os.homedir(), name)),
+	];
+	return [...new Set(paths.flatMap((entry) => [entry, real(entry)]))];
 }
 
 /**
@@ -93,7 +110,7 @@ function readOnlyPolicy(root: string, env: NodeJS.ProcessEnv): SandboxPolicy {
 			path.join(octocode, "**", "*.md"),
 		],
 		denyWrite: [...claudeDefaultDenyWrite(), ...readOnlyProtectedPaths(root)],
-		denyRead: [],
+		denyRead: credentialPaths(),
 	};
 }
 
@@ -134,7 +151,7 @@ function sharedGitWrites(root: string): { allow: string[]; deny: string[] } {
 
 /**
  * The policy of a command started in `cwd`, or undefined when it runs unsandboxed: `sandbox.mode` is `"off"`, or `"auto"`
- * in `bypass` mode. Every sandboxed command reads everything and writes the temporary folders, its scratch folder and
+ * in `bypass` mode. Every sandboxed command reads everything but `credentialPaths` and writes the temporary folders, its scratch folder and
  * the host lock; then, narrowest first:
  * - a read-only child writes only its throwaway folders and Markdown under `.octocode/` (`read-only-role.ts`);
  * - an isolated child writes its own worktree and, in the main git folder, only what a commit on its branch needs;
@@ -157,6 +174,6 @@ export function sandboxPolicy(cwd: string, { setting, mode, env }: SandboxContex
 	return {
 		allowWrite: [...new Set([root, ...sharedWrites(env), ...git.allow])],
 		denyWrite: [...claudeDefaultDenyWrite(), ...protectedPaths(root), ...git.deny],
-		denyRead: [],
+		denyRead: credentialPaths(),
 	};
 }

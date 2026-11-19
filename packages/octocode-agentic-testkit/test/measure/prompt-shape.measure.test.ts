@@ -2,7 +2,7 @@ import "../bundle.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
+import { runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
 import type { Responder } from "../../src/gateway.ts";
 import { promptShape, sections, type PromptShape } from "../../src/measure.ts";
 import { textOf, type CapturedRequest } from "../../src/trace.ts";
@@ -10,7 +10,7 @@ import { requireBundle } from "../guards/support.ts";
 import { gateway } from "../helpers.ts";
 
 /**
- * Prompt shape of every octocodecode agent, measured on the real bundle over the Anthropic wire (so the agent's own
+ * Prompt shape of every Octocode Agent role, measured on the real bundle over the Anthropic wire (so the agent's own
  * cache markers are visible): main's first request, and the first request of a child started by the `agent` tool for
  * each profile. Free and offline (scripted gateway). Runs only with TESTKIT_MEASURE=1; writes
  * `<TESTKIT_MEASURE_DIR>/<TESTKIT_MEASURE_LABEL>/{shape.json,report.md}` and, with TESTKIT_MEASURE_BASE=<label>, a
@@ -100,7 +100,12 @@ async function capture(profile?: string): Promise<{ first: CapturedRequest; afte
 		return { toolCalls: [{ name: "agent", args }] };
 	};
 	const gw = await gateway({ responder });
-	const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "hi", api: "anthropic-messages", timeoutMs: 90_000 });
+	const run = await runOctocodeAgent({
+		gatewayUrl: gw.url,
+		prompt: "hi",
+		api: "anthropic-messages",
+		timeoutMs: 90_000,
+	});
 	expect(run.exitCode, run.stderr.slice(-2000)).toBe(0);
 	const found = profile ? gw.trace.requests.find((r) => !isMain(r)) : gw.trace.requests.find(isMain);
 	expect(found, `${profile ?? "main"}: no request captured; stderr: ${run.stderr.slice(-1500)}`).toBeDefined();

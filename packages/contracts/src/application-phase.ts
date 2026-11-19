@@ -52,3 +52,18 @@ export function isTerminalApplicationPhase(phase: ApplicationPhase): boolean {
 export function isPendingApplicationPhase(phase: ApplicationPhase): boolean {
 	return phase.state === "waiting" || phase.state === "resuming" || phase.state === "scheduled";
 }
+
+/** What the session is doing besides running: compacting, waiting for a retry, or a model request that sends nothing. */
+export const SessionStatusSchema = Type.Union([
+	Type.Literal("idle"),
+	Type.Literal("compacting"),
+	Type.Literal("retrying"),
+	Type.Literal("stalled"),
+]);
+
+export const SessionStatusEventSchema = Type.Object({
+	type: Type.Literal("session.status"),
+	status: SessionStatusSchema,
+	/** One line on why the status is not idle: how long the model has been quiet, or when the retry starts. */
+	detail: Type.Optional(Type.String()),
+});

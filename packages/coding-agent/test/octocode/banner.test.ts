@@ -5,19 +5,19 @@ import { type BannerPaint, bannerLines, ISSUES_URL } from "../../src/octocode/ui
 const plain: BannerPaint = { fg: (_color, text) => text };
 const NOTICE = `BETA version ; please assign issues here ${ISSUES_URL}`;
 
-describe('banner "OCTOCODE CODE"', () => {
+describe('banner "OCTOCODE AGENT"', () => {
 	it("is only the half-block art and the beta notice", () => {
 		const lines = bannerLines(plain, 120);
 		expect(lines).toEqual([
-			"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀",
-			"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
+			"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   ▄▀█ █▀▀ █▀▀ █▄ █ ▀█▀",
+			"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▀█ █▄█ ██▄ █ ▀█  █ ",
 			NOTICE,
 		]);
 		expect(ISSUES_URL).toBe("https://github.com/bgauryy/octocodecode/issues");
 		expect(lines.join("\n")).not.toMatch(/research-driven|\/status|interrupt/);
 	});
 
-	it("falls back to theme tokens without a gradient: OCTOCODE accent, CODE mdLink", () => {
+	it("falls back to theme tokens without a gradient: OCTOCODE accent, AGENT mdLink", () => {
 		const painted: Array<[string, string]> = [];
 		bannerLines(
 			{
@@ -50,7 +50,7 @@ describe('banner "OCTOCODE CODE"', () => {
 	});
 
 	it("keeps one height at every width and fits each line, with the plain name below the art's width", () => {
-		expect(bannerLines(plain, 30)[0]).toBe("OCTOCODE CODE");
+		expect(bannerLines(plain, 30)[0]).toBe("OCTOCODE AGENT");
 		for (const width of [1, 4, 20, 46, 47, 80, 200]) {
 			const lines = bannerLines(plain, width);
 			// A resize never changes the rows above the transcript, so it never forces a scrollback redraw by itself.

@@ -157,6 +157,64 @@ describe("the timer scheduler", () => {
 		expect(new Set(checked).size).toBe(rows.length);
 		expect(woken.filter((note) => note === "condition")).toHaveLength(7);
 	});
+	it.each(["cancel", "shutdown"] as const)(
+		"wakes nobody and keeps no watcher or hold when a %s lands during an awaited condition check",
+		async (end) => {
+			const row = add({ note: "edit src/a.ts now", until: { unlocked: "src/a.ts" } });
+			const woken: string[] = [];
+			const signals: Array<AbortSignal | undefined> = [];
+			let release!: (outcome: CheckOutcome) => void;
+			let subscribed = 0;
+			let unsubscribed = 0;
+			let poke!: () => void;
+			const instance = new TimerScheduler({
+				db: () => agent,
+				sessionId: "s1",
+				check: async (_condition, input) => {
+					signals.push(input.signal);
+					return new Promise<CheckOutcome>((resolve) => (release = resolve));
+				},
+				watch: (_condition, _cwd, onPoke) => {
+					subscribed++;
+					poke = onPoke;
+					return () => void unsubscribed++;
+				},
+				wake: (fired) => woken.push(fired.note),
+			});
+			started.push(instance);
+			instance.hold(row.id);
+			instance.refresh();
+			expect(subscribed).toBe(1);
+			const held = instance.settle();
+			let settled = false;
+			void held.then(() => (settled = true));
+
+			poke();
+			await vi.advanceTimersByTimeAsync(200);
+			expect(signals).toHaveLength(1);
+
+			if (end === "cancel") {
+				expect(timers.cancel(agent.db, row.id, "s1", Date.now())).toMatchObject({ status: "cancelled" });
+				instance.refresh();
+			} else instance.stop();
+			expect(signals[0]?.aborted).toBe(true);
+			expect(unsubscribed).toBe(1);
+			await held;
+			expect(settled).toBe(true);
+
+			release({ met: true, exit: 0, output: "" });
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(woken).toEqual([]);
+			expect(unsubscribed).toBe(1);
+			expect(subscribed).toBe(1);
+			await instance.settle();
+			expect(timers.get(agent.db, row.id)).toMatchObject(
+				end === "cancel" ? { status: "cancelled" } : { status: "active" },
+			);
+			expect(vi.getTimerCount()).toBe(0);
+		},
+	);
+
 	it("fires a one-shot once with its note", async () => {
 		add({ note: "check the build", after: 5 });
 		const { instance, woken } = scheduler();

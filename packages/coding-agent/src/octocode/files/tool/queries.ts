@@ -16,31 +16,30 @@ const QuerySchema = Type.Object({
 		type: "string",
 		enum: ["edit", "write", "delete"],
 		description:
-			"edit: exact replacements; write: create or replace; delete: irreversible, only when the task requires it",
+			"edit: exact replacements; write: create or replace; delete: irreversible, only when the task needs it",
 	}),
 	path: Type.String({ description: "Absolute path or relative to cwd" }),
 	edits: Type.Optional(
 		Type.Array(
 			Type.Object({
 				oldText: Type.String({
-					description:
-						"Exact text, unique in the file unless replaceAll; with line, the whole original line without its terminator",
+					description: "Exact text, unique unless replaceAll; with line: that whole original line, no terminator",
 				}),
 				newText: Type.String({ description: "Replacement text" }),
 				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),
 				sourceSha256: Type.Optional(
 					Type.String({
-						description: "SHA-256 of the whole file as read or from the last OK line; needs line",
+						description: "Whole-file SHA-256 as read or from the last OK line; needs line",
 					}),
 				),
 				replaceAll: Type.Optional(
 					Type.Boolean({
-						description: "All non-overlapping matches; default false.",
+						description: "Every non-overlapping match (default false)",
 					}),
 				),
 			}),
 			{
-				description: "edit: replacements matched against the original content; none may overlap",
+				description: "edit: non-overlapping, matched against the original content",
 			},
 		),
 	),

@@ -41,6 +41,7 @@ const skillSchema = Type.Object(
 		disableModelInvocation: Type.Boolean(),
 		audience: Type.Optional(Type.Literal("coordinator")),
 		userInvocable: Type.Optional(Type.Boolean()),
+		triggers: Type.Optional(Type.Array(text, { maxItems: 64 })),
 		argumentStyle: Type.Optional(Type.Literal("claude")),
 		claudePluginRoot: Type.Optional(text),
 		claudePluginData: Type.Optional(text),

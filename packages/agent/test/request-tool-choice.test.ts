@@ -103,4 +103,58 @@ describe("a request's tool choice", () => {
 		expect(host.nextToolChoice).toBeUndefined();
 		expect(await config.prepareRequest?.(request)).toBeUndefined();
 	});
+
+	it.each(["none", "required", { type: "function", name: "probe" }] as const)(
+		"%j survives an input refresh with late steering, and the next request resets it",
+		async (choice) => {
+			const steering = new PendingMessageQueue("one-at-a-time");
+			const host = {
+				convertToLlm,
+				transport: "sse" as const,
+				toolExecution: "parallel" as const,
+				nextToolChoice: choice as never,
+				signal: undefined,
+				// The first preparation asks for a refresh while steering has arrived since.
+				prepareRequest: (() => {
+					let calls = 0;
+					return () => {
+						if (++calls === 1) {
+							steering.enqueue({ role: "user", content: "late", timestamp: Date.now() });
+							return { refreshInput: true };
+						}
+						return undefined;
+					};
+				})(),
+			};
+			const config = createAgentLoopConfig(
+				host,
+				{ model, thinkingLevel: "off" },
+				steering,
+				new PendingMessageQueue("one-at-a-time"),
+				{ skipInitialSteeringPoll: true },
+			);
+			const choices: unknown[] = [];
+			await runAgentLoop(
+				[user],
+				{ messages: [], tools: [probe] },
+				config,
+				() => undefined,
+				undefined,
+				(_model, _context, options) => {
+					choices.push(options?.toolChoice);
+					const response = createAssistantMessageEventStream();
+					const last = choices.length === 2;
+					queueMicrotask(() =>
+						response.push({
+							type: "done",
+							reason: last ? "stop" : "toolUse",
+							message: last ? reply([{ type: "text", text: "done" }], "stop") : reply([toolCall], "toolUse"),
+						}),
+					);
+					return response;
+				},
+			);
+			expect(choices).toEqual([choice, undefined]);
+		},
+	);
 });

@@ -139,8 +139,11 @@ const BACKLOG_ENTITIES_CEILING = 1_750;
  * tmux use and grooming the backlog after a close (measured 37_373). Then 37_475 for the coordinate guideline that has every
  * agent check `coordinate` `list` before merges and repository-wide actions too (measured 37_448). Lowered to 36_800 (measured 36_410, 1.1% over) after the `agent` task-field descriptions were shortened. Lowered to 33_500
  * (measured 33_129, 1.1% over) after the efficiency pass that folded duplicated policy lines into the MCP block and tools.
+ * Lowered to 32_700 (measured 32_333, 1.1% over) after the concise rewording of every native tool's text. Raised to
+ * 33_200 (measured 32_844) for the rules the user asked for: state the next move every reply, map the blast radius,
+ * visuals over prose, ask only when it changes the result, each option with its trade-off (+511).
  */
-const MAIN_CEILING = 33_500;
+const MAIN_CEILING = 33_200;
 /**
  * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`. Raised from 21_050 for the rules that make every specialist
@@ -151,20 +154,23 @@ const MAIN_CEILING = 33_500;
  * scripts that condense output, and an item done only when its tasks are done and its resources released (measured 21_962).
  * Then 22_450 (user-approved; measured 22_373): the user's testing rule (edge cases, the real path, outcomes over
  * internals), `wait`'s cron fields (+207) and `bash`'s `sandbox` parameter (+155), less the child ask line that now
- * defers to the escalation rule (-136).
+ * defers to the escalation rule (-136). Lowered to 22_200 (measured 21_951) after the concise rewording of every native
+ * tool's text.
  */
-const SPECIALIST_CEILING = 22_450;
+const SPECIALIST_CEILING = 22_200;
 
 /**
  * Measured 19,346 (MCP 11,750 + skills 7,596); 0.8% over. Raised from 19,500 (user-approved) for the user-requested
  * research, classify and maintenance skills, with octocode-research hidden on this host (measured 20,103).
  */
-const MCP_SKILLS_MAIN = 20_300;
+// Lowered to 19_000 (measured 18_686: MCP 11,239 + skills 7,447) after the concise skill descriptions and tool text.
+const MCP_SKILLS_MAIN = 19_000;
 /**
  * Measured 12,904 at most (reviewer: MCP 11,750 + a 2-skill catalog 1,154; researcher 12,838); 3.8% over. Raised from 12,600
  * because the bundled octocode-mcp tool text grew from 10,724 to 11,750, which Octocode may not rewrite.
  */
-const MCP_SKILLS_FILTERED = 13_400;
+// Lowered to 13_000 (measured 12_700: researcher MCP 11,239 + skills 1,461) after the same pass.
+const MCP_SKILLS_FILTERED = 13_000;
 
 describe("prompt size", () => {
 	it("main session", async () => {

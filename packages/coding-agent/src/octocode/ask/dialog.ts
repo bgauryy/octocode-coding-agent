@@ -1,6 +1,6 @@
 import { Editor } from "@octocodeai/octocode-tui";
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
-import type { FeatureContext } from "../../core/features/index.ts";
+import type { SessionUI } from "../../core/features/index.ts";
 import { titledDialog } from "../shared/locks.ts";
 import { AskDialog } from "./dialog/component.ts";
 import { remoteAnswer } from "./dialog/view.ts";
@@ -12,12 +12,15 @@ import { editorTheme } from "./dialog/theme.ts";
  * Single-choice questions answer on Enter; multi-select questions toggle with
  * Space or Enter and answer only from their own "Submit selection" row. The wheel
  * moves one option, a press selects one, and a click on the selected one acts as
- * Enter unless an option is marked dangerous.
+ * Enter unless an option is marked dangerous. `onClose` runs when the dialog is disposed, on every path (answered,
+ * dismissed, aborted, displaced), so a caller can end what it reports while the dialog is open.
  */
 export function showAskDialog(
-	ctx: Pick<FeatureContext, "ui">,
+	ctx: { ui: Pick<SessionUI, "custom"> },
 	questions: readonly Question[],
 	signal?: AbortSignal,
+	onClose?: () => void,
+	expiry?: { seconds: number; label: string },
 ): Promise<Reply[]> {
 	const cancelled = (reason: "declined" | "aborted"): Reply[] =>
 		questions.map((q) => ({ id: q.id, cancelled: reason }));
@@ -29,8 +32,8 @@ export function showAskDialog(
 	return titledDialog(title, () =>
 		ctx.ui
 			.custom<Reply[]>(
-				(tui, theme, keybindings, done) =>
-					(shown = new AskDialog(
+				(tui, theme, keybindings, done) => {
+					const dialog = new AskDialog(
 						questions,
 						keybindings,
 						theme,
@@ -38,7 +41,17 @@ export function showAskDialog(
 						() => tui.requestRender(),
 						done,
 						signal,
-					)),
+						expiry,
+					);
+					if (onClose) {
+						const dispose = dialog.dispose.bind(dialog);
+						dialog.dispose = () => {
+							dispose();
+							onClose();
+						};
+					}
+					return (shown = dialog);
+				},
 				remoteAnswer(questions, () => shown?.hold()),
 			)
 			// Closed without an answer (another view took its place, or the UI was reset): a dismissal.

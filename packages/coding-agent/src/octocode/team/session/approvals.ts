@@ -3,6 +3,9 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 /** The activity line of a member blocked on the user's answer: pausing it is deliberate, and a parent can route around it. */
 export const WAITING_APPROVAL = "waiting for approval";
 
+/** The activity line of a child resumed or started into a full pool: nothing runs yet, so there is no progress to measure. */
+export const QUEUED_FOR_SLOT = "queued for a free slot";
+
 /** How a subagent's run ended, as the host (the process that ran it) reports it on the member (`Member.outcome`, `headline`). */
 export interface RunEnd {
 	outcome: NonNullable<Member["outcome"]>;
@@ -20,6 +23,7 @@ const OUTPUT_KEPT = 128;
 export class WaitingApprovals {
 	private readonly waiting = new Set<string>();
 	private readonly output = new Map<string, number>();
+	private readonly queued = new Set<string>();
 	private readonly ends = new Map<string, RunEnd>();
 
 	set(id: string, waiting: boolean): void {
@@ -33,6 +37,21 @@ export class WaitingApprovals {
 		this.output.delete(id);
 		this.output.set(id, at);
 		if (this.output.size > OUTPUT_KEPT) this.output.delete(this.output.keys().next().value!);
+	}
+
+	/**
+	 * Subagent `id` waits for a free slot: its previous run's output no longer measures anything, and until `noteStarted`
+	 * it shows as queued and is never reported silent.
+	 */
+	noteQueued(id: string): void {
+		this.output.delete(id);
+		this.queued.add(id);
+	}
+
+	/** Subagent `id` left the slot queue, started or not: when it started, its silence is measured from `at`. */
+	noteStarted(id: string, at?: number): void {
+		this.queued.delete(id);
+		if (at !== undefined) this.noteOutput(id, at);
 	}
 
 	/** When subagent `id` last wrote output, if this host saw any. */
@@ -61,11 +80,13 @@ export class WaitingApprovals {
 		this.ends.clear();
 		this.waiting.clear();
 		this.output.clear();
+		this.queued.clear();
 	}
 
 	/** The view with each waiting member marked `waiting` (and its activity line replaced), each ended child's outcome, and each running child's last output. */
 	overlay<T extends { members: Member[] }>(view: T): T {
-		if (this.waiting.size === 0 && this.output.size === 0 && this.ends.size === 0) return view;
+		if (this.waiting.size === 0 && this.output.size === 0 && this.ends.size === 0 && this.queued.size === 0)
+			return view;
 		return {
 			...view,
 			members: view.members.map((member) => {
@@ -74,6 +95,7 @@ export class WaitingApprovals {
 				return {
 					...member,
 					// The listing prints the activity line; panels and the webview read `waiting`.
+					...(this.queued.has(member.id) ? { activity: QUEUED_FOR_SLOT } : {}),
 					...(this.waiting.has(member.id) ? { activity: WAITING_APPROVAL, waiting: "approval" as const } : {}),
 					...(end ? { outcome: end.outcome, ...(end.headline ? { headline: end.headline } : {}) } : {}),
 					...(lastOutputAt === undefined ? {} : { lastOutputAt }),

@@ -135,4 +135,78 @@ describe("ConfigView Harness panel", () => {
 		expect(within(harnesses).getByText("Claude Code")).toBeInTheDocument();
 		expect(api.list).toHaveBeenCalledExactlyOnceWith(undefined);
 	});
+
+	describe("scan preview", () => {
+		const scan = {
+			id: "harness:claude",
+			label: "Claude Code",
+			items: 2,
+			lines: [
+				"Claude Code would bring 1 skill, 1 MCP server, 0 hooks.",
+				"  HIGH     MCP server  x \u2014 runs a command",
+			],
+		};
+		const withPreview = (preview: (id: string, repoId?: string) => Promise<typeof scan>) => {
+			const api = {
+				...harnessApi(async (command) => ({
+					rows: list.rows.map((row) => (row.id === command.id ? { ...row, on: command.on } : row)),
+				})),
+				preview: vi.fn(preview),
+			};
+			return api;
+		};
+
+		it("shows the scan first and writes only after confirm", async () => {
+			const api = withPreview(async () => scan);
+			render(<ConfigView load={async () => snapshot(true)} harness={api} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn on Claude Code" }));
+			expect(await screen.findByText(/would bring 1 skill/)).toBeInTheDocument();
+			expect(api.preview).toHaveBeenCalledWith("harness:claude", undefined);
+			expect(api.set).not.toHaveBeenCalled();
+			await userEvent.click(screen.getByRole("button", { name: "Confirm turn on Claude Code" }));
+			expect(api.set).toHaveBeenCalledWith({ id: "harness:claude", on: true, scope: "global" });
+			expect(await screen.findByRole("button", { name: "Turn off Claude Code" })).toBeInTheDocument();
+		});
+
+		it("writes nothing on cancel", async () => {
+			const api = withPreview(async () => scan);
+			render(<ConfigView load={async () => snapshot(true)} harness={api} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn on Claude Code" }));
+			await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+			expect(api.set).not.toHaveBeenCalled();
+			expect(screen.queryByText(/would bring/)).toBeNull();
+		});
+
+		it("switches without a review when the row has no source to scan, and previews only a harness that is off", async () => {
+			const api = withPreview(async () => ({ ...scan, items: 0, lines: [] }));
+			render(<ConfigView load={async () => snapshot(true)} harness={api} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn on Claude Code" }));
+			expect(api.set).toHaveBeenCalledTimes(1);
+			cleanup();
+			const on = withPreview(async () => scan);
+			render(<ConfigView load={async () => snapshot(true)} harness={on} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn off docs" }));
+			expect(on.preview).not.toHaveBeenCalled();
+		});
+
+		it("shows an empty scan's message, and a failed scan blocks the write", async () => {
+			const empty = withPreview(async () => ({
+				...scan,
+				items: 0,
+				lines: ["Claude Code has no skills, MCP servers or hooks for this folder."],
+			}));
+			render(<ConfigView load={async () => snapshot(true)} harness={empty} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn on Claude Code" }));
+			expect(await screen.findByText(/has no skills, MCP servers or hooks/)).toBeInTheDocument();
+			expect(empty.set).not.toHaveBeenCalled();
+			cleanup();
+			const failing = withPreview(async () => {
+				throw new Error("The scan failed: boom");
+			});
+			render(<ConfigView load={async () => snapshot(true)} harness={failing} />);
+			await userEvent.click(await screen.findByRole("button", { name: "Turn on Claude Code" }));
+			expect(await screen.findByRole("alert")).toHaveTextContent("The scan failed: boom");
+			expect(failing.set).not.toHaveBeenCalled();
+		});
+	});
 });

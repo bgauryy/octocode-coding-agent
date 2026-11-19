@@ -90,8 +90,8 @@ const ManageSchema = Type.Object({
 			description: `Server name; required for every intent except list. "${NATIVE_SERVER}" with tools reads a deferred native tool`,
 		}),
 	),
-	tool: Type.Optional(Type.String({ description: "tools: the tool to inspect" })),
-	uri: Type.Optional(Type.String({ description: "read: the resource URI, as resources lists it" })),
+	tool: Type.Optional(Type.String()),
+	uri: Type.Optional(Type.String()),
 });
 
 /**
@@ -170,7 +170,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		label: "MCP",
 		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
 		description:
-			"Manage this session's MCP servers; no configuration file changes. list: state, tool count, group, purpose and last error (one server with server, plus where it is defined). tools: the catalog; with tool, its full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
+			"Manage this session's MCP servers; configuration files stay unchanged. list: state, tool count, group, purpose, last error (with server: that one, plus where it is defined). tools: the catalog; with tool: that tool's full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri, as resources lists it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {

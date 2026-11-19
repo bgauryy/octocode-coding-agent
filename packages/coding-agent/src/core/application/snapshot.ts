@@ -17,6 +17,7 @@ export function applicationSnapshot(
 		...activities.window(),
 		errors: cloneDisplay(state.errors),
 		status: state.status,
+		...(state.statusDetail ? { statusDetail: state.statusDetail } : {}),
 		...(state.awaiting ? { awaiting: { ...state.awaiting } } : {}),
 		...(state.phase ? { phase: structuredClone(state.phase) } : {}),
 		...(state.jobStartedAt === undefined ? {} : { jobStartedAt: state.jobStartedAt }),

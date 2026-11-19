@@ -16,7 +16,7 @@ export type CloseKind = (typeof CLOSE_KINDS)[number];
 export const CloseInputSchema = Type.Object(
 	{
 		kind: StringEnum(CLOSE_KINDS),
-		text: Type.String({ description: "Reason" }),
+		text: Type.String(),
 		of: Type.Optional(Type.String({ description: "duplicate: the original" })),
 	},
 	{ additionalProperties: false },

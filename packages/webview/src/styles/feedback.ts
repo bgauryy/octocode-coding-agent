@@ -13,7 +13,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .run-indicator { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); font-size: var(--fs-sm); font-weight: 500; }
 .run-orb { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--orb, var(--accent)); }
 .run-orb::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--orb, var(--accent)); opacity: 0; animation: ping 1.6s var(--ease) infinite; }
-.phase-retrying { --orb: var(--warning); }
+.phase-retrying, .phase-stalled { --orb: var(--warning); }
 .phase-writing .phase-cursor { color: var(--accent); }
 .phase-waiting { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); }
 .phase-waiting .shimmer, .run-indicator.is-stale .shimmer { background: none; color: var(--text); animation: none; }

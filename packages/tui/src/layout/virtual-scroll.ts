@@ -9,6 +9,7 @@ import { rowAt, rowsBetween } from "./row-window.ts";
 import type { LayoutBox, LayoutRect } from "./types.ts";
 import { VirtualDocument } from "./virtual-document.ts";
 import { layoutVirtual } from "./virtual-frame.ts";
+import { anchorOnWidthChange } from "./width-anchor.ts";
 
 type LayoutChild = (component: Component, x: number, y: number, width: number, clip: LayoutRect) => LayoutBox;
 
@@ -84,6 +85,7 @@ function layoutExact(
 ): LayoutBox {
 	const { x, y, contentWidth, clip } = frame;
 	if (node.state.virtualize) settlePending(node, contentWidth);
+	else anchorOnWidthChange(node, contentWidth);
 	const rect = (viewportHeight: number) => ({ x, y, width: frame.width, height: viewportHeight });
 	const rows = frame.height === undefined ? undefined : documentRows(node.component, contentWidth);
 	if (rows !== undefined && frame.height !== undefined) {

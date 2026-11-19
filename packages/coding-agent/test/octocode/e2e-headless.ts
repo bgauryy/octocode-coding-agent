@@ -100,6 +100,7 @@ export async function headless(options: HeadlessOptions = {}) {
 			OCTOCODE_HOME: path.join(home, ".octocode"),
 			OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
 			OCTOCODE_MCP: "0",
+			OCTOCODE_OFFLINE: "1",
 		},
 		options.env ?? {},
 	);

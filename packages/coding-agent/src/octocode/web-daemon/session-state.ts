@@ -35,11 +35,28 @@ export class SessionWatch {
 	private running = false;
 	private waiting = false;
 
-	constructor(port: ApplicationPort, sessionId: string, changed: () => void) {
+	/** Where a throw goes: by default a rejection the daemon's `unhandledRejection` guard logs to `web/daemon.log`. */
+	private readonly report: (error: unknown) => void;
+
+	constructor(
+		port: ApplicationPort,
+		sessionId: string,
+		changed: () => void,
+		report: (error: unknown) => void = (error) => void Promise.reject(error),
+	) {
 		this.port = port;
 		this.sessionId = sessionId;
 		this.changed = changed;
-		void this.follow();
+		this.report = report;
+		this.start();
+	}
+
+	/** Follows the session. A throw (a frame `apply` cannot read, a broken stream) is reported and still reconnects. */
+	private start(): void {
+		this.follow().catch((error: unknown) => {
+			this.later();
+			this.report(error);
+		});
 	}
 
 	private async follow(): Promise<void> {
@@ -57,8 +74,8 @@ export class SessionWatch {
 				this.apply(frame);
 				if (frame.type === "resync") break;
 			}
-		} catch {
-			// The stream ended with the attach connection; the registry drops this watch or it reconnects below.
+			// A closed or dropped connection ends the stream by returning, so the loop above exits normally and the watch
+			// reconnects below; a throw propagates to `start`.
 		} finally {
 			connection.close();
 			if (this.connection === connection) this.connection = undefined;
@@ -72,7 +89,7 @@ export class SessionWatch {
 
 	private later(): void {
 		if (this.stopped) return;
-		this.timer = setTimeout(() => void this.follow(), RECONNECT_MS);
+		this.timer = setTimeout(() => this.start(), RECONNECT_MS);
 		this.timer.unref();
 	}
 

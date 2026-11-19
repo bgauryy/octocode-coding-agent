@@ -160,3 +160,70 @@ export interface TrafficDrop {
 	recipient: string;
 	read: boolean;
 }
+
+/** The custom message type that carries delivered agent mail; its `details.messages` is the batch. */
+export const MAIL_MESSAGE_TYPE = "octocode-agent-message";
+
+/** Who is working, as every surface marks it: the main agent (a session a person drives) as a squid, a subagent as an octopus. */
+export const ENTITY = { main: "🦑", subagent: "🐙" } as const;
+
+/** Process roles that run a main session: the terminal app, an RPC host and an ACP host. Every other role is a subagent's. */
+const MAIN_ROLES: ReadonlySet<string> = new Set(["main", "rpc", "acp"]);
+
+/** The mark of a process role (`main`, `rpc`, `acp`, or a subagent's role such as `researcher`). */
+export const entityOfRole = (role: string): string => (MAIN_ROLES.has(role) ? ENTITY.main : ENTITY.subagent);
+
+/** The kind words of a message: a reply names what it answers (`reply` alone when the recipient already does). */
+export function mailKinds(
+	message: { replyRequired?: unknown; replyTo?: unknown; interrupt?: unknown },
+	replyLinked = true,
+): string[] {
+	const words = [
+		message.replyTo === undefined
+			? ""
+			: replyLinked
+				? `reply to #${typeof message.replyTo === "string" || typeof message.replyTo === "number" ? message.replyTo : ""}`
+				: "reply",
+		message.replyRequired === true ? "request" : "",
+		message.interrupt === true ? "interrupt" : "",
+	].filter(Boolean);
+	return words.length ? words : ["FYI"];
+}
+
+/** One delivered message as a view draws it: header facts and the body. */
+export interface MailView {
+	from: string;
+	to?: string;
+	/** The sender's role when its message recorded one, for the entity mark. */
+	role?: string;
+	number?: number;
+	kinds: string[];
+	forwardedBy?: string;
+	at?: number;
+	text: string;
+}
+
+const str = (value: unknown): string | undefined =>
+	typeof value === "string" ? value : typeof value === "number" ? String(value) : undefined;
+
+/** The messages of a delivered-mail custom message's `details`; anything but a batch is undefined (the model's text shows). */
+export function mailViews(details: unknown): MailView[] | undefined {
+	const batch = (details as { messages?: unknown } | null | undefined)?.messages;
+	if (!Array.isArray(batch) || batch.length === 0) return undefined;
+	return batch.map((raw: unknown) => {
+		const entry = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+		const role = (entry.sender as { role?: unknown } | undefined)?.role;
+		const by = str(entry.forwardedBy);
+		const note = by && entry.note !== undefined ? `${by}: ${str(entry.note) ?? ""}\n` : "";
+		return {
+			from: str(entry.from)?.slice(0, 64) || "agent",
+			...(str(entry.to) ? { to: str(entry.to)?.slice(0, 64) } : {}),
+			...(typeof role === "string" && entry.from !== "user" ? { role } : {}),
+			...(typeof entry.id === "number" ? { number: entry.id } : {}),
+			kinds: mailKinds(entry),
+			...(by ? { forwardedBy: by.slice(0, 64) } : {}),
+			...(typeof entry.at === "number" ? { at: entry.at } : {}),
+			text: `${note}${str(entry.text) ?? ""}`,
+		};
+	});
+}

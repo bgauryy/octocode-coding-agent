@@ -124,8 +124,9 @@ export function messageText(
 }
 
 /**
- * Why `from` may not interrupt `targets` (undefined when it may): an interrupt cancels running work, so it reaches one
- * subagent, and only from the agent that started it or from the user of its session (`scope`, in `members`).
+ * Why `from` may not interrupt `targets` (undefined when it may): an interrupt cancels running work, so it reaches only
+ * subagents `from` started, or, from the user of its session (`scope`, in `members`), subagents of that session. Every
+ * target must qualify: one that does not refuses the whole send, so a broadcast never stops a peer by accident.
  */
 export function interruptRefusal(
 	members: Member[],
@@ -134,18 +135,19 @@ export function interruptRefusal(
 	to: string,
 	scope: string | undefined,
 ): string | undefined {
-	const [target] = targets;
-	if (to === "all" || targets.length !== 1 || !target)
-		return "An interrupt reaches one subagent: name its id. Nothing was sent.";
-	if (from !== USER_SENDER) {
-		return target.parentId === from
-			? undefined
-			: `An interrupt stops only a subagent you started; ${target.id} is not one. Send it without interrupt. Nothing was sent.`;
+	if (targets.length === 0) return "An interrupt needs a recipient: name a subagent id, or use all. Nothing was sent.";
+	const tree = from === USER_SENDER && scope !== undefined ? sessionTree(members, scope) : undefined;
+	for (const target of targets) {
+		if (from !== USER_SENDER) {
+			if (target.parentId !== from)
+				return to === "all"
+					? `An interrupt stops only subagents you started; ${target.id} is not one. Name your subagents one by one, or send without interrupt. Nothing was sent.`
+					: `An interrupt stops only a subagent you started; ${target.id} is not one. Send it without interrupt. Nothing was sent.`;
+		} else if (target.parentId === undefined || !tree?.has(target.id)) {
+			return `An interrupt stops only a subagent of this session; ${target.id} is not one. Nothing was sent.`;
+		}
 	}
-	const ours = target.parentId !== undefined && scope !== undefined && sessionTree(members, scope).has(target.id);
-	return ours
-		? undefined
-		: `An interrupt stops only a subagent of this session; ${target.id} is not one. Nothing was sent.`;
+	return undefined;
 }
 
 /** Whether `name` is an Octocode process title (`octocode-main-<id>`, `octocode-rpc-<id>`; see `processes/title.ts`), not an agent id. */

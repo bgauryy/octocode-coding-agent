@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
+import { runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
 import type { Responder } from "../../src/gateway.ts";
 import type { Step } from "../../src/script.ts";
 import { type CapturedRequest, type ChatMessage, textOf } from "../../src/trace.ts";
@@ -63,7 +63,7 @@ export async function runFlow(
 				mcpServers[name] = { url, headers: { "x-testkit-agent": "main", "x-testkit-span": "main" }, roles };
 			writeFileSync(join(home.home, "mcp.json"), JSON.stringify({ mcpServers }));
 		}
-		const run = await runOctocodecode({
+		const run = await runOctocodeAgent({
 			keep: true,
 			gatewayUrl: gw.url,
 			args: [...FLAGS, ...opts.turns.slice(0, -1)],

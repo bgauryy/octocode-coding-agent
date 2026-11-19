@@ -17,7 +17,7 @@ export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). Supported routes get a cooperative team inbox; no native wake/resume. See models. No skills, mcp, profile, resume or headless.",
+				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). No skills, mcp, profile, resume or headless.",
 		}),
 	);
 

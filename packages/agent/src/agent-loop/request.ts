@@ -27,6 +27,8 @@ export async function prepareProviderRequest(
 	let context = initialContext;
 	let config = initialConfig;
 	let update: AgentRequestUpdate | void = undefined;
+	// A one-shot tool choice is consumed by the preparation that returned it: the rebuilt request keeps it.
+	let carriedChoice: AgentRequestUpdate["toolChoice"];
 	// A long preparation may request one final input selection. Never take a second batch
 	// in one-at-a-time mode, or recursively refresh input while rebuilding the request.
 	for (let attempt = 0; attempt < 2; attempt++) {
@@ -34,6 +36,8 @@ export async function prepareProviderRequest(
 			{ context, model: config.model, thinkingLevel: config.reasoning ?? "off" },
 			signal,
 		);
+		if (carriedChoice && !update?.toolChoice) update = { ...update, toolChoice: carriedChoice };
+		carriedChoice = update?.toolChoice;
 		if (update) {
 			context = update.context ?? context;
 			config = withModelUpdate(config, update);

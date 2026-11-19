@@ -1,4 +1,4 @@
-# Working on octocode-code
+# Working on octocode-agent
 
 A coding agent forked from [Pi](https://github.com/earendil-works/pi). `../octocode/packages/octocode-pi-extension` is a migration reference only, never a runtime dependency or a second implementation. Terms (coordinator, subagent, worktree, item): [GLOSSARY](packages/coding-agent/docs/GLOSSARY.md).
 
@@ -49,7 +49,7 @@ setup and model-data hydration: [DEVELOPMENT.md](DEVELOPMENT.md). Yarn runs ever
 | `yarn run check` | typecheck, Oxlint, Oxfmt check, browser smoke, subpaths, bundle and favicon freshness, package/architecture/DB/MCP boundaries, reference pages, Knip; rewrites nothing |
 | `yarn oxfmt <files>` | formats those files (`yarn run format`: whole repo) |
 | `yarn vitest run --config vitest.octocode.config.ts [paths]` (in `packages/coding-agent`) | native suite (`test/octocode/`); without `--config`, the core suite (the rest of `test/`); `yarn run test:changed` for changed files |
-| `yarn workspace @octocodeai/octocodecode run test:e2e` | real sessions on a scripted model, no network; holds the prompt-size ceilings |
+| `yarn workspace @octocodeai/octocode-agent run test:e2e` | real sessions on a scripted model, no network; holds the prompt-size ceilings |
 | `./test.sh` | every test with isolated config (needs `fd`, `rg`); `yarn test:agentic`: testkit, agent-eval |
 | `yarn run build:offline` | builds into `packages/coding-agent/dist/bundle/`; `yarn run build` refreshes model data first; `yarn start` runs source |
 | `node scripts/agent-eval/run.mjs --dry-run --model <id>` | plans the ship eval; `--live` costs money: only on request |
@@ -62,9 +62,9 @@ setup and model-data hydration: [DEVELOPMENT.md](DEVELOPMENT.md). Yarn runs ever
 
 ## Generated files and releases
 
-Change the generator, never its output (`yarn workspace @octocodeai/octocodecode run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`. `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
+Change the generator, never its output (`yarn workspace @octocodeai/octocode-agent run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`. `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
 
-`@octocodeai/octocodecode` and `@octocodeai/octocode-agentic-testkit` are the public packages. Every other workspace is bundled into octocodecode and tied to the sibling `octocode` repository by `link:` dependencies and `octocodeRelease`; the testkit depends on no workspace and publishes on its own (`yarn pack` builds and runs `check:consumer` first). Releases: [DEVELOPMENT.md](DEVELOPMENT.md) (`publish:dry` rehearses).
+`@octocodeai/octocode-agent` and `@octocodeai/octocode-agentic-testkit` are the public packages. Every other workspace is bundled into octocode-agent and tied to the sibling `octocode` repository by `link:` dependencies and `octocodeRelease`; the testkit depends on no workspace and publishes on its own (`yarn pack` builds and runs `check:consumer` first). Releases: [DEVELOPMENT.md](DEVELOPMENT.md) (`publish:dry` rehearses).
 
 ## Dogfooding
 

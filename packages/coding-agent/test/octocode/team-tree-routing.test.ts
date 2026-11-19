@@ -6,7 +6,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentRuns, backlog, sessions, sharedDatabase } from "../../../db/src/api.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
-import { resolveTarget } from "../../src/octocode/team/routing.ts";
+import { interruptRefusal, resolveTarget } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
@@ -39,6 +39,30 @@ const members = [
 	member("kid-b1", "reviewer", "main-b"),
 ];
 const ids = (result: Member[] | string) => (typeof result === "string" ? result : result.map((each) => each.id));
+
+describe("interruptRefusal", () => {
+	const kids = (...who: string[]) => members.filter((each) => who.includes(each.id));
+
+	it("lets a parent interrupt several of its own subagents with one broadcast", () => {
+		expect(interruptRefusal(members, kids("kid-a1", "kid-a2"), "main-a", "all", "main-a")).toBeUndefined();
+	});
+
+	it("refuses the whole broadcast when one target is not the sender's subagent, naming it", () => {
+		expect(interruptRefusal(members, kids("kid-a1", "kid-a1x"), "main-a", "all", "main-a")).toMatch(
+			/stops only subagents you started; kid-a1x is not one.*Nothing was sent/,
+		);
+	});
+
+	it("lets the user interrupt every subagent of this session and refuses another session's", () => {
+		expect(interruptRefusal(members, kids("kid-a1", "kid-a1x"), "user", "all", "main-a")).toBeUndefined();
+		expect(interruptRefusal(members, kids("kid-a1", "kid-b1"), "user", "all", "main-a")).toMatch(/kid-b1 is not one/);
+		expect(interruptRefusal(members, kids("main-a"), "user", "main-a", "main-a")).toMatch(/main-a is not one/);
+	});
+
+	it("refuses an interrupt with no recipient", () => {
+		expect(interruptRefusal(members, [], "main-a", "all", "main-a")).toMatch(/needs a recipient/);
+	});
+});
 
 describe("resolveTarget for a subagent sender", () => {
 	it("refuses an agent of another tree, by id or role, naming its parent as the route", () => {

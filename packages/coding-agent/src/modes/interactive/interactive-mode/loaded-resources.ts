@@ -152,7 +152,7 @@ export function showLoadedResources(
 			details: () => models.map((m) => `  ${m.provider}/${m.id}`).join("\n"),
 		});
 		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));
-		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/settings")));
+		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/configuration")));
 		if (features.length > 0) {
 			const groups = host.buildScopeGroups(features);
 			const extList = () =>
@@ -359,7 +359,7 @@ function loadedContextView(host: LoadedResourcesHost, skills: readonly Skill[]):
 	});
 }
 
-/** Appends the command that changes a row's files (`· /settings`) to its collapsed text. */
+/** Appends the command that changes a row's files (`· /configuration`) to its collapsed text. */
 function withCommand(spec: LoadedRowSpec, command: string): LoadedRowSpec {
 	const hint = theme.fg("dim", `${SEPARATOR}${command}`);
 	const cells = spec.cells;

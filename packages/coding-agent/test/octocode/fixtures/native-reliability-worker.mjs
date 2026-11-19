@@ -19,6 +19,10 @@ syncBuiltinESMExports();
 Object.assign(process.env, {
   OCTOCODE_CODING_AGENT_DIR: agentDir, OCTOCODE_HOME: path.join(root, 'octocode'),
   OCTOCODE_API_HTTP: '0', OCTOCODE_MCP: '0',
+  // OCTOCODE_MCP only turns off the research server. Offline mode also keeps PATH-gated recommended servers (freellama
+  // with ollama installed) from launching, whose first launch runs an npm install that blocks the first turn and keeps
+  // writing into the runtime root after this process is killed.
+  OCTOCODE_OFFLINE: '1',
   OCTOCODE_MEMORY_AUTO: '0', OCTOCODE_EXTRA_SKILLS: '0', OCTOCODE_NOTIFY: 'off', OCTOCODE_PERMISSION: 'full',
 });
 // The package root exports only the CLI and RPC, so the session pieces come from source, as the runner's modules do

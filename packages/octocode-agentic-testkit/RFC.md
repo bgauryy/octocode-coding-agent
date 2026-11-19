@@ -93,7 +93,7 @@ The package's README is the reference for what shipped; this section maps the RF
 | Term              | Meaning here                                                                                                                  | Lives in                 |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
 | `Trace`           | ordered events of one run: canonical model requests, responses, tool calls/results, skill loads, spans, usage                 | `src/trace/`             |
-| Agent kind        | how the testkit starts and drives an agent (`inproc`, `octocodecode-rpc`, `command`, `acp`, `claude-code`, `codex`)           | `src/agents/`            |
+| Agent kind        | how the testkit starts and drives an agent (`inproc`, `octocode-agent-rpc`, `command`, `acp`, `claude-code`, `codex`)         | `src/agents/`            |
 | Gateway           | local HTTP server speaking provider wire shapes; captures requests, answers scripted / cassette / forwarded                   | `src/gateway/`           |
 | Canonical request | parsed request with `cache_control` markers stripped, ids/paths/dates replaced by placeholders, secrets redacted, keys sorted | `src/trace/canonical.ts` |
 | Cassette          | `{canonicalHash#occurrence → response}` per case                                                                              | `__cassettes__/`         |
@@ -102,12 +102,12 @@ The package's README is the reference for what shipped; this section maps the RF
 
 ## Prerequisites
 
-| P   | What must hold                                                                                                                              | Check             | Owner |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- |
-| P1  | D1: do `vitest-evals` sessions carry per-request messages and usage?                                                                        | T0 written yes/no | us    |
-| P2  | octocodecode can be pointed at the gateway and driven headless: `--mode rpc` / `RpcClient` (export `./rpc-entry`), `providers.<id>.baseUrl` | T3 smoke run      | us    |
-| P3  | octocodecode accepts a URL (Streamable HTTP) MCP server in an isolated config                                                               | T3 smoke run      | us    |
-| P4  | live budget agreed                                                                                                                          | cap in CI config  | user  |
+| P   | What must hold                                                                                                                                | Check             | Owner |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- |
+| P1  | D1: do `vitest-evals` sessions carry per-request messages and usage?                                                                          | T0 written yes/no | us    |
+| P2  | Octocode Agent can be pointed at the gateway and driven headless: `--mode rpc` / `RpcClient` (export `./rpc-entry`), `providers.<id>.baseUrl` | T3 smoke run      | us    |
+| P3  | Octocode Agent accepts a URL (Streamable HTTP) MCP server in an isolated config                                                               | T3 smoke run      | us    |
+| P4  | live budget agreed                                                                                                                            | cap in CI config  | user  |
 
 ## Connecting any agent
 
@@ -122,17 +122,17 @@ flowchart LR
   MX --> TR
 ```
 
-| Probe            | Sees                                                        | Pointing the agent                                                                                                                                      | Required                          |
-| ---------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| 1 Gateway        | canonical requests, tools offered, usage; decides responses | base URL: octocodecode `providers.<id>.baseUrl`; Claude Code `ANTHROPIC_BASE_URL`; Codex mock provider in isolated `config.toml`; SDK clients `baseURL` | yes                               |
-| 2 MCP mock/proxy | every MCP call/result; faults                               | agent MCP config → testkit URL                                                                                                                          | for MCP checks                    |
-| 3 Harness events | turns, skill loads, subagents, compaction, stats            | octocodecode RPC events and `get_messages`; ACP; OTel GenAI spans; in-process callbacks                                                                 | for spans, richer skill detection |
+| Probe            | Sees                                                        | Pointing the agent                                                                                                                                        | Required                          |
+| ---------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1 Gateway        | canonical requests, tools offered, usage; decides responses | base URL: Octocode Agent `providers.<id>.baseUrl`; Claude Code `ANTHROPIC_BASE_URL`; Codex mock provider in isolated `config.toml`; SDK clients `baseURL` | yes                               |
+| 2 MCP mock/proxy | every MCP call/result; faults                               | agent MCP config → testkit URL                                                                                                                            | for MCP checks                    |
+| 3 Harness events | turns, skill loads, subagents, compaction, stats            | Octocode Agent RPC events and `get_messages`; ACP; OTel GenAI spans; in-process callbacks                                                                 | for spans, richer skill detection |
 
 - **Gateway v1 wire shapes:** OpenAI chat completions and Anthropic messages, streaming (SSE) and non-streaming, including tool-call deltas, thinking blocks and usage with cache tokens. Other shapes (OpenAI Responses, Google) answer `cannot observe` until added; Codex therefore waits for Responses support. A conformance suite replays real provider recordings through the gateway.
 - **Gateway security:** binds 127.0.0.1 with a per-run token; strips auth headers from captures; redacts before anything is written; forward mode reads keys from env only.
 - **Source of truth:** context/cache matchers read gateway captures; RPC events give structure only.
-- **Skill detection per kind:** octocodecode = `skill` tool call or `read` of a `SKILL.md` path (RPC `tool_execution_*` events when present); Claude Code = its Skill tool call; others = configured detector or `cannot observe`.
-- **`stopAfter`:** for `octocodecode-rpc` the adapter sends RPC `abort`; for others the gateway answers with a scripted final assistant turn. The trace is marked `cut`, and failure matchers ignore cut runs.
+- **Skill detection per kind:** Octocode Agent = `skill` tool call or `read` of a `SKILL.md` path (RPC `tool_execution_*` events when present); Claude Code = its Skill tool call; others = configured detector or `cannot observe`.
+- **`stopAfter`:** for `octocode-agent-rpc` the adapter sends RPC `abort`; for others the gateway answers with a scripted final assistant turn. The trace is marked `cut`, and failure matchers ignore cut runs.
 - **Sandbox:** temp workspace and isolated HOME per case. Not a security boundary: never-suite cases that test deletion or injection run in a container mode (T13). Kinds needing credentials (Claude Code, Codex forward mode) say so in their definition.
 
 ## Proposed design
@@ -159,7 +159,7 @@ flowchart LR
 ```ts
 // testkit.agents.ts
 export const agent = defineAgent({
-	kind: "octocodecode-rpc",
+	kind: "octocode-agent-rpc",
 	sandbox: { home: "isolated", workspace: "fixtures/small-repo" },
 	model: { via: "gateway", mode: "scripted" },
 	mcp: { octocode: mock(fromToolsList("octocode.tools.json")) },
@@ -248,7 +248,7 @@ A matcher whose capability is missing fails with `harness X cannot observe Y`, n
 
 ### Multi-agent flows (F10)
 
-`Trace` holds a span tree; scripts are per agent. Matchers: `toHaveHandedOff(from, to)`, `toHaveSpawned(role, {times})`, `toHaveNoOrphanAgents()`, `toNotLoop({maxVisits})`, `toPassOnlyNeededContext(child)`, `toEndInState(m)`; `trace.agent(role)` scopes any matcher. Adapters: octocodecode subagents via RPC events; LangGraph via callbacks and checkpointer; other frameworks via OTel GenAI span import.
+`Trace` holds a span tree; scripts are per agent. Matchers: `toHaveHandedOff(from, to)`, `toHaveSpawned(role, {times})`, `toHaveNoOrphanAgents()`, `toNotLoop({maxVisits})`, `toPassOnlyNeededContext(child)`, `toEndInState(m)`; `trace.agent(role)` scopes any matcher. Adapters: Octocode Agent subagents via RPC events; LangGraph via callbacks and checkpointer; other frameworks via OTel GenAI span import.
 
 ### Local models (F15)
 
@@ -271,9 +271,9 @@ Candidates for all three roles are installed on the author's machine (`freellama
 
 ## POC results: what it gives us
 
-Run: `../../node_modules/.bin/vitest run` in this package — 10 files, 40 passed, 2 skipped with reasons (`TESTKIT_LIVE`, `TESTKIT_OLLAMA`), ≈5 s, $0. `tsc -p .` clean. Layout: `src/{trace,context,gateway,mcp,memory,matchers,live,setup,index}.ts`, `src/agents/{inproc,octocodecode}.ts`, `test/*.test.ts`.
+Run: `../../node_modules/.bin/vitest run` in this package — 10 files, 40 passed, 2 skipped with reasons (`TESTKIT_LIVE`, `TESTKIT_OLLAMA`), ≈5 s, $0. `tsc -p .` clean. Layout: `src/{trace,context,gateway,mcp,memory,matchers,live,setup,index}.ts`, `src/agents/{inproc,Octocode Agent}.ts`, `test/*.test.ts`.
 
-| Area           | Checked by                                                         | Result on octocodecode (real bundle, scripted model)                                  |
+| Area           | Checked by                                                         | Result on Octocode Agent (real bundle, scripted model)                                |
 | -------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Connect        | gateway as `openai-completions` provider, isolated `OCTOCODE_HOME` | starts in ≈1.7 s; `models.json` goes at `$OCTOCODE_HOME/models.json`; needs `--trust` |
 | Requests       | `trace.requests`                                                   | 2-turn script → exactly 2 requests, all `stream:true`; no title/extra calls           |
@@ -289,9 +289,9 @@ Inproc reference agent (our flow in miniature) covers MCP called-with, failOnce,
 
 Ollama (`bonsai-2:9b`, 2 trials/prompt, 215 s, local): trigger matrix right 6/8; `sql` skill never loaded (0/2) — a real description gap found for free; no wrong-skill loads; real cached tokens reported (2834/4626).
 
-Gaps found by the POC: mock MCP not yet wired into octocodecode (P3); canonicalizer masks ISO dates and call ids, so a real timestamp in a system prompt would hide a cache break (decide: raw-mode for cache matchers); no cassettes, no Anthropic wire shape; `failOnce('timeout')` drops instead of stalls; child MCP events attributed to the caller; bundled skills resolve to the sibling checkout even in isolation.
+Gaps found by the POC: mock MCP not yet wired into Octocode Agent (P3); canonicalizer masks ISO dates and call ids, so a real timestamp in a system prompt would hide a cache break (decide: raw-mode for cache matchers); no cassettes, no Anthropic wire shape; `failOnce('timeout')` drops instead of stalls; child MCP events attributed to the caller; bundled skills resolve to the sibling checkout even in isolation.
 
-Follow-ups done: mock MCP wired into octocodecode (`mcp__docs__search` called and asserted before answer, injected error reaches the model, about 2.2 s per run); `toKeepStablePrefix` compares unmasked text by default, so a timestamp in a system prompt fails it; Anthropic `/v1/messages` with SSE; cassette record/replay; registered workspace; `yarn run check` 12/12. Suite: 51 passed, 2 gated.
+Follow-ups done: mock MCP wired into Octocode Agent (`mcp__docs__search` called and asserted before answer, injected error reaches the model, about 2.2 s per run); `toKeepStablePrefix` compares unmasked text by default, so a timestamp in a system prompt fails it; Anthropic `/v1/messages` with SSE; cassette record/replay; registered workspace; `yarn run check` 12/12. Suite: 51 passed, 2 gated.
 
 ### Port from the driver prototype
 
@@ -307,7 +307,7 @@ A second prototype drove harnesses in process, with one driver per SDK: the Clau
 | coverage reporter, schema, envelope and cache-warm matchers, Wilson and pass@k | adopted as they were, read from the trace                       |                                                                                                                                                                                                              |
 | drivers for the Claude Agent SDK, pi and LangChain                             | not adopted                                                     | the CLI adapters and the gateway cover these harnesses without SDK dependencies; the pi packages use names this repository does not ship; a LangChain agent reaches the gateway through its model's base URL |
 
-### Leverage plan for octocodecode
+### Leverage plan for Octocode Agent
 
 | Use                      | Guards                                                                | Runs                                      |
 | ------------------------ | --------------------------------------------------------------------- | ----------------------------------------- |
@@ -372,7 +372,7 @@ A trigger test is a matrix: prompts that should fire, near misses that should no
 | Want to check                       | Do                                                                                                                                                             | Cost                           |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | An MCP tool's contract              | `mockMcp` + inproc agent + `toHaveCalledMcp(server, tool, {args})`                                                                                             | free                           |
-| Our agent's request shape and cache | octocodecode adapter + scripted gateway + context matchers                                                                                                     | free, ≈2 s                     |
+| Our agent's request shape and cache | Octocode Agent adapter + scripted gateway + context matchers                                                                                                   | free, ≈2 s                     |
 | Skill/tool triggers                 | trigger matrix on Ollama via `forward`                                                                                                                         | local                          |
 | Multi-agent flow                    | scripts per agent role + `toHaveSpawned`, `toHaveHandedOff`, `toHaveNoOrphanAgents`                                                                            | free                           |
 | Caching                             | cold/warm/tail-change runs + `toHaveCacheReadRatio`                                                                                                            | free (simulated), local (real) |
@@ -411,32 +411,32 @@ A trigger test is a matrix: prompts that should fire, near misses that should no
 
 ## Tasks and rollout
 
-| T   | What                                                                                            | Where                                        | Serves     | Depends | Done when                         |
-| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------- | ------- | --------------------------------- |
-| T0  | Spike: one octocodecode RPC session with `baseUrl` at a throwaway proxy, through `vitest-evals` | `spike/`                                     | P1, P2, D1 | —       | written yes/no + captured request |
-| T1  | `Trace` types, canonical form, redaction, JSON schema                                           | `src/trace/`                                 | F1         | T0      | canonical tests pass              |
-| T2  | Gateway: chat completions + Anthropic messages, SSE, scripted + forward, caps, token            | `src/gateway/`                               | F1, F12    | T1      | conformance suite passes          |
-| T3  | Agent kinds `inproc`, `octocodecode-rpc`; sandbox                                               | `src/agents/`                                | F1, P2, P3 | T2      | V1                                |
-| T4  | MCP mock (in-memory + loopback HTTP), spies, schema validation, faults                          | `src/mcp/`                                   | F2, F6     | T1      | V2, V5                            |
-| T5  | Behavior, trigger, skill, reflection matchers; per-kind skill detectors                         | `src/matchers/`                              | F3, F5, F6 | T3, T4  | V3, V4, V5                        |
-| T6  | Context matchers                                                                                | `src/matchers/context.ts`                    | F4         | T1      | V6                                |
-| T7  | Vitest projects, fixtures, `scenario` sugar                                                     | `src/vitest/`, `src/scenario/`               | F13        | T5      | V7                                |
-| T8  | Cassettes (canonical hash + occurrence)                                                         | `src/cassette/`                              | F7         | T2      | V8                                |
-| T9  | Reporter, `testkit run`, SKILL.md                                                               | `src/reporter/`, `bin/`, `skills/`           | F9, F12    | T7      | V9                                |
-| T10 | Span tree, flow matchers, LangGraph + OTel import                                               | `src/trace/spans.ts`, `src/adapters/`        | F10        | T5      | V10                               |
-| T11 | Memory store mock, resource sampler                                                             | `src/memory/`, `src/resources/`              | F11        | T3      | V11                               |
-| T12 | Local model tier, judges ladder, `reflect()`, `testkit coverage`                                | `src/models/`, `src/judges/`, `src/reflect/` | F14, F15   | T5, T8  | V12, V14                          |
-| T13 | Chaos packs, ablation, `promote`, never-suite, container mode                                   | `src/chaos/`, `src/ablate/`                  | F6, F12    | T8, T9  | V13                               |
-| T14 | `live()` with D7, planner (impact map, result cache, budget)                                    | `src/live/`, `src/select/`                   | F8, F12    | T9, P4  | V15                               |
+| T   | What                                                                                              | Where                                        | Serves     | Depends | Done when                         |
+| --- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------- | ------- | --------------------------------- |
+| T0  | Spike: one Octocode Agent RPC session with `baseUrl` at a throwaway proxy, through `vitest-evals` | `spike/`                                     | P1, P2, D1 | —       | written yes/no + captured request |
+| T1  | `Trace` types, canonical form, redaction, JSON schema                                             | `src/trace/`                                 | F1         | T0      | canonical tests pass              |
+| T2  | Gateway: chat completions + Anthropic messages, SSE, scripted + forward, caps, token              | `src/gateway/`                               | F1, F12    | T1      | conformance suite passes          |
+| T3  | Agent kinds `inproc`, `octocode-agent-rpc`; sandbox                                               | `src/agents/`                                | F1, P2, P3 | T2      | V1                                |
+| T4  | MCP mock (in-memory + loopback HTTP), spies, schema validation, faults                            | `src/mcp/`                                   | F2, F6     | T1      | V2, V5                            |
+| T5  | Behavior, trigger, skill, reflection matchers; per-kind skill detectors                           | `src/matchers/`                              | F3, F5, F6 | T3, T4  | V3, V4, V5                        |
+| T6  | Context matchers                                                                                  | `src/matchers/context.ts`                    | F4         | T1      | V6                                |
+| T7  | Vitest projects, fixtures, `scenario` sugar                                                       | `src/vitest/`, `src/scenario/`               | F13        | T5      | V7                                |
+| T8  | Cassettes (canonical hash + occurrence)                                                           | `src/cassette/`                              | F7         | T2      | V8                                |
+| T9  | Reporter, `testkit run`, SKILL.md                                                                 | `src/reporter/`, `bin/`, `skills/`           | F9, F12    | T7      | V9                                |
+| T10 | Span tree, flow matchers, LangGraph + OTel import                                                 | `src/trace/spans.ts`, `src/adapters/`        | F10        | T5      | V10                               |
+| T11 | Memory store mock, resource sampler                                                               | `src/memory/`, `src/resources/`              | F11        | T3      | V11                               |
+| T12 | Local model tier, judges ladder, `reflect()`, `testkit coverage`                                  | `src/models/`, `src/judges/`, `src/reflect/` | F14, F15   | T5, T8  | V12, V14                          |
+| T13 | Chaos packs, ablation, `promote`, never-suite, container mode                                     | `src/chaos/`, `src/ablate/`                  | F6, F12    | T8, T9  | V13                               |
+| T14 | `live()` with D7, planner (impact map, result cache, budget)                                      | `src/live/`, `src/select/`                   | F8, F12    | T9, P4  | V15                               |
 
 ### Phases and milestones
 
 | Phase             | Tasks                  | Milestone (exit check)                                                                                                   | Spend    | Starts when                                   |
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------- | --------------------------------------------- |
-| 0 Decide          | T0                     | D1 settled; one octocodecode request captured                                                                            | $0       | now                                           |
-| 1 Thin slice      | T1, T2, T3             | **M1:** scripted octocodecode case green, one deliberately red, canonical capture stored                                 | $0       | Phase 0 done                                  |
+| 0 Decide          | T0                     | D1 settled; one Octocode Agent request captured                                                                          | $0       | now                                           |
+| 1 Thin slice      | T1, T2, T3             | **M1:** scripted Octocode Agent case green, one deliberately red, canonical capture stored                               | $0       | Phase 0 done                                  |
 | 2 Core checks     | T4, T5, T6, T7, T8, T9 | **M2:** MCP called-with, triggers, reflection, context matchers in `det-*` projects; a small agent fixes a red case (V9) | $0       | M1                                            |
-| 3 Flows & state   | T10, T11               | **M3:** span tree on octocodecode subagents + one LangGraph flow                                                         | $0       | a real multi-agent regression or user request |
+| 3 Flows & state   | T10, T11               | **M3:** span tree on Octocode Agent subagents + one LangGraph flow                                                       | $0       | a real multi-agent regression or user request |
 | 4 Local & reflect | T12                    | **M4:** generated matrices on Ollama; V14 agreement measured                                                             | $0 local | M2                                            |
 | 5 Hardening       | T13                    | **M5:** chaos + never-suite in CI                                                                                        | $0       | M2                                            |
 | 6 Paid, gated     | T14                    | **M6:** `--changed --budget` live runs; spend vs run-all measured                                                        | ≤ P4     | P4 agreed                                     |
@@ -462,7 +462,7 @@ v1 of this RFC = Phases 0–2. Each phase leaves a working tool. Rollback: the p
 
 ## Validation and success
 
-- **V1 (F1):** Given a scripted 3-turn octocodecode RPC session, then the trace holds 3 canonical requests equal to the gateway capture.
+- **V1 (F1):** Given a scripted 3-turn Octocode Agent RPC session, then the trace holds 3 canonical requests equal to the gateway capture.
 - **V2 (F2):** Given a mock `localSearch`, when called with `{matchString:['parseConfig']}`, then `toHaveBeenCalledWith` passes; a call violating `inputSchema` fails the test unasserted.
 - **V3 (F3):** `toHaveCalledMcp(..., { before: 'answer' })` fails when the call follows the final answer.
 - **V4 (F5):** Given a run that loads `octocode-research`, then `toHaveLoadedSkill` passes; for a kind without a detector it fails `cannot observe`.
@@ -472,7 +472,7 @@ v1 of this RFC = Phases 0–2. Each phase leaves a working tool. Rollback: the p
 - **V8 (F7):** A changed prompt makes replay fail `re-record`; two identical retry requests replay by occurrence.
 - **V9 (F9):** A haiku-class agent given SKILL.md and a red case fixes it in ≤ 3 attempts in 4 of 5 trials (measured).
 - **V10 (F10):** A child that never reports fails `toHaveNoOrphanAgents`; a handoff forwarding full history fails `toPassOnlyNeededContext`.
-- **V11 (F11):** A leaked child process fails `toReapChildren` for `octocodecode-rpc`; a heap matcher on that kind fails `cannot observe`.
+- **V11 (F11):** A leaked child process fails `toReapChildren` for `octocode-agent-rpc`; a heap matcher on that kind fails `cannot observe`.
 - **V12 (F14):** A new skill without a matrix fails `testkit coverage`; a description edit marks its matrix stale.
 - **V13 (thinking modes):** every chaos fault replays by seed; ablating an unused tool names it; an agent weakening an assertion fails `toNotEditTests`.
 - **V14 (F15):** On a 20-prompt matrix, local and target model per-prompt agreement is measured; the local tier counts as a regression signal only above a threshold set from that measurement.
@@ -483,19 +483,19 @@ Success: within one month of M2, at least one real routing, trigger or context r
 ## Open questions
 
 - **Settled:** D1 — own core (see Implementation status).
-- **Non-blocking:** P3 — does octocodecode's project trust/exposure accept a URL MCP server in an isolated config without prompts? Settled in T3.
-- **Non-blocking:** does the gateway need to tolerate octocodecode's own retries, title and compaction requests as separate spans? Settled in T0/T3.
+- **Non-blocking:** P3 — does Octocode Agent's project trust/exposure accept a URL MCP server in an isolated config without prompts? Settled in T3.
+- **Non-blocking:** does the gateway need to tolerate Octocode Agent's own retries, title and compaction requests as separate spans? Settled in T0/T3.
 - **Non-blocking:** token estimation for budgets: provider tokenizer vs char estimate.
 - **Non-blocking:** who approves generated trigger prompts (human, or reviewer agent with sampled human check)?
-- **Non-blocking:** which frameworks beyond octocodecode and LangGraph get first-class kinds.
+- **Non-blocking:** which frameworks beyond Octocode Agent and LangGraph get first-class kinds.
 
 ## Sources
 
 - getsentry/vitest-evals README: https://github.com/getsentry/vitest-evals/blob/main/README.md · https://vitest-evals.sentry.dev/
-- Vitest sources (reviewed at 3.2.7; the POC runs on octocodecode's 5.1.0): `@vitest/expect` matcher wrapper returns no chainable value; `@vitest/runner` `TestAPI` members; CAC rejects unknown CLI options; `forceRerunTriggers` defaults; `@vitest/spy` `Mock` API.
-- MCP: octocodecode ships only `@modelcontextprotocol/client`/`core` 2.4.0, so the POC mock is its own minimal JSON-RPC server (initialize, tools/list, tools/call over HTTP).
-- octocodecode docs: `packages/coding-agent/docs/rpc.md` (RPC, `RpcClient`, events, `get_messages`, `get_commands`), `docs/cli.md` (json/rpc/acp modes), `docs/models.md` (provider `baseUrl`, Ollama endpoint); `packages/coding-agent/package.json` export `./rpc-entry`.
-- octocodecode `AGENTS.md` (isolated homes, no lockfile drift).
+- Vitest sources (reviewed at 3.2.7; the POC runs on Octocode Agent's 5.1.0): `@vitest/expect` matcher wrapper returns no chainable value; `@vitest/runner` `TestAPI` members; CAC rejects unknown CLI options; `forceRerunTriggers` defaults; `@vitest/spy` `Mock` API.
+- MCP: Octocode Agent ships only `@modelcontextprotocol/client`/`core` 2.4.0, so the POC mock is its own minimal JSON-RPC server (initialize, tools/list, tools/call over HTTP).
+- Octocode Agent docs: `packages/coding-agent/docs/rpc.md` (RPC, `RpcClient`, events, `get_messages`, `get_commands`), `docs/cli.md` (json/rpc/acp modes), `docs/models.md` (provider `baseUrl`, Ollama endpoint); `packages/coding-agent/package.json` export `./rpc-entry`.
+- Octocode Agent `AGENTS.md` (isolated homes, no lockfile drift).
 - Claude Code honors `ANTHROPIC_BASE_URL`; Codex needs a mock provider in `config.toml` (observed in an earlier capture harness, 2026-11-12).
 - Ollama OpenAI compatibility: https://ollama.com/blog/openai-compatibility
 - LangGraph: https://langchain-ai.github.io/langgraph/ · OTel GenAI conventions: https://opentelemetry.io/docs/specs/semconv/gen-ai/

@@ -39,10 +39,14 @@ export const DAEMON_ROUTES = {
 	configSignin: "/api/admin/config/signin",
 	/** Launch capability only: GET the `HarnessList` (`?repoId=`), POST one `HarnessSwitchCommand`; the reply is the fresh `HarnessList`. */
 	configHarness: "/api/admin/config/harness",
+	/** Launch capability only: GET the `HarnessPreview` of switching one harness on (`?id=&repoId=`); writes nothing. */
+	configHarnessPreview: "/api/admin/config/harness/preview",
 	/** Launch capability only: write-only new MCP definition; never starts or approves it. */
 	configMcpAdd: "/api/admin/config/mcp/add",
 	/** Launch capability only: GET the `ToolExposureList` (`?repoId=`), POST one `ToolPinCommand`; the reply is the fresh `ToolExposureList`. */
 	configTools: "/api/admin/config/tools",
+	/** Launch capability only: GET the `SecurityList` (`?repoId=`), POST one `SecurityActionCommand` (approve, deny, forget); the reply is the fresh `SecurityList`. */
+	configSecurity: "/api/admin/config/security",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",

@@ -133,7 +133,8 @@ function RepoRow({ repo }: { repo: DaemonRepo }) {
  */
 export function DaemonShell({ access }: { access: string }) {
 	const api = useMemo(() => createDaemonApi(access), [access]);
-	const harnessApi = useMemo(() => ({ list: api.harness, set: api.setHarness }), [api]);
+	const harnessApi = useMemo(() => ({ list: api.harness, set: api.setHarness, preview: api.previewHarness }), [api]);
+	const securityApi = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
 	const toolsApi = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const route = useHashRoute();
 	const tab = TABS.find((entry) => entry.name === route.name)?.name ?? "sessions";
@@ -218,6 +219,7 @@ export function DaemonShell({ access }: { access: string }) {
 						addMcp={api.addMcp}
 						mcpAddStatus={api.mcpAddStatus}
 						harness={harnessApi}
+						security={securityApi}
 						tools={toolsApi}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}
 					/>

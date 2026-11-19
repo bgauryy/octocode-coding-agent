@@ -122,9 +122,15 @@ export interface CompactionPreparation {
 	settings: CompactionSettings;
 }
 
+export interface PrepareOptions {
+	/** Summarize every message and keep only the branch's last entry (a turn that already failed, kept whole by nothing). */
+	summarizeAll?: boolean;
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
+	options: PrepareOptions = {},
 ): CompactionPreparation | undefined {
 	if (pathEntries.length > 0 && pathEntries[pathEntries.length - 1].type === "compaction") {
 		return undefined;
@@ -151,7 +157,9 @@ export function prepareCompaction(
 	}
 	const boundaryEnd = projectedEntries.length;
 	const tokensBefore = estimateProjectedContextTokens(projection, pathEntries).tokens;
-	const cutPoint = findProjectedCutPoint(projectedEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
+	const cutPoint = options.summarizeAll
+		? { firstKeptEntryIndex: boundaryEnd - 1, turnStartIndex: -1, isSplitTurn: false }
+		: findProjectedCutPoint(projectedEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
 
 	const firstKeptEntry = projectedEntries[cutPoint.firstKeptEntryIndex]?.sourceEntry;
 	if (!firstKeptEntry?.id) return undefined;

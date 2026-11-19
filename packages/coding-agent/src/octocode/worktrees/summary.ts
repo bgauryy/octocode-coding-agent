@@ -4,19 +4,24 @@ import { gitQuiet } from "../../utils/git-run.ts";
 import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
 import { agentLabel, innermostWorktree, paneLabel, placeOccupants } from "./occupants.ts";
 import type { OpenDependencies } from "./open.ts";
+import { openerLabel, tmuxOpenings, worktreeOpenings } from "./openings.ts";
 import { worktreeStatuses, type WorktreeStatus } from "./status.ts";
 
 /** What the worktree summary reads besides git: the team's live agents and how tmux is reached. */
 export interface SummaryDependencies extends Pick<OpenDependencies, "env" | "tmux"> {
 	/** Live agents of this repository's team, every worktree included. */
 	members?: () => Member[];
+	/** The asking session's agent id: what it opened is `yours`, and only that is named as safe to close. */
+	self?: string | undefined;
+	/** The database that keeps openers (tests; the default is the shared agent database). */
+	openings?: OpenDependencies["openings"];
 }
 
 /** Line breaks in a path or git message, shown as `\n` and `\r` so each worktree stays on its own line. */
 const oneLine = (text: string): string => text.replace(/\r|\n/gu, (brk) => (brk === "\r" ? "\\r" : "\\n"));
 
 /** `name · branch · state · path` for one worktree. */
-function listLine(status: WorktreeStatus, main: string, current: boolean): string {
+function listLine(status: WorktreeStatus, main: string, current: boolean, opener?: string): string {
 	const { entry } = status;
 	const state = entry.prunable
 		? ["folder missing (git worktree prune)"]
@@ -33,7 +38,8 @@ function listLine(status: WorktreeStatus, main: string, current: boolean): strin
 	const branch = entry.branch ? `branch ${entry.branch}` : "detached";
 	const where = path.relative(main, entry.path) || ".";
 	const here = current ? " · current" : "";
-	return `  ${label} · ${branch} · ${state.length > 0 ? state.join(", ") : "clean"} · ${oneLine(where.startsWith("..") ? entry.path : where)}${here}`;
+	const by = opener ? ` · ${opener}` : "";
+	return `  ${label} · ${branch} · ${state.length > 0 ? state.join(", ") : "clean"} · ${oneLine(where.startsWith("..") ? entry.path : where)}${here}${by}`;
 }
 
 /** Whether this session or an agent runs in tmux, the only case a listing asks tmux. */
@@ -61,35 +67,49 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 	const { members, panes, byRoot, unplaced } = await whoIsWhere(roots, deps);
 	// Linked worktrees sit inside the main one, so the session's worktree is the innermost holding its directory.
 	const current = innermostWorktree(roots, cwd);
+	const scope = { env: deps.env, db: deps.openings };
+	const opened = worktreeOpenings(
+		statuses.filter((status) => !status.main).map((status) => status.entry.path),
+		scope,
+	);
+	const paneOpened = tmuxOpenings(panes, scope);
+	const paneText = (pane: TmuxPane): string => {
+		const by = openerLabel(paneOpened.get(pane.id), deps.self);
+		return by ? `${paneLabel(pane)} · ${by}` : paneLabel(pane);
+	};
 	const lines: string[] = [];
 	const occupied = new Set<string>();
 	for (const status of statuses) {
-		lines.push(listLine(status, main, status.entry.path === current));
+		lines.push(
+			listLine(status, main, status.entry.path === current, openerLabel(opened.get(status.entry.path), deps.self)),
+		);
 		const here = byRoot.get(status.entry.path);
 		if (here && (here.agents.length > 0 || here.panes.length > 0)) occupied.add(status.entry.path);
 		if (here?.agents.length)
 			lines.push(`      agents: ${here.agents.map((member) => agentLabel(member, panes)).join("; ")}`);
-		if (here?.panes.length) lines.push(`      tmux: ${here.panes.map(paneLabel).join("; ")}`);
+		if (here?.panes.length) lines.push(`      tmux: ${here.panes.map(paneText).join("; ")}`);
 	}
 	if (unplaced.length > 0)
 		lines.push(`  Agents in no listed worktree: ${unplaced.map((member) => agentLabel(member, panes)).join("; ")}`);
-	return { main, statuses, members, lines, occupied };
+	return { main, statuses, members, lines, occupied, opened };
 }
 
 /**
  * The `Worktrees:` block of `coordinate list`, or undefined when the repository has only its main worktree and nothing
- * runs in tmux. A clean worktree nobody works in is named as ready to close with `/worktree remove`.
+ * runs in tmux. A clean worktree nobody works in is named as ready to close only when the asking session opened it with `/worktree remove`.
  */
 export async function describeWorktrees(cwd: string, deps: SummaryDependencies): Promise<string | undefined> {
 	// Outside a git checkout (or in a bare repository) there are no worktrees to show.
 	if (!(await gitQuiet(cwd, ["rev-parse", "--show-toplevel"]))) return undefined;
-	const { statuses, lines, occupied } = await worktreeLines(cwd, deps);
+	const { statuses, lines, occupied, opened } = await worktreeLines(cwd, deps);
 	if (!statuses.some((status) => !status.main) && !inTmux(deps)) return undefined;
 	const idle = statuses
 		.filter((status) => !status.main && status.name && !status.error && !status.entry.prunable)
 		.filter((status) => status.dirty + status.untracked + status.unmerged === 0)
 		.filter((status) => !occupied.has(status.entry.path))
+		.filter((status) => deps.self !== undefined && opened.get(status.entry.path)?.opener === deps.self)
 		.map((status) => status.name);
-	const close = idle.length > 0 ? [`  clean, no agents: close with /worktree remove <name>: ${idle.join(", ")}`] : [];
+	const close =
+		idle.length > 0 ? [`  yours, clean, no agents: close with /worktree remove <name>: ${idle.join(", ")}`] : [];
 	return ["Worktrees:", ...lines, ...close].join("\n");
 }

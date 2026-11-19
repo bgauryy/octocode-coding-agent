@@ -27,7 +27,7 @@ describe("extension crash attribution", () => {
 		const unrelated = packageFeature("npm:unrelated", "/home/fedora/.octocode/agent/npm/node_modules/unrelated");
 		const stack =
 			"TypeError: Cannot read properties of undefined (reading 'runtime')\n" +
-			"    at streamSimple (file:///home/fedora/.local/lib/node_modules/@octocodeai/octocodecode/dist/bundle/chunks/chunk-CMRUVXTE.js:1093:16944)\n" +
+			"    at streamSimple (file:///home/fedora/.local/lib/node_modules/@octocodeai/octocode-agent/dist/bundle/chunks/chunk-CMRUVXTE.js:1093:16944)\n" +
 			"    at /home/fedora/.octocode/agent/npm/node_modules/pi-observational-memory/src/agents/worker-stream.ts:43:45";
 
 		expect(findFeatureStackMatches(stack, [memory, unrelated])).toEqual(["npm:pi-observational-memory"]);

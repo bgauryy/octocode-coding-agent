@@ -60,7 +60,7 @@ export function stageRegistryManifest(source, releaseMap, workspaceVersions = {}
 
 export function createInstallerManifest(agent) {
 	const manifest = {
-		name: "@octocodeai/octocodecode-install",
+		name: "@octocodeai/octocode-agent-install",
 		version: agent.version,
 		private: true,
 		dependencies: { [agent.name]: agent.version },

@@ -114,7 +114,7 @@ describe("agent coordination contract (shared vectors)", () => {
 		expect(CASE_FOLDING_UNICODE_VERSION).toBe(table.version);
 		expect(
 			fs.readFileSync(TARGET, "utf8"),
-			"src/octocode/team/casefold-table.generated.ts is stale: run `yarn workspace @octocodeai/octocodecode run generate:casefold`",
+			"src/octocode/team/casefold-table.generated.ts is stale: run `yarn workspace @octocodeai/octocode-agent run generate:casefold`",
 		).toBe(renderCasefoldTable(table));
 	});
 });

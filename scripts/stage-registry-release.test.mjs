@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { getPublicWorkspacePackages } from "./release-packages.mjs";
+
+const byName = (a, b) => a.localeCompare(b);
 
 test("prepare keeps exact candidate bytes for a later fixture verification and rejects tampering", (t) => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-stage-registry-"));
@@ -39,7 +42,13 @@ test("prepare keeps exact candidate bytes for a later fixture verification and r
 	};
 	execFileSync(process.execPath, [...args, "--prepare"], { env, stdio: "pipe", timeout: 120_000 });
 	const candidate = JSON.parse(readFileSync(join(output, "candidate.json"), "utf8"));
-	assert.equal(candidate.packages.length, 1);
+	// Every public workspace package is staged (the agent and the testkit), each once.
+	assert.deepEqual(
+		candidate.packages.map((entry) => entry.name).sort(byName),
+		getPublicWorkspacePackages(join(import.meta.dirname, "..", "packages"))
+			.map((pkg) => pkg.name)
+			.sort(byName),
+	);
 	assert.throws(
 		() =>
 			execFileSync(process.execPath, [...args.slice(0, -1), "http://127.0.0.1:4874/", "--verify"], {

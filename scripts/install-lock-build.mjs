@@ -13,7 +13,7 @@ import {
 } from "./install-lock-entries.mjs";
 import { internalPackagePrefix, validateGeneratedFiles } from "./install-lock-validate.mjs";
 
-const installPackageName = "@octocodeai/octocodecode-install";
+const installPackageName = "@octocodeai/octocode-agent-install";
 
 function getInternalWorkspaces(repoRoot, lockPackages) {
 	const workspaces = new Map();

@@ -103,6 +103,10 @@ it("uses billing facts independently of CLI access labels", () => {
 	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("plan billing");
 	expect(modelDetails(selected, 0, "CLI", "plan")).toContain("Billing: billed by plan");
 	expect(modelDetails(selected, 0, "CLI", "plan")).not.toContain("Billing: metered");
+	expect(modelDetails(selected, 0, "CLI", "plan")).toContain("Route: external");
+	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("route external");
+	expect(modelDetails(selected, 0, "subscription", "plan")).toContain("Route: subscription");
+	expect(modelDetails(selected, 0, "API key", "metered")).toContain("Route: config");
 	expect(compactModelDetails(selected, "CLI", "metered").join("\n")).toContain("metered");
 	expect(modelDetails(selected, 0, "CLI", "metered")).toContain("Billing: metered");
 	expect(modelDetails(selected, 0, "CLI")).toContain("Billing: unknown");

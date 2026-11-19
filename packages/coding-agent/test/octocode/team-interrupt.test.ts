@@ -145,9 +145,9 @@ describe("interrupt", () => {
 		expect(await parent.team.send(peer.team.id, "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent you started"),
 		});
-		expect(await parent.team.send("all", "stop", { interrupt: true })).toEqual({
-			error: expect.stringContaining("one subagent"),
-		});
+		// A broadcast interrupt reaches only the sender's tree, here its one subagent; a peer with no subagents stops nobody.
+		expect(await parent.team.send("all", "stop", { interrupt: true })).toMatchObject({ sent: [child.team.id] });
+		expect(await peer.team.send("all", "stop", { interrupt: true })).toHaveProperty("error");
 		expect(await child.team.send("parent", "stop", { interrupt: true })).toHaveProperty("error");
 		expect(await parent.team.send(child.team.id, "stop", { interrupt: true })).toMatchObject({
 			sent: [child.team.id],

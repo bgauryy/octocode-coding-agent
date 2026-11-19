@@ -42,6 +42,8 @@ export interface ReviewInput extends ReviewKey {
 	label: string;
 	path: string;
 	decidedVia: string;
+	/** The content an approval covers, as JSON text, so a later change can be shown against it. Kept only for `approved`. */
+	snapshot?: string;
 }
 
 const COLUMNS =
@@ -116,11 +118,43 @@ export function record(db: DatabaseSync, input: ReviewInput, at: number): void {
 		at,
 		input.decidedVia,
 	);
+	if (input.decision === "approved" && input.snapshot !== undefined)
+		db.prepare(
+			`INSERT INTO item_review_snapshots (kind, identity, scope, files) VALUES (?, ?, ?, ?)
+			 ON CONFLICT(kind, identity, scope) DO UPDATE SET files = excluded.files`,
+		).run(input.kind, input.identity, input.scope, input.snapshot);
+	else if (input.decision === "denied") deleteSnapshot(db, input);
+}
+
+function deleteSnapshot(db: DatabaseSync, key: ReviewKey): void {
+	db.prepare("DELETE FROM item_review_snapshots WHERE kind = ? AND identity = ? AND scope = ?").run(
+		key.kind,
+		key.identity,
+		key.scope,
+	);
+}
+
+/** The approved content stored for each item of `scopes`, by kind, identity and scope; JSON text as `record` got it. */
+export function snapshots(db: DatabaseSync, scopes: readonly string[]): Map<string, string> {
+	ensure(db);
+	const found = new Map<string, string>();
+	if (scopes.length === 0) return found;
+	const rows = allRows<Row>(
+		db.prepare(
+			`SELECT kind, identity, scope, files FROM item_review_snapshots WHERE scope IN (${scopes.map(() => "?").join(", ")})`,
+		),
+		...scopes,
+	);
+	for (const row of rows)
+		found.set(JSON.stringify([String(row.kind), String(row.identity), String(row.scope)]), String(row.files));
+	return found;
 }
 
 /** Deletes one decision; the item is reviewed as new at the next load. False when there was none. */
 export function forget(db: DatabaseSync, id: number): boolean {
 	ensure(db);
+	const row = db.prepare("SELECT kind, identity, scope FROM item_reviews WHERE id = ?").get(id) as Row | undefined;
+	if (row) deleteSnapshot(db, { kind: String(row.kind), identity: String(row.identity), scope: String(row.scope) });
 	return db.prepare("DELETE FROM item_reviews WHERE id = ?").run(id).changes > 0;
 }
 

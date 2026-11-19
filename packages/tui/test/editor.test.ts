@@ -339,6 +339,27 @@ describe("Editor component", () => {
 		});
 	});
 
+	describe("slash command Enter", () => {
+		it("runs the command a name or alias typed in full names, not a fuzzy-matched skill", async () => {
+			const commands = [
+				{ name: "octocode-roast", skill: true },
+				{ name: "backlog", aliases: ["todos"] },
+			];
+			for (const typed of ["/todos", "/backlog"]) {
+				const editor = new Editor(createTestTUI(), defaultEditorTheme);
+				editor.setAutocompleteProvider(new CombinedAutocompleteProvider(commands, process.cwd()));
+				let submitted = "";
+				editor.onSubmit = (text) => {
+					submitted = text;
+				};
+				for (const char of typed) editor.handleInput(char);
+				await settleAutocomplete(() => editor.isShowingAutocomplete());
+				editor.handleInput("\r");
+				assert.strictEqual(submitted.trim(), "/backlog", typed);
+			}
+		});
+	});
+
 	describe("Backslash+Enter newline workaround", () => {
 		it("inserts backslash immediately (no buffering)", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);

@@ -199,7 +199,7 @@ export class TeamStore {
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */
 	private reap(id: string, judged: ProcessIdentity | undefined, now: number): boolean {
-		return this.agent.transaction(() => reapMember(this.db, id, judged, now));
+		return this.agent.transaction(() => reapMember(this.db, id, judged, now, this.lifecycle?.sessionId));
 	}
 
 	/**

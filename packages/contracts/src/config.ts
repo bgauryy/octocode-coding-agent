@@ -5,6 +5,7 @@ import { AgentRouteSchema } from "./agent-route.ts";
 export * from "./harness-config.ts";
 export * from "./mcp-add.ts";
 export * from "./tool-exposure.ts";
+export * from "./security-config.ts";
 export * from "./config-settings.ts";
 export * from "./agent-route.ts";
 

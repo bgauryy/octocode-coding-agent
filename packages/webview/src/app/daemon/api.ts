@@ -7,7 +7,10 @@ import type {
 	ConfigSettingCommand,
 	ConfigSnapshot,
 	HarnessList,
+	HarnessPreview,
 	HarnessSwitchCommand,
+	SecurityActionCommand,
+	SecurityList,
 	SignInCommand,
 	SignInState,
 	ToolExposureList,
@@ -22,6 +25,17 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 function harnessList(value: unknown): HarnessList {
 	if (!isRecord(value) || !Array.isArray(value.rows)) throw new Error("Invalid harness response");
 	return value as unknown as HarnessList;
+}
+
+function securityList(value: unknown): SecurityList {
+	if (!isRecord(value) || !Array.isArray(value.items)) throw new Error("Invalid security response");
+	return value as unknown as SecurityList;
+}
+
+function harnessPreview(value: unknown): HarnessPreview {
+	if (!isRecord(value) || typeof value.id !== "string" || !Array.isArray(value.lines))
+		throw new Error("Invalid harness preview response");
+	return value as unknown as HarnessPreview;
 }
 
 /** The settings page reads these fields on every render; a body without them is not a snapshot. */
@@ -135,9 +149,26 @@ export function createDaemonApi(access: string, route: (path: string) => string 
 				{ headers },
 				"Could not load the harness switches",
 			).then(harnessList),
+		/** What switching one harness on would bring, scanned by the host; writes nothing. */
+		previewHarness: (id: string, repoId?: string): Promise<HarnessPreview> =>
+			requestJson(
+				`${route(DAEMON_ROUTES.configHarnessPreview)}?id=${encodeURIComponent(id)}${repoId ? `&repoId=${encodeURIComponent(repoId)}` : ""}`,
+				{ headers },
+				"Could not scan the harness",
+			).then(harnessPreview),
 		/** Switches one Harness row; the host answers with the fresh list or refuses with its reason. */
 		setHarness: (command: HarnessSwitchCommand): Promise<HarnessList> =>
 			post(route(DAEMON_ROUTES.configHarness), command, "Could not change the switch").then(harnessList),
+		/** The reviewed hooks, MCP servers and skills (launch capability only); `repoId` adds that workspace's items. */
+		security: (repoId?: string): Promise<SecurityList> =>
+			requestJson(
+				withRepo(route(DAEMON_ROUTES.configSecurity), repoId),
+				{ headers },
+				"Could not load the security reviews",
+			).then(securityList),
+		/** Approves, denies or forgets one reviewed item; the host records it and answers with the fresh list or refuses with its reason. */
+		decideSecurity: (command: SecurityActionCommand): Promise<SecurityList> =>
+			post(route(DAEMON_ROUTES.configSecurity), command, "Could not record the decision").then(securityList),
 		/** Each tool's exposure state and pin (launch capability only); `repoId` reads that workspace's configuration too. */
 		tools: (repoId?: string): Promise<ToolExposureList> =>
 			requestJson(withRepo(route(DAEMON_ROUTES.configTools), repoId), { headers }, "Could not load the tools").then(

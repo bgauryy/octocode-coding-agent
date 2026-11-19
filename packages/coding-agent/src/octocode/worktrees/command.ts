@@ -9,6 +9,7 @@ import type { TmuxPane } from "../terminal-launch/tmux.ts";
 import { worktreeTrustTitle } from "./approval.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";
 import { worktreeNames } from "./names.ts";
+import { recordWorktreeOpening } from "./openings.ts";
 import { agentLabel, innermostWorktree, paneLabel, parkedLabel, type ParkedResident } from "./occupants.ts";
 import { type OpenDependencies, type OpenPlacement, openInTmux, parsePlacement } from "./open.ts";
 import { removeWorktree } from "./remove.ts";
@@ -30,7 +31,15 @@ export interface WorktreeCommandDependencies extends OpenDependencies {
 	cwd?: () => string | undefined;
 	/** Lands a linked worktree's branch in the main checkout: the user typed it, so nothing asks again. */
 	merge?: (branch: string, ctx: CommandContext) => Promise<{ ok: boolean; text: string }>;
+	/** This session's agent id: recorded as the opener of what it creates, and what `list` calls `yours`. */
+	agentId?: () => string | undefined;
 }
+
+/** The opener of what this session creates: its agent id, or `user` before it has joined the team. */
+const openerOf = (ctx: CommandContext, deps: WorktreeCommandDependencies) => ({
+	id: deps.agentId?.() ?? "user",
+	sessionId: ctx.sessionManager.getSessionId(),
+});
 
 /** `agents: …; tmux: …` for one worktree's occupants, in the words `list` uses; undefined when nobody is there. */
 function occupantsText(
@@ -48,7 +57,7 @@ function occupantsText(
 }
 
 async function list(ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
-	const { main, statuses, members, lines } = await worktreeLines(ctx.cwd, deps);
+	const { main, statuses, members, lines } = await worktreeLines(ctx.cwd, { ...deps, self: deps.agentId?.() });
 	lines.unshift(`Worktrees of ${main}:`);
 	if (!statuses.some((status) => status.name)) lines.push("  No worktrees yet: /worktree new <name> creates one.");
 	if (statuses.some((status) => !status.main && !status.name))
@@ -67,7 +76,12 @@ const launch = (
 	placement: OpenPlacement,
 	ctx: CommandContext,
 	deps: WorktreeCommandDependencies,
-) => openInTmux(name, folder, placement, ctx, { ...deps, inTmux: hasTmuxSession(deps.env ?? process.env) });
+) =>
+	openInTmux(name, folder, placement, ctx, {
+		...deps,
+		inTmux: hasTmuxSession(deps.env ?? process.env),
+		opener: () => openerOf(ctx, deps),
+	});
 
 async function create(name: string, ctx: CommandContext, deps: WorktreeCommandDependencies): Promise<void> {
 	const info = await ensureWorktree(
@@ -75,6 +89,7 @@ async function create(name: string, ctx: CommandContext, deps: WorktreeCommandDe
 		name,
 		ctx.hasUI ? (request) => ctx.ui.confirm(worktreeTrustTitle(request), "") : undefined,
 	);
+	if (info.created) recordWorktreeOpening(info.path, openerOf(ctx, deps), { env: deps.env, db: deps.openings });
 	say(ctx, describeWorktree(info));
 	const skipped = info.include.skipped.map((item) => `${item.path} (${item.reason})`);
 	if (skipped.length > 0) say(ctx, `Not copied from .worktreeinclude: ${skipped.join(", ")}`, "warning");
@@ -101,6 +116,7 @@ async function remove(rest: string[], ctx: CommandContext, deps: WorktreeCommand
 	const result = await removeWorktree(ctx.cwd, names[0], {
 		force,
 		sessionCwd: ctx.cwd,
+		openings: { env: deps.env, db: deps.openings },
 		occupants: async (target, roots) => {
 			const { panes, byRoot } = await whoIsWhere(roots, deps, true);
 			const here = byRoot.get(roots.find((root) => canonical(root) === canonical(target)) ?? target);

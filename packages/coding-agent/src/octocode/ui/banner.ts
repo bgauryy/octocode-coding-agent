@@ -1,7 +1,7 @@
 import { truncateToWidth } from "@octocodeai/octocode-tui";
 
 /**
- * The "OCTOCODE CODE" header: two rows of half-block art and the beta notice. Pure in (paint, width), with no animation:
+ * The "OCTOCODE AGENT" header: two rows of half-block art and the beta notice. Pure in (paint, width), with no animation:
  * the header sits at the top of the scrollback, where any changed row makes the terminal renderer clear and redraw
  * everything, so it changes only when the width or theme does. Its height is the same at every width; a terminal
  * narrower than the art gets the plain name in its place. Strokes run along a left-to-right gradient from the theme.
@@ -15,13 +15,13 @@ export interface BannerPaint {
 }
 
 const BANNER_ART = [
-	"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄ █▀▀",
-	"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▄▄ █▄█ █▄▀ ██▄",
+	"█▀█ █▀▀ ▀█▀ █▀█ █▀▀ █▀█ █▀▄ █▀▀   ▄▀█ █▀▀ █▀▀ █▄ █ ▀█▀",
+	"█▄█ █▄▄  █  █▄█ █▄▄ █▄█ █▄▀ ██▄   █▀█ █▄█ ██▄ █ ▀█  █ ",
 ] as const;
 export const ISSUES_URL = "https://github.com/bgauryy/octocodecode/issues";
 /** Every art character is one cell wide and one UTF-16 unit long. */
 const ART_WIDTH = BANNER_ART[0].length;
-/** Column where "CODE" starts, for the per-word fallback colours. */
+/** Column where "AGENT" starts, for the per-word fallback colours. */
 const SPLIT = BANNER_ART[0].indexOf("   ") + 3;
 /** Gradient steps: neighbouring cells of one step share one escape sequence. */
 const STEPS = 32;
@@ -66,7 +66,7 @@ export function bannerLines(paint: BannerPaint, width: number): string[] {
 	const art =
 		width >= ART_WIDTH
 			? BANNER_ART.map((line) => paintArt(paint, line))
-			: [`${paint.fg("accent", "OCTOCODE")} ${paint.fg("mdLink", "CODE")}`, ""];
+			: [`${paint.fg("accent", "OCTOCODE")} ${paint.fg("mdLink", "AGENT")}`, ""];
 	const notice = `${paint.fg("warning", "BETA version")} ${paint.fg("muted", "; please assign issues here")} ${paint.fg("mdLink", ISSUES_URL)}`;
 	// Every line must fit the width, however narrow the terminal.
 	return [...art, notice].map((line) => truncateToWidth(line, Math.max(1, width), ""));

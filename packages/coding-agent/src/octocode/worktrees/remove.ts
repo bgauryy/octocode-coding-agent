@@ -6,7 +6,8 @@ import { git, gitQuiet } from "../../utils/git-run.ts";
 import { sessionDir, sessionsRoot } from "../shared/home.ts";
 import { revokeWorktreeGrant } from "../trust/grants.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
-import { entryAt, locateRepo, worktreePath } from "./repo.ts";
+import { forgetWorktreeOpening, type OpeningScope } from "./openings.ts";
+import { canonical, entryAt, locateRepo, worktreePath } from "./repo.ts";
 import { dirtyCounts, insideWorktree, unmergedCount } from "./status.ts";
 
 export interface RemoveResult {
@@ -95,6 +96,8 @@ function copyReports(held: readonly HeldState[], main: string): number {
 export interface RemoveOptions {
 	force?: boolean;
 	sessionCwd?: string;
+	/** Where the worktree's recorded opener is dropped once it is removed. */
+	openings?: OpeningScope;
 	/**
 	 * Who is working in `target`, given every live worktree root: `agents: …; tmux: …` or nothing. Without `force` a
 	 * worktree with occupants stays.
@@ -150,12 +153,15 @@ export async function removeWorktree(cwd: string, name: string, options: RemoveO
 	// Before anything is deleted: a copy that fails leaves the worktree as it was.
 	const moved = !entry.prunable && options.force ? copyReports(heldState(target), repo.main) : 0;
 	const kept = moved > 0 ? ` Copied ${plural(moved, "undelivered subagent report")} to the main checkout.` : "";
+	// Resolved while the folder exists: afterwards a symlinked path no longer resolves to the recorded one.
+	const recorded = canonical(target);
 	// A registered worktree whose folder is gone has nothing to remove: pruning drops the entry.
 	await git(
 		repo.main,
 		entry.prunable ? ["worktree", "prune"] : ["worktree", "remove", ...(options.force ? ["--force"] : []), target],
 	);
 	revokeWorktreeGrant(target); // the grant of a worktree that no longer exists
+	forgetWorktreeOpening(recorded, options.openings);
 	const branch = worktreeBranch(name);
 	if (entry.branch !== branch) return { removed: true, message: `Removed worktree "${name}".${kept}` };
 	const deleted = await gitQuiet(repo.main, ["branch", "-d", branch]);

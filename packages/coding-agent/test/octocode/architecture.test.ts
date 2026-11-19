@@ -100,8 +100,9 @@ const ALLOWED: Record<string, string[]> = {
 	],
 	// The archive tool's profile source reads a stored session through the profiler.
 	archive: ["shared", "permission", "profiler", "history", "render"],
-	// The phase feed reads the ongoing items this session holds, as a settled run leaves them open.
-	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake", "backlog"],
+	// The phase feed reads the ongoing items this session holds, as a settled run leaves them open; the editor's skill-word
+	// highlight stems words the way history ranking does.
+	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake", "backlog", "history"],
 	subagents: [
 		"shared",
 		"discovery",
@@ -149,7 +150,8 @@ const ALLOWED: Record<string, string[]> = {
 	// Rebuilds a stored session's profiler source from the team's message model; entry names from `shared`.
 	profiler: ["shared", "team"],
 	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],
-	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser"],
+	// The harness page previews a scan through the harness domain's renderer.
+	"web-daemon": ["shared", "backlog", "workspace", "trust", "profiler", "browser", "harness"],
 	remote: ["shared", "web-daemon", "workspace"],
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
 	// `backlog`: start recall also searches the active item's goal (`memory/active-goal.ts`).

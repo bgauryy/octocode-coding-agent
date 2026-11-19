@@ -1,7 +1,7 @@
 /** Automatic retry of failed agent responses, and the retry callbacks summaries share. */
 
 import type { AgentEvent } from "@octocodeai/octocode-agent-core";
-import { mayRetry, retryBudget, retryDelayFor } from "@octocodeai/octocode-ai";
+import { describeRetryOutcome, mayRetry, retryBudget, retryDelayFor } from "@octocodeai/octocode-ai";
 import {
 	type AssistantMessage,
 	isContextOverflow,
@@ -58,6 +58,8 @@ export class SessionRetry {
 	attempt = 0;
 	/** When the failure that started this run of retries happened; cleared by a success, a final failure or a cancellation. */
 	private _firstFailureAt: number | undefined = undefined;
+	/** When the first request of this run of retries began (its message timestamp), so the final error can name the whole stall. */
+	private _firstRequestAt: number | undefined = undefined;
 
 	private readonly host: RetryHost;
 
@@ -90,8 +92,13 @@ export class SessionRetry {
 			const message = event.messages[i];
 			if (message.role === "assistant") {
 				return (
-					mayRetry(this.attempt + 1, settings.maxRetries, message.errorMessage ?? "", this.sinceFirstFailureMs()) &&
-					this.isRetryableError(message)
+					mayRetry(
+						this.attempt + 1,
+						settings.maxRetries,
+						message.errorMessage ?? "",
+						this.sinceFirstFailureMs(),
+						this.sinceFirstRequestMs(message),
+					) && this.isRetryableError(message)
 				);
 			}
 		}
@@ -103,9 +110,15 @@ export class SessionRetry {
 		return this._firstFailureAt === undefined ? 0 : Date.now() - this._firstFailureAt;
 	}
 
+	/** Wall-clock time since the first request of this series began, including the failing request just ended. */
+	private sinceFirstRequestMs(failed: AssistantMessage): number {
+		return Date.now() - (this._firstRequestAt ?? failed.timestamp ?? Date.now());
+	}
+
 	private resetAttempts(): void {
 		this.attempt = 0;
 		this._firstFailureAt = undefined;
+		this._firstRequestAt = undefined;
 	}
 
 	/** Reset the retry counter on a response that did not fail. */
@@ -124,7 +137,11 @@ export class SessionRetry {
 			type: "auto_retry_end",
 			success: false,
 			attempt: this.attempt,
-			finalError: message.errorMessage,
+			finalError: describeRetryOutcome(
+				message.errorMessage ?? "Unknown error",
+				this.attempt + 1,
+				this.sinceFirstRequestMs(message),
+			),
 		});
 		this.resetAttempts();
 	}
@@ -155,13 +172,14 @@ export class SessionRetry {
 		const errorText = message.errorMessage ?? "";
 		const elapsedMs = this.sinceFirstFailureMs();
 
-		if (!mayRetry(this.attempt, settings.maxRetries, errorText, elapsedMs)) {
+		if (!mayRetry(this.attempt, settings.maxRetries, errorText, elapsedMs, this.sinceFirstRequestMs(message))) {
 			// Preserve the completed attempt count so post-run handling can emit the final failure.
 			this.attempt--;
 			return false;
 		}
 
 		this._firstFailureAt ??= Date.now();
+		this._firstRequestAt ??= message.timestamp;
 		const delayMs = retryDelayFor(settings, this.attempt, message, elapsedMs);
 
 		this.host.emit({

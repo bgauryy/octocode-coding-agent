@@ -8,7 +8,7 @@ import { liveAgentsStore } from "../../src/octocode/shared/team-spend.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
-import { roster } from "../../src/octocode/team/panel/roster.ts";
+import { liveMembers, roster } from "../../src/octocode/team/panel/roster.ts";
 import { PanelMotion, type Moving } from "../../src/octocode/team/panel/motion.ts";
 import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel/work.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -601,5 +601,78 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		vi.advanceTimersByTime(61_000);
 		expect(repaints).toBe(1);
 		motion.dispose();
+	});
+});
+
+describe("the panel's live agents", () => {
+	const stamp = () => ({ updatedAt: Date.now(), joinedAt: Date.now() });
+	const setup = (mode: "tui" | "rpc", members: Member[]) => {
+		const state = { members, traffic: [] as never[] };
+		let tick: (() => void) | undefined;
+		const team = {
+			id: "main-aaaaaa",
+			view: state,
+			approvals: undefined,
+			watch: (cb: () => void) => {
+				tick = cb;
+				return () => undefined;
+			},
+		} as unknown as Team;
+		const ctx = fakeCtx({ cwd: tmp(), mode });
+		const work = new RunningWork();
+		const view = new AgentsView(team, work);
+		view.start(ctx);
+		return { state, tick: () => tick?.(), ctx, work, view };
+	};
+	const main = () => member("main-aaaaaa", { status: "idle", ...stamp() });
+	const child = (id: string, parentId = "main-aaaaaa") => member(id, { parentId, ...stamp() });
+
+	it("keeps a grandchild whose parent row left the team counted while it runs", () => {
+		const s = setup("tui", [main(), child("a-0001"), child("g-0002", "a-0001")]);
+		s.tick();
+		expect(s.work.agents()).toBe(2);
+		s.state.members = [main(), child("g-0002", "a-0001")];
+		s.tick();
+		expect(s.work.agents()).toBe(1);
+		s.view.stop(s.ctx);
+	});
+
+	it("counts the live agents without a widget (RPC)", () => {
+		const s = setup("rpc", [main()]);
+		s.state.members = [main(), child("a-0001")];
+		s.tick();
+		expect(s.work.agents()).toBe(1);
+		s.view.stop(s.ctx);
+		expect(s.work.agents()).toBeUndefined();
+	});
+
+	it("counts a background child whose team row stopped beating, and drops one whose stamp is from the far future", () => {
+		const stalled = member("a-0001", { parentId: "main-aaaaaa", updatedAt: Date.now() - 60_000 });
+		const skewed = member("b-0002", { parentId: "main-aaaaaa", updatedAt: Date.now() + 3_600_000 });
+		const s = setup("tui", [main(), stalled, skewed]);
+		s.view.setBackground(["a-0001", "b-0002"]);
+		s.tick();
+		expect(s.work.agents()).toBe(2);
+		expect(liveMembers([skewed], Date.now())).toEqual([]);
+		expect(liveMembers([member("c-0003", { updatedAt: Date.now() + 5_000 })], Date.now())).toHaveLength(1);
+		s.view.stop(s.ctx);
+	});
+
+	it("paints once when the live count changes", () => {
+		const s = setup("tui", [main()]);
+		s.work.set("bash", [bash]);
+		s.tick();
+		let renders = 0;
+		const mounted = s.ctx.ui.widgets.get("octocode-agents") as (
+			tui: unknown,
+			theme: unknown,
+		) => { render(width: number): string[] };
+		mounted({ requestRender: () => renders++, terminal: { rows: 24 } }, theme);
+		const before = renders;
+		s.state.members = [main(), child("a-0001")];
+		s.tick();
+		expect(s.work.agents()).toBe(1);
+		expect(renders - before).toBe(1);
+		s.view.stop(s.ctx);
 	});
 });

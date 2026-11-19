@@ -1,4 +1,4 @@
-# Octocode Code
+# Octocode Agent
 
 A terminal coding agent that researches code before it changes it, and splits big work across a team of subagents and git worktrees. A fork of [Pi](https://github.com/earendil-works/pi) with the Octocode features built in.
 
@@ -7,7 +7,7 @@ A terminal coding agent that researches code before it changes it, and splits bi
 Needs Node 24.15 or later (Node 24 line).
 
 ```sh
-npm install -g @octocodeai/octocodecode
+npm install -g @octocodeai/octocode-agent
 cd your-project
 octocode
 ```

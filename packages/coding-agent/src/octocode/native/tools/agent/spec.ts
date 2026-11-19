@@ -22,38 +22,38 @@ export function agentToolSpec(runners: readonly string[] = []) {
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Skills to load. Omit: profile default; []: none.",
+					description: "Skills to load; omit: profile default; []: none",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "MCP servers added to profile defaults. Omit: session servers; []: profile only.",
+					description: "MCP servers added to profile defaults; omit: session servers; []: profile only",
 				}),
 			),
 			goal: Type.Optional(
 				Type.String({
-					description: `${GOAL_DESCRIPTION}. Required when new`,
+					description: `${GOAL_DESCRIPTION}; required when new`,
 				}),
 			),
 			task: Type.String({
 				description:
-					"Required (also on resume). Brief as the octocode-subagents skill says; msg#<N> or report:<agent-id> appends that message or report.",
+					"Required, also on resume; brief per the octocode-subagents skill. msg#<N> or report:<agent-id> appends that message or report.",
 			}),
 			item: Type.Optional(
 				Type.String({
-					description: "Your ongoing item, or an unclaimed one (claimed here). The child updates only it.",
+					description: "Your ongoing item or an unclaimed one (claimed here); the child updates only it.",
 				}),
 			),
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: start after each B<n> is done and each agent:<name> reports done; a failure holds it.",
+						"With background: start once each B<n> is done and each agent:<name> reports done; a failure holds it.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
 					description:
-						"Continue a finished or stopped child of this session; a queued or held child starts now. Needs task.",
+						"Continue this session's finished or stopped child (needs task); a queued or held child starts now.",
 				}),
 			),
 			profile: Type.Optional(
@@ -69,36 +69,36 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			model: Type.Optional(
 				Type.String({
 					description:
-						"provider/id, bare id, small or medium; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium.",
+						"provider/id, bare id, small or medium; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium",
 				}),
 			),
 			resultSchema: Type.Optional(
 				// A plain object schema: `Type.Record` would add a `patternProperties` block to every request for the same meaning.
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
-					description: "JSON Schema of the final verdict (details). Every node needs type.",
+					description: "JSON Schema of the final verdict (details); every node needs type",
 				}),
 			),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Return at once; the report arrives later.",
+					description: "Return at once; the report comes later",
 				}),
 			),
 			hooks: Type.Optional(StringEnum(HOOK_MODES, { description: "User hooks (default off)" })),
 			cache: Type.Optional(StringEnum(CACHE_CHOICES, { description: "History cache tier" })),
 			isolate: Type.Optional(
 				Type.Boolean({
-					description: "Private worktree; coordinate merge lands it.",
+					description: "Private worktree; coordinate merge lands it",
 				}),
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
-					description: "With isolate: start from the working copy.",
+					description: "With isolate: start from the working copy",
 				}),
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
-					description: 'Files or "dir/" reserved until the report.',
+					description: 'Files or "dir/" reserved until the report',
 				}),
 			),
 			runner: runnerField(runners),

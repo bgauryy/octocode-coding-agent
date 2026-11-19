@@ -12,7 +12,7 @@ function installedPackageDir(packageDir, name) {
 	return found;
 }
 
-export const codingAgentName = "@octocodeai/octocodecode";
+export const codingAgentName = "@octocodeai/octocode-agent";
 
 export function smokeTestCodingAgent(directory, runtime = process.execPath, { strictRuntime = false } = {}) {
 	const packageDir = join(directory, "node_modules", codingAgentName);

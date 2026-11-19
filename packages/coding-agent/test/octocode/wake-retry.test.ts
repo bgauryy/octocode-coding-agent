@@ -31,7 +31,13 @@ describe("re-waking after a failed wake turn", () => {
 		await t.emit("before_agent_start", woken(), t.ctx);
 		await t.emit("agent_settled", failed(), t.ctx);
 		for (const [index, wait] of WAKE_RETRY_MS.entries()) {
-			expect(t.ctx.ui.statuses.get(STATUS.wakeRetry)).toContain(`retrying in ${wait / 60_000}m`);
+			// A clock time, which stays true for the whole wait (a written-once "in 30m" would look frozen).
+			const due = new Date(Date.now() + wait).toLocaleTimeString([], {
+				hour: "2-digit",
+				minute: "2-digit",
+				hour12: false,
+			});
+			expect(t.ctx.ui.statuses.get(STATUS.wakeRetry)).toContain(`retrying at ${due}`);
 			await vi.advanceTimersByTimeAsync(wait - 1);
 			expect(t.sent).toHaveLength(index);
 			await vi.advanceTimersByTimeAsync(1);
@@ -71,7 +77,7 @@ describe("re-waking after a failed wake turn", () => {
 		await t.emit("agent_settled", { type: "agent_settled", aborted: false, outcome: { status: "completed" } }, t.ctx);
 		await t.emit("before_agent_start", woken(), t.ctx);
 		await t.emit("agent_settled", failed(), t.ctx);
-		expect(t.ctx.ui.statuses.get(STATUS.wakeRetry)).toContain(`retrying in ${WAKE_RETRY_MS[0] / 60_000}m`);
+		expect(t.ctx.ui.statuses.get(STATUS.wakeRetry)).toContain("retrying at ");
 	});
 
 	it("does nothing for a user's failed run, an error waiting cannot clear, a subagent or a headless run", async () => {

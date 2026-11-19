@@ -31,6 +31,7 @@ import { SessionModelControl } from "./model-control.ts";
 import { expandMentionSkills } from "./prompt-expansion.ts";
 import { type PromptingHost, releaseHeldInput } from "./prompting.ts";
 import type { RequestAuth } from "./request-auth.ts";
+import { ModelWaitWatch } from "./model-wait.ts";
 import { SessionRetry } from "./retry.ts";
 import { SessionRunLoop } from "./run-loop.ts";
 import { activateOnDemand, SessionToolCalls } from "./tool-calls.ts";
@@ -217,6 +218,7 @@ export function createSessionCollaborators(
 			...base,
 			inputs,
 			retry,
+			modelWait: new ModelWaitWatch((idleMs) => base.emit({ type: "model_wait", idleMs })),
 			boundaries,
 			toolCalls,
 			emitFeatureEvent: seams.emitFeatureEvent,

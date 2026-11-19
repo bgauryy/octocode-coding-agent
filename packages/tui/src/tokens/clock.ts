@@ -41,6 +41,8 @@ class AnimationClock {
 	private heldSince = 0;
 	/** When the terminal lost focus: decoration drawn from the clock shows this moment until focus returns. */
 	private blurredAt = 0;
+	/** Time advanced by exactly one cadence per tick: a frame index taken from it never repeats or skips with timer jitter. */
+	private gridTime = 0;
 
 	/** Call `listener` about every `everyMs` while subscribed; returns the unsubscribe. */
 	subscribe(listener: (now: number) => void, options: AnimationSubscription): () => void {
@@ -114,6 +116,16 @@ class AnimationClock {
 		return now < this.heldUntil ? this.heldSince : now;
 	}
 
+	/**
+	 * The time a looping animation takes its frame from: while the clock ticks it moves by one cadence per tick, so a
+	 * frame index `floor(frameTime() / everyMs)` advances once per tick even when ticks arrive late or early; it follows
+	 * wall time after a stall. Paused or held decoration shows the moment it stopped, as `decorationTime()` does.
+	 */
+	frameTime(): number {
+		if (this.timer === undefined || !this.focused || Date.now() < this.heldUntil) return this.decorationTime();
+		return this.gridTime;
+	}
+
 	/** Whether a timer is running: false whenever nothing animates (an idle screen writes nothing). */
 	isRunning(): boolean {
 		return this.timer !== undefined;
@@ -132,6 +144,7 @@ class AnimationClock {
 		this.timer = undefined;
 		this.cadence = cadence;
 		if (cadence === 0) return;
+		this.gridTime = Date.now();
 		this.timer = setInterval(() => this.tick(), cadence);
 		this.timer.unref?.();
 	}
@@ -150,6 +163,9 @@ class AnimationClock {
 
 	private tick(): void {
 		const now = Date.now();
+		// Steady ticks advance the frame time by one cadence; a stall or a wall clock step puts it back on wall time.
+		this.gridTime =
+			now - this.gridTime > 2 * this.cadence || this.gridTime - now > this.cadence ? now : this.gridTime + this.cadence;
 		// The clock ticks at the fastest cadence: a call runs on the first tick at or after its due time (never early, so
 		// a counter never shows a second that has not passed), and the next is due `everyMs` after the last due time, not
 		// after the late tick, so a 1 s counter on an 80 ms spinner clock keeps a 1 s average without drifting.

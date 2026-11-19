@@ -76,3 +76,28 @@ describe("Up arrow and queued messages", () => {
 		expect(onEmptyUp).not.toHaveBeenCalled();
 	});
 });
+
+describe("? in an empty editor", () => {
+	it("opens the shortcut list and inserts nothing", () => {
+		const { editor } = createEditor();
+		const onEmptyQuestion = vi.fn();
+		editor.onEmptyQuestion = onEmptyQuestion;
+		editor.handleInput("?");
+		expect(onEmptyQuestion).toHaveBeenCalledOnce();
+		expect(editor.getText()).toBe("");
+		editor.handleTextRun("?");
+		expect(onEmptyQuestion).toHaveBeenCalledTimes(2);
+		expect(editor.getText()).toBe("");
+	});
+
+	it("inserts normally in a draft", () => {
+		const { editor } = createEditor();
+		const onEmptyQuestion = vi.fn();
+		editor.onEmptyQuestion = onEmptyQuestion;
+		editor.setText("why");
+		editor.handleInput("?");
+		editor.handleTextRun("?");
+		expect(onEmptyQuestion).not.toHaveBeenCalled();
+		expect(editor.getText()).toBe("why??");
+	});
+});

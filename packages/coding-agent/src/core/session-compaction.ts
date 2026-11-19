@@ -72,7 +72,7 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 export async function runCompaction(host: CompactionHost, run: CompactionRun): Promise<CompactionResult> {
 	const { reason, willRetry, signal } = run;
 	// Sized for the target window before any request: a summary that could never be saved is not paid for.
-	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow);
+	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow, !willRetry);
 	const startedAt = new Date().toISOString();
 	let featureCompaction: CompactionResult | undefined;
 	const summaryRequest = host.summaryRequest?.(reason);

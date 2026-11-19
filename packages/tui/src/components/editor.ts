@@ -7,6 +7,7 @@ import { visibleWidth } from "../utils/width.ts";
 import { type DraftText, insertTextAtCursorInternal, prependedDraft, submitValue } from "./editor/editing.ts";
 import { dimGhost, ghostSuffix } from "./editor/ghost.ts";
 import { addToHistory } from "./editor/history.ts";
+import { type EditorWordHighlight, linePainter } from "./editor/highlight.ts";
 import { handleEditorInput } from "./editor/input.ts";
 import { createScrollBorder } from "./editor/layout.ts";
 import { EditorModel } from "./editor/model.ts";
@@ -31,6 +32,9 @@ export class Editor implements Component, Focusable {
 
 	/** Draws the border rows in place of the editor's own (see `EditorBorderDecorator`); undefined keeps them. */
 	public borderDecorator: EditorBorderDecorator | undefined;
+
+	/** Styles the words it finds in each rendered line (the cursor cell keeps its own style); undefined draws plain text. */
+	public wordHighlight: EditorWordHighlight | undefined;
 
 	public onSubmit?: (text: string) => void;
 	public onChange?: (text: string) => void;
@@ -194,13 +198,14 @@ export class Editor implements Component, Focusable {
 		const emitCursorMarker = this.focused;
 
 		for (const layoutLine of visibleLines) {
-			let displayText = layoutLine.text;
+			const paint = linePainter(layoutLine.text, this.wordHighlight);
+			let displayText = paint(0);
 			let lineVisibleWidth = visibleWidth(layoutLine.text);
 			let cursorInPadding = false;
 
 			if (layoutLine.hasCursor && layoutLine.cursorPos !== undefined) {
-				const before = displayText.slice(0, layoutLine.cursorPos);
-				const after = displayText.slice(layoutLine.cursorPos);
+				const before = paint(0, layoutLine.cursorPos);
+				const after = layoutLine.text.slice(layoutLine.cursorPos);
 
 				// Hardware cursor marker (zero-width, emitted before fake cursor for IME positioning)
 				const marker = emitCursorMarker ? CURSOR_MARKER : "";
@@ -210,7 +215,7 @@ export class Editor implements Component, Focusable {
 					// Get the first grapheme from 'after'
 					const afterGraphemes = [...this.model.segment(after, "grapheme")];
 					const firstGrapheme = afterGraphemes[0]?.segment || "";
-					const restAfter = after.slice(firstGrapheme.length);
+					const restAfter = paint(layoutLine.cursorPos + firstGrapheme.length);
 					const cursor = renderFakeCursor(firstGrapheme);
 					displayText = before + marker + cursor + restAfter;
 					// lineVisibleWidth stays the same - we're replacing, not adding

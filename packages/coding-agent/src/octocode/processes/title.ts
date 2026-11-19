@@ -54,15 +54,20 @@ export function initialTitle(env: NodeJS.ProcessEnv, role: SessionRole): string 
 	return subagent ? processTitle(subagent.role, subagent.id) : processTitle(role);
 }
 
-/** Whether a `ps` command column is one of these titles (and not a path, which starts with `/` or has arguments of its own). */
+/** Whether a `ps` command column is one of these titles, the id-less `octocode-main` and `octocode-rpc` of a starting process included (and not a path, which starts with `/` or has arguments of its own). */
 export function isProcessTitle(command: string): boolean {
-	return new RegExp(`^${APP_NAME}-[A-Za-z0-9._]+-[A-Za-z0-9._-]+(?:\\s|$)`).test(command);
+	return (
+		new RegExp(`^${APP_NAME}-[A-Za-z0-9._]+-[A-Za-z0-9._-]+(?:\\s|$)`).test(command) ||
+		new RegExp(`^${APP_NAME}-(?:main|rpc)(?:\\s|$)`).test(command)
+	);
 }
 
 /** The role and id a title names, for a process that has recorded nothing else. A role with a `-` in it reads as its first segment. */
 export function parseTitle(command: string): { role: string; id: string } | undefined {
 	const match = new RegExp(`^${APP_NAME}-([A-Za-z0-9._]+)-([A-Za-z0-9._-]+)(?:\\s|$)`).exec(command);
-	return match ? { role: match[1], id: match[2] } : undefined;
+	if (match) return { role: match[1], id: match[2] };
+	const bare = new RegExp(`^${APP_NAME}-(main|rpc)(?:\\s|$)`).exec(command);
+	return bare ? { role: bare[1], id: "" } : undefined;
 }
 
 export function setProcessTitle(title: string): void {

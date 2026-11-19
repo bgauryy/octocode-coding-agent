@@ -19,7 +19,7 @@ import { transcriptOf } from "./judge-scenarios/transcript.ts";
  */
 
 const LIVE = process.env.TESTKIT_LIVE === "1";
-const BUNDLE = process.env.TESTKIT_OCTOCODECODE_BUNDLE ?? "";
+const BUNDLE = process.env.TESTKIT_OCTOCODE_AGENT_BUNDLE ?? "";
 const OUT = process.env.TESTKIT_JUDGE_DIR ?? join(process.cwd(), ".octocode", "tmp", "testkit-judge");
 const CAP_USD = 4.5;
 

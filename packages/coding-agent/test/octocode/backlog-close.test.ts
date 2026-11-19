@@ -162,7 +162,8 @@ describe("closed is not done", () => {
 		const counts = store.counts();
 		expect(counts.items).toMatchObject({ todo: 1, done: 1 });
 		expect(counts.closed).toBe(1);
-		expect(countsText(counts)).toContain("1 closed");
+		// Closed items only ever grow: the footer leaves them to `/backlog`.
+		expect(countsText(counts)).not.toContain("closed");
 		const layout = boardLayout({ items: store.list().items, tasks: [], session: "s" });
 		expect(layout.counts.closed).toBe(1);
 		expect(layout.rows.map((row) => row.key)).not.toContain("B1");

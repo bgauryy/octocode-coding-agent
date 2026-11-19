@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
+import { runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
 import type { Responder } from "../../src/gateway.ts";
 import { textOf, Trace, type CapturedRequest } from "../../src/trace.ts";
 import { gateway, mcp, searchTool } from "../helpers.ts";
@@ -42,14 +42,20 @@ type Measured = Record<keyof (typeof CEILING)["none"], number>;
 const MAX_MARKERS = 4;
 
 const FLAGS = ["--mode", "json", "--no-session", "--offline", "--trust", "--model", "testkit/scripted"];
-/** About 28k estimated tokens: two of these overflow the 96k window, so the agent compacts on its own. */
-const FILLER = Array.from({ length: 2000 }, (_, i) => `note ${i}: the quick brown fox jumps over the lazy dog`).join(
-	"\n",
-);
+const notes = (lines: number) =>
+	Array.from({ length: lines }, (_, i) => `note ${i}: the quick brown fox jumps over the lazy dog`).join("\n");
+/** About 28k estimated tokens. */
+const FILLER = notes(2000);
+/**
+ * About 36k estimated tokens: with T1's filler it overflows the 96k window whatever the prompt's size, so the agent
+ * compacts on its own, and the full window leaves no room for a summary inside the session's request: it is written
+ * by the standalone compactor these checks read.
+ */
+const OVERFLOW = notes(2600);
 const TURNS = [
 	`T1 read a.txt\n${FILLER}`,
 	"T2 connect docs and search it",
-	`T3 keep these notes\n${FILLER}`,
+	`T3 keep these notes\n${OVERFLOW}`,
 	"T4 finish",
 ];
 
@@ -265,10 +271,10 @@ async function scenario(transport: Transport, compat?: Record<string, unknown>):
 	docs.tool("search").returns("DOCS-HIT-9");
 	docsUrl = await docs.listen();
 	const home = anthropicHome({ gatewayUrl: gw.url, contextWindow: 96_000, mcp: { docs: proxy.url }, compat });
-	let run: Awaited<ReturnType<typeof runOctocodecode>>;
+	let run: Awaited<ReturnType<typeof runOctocodeAgent>>;
 	try {
 		// One process, four user turns in one session: earlier messages go before the adapter's final prompt.
-		run = await runOctocodecode({
+		run = await runOctocodeAgent({
 			gatewayUrl: gw.url,
 			args: [...FLAGS, ...TURNS.slice(0, -1)],
 			prompt: TURNS.at(-1)!,
@@ -347,17 +353,126 @@ async function scenario(transport: Transport, compat?: Record<string, unknown>):
 }
 
 describe("cache trace: steps that wait on other work", () => {
-	it.skip("B601: a foreign backlog write by a second session arrives as one event line at the next user turn", () => {
-		// Needs RFC T5 (B601): the follower that appends foreign-change events. Then: a second process writes the backlog
-		// between T2 and T3; assert the event is one appended message, tools and head hashes unchanged.
-	});
+	it(
+		"foreign backlog write: a second session's edit arrives as one appended event line and changes no layer",
+		{ timeout: 120_000 },
+		async (ctx) => {
+			requireBundle(ctx);
+			const root = mkdtempSync(join(tmpdir(), "testkit-foreign-"));
+			const workdir = join(root, "workspace");
+			let homeDir = "";
+			const isForeign = (r: CapturedRequest) =>
+				r.messages.some((m) => m.role === "user" && textOf(m.content).startsWith("F1 "));
+			let foreign: Awaited<ReturnType<typeof runOctocodeAgent>> | undefined;
+			const gw = await gateway({
+				responder: async ({ request }) => {
+					const { turn, replies } = position(request);
+					if (isForeign(request))
+						return replies === 0
+							? { toolCalls: [{ name: "backlogPlan", args: { op: "edit", items: [{ id: "B1", priority: "p1" }] } }] }
+							: { text: "F1 done" };
+					if (turn !== "T1") return { text: `${turn} done` };
+					if (replies === 0) {
+						const item = { title: "Held", goal: "Result can be checked", why: "Users need it", state: "todo" };
+						return { toolCalls: [{ name: "backlogPlan", args: { op: "add", items: [item] } }] };
+					}
+					if (replies === 1) return { toolCalls: [{ name: "backlog", args: { op: "claim", id: "B1" } }] };
+					// The second session shares the home and workspace, so its write is foreign to this one.
+					foreign = await runOctocodeAgent({
+						gatewayUrl: gw.url,
+						args: FLAGS,
+						prompt: "F1 raise priority",
+						workdir,
+						env: { OCTOCODE_HOME: homeDir },
+						timeoutMs: 60_000,
+					});
+					return { text: "T1 done" };
+				},
+			});
+			const live = anthropicHome({ gatewayUrl: gw.url, contextWindow: 96_000 });
+			homeDir = live.home;
+			let run: Awaited<ReturnType<typeof runOctocodeAgent>>;
+			try {
+				run = await runOctocodeAgent({
+					gatewayUrl: gw.url,
+					args: [...FLAGS, "T1 track the task"],
+					prompt: "T2 continue",
+					workdir,
+					env: { OCTOCODE_HOME: live.home },
+					timeoutMs: 100_000,
+				});
+			} finally {
+				live.close();
+			}
+			expect(run.exitCode, run.stderr.slice(-2000)).toBe(0);
+			expect(foreign?.exitCode, foreign?.stderr.slice(-2000)).toBe(0);
+			const main = gw.trace.requests.filter((r) => !isForeign(r));
+			const t2 = main.findIndex((r) => position(r).turn === "T2");
+			expect(t2, "a T2 request exists").toBeGreaterThan(0);
+			// Cache markers move between requests, so layers compare through the change classifier, not raw bytes.
+			const { change } = traceRows(main)[t2];
+			expect(change.system.kind).toBe("same");
+			expect(change.tools.kind).toBe("same");
+			expect(change.messages.kind).toBe("append");
+			const added = main[t2].messages.slice(main[t2 - 1].messages.length).map((m) => textOf(m.content));
+			const events = added.filter((t) => t.includes("Backlog changed elsewhere"));
+			expect(events, "one event message").toHaveLength(1);
+			expect(events[0]).toContain("B1");
+			// One event line; the task line that follows it is not an event.
+			expect(events[0].split("\n").filter((l) => l.startsWith("Backlog changed elsewhere"))).toHaveLength(1);
+		},
+	);
 
-	it.skip("idle gap: warm requests bridge a tool that outlasts the cache lifetime and change no layer", () => {
-		// Not observable in a --mode json run. With a declared 20 s lifetime and prices, cacheWarming "streaming" and a
-		// 14 s foreground bash call sent no one-token warm request (2 requests in total); with cacheWarming "idle" and a
-		// background `sleep 25` job, the process exited about 2 s after start, as soon as the prompt settled, so the idle
-		// wait that warming bridges (background work pending) never happens there. Needs a long-lived mode (RPC or the
-		// interactive session) that stays up while background work runs; then count requests with max_tokens 1 and
-		// assert their layers are equal.
-	});
+	it(
+		"idle gap: a warm request bridges a tool that outlasts the cache lifetime and changes no layer",
+		{ timeout: 90_000 },
+		async (ctx) => {
+			requireBundle(ctx);
+			const gw = await gateway({
+				responder: ({ request }) => {
+					const replies = request.messages.filter((m) => m.role === "assistant").length;
+					return replies === 0
+						? {
+								// The gateway reports no cache writes, so the first reply stands in for a request that wrote the
+								// prompt: the warmer prices a refresh from the reported cached prefix of the last reply.
+								toolCalls: [{ name: "bash", args: { command: "sleep 14", reason: "wait" } }],
+								usage: { cachedTokens: 40_000 },
+							}
+						: { text: "done" };
+				},
+			});
+			// A 20 s lifetime puts the refresh 10 s into the 14 s tool call; prices make a refresh worth sending.
+			const home = anthropicHome({
+				gatewayUrl: gw.url,
+				contextWindow: 96_000,
+				model: {
+					promptCache: { short: 20, long: 20 },
+					cost: { input: 3000, output: 15000, cacheRead: 300, cacheWrite: 3750 },
+				},
+				settings: { cacheWarming: "streaming" },
+			});
+			let run: Awaited<ReturnType<typeof runOctocodeAgent>>;
+			try {
+				run = await runOctocodeAgent({
+					gatewayUrl: gw.url,
+					args: FLAGS,
+					prompt: `T1 wait\n${FILLER}`,
+					env: { OCTOCODE_HOME: home.home },
+					timeoutMs: 80_000,
+				});
+			} finally {
+				home.close();
+			}
+			expect(run.exitCode, run.stderr.slice(-2000)).toBe(0);
+			const all = gw.trace.requests;
+			type Wire = { max_tokens?: number; system?: unknown; tools?: unknown; messages?: unknown };
+			const wire = (r: CapturedRequest) => r.raw as Wire;
+			const warm = all.filter((r) => wire(r).max_tokens === 1);
+			expect(warm).toHaveLength(1);
+			// The warm request replays the first one: same head, tools and messages, only the output cap differs.
+			expect(wire(warm[0]).system).toEqual(wire(all[0]).system);
+			expect(wire(warm[0]).tools).toEqual(wire(all[0]).tools);
+			expect(wire(warm[0]).messages).toEqual(wire(all[0]).messages);
+		},
+	);
 });

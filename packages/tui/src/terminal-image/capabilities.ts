@@ -199,12 +199,19 @@ export function kittyPlaceholderMode(): boolean {
 	return getCapabilities().kittyPlaceholders === true;
 }
 
+/** Terminals that name themselves as 16-color (the Linux console, `ansi`, VT100/VT220, `xterm-color`, `*-16color`). */
+function is16ColorTerm(term: string | undefined): boolean {
+	const name = term?.toLowerCase() ?? "";
+	return /^(linux|ansi|cygwin|vt100|vt220|xterm-color)$|-16color$/.test(name);
+}
+
 export function getTerminalColorMode(
 	capabilities: TerminalCapabilities = getCapabilities(),
 	env: Readonly<Record<string, string | undefined>> = process.env,
 ): TerminalColorMode {
 	if (isColorDisabled(env)) return "none";
-	return capabilities.trueColor ? "truecolor" : "256color";
+	if (capabilities.trueColor) return "truecolor";
+	return is16ColorTerm(env.TERM) ? "16color" : "256color";
 }
 
 export function resetCapabilitiesCache(): void {

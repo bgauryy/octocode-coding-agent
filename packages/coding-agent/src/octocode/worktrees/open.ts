@@ -2,6 +2,7 @@ import { APP_NAME, getCliInvocation } from "../../config.ts";
 import type { CommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { say } from "../shared/commands.ts";
+import { type Opener, type OpeningScope, recordTmuxOpening } from "./openings.ts";
 import {
 	forwardedLaunchEnv,
 	launchInTmux,
@@ -18,6 +19,10 @@ export interface OpenDependencies {
 	tmux?: Pick<TmuxLaunchDependencies, "runner">;
 	/** The program and arguments that start Octocode. */
 	invocation?: () => { command: string; prefix: string[] };
+	/** Who is opening: recorded with the new window or pane, so a listing says whose it is. */
+	opener?: () => Opener;
+	/** The database that keeps openers (tests; the default is the shared agent database). */
+	openings?: OpeningScope["db"];
 }
 
 /** Where `/worktree open` puts Octocode: a new tmux window, or a pane split `right` or `down`. */
@@ -51,6 +56,7 @@ export async function openInTmux(
 		say(ctx, `Could not open a tmux ${placement.placement} (${errorMessage(error)}). Run: ${run}`, "warning");
 		return;
 	}
+	if (deps.opener) recordTmuxOpening(opened.id, deps.opener(), { env, db: deps.openings });
 	say(ctx, `Opened Octocode in tmux ${opened.placement} ${opened.id} (${run})`);
 }
 

@@ -13,7 +13,7 @@ const cmdQuote = (text: string): string => `"${text.replace(/%/g, "%%")}"`;
 export type AgentInvocation = { command: string; prefix: string[] };
 
 const posixShim = (what: string, command: string[]): string =>
-	`#!/bin/sh\n# ${what}, written by Octocode Code for agent shells.\nexec ${command.map(shQuote).join(" ")} "$@"\n`;
+	`#!/bin/sh\n# ${what}, written by Octocode Agent for agent shells.\nexec ${command.map(shQuote).join(" ")} "$@"\n`;
 const cmdShim = (command: string[]): string => `@echo off\r\n${command.map(cmdQuote).join(" ")} %*\r\n`;
 
 /**
@@ -29,7 +29,7 @@ export function shimFiles(
 	agent: AgentInvocation,
 ): Record<string, string> {
 	const agentCommand = [agent.command, ...agent.prefix];
-	const files: Record<string, string> = { octocode: posixShim("Octocode Code", agentCommand) };
+	const files: Record<string, string> = { octocode: posixShim("Octocode Agent", agentCommand) };
 	if (platform === "win32") files["octocode.cmd"] = cmdShim(agentCommand);
 	if (cli) {
 		files["octocode-cli"] = posixShim(`Octocode research CLI ${cli.version}`, [runtime, cli.bin]);

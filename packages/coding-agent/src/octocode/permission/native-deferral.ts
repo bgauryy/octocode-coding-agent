@@ -1,6 +1,7 @@
 /**
- * Deferred native tools. Under `mcpExposure: "recent"` (the default) a secondary native tool (`DEFERRABLE_NATIVE_TOOLS`) that this
- * working directory has not called in the last 24 hours, and under `"usage"` one outside the promotion snapshot
+ * Deferred native tools. Under `mcpExposure: "usage"` (the default) a secondary native tool outside the promotion snapshot
+ * (`common/src/usage-counts.ts`), and under `"recent"` one of `DEFERRABLE_NATIVE_TOOLS` that this working directory has not
+ * called in the last 24 hours
  * (`common/src/usage-counts.ts`), is declared with its description and its top-level field
  * names only; `reason` stays required. It stays callable, a call its schema rejects returns the schema, and each call
  * is recorded in the same file MCP tools use (`tool-use.json`), so a subagent, which takes its parent's in-use set,
@@ -300,8 +301,10 @@ function applyNativeDeclarations(
 	const tierApplies =
 		onDemandApi !== undefined && addsInPlace(ctx.model) && onDemandApi.tools.getActive().includes(MCP_MANAGE_TOOL_NAME);
 	for (const [name, forms] of registered) {
-		// The settings were unreadable at registration, so a new session under `usage` reads the snapshot only now.
-		const fresh = exposureSetting(settings) === "usage" ? nativeToolDeferred(name, settings) : forms.byRecord;
+		// The settings were unreadable at registration (the default decided then), so a new session under `usage` or
+		// `recent` reads its snapshot or this folder's record only now.
+		const setting = exposureSetting(settings);
+		const fresh = setting === "usage" || setting === "recent" ? nativeToolDeferred(name, settings) : forms.byRecord;
 		const chosen = chosenExposure(name, settings);
 		const transcript = sessionDeclares(name, forms);
 		const wasOnDemand = forms.onDemand;

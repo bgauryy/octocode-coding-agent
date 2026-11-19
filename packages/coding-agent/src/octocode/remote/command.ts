@@ -88,23 +88,28 @@ export function remoteCommand(host: RemoteHost): Subcommand {
 					}
 					return;
 				}
-				// A control link lets the other device send commands and answer approvals: ask whoever is at the keyboard.
+				// A link lets another device see (view) or drive (control) this machine's sessions: ask whoever is at the keyboard.
 				// Without one (print mode, RPC without dialogs, a subagent) nobody can agree, so refuse and name the explicit
 				// command a script uses instead.
-				if (!word && !ctx.hasUI)
+				const view = word === "view";
+				if (!ctx.hasUI)
 					return say(
 						ctx,
-						"/remote needs a confirmation nobody can give here: a control link lets another device send commands. Publish it with `octocode remote link`, or a read-only link with /remote view.",
+						view
+							? "/remote view needs a confirmation nobody can give here: a read-only link shows every session on this machine to another device. Publish it with `octocode remote link view`."
+							: "/remote needs a confirmation nobody can give here: a control link lets another device send commands. Publish it with `octocode remote link`, or a read-only link with `octocode remote link view`.",
 						"warning",
 					);
-				if (
-					!word &&
-					!(await ctx.ui.confirm(
-						"Publish a control link?",
-						"Whoever opens it can send commands and answer approvals on every session on this machine. /remote view publishes a read-only link instead.",
-					))
-				)
-					return say(ctx, cancelledText("published"));
+				const agreed = view
+					? await ctx.ui.confirm(
+							"Publish a read-only link?",
+							"Whoever opens it can watch every session on this machine, including prompts and tool output, but cannot send anything.",
+						)
+					: await ctx.ui.confirm(
+							"Publish a control link?",
+							"Whoever opens it can send commands and answer approvals on every session on this machine. /remote view publishes a read-only link instead.",
+						);
+				if (!agreed) return say(ctx, cancelledText("published"));
 				const link = await publishLink(host, ctx, word === "view" ? "view" : "control");
 				say(ctx, describeLink(link, { qr: ctx.hasUI }));
 			} catch (error) {

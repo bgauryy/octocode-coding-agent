@@ -196,7 +196,7 @@ try {
 }
 
 const octocodeConfigName: string | undefined = pkg.octocodeConfig?.name;
-export const PACKAGE_NAME: string = pkg.name || "@octocodeai/octocodecode";
+export const PACKAGE_NAME: string = pkg.name || "@octocodeai/octocode-agent";
 export const APP_NAME: string = octocodeConfigName || "octocode";
 export const APP_TITLE: string = "Octocode";
 export const CONFIG_DIR_NAME: string = pkg.octocodeConfig?.configDir || ".octocode";
@@ -213,13 +213,13 @@ export function getShareViewerUrl(gistId: string): string {
 
 // User Config Paths (~/.octocode/octocodecode/*)
 
-/** Shared root for Octocode Code configuration and runtime state. */
+/** Shared root for Octocode Agent configuration and runtime state. */
 export function getOctocodeHome(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
 	const override = env.OCTOCODE_HOME?.trim();
 	return override ? resolve(normalizePath(override, { homeDir: home })) : join(home, CONFIG_DIR_NAME, "octocodecode");
 }
 
-/** Get the writable Octocode Code configuration directory. */
+/** Get the writable Octocode Agent configuration directory. */
 export function getAgentDir(): string {
 	const envDir = process.env[ENV_AGENT_DIR];
 	if (envDir) {

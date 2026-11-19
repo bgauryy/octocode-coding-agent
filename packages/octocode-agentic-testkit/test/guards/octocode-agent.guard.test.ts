@@ -1,6 +1,6 @@
 import "../bundle.ts";
 import { describe, expect, it } from "vitest";
-import { runOctocodecode } from "../../src/adapters/octocodecode/index.ts";
+import { runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
 import { cacheReadRatio } from "../../src/context.ts";
 import { script, scripts, type Responder } from "../../src/gateway.ts";
 import { gateway, mcp, searchTool } from "../helpers.ts";
@@ -16,11 +16,11 @@ const CEILING = {
 
 const bytes = (v: unknown): number => Buffer.byteLength(typeof v === "string" ? v : JSON.stringify(v));
 
-describe("octocodecode guards (scripted gateway, real bundle)", () => {
+describe("octocode-agent guards (scripted gateway, real bundle)", () => {
 	it("prompt budget: request-1 system prompt and tool JSON stay under their ceilings", async (ctx) => {
 		requireBundle(ctx);
 		const gw = await gateway({ responder: script([{ text: "ok" }]) });
-		const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "hi" });
+		const run = await runOctocodeAgent({ gatewayUrl: gw.url, prompt: "hi" });
 		expect(run.exitCode).toBe(0);
 		const first = gw.trace.requests[0];
 		const measured = {
@@ -41,7 +41,7 @@ describe("octocodecode guards (scripted gateway, real bundle)", () => {
 				{ text: "done" },
 			]),
 		});
-		const run = await runOctocodecode({
+		const run = await runOctocodeAgent({
 			gatewayUrl: gw.url,
 			prompt: "read a.txt then b.txt",
 			files: { "a.txt": "AAA\n", "b.txt": "BBB\n" },
@@ -73,7 +73,7 @@ describe("octocodecode guards (scripted gateway, real bundle)", () => {
 		});
 		const docs = mcp(gw, "docs", [searchTool]);
 		docs.tool("search").failOnce("error").returns("RESULT-42");
-		const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "search the docs", mcp: [docs] });
+		const run = await runOctocodeAgent({ gatewayUrl: gw.url, prompt: "search the docs", mcp: [docs] });
 		expect(run.exitCode).toBe(0);
 		// The failed call never reaches the server as an execution, so it shows as a model call plus a tool_error.
 		expect(gw.trace).toHaveCalledTool("mcp__docs__search", { args: { query: "cache" }, before: "answer" });
@@ -109,7 +109,7 @@ describe("octocodecode guards (scripted gateway, real bundle)", () => {
 			task: [{ text: "done. CHILD-REPORT-7" }],
 		});
 		const gw = await gateway({ responder });
-		const run = await runOctocodecode({ gatewayUrl: gw.url, prompt: "delegate a check", timeoutMs: 80_000 });
+		const run = await runOctocodeAgent({ gatewayUrl: gw.url, prompt: "delegate a check", timeoutMs: 80_000 });
 		expect(run.exitCode).toBe(0);
 		expect(run.stderr).toMatch(/agent\.spawn × 1/);
 		const reqs = gw.trace.requests;

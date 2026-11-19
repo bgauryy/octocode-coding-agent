@@ -1,3 +1,5 @@
+import { renderChanges } from "./diff.ts";
+import { visible } from "./visible.ts";
 import { badge, RATINGS, type Review, type ReviewWord } from "./types.ts";
 
 /**
@@ -6,13 +8,6 @@ import { badge, RATINGS, type Review, type ReviewWord } from "./types.ts";
  */
 
 const KIND_WORDS = { hook: "hook", mcp: "MCP server", skill: "skill" } as const;
-
-/** Invisible and control characters made visible, so a label cannot hide text from the reader. */
-export const visible = (text: string): string =>
-	text.replace(
-		/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u{e0000}-\u{e007f}]/gu,
-		(char) => `[U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}]`,
-	);
 
 /** The report of one item: what it is, its state and rating, the findings worst first, and what approval grants. */
 export function renderReport(review: Review): string {
@@ -34,6 +29,9 @@ export function renderReport(review: Review): string {
 		"",
 		`If approved it gets: ${item.grants.join(" · ")}`,
 		`Content: sha256 ${review.hash.slice(0, 16)}`,
+		...(review.changed && review.approved
+			? ["", "Changed since you approved it (- removed, + added):", ...renderChanges(review.approved, item.files)]
+			: []),
 	].join("\n");
 }
 

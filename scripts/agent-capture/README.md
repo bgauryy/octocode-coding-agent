@@ -63,6 +63,6 @@ node $K/esc-report.mjs .octocode/tmp/agent-capture/claude-tui/terminal.raw
 
 `request-size.mjs` counts characters the same way for every client: system text (Anthropic `system`, OpenAI `instructions`), message text (a `role: "system"` message and OpenAI developer items count as messages), each tool's description, and its schema as compact JSON (a custom tool's grammar counts as its schema; tools in an OpenAI `additional_tools` item or namespace count as tools). Divide by about 4 for tokens.
 
-Octocode's rendered requests come from `yarn workspace @octocodeai/octocodecode run generate:prompts`, which captures every agent on a scripted model with default settings. `generate:prompts --exposure direct` captures them with every tool declared in full into `.octocode/tmp/agent-prompts-exposure-direct/`, for comparison.
+Octocode's rendered requests come from `yarn workspace @octocodeai/octocode-agent run generate:prompts`, which captures every agent on a scripted model with default settings. `generate:prompts --exposure direct` captures them with every tool declared in full into `.octocode/tmp/agent-prompts-exposure-direct/`, for comparison.
 
 `extract-prompts.py <src-dir> <out.jsonl> [min-chars]` lists prose string literals of a JavaScript bundle's modules; `group-prompts.py <prompts.jsonl> <out-dir> <label>` sorts them into category files with an index. They are for reading a shipped client's prompt text, not for running it.

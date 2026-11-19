@@ -6,6 +6,7 @@
  * copy of the package runs instead when it resolves (`host-dependency.ts`), and the install is the fallback.
  */
 
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -16,10 +17,14 @@ import { binOf, hostDependencyBin } from "./host-dependency.ts";
 import { readManifest } from "@octocodeai/octocode-common/package";
 import { hostIdentity, hostPaths } from "./host.ts";
 import type { McpInstallConfig } from "@octocodeai/octocode-contracts/mcp-server";
+import { recordStdioGroup, reapStdioOrphans } from "./client/transports/stdio-owner.ts";
 import { warnOnce } from "./warnings.ts";
 
 /** Runs npm with `args` in `cwd`; rejects with a message naming the cause when npm is missing or fails. */
-export type McpNpmRunner = (args: string[], options: { cwd: string; signal?: AbortSignal }) => Promise<void>;
+export type McpNpmRunner = (
+	args: string[],
+	options: { cwd: string; signal?: AbortSignal; timeoutMs?: number },
+) => Promise<void>;
 
 export interface McpInstallOptions {
 	/** Default: `hostPaths().agentDir()`. */
@@ -29,24 +34,64 @@ export interface McpInstallOptions {
 	/** Where `hostDependency` packages resolve from. Default: `hostIdentity().packageDir()`. */
 	packageDir?: string;
 	signal?: AbortSignal;
+	/** Deadline of one npm run. Default: `NPM_INSTALL_TIMEOUT_MS`. */
+	npmTimeoutMs?: number;
 }
 
 /** Install failures of this process, by folder and version: the server stays out until the next process. */
 const failures = new Map<string, Error>();
 
-const defaultNpm: McpNpmRunner = async (args, { cwd, signal }) => {
+/** How long one npm install may run before its process group is killed. */
+const NPM_INSTALL_TIMEOUT_MS = 5 * 60_000;
+
+const USE_PROCESS_GROUPS = process.platform !== "win32";
+
+function killGroup(child: ChildProcess): void {
+	const pid = child.pid;
+	try {
+		if (USE_PROCESS_GROUPS && pid !== undefined) process.kill(-pid, "SIGKILL");
+		else child.kill("SIGKILL");
+	} catch {
+		// Already gone.
+	}
+}
+
+/**
+ * Runs the PATH npm as its own process group, recorded like a stdio server's so the next start reaps it when this
+ * process dies; the record goes on every exit. Past the deadline (or on abort) the group is killed.
+ */
+const defaultNpm: McpNpmRunner = async (args, { cwd, signal, timeoutMs = NPM_INSTALL_TIMEOUT_MS }) => {
+	await reapStdioOrphans();
+	const deadline = AbortSignal.timeout(timeoutMs);
+	const giveUp = signal ? AbortSignal.any([signal, deadline]) : deadline;
 	const child = spawnProcess(process.platform === "win32" ? "npm.cmd" : "npm", args, {
 		cwd,
 		stdio: ["ignore", "ignore", "pipe"],
-		...(signal ? { signal } : {}),
+		detached: USE_PROCESS_GROUPS,
 	});
+	const release =
+		child.pid !== undefined && USE_PROCESS_GROUPS
+			? recordStdioGroup(child.pid, `npm ${args.join(" ")}`.slice(0, 200))
+			: undefined;
+	const onGiveUp = () => killGroup(child);
+	if (giveUp.aborted) onGiveUp();
+	else giveUp.addEventListener("abort", onGiveUp, { once: true });
 	let stderr = "";
 	child.stderr?.on("data", (chunk: Buffer) => {
 		stderr = (stderr + chunk.toString()).slice(-2000);
 	});
 	const spawnError = new Promise<never>((_resolve, reject) => child.once("error", reject));
-	const code = await Promise.race([waitForChildProcess(child, signal), spawnError]);
-	if (code !== 0) throw new Error(`npm exited with ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+	try {
+		const code = await Promise.race([waitForChildProcess(child, giveUp), spawnError]);
+		if (deadline.aborted && !signal?.aborted)
+			throw new Error(`npm did not finish within ${Math.round(timeoutMs / 1000)}s and was killed`);
+		if (code !== 0) throw new Error(`npm exited with ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+	} finally {
+		giveUp.removeEventListener("abort", onGiveUp);
+		// A group that outlived its leader (or a leader we failed to wait for) must not outlive this install.
+		killGroup(child);
+		await release?.();
+	}
 };
 
 /** The folder a server's package is installed in. */
@@ -85,7 +130,11 @@ export async function installMcpServer(
 				if (done) return done;
 				const run = options.runNpm ?? defaultNpm;
 				const args = ["install", "--prefix", dir, "--no-save", "--ignore-scripts", `${spec.npm}@${spec.version}`];
-				await run(args, { cwd: dir, ...(options.signal ? { signal: options.signal } : {}) });
+				await run(args, {
+					cwd: dir,
+					...(options.signal ? { signal: options.signal } : {}),
+					...(options.npmTimeoutMs !== undefined ? { timeoutMs: options.npmTimeoutMs } : {}),
+				});
 				assertHeld();
 				const bin = installed();
 				if (!bin) throw new Error(`npm finished, but ${manifestFile} does not hold version ${spec.version}`);

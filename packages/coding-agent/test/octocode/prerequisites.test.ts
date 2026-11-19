@@ -196,7 +196,12 @@ describe("a queued child", () => {
 		const s = setup({ B12: "open" });
 		const told: string[] = [];
 		const chain = new ChainQueue(s.gate, () => undefined);
-		const queued = queueChild(chain, (notice) => told.push(notice), spec());
+		const queued = queueChild(
+			chain,
+			(notice) => told.push(notice),
+			() => undefined,
+			spec(),
+		);
 		expect(chain.rows()).toEqual(["kelp queued on B14 after B12"]);
 		const started = queued.wait(never());
 		s.standing.B12 = "closed";
@@ -218,6 +223,7 @@ describe("a queued child", () => {
 		const chain = new ChainQueue(s.gate, () => undefined);
 		const queued = queueChild(
 			chain,
+			() => undefined,
 			() => undefined,
 			spec(() => {
 				if (refuse) throw new Error("B14 is held by another session");

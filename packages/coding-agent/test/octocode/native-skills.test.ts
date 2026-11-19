@@ -76,6 +76,7 @@ describe("skills the application ships", () => {
 			"octocode-maintenance",
 			"octocode-memory",
 			"octocode-output",
+			"octocode-security-review",
 			"octocode-subagents",
 			"resume-external-harness",
 		]);
