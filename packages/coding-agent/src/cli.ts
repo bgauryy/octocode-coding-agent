@@ -30,7 +30,7 @@ if (only === "--version" || only === "-v") {
 	await runWebDaemon();
 } else {
 	const { setupCli } = await import("./cli/setup.ts");
-	setupCli();
+	setupCli(args);
 	const { flushCompileCacheOnNextRequest } = await import("./cli/compile-cache.ts");
 	flushCompileCacheOnNextRequest();
 	const { main } = await import("./main.ts");

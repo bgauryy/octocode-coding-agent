@@ -36,7 +36,7 @@ function parentOf(env: NodeJS.ProcessEnv): { pid: number; started: string | null
 }
 
 /**
- * Names this process `octocode-<role>-<id>` for the session it runs (renamed when `/new`, `/resume`, a fork or a session
+ * Names this process `octocode-agent-<role>-<id>` for the session it runs (renamed when `/new`, `/resume`, a fork or a session
  * switch starts another), samples its memory and children while a session runs, and registers `/processes` for a main
  * session. A subagent keeps the title it started with: its id is the agent's, not the session's.
  */

@@ -1,3 +1,5 @@
+import { JOBS_SCHEMA } from "./schema-jobs.ts";
+
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
 export const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
 /** The check of files created before `settled` (`ensureSettledStatus` widens them). */
@@ -336,6 +338,7 @@ CREATE INDEX agent_events_agent ON agent_events(workspace_id, name, seq DESC);
 CREATE INDEX agent_events_session ON agent_events(workspace_id, session_id, seq DESC);
 ${AGENT_RUNS_SCHEMA}
 ${TIMERS_SCHEMA}
+${JOBS_SCHEMA}
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL, workspace_id TEXT NOT NULL REFERENCES workspaces(id), sender TEXT NOT NULL, body TEXT NOT NULL,
   reply_required INTEGER NOT NULL DEFAULT 1, reply_to INTEGER REFERENCES messages(id) ON DELETE SET NULL,
@@ -349,7 +352,7 @@ CREATE INDEX deliveries_inbox ON deliveries(recipient, delivered_at);
 CREATE INDEX deliveries_unnotified ON deliveries(message) WHERE dead_at IS NOT NULL AND notified_at IS NULL;
 CREATE TABLE leases (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), path TEXT NOT NULL, path_key TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('file','tree')), owner TEXT NOT NULL, reason TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('file','tree')), owner TEXT NOT NULL, reason TEXT NOT NULL, item TEXT,
   acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 CREATE INDEX leases_path ON leases(workspace_id, path_key);
 CREATE INDEX leases_owner ON leases(owner);

@@ -133,7 +133,7 @@ describe("trust recorded from a session's process tree", () => {
 	it("walks up the process tree to a session's title, and fails open when it cannot", () => {
 		const tree: Record<number, { ppid: number; command: string }> = {
 			30: { ppid: 20, command: "/bin/zsh -c octocode trust add --yes" },
-			20: { ppid: 10, command: "octocode-main-abc123" },
+			20: { ppid: 10, command: "octocode-agent-main-abc123" },
 			10: { ppid: 1, command: "-zsh" },
 			40: { ppid: 10, command: "node /code/octocodecode/dist/cli.js" },
 		};

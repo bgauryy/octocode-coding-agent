@@ -91,6 +91,8 @@ export interface NewLease {
 	pathKey: string;
 	kind: string;
 	reason: string;
+	/** The backlog item (`B12`) the lease protects work for, when the holder named one. */
+	item?: string;
 }
 
 /** Adds a lease of `owner` acquired at `now` that expires at `expiresAt`. */
@@ -103,12 +105,18 @@ export function insert(
 	expiresAt: number,
 ): void {
 	db.prepare(
-		"INSERT INTO leases (workspace_id, path, path_key, kind, owner, reason, acquired_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-	).run(workspaceId, lease.path, lease.pathKey, lease.kind, owner, lease.reason, now, expiresAt);
+		"INSERT INTO leases (workspace_id, path, path_key, kind, owner, reason, item, acquired_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+	).run(workspaceId, lease.path, lease.pathKey, lease.kind, owner, lease.reason, lease.item ?? null, now, expiresAt);
 }
 
-export function renew(db: DatabaseSync, id: number, reason: string, expiresAt: number): void {
-	db.prepare("UPDATE leases SET reason = ?, expires_at = ? WHERE id = ?").run(reason, expiresAt, id);
+/** Renews a lease with a new reason; a given `item` replaces the one it names, none keeps it. */
+export function renew(db: DatabaseSync, id: number, reason: string, expiresAt: number, item?: string): void {
+	db.prepare("UPDATE leases SET reason = ?, expires_at = ?, item = COALESCE(?, item) WHERE id = ?").run(
+		reason,
+		expiresAt,
+		item ?? null,
+		id,
+	);
 }
 
 /** Deletes every lease of `owner`; how many. */

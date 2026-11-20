@@ -41,7 +41,10 @@ export function webCommand(
 			if (daemon) {
 				try {
 					await daemon(ctx, view, ...itemArg);
-					say(ctx, "Opened the web workspace. It keeps running after this session closes.");
+					say(
+						ctx,
+						"Opened the web workspace. It keeps running after this session closes and stops by itself after 10 minutes with no browser tab and no attached session (/processes lists it).",
+					);
 					return;
 				} catch (error) {
 					say(

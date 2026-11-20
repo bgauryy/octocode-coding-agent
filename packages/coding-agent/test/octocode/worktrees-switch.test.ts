@@ -257,11 +257,15 @@ describe("/worktree name completion", () => {
 		await made("beta");
 		// The folder a session is in follows `switch` and `/resume`; `process.cwd()` stays where Octocode started.
 		const command = worktreeCommand({ cwd: () => worktree("beta") });
-		expect(command.complete?.("open ")?.map((item) => item.value)).toEqual(["alpha", "beta"]);
-		expect(command.complete?.("open al")?.map((item) => item.value)).toEqual(["alpha"]);
-		expect(command.complete?.("switch ")?.map((item) => item.value)).toEqual(["main", "alpha", "beta"]);
-		expect(command.complete?.("switch b")?.map((item) => item.value)).toEqual(["beta"]);
-		expect(command.complete?.("open alpha ")?.[0]?.value).toBe("window");
+		expect(command.complete?.("open ")?.map((item) => item.value)).toEqual(["open alpha", "open beta"]);
+		expect(command.complete?.("open al")?.map((item) => item.value)).toEqual(["open alpha"]);
+		expect(command.complete?.("switch ")?.map((item) => item.value)).toEqual([
+			"switch main",
+			"switch alpha",
+			"switch beta",
+		]);
+		expect(command.complete?.("switch b")?.map((item) => item.value)).toEqual(["switch beta"]);
+		expect(command.complete?.("open alpha ")?.[0]?.value).toBe("open alpha window");
 	});
 
 	it("offers only main for switch, and nothing for open, until the session folder is known or outside a repository", () => {
@@ -269,7 +273,7 @@ describe("/worktree name completion", () => {
 			worktreeCommand()
 				.complete?.("switch ")
 				?.map((item) => item.value),
-		).toEqual(["main"]);
+		).toEqual(["switch main"]);
 		expect(worktreeCommand().complete?.("open ")).toBeNull();
 		const outside = mkdtempSync(path.join(tmpdir(), "octocode-no-repo-"));
 		try {
@@ -294,12 +298,12 @@ describe("/worktree completions and hint", () => {
 
 	it("completes the placement after `open <name> `", () => {
 		expect(command.complete?.("open hotfix ")?.map((item) => item.value)).toEqual([
-			"window",
-			"pane",
-			"pane right",
-			"pane down",
+			"open hotfix window",
+			"open hotfix pane",
+			"open hotfix pane right",
+			"open hotfix pane down",
 		]);
-		expect(command.complete?.("open hotfix pane d")?.map((item) => item.value)).toEqual(["pane down"]);
+		expect(command.complete?.("open hotfix pane d")?.map((item) => item.value)).toEqual(["open hotfix pane down"]);
 		expect(command.complete?.("switch hotfix ")).toBeNull();
 	});
 });

@@ -44,6 +44,7 @@ export * as purge from "./queries/purge.ts";
 export * as maintenance from "./queries/maintenance.ts";
 export * as expire from "./queries/expire.ts";
 export * as timers from "./queries/timers.ts";
+export * as jobs from "./queries/jobs.ts";
 export * as shellHistory from "./queries/shell-history.ts";
 export {
 	type AgentDb,
@@ -99,6 +100,7 @@ export type { MachineProcess, MachineSample, SamplerLease } from "./queries/mach
 export type { PurgeCounts } from "./queries/purge.ts";
 export type { MaintenanceResult } from "./queries/maintenance.ts";
 export type { ExpireCounts } from "./queries/expire.ts";
+export type { JobRow, JobState, NewJob } from "./queries/jobs.ts";
 export type { NewTimer, TimerConditionKind, TimerKind, TimerResult, TimerRow, TimerStatus } from "./queries/timers.ts";
 export type { ConfigAuditEntry } from "./queries/config-audits.ts";
 export type { ShellHistoryRow } from "./queries/shell-history.ts";

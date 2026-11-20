@@ -18,22 +18,23 @@ An item can involve several sessions, agents and attempts, and a session can wor
 
 ## Database
 
-Schema version 10. There are no upgrade steps: a file at an older version is set aside and a new one created that takes over the tables people wrote (memories, backlog, trust, reviews, command history) when their columns still fit, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
+Schema version 11. There are no upgrade steps: a file at an older version is set aside and a new one created that takes over the tables people wrote (memories, backlog, trust, reviews, command history) when their columns still fit, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
-| Tables                                                                      | Holds                                                                                                                                             |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts |
-| `sessions`, `session_forks`                                                 | Sessions bound to their workspace and host-created fork links; imports can stay unbound                                                           |
-| `session_transcripts`, `session_entries` (transcript mirror)                | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload), rebuildable from the transcript files               |
-| `compaction_summaries` (transcript mirror)                                  | One summary per compacted entry of a session; detail copies on disk have their own retention                                                      |
-| `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                      |
-| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                       |
-| `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                   |
-| `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                |
-| `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                    |
-| `timers`                                                                    | The `wait` tool's wakes                                                                                                                           |
-| `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                           |
-| `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                   |
+| Tables                                                                      | Holds                                                                                                                                                |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces`                                                                | Workspace UUID, display name, canonical root, filesystem identity, git common dir and linked-worktree flag; the repository index groups checkouts    |
+| `sessions`, `session_forks`                                                 | Sessions bound to their workspace and host-created fork links; imports can stay unbound                                                              |
+| `session_transcripts`, `session_entries` (transcript mirror)                | Conversation tree (JSONL header plus ordered entries, each with its tree parent and payload), rebuildable from the transcript files                  |
+| `compaction_summaries` (transcript mirror)                                  | One summary per compacted entry of a session; detail copies on disk have their own retention                                                         |
+| `backlog`, `backlog_tasks`                                                  | Items and steps, numbered per workspace; parents, origins and steps must share the workspace                                                         |
+| `backlog_links`, `backlog_notes`, `backlog_comments`, `backlog_completions` | Children of an item; a completion's operation key is unique within its item                                                                          |
+| `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                      |
+| `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                   |
+| `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                       |
+| `timers`                                                                    | The `wait` tool's wakes                                                                                                                              |
+| `jobs`                                                                      | Background `bash` jobs of every session (command, folder, pid, log, state), so an identical start can join a running one; rebuildable, never carried |
+| `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                              |
+| `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                      |
 
 A session's rows in both files go together when it is deleted; each file's part is one transaction.
 
@@ -112,7 +113,7 @@ Completions are immutable history: reopening keeps earlier results and a correct
 
 ### Checklist steps
 
-A step (`T12`) belongs to an item or a session and stores its goal, state and result. People add, reorder, move or drop steps on the backlog board. An agent reports a completed step with `backlog` using `op: "step"`, its task `id` and a `note` describing the result and checks. Session and item ownership still apply; retrying the same result changes no history. Finishing a step updates progress without completing its item. Dropped steps remain separate from done steps in progress displays.
+A step (`T12`) belongs to an item or a session and stores its goal, state and result. People add, reorder, move or drop steps on the backlog board. An agent reports a completed step with `backlog` using `op: "step"`, its task `id` and a `note` describing the result and checks. Session and item ownership still apply; retrying the same result changes no history. Finishing a step updates progress without completing its item. Dropped steps remain separate from done steps in progress displays. An agent has at most one ongoing step per item (or per session list): starting a second is refused until the first is done or dropped.
 
 ### Comments, audits and receipts
 
@@ -125,6 +126,34 @@ A step (`T12`) belongs to an item or a session and stores its goal, state and re
 ### Board behavior
 
 Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page with forms, keyboard and drag controls, conflict handling and WebSocket updates that preserve open drafts; `/backlog html` writes an offline snapshot. Edits and deletes need the expected version and return a conflict with current data when stale. The server checks the database revision every 500 ms to see other processes' writes. **Implement** claims an item and queues its context for the current agent; delegation requests still pass the `agent` tool's checks, and stop applies to the session's own background agents. Permission and question dialogs are available in the terminal and the connected session's web page. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
+
+### Work graph
+
+The work graph is derived, never stored: each read joins items, steps, running agents, background jobs, reservations, the full-run lock and waits into nodes and edges. Nothing writes it, so it cannot drift from the records it reads.
+
+```mermaid
+flowchart LR
+  Item -->|depends| Prereq[Prerequisite item]
+  Item -->|parent| Epic
+  Agent -->|holds| Item
+  Agent -->|owns| Job
+  Agent -->|serves| Item
+  Job -->|serves| Item
+  Job -->|holds| Lock[full-run lock]
+  Wait -->|waits| Item
+```
+
+| Edge      | Means                                                         |
+| --------- | ------------------------------------------------------------- |
+| `depends` | the item needs the other done first                           |
+| `parent`  | an item sits under an epic, a step under its item             |
+| `holds`   | an agent claimed the item, or a job or agent holds a resource |
+| `serves`  | an agent, job or resource was taken for the item              |
+| `owns`    | an agent started the job                                      |
+| `waits`   | a wait is set on the item or resource                         |
+| `blocks`  | a resource the item needs is held by someone else             |
+
+`octocode backlog graph` prints it as a tree (`--json` for nodes and edges, `--item <id>` for one item's part). The ready list orders items whose prerequisites are all done by priority, then by how much each unblocks, then by age; it is code, not a model's choice.
 
 ## Guarantees
 

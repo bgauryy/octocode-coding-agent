@@ -35,7 +35,7 @@ interface EventPayloads {
 	"path.unlocked": { path: string };
 	/**
 	 * A monitor rule that tripped for this session (`monitor/attention/rules.ts`): a machine threshold its processes tripped,
-	 * a stuck job, an idle child (`idle-agent`, whose `subject` is the child), or held items nothing works on (`idle-items`, whose `subject` is the refs joined by `,`).
+	 * a stuck job, an idle child (`idle-agent`, whose `subject` is the child), held items nothing works on (`idle-items`, whose `subject` is the refs joined by `,`), or a delegated item with no progress (`stalled-item`, whose `subject` is the item).
 	 */
 	"monitor.alert": { rule: string; value: number; threshold: number; at: number; subject?: string };
 	"check.result": {
@@ -146,7 +146,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		label: (p) =>
 			p.rule === "idle-items"
 				? `${idleRefs(p.subject).join(", ")} idle: you hold it, nothing works on it`
-				: p.rule === "idle-agent"
+				: p.rule === "idle-agent" || p.rule === "stalled-item"
 					? `${clip(p.subject ?? "agent", 24)} no progress for ${p.value} min`
 					: `monitor: ${p.subject ? `${clip(p.subject, 24)} ` : ""}${p.rule} ${p.value} (threshold ${p.threshold})`,
 		key: (p) =>

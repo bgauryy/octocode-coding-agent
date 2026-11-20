@@ -1,6 +1,12 @@
 /** The MCP server name Octocode registers its built-in browser under (and looks for in `mcp.json`). */
 export const BROWSER_SERVER = "browser";
 
+/** The MCP server name Octocode registers Cua Driver (desktop control) under. */
+export const DESKTOP_SERVER = "desktop";
+
+/** The Cua Driver executable, started as `cua-driver mcp`; Octocode never installs it. */
+export const DESKTOP_BIN = "cua-driver";
+
 /** The MCP server name of the recommended local-model server (`mcp/src/recommended/freellama.json`): the main session's, not a child's. */
 export const FREELLAMA_SERVER = "freellama";
 

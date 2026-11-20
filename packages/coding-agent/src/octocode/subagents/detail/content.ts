@@ -7,6 +7,7 @@ import { formatDuration } from "../../../utils/duration.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { MemberDetails } from "../../team/store/details.ts";
 import { memberWorktree, worktreeLabel } from "../../worktree-paths/member-worktree.ts";
+import { labelValueRows } from "../../../theme/columns.ts";
 
 /** Messages to or from the agent shown on its page. */
 const MESSAGES_SHOWN = 8;
@@ -99,8 +100,5 @@ export function agentDetail(input: AgentDetailInput): AgentDetail {
 
 /** The page as plain text, for sessions without a UI. */
 export function agentDetailPageText(detail: AgentDetail): string {
-	const width = Math.max(...detail.facts.map(([label]) => label.length));
-	return detail.facts
-		.map(([label, value]) => `${label.padEnd(width)}  ${value.split("\n").join(`\n${" ".repeat(width + 2)}`)}`)
-		.join("\n");
+	return labelValueRows(detail.facts).join("\n");
 }

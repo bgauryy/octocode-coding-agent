@@ -42,47 +42,6 @@ export interface Subcommand {
 	complete?(prefix: string): AutocompleteItem[] | null;
 }
 
-/**
- * Retired command names, with the command line that replaced each; their arguments carry over. `/plugins` and `/hooks`
- * folded into `/harness`; `/login` became `/providers` (sign-in is its "+ Add a provider" row); `/config` and `/settings`
- * became `/configuration`, the one place to enable, disable, set and add configuration.
- */
-const RETIRED_COMMANDS: Record<string, string> = {
-	plugins: "harness",
-	hooks: "harness hooks",
-	config: "configuration",
-	settings: "configuration",
-	login: "providers",
-};
-
-/**
- * For input under a retired name, the line that replaced it, while the replacing command is registered and nothing
- * else (a prompt or skill) took the old name; undefined otherwise.
- */
-function foldedReplacement(text: string, commands: readonly string[]): string | undefined {
-	const match = /^\/([a-z]+)(?:\s+(.*))?$/s.exec(text.trim());
-	const to = match && Object.hasOwn(RETIRED_COMMANDS, match[1]) ? RETIRED_COMMANDS[match[1]] : undefined;
-	if (!to || !commands.includes(to.split(" ")[0]) || commands.includes(match![1])) return undefined;
-	const rest = match![2]?.trim();
-	return rest ? `${to} ${rest}` : to;
-}
-
-/**
- * For input in a retired form, the registered command line that replaced it (`harness`, `harness hooks events`);
- * undefined when `text` is not a retired form or nothing registered replaces it.
- */
-export function retiredCommandReplacement(text: string, commands: readonly string[]): string | undefined {
-	return foldedReplacement(text, commands);
-}
-
-/** The one message for input in a retired form (`/plugins x moved to /harness. Run /harness x to continue.`), or undefined. */
-export function retiredCommandNotice(text: string, commands: readonly string[]): string | undefined {
-	const to = foldedReplacement(text, commands);
-	if (!to) return undefined;
-	const from = text.trim().split(/\s+/, 1)[0].slice(1);
-	return `/${from} moved to /${RETIRED_COMMANDS[from]}. Run /${to} to continue.`;
-}
-
 export class Subcommands {
 	private readonly entries = new Map<string, Subcommand>();
 	add(name: string, command: Subcommand): void {
@@ -128,19 +87,6 @@ export class Subcommands {
 						: withDialog(() => command.handler(args.trim(), ctx)),
 			});
 		}
-		// No command has a retired name, so SDK and RPC input reaches this hook; the terminal reports it as unknown first.
-		api.bus.on("input", async (event, ctx) => {
-			if (this.has("harness") && /^\/(?:plugins|hooks)(?:\s|$)/.test(event.text.trim())) {
-				const notice = retiredCommandNotice(
-					event.text,
-					api.resources.getCommands().map((command) => command.name),
-				);
-				if (!notice) return { action: "continue" };
-				say(ctx, notice, "warning");
-				return { action: "handled" };
-			}
-			return { action: "continue" };
-		});
 	}
 }
 

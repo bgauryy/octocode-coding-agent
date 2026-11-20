@@ -15,6 +15,7 @@ import { scopeFor } from "../guard/store.ts";
 import { RATINGS, type Rating, type ReviewItem, type ReviewKind } from "../guard/types.ts";
 import { loadHooks } from "../hooks/config.ts";
 import { hookReviewItems } from "../hooks/review.ts";
+import { columnRows } from "../../theme/columns.ts";
 
 /**
  * What turning an external source (a harness: Claude Code, Codex, Cursor, ...) on would bring, each item scanned now by
@@ -149,12 +150,12 @@ export function renderPreview(preview: SourcePreview, limit = 12): string[] {
 		rows.length
 			? `${preview.label} would bring ${count(rows, "skill")}, ${count(rows, "mcp")}, ${count(rows, "hook")}. Static scan, worst first (nothing was started; origin not looked up):`
 			: `${preview.label} has no skills, MCP servers or hooks for this folder.`,
-		...rows
-			.slice(0, limit)
-			.map(
-				(row) =>
-					`  ${row.rating.padEnd(8)} ${KIND_WORDS[row.kind].padEnd(10)} ${visible(row.label)} \u2014 ${visible(row.top)}`,
-			),
+		...columnRows(
+			rows
+				.slice(0, limit)
+				.map((row) => [row.rating, KIND_WORDS[row.kind], `${visible(row.label)} \u2014 ${visible(row.top)}`]),
+			{ gap: 1, indent: "  ", min: [8, 10] },
+		),
 	];
 	if (rows.length > limit)
 		lines.push(`  \u2026 and ${rows.length - limit} more; /security lists every item after the switch`);

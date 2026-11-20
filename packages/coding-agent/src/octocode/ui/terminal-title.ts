@@ -1,14 +1,13 @@
 import path from "node:path";
-import { SEPARATOR, SPINNER, TITLE_FRAME_MS, type TitleState } from "@octocodeai/octocode-tui";
+import { SEPARATOR, SPINNER, TITLE_FRAME_MS, type TitleState, titleMark } from "@octocodeai/octocode-tui";
 import { cleanTitle } from "../../core/session-manager/title.ts";
-import { ENTITY } from "../shared/entity.ts";
 
 export { TITLE_FRAME_MS, type TitleState };
 
 /** Busy frames: the footer's braille loader. Every frame is one cell wide, so the tab label never shifts while it animates. */
 const BUSY_FRAMES = SPINNER.braille;
 
-/** Each state's mark after the squid (busy states animate through several; idle has none) and the word the tab shows. */
+/** Each state's mark after the mark (busy states animate through several; idle has none) and the word the tab shows. */
 export const TITLE_STATE: Readonly<Record<TitleState, { frames: readonly string[]; label: string }>> = {
 	idle: { frames: [""], label: "Idle" },
 	thinking: { frames: BUSY_FRAMES, label: "Thinking" },
@@ -32,7 +31,7 @@ export function plainTitle(description: string | undefined, cwd: string): string
 }
 
 /**
- * `🦑⠋ shy-barnacle Running - fix login · repo · 2 agents`: the main session's squid with the state's mark (frame
+ * `◈⠋ shy-barnacle Running - fix login · repo · 2 agents`: the main session's mark (a glyph; the squid with emoji marks on) with the state's mark (frame
  * `frame` of a busy state), the agent's team name once it joined, the state's word, the plain title, then how many
  * background subagents still run.
  */
@@ -48,7 +47,7 @@ export function terminalTitle(
 	const agentsMark = agents > 0 ? `${SEPARATOR}${agents} agent${agents > 1 ? "s" : ""}` : "";
 	const subject = plainTitle(description, cwd);
 	const who = name ? cleanTitle(name, NAME_MAX) : "";
-	return `${ENTITY.main}${frames[frame % frames.length]} ${who ? `${who} ` : ""}${label}${subject ? ` - ${subject}` : ""}${agentsMark}`;
+	return `${titleMark()}${frames[frame % frames.length]} ${who ? `${who} ` : ""}${label}${subject ? ` - ${subject}` : ""}${agentsMark}`;
 }
 
 /**

@@ -88,7 +88,12 @@ export const UNGRANTABLE: ReadonlySet<ActionClass> = new Set(
 );
 
 /** Classes a profile's `permissions:` front matter may declare: what its child needs and the mode would otherwise ask about. */
-export const PROFILE_DECLARABLE: readonly ActionClass[] = ["browser.control", "net.private", "upload.outside"];
+export const PROFILE_DECLARABLE: readonly ActionClass[] = [
+	"browser.control",
+	"desktop.control",
+	"net.private",
+	"upload.outside",
+];
 
 /**
  * Classes a parent may hand a subagent, which cannot ask anyone: every class with a session kind (what the user allowed

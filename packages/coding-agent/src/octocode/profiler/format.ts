@@ -1,3 +1,4 @@
+import { columnRows } from "../../theme/columns.ts";
 import type {
 	ProfileAgents,
 	ProfileEvent,
@@ -32,19 +33,7 @@ function duration(ms: number): string {
 
 /** Left-aligns every column except those named in `right`, two spaces apart; the last column is not padded. */
 function table(head: string[], rows: string[][], right: number[] = []): string {
-	const widths = head.map((title, column) => Math.max(title.length, ...rows.map((row) => (row[column] ?? "").length)));
-	const line = (cells: string[]) =>
-		cells
-			.map((cell, column) =>
-				column === cells.length - 1 && !right.includes(column)
-					? cell
-					: right.includes(column)
-						? cell.padStart(widths[column])
-						: cell.padEnd(widths[column]),
-			)
-			.join("  ")
-			.trimEnd();
-	return [line(head), ...rows.map(line)].join("\n");
+	return columnRows([head, ...rows], { right }).join("\n");
 }
 
 export function agentsTable({ sessionId, agents }: ProfileAgents): string {

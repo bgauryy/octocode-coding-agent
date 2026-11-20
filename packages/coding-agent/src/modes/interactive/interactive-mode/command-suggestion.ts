@@ -2,7 +2,6 @@
  * The warning for a command-shaped `/name` that no command owns, naming the command the user most likely meant.
  */
 
-import { retiredCommandNotice } from "../../../octocode/shared/commands.ts";
 import { editDistance } from "../../../octocode/skill/catalog.ts";
 
 /** What the suggestion reads of a command: the fields the /help picker searches. */
@@ -54,12 +53,6 @@ function closestCommand(name: string, commands: readonly CommandEntry[]): string
 		.filter(({ edits }) => edits <= limit)
 		.sort((a, b) => a.edits - b.edits || a.command.name.localeCompare(b.command.name));
 	return nearest?.command.name;
-}
-
-/** The message for retired input (`/plugins`, `/settings`): where the command moved. A refusal that cannot be sent as text. */
-export function retiredInputNotice(text: string, name: string, commands: readonly CommandEntry[]): string | undefined {
-	const names = commands.map((command) => command.name);
-	return names.includes(name) ? undefined : retiredCommandNotice(text, names);
 }
 
 /**

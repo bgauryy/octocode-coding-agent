@@ -4,7 +4,8 @@ import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
-import { interruptRefusal, isProcessName, nextStep, outside, resolveTarget } from "../routing.ts";
+import { interruptRefusal, nextStep, outside, resolveTarget } from "../routing.ts";
+import { isSessionTitle } from "../../processes/title.ts";
 import type { TeamStore } from "../store.ts";
 import { patiently } from "../store/patient.ts";
 import type { Vouches } from "./vouches.ts";
@@ -245,7 +246,7 @@ export async function sendMessage(
 		const finished = host.finished.has(to);
 		const parent = host.parentId();
 		// A subagent has no route to another Octocode process; its parent has (the session API), so the parent must send it.
-		if (parent !== undefined && !outside(from) && isProcessName(to))
+		if (parent !== undefined && !outside(from) && isSessionTitle(to))
 			return {
 				error: `${to} is an Octocode process, and subagents have no route to other processes: nothing was sent. Send to "parent" (your coordinator ${parent}) and ask it to message ${to}.`,
 			};

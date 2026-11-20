@@ -27,7 +27,7 @@ beforeAll(() => initTheme("dark", false));
 
 const plain = (lines: string[]): string[] => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
 const BODY = Array.from({ length: 12 }, (_, i) => `line ${i + 1} of the sender's message`).join("\n");
-const SENDER = "octocode-main-6c9a8aad";
+const SENDER = "octocode-agent-main-6c9a8aad";
 const claim = (text = BODY) => ({
 	from: SENDER,
 	process: { id: "oc-6c9a8a#2779", name: SENDER },

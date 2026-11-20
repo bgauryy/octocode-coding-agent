@@ -17,7 +17,7 @@ import { shellPath } from "./file-access.ts";
 import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
 import { browserEscalations } from "./browser-escalation.ts";
 import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
-import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
+import { DESKTOP_SERVER, isMcpToolName, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { mcpCallChange } from "./mcp-reads.ts";
 
 /**
@@ -99,6 +99,8 @@ export function readOnlyRoleRefusal(
 			control[0] ?? (outside[0] === undefined ? undefined : `Uploading ${outside[0]} from outside the workspace`);
 		return first === undefined ? undefined : refusal(first);
 	}
+	// The desktop server's calls leave the repository alone: the `desktop.control` ask the profile declares decides them.
+	if (event.toolName.startsWith(`${mcpNamespace(DESKTOP_SERVER)}__`)) return undefined;
 	if (isMcpToolName(event.toolName)) {
 		const change = mcpCallChange(event.toolName);
 		return change === undefined ? undefined : refusal(`${event.toolName} (${change})`);

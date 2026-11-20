@@ -8,6 +8,7 @@ import type { HookMode } from "../../shared/hook-mode.ts";
 import { HOOK_EVENTS, profileEvents, profileSupport, UPSTREAM_ONLY_EVENTS, type HookProtocol } from "../catalog.ts";
 import type { HookConfig } from "../contracts.ts";
 import { hookIdentity } from "../config/calls.ts";
+import { columnRows } from "../../../theme/columns.ts";
 
 /** What a subagent that does not run every hook runs of the user's hooks, for `/status` and `/hooks`. */
 export const CHILD_MODE_NOTE: Record<HookMode, string> = {
@@ -76,14 +77,16 @@ const PROFILE_LABELS: Record<HookProtocol, string> = { octocode: "native", claud
 
 /** `/harness hooks events`: the catalog as text: each event with the handler types every profile accepts there. */
 export function hookEventsReport(): string {
-	const width = Math.max(...HOOK_EVENTS.map((event) => event.length));
-	const rows = HOOK_EVENTS.map((event) => {
-		const profiles = (["octocode", "claude", "codex"] as const).flatMap((protocol) => {
-			const support = profileSupport(protocol, event);
-			return support ? [`${PROFILE_LABELS[protocol]} (${["command", ...support.handlers].join(", ")})`] : [];
-		});
-		return `  ${event.padEnd(width)}  ${profiles.join(" · ")}`;
-	});
+	const rows = columnRows(
+		HOOK_EVENTS.map((event) => {
+			const profiles = (["octocode", "claude", "codex"] as const).flatMap((protocol) => {
+				const support = profileSupport(protocol, event);
+				return support ? [`${PROFILE_LABELS[protocol]} (${["command", ...support.handlers].join(", ")})`] : [];
+			});
+			return [event, profiles.join(" · ")];
+		}),
+		{ indent: "  " },
+	);
 	return [
 		"Hook events Octocode implements, with the handler types each profile accepts:",
 		...rows,

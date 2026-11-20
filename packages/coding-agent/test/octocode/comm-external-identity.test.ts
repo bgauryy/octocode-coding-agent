@@ -187,7 +187,7 @@ describe("a 'messages from this process' grant needs the claimed peer to confirm
 			cwd: "/w",
 			startedAt: Date.now(),
 			protocol: 1,
-			name: "octocode-main-offline",
+			name: "octocode-agent-main-offline",
 			socket: join(home, "nobody-listens.sock"),
 		});
 		await expect(

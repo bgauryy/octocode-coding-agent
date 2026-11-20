@@ -36,6 +36,7 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 	browser: ["ask", "allow", "allow"],
 	"browser.control": ["ask", "ask", "allow"],
 	"browser.cookies": ["ask", "ask", "ask"],
+	"desktop.control": ["ask", "ask", "ask"],
 	"net.private": ["ask", "ask", "allow"],
 	"net.shell": ["ask", "ask", "allow"],
 	"upload.outside": ["ask", "ask", "allow"],
@@ -144,8 +145,13 @@ describe("permission modes", () => {
 
 	it("gives every class a reason line and a noun, and never a session kind to the per-call classes", () => {
 		for (const action of ACTION_CLASSES) expect(actionWhy(action), action).toMatch(/\S/);
-		expect([...UNGRANTABLE].sort()).toEqual(["browser.control", "mcp.destructive", "shell.destructive"]);
-		for (const action of ["browser.control", "shell.destructive", "mcp.destructive"] as const)
+		expect([...UNGRANTABLE].sort()).toEqual([
+			"browser.control",
+			"desktop.control",
+			"mcp.destructive",
+			"shell.destructive",
+		]);
+		for (const action of ["browser.control", "desktop.control", "shell.destructive", "mcp.destructive"] as const)
 			expect(kindOf(action)).toBeUndefined();
 	});
 

@@ -336,6 +336,13 @@ export function registerTimers(
 			refresh(ctx);
 		},
 	};
+	// `/jobs kill #<id>` ends a cron or wait through the path `wait` off and `/cron delete` use.
+	work.onCancel("timer", (id, ctx) => {
+		const context = ctx as FeatureContext;
+		const ended = timers.cancel(db().db, Number(id.slice(1)), context.sessionManager.getSessionId(), now());
+		if (ended) commandHost.changed(context);
+		return ended !== undefined;
+	});
 	if (options.commands && !options.isSubagent) {
 		options.commands.add("cron", cronCommand(commandHost));
 		options.commands.add("loop", loopCommand(commandHost));

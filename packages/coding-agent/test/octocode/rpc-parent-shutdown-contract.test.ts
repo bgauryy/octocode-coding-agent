@@ -57,7 +57,7 @@ async function until(check: () => boolean, ms: number): Promise<boolean> {
 it.each(["normal", "parent-gone", "signal-again"])(
 	"reaps a tracked shell during RPC shutdown (%s)",
 	async (mode) => {
-		const dir = tmp("octocode-rpc-shutdown-");
+		const dir = tmp("octocode-agent-rpc-shutdown-");
 		const marker = path.join(dir, "shell.pid");
 		const script = path.join(dir, "rpc.mjs");
 		fs.writeFileSync(script, fixture);

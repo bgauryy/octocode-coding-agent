@@ -204,7 +204,7 @@ export class TreeList implements Component, Focusable {
 				? { message: `No entries match "${query.trim()}"` }
 				: this.filterMode !== "default" && defaultKey
 					? { message: "No entries", recover: [defaultKey, "default view"] }
-					: { message: "No entries" },
+					: { message: "No entries yet · send a message first" },
 		);
 		this.drawn.clear();
 		if (this.filteredNodes.length > 0) {

@@ -10,8 +10,7 @@ import {
 	McpAddError,
 	saveMcpDefinition,
 	presetEntries,
-	recommendedPresets,
-	browserPreset,
+	builtinPresets,
 	currentMcpServerNames,
 } from "../../../../mcp/src/api.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
@@ -62,10 +61,7 @@ export function addWebMcp(
 			agentDir: options.agentDir,
 			cwd: options.cwd ?? options.agentDir,
 			projectTrusted: trusted,
-			existingNames: [
-				...registeredNames,
-				...presetEntries([...recommendedPresets(), browserPreset()]).map((entry) => entry.name),
-			],
+			existingNames: [...registeredNames, ...presetEntries(builtinPresets()).map((entry) => entry.name)],
 		});
 	} catch (cause) {
 		failure = new ConfigWriteError(

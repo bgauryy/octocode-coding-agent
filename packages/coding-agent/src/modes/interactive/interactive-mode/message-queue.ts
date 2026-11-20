@@ -9,6 +9,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { prependToEditorDraft } from "./helpers.ts";
 import { recallLastQueuedMessage } from "./queue-manager.ts";
 import type { CompactionQueuedMessage } from "./types.ts";
+import { featureCommandHint } from "./next-step-hint.ts";
 
 /** Interactive-mode members used by the message queues. */
 type MessageQueueHost = Pick<
@@ -44,9 +45,9 @@ export async function queueInteractiveMessage(
 		await getApplicationPort(host.session).invoke("prompt", text, {
 			streamingBehavior: mode,
 			attachImagePaths: true,
-			preflightResult: () => {
+			preflightResult: featureCommandHint(host, text, () => {
 				accepted = true;
-			},
+			}),
 		});
 	} catch (error) {
 		if (!accepted) prependToEditorDraft(host.editor, text);
@@ -58,7 +59,10 @@ export async function queueInteractiveMessage(
 
 /** While compaction runs, executes feature commands at once and queues other input; returns whether it did. */
 export async function handleInputDuringCompaction(
-	host: Pick<InteractiveModeHost, "editor" | "isFeatureCommand" | "queueCompactionMessage" | "session" | "showError">,
+	host: Pick<
+		InteractiveModeHost,
+		"chatContainer" | "editor" | "isFeatureCommand" | "queueCompactionMessage" | "session" | "showError" | "ui"
+	>,
 	text: string,
 	mode: "steer" | "followUp",
 ): Promise<boolean> {
@@ -68,7 +72,9 @@ export async function handleInputDuringCompaction(
 		host.editor.setText("");
 		// Callers are editor key handlers that drop the promise; a command that could not start goes back to the editor.
 		try {
-			await getApplicationPort(host.session).invoke("prompt", text);
+			await getApplicationPort(host.session).invoke("prompt", text, {
+				preflightResult: featureCommandHint(host, text),
+			});
 		} catch (error) {
 			prependToEditorDraft(host.editor, text);
 			host.showError(`Command did not run; restored to editor: ${errorMessage(error)}`);
@@ -201,7 +207,9 @@ async function deliverHeldMessages(
 	try {
 		for (const message of pending) {
 			if (host.isFeatureCommand(message.text)) {
-				await getApplicationPort(host.session).invoke("prompt", message.text);
+				await getApplicationPort(host.session).invoke("prompt", message.text, {
+					preflightResult: featureCommandHint(host, message.text),
+				});
 			} else if (!started) {
 				let beganRun = false;
 				await new Promise<void>((resolve, reject) => {

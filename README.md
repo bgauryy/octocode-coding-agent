@@ -39,7 +39,7 @@ flowchart LR
   T --> R
   R --> S
   T -.->|checkpoint| C[("/rewind")]
-  M -->|"agent task"| K["Subagents<br/>researcher, implementer,<br/>reviewer, browser, lean"]
+  M -->|"agent task"| K["Subagents<br/>researcher, implementer,<br/>reviewer, browser, desktop, lean"]
   K -->|"report: done, partial,<br/>blocked, failed"| S
   K <-.->|"team mail, file reservations"| K
   K -.->|"isolate: own worktree"| W[("refs/octocode/id")]

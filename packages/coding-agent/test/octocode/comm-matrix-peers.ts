@@ -25,7 +25,7 @@ export class Owned {
 	 * `OCTOCODE_HOME`; `received` lists the texts it took.
 	 */
 	async peer(id: string, cwd: string, mode: "turn" | "queue" | "queue-read" = "turn") {
-		const name = `octocode-main-${id}`;
+		const name = `octocode-agent-main-${id}`;
 		const child = spawn(process.execPath, ["--import", SOURCE_RESOLVER, WORKER, id, name, cwd, mode], {
 			env: process.env,
 		});
@@ -96,7 +96,7 @@ export class Owned {
 			cwd,
 			startedAt: 1,
 			protocol: 1,
-			name: "octocode-main-self",
+			name: "octocode-agent-main-self",
 		};
 		writeFileSync(join(instancesDir(apiDir()), "oc-self.json"), JSON.stringify(self));
 		publishOwnInstance(self);

@@ -2,6 +2,7 @@ import type { AgentDb } from "./db.ts";
 import * as agentEvents from "./queries/agent-events.ts";
 import * as agentRuns from "./queries/agent-runs.ts";
 import * as history from "./queries/history.ts";
+import * as jobs from "./queries/jobs.ts";
 import * as timers from "./queries/timers.ts";
 import type { HistoryTable } from "./queries/history.ts";
 import { isBusy, withoutWaiting } from "./sqlite.ts";
@@ -103,6 +104,8 @@ export function archiveHistory(
 				}
 			// Timers likewise: ended ones, and active ones left overdue and untouched for the whole window.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
+			// Job rows likewise: ended ones, and ones whose session never recorded an end.
+			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => jobs.purgeBefore(db, now - keepMs));
 		});
 	} catch (error) {
 		if (isBusy(error)) return { ...result, skipped: "busy" };

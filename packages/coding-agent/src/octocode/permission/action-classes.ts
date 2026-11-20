@@ -11,6 +11,7 @@ export const ACTION_CLASSES = [
 	"browser",
 	"browser.control",
 	"browser.cookies",
+	"desktop.control",
 	"net.private",
 	"net.shell",
 	"upload.outside",
@@ -92,6 +93,11 @@ export const MATRIX: Record<
 		noun: "browser cookie access",
 		why: "it reads, sets or moves the browser's cookies, which can hold logins",
 		all: "browser cookie access",
+	},
+	"desktop.control": {
+		rules: ["ask", "ask", "ask"],
+		noun: "taking control of the desktop",
+		why: "it clicks, types or reads the screen of your real desktop, where every open app and signed-in session is within reach",
 	},
 	"net.private": {
 		rules: ["ask", "ask", "allow"],

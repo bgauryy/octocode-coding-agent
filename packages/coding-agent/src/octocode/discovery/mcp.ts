@@ -6,8 +6,7 @@ import {
 	mcpLaunchIdentity,
 	mcpConfigFiles,
 	presetEntries,
-	browserPreset,
-	recommendedPresets,
+	builtinPresets,
 } from "../../../../mcp/src/api.ts";
 
 const FOREIGN_VENDORS: ReadonlySet<string> = new Set(["claude", "codex", "cursor"]);
@@ -21,7 +20,7 @@ function loadedByLaunch(input: DiscoverInput): Map<string, { name: string; sourc
 		agentDir: input.agentDir,
 		cwd: input.cwd,
 		projectTrusted: input.projectTrusted,
-		defaults: presetEntries([...recommendedPresets(), browserPreset()]),
+		defaults: presetEntries(builtinPresets()),
 	});
 	const byLaunch = new Map<string, { name: string; source: string }>();
 	for (const server of loaded.servers) {

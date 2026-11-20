@@ -22,6 +22,14 @@ export const PARENT_ID_ENV = "OCTOCODE_PARENT_ID";
 /** Set in a subagent: the role it was started with (its profile), shown next to its name. */
 export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
 export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
+/**
+ * Set by the `bash` tool in the commands it runs, so a shared resource they take (the full-run lock) names its owner:
+ * the agent's name, the backlog item the call named (a subagent's own item when the call names none) and, for a
+ * background job, its id.
+ */
+export const OWNER_AGENT_ENV = "OCTOCODE_AGENT_NAME";
+export const OWNER_ITEM_ENV = "OCTOCODE_ITEM";
+export const OWNER_JOB_ENV = "OCTOCODE_JOB_ID";
 /** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
 export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";
 
@@ -33,6 +41,9 @@ export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";
  * subagent whose profile cannot use browser tools; the user's own `browser` server definition is unaffected.
  */
 export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
+
+/** `0` keeps the built-in `desktop` MCP server (Cua Driver) unregistered for this process. */
+export const MCP_DESKTOP_ENV = "OCTOCODE_MCP_DESKTOP";
 
 /** Disables startup network operations; `--offline` sets it for the process and its children. */
 export const OFFLINE_ENV = "OCTOCODE_OFFLINE";

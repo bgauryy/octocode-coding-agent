@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
+import { OWNER_AGENT_ENV, OWNER_ITEM_ENV, OWNER_JOB_ENV } from "../packages/common/src/env.ts";
 import { processStartAsync } from "../packages/common/src/process-start.ts";
 
 /**
@@ -13,7 +14,9 @@ import { processStartAsync } from "../packages/common/src/process-start.ts";
  *
  * The lock is a directory (`mkdir` is atomic) holding `owner.json`. A holder that was killed is detected by its pid and
  * start time, so its lock is taken over at once. Processes started by the holder inherit `OCTOCODE_RUN_LOCK_HELD` and
- * never wait for their own parent. `OCTOCODE_RUN_LOCK=off` skips the lock.
+ * never wait for their own parent. `OCTOCODE_RUN_LOCK=off` skips the lock. The record names the agent, backlog item and
+ * background job the `bash` tool set in the environment of the run (`OCTOCODE_AGENT_NAME`, `OCTOCODE_ITEM`,
+ * `OCTOCODE_JOB_ID`), so a waiter sees who holds the lock, not only a pid.
  */
 
 export const RUN_LOCK_ENV = "OCTOCODE_RUN_LOCK";
@@ -28,6 +31,9 @@ export interface RunLockOwner {
 	started?: string;
 	label: string;
 	session?: string;
+	agent?: string;
+	item?: string;
+	job?: string;
 	cwd: string;
 	since: string;
 }
@@ -59,6 +65,18 @@ export function readRunLockOwner(dir: string): RunLockOwner | undefined {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return undefined;
 		throw error;
 	}
+}
+
+/** The agent, item and job the `bash` tool named for this run; unset or blank ones are left out. */
+function ownerNames(env: NodeJS.ProcessEnv): Pick<RunLockOwner, "agent" | "item" | "job"> {
+	const names: Pick<RunLockOwner, "agent" | "item" | "job"> = {};
+	const agent = env[OWNER_AGENT_ENV]?.trim();
+	const item = env[OWNER_ITEM_ENV]?.trim();
+	const job = env[OWNER_JOB_ENV]?.trim();
+	if (agent) names.agent = agent;
+	if (item) names.item = item;
+	if (job) names.job = job;
+	return names;
 }
 
 function tryTake(dir: string, owner: RunLockOwner): boolean {
@@ -117,8 +135,13 @@ function breakStale(dir: string, seen: RunLockOwner | undefined): void {
 
 function describeRunLockOwner(owner: RunLockOwner | undefined): string {
 	if (!owner) return "a run that is starting";
-	const session = owner.session ? `, session ${owner.session}` : "";
-	return `${owner.label} (pid ${owner.pid}${session}) in ${owner.cwd}, since ${owner.since}`;
+	const named = [
+		owner.session && `session ${owner.session}`,
+		owner.agent && `agent ${owner.agent}`,
+		owner.item && `item ${owner.item}`,
+		owner.job && `job ${owner.job}`,
+	].filter((part): part is string => Boolean(part));
+	return `${owner.label} (${[`pid ${owner.pid}`, ...named].join(", ")}) in ${owner.cwd}, since ${owner.since}`;
 }
 
 /**
@@ -139,6 +162,7 @@ export async function acquireRunLock(options: RunLockOptions): Promise<() => voi
 		started: (await processStartAsync(process.pid))?.started,
 		label: options.label,
 		session: env.OCTOCODE_SESSION_ID,
+		...ownerNames(env),
 		cwd: process.cwd(),
 		since: new Date().toISOString(),
 	};

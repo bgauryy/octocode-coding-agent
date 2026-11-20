@@ -27,6 +27,11 @@ describe("stateMark", () => {
 		expect(states.map((state) => markMoves(state))).toEqual(states.map(() => false));
 	});
 
+	it("shows a running mark as a still ◌ in reduced motion", () => {
+		animationClock.setReducedMotion(true);
+		expect(stateMark(tagged, "running")).toBe("<accent>◌");
+	});
+
 	it("tones stopped like the stopped row text, with a glyph waiting does not share", () => {
 		expect(STATE_COLOR.waiting).toBe("warning");
 		expect(STATE_COLOR.stopped).toBe("warning");

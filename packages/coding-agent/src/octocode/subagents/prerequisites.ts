@@ -1,9 +1,23 @@
+import type { JobStanding } from "../shared/job-standing.ts";
 import type { AgentLifecycleNotice } from "../shared/agent-lifecycle.ts";
 
-/** What a queued child waits for: a backlog item (`B12`) or an agent of this session (`agent:sly-mantle`). */
-export type Prerequisite = { kind: "item"; ref: string } | { kind: "agent"; id: string };
+/** The locks a prerequisite can wait on: the host's full test run (`lock:full-run`). */
+const LOCKS = ["full-run"] as const;
+type LockName = (typeof LOCKS)[number];
+
+/**
+ * What a queued child waits for: a backlog item (`B12`), an agent of this session (`agent:sly-mantle`), a background job
+ * of this session (`job:bash-3`) or a host lock to be free (`lock:full-run`).
+ */
+export type Prerequisite =
+	| { kind: "item"; ref: string }
+	| { kind: "agent"; id: string }
+	| { kind: "job"; id: string }
+	| { kind: "lock"; name: LockName };
 
 const AGENT_PREFIX = "agent:";
+const JOB_PREFIX = "job:";
+const LOCK_PREFIX = "lock:";
 
 /** The prerequisite a text names, or undefined for any other text. */
 export function parsePrerequisite(text: string): Prerequisite | undefined {
@@ -11,12 +25,20 @@ export function parsePrerequisite(text: string): Prerequisite | undefined {
 	if (/^B\d+$/i.test(name)) return { kind: "item", ref: name.toUpperCase() };
 	if (name.startsWith(AGENT_PREFIX) && name.length > AGENT_PREFIX.length)
 		return { kind: "agent", id: name.slice(AGENT_PREFIX.length) };
+	if (/^job:bash-\d+$/.test(name)) return { kind: "job", id: name.slice(JOB_PREFIX.length) };
+	const lock = name.startsWith(LOCK_PREFIX) ? name.slice(LOCK_PREFIX.length) : undefined;
+	const known = LOCKS.find((each) => each === lock);
+	if (known) return { kind: "lock", name: known };
 	return undefined;
 }
 
 /** The text a call, a notice or a row names the prerequisite by. */
-export const prerequisiteName = (prerequisite: Prerequisite): string =>
-	prerequisite.kind === "item" ? prerequisite.ref : `${AGENT_PREFIX}${prerequisite.id}`;
+export function prerequisiteName(prerequisite: Prerequisite): string {
+	if (prerequisite.kind === "item") return prerequisite.ref;
+	if (prerequisite.kind === "agent") return `${AGENT_PREFIX}${prerequisite.id}`;
+	if (prerequisite.kind === "job") return `${JOB_PREFIX}${prerequisite.id}`;
+	return `${LOCK_PREFIX}${prerequisite.name}`;
+}
 
 /** Where an item stands for a prerequisite: `closed` is done without a completion; `missing` is deleted or never existed. */
 export type ItemStanding = "open" | "done" | "closed" | "missing";
@@ -44,6 +66,12 @@ export interface GateHost {
 	lifecycle(listener: (notice: AgentLifecycleNotice) => void): () => void;
 	/** Calls `poke` whenever another process may have written the shared database (`DatabaseFollower`); returns the unsubscribe. */
 	follow(poke: () => void): () => void;
+	/** Where background job `id` of this session stands now (a job's end writes the database, which `follow` hears). */
+	job?(id: string): JobStanding;
+	/** Whether the host lock `name` is held now. */
+	lockHeld?(name: LockName): boolean;
+	/** Calls `poke` while a wait needs a lock's release, which no database change announces; returns the unsubscribe. */
+	watchLocks?(poke: () => void): () => void;
 }
 
 /** Ended agents the gate remembers: a queue is bounded, so is what it can refer back to. */
@@ -65,6 +93,7 @@ export class PrerequisiteGate {
 	private readonly ends = new Map<string, AgentEnd>();
 	private readonly waits = new Set<Wait>();
 	private unsubscribe: (() => void) | undefined;
+	private stopLocks: (() => void) | undefined;
 	private readonly host: GateHost;
 
 	constructor(host: GateHost) {
@@ -93,12 +122,27 @@ export class PrerequisiteGate {
 			if (item === "missing") return { state: "failed", why: `${prerequisite.ref} no longer exists` };
 			return { state: "open" };
 		}
+		if (prerequisite.kind === "job") return this.jobStanding(prerequisite.id);
+		if (prerequisite.kind === "lock") {
+			if (!this.host.lockHeld)
+				return { state: "failed", why: `this host cannot check ${prerequisiteName(prerequisite)}` };
+			return this.host.lockHeld(prerequisite.name) ? { state: "open" } : { state: "met" };
+		}
 		const end = this.ends.get(prerequisite.id);
 		if (!end) return { state: "open" };
 		if (end.reason === "completed" && end.outcome === "done")
 			return { state: "met", ...(end.seq === undefined ? {} : { seq: end.seq }) };
 		const how = end.reason === "completed" ? `reported ${end.outcome ?? "no outcome word"}` : `ended ${end.reason}`;
 		return { state: "failed", why: `${prerequisite.id} ${how}` };
+	}
+
+	private jobStanding(id: string): Standing {
+		if (!this.host.job) return { state: "failed", why: `this host cannot check job:${id}` };
+		const job = this.host.job(id);
+		if (job.state === "running") return { state: "open" };
+		if (job.state === "done") return { state: "met" };
+		if (job.state === "failed") return { state: "failed", why: `${id} ${job.why}` };
+		return { state: "failed", why: `${id} is not a background job of this session` };
 	}
 
 	/** The names among `prerequisites` that are still open. */
@@ -128,6 +172,7 @@ export class PrerequisiteGate {
 			if (now) return entry.settle(now);
 			this.waits.add(entry);
 			this.listen();
+			this.syncLocks();
 		});
 	}
 
@@ -156,9 +201,20 @@ export class PrerequisiteGate {
 
 	private leave(entry: Wait): void {
 		this.waits.delete(entry);
+		this.syncLocks();
 		if (this.waits.size === 0) {
 			this.unsubscribe?.();
 			this.unsubscribe = undefined;
+		}
+	}
+
+	/** Watches locks only while an open wait names one. */
+	private syncLocks(): void {
+		const needed = [...this.waits].some((wait) => wait.prerequisites.some((each) => each.kind === "lock"));
+		if (needed && !this.stopLocks && this.host.watchLocks) this.stopLocks = this.host.watchLocks(() => this.refresh());
+		if (!needed) {
+			this.stopLocks?.();
+			this.stopLocks = undefined;
 		}
 	}
 

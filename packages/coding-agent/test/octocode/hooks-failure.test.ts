@@ -15,21 +15,19 @@ beforeEach(() => {
 
 type Hook = { type: "command"; command: string; timeout?: number; failClosed?: boolean };
 
-/** A trusted project with one PreToolUse hook for Bash. */
-function project(hook: Hook): string {
+/** A trusted project with one native hook: PreToolUse for Bash unless `event` names another. */
+function project(hook: Hook, event = "PreToolUse"): string {
 	const dir = tmp("octocode-hookfail-");
 	fs.mkdirSync(path.join(dir, ".git"));
 	fs.mkdirSync(path.join(dir, ".octocode"));
-	fs.writeFileSync(
-		path.join(dir, ".octocode", "hooks.json"),
-		JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook] }] } }),
-	);
+	const group = event === "PreToolUse" ? { matcher: "Bash", hooks: [hook] } : { hooks: [hook] };
+	fs.writeFileSync(path.join(dir, ".octocode", "hooks.json"), JSON.stringify({ hooks: { [event]: [group] } }));
 	approveFixtureHooks(dir);
 	return dir;
 }
 
-async function run(hook: Hook, options: { hasUI?: boolean } = {}) {
-	const cwd = project(hook);
+async function run(hook: Hook, options: { hasUI?: boolean; event?: string } = {}) {
+	const cwd = project(hook, options.event);
 	const { api, fire } = fakeHost();
 	const failures: Array<{ what: readonly string[]; note: string; allowed: boolean }> = [];
 	const hooks = registerHooks(api, {
@@ -43,7 +41,7 @@ async function run(hook: Hook, options: { hasUI?: boolean } = {}) {
 		hasUI: options.hasUI ?? true,
 		ui: { notify, setStatus: () => undefined },
 		isProjectTrusted: () => true,
-		sessionManager: { getSessionId: () => "s", getSessionFile: () => undefined },
+		sessionManager: { getSessionId: () => "s", getSessionFile: () => undefined, getBranch: () => [] },
 	};
 	await fire("session_start", { reason: "startup" }, ctx);
 	const call = () =>
@@ -52,6 +50,19 @@ async function run(hook: Hook, options: { hasUI?: boolean } = {}) {
 }
 
 const TIMEOUT: Hook = { type: "command", command: "sleep 5", timeout: 0.2 };
+
+describe("native hook failures outside a gate", () => {
+	it("warns once when a native SessionStart hook times out, and starts the session anyway", async () => {
+		// SessionStart hooks run in the background: the warning follows the timeout, not the start.
+		const { notify, fire, ctx } = await run(TIMEOUT, { event: "SessionStart" });
+		const warnings = () => notify.mock.calls.filter(([, level]) => level === "warning");
+		await vi.waitFor(() => expect(warnings()).toHaveLength(1), { timeout: 5_000 });
+		expect(warnings()[0][0]).toMatch(/^SessionStart hook timed out after 0\.2s: sleep 5/);
+		await fire("session_start", { reason: "resume" }, ctx);
+		await new Promise((resolve) => setTimeout(resolve, 1_000));
+		expect(warnings().map(([message]) => message)).toEqual([warnings()[0][0]]);
+	}, 15_000);
+});
 
 describe("PreToolUse hook failures", () => {
 	it("warns, audits and lets the call go ahead when a hook times out (fail open)", async () => {

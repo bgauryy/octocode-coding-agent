@@ -18,7 +18,7 @@ const sample = (at: number, load1: number): MachineSample => ({
 	swapUsed: 0,
 	swapTotal: 0,
 	gpu: null,
-	processes: [{ pid: 1, ppid: 0, command: "tsc", cpu: 900, rss: 1, owner: "octocode-main-mine" }],
+	processes: [{ pid: 1, ppid: 0, command: "tsc", cpu: 900, rss: 1, owner: "octocode-agent-main-mine" }],
 });
 
 function monitored(sendMessage: (message: unknown, options: unknown) => unknown = () => undefined) {
@@ -33,7 +33,7 @@ function monitored(sendMessage: (message: unknown, options: unknown) => unknown 
 		isSubagent: false,
 		jobs: () => [],
 		db: () => ({}) as never,
-		title: () => "octocode-main-mine",
+		title: () => "octocode-agent-main-mine",
 		watch: new StuckJobWatch({ logSize: () => 0, groupCpu: async () => new Map() }),
 		start: (options) => {
 			sampler = options;

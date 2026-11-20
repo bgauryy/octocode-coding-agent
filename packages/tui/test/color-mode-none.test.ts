@@ -24,6 +24,12 @@ describe("no-color terminal mode", () => {
 		assert.strictEqual(isColorDisabled({}), false);
 	});
 
+	it("is also chosen by a non-empty OCTOCODE_NO_COLOR (what --no-color sets)", () => {
+		assert.strictEqual(getTerminalColorMode(CAPABILITIES, { OCTOCODE_NO_COLOR: "1" }), "none");
+		assert.strictEqual(getTerminalColorMode(CAPABILITIES, { OCTOCODE_NO_COLOR: "" }), "truecolor");
+		assert.strictEqual(isColorDisabled({ OCTOCODE_NO_COLOR: "1" }), true);
+	});
+
 	it("writes no color sequence for any color kind", () => {
 		for (const color of [rgbColor(18, 52, 86), indexedColor(9)]) {
 			assert.strictEqual(foregroundAnsi(color, "none"), "");

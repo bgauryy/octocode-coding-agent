@@ -150,8 +150,6 @@ export function interruptRefusal(
 	return undefined;
 }
 
-/** Whether `name` is an Octocode process title (`octocode-main-<id>`, `octocode-rpc-<id>`; see `processes/title.ts`), not an agent id. */
-export const isProcessName = (name: string): boolean => /^octocode-(main|rpc)-/.test(name);
 
 /** A path to lock as the file tools resolve it: relative from the session's cwd (not the repository root), `~` from home. */
 export function resolveLockPath(cwd: string | undefined, entry: string): string {

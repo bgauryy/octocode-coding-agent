@@ -78,6 +78,13 @@ export interface ManagePageOptions {
 	onCancel(): void;
 }
 
+/** Wraps `text` (which starts with `indent` spaces) so each continuation line keeps that indent. */
+function wrapIndented(text: string, width: number, indent: number): string[] {
+	const room = Math.max(1, width - indent);
+	const [first = "", ...rest] = wrapTextWithAnsi(text.slice(indent), room);
+	return [`${" ".repeat(indent)}${first}`, ...rest.map((line) => `${" ".repeat(indent)}${line}`)];
+}
+
 /** A selectable row with the section headings and empty notes drawn above it. */
 interface Item {
 	row: PageRow;
@@ -157,7 +164,7 @@ export class ManagePageComponent implements Component, Focusable {
 		this.width = width;
 		const { title, facts = [], notes = [], alerts = [] } = this.options;
 		const border = ruleLine(width);
-		const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width));
+		const wrap = (text: string) => wrapIndented(text, width, 1);
 		const factLines = facts.flatMap((fact) => wrap(` ${theme.fg("muted", fact.label)}  ${fact.value}`));
 		const tail = [
 			...alerts.flatMap((alert) => wrap(` ${theme.fg("error", alert)}`)),
@@ -235,7 +242,7 @@ export class ManagePageComponent implements Component, Focusable {
 		const long = !!row.detail && visibleWidth(`   ${row.name}  ${row.detail}  ${row.badge ?? ""}`) > width;
 		const line = this.rowLine(narrow ? { ...row, detail: undefined } : row, width, nameWidth, selected);
 		if (!selected || !row.detail || !(narrow || long)) return [line];
-		return [line, ...wrapTextWithAnsi(`   ${theme.fg("muted", row.detail)}`, Math.max(1, width))];
+		return [line, ...wrapIndented(`   ${theme.fg("muted", row.detail)}`, width, 3)];
 	}
 
 	private rowLine(row: PageRow, width: number, nameWidth: number, selected: boolean): string {

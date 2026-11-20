@@ -155,7 +155,7 @@ describe("openAgentDb", () => {
 		return { file, bytes: fs.readFileSync(file) };
 	};
 
-	it.each([11, 99])("refuses newer version %i before changing the file", (version) => {
+	it.each([12, 99])("refuses newer version %i before changing the file", (version) => {
 		const { file, bytes } = versioned(version);
 		expect(() => openAgentDb(file)).toThrow(
 			new RegExp(`schema version ${version}, newer than this Octocode's .*Nothing in the file changed`),

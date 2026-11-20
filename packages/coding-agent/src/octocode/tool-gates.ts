@@ -19,6 +19,7 @@ import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import type { snapshotLocalReads } from "./shared/local-reads.ts";
 import { snapshotReadCall } from "./files/read-continuations.ts";
 import { untilCommand } from "./shared/until-command.ts";
+import { desktopMcpRequest } from "./permission/desktop-mcp.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 import { protectedBranch } from "./worktrees/default-branch.ts";
 
@@ -141,7 +142,8 @@ export function registerToolGates(
 			early: { park: (id, record) => void parked.set(id, [...(parked.get(id) ?? []), record]) },
 			permission,
 			provenance,
-			network: (toolName, input, cwd) => browserMcpRequest(toolName, input, undefined, cwd),
+			network: async (toolName, input, cwd) =>
+				desktopMcpRequest(toolName, input) ?? (await browserMcpRequest(toolName, input, undefined, cwd)),
 			annotations: annotationsOf,
 			protectedBranch,
 			replacement: {

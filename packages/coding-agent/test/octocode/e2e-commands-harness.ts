@@ -69,6 +69,9 @@ class NullTerminal implements Terminal {
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b\x07]*(?:\x07|\x1b\\)/g;
 
+/** Lines of a dialog a run notes: a page's title, facts, every row and its hint line on the 40-row terminal. */
+const DIALOG_LINES = 24;
+
 /** What a submitted line did: the transcript text it added, the dialogs it opened and whether it finished. */
 export interface Outcome {
 	text: string;
@@ -273,7 +276,7 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			await new Promise((resolve) => setTimeout(resolve, 15));
 			if (dialogOpen() || host.activeSelectorDispose) {
 				// A selector or dialog replaced the editor: note what it shows (title, rows and hint line), then dismiss it as a user would.
-				dialogs.push(screen().split("\n").filter(Boolean).slice(-16).join("\n"));
+				dialogs.push(screen().split("\n").filter(Boolean).slice(-DIALOG_LINES).join("\n"));
 				press("\x1b");
 				if (dialogs.length > 6) break;
 				continue;

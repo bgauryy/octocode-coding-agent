@@ -30,14 +30,14 @@ A state never rests on color alone: every state has a glyph, and badges and warn
 
 Six states cover tools, agents, questions and runs. Each has one mark and one color role.
 
-| State     | Mark | Color role | Meaning                          |
-| --------- | ---- | ---------- | -------------------------------- |
-| `pending` | `○`  | `dim`      | Queued, not started              |
-| `running` | `⠋`  | `accent`   | In progress; the mark animates   |
-| `waiting` | `◇`  | `warning`  | Needs you; the mark breathes     |
-| `done`    | `✓`  | `success`  | Finished; the mark glows briefly |
-| `failed`  | `✗`  | `error`    | Ended with an error              |
-| `stopped` | `◼`  | `warning`  | Interrupted or cancelled         |
+| State     | Mark | Color role | Meaning                                         |
+| --------- | ---- | ---------- | ----------------------------------------------- |
+| `pending` | `○`  | `dim`      | Queued, not started                             |
+| `running` | `⠋`  | `accent`   | In progress; the mark animates (`◌` when still) |
+| `waiting` | `◇`  | `warning`  | Needs you; the mark breathes                    |
+| `done`    | `✓`  | `success`  | Finished; the mark glows briefly                |
+| `failed`  | `✗`  | `error`    | Ended with an error                             |
+| `stopped` | `◼`  | `warning`  | Interrupted or cancelled                        |
 
 Motion applies in this order:
 
@@ -53,6 +53,14 @@ flowchart TD
 ```
 
 A still screen writes nothing: marks that no longer move stop requesting repaints. Elapsed-time counters tick once per second even in reduced motion.
+
+### Motion gating
+
+Decoration (spinners, shimmer, glow) is still, and a running mark is the static `◌`, when any of these holds: `terminal.reduceMotion` is `true`; it is `"auto"` and stdout is not a terminal, `CI` is set (anything but empty, `0` or `false`), or `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`. An explicit `false` keeps motion on. Piped output therefore never collects spinner frames.
+
+### Contrast
+
+Every theme meets WCAG contrast against the backgrounds its text can land on (black, `#1e1e1e` and `#0d1117` for dark themes; white and `#f6f8fa` for light themes; and every message and selection band): text roles (`text`, `muted`, `dim`, state colors, `md*`, `syntax*`, tool and message text) reach 4.5:1, and border and glyph roles (`border`, `borderAccent`, `borderMuted`, code-fence, quote and rule colors, thinking levels, `bashMode`, the scrollbar thumb) reach 3:1. The scrollbar track is a quiet fill and only has to stay visible. A theme test checks every built-in theme; check a custom theme's `dim`, `borderMuted` and `thinkingOff` first, which most often fall short.
 
 ### The state light
 
@@ -164,7 +172,7 @@ A line is cut by visible width: ANSI colors and wide characters are counted corr
 | Key hints never wrap. When they do not fit, the least important go first; the last one left is cut with `…`                                                                                                                                                                                                                  | Selector, dialog and page hints |
 | Footer parts shorten lowest priority first: a path loses its middle, then shrinks to its last segment, then the part is dropped. When room returns, parts grow back by priority. A part cut to fit, and the whole line when it still overflows, end in a `dim` `…`; the model name, branch and alert rows end in a plain `…` | Footer                          |
 | Alerts (warning and error statuses) are dropped whole rather than cut mid-word, and appear in rows of their own                                                                                                                                                                                                              | Footer                          |
-| A detail line 1 drops moves to free room on line 2; `… /status` appears when a detail is still shortened or dropped                                                                                                                                                                                                                                                                  | Footer                          |
+| A detail line 1 drops moves to free room on line 2; `… /status` appears when a detail is still shortened or dropped                                                                                                                                                                                                          | Footer                          |
 | A collapsed tool result shows 5 lines, then one fold hint: `… +12 lines (ctrl+o to expand)`                                                                                                                                                                                                                                  | Tool rows                       |
 | When the preview keeps the last lines, the hint reads `… +12 earlier lines (...)`                                                                                                                                                                                                                                            | Tool rows such as shell output  |
 | The fold hint adds `or click` while mouse clicks are active, and names only the count when no key is bound                                                                                                                                                                                                                   | Tool rows                       |

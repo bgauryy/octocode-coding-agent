@@ -9,7 +9,7 @@ import {
 	profileSelectsServer,
 	profileTools,
 } from "../profiles.ts";
-import { BROWSER_SERVER, FREELLAMA_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
+import { BROWSER_SERVER, DESKTOP_SERVER, FREELLAMA_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { Identity } from "./env.ts";
 import { operatorLimits } from "./operator-limits.ts";
 
@@ -96,6 +96,10 @@ export function buildAgentArgs(
 		...operator.excludeTools,
 		...profileExcludes(profile?.excludeTools),
 		...(profileSelectsBrowser(profile) ? [] : [`${mcpNamespace(BROWSER_SERVER)}__*`]),
+		// Desktop control follows the same rule: only a profile that names the server (the `desktop` specialist) or a task that lists it starts it.
+		...(profileSelectsServer(profile, DESKTOP_SERVER) || namedServers.includes(DESKTOP_SERVER)
+			? []
+			: [`${mcpNamespace(DESKTOP_SERVER)}__*`]),
 		...(profileSelectsServer(profile, FREELLAMA_SERVER) || namedServers.includes(FREELLAMA_SERVER)
 			? []
 			: [`${mcpNamespace(FREELLAMA_SERVER)}__*`]),

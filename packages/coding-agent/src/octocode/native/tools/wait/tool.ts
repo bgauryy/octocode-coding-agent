@@ -28,36 +28,40 @@ const text = (description: string) => Type.Optional(Type.String({ description })
 const parameters = Type.Object(
 	{
 		op: StringEnum(["set", "on", "off", "list"] as const),
-		note: text("required: what to do on wake"),
-		after: Type.Optional(Type.Number()),
+		note: text("Required: what to do when woken"),
+		after: Type.Optional(Type.Number({ description: "set: wake once after this many seconds" })),
 		every: Type.Optional(
 			Type.Number({
-				description: `set: min ${MIN_EVERY_SECONDS}s; on: poll, min ${MIN_CHECK_SECONDS}s`,
+				description: `set: wake repeatedly every N seconds (min ${MIN_EVERY_SECONDS}). on: how often to check the event (min ${MIN_CHECK_SECONDS}).`,
 			}),
 		),
-		event: Type.Optional(StringEnum(LISTEN_EVENTS)),
+		event: Type.Optional(StringEnum(LISTEN_EVENTS, { description: "on: the event to wait for" })),
 		filter: Type.Optional(
 			Type.Object(
 				{
-					ref: text("comma-joined: any"),
-					state: text("todo|ongoing|done|closed|ready (dependsOn all done)"),
+					ref: text("Item ids, comma-separated; any one matches"),
+					state: text("Item state: todo, ongoing, done, closed, or ready (every dependency done)"),
 					path: Type.Optional(Type.String()),
 					agent: Type.Optional(Type.String()),
-					epic: text("item.changed: items under this epic"),
-					change: text("item.changed: comma-joined change kinds; omit: any"),
-					command: text("exit 0"),
+					epic: text("item.changed: only items under this epic"),
+					change: text("item.changed: change kinds, comma-separated; omit for any"),
+					command: text("Shell command; the wake fires when it exits 0"),
 				},
 				{ additionalProperties: false },
 			),
 		),
-		check: text("on: a question a small model judges (paid); omit: filter.command alone, free"),
-		cron: text("set: 5 fields, local time; replaces after/every"),
-		tz: text("set with cron: IANA zone"),
-		once: Type.Optional(Type.Boolean()),
-		maxRuns: Type.Optional(Type.Integer({ description: "default 20" })),
-		deadline: Type.Optional(Type.Number({ description: "seconds; on: 3600" })),
-		id: Type.Optional(Type.Integer()),
-		all: Type.Optional(Type.Boolean({ description: "list: ended too; off: all" })),
+		check: text(
+			"on: a question a small model judges when the event fires (costs a model call); omit to use filter.command alone (free)",
+		),
+		cron: text("set: 5-field cron in local time; replaces after and every"),
+		tz: text("set with cron: IANA time zone, e.g. Europe/Paris"),
+		once: Type.Optional(
+			Type.Boolean({ description: "on: stop after the first wake (default); false keeps listening" }),
+		),
+		maxRuns: Type.Optional(Type.Integer({ description: "Stop after this many wakes (default 20)" })),
+		deadline: Type.Optional(Type.Number({ description: "Seconds until the wait expires (on: default 3600)" })),
+		id: Type.Optional(Type.Integer({ description: "off: the wait to remove (see list)" })),
+		all: Type.Optional(Type.Boolean({ description: "list: include ended waits; off: remove every wait" })),
 	},
 	{ additionalProperties: false },
 );

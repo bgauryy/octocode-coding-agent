@@ -8,8 +8,11 @@ import { HOOK_COMMAND_OUTPUT_MAX_BYTES, type HookCommand, type HookRun } from ".
 /** Drain inherited pipes after natural exit without hiding a hook's decision. */
 const EXIT_DRAIN_MS = 150;
 
-/** Least time an async hook may run before it is killed: it works in the background, so it gets more than a gate does. */
-const ASYNC_HOOK_MIN_TIMEOUT_MS = 10 * 60_000;
+/**
+ * How long a Claude `async` command hook may run. Claude Code enforces no `timeout` on one, so its own timeout does not
+ * apply; this bound only keeps a hung hook from holding its process for the rest of the session.
+ */
+const CLAUDE_ASYNC_HOOK_TIMEOUT_MS = 10 * 60_000;
 
 export function runCommandHook(
 	hook: HookCommand,
@@ -76,7 +79,6 @@ export function runCommandHook(
 			void stopping.then(() => finish(null));
 			child.unref();
 		};
-		// An async hook is not waited for, so its own timeout does not hold a turn back; it still bounds the process.
 		const timer = setTimeout(
 			() => {
 				// A hook that exited has answered; only pipes held open by its children are still running.
@@ -84,9 +86,7 @@ export function runCommandHook(
 				timedOut = true;
 				stop();
 			},
-			hook.protocol === "claude" && hook.async && !hook.asyncRewake
-				? Math.max(hook.timeoutMs, ASYNC_HOOK_MIN_TIMEOUT_MS)
-				: hook.timeoutMs,
+			hook.protocol === "claude" && hook.async && !hook.asyncRewake ? CLAUDE_ASYNC_HOOK_TIMEOUT_MS : hook.timeoutMs,
 		);
 		if (signal?.aborted) stop();
 		else signal?.addEventListener("abort", stop, { once: true });

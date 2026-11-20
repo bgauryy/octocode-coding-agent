@@ -3,7 +3,7 @@
  * re-rendering after the session is replaced.
  */
 
-import { animationClock, setCapabilityOverrides, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, setCapabilityOverrides, setEmojiMarks, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { configureHttpDispatcher } from "../../../core/http-dispatcher.ts";
@@ -142,6 +142,7 @@ export function applyRuntimeSettings(host: SessionBindingHost): void {
 	setCapabilityOverrides(host.settingsManager.getTerminalCapabilityOverrides());
 	host.ensurePngTranscoder();
 	animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
+	setEmojiMarks(host.settingsManager.getEmojiMarks());
 	configureHttpDispatcher(host.settingsManager.getHttpIdleTimeoutMs());
 	host.applyFullscreenScrollbarSetting();
 	if (host.renderer instanceof TuiAltScreen) {

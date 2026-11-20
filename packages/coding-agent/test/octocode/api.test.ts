@@ -209,11 +209,11 @@ describe("external API", () => {
 		const { client, sent } = await boot();
 		await client.call("message.send", {
 			text: "hi",
-			from: "octocode-main-abc",
-			caller: { team: "shy-barnacle", name: "octocode-main-abc" },
+			from: "octocode-agent-main-abc",
+			caller: { team: "shy-barnacle", name: "octocode-agent-main-abc" },
 		});
 		const content = sent[0].message.content;
-		expect(content).toContain('from "shy-barnacle" (process "octocode-main-abc") (self-reported)');
+		expect(content).toContain('from "shy-barnacle" (process "octocode-agent-main-abc") (self-reported)');
 		// The claim sits in the header above the fence, never in the message text.
 		expect(content.indexOf("shy-barnacle")).toBeLessThan(content.indexOf("<<<untrusted-"));
 	});
@@ -428,12 +428,12 @@ describe("external API", () => {
 				id: "m1",
 				from: "ci bot",
 				at: Date.now(),
-				external: { name: "octocode-main-abcd", pid: 7, cwd: "/w" },
+				external: { name: "octocode-agent-main-abcd", pid: 7, cwd: "/w" },
 			},
 		};
 		const collapsed = rendered(render(message, { expanded: false }, theme));
 		expect(collapsed).toMatch(/^\s*✉ external says it is ci bot · another process, not you · \d\d:\d\d:\d\d/);
-		expect(collapsed).toContain("octocode-main-abcd · pid 7 · /w");
+		expect(collapsed).toContain("octocode-agent-main-abcd · pid 7 · /w");
 		expect(collapsed).not.toContain("untrusted-");
 		expect(collapsed).toContain("**bold**");
 		expect(collapsed).not.toContain("\u001b[2J");

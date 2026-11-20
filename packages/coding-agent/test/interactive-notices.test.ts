@@ -49,8 +49,8 @@ describe("notices", () => {
 			.filter((line) => line !== "");
 
 	test.each([
-		["showWarning", display.showWarning, "⚠ 🦀", "Project config not loaded (8 files)."],
-		["showError", display.showError, "✗ 🦈", "Compaction failed: model returned no summary"],
+		["showWarning", display.showWarning, "⚠ ▲", "Project config not loaded (8 files)."],
+		["showError", display.showError, "✗ ◆", "Compaction failed: model returned no summary"],
 	] as const)("%s is one `<glyph> <tone> <sentence>` line at the transcript pad", (_name, show, glyph, message) => {
 		const chatContainer = new Container();
 		const host = createFakeHost({ chatContainer, outputPad: 1, ui: { requestRender: vi.fn() } } as any);
@@ -67,16 +67,16 @@ describe("notices", () => {
 		display.showError(host, "boom");
 		chatContainer.addChild(display.noticeLine("success", "New session started", 0));
 
-		expect(lines(chatContainer)).toEqual(["✗ 🦈 boom", "✓ 🐚 New session started"]);
+		expect(lines(chatContainer)).toEqual(["✗ ◆ boom", "✓ ≋ New session started"]);
 	});
 
 	test("the mark carries the state colour and the words stay readable; an error is red throughout", () => {
 		const line = (kind: "success" | "warning" | "error") => display.noticeLine(kind, "x", 0).render(20)[0];
 
-		expect(line("success")).toContain(`${theme.fg("success", "✓ 🐚")} ${theme.fg("text", "x")}`);
+		expect(line("success")).toContain(`${theme.fg("success", "✓ ≋")} ${theme.fg("text", "x")}`);
 		// A long warning is not a wall of amber: only its marks are.
-		expect(line("warning")).toContain(`${theme.fg("warning", "⚠ 🦀")} ${theme.fg("text", "x")}`);
-		expect(line("error")).toContain(theme.fg("error", "✗ 🦈 x"));
+		expect(line("warning")).toContain(`${theme.fg("warning", "⚠ ▲")} ${theme.fg("text", "x")}`);
+		expect(line("error")).toContain(theme.fg("error", "✗ ◆ x"));
 	});
 
 	test("a notice strips terminal controls from its message", () => {
@@ -86,7 +86,7 @@ describe("notices", () => {
 			.render(80)
 			.join("\n");
 
-		expect(stripAnsi(rendered).trimEnd()).toBe("✗ 🦈 gist: bad token");
+		expect(stripAnsi(rendered).trimEnd()).toBe("✗ ◆ gist: bad token");
 		expect(rendered.replace(/\u001b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
 	});
 });

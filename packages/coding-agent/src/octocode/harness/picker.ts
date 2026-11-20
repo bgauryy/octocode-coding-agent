@@ -311,7 +311,8 @@ export class HarnessPicker implements Component, Focusable {
 			push(renderHintLine(detailHints(this.keys), w));
 		} else {
 			const nav = sectionNav(this.options.items, this.section, this.state === "ready", t);
-			for (const line of wrapTextWithAnsi(nav, w).slice(0, height < 12 ? 1 : 2)) push(line);
+			// One space in, like the title above and the rows below.
+			for (const line of wrapTextWithAnsi(nav, Math.max(1, w - 1)).slice(0, height < 12 ? 1 : 2)) push(` ${line}`);
 			if (this.state !== "ready") {
 				const message =
 					this.state === "loading"

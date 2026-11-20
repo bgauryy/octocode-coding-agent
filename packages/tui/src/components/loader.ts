@@ -1,5 +1,5 @@
 import { animationClock } from "../tokens/clock.ts";
-import { ELLIPSIS, MOTION, SPINNER } from "../tokens/design.ts";
+import { ELLIPSIS, GLYPH, MOTION, SPINNER } from "../tokens/design.ts";
 import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
 
@@ -15,7 +15,7 @@ const DEFAULT_INTERVAL_MS: number = MOTION.spinnerMs;
 
 /**
  * Loader component that updates with an optional spinning animation, driven by the shared animation clock: in reduced
- * motion it shows its first frame and does not animate.
+ * motion it does not animate: the default spinner shows the running state's static mark, custom frames their first.
  */
 export class Loader extends Text {
 	private frames = [...DEFAULT_FRAMES];
@@ -24,6 +24,7 @@ export class Loader extends Text {
 	private unsubscribe: (() => void) | undefined;
 	private ui: TUI | null = null;
 	private renderIndicatorVerbatim = false;
+	private defaultFrames = true;
 	private spinnerColorFn: (str: string) => string;
 	private messageColorFn: (str: string) => string;
 	private message: string = `Loading${ELLIPSIS}`;
@@ -69,7 +70,8 @@ export class Loader extends Text {
 
 	setIndicator(indicator?: LoaderIndicatorOptions): void {
 		this.renderIndicatorVerbatim = indicator !== undefined;
-		this.frames = indicator?.frames !== undefined ? [...indicator.frames] : [...DEFAULT_FRAMES];
+		this.defaultFrames = indicator?.frames === undefined;
+		this.frames = this.defaultFrames ? [...DEFAULT_FRAMES] : [...indicator!.frames!];
 		this.intervalMs = indicator?.intervalMs && indicator.intervalMs > 0 ? indicator.intervalMs : DEFAULT_INTERVAL_MS;
 		this.currentFrame = 0;
 		this.start();
@@ -99,7 +101,8 @@ export class Loader extends Text {
 	}
 
 	protected getRenderedIndicator(): string {
-		const frame = this.frames[animationClock.isReducedMotion() ? 0 : this.currentFrame] ?? "";
+		const still = animationClock.isReducedMotion();
+		const frame = still && this.defaultFrames ? GLYPH.running : (this.frames[still ? 0 : this.currentFrame] ?? "");
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 	}
 

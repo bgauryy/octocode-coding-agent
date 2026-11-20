@@ -32,16 +32,17 @@ export async function memoryListPage(
 	memories: readonly Memory[],
 	title: string,
 	initialId?: string,
+	empty = "none yet — choose Add below",
 ): Promise<string | undefined> {
 	const sections: PageSection[] = [];
 	for (const heading of ["Pinned", "Workspace", "Project", "Global"] as const) {
 		const rows = memories.filter((memory) => sectionOf(memory) === heading).map(row);
 		if (rows.length) sections.push({ heading, rows });
 	}
-	if (!sections.length) sections.push({ heading: "Memories", rows: [], empty: "none yet — choose Add below" });
+	if (!sections.length) sections.push({ heading: "Memories", rows: [], empty });
 	sections.push({ heading: "Add", rows: [{ id: ADD_ROW, name: "+ Add a memory", detail: "write a durable note" }] });
 	const choice = await showCommandPage(ctx.ui, {
-		title: `Memories — ${title}`,
+		title: title.startsWith("Memories") ? title : `Memories — ${title}`,
 		sections,
 		initialId,
 	});

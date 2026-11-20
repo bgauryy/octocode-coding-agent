@@ -1,21 +1,32 @@
+import type { CommandContext } from "../../../core/features/index.ts";
 import { cancelledText, type Subcommands, say, wordCompletions } from "../../shared/commands.ts";
 import { shortPath } from "../../../utils/display-path.ts";
 import { plural } from "../../shared/text.ts";
 import { firstLine } from "../../shared/util.ts";
+import type { RunningWork } from "../../shared/running-work.ts";
 import type { BashJobs } from "../bash-jobs.ts";
+import { jobsOverview } from "./overview.ts";
 import { jobWhyLine } from "./message.ts";
 import type { ReloadedJob } from "./types.ts";
 
-/** `/jobs`: list the running background jobs (`BashJobs.describe`), or stop one with `/jobs kill <id>`. */
-export function registerJobsCommand(commands: Subcommands, jobs: BashJobs): void {
+/** `/jobs`: list what runs or waits (background bash jobs, crons, waits: `jobsOverview`), or stop one with `/jobs kill <id>` (`bash-1`, or `#4` for a cron or wait). */
+/** What `/jobs` adds after a job's command (` · item B12 · holds full-run`), by job id; the caller knows the work graph. */
+export type JobLinks = (ctx: CommandContext, work: RunningWork, now: number) => Map<string, string>;
+
+export function registerJobsCommand(commands: Subcommands, jobs: BashJobs, work: RunningWork, links: JobLinks): void {
 	commands.add("jobs", {
-		description: "List or stop background bash jobs",
+		description: "List background jobs, crons and waits, or stop one",
 		argumentHint: "[kill <id>]",
 		handler: async (args, ctx) => {
 			const [sub = "", id = ""] = args.split(/\s+/);
-			if (!sub) return say(ctx, jobs.describe(), "info");
+			if (!sub) {
+				const now = Date.now();
+				const bash = jobs.jobs.size ? jobs.describe(now, links(ctx, work, now)) : undefined;
+				return say(ctx, jobsOverview(bash, work, now), "info");
+			}
 			if (sub !== "kill") return say(ctx, "Usage: /jobs [kill <id>]", "warning");
 			if (!id) return say(ctx, `Usage: /jobs kill <id>. ${jobs.describe()}`, "warning");
+			if (/^#?\d+$/.test(id)) return killTimer(work, `#${id.replace("#", "")}`, ctx);
 			if (
 				ctx.hasUI &&
 				jobs.jobs.has(id) &&
@@ -41,6 +52,23 @@ export function registerJobsCommand(commands: Subcommands, jobs: BashJobs): void
 			);
 		},
 	});
+}
+
+/** Ends the cron or wait `id` (`#4`) through the timer feature; an unknown id names the ones that exist. */
+function killTimer(work: RunningWork, id: string, ctx: CommandContext): void {
+	const ended = work.cancel("timer", id, ctx);
+	if (ended === undefined) {
+		const ids = work
+			.all()
+			.filter((row) => row.kind === "timer")
+			.map((row) => row.id);
+		return say(
+			ctx,
+			`No cron or wait ${id} in this session. ${ids.length ? `Running: ${ids.join(", ")}.` : "None is running."}`,
+			"warning",
+		);
+	}
+	say(ctx, ended ? `Cancelled ${id}.` : `${id} already ended.`, "info");
 }
 
 /** The warning the next session shows for the jobs a /reload stopped: what each ran, why, and its log. */

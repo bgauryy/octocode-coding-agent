@@ -370,14 +370,22 @@ In regular mode the transcript lives in the terminal's scrollback, which the ter
 
 ## No color
 
-A non-empty `NO_COLOR` or `TERM=dumb` removes every ANSI color sequence (foreground, background, tints, diff tints, shimmer); bold, dim, underline and inverse stay. An empty `NO_COLOR` is ignored. It does not reduce motion. `terminal.trueColor` and `OCTOCODE_TRUE_COLOR` choose only the color depth. HTML exports made with these set are plain text on the themed page.
+A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `OCTOCODE_NO_COLOR` for the process and its subagents), or `TERM=dumb` removes every ANSI color sequence (foreground, background, tints, diff tints, shimmer); bold, dim, underline and inverse stay. An empty `NO_COLOR` is ignored. It does not reduce motion. `terminal.trueColor` and `OCTOCODE_TRUE_COLOR` choose only the color depth. HTML exports made with these set are plain text on the themed page.
 
 ## Reduced motion
 
-`terminal.reduceMotion` is `true`, `false` or `"auto"` (default): spinners stay on their first frame and the shimmer is plain; elapsed times and retry countdowns still tick. `"auto"` follows `OCTOCODE_REDUCE_MOTION` (`1` or `true`); an explicit value wins. `/configuration` exposes **Reduce motion** and applies it at once.
+`terminal.reduceMotion` is `true`, `false` or `"auto"` (default): spinners stay on their first frame and the shimmer is plain; elapsed times and retry countdowns still tick. `"auto"` is still when stdout is not a terminal, when `CI` is set, or when `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`; an explicit value wins. A running mark is a still `◌`. `/configuration` exposes **Reduce motion** and applies it at once.
 
 ```json
 { "terminal": { "reduceMotion": "auto" } }
+```
+
+## Emoji marks
+
+Notices carry a tone mark beside their state mark, and the terminal title starts with a mark for the session. By default these are width-safe glyphs the theme colors: `≋` calm, `▲` caution, `◆` problem, and `◈` in the title. `terminal.emojiMarks: true` brings back the emoji (🐚 🦀 🦈 and 🦑); emoji width varies by terminal, so rows can misalign. The setting is read at startup and on a settings reload.
+
+```json
+{ "terminal": { "emojiMarks": false } }
 ```
 
 ## Shell completion
@@ -462,7 +470,7 @@ A transient model failure is retried up to `retry.maxRetries` times (default 3),
 | The machine is offline: a DNS or transport failure (`ENOTFOUND`, `ENETUNREACH`, `EAI_AGAIN`, `fetch failed`, connection reset) while no interface has a routable address or public DNS names do not resolve                                      | Retried every `retry.offlineIntervalMs` (default 60000) with no attempt cap until the network returns or you press Esc; `retry.offlineMaxMs` (unset: no limit; print mode: 30 minutes) bounds the outage. A host that does not resolve while the network works (a mistyped `baseUrl`) keeps the configured count |
 | Other retryable errors                                                                                                                                                                                                                           | Configured count and exact backoff (some never clear, and each attempt resends the context)                                                                                                                                                                                                                      |
 
-While offline, the working row shows one line that updates in place, such as `✗ 🦈 Retry failed after 3 attempts: fetch failed (ENOTFOUND) - trying again in 42s · esc cancel`, and the transcript gains no row per attempt. When the run continues, the model gets one hidden note saying how long the network was down, so it knows time has passed; the note is not shown in the transcript.
+While offline, the working row shows one line that updates in place, such as `✗ ◆ Retry failed after 3 attempts: fetch failed (ENOTFOUND) - trying again in 42s · esc cancel`, and the transcript gains no row per attempt. When the run continues, the model gets one hidden note saying how long the network was down, so it knows time has passed; the note is not shown in the transcript.
 
 ### When a model keeps failing
 
@@ -695,9 +703,12 @@ The monitor also owns the nudges about a session's own work. A wake is listed as
 | `check-in`                      | between a subagent's steps                      | note to the subagent                                                                           | `monitor.checkInSeconds`                                                                             |
 | `idle-agent`                    | once a minute, in the agent responsible for it  | parent: wake within the wake pace, else a note; main session: note to itself and a footer mark | `monitor.idleAgentMinutes` (deprecated: `monitor.silenceMinutes`)                                    |
 | `compaction-prewarm`            | each compaction cycle                           | ledger and one warning to the user; the model is not told                                      | none                                                                                                 |
+| `stalled-item`                  | once a minute while children run                | wake, once per stall; the second stall of an item asks for a re-plan, a third says nothing     | none                                                                                                 |
 | `idle-items`                    | when the main session settles with work running | wake                                                                                           | none                                                                                                 |
 
 `idle-agent` measures a working agent's last model or tool event: a subagent's parent tells it about the child, and a main session, which nobody is above, tells itself. Each silence is told once; the agent's next progress re-arms the rule. An agent waiting on the user's answer, on its own working agents or on its background jobs is not reported.
+
+`stalled-item` measures the work, not the agent: an ongoing item a running subagent was started for counts as stalled after 20 minutes with no note, step or claim on it, no file the subagent changed and no background job for it running. A busy subagent that moves none of these is reported here even when `idle-agent` stays quiet. No model decides it.
 
 `compaction-prewarm` alerts at most once per compaction cycle (from one successful compaction to the next) when the summary requested ahead of the threshold was billed for nothing (its request failed, it was discarded or a newer one replaced it), when a threshold compaction still waited 10 seconds or more for it, or when the context reached the threshold with no early summary planned. The alert counts as delivered: it reaches the `MonitorAlert` hook, `/monitor` and one warning notice.
 

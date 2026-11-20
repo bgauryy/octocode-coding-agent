@@ -9,23 +9,23 @@ Research this checkout with `structureSearch`, `localSearch`, `astSearch`, `loca
 
 ## Find
 
-| You have | Use |
-| --- | --- |
-| A half-known name, or "largest / newest / longest file" | `structureSearch` (`operation: files`, `nameRegex`, `sort`; `view: paths`) |
-| A word, error text or option name | `localSearch`; `view: files` for which files, `countMatches` or `countLines` for exact counts (a content page's total is only a floor) |
-| A code shape (calls, imports, declarations, a call inside a loop) | `astSearch` (`operation: match` with a `rule`; `symbols` with `symbolFilter` for a declaration by name); its hits are candidates |
-| A symbol name and a line from any hit | `lspSearch` (below) |
+| You have                                                          | Use                                                                                                                                    |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| A half-known name, or "largest / newest / longest file"           | `structureSearch` (`operation: files`, `nameRegex`, `sort`; `view: paths`)                                                             |
+| A word, error text or option name                                 | `localSearch`; `view: files` for which files, `countMatches` or `countLines` for exact counts (a content page's total is only a floor) |
+| A code shape (calls, imports, declarations, a call inside a loop) | `astSearch` (`operation: match` with a `rule`; `symbols` with `symbolFilter` for a declaration by name); its hits are candidates       |
+| A symbol name and a line from any hit                             | `lspSearch` (below)                                                                                                                    |
 
 Narrow with `path`, `include`, `fileHas` and `testCode: exclude` before widening. `wholeWord` for identifiers; `regexEngine` only when the pattern needs it.
 
 ## Read the least
 
-| Need | `localFetch` |
-| --- | --- |
-| One function or class | `matchString` (a unique spelling) with `block: true` |
-| Lines around a hit | `matchString` with `contextLines`, or `ranges: [{startLine, endLine}]` (several spans in one call) |
-| The shape of a big file | `view: symbols`, then a `matchString` + `block` on the one declaration |
-| Comment-heavy or minified code you only need to follow | `view: compact` (never quote it; quote from `content`) |
+| Need                                                   | `localFetch`                                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| One function or class                                  | `matchString` (a unique spelling) with `block: true`                                               |
+| Lines around a hit                                     | `matchString` with `contextLines`, or `ranges: [{startLine, endLine}]` (several spans in one call) |
+| The shape of a big file                                | `view: symbols`, then a `matchString` + `block` on the one declaration                             |
+| Comment-heavy or minified code you only need to follow | `view: compact` (never quote it; quote from `content`)                                             |
 
 Check that a `block` closed where the declaration ends. Search hits on very long lines show a window and `column`: re-read the whole line with the same `matchString` before relying on it. When `viewFallback` or `fileTooLarge` appears, read by `ranges` instead of assuming a missing outline means absence.
 

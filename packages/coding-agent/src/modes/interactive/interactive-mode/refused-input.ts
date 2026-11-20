@@ -8,6 +8,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { prependToEditorDraft } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { featureCommandHint } from "./next-step-hint.ts";
 
 /** What refused input needs from the interactive mode; `refusedInput` builds it from the host. */
 export interface RefusedInput {
@@ -116,13 +117,16 @@ async function sendAsMessage(input: RefusedInput, text: string): Promise<void> {
  * the editor, ahead of any new draft, and a warning says it was not sent. Slash commands are not prompts and are left alone.
  */
 export async function submitPrompt(
-	host: Pick<InteractiveModeHost, "editor" | "escapeAbortedRun" | "session" | "showWarning">,
+	host: Pick<InteractiveModeHost, "chatContainer" | "editor" | "escapeAbortedRun" | "session" | "showWarning" | "ui">,
 	text: string,
 ): Promise<void> {
 	const { session } = host;
 	const before = session.messages.length;
 	host.escapeAbortedRun = false;
-	await getApplicationPort(session).invoke("prompt", text, { attachImagePaths: true });
+	await getApplicationPort(session).invoke("prompt", text, {
+		attachImagePaths: true,
+		preflightResult: featureCommandHint(host, text),
+	});
 	if (!host.escapeAbortedRun || text.trimStart().startsWith("/")) return;
 	if (session.messages.slice(before).some((message) => message.role === "user")) return;
 	prependToEditorDraft(host.editor, text);

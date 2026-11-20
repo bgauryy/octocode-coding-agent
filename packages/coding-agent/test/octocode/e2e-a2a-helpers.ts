@@ -52,7 +52,7 @@ export async function session(box: Sandbox, cwd?: string) {
 	await until(() => instancesOf(box).some((instance) => !before.has(instance.id)), "the API to come up", 180_000);
 	const instance = instancesOf(box).find((each) => !before.has(each.id)) as InstanceRecord;
 	const status = await new ApiClient(instance).call<{ sessionId: string }>("status");
-	await until(() => titleOf(instance.pid).startsWith("octocode-rpc-"), "the process title", 30_000);
+	await until(() => titleOf(instance.pid).startsWith("octocode-agent-rpc-"), "the process title", 30_000);
 	return { run, instance, sessionId: status.sessionId, name: titleOf(instance.pid) };
 }
 export type Session = Awaited<ReturnType<typeof session>>;

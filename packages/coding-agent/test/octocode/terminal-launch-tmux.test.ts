@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { killPrivateTmuxServer } from "../../../tui/test/helpers/real-tmux.ts";
-import { buildTmuxLaunchArgs, launchInTmux, type TmuxRunner } from "../../src/octocode/terminal-launch/tmux.ts";
+import {
+	buildTmuxLaunchArgs,
+	forwardedLaunchEnv,
+	launchInTmux,
+	type TmuxRunner,
+} from "../../src/octocode/terminal-launch/tmux.ts";
 
 const env = { TMUX: "/tmp/tmux-1/default,1,0", TMUX_PANE: "%3" };
 
@@ -60,6 +65,22 @@ describe("buildTmuxLaunchArgs", () => {
 		expect(args).toContain("/w\\;");
 		expect(args).toContain("x\\;");
 		expect(args).toContain("y\\\\;");
+	});
+});
+
+describe("forwardedLaunchEnv", () => {
+	it("hands a new pane the home and the database this process runs on", () => {
+		const env = {
+			OCTOCODE_HOME: "/h",
+			OCTOCODE_AGENT_DB: "/h/other.db",
+			OCTOCODE_CODING_AGENT_DIR: "/d",
+			PATH: "/bin",
+		};
+		expect(forwardedLaunchEnv(env)).toEqual({
+			OCTOCODE_HOME: "/h",
+			OCTOCODE_AGENT_DB: "/h/other.db",
+			OCTOCODE_CODING_AGENT_DIR: "/d",
+		});
 	});
 });
 

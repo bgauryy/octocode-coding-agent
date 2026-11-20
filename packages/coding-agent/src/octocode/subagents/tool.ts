@@ -23,10 +23,10 @@ import { GraphWatch, linkedWhileWorking } from "./graph-watch.ts";
 import { ChainQueue } from "./chain.ts";
 import { PrerequisiteGate } from "./prerequisites.ts";
 import { AGENT_CHAIN_CHANNEL, BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.ts";
-import { AGENT_LIFECYCLE_CHANNEL, type AgentLifecycleNotice } from "../shared/agent-lifecycle.ts";
 import { GRAPH_NOTICE_TYPE } from "../shared/messages.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
 import { dbStamp } from "../../../../db/src/api.ts";
+import { gateHost } from "./gate-host.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { runSubagent } from "./process.ts";
@@ -153,15 +153,14 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file));
 	// The prerequisites of queued children: items read from the backlog on each event, agents from the lifecycle channel and the parent's own record of each run's end.
 	runs.chain = new ChainQueue(
-		new PrerequisiteGate({
-			item: (ref) => {
-				const item = (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined)?.store.get(ref);
-				return !item ? "missing" : item.state !== "done" ? "open" : item.closed ? "closed" : "done";
-			},
-			lifecycle: (listener) =>
-				api.channels.on(AGENT_LIFECYCLE_CHANNEL, (value) => listener(value as AgentLifecycleNotice)),
-			follow: (poke) => follower.subscribe(poke),
-		}),
+		new PrerequisiteGate(
+			gateHost({
+				api,
+				follower,
+				item: (ref) => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined)?.store.get(ref),
+				session: () => current?.sessionManager.getSessionId(),
+			}),
+		),
 		(notice) => api.channels.emit(AGENT_CHAIN_CHANNEL, notice),
 	);
 	runs.chain.watch(() => panel.setQueued(runs.chain!.work(runs.items)));
@@ -290,7 +289,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		if (event.toolResults.length > 0) runs.reports.stepEnded();
 		return undefined;
 	});
-	registerIdleItems(api, team, runs, lingering);
+	const stopStalls = registerIdleItems(api, team, runs, lingering);
 	api.bus.on("before_agent_start", async () => {
 		runs.graph?.turnStarted();
 		runs.groups.nextStep();
@@ -305,6 +304,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	api.bus.on("session_shutdown", async (event, ctx) => {
 		cancelLaunches();
 		late.stop();
+		stopStalls();
 		// Reports still waiting in the batch window are saved for the next start, not lost with this runtime.
 		runs.reports.persist();
 		await stopAll(event.reason);

@@ -16,8 +16,8 @@
 		"muted": "#A7B0BC",
 		"dim": "#8B949E",
 		"faint": "#6E7681",
-		"line": "#6E7681",
-		"lineSoft": "#373E48"
+		"line": "#8B949E",
+		"lineSoft": "#6E7681"
 	},
 	"colors": {
 		"accent": "purple",

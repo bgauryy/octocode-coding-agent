@@ -302,11 +302,12 @@ function rgbToAnsi256(color: RgbColor): number {
 }
 
 /**
- * Whether the environment asks for no ANSI color: a non-empty `NO_COLOR` (https://no-color.org) or `TERM=dumb`.
+ * Whether the environment asks for no ANSI color: a non-empty `NO_COLOR` (https://no-color.org) or `OCTOCODE_NO_COLOR`
+ * (`--no-color` sets it), or `TERM=dumb`.
  * Bold, dim, underline and inverse stay allowed, and motion is a separate choice.
  */
 export function isColorDisabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-	return Boolean(env.NO_COLOR) || env.TERM?.toLowerCase() === "dumb";
+	return Boolean(env.NO_COLOR) || Boolean(env.OCTOCODE_NO_COLOR) || env.TERM?.toLowerCase() === "dumb";
 }
 
 function colorAnsi(color: Color, mode: TerminalColorMode, background: boolean): string {

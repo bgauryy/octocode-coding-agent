@@ -1,9 +1,8 @@
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 /**
  * Starting the interactive mode: mounting the terminal UI, the startup header, managed tools and the first session
  * binding, then the main loop that reads user input and sends prompts.
  */
-
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import * as path from "node:path";
 import { SEPARATOR, Spacer, Text, createChatViewport } from "@octocodeai/octocode-tui";
 import { APP_NAME, APP_TITLE } from "../../../config.ts";
@@ -33,6 +32,7 @@ type StartupHost = Pick<
 	InteractiveModeHost,
 	| "builtInHeader"
 	| "changelogMarkdown"
+	| "chatContainer"
 	| "checkForPackageUpdates"
 	| "checkTmuxKeyboardSetup"
 	| "clearStatusIndicator"

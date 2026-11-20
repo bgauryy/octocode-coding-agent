@@ -87,7 +87,13 @@ export function realmCommand(deps: RealmCommandDependencies): Subcommand {
 		argumentHint: "[<name> [switch|resume]]",
 		complete: (prefix) => {
 			const acting = /^(\S+)\s+(.*)$/su.exec(prefix);
-			if (acting) return wordCompletions(["switch", "resume"], acting[2]);
+			if (acting)
+				return (
+					wordCompletions(["switch", "resume"], acting[2])?.map((item) => ({
+						...item,
+						value: `${acting[1]} ${item.value}`,
+					})) ?? null
+				);
 			const cwd = deps.cwd?.();
 			return wordCompletions([MAIN_CHECKOUT, ...(cwd ? worktreeNames(cwd) : [])], prefix);
 		},

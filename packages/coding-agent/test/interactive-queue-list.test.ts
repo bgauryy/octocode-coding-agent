@@ -156,7 +156,7 @@ describe("queued-messages list", () => {
 		const { host, ui } = fixture([]);
 		expect(showQueueManager(host)).toBe(false);
 		expect(ui.showSelector).not.toHaveBeenCalled();
-		expect(ui.showStatus).toHaveBeenCalledWith("No queued messages");
+		expect(ui.showStatus).toHaveBeenCalledWith(expect.stringContaining("No queued messages · "));
 	});
 
 	test("moves, toggles and deletes the selected message; selection follows it", () => {

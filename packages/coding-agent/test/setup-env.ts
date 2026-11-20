@@ -7,7 +7,7 @@ import { testCompileCacheDir } from "./helpers/compile-cache.ts";
 // settings (OCTOCODE_SUBAGENT, OCTOCODE_CACHE_RETENTION, ...): drop them so results never depend on who ran the tests.
 // The values configured in vitest.config.ts (`test.env`) are the suite's own and stay, and so do the run's test markers
 // (`OCTOCODE_TEST_*`, `vitest.tmp.global.ts`), which guard the real agent database in every process a test starts.
-const configured = new Set(["OCTOCODE_OFFLINE", "OCTOCODE_MCP", "OCTOCODE_MODELS_DEV"]);
+const configured = new Set(["OCTOCODE_OFFLINE", "OCTOCODE_MCP", "OCTOCODE_MCP_DESKTOP", "OCTOCODE_MODELS_DEV"]);
 for (const name of Object.keys(process.env)) {
 	if (name.startsWith("OCTOCODE_") && !name.startsWith("OCTOCODE_TEST_") && !configured.has(name))
 		delete process.env[name];

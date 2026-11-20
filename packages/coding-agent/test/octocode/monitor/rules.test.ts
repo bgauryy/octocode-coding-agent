@@ -25,9 +25,9 @@ const sample = (at: number, over: Partial<MachineSample> = {}): MachineSample =>
 	swapTotal: 0,
 	gpu: 20,
 	processes: [
-		{ pid: 1, ppid: 0, command: "tsc", cpu: 280, rss: 3 * GiB, owner: "octocode-main-aaaa" },
-		{ pid: 2, ppid: 0, command: "node", cpu: 40, rss: 1 * GiB, owner: "octocode-main-aaaa" },
-		{ pid: 3, ppid: 0, command: "vitest", cpu: 150, rss: 6 * GiB, owner: "octocode-implementer-bob" },
+		{ pid: 1, ppid: 0, command: "tsc", cpu: 280, rss: 3 * GiB, owner: "octocode-agent-main-aaaa" },
+		{ pid: 2, ppid: 0, command: "node", cpu: 40, rss: 1 * GiB, owner: "octocode-agent-main-aaaa" },
+		{ pid: 3, ppid: 0, command: "vitest", cpu: 150, rss: 6 * GiB, owner: "octocode-agent-implementer-bob" },
 		{ pid: 4, ppid: 0, command: "fseventsd", cpu: 90, rss: 4 * GiB, owner: null },
 	],
 	...over,
@@ -49,8 +49,8 @@ describe("machine rules", () => {
 	});
 
 	it("names the Octocode process whose processes weigh most: CPU for load, memory for swap", () => {
-		expect(causeOf(sample(0), "load").owner).toBe("octocode-main-aaaa");
-		expect(causeOf(sample(0), "swap").owner).toBe("octocode-implementer-bob");
+		expect(causeOf(sample(0), "load").owner).toBe("octocode-agent-main-aaaa");
+		expect(causeOf(sample(0), "swap").owner).toBe("octocode-agent-implementer-bob");
 		expect(causeOf(sample(0), "swap").culprits.map((p) => p.command)).toEqual(["vitest", "fseventsd", "tsc"]);
 		expect(causeOf(sample(0, { processes: [] }), "gpu")).toEqual({ owner: null, culprits: [] });
 	});
@@ -61,7 +61,7 @@ describe("machine rules", () => {
 		expect(hot(1 * MIN).alerts).toEqual([]);
 		expect(hot(2 * MIN)).toEqual({ alerts: [], active: [] });
 		const third = hot(3 * MIN);
-		expect(third.alerts).toMatchObject([{ rule: "load", value: 2, streak: 3, owner: "octocode-main-aaaa" }]);
+		expect(third.alerts).toMatchObject([{ rule: "load", value: 2, streak: 3, owner: "octocode-agent-main-aaaa" }]);
 		expect(third.active).toEqual([{ rule: "load", value: 2, threshold: 1.5 }]);
 		expect(hot(4 * MIN)).toMatchObject({ alerts: [], active: [{ rule: "load" }] });
 		// Clears: the footer mark goes, and a new streak must build up.

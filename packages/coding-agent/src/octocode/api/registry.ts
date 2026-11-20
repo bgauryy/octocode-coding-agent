@@ -20,7 +20,7 @@ export interface InstanceRecord {
 	http?: { url: string; token: string };
 	/** The conversation it runs; a session switch publishes a new record. */
 	session?: string;
-	/** Its process title, `octocode-<role>-<id>`: what `ps` and `/processes` call it. */
+	/** Its process title, `octocode-agent-<role>-<id>`: what `ps` and `/processes` call it. */
 	name?: string;
 }
 
@@ -156,7 +156,7 @@ export function readInstance(dir: string, id: string): InstanceRecord | undefine
 
 /**
  * The instances `selector` names: an instance id, or else what the process is known by elsewhere: its process name
- * (`octocode-main-c0ea9f3e`), the id `/processes` shows (`c0ea9f3e`), its session id or its pid. Two processes can run
+ * (`octocode-agent-main-c0ea9f3e`), the id `/processes` shows (`c0ea9f3e`), its session id or its pid. Two processes can run
  * one saved session, so all but the instance id can name several.
  */
 export function matchInstances(instances: readonly InstanceRecord[], selector: string): InstanceRecord[] {

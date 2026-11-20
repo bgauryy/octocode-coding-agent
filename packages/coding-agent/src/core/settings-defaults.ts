@@ -87,6 +87,7 @@ export const SETTINGS_DEFAULTS = {
 		replayRows: 5000,
 		showTerminalProgress: false,
 		reduceMotion: "auto" as boolean | "auto",
+		emojiMarks: false,
 		completion: { shell: "auto" as "auto" | "zsh" | "bash" | "fish" | "pwsh" | "none", loadRc: true, carapace: true },
 		suggestions: { history: true, model: true },
 	},

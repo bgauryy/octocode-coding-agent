@@ -27,7 +27,7 @@ const sample = (over: Partial<MachineSample> = {}): MachineSample => ({
 	swapTotal: 9216 * 2 ** 20,
 	gpu: 28,
 	processes: [
-		{ pid: 76174, ppid: 1, command: "node", cpu: 140.5, rss: 900 * 2 ** 20, owner: "octocode-main-3cb050d2" },
+		{ pid: 76174, ppid: 1, command: "node", cpu: 140.5, rss: 900 * 2 ** 20, owner: "octocode-agent-main-3cb050d2" },
 		{ pid: 500, ppid: 1, command: "WindowServer", cpu: 20, rss: 300 * 2 ** 20, owner: null },
 	],
 	...over,

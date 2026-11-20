@@ -8,6 +8,7 @@ import { type Component, type StateSource, visibleWidth, wrapTextWithAnsi } from
 import { theme } from "../../../theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import { badge, type BadgeState } from "../../../theme/page-kit.ts";
+import { fitCell } from "../../../theme/columns.ts";
 import type { Expandable } from "./types.ts";
 
 export interface LoadedRowSpec {
@@ -111,7 +112,7 @@ export class LoadedRow implements Component, Expandable {
 		const status = badge(spec.state?.() ?? "ready");
 		// The glyph sits beside the count; the legend line names each glyph's word.
 		const head =
-			theme.bold(theme.fg("mdHeading", spec.label.padEnd(columns.label))) +
+			theme.bold(theme.fg("mdHeading", fitCell(spec.label, columns.label))) +
 			GAP +
 			theme.fg(status.tone, status.glyph) +
 			" " +

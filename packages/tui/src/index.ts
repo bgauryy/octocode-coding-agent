@@ -39,7 +39,19 @@ export {
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
 export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
-export { breathe, ELLIPSIS, GLYPH, MOTION, SEPARATOR, SPINNER, settle, TONE, type UiState } from "./tokens/design.ts";
+export {
+	breathe,
+	ELLIPSIS,
+	GLYPH,
+	MOTION,
+	SEPARATOR,
+	SPINNER,
+	setEmojiMarks,
+	settle,
+	TONE,
+	titleMark,
+	type UiState,
+} from "./tokens/design.ts";
 // State binding: views follow a selection of a state source
 export {
 	Connected,

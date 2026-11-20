@@ -69,6 +69,7 @@ describe("bash tool", () => {
 			"timeout",
 			"maxOutputTokens",
 			"background",
+			"fresh",
 			"verify",
 			"sandbox",
 			"item",
@@ -78,7 +79,7 @@ describe("bash tool", () => {
 		const [foreground, background] = tool.outputSchema.anyOf;
 		expect(foreground.allOf).toHaveLength(2);
 		expect(Object.keys(foreground.allOf[1].properties)).toEqual(["verification"]);
-		expect(Object.keys(background.properties)).toEqual(["job", "pid", "log", "verification"]);
+		expect(Object.keys(background.properties)).toEqual(["job", "pid", "log", "joined", "verification"]);
 	});
 
 	it("runs a foreground command in the session cwd and returns its output", async () => {
@@ -494,7 +495,8 @@ describe("bash tool", () => {
 	it("lists and kills jobs with /jobs, and reports the ones session end stops without waking anyone", async () => {
 		const { tool, ctx, commands, jobs, sent, fire } = setup();
 		await tool.execute("t1", { command: "sleep 30", background: true }, undefined, undefined, ctx);
-		await tool.execute("t2", { command: "sleep 30", background: true }, undefined, undefined, ctx);
+		// An identical running job would be joined: this test wants two jobs.
+		await tool.execute("t2", { command: "sleep 30", background: true, fresh: true }, undefined, undefined, ctx);
 		const [first, second] = [...jobs.jobs.values()];
 		await commands.get("jobs")!.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(

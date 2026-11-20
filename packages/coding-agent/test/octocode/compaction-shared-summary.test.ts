@@ -176,7 +176,7 @@ describe("cache-sharing compaction summary", () => {
 		await writeSummary(standalone.api, standalone.event, standalone.ctx, { ...model, id: "previous" } as never);
 		const standaloneText = JSON.stringify(standalone.calls[0].context.messages);
 		expect(standaloneText).toContain(renderPrompt("workflows/compaction/focus-images-standalone.md"));
-		expect(standaloneText).toContain(preservation);
+		expect(standaloneText).toContain(JSON.stringify(preservation).slice(1, -1));
 		expect(standaloneText).not.toContain(sharedImages);
 	});
 

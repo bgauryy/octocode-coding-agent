@@ -71,6 +71,8 @@ describe("octocode mcp", () => {
 			{ name: "octocode", state: "disabled", scope: "default" },
 			{ name: "freellama", scope: "default" },
 			{ name: "browser", scope: "default" },
+			// Disabled for every test (`vitest.config.ts`): a developer's installed Cua Driver is never started.
+			{ name: "desktop", state: "disabled", scope: "default" },
 		]);
 	});
 

@@ -22,7 +22,7 @@ function watch(state: "queued" | "read" = "queued") {
 		queueState,
 		kill: () => (alive = false),
 		answer: (next: "queued" | "read") => (answer = next),
-		send: (text: string) => readWatch.track({ name: "octocode-main-peer", text, target }),
+		send: (text: string) => readWatch.track({ name: "octocode-agent-main-peer", text, target }),
 	};
 }
 
@@ -52,7 +52,7 @@ describe("a sender watching a message another session queued", () => {
 		w.kill();
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(w.tell).toHaveBeenCalledTimes(1);
-		expect(w.tell.mock.calls[0][0]).toContain("octocode-main-peer");
+		expect(w.tell.mock.calls[0][0]).toContain("octocode-agent-main-peer");
 		expect(w.tell.mock.calls[0][0]).toContain("never read");
 		// The exit is seen from the pid alone.
 		expect(w.queueState.mock.calls.length).toBe(asked);

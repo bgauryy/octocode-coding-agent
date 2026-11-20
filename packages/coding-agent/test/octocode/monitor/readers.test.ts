@@ -94,7 +94,7 @@ describe("busiest processes", () => {
 	const table = parseCpuTable(
 		[
 			"    1     0   0.0   1000 /sbin/launchd",
-			"76174     1  12.0 900000 octocode-main-3cb050d2",
+			"76174     1  12.0 900000 octocode-agent-main-3cb050d2",
 			"14042 76174   0.5  50000 /bin/zsh -c yarn tsc",
 			"14108 14042 283.6 3098080 /Users/x/node_modules/@typescript/lib/tsc --noEmit",
 			"  330     1  86.1 4519440 /System/Library/FSEvents.framework/fseventsd",
@@ -117,12 +117,12 @@ describe("busiest processes", () => {
 	it("keeps the top by CPU and by memory, each with the Octocode process that owns it", () => {
 		const top = busiest(table, 2);
 		expect(top.map((row) => [row.pid, row.command, row.owner])).toEqual([
-			[14108, "tsc", "octocode-main-3cb050d2"],
+			[14108, "tsc", "octocode-agent-main-3cb050d2"],
 			[330, "fseventsd", null],
 		]);
 		const wider = busiest(table, 3);
 		expect(wider.map((row) => row.pid)).toEqual([14108, 330, 76174]);
-		expect(wider[2]).toMatchObject({ command: "octocode-main-3cb050d2", owner: "octocode-main-3cb050d2" });
+		expect(wider[2]).toMatchObject({ command: "octocode-agent-main-3cb050d2", owner: "octocode-agent-main-3cb050d2" });
 		expect(wider[0].rss).toBe(3098080 * 1024);
 	});
 });

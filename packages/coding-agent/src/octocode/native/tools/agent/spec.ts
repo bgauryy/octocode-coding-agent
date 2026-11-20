@@ -22,12 +22,13 @@ export function agentToolSpec(runners: readonly string[] = []) {
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Skills to load; omit: profile default; []: none",
+					description: "Skills to load. Omit for the profile default; an empty list loads none",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "MCP servers added to profile defaults; omit: session servers; []: profile only",
+					description:
+						"MCP servers added to the profile defaults. Omit to use the session's servers; an empty list uses the profile only",
 				}),
 			),
 			goal: Type.Optional(
@@ -47,7 +48,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: start once each B<n> is done and each agent:<name> reports done; a failure holds it.",
+						"With background: start once each B<n> is done, each agent:<name> reports done, each job:bash-<n> (this session) exits 0 and lock:full-run is free; a failure holds it.",
 				}),
 			),
 			resume: Type.Optional(

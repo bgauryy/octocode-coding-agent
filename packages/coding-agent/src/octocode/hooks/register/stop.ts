@@ -8,7 +8,14 @@ import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
 import { hookLabel } from "../config.ts";
 import { backgroundTasks } from "./background-tasks.ts";
-import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_CONTINUE_RUN_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
+import {
+	type Dispatch,
+	type HookSession,
+	STOP_CONTINUE_CAP,
+	STOP_CONTINUE_RUN_CAP,
+	STOP_PREFIX,
+	STOP_TYPE,
+} from "./types.ts";
 import { commandsFor } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler } from "../contracts.ts";

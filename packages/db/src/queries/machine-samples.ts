@@ -18,7 +18,7 @@ export interface MachineProcess {
 	cpu: number;
 	/** Resident set size in bytes. */
 	rss: number;
-	/** The title (`octocode-<role>-<id>`) of the Octocode process it is or runs under; null for other processes. */
+	/** The title (`octocode-agent-<role>-<id>`) of the Octocode process it is or runs under; null for other processes. */
 	owner: string | null;
 }
 

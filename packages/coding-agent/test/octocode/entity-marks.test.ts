@@ -58,10 +58,10 @@ describe("entity marks", () => {
 			],
 			orphans: [],
 		}).split("\n");
-		const main = lines.find((line) => line.includes("octocode-main-0de16b7a"))!;
-		const sub = lines.find((line) => line.includes("octocode-researcher-inky"))!;
-		expect(main.startsWith(`${ENTITY.main} octocode-main-0de16b7a`)).toBe(true);
-		expect(sub.startsWith(`${ENTITY.subagent} octocode-researcher-inky`)).toBe(true);
+		const main = lines.find((line) => line.includes("octocode-agent-main-0de16b7a"))!;
+		const sub = lines.find((line) => line.includes("octocode-agent-researcher-inky"))!;
+		expect(main.startsWith(`${ENTITY.main} octocode-agent-main-0de16b7a`)).toBe(true);
+		expect(sub.startsWith(`${ENTITY.subagent} octocode-agent-researcher-inky`)).toBe(true);
 		const header = lines.find((line) => line.startsWith("NAME"))!;
 		const column = (line: string, text: string) => visibleWidth(line.slice(0, line.indexOf(text)));
 		expect(column(main, "off")).toBe(column(header, "API"));

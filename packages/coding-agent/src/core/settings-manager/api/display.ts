@@ -24,6 +24,8 @@ export interface DisplaySettingsApi {
 	getReduceMotion(): boolean | "auto";
 	isReduceMotionActive(): boolean;
 	setReduceMotion(value: boolean | "auto"): void;
+	getEmojiMarks(): boolean;
+	setEmojiMarks(enabled: boolean): void;
 	getTuiMode(): TuiMode;
 	setTuiMode(mode: TuiMode): void;
 	getFullscreenExitOutput(): FullscreenExitOutput;

@@ -15,6 +15,8 @@ import { getResult } from "../octocode/backlog/tool-get.ts";
 import { runList } from "../octocode/backlog/tool-list.ts";
 import { BacklogError, BacklogStore } from "../octocode/backlog/store.ts";
 import { groomReport, groomText } from "../octocode/backlog/groom.ts";
+import { graphCommandText } from "../octocode/backlog/graph-command.ts";
+import type { JobSource } from "../octocode/graph/model.ts";
 
 const BACKLOG_COMMAND_USAGE = `Usage:
   ${APP_NAME} backlog get <id> [--limit <notes>] [--offset <notes>] [--changes]
@@ -22,11 +24,14 @@ const BACKLOG_COMMAND_USAGE = `Usage:
                            [--tag <tag>] [--sort board|updated|created] [--limit <n>] [--offset <n>]
   ${APP_NAME} backlog export <file>
   ${APP_NAME} backlog groom
+  ${APP_NAME} backlog graph [--json] [--item <id>]
 
 Reads this folder's backlog board without changing it, for scripts and for subagents that have no backlog tool.
 get prints one item with its steps, runs and newest notes; list prints one page of items (default: the open ones);
 export writes the whole board with every note as Markdown; groom runs grooming's mechanical checks (claims whose
-holder ended, finished epics, gone paths, likely duplicates, blocked and idle items) and prints only what they flag. Reads Octocode's agent database (OCTOCODE_AGENT_DB names
+holder ended, finished epics, gone paths, likely duplicates, blocked and idle items) and prints only what they flag;
+graph prints the tree of running work (item, steps, agents, jobs, the resources they hold, waits) or, with --json,
+its nodes and edges; --item limits it to one item. Reads Octocode's agent database (OCTOCODE_AGENT_DB names
 another file).`;
 
 export interface BacklogCommandIo {
@@ -35,6 +40,10 @@ export interface BacklogCommandIo {
 	env?: NodeJS.ProcessEnv;
 	out?: (text: string) => void;
 	err?: (text: string) => void;
+	/** Job origins `graph` reads besides the database (database job rows later); a command line has none by default. */
+	jobs?: readonly JobSource[];
+	/** The full-run lock directory `graph` reads; the host's by default. */
+	runLockDir?: string;
 }
 
 class UsageError extends Error {}
@@ -42,6 +51,7 @@ class UsageError extends Error {}
 interface Options {
 	flags: Map<string, string>;
 	changes: boolean;
+	json: boolean;
 	operands: string[];
 }
 
@@ -55,13 +65,15 @@ const VALUE_FLAGS = new Set([
 	"--under",
 	"--tag",
 	"--sort",
+	"--item",
 ]);
 
 function parse(args: string[]): Options {
-	const options: Options = { flags: new Map(), changes: false, operands: [] };
+	const options: Options = { flags: new Map(), changes: false, json: false, operands: [] };
 	for (let index = 0; index < args.length; index += 1) {
 		const word = args[index] ?? "";
 		if (word === "--changes") options.changes = true;
+		else if (word === "--json") options.json = true;
 		else if (VALUE_FLAGS.has(word)) {
 			const value = args[++index];
 			if (value === undefined || value.startsWith("--")) throw new UsageError(`${word} needs a value.`);
@@ -109,7 +121,7 @@ function openBoard(io: BacklogCommandIo, env: NodeJS.ProcessEnv): Backlog {
 	};
 }
 
-function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo): string {
+function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo, env: NodeJS.ProcessEnv): string {
 	if (sub === "get") {
 		const [id] = options.operands;
 		if (id === undefined || options.operands.length > 1) throw new UsageError("get takes one item id.");
@@ -154,6 +166,22 @@ function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo
 		if (options.operands.length > 0) throw new UsageError(`groom takes no arguments, not ${options.operands[0]}.`);
 		return groomText(groomReport(board.store, board.repoRoot, Date.now()));
 	}
+	if (sub === "graph") {
+		if (options.operands.length > 0) throw new UsageError(`graph takes options, not ${options.operands[0]}.`);
+		const item = options.flags.get("--item");
+		const agentDb = sharedAgentDb(env);
+		return graphCommandText({
+			agentDb,
+			store: board.store,
+			repo: registeredWorkspace(board.repoRoot, agentDb).id,
+			root: board.repoRoot,
+			now: Date.now(),
+			json: options.json,
+			...(io.jobs ? { jobs: io.jobs } : {}),
+			...(io.runLockDir === undefined ? {} : { runLockDir: io.runLockDir }),
+			...(item === undefined ? {} : { item }),
+		});
+	}
 	if (options.operands.length !== 1) throw new UsageError("export takes one file path.");
 	const file = path.resolve(io.cwd, options.operands[0] ?? "");
 	fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -172,7 +200,7 @@ export async function runBacklogCommand(args: string[], io: BacklogCommandIo): P
 	}
 	const env = io.env ?? process.env;
 	try {
-		if (sub !== "get" && sub !== "list" && sub !== "export" && sub !== "groom")
+		if (sub !== "get" && sub !== "list" && sub !== "export" && sub !== "groom" && sub !== "graph")
 			throw new UsageError(`Unknown backlog command ${sub}.`);
 		const options = parse(rest);
 		// Reading must not create the database: a machine that never ran a session has no board.
@@ -180,7 +208,7 @@ export async function runBacklogCommand(args: string[], io: BacklogCommandIo): P
 			err(`No backlog board for ${io.cwd}.`);
 			return 1;
 		}
-		out(run(sub, options, openBoard(io, env), io));
+		out(run(sub, options, openBoard(io, env), io, env));
 		return 0;
 	} catch (error) {
 		if (error instanceof UsageError) err(`${error.message}\n${BACKLOG_COMMAND_USAGE}`);

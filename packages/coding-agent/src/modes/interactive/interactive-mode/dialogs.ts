@@ -13,12 +13,15 @@ import { confirmInAsk } from "../../../octocode/ask/confirm.ts";
 import { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
+import { openDialog, takeOpenDialog, takeSlot } from "./dialog-slot.ts";
 import type { InteractiveModeHost, SelectorCard } from "./host.ts";
 
 /** Interactive-mode members used by the feature dialogs. */
 type DialogsHost = Pick<
 	InteractiveModeHost,
 	| "activeSelectorDispose"
+	| "activeStatusIndicator"
+	| "clearStatusIndicator"
 	| "defaultEditor"
 	| "disposeActiveSelector"
 	| "editor"
@@ -41,69 +44,8 @@ type DialogsHost = Pick<
 	| "uiStore"
 >;
 
-/**
- * The open dialog's cancel, per host. Selectors, inputs and the editor share the editor slot, so one is open at a time:
- * opening another or hiding it from outside (`resetFeatureUI` on reload or session replacement) answers it with no
- * value, instead of leaving its caller and the dialog queue (`withDialog`) waiting for an answer nobody can give.
- */
-const openDialogs = new WeakMap<object, () => void>();
-
 /** Each host's open custom overlays, closed (answered with no value) by `closeDialogOverlays`. */
 const openOverlays = new WeakMap<object, Set<() => void>>();
-
-function takeOpenDialog(host: object): (() => void) | undefined {
-	const cancel = openDialogs.get(host);
-	openDialogs.delete(host);
-	return cancel;
-}
-
-type SlotHost = Pick<DialogsHost, "activeSelectorDispose" | "disposeActiveSelector" | "uiStore">;
-
-/**
- * Take the editor slot for a dialog or a non-overlay custom component. Whatever holds it (a feature dialog, a
- * built-in selector or another custom component) is answered or disposed first, and `cancel` becomes the slot's
- * dispose, so whatever takes the slot next through `disposeActiveSelector` (a dialog, `showSelector`, a custom component,
- * a custom editor, the reset on reload or session replacement, or stop) answers this one with no value. Returns the
- * release to call when it closes by itself.
- */
-function takeSlot(host: SlotHost, cancel: () => void): () => void {
-	takeOpenDialog(host)?.();
-	host.disposeActiveSelector();
-	const token = {};
-	host.uiStore.getState().takeSlot(token);
-	host.activeSelectorDispose = cancel;
-	return () => {
-		if (!host.uiStore.getState().releaseSlot(token)) return;
-		host.activeSelectorDispose = undefined;
-	};
-}
-
-/**
- * Answer the open dialog, then register a new one in the editor slot; the result settles it once, releases the slot,
- * hides it and stops listening to `signal`.
- */
-function openDialog<T>(
-	host: SlotHost,
-	resolve: (value: T | undefined) => void,
-	hide: () => void,
-	signal: AbortSignal | undefined,
-): (value: T | undefined) => void {
-	let done = false;
-	const finish = (value: T | undefined) => {
-		if (done) return;
-		done = true;
-		signal?.removeEventListener("abort", cancel);
-		if (openDialogs.get(host) === cancel) openDialogs.delete(host);
-		release();
-		hide();
-		resolve(value);
-	};
-	const cancel = () => finish(undefined);
-	const release = takeSlot(host, cancel);
-	signal?.addEventListener("abort", cancel, { once: true });
-	openDialogs.set(host, cancel);
-	return finish;
-}
 
 /**
  * Answer every custom overlay open on `host` with no value, as the reset on reload or session replacement does, and

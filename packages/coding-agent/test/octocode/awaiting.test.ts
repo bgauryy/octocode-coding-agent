@@ -170,7 +170,7 @@ describe("awaiting", () => {
 	it("publishes the ask card for an answerable dialog: redacted, bounded, with option info aligned to the options", () => {
 		const ask = {
 			question: "Let this message reach the agent?",
-			meta: ["from octocode-main-6c9a · external"],
+			meta: ["from octocode-agent-main-6c9a · external"],
 			body: { text: "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789", collapsible: true, previewLines: 2 },
 			notes: [{ text: "risk: starts a turn", tone: "warning" as const }],
 			options: [
@@ -181,7 +181,7 @@ describe("awaiting", () => {
 		};
 		const awaiting = awaitingFor({ kind: "select", id: "a", approval: true, options: ["Allow once", "Deny"], ask });
 		expect(awaiting).toMatchObject({
-			meta: ["from octocode-main-6c9a · external"],
+			meta: ["from octocode-agent-main-6c9a · external"],
 			body: { collapsible: true, previewLines: 2 },
 			details: [{ text: "risk: starts a turn", tone: "warning" }],
 			optionInfo: [{ description: "only this one", recommended: true }, { danger: true }],

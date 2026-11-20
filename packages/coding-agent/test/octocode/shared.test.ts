@@ -6,7 +6,7 @@ import { atomicWriteFile, atomicWriteFileSync } from "@octocodeai/octocode-commo
 import { dirsToRepoRoot } from "../../src/utils/repo-dirs.ts";
 import { repoKey, workspaceRoot } from "../../src/utils/git-repository.ts";
 import { statusCommand } from "../../src/octocode/status-command.ts";
-import { Subcommands, say, wordCompletions, retiredCommandReplacement } from "../../src/octocode/shared/commands.ts";
+import { Subcommands, say, wordCompletions } from "../../src/octocode/shared/commands.ts";
 import {
 	envFlag,
 	envInt,
@@ -438,41 +438,6 @@ describe("native commands", () => {
 		expect(ctx.ui.notes).toHaveLength(1);
 		expect(ctx.ui.notes[0].message).toMatch(/^Octocode 1\.0\n\nSkills \(\d+\)[\s\S]*MCPs \(\d+\)/);
 	});
-	it("leaves /octocode input to the /octocode command and ordinary text alone", async () => {
-		const fake = fakeHost();
-		const commands = new Subcommands();
-		commands.add(
-			"status",
-			statusCommand(fake.api, { mode: "full" }, () => "status"),
-		);
-		commands.register(fake.api);
-		const ctx = fakeCtx({ cwd: ".", hasUI: true });
-		for (const text of ["/octocode", "/octocode status now", "/octocode-example", "/web backlogs"])
-			expect(await fake.fire("input", { text }, ctx), text).toEqual({ action: "continue" });
-		expect(ctx.ui.notes).toHaveLength(0);
-		expect(retiredCommandReplacement("/octocode", ["web", "octocode"])).toBeUndefined();
-	});
-	it("points /plugins, /hooks and /config at /harness, with their arguments, only while /harness is registered", () => {
-		const commands = ["harness", "reload"];
-		expect(retiredCommandReplacement("/plugins", commands)).toBe("harness");
-		expect(retiredCommandReplacement("/plugins disable hooks:claude", commands)).toBe("harness disable hooks:claude");
-		expect(retiredCommandReplacement("/hooks events", commands)).toBe("harness hooks events");
-		expect(retiredCommandReplacement(" /config ", [...commands, "configuration"])).toBe("configuration");
-		expect(retiredCommandReplacement("/settings theme", ["configuration"])).toBe("configuration theme");
-		// Without /harness, or when a prompt or skill took the old name, the ordinary suggestion applies.
-		expect(retiredCommandReplacement("/config", ["reload"])).toBeUndefined();
-		expect(retiredCommandReplacement("/hooks", ["harness", "hooks"])).toBeUndefined();
-		expect(retiredCommandReplacement("/configure", commands)).toBeUndefined();
-	});
-	it("points the retired /login at /providers, with its argument, only while /providers is registered", () => {
-		expect(retiredCommandReplacement("/login", ["providers"])).toBe("providers");
-		expect(retiredCommandReplacement("/login openai", ["providers", "logout"])).toBe("providers openai");
-		expect(retiredCommandReplacement("/login", ["logout"])).toBeUndefined();
-		expect(retiredCommandReplacement("/login", ["providers", "login"])).toBeUndefined();
-	});
-});
-
-describe("command output", () => {
 	it("sanitizes notifications and writes headless output to stderr without touching stdout", () => {
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);

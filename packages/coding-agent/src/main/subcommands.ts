@@ -4,6 +4,7 @@
  */
 
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
+import { isSubcommand } from "../cli/completion.ts";
 import { handleConfigCommand, handlePackageCommand } from "../package-manager-cli.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { drainStdio } from "./drain-stdio.ts";
@@ -32,6 +33,29 @@ export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
 		(await import("../octocode/context-optimization/command.ts")).runContextCommand(args, { agentDir, cwd }),
 };
 
+/** Every first argument that is a command, for the unknown-command error. */
+const COMMAND_NAMES = [
+	...Object.keys(SUBCOMMANDS),
+	"models",
+	"auth",
+	"install",
+	"remove",
+	"update",
+	"list",
+	"config",
+	"completion",
+	"research",
+	"native",
+];
+
+/**
+ * A lone lowercase word typed at a terminal that no command claims: a mistyped command, not a prompt. Quoted
+ * sentences, flags and piped input stay prompts.
+ */
+function looksLikeMistypedSubcommand(args: readonly string[]): boolean {
+	return args.length === 1 && process.stdin.isTTY && /^[a-z][a-z-]*$/.test(args[0]) && !isSubcommand(args);
+}
+
 /**
  * Runs the one-shot command `args` names, if any, and says whether it did. Package and config commands exit the
  * process, so a feature they load cannot keep it alive; the others set `process.exitCode` and return.
@@ -49,6 +73,14 @@ export async function runSubcommand(args: string[], context: SubcommandContext):
 	if (await handleConfigCommand(args)) {
 		await drainStdio();
 		process.exit(process.exitCode ?? 0);
+		return true;
+	}
+	if (looksLikeMistypedSubcommand(args)) {
+		process.stderr.write(
+			`octocode: unknown command "${args[0]}". Commands: ${COMMAND_NAMES.join(", ")}.\n` +
+				`To send "${args[0]}" as a prompt, quote it with more words or use -p.\n`,
+		);
+		process.exitCode = 2;
 		return true;
 	}
 	const name = args[0];

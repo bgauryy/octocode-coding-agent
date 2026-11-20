@@ -70,7 +70,7 @@ A prompt is never replayed: after a failure or worker exit, streamed output may 
 
 ## Reach a running session
 
-ACP cannot reach a running process: the client launches the agent and owns its stdio. Use the [local session API](session-api.md) (`octocode-api list`, `status`, `send`, `watch`, `abort`); `--to` accepts an instance id, process name, session id or pid, and an ACP session id works. A broker names itself `octocode-acp-<pid>`; its workers are the sessions. The ACP client sees such a message as an `agent_message_chunk` whose `_meta["octocode/external"]` holds the caller's claim and transport.
+ACP cannot reach a running process: the client launches the agent and owns its stdio. Use the [local session API](session-api.md) (`octocode-api list`, `status`, `send`, `watch`, `abort`); `--to` accepts an instance id, process name, session id or pid, and an ACP session id works. A broker names itself `octocode-agent-acp-<pid>`; its workers are the sessions. The ACP client sees such a message as an `agent_message_chunk` whose `_meta["octocode/external"]` holds the caller's claim and transport.
 
 ## Connect from Octocode to another agent
 

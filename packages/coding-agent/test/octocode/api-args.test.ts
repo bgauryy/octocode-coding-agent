@@ -70,27 +70,27 @@ describe("octocode-api arguments", () => {
 		const running: InstanceRecord = {
 			...instance("oc-1"),
 			pid: 41,
-			name: "octocode-main-c0ea9f3e",
+			name: "octocode-agent-main-c0ea9f3e",
 			session: "01a1a6c7-7a9a-702e-9fcd-5365c0ea9f3e",
 		};
 		const other: InstanceRecord = {
 			...instance("oc-2"),
 			pid: 42,
-			name: "octocode-rpc-11112222",
+			name: "octocode-agent-rpc-11112222",
 			session: "s-11112222",
 		};
-		for (const selector of ["oc-1", "octocode-main-c0ea9f3e", "c0ea9f3e", running.session!, "41"])
+		for (const selector of ["oc-1", "octocode-agent-main-c0ea9f3e", "c0ea9f3e", running.session!, "41"])
 			expect(pickInstance([running, other], selector, "/elsewhere").id).toBe("oc-1");
 
 		const sameSession: InstanceRecord = { ...running, id: "oc-3", pid: 43 };
-		expect(() => pickInstance([running, sameSession], "octocode-main-c0ea9f3e", "/w")).toThrow(
-			'Several instances match "octocode-main-c0ea9f3e"; use an instance id: oc-1 (octocode-main-c0ea9f3e, pid 41, /w); oc-3',
+		expect(() => pickInstance([running, sameSession], "octocode-agent-main-c0ea9f3e", "/w")).toThrow(
+			'Several instances match "octocode-agent-main-c0ea9f3e"; use an instance id: oc-1 (octocode-agent-main-c0ea9f3e, pid 41, /w); oc-3',
 		);
 		// The instance id still picks one of them.
 		expect(pickInstance([running, sameSession], "oc-3", "/w").pid).toBe(43);
 
-		expect(() => pickInstance([running], "octocode-main-00000000", "/w")).toThrow(
-			'No running instance matches "octocode-main-00000000". Running: oc-1 (octocode-main-c0ea9f3e, pid 41, /w).',
+		expect(() => pickInstance([running], "octocode-agent-main-00000000", "/w")).toThrow(
+			'No running instance matches "octocode-agent-main-00000000". Running: oc-1 (octocode-agent-main-c0ea9f3e, pid 41, /w).',
 		);
 		// A fragment of an id is not a name.
 		expect(() => pickInstance([running], "c0ea", "/w")).toThrow("No running instance matches");

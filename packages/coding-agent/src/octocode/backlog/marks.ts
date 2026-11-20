@@ -1,4 +1,5 @@
-import { type Db, agentRuns, backlog } from "../../../../db/src/api.ts";
+import { type Db, agentRuns, backlog, jobs } from "../../../../db/src/api.ts";
+import { ownerAlive } from "../shared/job-standing.ts";
 import { type Item, parseRef } from "./item.ts";
 import { getItem, list, liveHolder } from "./reads.ts";
 import { taskCounts } from "./tasks/reads.ts";
@@ -45,6 +46,14 @@ export function itemMarks(
 	const unfinished = items.filter((item) => item.state !== "done").map((item) => item.seq);
 	for (const run of agentRuns.openForItems(db, repo, unfinished))
 		workers.set(run.seq, [...(workers.get(run.seq) ?? []), run.agentId]);
+	// A running background job that names an item blocks it too: the item's work is not finished while the job runs.
+	const running = new Map<string, string[]>();
+	for (const job of jobs.runningForItems(
+		db,
+		repo,
+		items.filter((item) => item.state !== "done").map((item) => item.ref),
+	))
+		if (job.item !== null && ownerAlive(job)) running.set(job.item, [...(running.get(job.item) ?? []), job.job]);
 	const live = new Map<string, boolean>();
 	const holderLives = (assignee: string) => {
 		if (!live.has(assignee)) live.set(assignee, liveHolder(db, assignee) !== undefined);
@@ -52,7 +61,7 @@ export function itemMarks(
 	};
 	for (const item of items) {
 		const mark: ItemMarks = {};
-		const blockedBy = item.dependsOn.map((ref) => ref.id).filter(open);
+		const blockedBy = [...item.dependsOn.map((ref) => ref.id).filter(open), ...(running.get(item.ref) ?? [])];
 		if (blockedBy.length) mark.blockedBy = blockedBy;
 		const tally = steps[item.ref];
 		if (tally && tally.todo + tally.ongoing > 0) mark.openSteps = tally.todo + tally.ongoing;

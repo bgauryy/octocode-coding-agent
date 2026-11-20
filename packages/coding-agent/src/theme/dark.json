@@ -18,7 +18,7 @@
 		"accent": "violet",
 		"border": "okhsl(231 57% 65%)",
 		"borderAccent": "okhsl(295 53% 64%)",
-		"borderMuted": "okhsl(229 8% 53%)",
+		"borderMuted": "okhsl(229 8% 58%)",
 		"success": "green",
 		"error": "red",
 		"warning": "yellow",

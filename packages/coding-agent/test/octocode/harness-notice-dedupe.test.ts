@@ -16,7 +16,7 @@ const bytes = (text: string) => Buffer.byteLength(text);
 
 describe("an external message", () => {
 	const facts = externalFacts(
-		"octocode-main-fd988644",
+		"octocode-agent-main-fd988644",
 		{ team: "snappy-mantle", instanceId: "oc-fbbd2e", pid: 42795, cwd: "/work/repo" },
 		"socket",
 		false,
@@ -25,7 +25,14 @@ describe("an external message", () => {
 	it("carries its sender, process facts, time and untrusted fence on one header line, with the body intact", () => {
 		const header = externalHeader(facts, Date.parse("2026-11-18T11:46:38"));
 		expect(header).not.toContain("\n");
-		for (const fact of ["octocode-main-fd988644", "snappy-mantle", "oc-fbbd2e", "42795", "/work/repo", "11:46:38"])
+		for (const fact of [
+			"octocode-agent-main-fd988644",
+			"snappy-mantle",
+			"oc-fbbd2e",
+			"42795",
+			"/work/repo",
+			"11:46:38",
+		])
 			expect(header).toContain(fact);
 		const content = fenceUntrusted(header, "build is red", { footer: externalFooter(facts) });
 		expect(fencedParts(content)?.body).toBe("build is red");

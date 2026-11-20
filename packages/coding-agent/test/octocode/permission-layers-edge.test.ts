@@ -6,7 +6,14 @@ import type { ToolCallEvent, ToolCallEventResult } from "../../src/core/features
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { isolatedTreeRefusal } from "../../src/octocode/permission/isolated-tree.ts";
 import type { GateVerdict } from "../../src/octocode/permission/judge.ts";
-import { parseGrants, SPAWN_GRANTABLE } from "../../src/octocode/permission/mode.ts";
+import {
+	decide,
+	declaredPermissions,
+	kindOf,
+	parseGrants,
+	SPAWN_GRANTABLE,
+	UNGRANTABLE,
+} from "../../src/octocode/permission/mode.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 import { gitLandings } from "../../src/octocode/permission/shell/git-landing.ts";
 import { gitStateMutation } from "../../src/octocode/permission/shell/git-state.ts";
@@ -348,6 +355,22 @@ describe("browser cookie access never passes to a child", () => {
 	it("is not spawn-grantable, and a child drops it from the grants its parent handed down", () => {
 		expect(SPAWN_GRANTABLE.has("browser.cookies")).toBe(false);
 		expect([...parseGrants({ [PERMISSION_GRANTS_ENV]: "browser.cookies,net.private" })]).toEqual(["net.private"]);
+	});
+});
+
+/** Desktop control asks in every mode, can't be allowed for a session, and reaches a child only through its profile's declaration. */
+describe("desktop control asks every time and passes to a child only by declaration", () => {
+	it("is declarable by a profile, has no session kind, and `bypass` alone allows it", () => {
+		expect(declaredPermissions(["desktop.control", "browser.cookies"])).toEqual({
+			declared: ["desktop.control"],
+			ignored: ["browser.cookies"],
+		});
+		expect(SPAWN_GRANTABLE.has("desktop.control")).toBe(true);
+		expect(kindOf("desktop.control")).toBeUndefined();
+		expect(UNGRANTABLE.has("desktop.control")).toBe(true);
+		expect((["manual", "workspace", "full", "bypass"] as const).map((mode) => decide(mode, "desktop.control"))).toEqual(
+			["ask", "ask", "ask", "allow"],
+		);
 	});
 });
 

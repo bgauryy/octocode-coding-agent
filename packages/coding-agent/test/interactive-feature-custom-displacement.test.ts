@@ -76,6 +76,23 @@ async function screen(terminal: VirtualTerminal): Promise<string> {
 }
 
 describe("ctx.ui.custom components closed by whatever takes their place or resets the extension UI", () => {
+	test("a page opened with no run behind it clears the Working row Enter showed; a streaming run keeps it", async () => {
+		for (const streaming of [false, true]) {
+			const clear = vi.fn<(kind?: string) => void>();
+			const env = createHost({
+				session: { isStreaming: streaming },
+				activeStatusIndicator: { kind: "working" },
+				clearStatusIndicator: clear,
+			});
+			try {
+				await openCustom<string>(env, view("a page"));
+				expect(clear.mock.calls).toEqual(streaming ? [] : [["working"]]);
+			} finally {
+				env.ui.stop();
+			}
+		}
+	});
+
 	test("an extension dialog taking its slot disposes it and resolves it undefined", async () => {
 		const env = createHost();
 		try {

@@ -65,7 +65,7 @@ async function idleSession(box: Sandbox) {
 	await until(() => instancesOf(box).length > 0, "the API to come up", 60_000);
 	const instance = instancesOf(box)[0];
 	const status = await new ApiClient(instance).call<{ sessionId: string }>("status");
-	await until(() => titleOf(instance.pid).startsWith("octocode-rpc-"), "the process title", 30_000);
+	await until(() => titleOf(instance.pid).startsWith("octocode-agent-rpc-"), "the process title", 30_000);
 	return { run, instance, sessionId: status.sessionId };
 }
 

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { isProcessTitle } from "../processes/title.ts";
 
 /**
  * Trust is the user's decision, so a command that records it must not be one the agent can run. The bash tool gives its
@@ -18,8 +19,6 @@ export function insideSessionShell(env: NodeJS.ProcessEnv = process.env): boolea
 
 /** How far up the process tree a session is looked for: deeper than any shell, wrapper and script chain in practice. */
 const MAX_ANCESTORS = 32;
-/** The process title a running session sets (`processes/title.ts`). */
-const SESSION_TITLE = /^octocode-[A-Za-z0-9._]+-[A-Za-z0-9._-]+(?:\s|$)/;
 
 /** One process's parent and command, from `ps`; undefined when it cannot say (no `ps`, as on Windows, or no such process). */
 function processRow(pid: number): { ppid: number; command: string } | undefined {
@@ -47,7 +46,7 @@ export function belowSession(start: number = process.ppid, row = processRow): bo
 	for (let depth = 0; depth < MAX_ANCESTORS && pid > 1; depth++) {
 		const found = row(pid);
 		if (!found) return false;
-		if (SESSION_TITLE.test(found.command)) return true;
+		if (isProcessTitle(found.command)) return true;
 		pid = found.ppid;
 	}
 	return false;

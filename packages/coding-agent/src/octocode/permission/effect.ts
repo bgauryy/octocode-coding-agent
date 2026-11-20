@@ -95,6 +95,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		undo: "none",
 		risk: "cookies can hold logins and session tokens",
 	}),
+	"desktop.control": (request) => ({
+		effect: `controls the desktop: ${first(request)}`,
+		undo: "none",
+		risk: "your real desktop: any open app, signed-in session or unsaved work; on-screen text is untrusted",
+	}),
 	"net.private": (request) => ({
 		effect: `opens ${first(request)}`,
 		undo: "none",

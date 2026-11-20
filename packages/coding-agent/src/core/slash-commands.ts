@@ -278,7 +278,12 @@ export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["checkpoint", "rewind"],
 	["todos", "backlog"],
 	["bashes", "processes"],
+	["plugins", "harness"],
+	["hooks", "harness"],
 ]);
+
+/** Words an alias puts before the typed arguments: `/hooks events` runs `/harness hooks events`. */
+const ALIAS_LEADING_ARGS: ReadonlyMap<string, string> = new Map([["hooks", "hooks"]]);
 
 /** A command whose name prompt and skill commands must not take. */
 export interface CommandReservation {
@@ -314,7 +319,24 @@ const FEATURE_COMMANDS: ReadonlyMap<string, string> = new Map([["mcp", "mcp"]]);
 /** The built-in feature that owns slash command `name`, if one does. */
 export const featureOfCommand = (name: string): string | undefined => FEATURE_COMMANDS.get(name);
 
+/** `/mcp enable|disable <server>` as the `/configuration` line that replaced it; the old `-l` flag becomes `--local`. */
+function movedMcpSwitch(args: string): string | undefined {
+	const [action, server, ...flags] = args.trim().split(/\s+/);
+	if ((action !== "enable" && action !== "disable") || !server) return undefined;
+	const local = flags.some((flag) => flag === "--local" || flag === "-l");
+	return `${action} mcp:${server}${local ? " --local" : ""}`;
+}
+
+/** The command a typed line runs, with its arguments: aliases and retired forms resolve to their replacement here, once. */
 export function parseSlashCommand(text: string): { name: string; args: string } | undefined {
 	const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-	return match ? { name: COMMAND_ALIASES.get(match[1]) ?? match[1], args: match[2] ?? "" } : undefined;
+	if (!match) return undefined;
+	const [, typed, rest = ""] = match;
+	const moved = typed === "mcp" ? movedMcpSwitch(rest) : undefined;
+	if (moved) return { name: "configuration", args: moved };
+	const leading = ALIAS_LEADING_ARGS.get(typed);
+	return {
+		name: COMMAND_ALIASES.get(typed) ?? typed,
+		args: leading ? `${leading} ${rest}`.trim() : rest,
+	};
 }

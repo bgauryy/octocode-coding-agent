@@ -13,7 +13,7 @@ import { runTerminalAction } from "../terminal-actions.ts";
 import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
-import { retiredInputNotice, unknownCommandWarning } from "./command-suggestion.ts";
+import { unknownCommandWarning } from "./command-suggestion.ts";
 import {
 	argumentWordRefusal,
 	clearRefused,
@@ -24,6 +24,7 @@ import {
 } from "./refused-input.ts";
 import { interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { isViewportTUI } from "@octocodeai/octocode-tui";
+import { showNextStep } from "./next-step-hint.ts";
 import { showFooterStatusReport } from "./footer-status-report.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
@@ -329,12 +330,6 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		const builtin = parsed && getBuiltinCommand(parsed.name);
 		// Text that starts with `/` may be a message about a command: a refusal keeps it, and Enter again sends it.
 		const input = refusedInput(host);
-		// A retired name is a pointer to its replacement, not a message about a command: one notice, no Enter-again send.
-		const retired = parsed && !builtin && retiredInputNotice(text, parsed.name, host.getSlashCommands(true));
-		if (retired) {
-			clearRefused(input);
-			return refuseWith(input, text, retired);
-		}
 		const refusal = parsed && slashRefusal(host, text, parsed.name, parsed.args);
 		if (refusal) return handleRefused(input, text, refusal);
 		clearRefused(input);
@@ -342,6 +337,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 			host.editor.setText("");
 			try {
 				await runBuiltinCommand(host, builtin.name, parsed.args);
+				showNextStep(host, builtin.name, parsed.args);
 			} catch (error) {
 				host.showError(errorMessage(error));
 			}

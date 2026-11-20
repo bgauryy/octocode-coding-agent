@@ -7,7 +7,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 function setup() {
 	const sent: Array<{ to: string; text: string; options: unknown }> = [];
 	const peers = {
-		addresses: (to: string) => to.startsWith("octocode-main-"),
+		addresses: (to: string) => to.startsWith("octocode-agent-main-"),
 		send: async (to: string, text: string, options: unknown) => {
 			sent.push({ to, text, options });
 			return { text: `Sent to ${to}.`, details: { to: [to] } };
@@ -22,7 +22,7 @@ function setup() {
 		tool.execute("call-1", params, undefined, undefined, fakeCtx({ cwd: process.cwd() }));
 	return { sent, run, tool };
 }
-const to = "octocode-main-e2c750e5";
+const to = "octocode-agent-main-e2c750e5";
 
 describe("a message to another process", () => {
 	it("delivers the text and says a replyTo was ignored", async () => {

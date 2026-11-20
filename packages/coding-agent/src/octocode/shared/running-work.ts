@@ -30,6 +30,8 @@ export interface WorkRow {
 	item?: string;
 	/** The backlog items (`B12`) a timer's note names; a timer that waits on an item's state names none. */
 	items?: readonly string[];
+	/** The resource (`full-run`) a bash job holds, from the work graph; the view says `holds full-run`. */
+	resource?: string;
 }
 
 /** One child queued behind prerequisites, as the panel shows it. */
@@ -49,6 +51,7 @@ const sameRow = (a: WorkRow, b: WorkRow) =>
 	a.dueAt === b.dueAt &&
 	a.mark === b.mark &&
 	a.item === b.item &&
+	a.resource === b.resource &&
 	a.items?.join() === b.items?.join();
 
 interface WorkState {
@@ -75,6 +78,19 @@ export class RunningWork {
 		queued: [],
 		agents: undefined,
 	}));
+
+	private readonly cancellers = new Map<WorkKind, (id: string, ctx: unknown) => boolean>();
+
+	/** The owner of `kind` says how a user ends one of its rows; the function returns false when the row had already ended. */
+	onCancel(kind: WorkKind, cancel: (id: string, ctx: unknown) => boolean): void {
+		this.cancellers.set(kind, cancel);
+	}
+
+	/** Ends the row `id` of `kind` through its owner; undefined when no row of that kind has the id or the kind has no canceller. */
+	cancel(kind: WorkKind, id: string, ctx: unknown): boolean | undefined {
+		const row = (this.store.getState().byKind[kind] ?? []).find((each) => each.id === id);
+		return row ? this.cancellers.get(kind)?.(id, ctx) : undefined;
+	}
 
 	/** Replaces the rows of `kind`. */
 	set(kind: WorkKind, rows: readonly WorkRow[]): void {

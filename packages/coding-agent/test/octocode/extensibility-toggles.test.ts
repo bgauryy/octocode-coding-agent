@@ -337,23 +337,6 @@ describe("/harness", () => {
 		await catalog.apply({ verb: "disable", id: "hooks:claude" });
 		expect(fs.readFileSync(settingsFile, "utf8")).toBe(saved);
 	});
-
-	it("answers the retired /plugins, /hooks and /config over RPC with the /harness line to run", async () => {
-		const { api, fire } = fakeHost();
-		Object.assign(api.resources, { getCommands: () => [{ name: "harness" }] });
-		const commands = new Subcommands();
-		registerHarnessCommand(commands, { report: () => "" } as unknown as HooksView, api);
-		commands.register(api);
-		const ctx = fakeCtx({ cwd: tmp(), mode: "rpc" });
-		expect(await fire("input", { text: "/plugins disable hooks:claude" }, ctx)).toEqual({ action: "handled" });
-		expect(ctx.ui.notes.at(-1)).toMatchObject({
-			message: "/plugins moved to /harness. Run /harness disable hooks:claude to continue.",
-			type: "warning",
-		});
-		await fire("input", { text: "/hooks events" }, ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toBe("/hooks moved to /harness hooks. Run /harness hooks events to continue.");
-		expect(await fire("input", { text: "/configure" }, ctx)).toEqual({ action: "continue" });
-	});
 });
 
 describe("/harness terminal list", () => {

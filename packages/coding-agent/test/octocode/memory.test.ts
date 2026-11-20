@@ -24,6 +24,9 @@ import {
 	memoryLine,
 	memoryStore,
 } from "../../src/octocode/memory/store.ts";
+import { KeybindingsManager } from "../../src/core/keybindings.ts";
+import { initTheme } from "../../src/theme/theme.ts";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePermission, fakeHost, rendered, theme } from "./fake-host.ts";
 
@@ -746,6 +749,38 @@ describe("/memory", () => {
 		expect(() => parseTemplate("kind: nope\n---\n")).toThrow(/kind must be/);
 		expect(() => parseTemplate("scope: all\n---\n")).toThrow(/scope must be/);
 		expect(parseTemplate("title: only")).toEqual({ title: "only", body: "" });
+	});
+
+	it("opens a different terminal page for list and search, and says when a search matches nothing", async () => {
+		const { command } = setup();
+		memoryStore(cwd).set({ title: "Deploy smoke tests", author: "user" });
+		memoryStore(cwd).set({ title: "Unrelated note", author: "user" });
+		initTheme("dark");
+		const screens: string[] = [];
+		const { ctx } = ctxFor();
+		Object.assign(ctx, { mode: "tui" });
+		Object.assign(ctx.ui, {
+			custom: (factory: (...args: unknown[]) => { render(w: number): string[]; handleInput(d: string): void }) =>
+				new Promise((resolve) => {
+					const page = factory(
+						{ requestRender: () => undefined, terminal: { rows: 40 } },
+						theme,
+						new KeybindingsManager(),
+						resolve,
+					);
+					screens.push(stripAnsi(page.render(80).join("\n")));
+					page.handleInput("\x1b");
+				}),
+		});
+		await command.handler("list", ctx);
+		await command.handler("search smoke", ctx);
+		await command.handler("search zzzz", ctx);
+		expect(screens[0]).toContain("Unrelated note");
+		expect(screens[1]).toContain("Deploy smoke tests");
+		expect(screens[1]).not.toContain("Unrelated note");
+		expect(screens[1]).not.toContain("Memories — Memories");
+		expect(screens[2]).toContain('no memory matches "zzzz"');
+		expect(screens[2]).not.toContain("none yet");
 	});
 
 	it("prints grouped text headless, adds, searches, and reports recall", async () => {

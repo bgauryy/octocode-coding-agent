@@ -17,7 +17,7 @@ export default mergeConfig(
 			// Like the e2e suite: a third of the cores, 2 to 4 workers, so a full run leaves the host usable.
 			maxWorkers: Math.max(2, Math.min(4, Math.floor(os.availableParallelism() / 3))),
 			// Tests run offline by default; opt in with allowNetwork() from test/test-network-env.ts.
-			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MODELS_DEV: "0" },
+			env: { OCTOCODE_OFFLINE: "1", OCTOCODE_MCP: "0", OCTOCODE_MCP_DESKTOP: "0", OCTOCODE_MODELS_DEV: "0" },
 			unstubEnvs: true,
 			reporters: process.env.GITHUB_ACTIONS ? ["dot", "github-actions"] : ["dot"],
 			silent: "passed-only",

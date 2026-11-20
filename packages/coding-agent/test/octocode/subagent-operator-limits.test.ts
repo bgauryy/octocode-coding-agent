@@ -16,20 +16,27 @@ describe("an operator's flags in a child's arguments", () => {
 	it("adds nothing without them", () => {
 		const args = buildAgentArgs(undefined, undefined, SESSION);
 		expect(args).not.toContain("--no-mcp");
-		expect(excluded(args)).toEqual(["mcp__browser__*", "mcp__freellama__*"]);
+		expect(excluded(args)).toEqual(["mcp__browser__*", "mcp__desktop__*", "mcp__freellama__*"]);
 	});
 
 	it("carries --exclude-tools and --no-mcp, including what a profile may not remove", () => {
 		recordOperatorLimits({ excludeTools: ["bash", "file", "mcp__github__*"], noMcp: true });
 		const args = buildAgentArgs(undefined, undefined, SESSION);
 		expect(args).toContain("--no-mcp");
-		expect(excluded(args)).toEqual(["bash", "file", "mcp__github__*", "mcp__browser__*", "mcp__freellama__*"]);
+		expect(excluded(args)).toEqual([
+			"bash",
+			"file",
+			"mcp__github__*",
+			"mcp__browser__*",
+			"mcp__desktop__*",
+			"mcp__freellama__*",
+		]);
 	});
 
 	it("keeps a profile's own excludes beside them", () => {
 		recordOperatorLimits({ excludeTools: ["bash"] });
 		const args = buildAgentArgs({ name: "p", excludeTools: "web" } as never, undefined, SESSION);
-		expect(excluded(args)).toEqual(["bash", "web", "mcp__browser__*", "mcp__freellama__*"]);
+		expect(excluded(args)).toEqual(["bash", "web", "mcp__browser__*", "mcp__desktop__*", "mcp__freellama__*"]);
 		expect(args).not.toContain("--no-mcp");
 	});
 });

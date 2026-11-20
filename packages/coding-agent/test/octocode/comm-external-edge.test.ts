@@ -157,7 +157,7 @@ describe("the process a caller names is the scope of a 'this process' grant", ()
 			cwd: "/w",
 			startedAt: Date.now(),
 			protocol: 1,
-			name: `octocode-main-${id}`,
+			name: `octocode-agent-main-${id}`,
 		});
 
 	// Contract change (user decision 3): a self-consistent claim names the process, and only a confirmed one scopes the grant;
@@ -165,17 +165,17 @@ describe("the process a caller names is the scope of a 'this process' grant", ()
 	it("keeps the process of a self-consistent claim (the shape `external/peers.ts` sends) once that process confirms it", () => {
 		record("oc-aaaaaa", process.pid);
 		const facts = externalFacts(
-			"octocode-main-oc-aaaaaa",
+			"octocode-agent-main-oc-aaaaaa",
 			{ instanceId: "oc-aaaaaa", pid: process.pid },
 			"socket",
 			false,
 		);
-		expect(facts.replyTo).toBe("octocode-main-oc-aaaaaa");
+		expect(facts.replyTo).toBe("octocode-agent-main-oc-aaaaaa");
 		expect(admission(facts, "hi").process).toBeUndefined();
 		// The grant is keyed by the confirmed instance (id and pid); the name is only its label.
 		expect(admission({ ...facts, verified: true }, "hi").process).toEqual({
 			id: `oc-aaaaaa#${process.pid}`,
-			name: "octocode-main-oc-aaaaaa",
+			name: "octocode-agent-main-oc-aaaaaa",
 		});
 	});
 

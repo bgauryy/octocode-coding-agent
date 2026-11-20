@@ -4,6 +4,7 @@
  * edited so it can be neither delivered mid-edit nor sent twice.
  */
 
+import { keyText } from "../../../theme/hints.ts";
 import { plural } from "../../../octocode/shared/text.ts";
 import { DialogEditorComponent } from "../components/dialog-editor.ts";
 import { type QueueListAction, QueueListComponent, type QueueListRow } from "../components/queue-list.ts";
@@ -45,7 +46,7 @@ function toRow(item: QueueItem): QueueListRow {
 export function showQueueManager(host: QueueListHost, focus: "first" | "last" = "first"): boolean {
 	let items = listQueueItems(host);
 	if (items.length === 0) {
-		host.showStatus("No queued messages");
+		host.showStatus(`No queued messages · ${keyText("app.message.followUp")} queues one while the agent works`);
 		return false;
 	}
 	host.showSelector((done) => {

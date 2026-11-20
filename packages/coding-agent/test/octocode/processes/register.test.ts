@@ -47,28 +47,28 @@ describe("process title across the session lifecycle", () => {
 	it("names a main session after its session id and renames it when the session changes", async () => {
 		const host = live();
 		await host.emit("session_start", { reason: "startup" }, ctx("eb93-75f9-01a1a2c5"));
-		expect(process.title).toBe("octocode-main-01a1a2c5");
+		expect(process.title).toBe("octocode-agent-main-01a1a2c5");
 		await host.emit("session_shutdown", {}, ctx("eb93-75f9-01a1a2c5"));
 		await host.emit("session_start", { reason: "new" }, ctx("0000-02b2b3d6"));
-		expect(process.title).toBe("octocode-main-02b2b3d6");
+		expect(process.title).toBe("octocode-agent-main-02b2b3d6");
 		await host.emit("session_start", { reason: "resume" }, ctx("0000-03c3c4e7"));
-		expect(process.title).toBe("octocode-main-03c3c4e7");
+		expect(process.title).toBe("octocode-agent-main-03c3c4e7");
 		await host.emit("session_start", { reason: "fork" }, ctx("0000-04d4d5f8"));
-		expect(process.title).toBe("octocode-main-04d4d5f8");
+		expect(process.title).toBe("octocode-agent-main-04d4d5f8");
 		await host.emit("session_shutdown", {}, ctx("0000-04d4d5f8"));
 	});
 
-	it("names an RPC host octocode-rpc-<id>", async () => {
+	it("names an RPC host octocode-agent-rpc-<id>", async () => {
 		const host = live();
 		await host.emit("session_start", { reason: "startup" }, ctx("1-0a0b0c0d", "rpc"));
-		expect(process.title).toBe("octocode-rpc-0a0b0c0d");
+		expect(process.title).toBe("octocode-agent-rpc-0a0b0c0d");
 		await host.emit("session_shutdown", {}, ctx("1-0a0b0c0d", "rpc"));
 	});
 
-	it("keeps a subagent's title octocode-<role>-<agent id> whatever its session id", async () => {
+	it("keeps a subagent's title octocode-agent-<role>-<agent id> whatever its session id", async () => {
 		const host = live({ OCTOCODE_SUBAGENT: "1", OCTOCODE_AGENT_ID: "nifty-beak", OCTOCODE_AGENT_ROLE: "implementer" });
 		await host.emit("session_start", { reason: "startup" }, ctx("0a0b0c0d-1", "rpc"));
-		expect(process.title).toBe("octocode-implementer-nifty-beak");
+		expect(process.title).toBe("octocode-agent-implementer-nifty-beak");
 		await host.emit("session_shutdown", {}, ctx("0a0b0c0d-1", "rpc"));
 	});
 });
@@ -97,7 +97,7 @@ describe("memory sampling follows the session", () => {
 			["2-bbbbbbbb", false],
 			["2-bbbbbbbb", true],
 		]);
-		expect(samples[0].title).toBe("octocode-main-aaaaaaaa");
+		expect(samples[0].title).toBe("octocode-agent-main-aaaaaaaa");
 		expect(samples[0].pid).toBe(process.pid);
 	});
 
@@ -170,7 +170,7 @@ describe("/processes", () => {
 			started: started(7200),
 			ppid: 1,
 			role: "main",
-			title: "octocode-main-dead0000",
+			title: "octocode-agent-main-dead0000",
 			id: "dead0000",
 			sessionId: "dead0000-1",
 			agentId: null,

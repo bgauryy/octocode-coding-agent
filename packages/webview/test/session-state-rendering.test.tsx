@@ -154,14 +154,14 @@ it("draws the terminal ask card on an awaiting ask: metadata, folded body, detai
 			id: "d5",
 			options: ["Allow once", "Deny", "Deny and tell the agent why…"],
 			allowsText: false,
-			meta: ["from octocode-main-6c9a · external, not you"],
+			meta: ["from octocode-agent-main-6c9a · external, not you"],
 			body: { text: "line one\nline two\nline three\nline four\nline five", collapsible: true },
 			details: [{ text: "risk: starts a turn", tone: "warning" }],
 			optionInfo: [{ description: "only this one" }, { danger: true }, { description: "the agent hears why" }],
 			writeIn: "Deny and tell the agent why…",
 		},
 	});
-	expect(screen.getByText("from octocode-main-6c9a · external, not you")).toBeInTheDocument();
+	expect(screen.getByText("from octocode-agent-main-6c9a · external, not you")).toBeInTheDocument();
 	const body = document.querySelector(".dialog-answer-body");
 	expect(body?.textContent).toBe("line one\nline two\nline three");
 	await userEvent.click(screen.getByRole("button", { name: "Show all (+2 lines)" }));
@@ -178,8 +178,8 @@ it("draws the terminal ask card on an awaiting ask: metadata, folded body, detai
 it("draws the deny-this-process option of an external message's approval as a danger choice, and answers with it", async () => {
 	const view = controlView(activity());
 	await view.workspace();
-	const allow = "Allow messages from octocode-main-6c9a for this session";
-	const deny = "Deny messages from octocode-main-6c9a for this session";
+	const allow = "Allow messages from octocode-agent-main-6c9a for this session";
+	const deny = "Deny messages from octocode-agent-main-6c9a for this session";
 	await view.session({
 		...running,
 		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
@@ -201,7 +201,7 @@ it("draws the deny-this-process option of an external message's approval as a da
 it("draws an approval question's deny_session option in the danger tone", async () => {
 	const view = controlView(activity());
 	await view.workspace();
-	const deny = "Deny messages from octocode-main-6c9a for this session";
+	const deny = "Deny messages from octocode-agent-main-6c9a for this session";
 	await view.session({
 		...running,
 		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],

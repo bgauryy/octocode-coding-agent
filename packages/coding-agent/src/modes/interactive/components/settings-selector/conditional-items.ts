@@ -137,7 +137,8 @@ export function addConditionalItems(
 	items.splice(terminalProgressIndex + 1, 0, {
 		id: "reduce-motion",
 		label: "Reduce motion",
-		description: "Freeze spinners and shimmer; elapsed times still update (auto follows OCTOCODE_REDUCE_MOTION)",
+		description:
+			"Freeze spinners and shimmer; elapsed times still update (auto: still in CI, off a terminal, or by env)",
 		currentValue: String(config.reduceMotion),
 		values: ["auto", "true", "false"],
 	});

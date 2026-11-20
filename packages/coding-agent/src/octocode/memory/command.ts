@@ -172,7 +172,14 @@ async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: 
 	if (verb === "review") return review(ctx, store, rest, deps);
 	if (verb === "search") {
 		if (!rest) return say(ctx, "Usage: /memory search <words>", "warning");
-		return browse(ctx, store, store.search(rest, "all", 20), `Memories matching "${rest}"`, deps);
+		return browse(
+			ctx,
+			store,
+			store.search(rest, "all", 20),
+			`Memories matching "${rest}"`,
+			deps,
+			`no memory matches "${rest}"`,
+		);
 	}
 	if (verb === "" || verb === "list")
 		return browse(ctx, store, store.list("all", LIST_LIMIT), `Memories (recall ${autoStatus(deps)})`, deps);
@@ -269,6 +276,7 @@ async function browse(
 	memories: Memory[],
 	title: string,
 	deps: MemoryCommandDeps,
+	empty?: string,
 ): Promise<void> {
 	if (!ctx.hasUI) return say(ctx, textList(memories, title), "info");
 	let list = grouped(memories);
@@ -276,7 +284,7 @@ async function browse(
 	for (;;) {
 		let picked: Memory | undefined;
 		if (ctx.mode === "tui") {
-			const id = await memoryListPage(ctx, list, title, selected);
+			const id = await memoryListPage(ctx, list, title, selected, empty);
 			if (id === undefined) return;
 			if (id === ADD_ROW) return add(ctx, store, "", deps);
 			selected = id;

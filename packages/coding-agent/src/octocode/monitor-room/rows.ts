@@ -1,5 +1,6 @@
 import type { RuleState } from "../monitor/ledger.ts";
 import { formatAgo } from "../shared/format.ts";
+import { columnRows } from "../../theme/columns.ts";
 
 /**
  * The unit a rule reports in. A rule without an entry shows bare numbers, so a rule added to the monitor appears in the
@@ -13,6 +14,7 @@ const UNITS: Readonly<Record<string, string>> = {
 	context: "%",
 	"check-in": "s",
 	"idle-agent": "m",
+	"stalled-item": "m",
 };
 
 /** One monitor rule as the room shows it. */
@@ -62,13 +64,7 @@ export function roomText(rows: readonly RoomRow[]): string {
 		row.lastAlert,
 		row.subject,
 	]);
-	const widths = HEADER.map((name, column) => Math.max(name.length, ...cells.map((line) => line[column].length)));
-	const line = (values: readonly string[]) =>
-		values
-			.map((value, column) => value.padEnd(widths[column]))
-			.join("  ")
-			.trimEnd();
-	return [line(HEADER), ...cells.map(line)].join("\n");
+	return columnRows([HEADER, ...cells]).join("\n");
 }
 
 /** The page row's muted text: everything but the rule and the state, which the row and its badge carry. */

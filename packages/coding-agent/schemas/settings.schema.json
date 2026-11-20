@@ -730,8 +730,13 @@
               "const": "auto"
             }
           ],
-          "description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" follows OCTOCODE_REDUCE_MOTION (1 or true).",
+          "description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true.",
           "default": "auto"
+        },
+        "emojiMarks": {
+          "type": "boolean",
+          "description": "Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal.",
+          "default": false
         },
         "hyperlinks": {
           "anyOf": [

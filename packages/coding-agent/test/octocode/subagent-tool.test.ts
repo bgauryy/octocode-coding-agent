@@ -312,7 +312,7 @@ describe("agent tool with a scripted child", () => {
 				"--tools",
 				"read,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 				"--exclude-tools",
-				"browser,mcp__browser__*,mcp__freellama__*",
+				"browser,mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
 			]),
 		);
 		expect(text).toContain("(Last screenshot: ");

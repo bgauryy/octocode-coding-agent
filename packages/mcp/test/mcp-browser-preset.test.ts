@@ -7,7 +7,7 @@ import { defaultPreset } from "./mcp-default-preset.ts";
 import { browserPreset } from "../src/presets/browser/index.ts";
 import { browserLaunch, browserMcpEntry } from "../src/presets/browser/launch.ts";
 import { BROWSER_SERVER } from "../../common/src/mcp-names.ts";
-import { withStructuredText } from "../src/presets/browser/tools.ts";
+import { withStructuredText } from "../src/presets/structured-text.ts";
 import { getMcpSessionStatus } from "../src/status.ts";
 import { createMcpToolName } from "../src/tool-names.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";

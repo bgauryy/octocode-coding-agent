@@ -13,6 +13,7 @@ import {
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { OWNER_JOB_ENV } from "@octocodeai/octocode-common/env";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -85,9 +86,11 @@ export class BashJobs {
 		// Node fires a timer longer than 2^31-1 ms at once, which would stop the job as soon as it started.
 		const timeout = clampTimeoutSeconds(asked);
 		const shell = resolveBashShell(settings);
+		// Named before the spawn: the command's environment carries it (`OCTOCODE_JOB_ID`).
+		const id = this.reserveId();
 		const child = await spawnShell(shell, shellScript(command, settings), {
 			cwd,
-			env: nonInteractiveEnv(env),
+			env: nonInteractiveEnv({ ...env, [OWNER_JOB_ENV]: id }),
 			unsandboxed,
 		});
 		if (child.pid === undefined) {
@@ -97,7 +100,19 @@ export class BashJobs {
 				`Could not start a background shell (${shell.shell}): ${errorMessage(cause)}. Nothing is running.`,
 			);
 		}
-		return this.register(child, child.pid, command, cwd, onExit, { timeout, maxLogBytes, verification, reason, item });
+		return this.register(child, child.pid, command, cwd, onExit, {
+			id,
+			timeout,
+			maxLogBytes,
+			verification,
+			reason,
+			item,
+		});
+	}
+
+	/** The next job id; ids are never reused within this instance, even by a start that fails. */
+	private reserveId(): string {
+		return `bash-${++this.next}`;
 	}
 
 	/**
@@ -143,6 +158,7 @@ export class BashJobs {
 		cwd: string,
 		onExit: (job: BashJob, exit: JobExit) => void,
 		{
+			id = this.reserveId(),
 			timeout,
 			maxLogBytes,
 			output: earlier,
@@ -151,6 +167,7 @@ export class BashJobs {
 			reason,
 			item,
 		}: {
+			id?: string;
 			timeout?: number;
 			maxLogBytes: number;
 			output?: Buffer;
@@ -160,7 +177,6 @@ export class BashJobs {
 			item?: string;
 		},
 	): BashJob {
-		const id = `bash-${++this.next}`;
 		// Job ids restart with each feature instance (a /reload), so the start time keeps an earlier log.
 		let log: string;
 		let output: RotatingLog;
@@ -340,13 +356,13 @@ export class BashJobs {
 		return path.join(this.logDir(), `reload-${process.pid}.json`);
 	}
 
-	/** One entry per running job, for `/jobs`: what it runs, why, and its log. */
-	describe(now = Date.now()): string {
+	/** One entry per running job, for `/jobs`: what it runs, why, and its log; `links` adds text after the command (`jobLinks`). */
+	describe(now = Date.now(), links: ReadonlyMap<string, string> = new Map()): string {
 		if (this.jobs.size === 0) return "No background bash jobs are running.";
 		return [...this.jobs.values()]
 			.map(
 				(job) =>
-					`${job.id} · ${formatDuration(now - job.startedAt)}${job.timeout ? ` of ${formatDuration(job.timeout * 1000)}` : ""} · pid ${job.pid} · ${firstLine(job.command).slice(0, 80)}\n${jobWhyLine(job, "  ")}  log: ${shortPath(job.log)}`,
+					`${job.id} · ${formatDuration(now - job.startedAt)}${job.timeout ? ` of ${formatDuration(job.timeout * 1000)}` : ""} · pid ${job.pid} · ${firstLine(job.command).slice(0, 80)}${links.get(job.id) ?? ""}\n${jobWhyLine(job, "  ")}  log: ${shortPath(job.log)}`,
 			)
 			.join("\n");
 	}

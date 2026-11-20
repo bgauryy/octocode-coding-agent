@@ -38,6 +38,7 @@ import { externalIdentity, registerExternal } from "./external/register.ts";
 import { applyBashEnvironmentSetting } from "./files/bash-env.ts";
 import { applySessionSandbox } from "./permission/sandbox/apply.ts";
 import { registerBashTool } from "./native/tools/bash/tool.ts";
+import { jobLinks } from "./backlog/job-links.ts";
 import { Checkpoints } from "./files/checkpoint.ts";
 import { registerCheckpoints } from "./files/checkpoint-command.ts";
 import { registerReadReceipts } from "./files/read-receipts.ts";
@@ -172,8 +173,8 @@ export default function octocode(host: FeatureSetup): void {
 	};
 	registerFileTool(api, guard, permission, checkpoints, fileHooks, attachmentContent);
 	// Octocode's bash with a foreground deadline and background jobs.
-	const jobs = registerBashTool(api, commands);
-	// `octocode-<role>-<id>` process title, periodic memory samples, and `/processes`.
+	const jobs = registerBashTool(api, commands, undefined, undefined, jobLinks);
+	// `octocode-agent-<role>-<id>` process title, periodic memory samples, and `/processes`.
 	const jobPids = () => [...jobs.jobs.values()].map((job) => job.pid);
 	registerProcesses(api, { commands, isSubagent, jobPids, apiInstances: runningApiInstances });
 	let agents: AgentControl | undefined;

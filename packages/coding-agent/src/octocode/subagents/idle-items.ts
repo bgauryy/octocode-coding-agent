@@ -10,6 +10,7 @@ import type { Team } from "../team/session.ts";
 import { itemKey, wakeGateOf } from "../wake/gate.ts";
 import type { AgentRuns } from "./claim.ts";
 import type { Lingering } from "./linger.ts";
+import { registerStalledItems } from "./stalled-items.ts";
 
 /** Ongoing items read to find this session's; the board lists the most urgent first. */
 const SCAN = 50;
@@ -68,7 +69,8 @@ export function registerIdleItems(
 	team: Team,
 	runs: Pick<AgentRuns, "running" | "items">,
 	lingering: Pick<Lingering, "onItem">,
-): void {
+): () => void {
+	const stopStalls = registerStalledItems(api, team, runs);
 	const told = new IdleItems();
 	api.bus.on("agent_settled", async (event, ctx) => {
 		if (event.aborted) return undefined;
@@ -105,4 +107,5 @@ export function registerIdleItems(
 		);
 		return undefined;
 	});
+	return stopStalls;
 }

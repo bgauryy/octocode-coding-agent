@@ -13,6 +13,7 @@ const BACKGROUND_OUTPUT = Type.Object({
 	job: Type.String({ description: "Job id, for `/jobs kill <id>`" }),
 	pid: Type.Number({ description: "Process group leader" }),
 	log: Type.String({ description: "Log file with the combined output" }),
+	joined: Type.Optional(Type.Boolean({ description: "true: an identical job already ran, so nothing was started" })),
 	verification: Type.Optional(verificationSchema),
 });
 
@@ -48,6 +49,11 @@ export const bashParameters = Type.Object({
 	background: Type.Optional(
 		Type.Boolean({
 			description: "true: return at once; a foreground wait over 10 min moves to the background",
+		}),
+	),
+	fresh: Type.Optional(
+		Type.Boolean({
+			description: "Background: start a new run even if an identical job (same folder and command) is running",
 		}),
 	),
 	verify: Type.Optional(

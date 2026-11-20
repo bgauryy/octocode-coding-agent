@@ -9,7 +9,7 @@ import { applyToolModifiers, SettingsManager } from "../../core/settings-manager
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { PermissionRequest } from "../permission/request.ts";
-import { type ActionClass, actionNoun, actionWhy, declaredPermissions } from "../permission/mode.ts";
+import { type ActionClass, actionNoun, actionWhy, decide, declaredPermissions } from "../permission/mode.ts";
 import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { installOctocodeDiscovery } from "../discovery/index.ts";
 import { globalPaths } from "../shared/home.ts";
@@ -328,8 +328,12 @@ export function spawnRequest(
 	// One identity for both remembered answers: the profile's name and the hash of its whole content.
 	const seen = `${name} ${profile?.hash ?? ""}`;
 	const needsAnswer = declared.length > 0 && !permission.profileSeen(seen);
+	// A declared class that asks even in full (`desktop.control`) makes this spawn that ask too, every time: the child cannot ask,
+	// so this answer is its consent, and no session grant or remembered profile answers it.
+	const alwaysAsk = declared.filter((action) => decide("full", action) === "ask");
 	const request: PermissionRequest = {
 		action: "agent.spawn",
+		...(alwaysAsk.length > 0 ? { also: alwaysAsk } : {}),
 		title: "Start this subagent?",
 		what: [
 			`${name} ${may}; other actions follow the child's permission policy.`,

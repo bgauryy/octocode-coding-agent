@@ -167,6 +167,49 @@ describe("a schema change that retires the agent database", () => {
 		expect(kept(`${file}.v${older.version}.retired`)).toBe("me");
 	});
 
+	it("carries items, memories and the other carried tables from a version 10 file, which has no jobs table or lease item", () => {
+		const tenth: FileKind = {
+			...COORDINATION_FILE,
+			version: 10,
+			create: (db) => {
+				const made = COORDINATION_FILE.create(db);
+				db.exec("DROP TABLE jobs; ALTER TABLE leases DROP COLUMN item;");
+				return made;
+			},
+		};
+		const file = previous(tenth);
+		const before = new DatabaseSync(file, { readOnly: true });
+		try {
+			expect(before.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'jobs'").get()).toBeUndefined();
+		} finally {
+			before.close();
+		}
+
+		const agent = open(file);
+		try {
+			expect(versionOf(file)).toBe(11);
+			expect(agent.db.prepare("SELECT title FROM backlog").all()).toEqual([{ title: "Ship the carry step" }]);
+			expect(agent.db.prepare("SELECT title FROM memories").all()).toEqual([{ title: "Answer in tables" }]);
+			expect(count(agent, "backlog_notes")).toBe(1);
+			expect(count(agent, "trusted_folders")).toBe(1);
+			// The new tables are there and empty: jobs are rebuildable state, never carried.
+			expect(count(agent, "jobs")).toBe(0);
+			expect(agent.db.prepare("SELECT name FROM pragma_table_info('leases') WHERE name = 'item'").all()).toHaveLength(
+				1,
+			);
+			const { carried, left } = JSON.parse(
+				(agent.db.prepare("SELECT value FROM meta WHERE key = 'carried_from_retired'").get() as { value: string })
+					.value,
+			) as { carried: Record<string, number>; left: Record<string, string> };
+			expect(carried).toMatchObject({ workspaces: 1, memories: 1, backlog: 1, backlog_notes: 1, trusted_folders: 1 });
+			expect(carried).not.toHaveProperty("jobs");
+			expect(left).toEqual({});
+		} finally {
+			agent.close();
+		}
+		expect(kept(`${file}.v10.retired`)).toBe("me");
+	});
+
 	it("leaves a table whose columns the new schema lacks in the retired file, with the tables that need it", () => {
 		const legacy: FileKind = {
 			...older,

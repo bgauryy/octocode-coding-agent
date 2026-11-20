@@ -63,6 +63,8 @@ export interface Args {
 	offline?: boolean;
 	tuiMode?: TuiMode;
 	verbose?: boolean;
+	/** `--no-color`: no ANSI color (the process already runs with `OCTOCODE_NO_COLOR` set). */
+	noColor?: boolean;
 	/** `--trust`: record the user's grant for the working folder, then run. */
 	trust?: boolean;
 	messages: string[];

@@ -138,6 +138,10 @@ const PLACEMENTS: Array<[string, string]> = [
 	["pane down", "pane down — split below this pane"],
 ];
 
+function withLeading(leading: string, items: ReturnType<typeof wordCompletions>): ReturnType<typeof wordCompletions> {
+	return items && items.map((item) => ({ ...item, value: `${leading}${item.value}` }));
+}
+
 /** `/worktree`: list, create, open, switch to and remove the repository's git worktrees. */
 export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcommand {
 	return {
@@ -145,15 +149,16 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 		argumentHint:
 			"[list | new <name> | open <name> [pane [right|down]|window] | switch <name|main> | merge <branch> | remove <name> [--force]]",
 		complete: (prefix) => {
-			const placing = /^open\s+\S+\s+(.*)$/su.exec(prefix);
-			if (placing) return wordCompletions(PLACEMENTS, placing[1]);
+			// The editor replaces the whole argument text with an item's value, so a value repeats the words before it.
+			const placing = /^(open\s+\S+\s+)(.*)$/su.exec(prefix);
+			if (placing) return withLeading(placing[1], wordCompletions(PLACEMENTS, placing[2]));
 			const naming = /^(open|switch)\s+(\S*)$/su.exec(prefix);
 			if (naming) {
 				const cwd = deps.cwd?.();
 				const names: Array<string | [string, string]> = cwd ? worktreeNames(cwd) : [];
 				if (naming[1] === "switch")
 					names.unshift([MAIN_CHECKOUT, "main — the main checkout, even if a worktree has this name"]);
-				return wordCompletions(names, naming[2]);
+				return withLeading(`${naming[1]} `, wordCompletions(names, naming[2]));
 			}
 			return wordCompletions(
 				[

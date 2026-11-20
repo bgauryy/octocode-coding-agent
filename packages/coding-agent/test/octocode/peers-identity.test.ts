@@ -86,7 +86,7 @@ function sender(team: Array<{ id: string; pid: number }> = [], ownName?: string)
 		cwd: "/w",
 		startedAt: 1,
 		protocol: 1,
-		name: "octocode-main-self",
+		name: "octocode-agent-main-self",
 	};
 	writeFileSync(join(instancesDir(apiDir()), "oc-self.json"), JSON.stringify(self));
 	publishOwnInstance(self);
@@ -101,29 +101,31 @@ function sender(team: Array<{ id: string; pid: number }> = [], ownName?: string)
 
 describe("a sender picks only a canonical, unambiguous record", () => {
 	it("sends to the real peer, with a ticket, when no record repeats it", async () => {
-		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
 		const { send } = sender();
-		await expect(send("octocode-main-peer")).resolves.toMatchObject({ details: { to: ["octocode-main-peer"] } });
+		await expect(send("octocode-agent-main-peer")).resolves.toMatchObject({
+			details: { to: ["octocode-agent-main-peer"] },
+		});
 		expect(received).toHaveLength(1);
 		expect(received[0].caller).toMatchObject({ instanceId: "oc-self", ticket: expect.any(String) });
 	});
 
 	it("refuses a record that repeats the receiver's id under another name: no ticket reaches it", async () => {
-		const real = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const real = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
 		const forged = await listener("zz", { id: "oc-peer", pid: livePid(), name: "helper" });
 		const { send, authorize } = sender();
 		await expect(send("helper")).rejects.toThrow(/Nothing was sent/);
-		await expect(send("octocode-main-peer")).rejects.toThrow(/Nothing was sent/);
+		await expect(send("octocode-agent-main-peer")).rejects.toThrow(/Nothing was sent/);
 		expect(forged).toEqual([]);
 		expect(real).toEqual([]);
 		expect(authorize).not.toHaveBeenCalled();
 	});
 
 	it("refuses when two live records share the target's name, listing both", async () => {
-		const one = await listener("oc-one", { id: "oc-one", pid: process.ppid, name: "octocode-main-twin" });
-		const two = await listener("oc-two", { id: "oc-two", pid: livePid(), name: "octocode-main-twin" });
+		const one = await listener("oc-one", { id: "oc-one", pid: process.ppid, name: "octocode-agent-main-twin" });
+		const two = await listener("oc-two", { id: "oc-two", pid: livePid(), name: "octocode-agent-main-twin" });
 		const { send } = sender();
-		const refused = send("octocode-main-twin");
+		const refused = send("octocode-agent-main-twin");
 		await expect(refused).rejects.toThrow(/oc-one/);
 		await expect(refused).rejects.toThrow(/oc-two/);
 		expect(one).toEqual([]);
@@ -131,10 +133,10 @@ describe("a sender picks only a canonical, unambiguous record", () => {
 	});
 
 	it("refuses when another live record shares the target's pid", async () => {
-		const real = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
-		const other = await listener("oc-other", { id: "oc-other", pid: process.ppid, name: "octocode-main-other" });
+		const real = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
+		const other = await listener("oc-other", { id: "oc-other", pid: process.ppid, name: "octocode-agent-main-other" });
 		const { send } = sender();
-		await expect(send("octocode-main-peer")).rejects.toThrow(/oc-other/);
+		await expect(send("octocode-agent-main-peer")).rejects.toThrow(/oc-other/);
 		expect(real).toEqual([]);
 		expect(other).toEqual([]);
 	});
@@ -150,20 +152,20 @@ function plantSenderPid() {
 			cwd: "/evil",
 			startedAt: 0,
 			protocol: 1,
-			name: "octocode-main-evil",
+			name: "octocode-agent-main-evil",
 		}),
 	);
 }
 
 describe("what a sender claims", () => {
 	it("comes from its own API record: a planted record with the sender's pid changes nothing", async () => {
-		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
 		const { send } = sender();
 		plantSenderPid();
-		await send("octocode-main-peer");
+		await send("octocode-agent-main-peer");
 		expect(received).toHaveLength(1);
-		expect(received[0].from).toBe("octocode-main-self");
-		expect(received[0].caller).toMatchObject({ instanceId: "oc-self", name: "octocode-main-self", cwd: "/w" });
+		expect(received[0].from).toBe("octocode-agent-main-self");
+		expect(received[0].caller).toMatchObject({ instanceId: "oc-self", name: "octocode-agent-main-self", cwd: "/w" });
 	});
 
 	it("carries a ticket that confirms only for the endpoint the call was sent to", async () => {
@@ -180,11 +182,15 @@ describe("what a sender claims", () => {
 				return "refused";
 			}
 		};
-		await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" }, (params, socket) => {
-			answers.push(confirm(params, socket), confirm(params, `${socket}.other`));
-		});
+		await listener(
+			"oc-peer",
+			{ id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" },
+			(params, socket) => {
+				answers.push(confirm(params, socket), confirm(params, `${socket}.other`));
+			},
+		);
 		const { send } = sender();
-		await send("octocode-main-peer");
+		await send("octocode-agent-main-peer");
 		expect(answers).toEqual([{ nonce: "n" }, "refused"]);
 	});
 
@@ -222,29 +228,29 @@ describe("what a sender claims", () => {
 		await backend.prompt("hi", { timeoutMs: 1000 });
 		await backend.close();
 		expect(sends).toHaveLength(1);
-		expect(sends[0].caller).toMatchObject({ instanceId: "oc-self", name: "octocode-main-self", cwd: "/w" });
+		expect(sends[0].caller).toMatchObject({ instanceId: "oc-self", name: "octocode-agent-main-self", cwd: "/w" });
 	});
 });
 
 describe("a team name addresses the process its live member runs", () => {
 	it("reaches that process, and the call carries the sender's own team name", async () => {
-		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
 		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }], "calm-otter");
-		await expect(send("shy-barnacle")).resolves.toMatchObject({ details: { to: ["octocode-main-peer"] } });
+		await expect(send("shy-barnacle")).resolves.toMatchObject({ details: { to: ["octocode-agent-main-peer"] } });
 		expect(received).toHaveLength(1);
-		expect(received[0].caller).toMatchObject({ team: "calm-otter", name: "octocode-main-self" });
+		expect(received[0].caller).toMatchObject({ team: "calm-otter", name: "octocode-agent-main-self" });
 	});
 
 	it("refuses an unknown team name and sends nothing", async () => {
-		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-main-peer" });
+		const received = await listener("oc-peer", { id: "oc-peer", pid: process.ppid, name: "octocode-agent-main-peer" });
 		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }]);
 		await expect(send("brave-lynx")).rejects.toThrow(/No running instance matches "brave-lynx"/);
 		expect(received).toHaveLength(0);
 	});
 
 	it("refuses a team name whose process has several records, naming them", async () => {
-		await listener("oc-a", { id: "oc-a", pid: process.ppid, name: "octocode-main-a" });
-		await listener("oc-b", { id: "oc-b", pid: process.ppid, name: "octocode-main-b" });
+		await listener("oc-a", { id: "oc-a", pid: process.ppid, name: "octocode-agent-main-a" });
+		await listener("oc-b", { id: "oc-b", pid: process.ppid, name: "octocode-agent-main-b" });
 		const { send } = sender([{ id: "shy-barnacle", pid: process.ppid }]);
 		await expect(send("shy-barnacle")).rejects.toThrow(/Several instances run as shy-barnacle/);
 	});

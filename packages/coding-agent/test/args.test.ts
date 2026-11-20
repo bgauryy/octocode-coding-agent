@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { normalizeSessionName, parseArgs } from "../src/cli/args.ts";
+import { FLAG_SPECS } from "../src/cli/args/flags.ts";
 
 describe("parseArgs", () => {
 	describe("--version flag", () => {
@@ -488,6 +489,14 @@ describe("parseArgs", () => {
 		test("parses --verbose flag", () => {
 			const result = parseArgs(["--verbose"]);
 			expect(result.verbose).toBe(true);
+		});
+	});
+
+	describe("--no-color flag", () => {
+		test("parses --no-color and lists it in help", () => {
+			expect(parseArgs(["--no-color"]).noColor).toBe(true);
+			expect(parseArgs([]).noColor).toBeUndefined();
+			expect(FLAG_SPECS.some((spec) => spec.name === "--no-color" && !spec.hidden)).toBe(true);
 		});
 	});
 

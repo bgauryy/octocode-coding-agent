@@ -1,8 +1,7 @@
 import type { McpFeatureApi } from "./host/types.ts";
 import { registerMcpHost } from "./index.ts";
 import type { McpFeatureOptions } from "./options.ts";
-import { browserPreset } from "./presets/browser/index.ts";
-import { recommendedPresets } from "./recommended/index.ts";
+import { builtinPresets } from "./presets/index.ts";
 
 /**
  * The built-in MCP feature. The host passes the native tools its `mcp` tool reads (`McpNativeTools`) and whether it runs
@@ -13,7 +12,7 @@ export function defaultMcpFeature(
 	host: Pick<McpFeatureOptions, "nativeTools" | "leanSession"> = {},
 ): void {
 	registerMcpHost(api, {
-		presets: [...recommendedPresets(), browserPreset()],
+		presets: builtinPresets(),
 		...(host.nativeTools ? { nativeTools: host.nativeTools } : {}),
 		...(host.leanSession ? { leanSession: host.leanSession } : {}),
 	});

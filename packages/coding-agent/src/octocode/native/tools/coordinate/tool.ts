@@ -225,7 +225,7 @@ function registerCoordinateTool(
 			name: "coordinate",
 			label: "Coordinate",
 			description:
-				"List teammates and reserve files. Reservations block conflicting file edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team: listed with `· worktree <folder>`, messaged across worktrees. Reservations, `changes` and `.octocode/code/temp/` scratch are per worktree.",
+				"List teammates and reserve files. Reservations block conflicting edits and bash writes to reserved paths; scripts and other editors ignore them. Agents in every git worktree are one team (marked `· worktree <folder>`); reservations, `changes` and scratch are per worktree.",
 			promptGuidelines: renderPrompt("tools/coordinate/guidelines.md").split("\n").filter(Boolean),
 			parameters: Type.Object({
 				action: StringEnum(actions, {

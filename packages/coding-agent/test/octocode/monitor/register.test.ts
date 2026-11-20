@@ -15,7 +15,7 @@ const hot = (at: number): MachineSample => ({
 	swapUsed: 0,
 	swapTotal: 0,
 	gpu: null,
-	processes: [{ pid: 1, ppid: 0, command: "tsc", cpu: 900, rss: 1, owner: "octocode-main-mine" }],
+	processes: [{ pid: 1, ppid: 0, command: "tsc", cpu: 900, rss: 1, owner: "octocode-agent-main-mine" }],
 });
 
 function setup(title: string, isSubagent = false, settings: Record<string, unknown> = {}) {
@@ -55,31 +55,31 @@ function setup(title: string, isSubagent = false, settings: Record<string, unkno
 
 describe("monitor delivery", () => {
 	it("wakes the session that owns the cause, and notifies the user from the sampling session", () => {
-		const mine = setup("octocode-main-mine");
+		const mine = setup("octocode-agent-main-mine");
 		mine.sampler()?.onSample(hot(60_000), true);
 		expect(mine.sent).toHaveLength(1);
 		expect(mine.sent[0].options.triggerTurn).toBe(true);
 		expect(mine.sent[0].message.display).toBe(true);
-		expect(mine.sent[0].message.content).toContain("tsc 900% CPU (octocode-main-mine)");
+		expect(mine.sent[0].message.content).toContain("tsc 900% CPU (octocode-agent-main-mine)");
 		expect(mine.status).toEqual(["load 4"]);
 		expect(mine.notices).toEqual(["Octocode: Load 4 per CPU"]);
 	});
 
 	it("leaves other sessions a hidden note and a footer mark, without waking or notifying", () => {
-		const other = setup("octocode-main-other");
+		const other = setup("octocode-agent-main-other");
 		other.sampler()?.onSample(hot(60_000), false);
 		expect(other.sent).toHaveLength(1);
 		expect(other.sent[0].options.triggerTurn).toBe(false);
 		expect(other.sent[0].message.display).toBe(false);
-		expect(other.sent[0].message.content).toContain("Another process causes it (octocode-main-mine)");
+		expect(other.sent[0].message.content).toContain("Another process causes it (octocode-agent-main-mine)");
 		expect(other.status).toEqual(["load 4"]);
 		expect(other.notices).toEqual([]);
 	});
 
 	it("has subagents read samples without taking them, and starts nothing when turned off", () => {
-		expect(setup("octocode-implementer-x", true).sampler()?.takesSamples).toBe(false);
-		expect(setup("octocode-main-mine").sampler()?.intervalMs).toBe(60_000);
-		expect(setup("octocode-main-mine", false, { enabled: false }).sampler()).toBeUndefined();
+		expect(setup("octocode-agent-implementer-x", true).sampler()?.takesSamples).toBe(false);
+		expect(setup("octocode-agent-main-mine").sampler()?.intervalMs).toBe(60_000);
+		expect(setup("octocode-agent-main-mine", false, { enabled: false }).sampler()).toBeUndefined();
 	});
 
 	it("draws the footer mark from every active threshold", () => {

@@ -55,4 +55,27 @@ describe("narrow management pages", () => {
 				.some((row) => row.includes("›")),
 		).toBe(true);
 	});
+
+	it("keeps the indent of a selected row's detail, notes and facts on every wrapped line", () => {
+		const view = new ManagePageComponent({
+			title: "Providers",
+			notes: ["a long note that has to wrap across several lines of this narrow page"],
+			sections: [
+				{
+					heading: "Ready",
+					rows: [{ id: "a", name: "mock", detail: "local · apiKey in ~/.octocode/models.json · 2 models" }],
+				},
+			],
+			hints: [["esc", "back"]],
+			onSelect: vi.fn(),
+			onCancel: vi.fn(),
+		});
+		const lines = view.render(40).map(stripAnsi);
+		const detail = lines.slice(lines.findIndex((line) => line.includes("› mock")) + 1);
+		const continued = detail.slice(0, 2);
+		expect(continued.every((line) => line.startsWith("   "))).toBe(true);
+		const note = lines.slice(lines.findIndex((line) => line.includes("a long note")));
+		expect(note.slice(0, 2).every((line) => line.startsWith(" "))).toBe(true);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(40);
+	});
 });

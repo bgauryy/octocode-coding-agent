@@ -19,6 +19,15 @@ describe("Claude Code command aliases", () => {
 		expect(parseSlashCommand(`${text} some args`)).toEqual({ name, args: "some args" });
 	});
 
+	it("runs /plugins and /hooks as /harness, and /mcp enable as /configuration", () => {
+		expect(parseSlashCommand("/plugins disable x")).toEqual({ name: "harness", args: "disable x" });
+		expect(parseSlashCommand("/hooks events")).toEqual({ name: "harness", args: "hooks events" });
+		expect(parseSlashCommand("/hooks")).toEqual({ name: "harness", args: "hooks" });
+		expect(parseSlashCommand("/mcp enable fs -l")).toEqual({ name: "configuration", args: "enable mcp:fs --local" });
+		expect(parseSlashCommand("/mcp disable fs")).toEqual({ name: "configuration", args: "disable mcp:fs" });
+		expect(parseSlashCommand("/mcp list")).toEqual({ name: "mcp", args: "list" });
+	});
+
 	it("keeps canonical and unknown names unchanged", () => {
 		expect(parseSlashCommand("/quit")).toEqual({ name: "quit", args: "" });
 		expect(parseSlashCommand("/nope x")).toEqual({ name: "nope", args: "x" });

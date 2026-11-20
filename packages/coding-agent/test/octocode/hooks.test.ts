@@ -6,6 +6,7 @@ import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
+import { STOP_CONTINUE_RUN_CAP } from "../../src/octocode/hooks/register/types.ts";
 import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -720,6 +721,25 @@ describe("Stop, Notification and hook timing", () => {
 		expect(next.entries[0]).toEqual(earlier);
 		expect(next.entries).toHaveLength(2);
 	}, 10_000);
+
+	it("bounds Stop continuations per prompt even when a tool call resets the consecutive count", async () => {
+		const stop = `node -e "console.log(JSON.stringify({decision:'block',reason:'again'}))"`;
+		const cwd = project({ Stop: command(stop) });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		let continued = 0;
+		for (let round = 0; round < 40; round++) {
+			const result = await fire("agent_before_settle", settle(), ctx);
+			if (!result) break;
+			continued++;
+			await fire("tool_execution_start", {}, ctx);
+		}
+		expect(continued).toBe(STOP_CONTINUE_RUN_CAP);
+		await fire("before_agent_start", {}, ctx);
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
+	}, 60_000);
 
 	it("shows the running Stop hooks in the footer status (Octocode has removed its working line), then clears it", async () => {
 		const config = parseHooks(

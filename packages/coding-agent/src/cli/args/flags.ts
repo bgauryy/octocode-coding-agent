@@ -326,6 +326,12 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: (a, v) => void (a.listModels = v ?? true),
 	},
 	{
+		name: "--no-color",
+		kind: "boolean",
+		help: ["Turn off ANSI color, like NO_COLOR (also OCTOCODE_NO_COLOR); bold, dim and underline stay"],
+		apply: set((a) => (a.noColor = true)),
+	},
+	{
 		name: "--verbose",
 		kind: "boolean",
 		help: ["Force verbose startup (overrides quietStartup setting)"],

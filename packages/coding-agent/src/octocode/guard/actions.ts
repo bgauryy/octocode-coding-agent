@@ -2,6 +2,7 @@ import { renderList, sortReviews } from "./report.ts";
 import { visible } from "./visible.ts";
 import { decide, forget, type GuardOptions, resolveReviews, ReviewRefusedError } from "./store.ts";
 import { badge, REVIEW_KINDS, type Review, type ReviewKind } from "./types.ts";
+import { columnRows } from "../../theme/columns.ts";
 
 /**
  * The verbs `/security` and `octocode security` share. Each works on the reviews the loaders produced and re-reads the
@@ -58,12 +59,13 @@ export function parseKinds(value: string | undefined): ReviewKind[] {
 export function checkTable(reviews: readonly Review[]): string {
 	const waiting = sortReviews(reviews).filter((review) => review.word !== "approved");
 	if (waiting.length === 0) return "Nothing is waiting: every item found is approved.";
-	return waiting
-		.map((review) => {
+	return columnRows(
+		waiting.map((review) => {
 			const rules = [...new Set(review.findings.map((finding) => finding.rule))];
-			return `${badge(review).padEnd(28)} ${visible(review.item.id)}${rules.length ? `  (${rules.join(", ")})` : ""}`;
-		})
-		.join("\n");
+			return [badge(review), `${visible(review.item.id)}${rules.length ? `  (${rules.join(", ")})` : ""}`];
+		}),
+		{ gap: 1, min: [28], flex: [1] },
+	).join("\n");
 }
 
 /** The list with an enforcement note per kind. */

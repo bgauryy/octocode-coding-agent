@@ -101,6 +101,31 @@ describe("full-run lock", () => {
 		release();
 	});
 
+	it("records the agent, item and job the bash tool named, and a waiter's notice names them", async () => {
+		const env: NodeJS.ProcessEnv = {
+			OCTOCODE_AGENT_NAME: "swift-orca",
+			OCTOCODE_ITEM: "B915",
+			OCTOCODE_JOB_ID: "bash-3",
+		};
+		const release = await acquireRunLock(options(env));
+		const owner = readRunLockOwner(dir);
+		assert.deepEqual([owner?.agent, owner?.item, owner?.job], ["swift-orca", "B915", "bash-3"]);
+		const lines: string[] = [];
+		const waiting = acquireRunLock({ ...options({}, lines), signal: AbortSignal.timeout(100) });
+		await assert.rejects(waiting, { name: "AbortError" });
+		assert.match(lines[0] ?? "", /\(pid \d+, agent swift-orca, item B915, job bash-3\)/);
+		release();
+	});
+
+	it("leaves out the names a run was not given", async () => {
+		const release = await acquireRunLock(options({ OCTOCODE_AGENT_NAME: " ", OCTOCODE_ITEM: "" }));
+		const owner = readRunLockOwner(dir);
+		assert.equal("agent" in (owner ?? {}), false);
+		assert.equal("item" in (owner ?? {}), false);
+		assert.equal("job" in (owner ?? {}), false);
+		release();
+	});
+
 	it("takes over from a pid that now names a later process, and waits for a live holder", async () => {
 		const child = spawn("sleep", ["30"]);
 		try {

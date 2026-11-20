@@ -10,30 +10,7 @@ import { imageLimits } from "@octocodeai/octocode-ai/utils/vision";
 import { engineDetail } from "./failure.ts";
 import { presentBrowserResult } from "./presentation.ts";
 import { guardBrowserCall } from "./proxy.ts";
-
-/**
- * The browser server acknowledges a call with a short text ("OK") and returns its evidence (flow steps, failures,
- * captures and `next.*` continuations) only in `structuredContent`. The model reads text, so the evidence follows the
- * acknowledgement as compact JSON. A text block that already carries the same JSON (the server's error envelope) is
- * left as it is.
- */
-export function withStructuredText(result: CallToolResult): CallToolResult {
-	if (result.structuredContent === undefined) return result;
-	const json = JSON.stringify(result.structuredContent);
-	const content = result.content ?? [];
-	if (content.some((block) => block.type === "text" && block.text.includes(json))) return result;
-	const ack = content
-		.flatMap((block) => (block.type === "text" ? [block.text.trim()] : []))
-		.filter(Boolean)
-		.join("\n");
-	return {
-		...result,
-		content: [
-			...content.filter((block) => block.type !== "text"),
-			{ type: "text", text: ack ? `${ack}\n${json}` : json },
-		],
-	};
-}
+import { withStructuredText } from "../structured-text.ts";
 
 /**
  * The Octocode tool for one browser server tool. Results share the generic result bounds (`toToolResult`): untrusted page text has its

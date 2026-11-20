@@ -6,7 +6,7 @@ import { main } from "./main.ts";
 
 // An Octocode a subagent's command started is a top-level session, not that subagent.
 dropForeignChildEnv();
-// `octocode-rpc-<id>` once the session exists, or the subagent's own `octocode-<role>-<agent id>`.
+// `octocode-agent-rpc-<id>` once the session exists, or the subagent's own `octocode-agent-<role>-<agent id>`.
 setProcessTitle(initialTitle(process.env, "rpc"));
 process.env.OCTOCODE_CODING_AGENT = "true";
 process.env.AI_AGENT = "octocode";

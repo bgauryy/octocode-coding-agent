@@ -18,25 +18,25 @@ Use it when the question is a determinable fact about the text (does this log sh
 
 ## Ask
 
-| Type | Question shape | Reading |
-| --- | --- | --- |
-| `noul` | One observable yes/no naming the action and the object | Probability of yes; 0.5 and above counts as yes. Low is not proof of no |
-| `choice` | `criteria`: 2-255 labels, with `unknown` | The most confident label; use `unknown` for absence, never a "none" label |
-| `score` | `criteria`: 2-10 ordered levels from 0 | Expected level, possibly fractional |
+| Type     | Question shape                                         | Reading                                                                   |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `noul`   | One observable yes/no naming the action and the object | Probability of yes; 0.5 and above counts as yes. Low is not proof of no   |
+| `choice` | `criteria`: 2-255 labels, with `unknown`               | The most confident label; use `unknown` for absence, never a "none" label |
+| `score`  | `criteria`: 2-10 ordered levels from 0                 | Expected level, possibly fractional                                       |
 
 Each question stands alone: the provider sees no conversation and no sibling answers, so put the context and the near misses to exclude in the `instructions`. Several questions about one source go in one call; name the deciding mechanism, and separate implementation from declaration or reporting.
 
 ## Feed it
 
-| You have | Send (`operation: evaluate`) |
-| --- | --- |
-| One file or page | `source: {tool: "localFetch", query: {path, ranges?}}`, or `ghGetFileContent`, or `{url}` |
-| Search hits, paths, history rows | `source: {tool, query}`; each row is a unit (`path:line` for a hit, judged with its `contextLines`) |
-| Several files, one answer each | `resources: {name: {tool, query: {path: "glob"}}}` |
-| Where in many files the answer lives | `operation: sections` with `resources` and `questions`; page with `next.nextPage` until no sections remain |
-| Command output or a log | save it under the workspace, then `source` on that path; `sections` for every place or event order |
-| Text or an array in hand | `content`; an array with `perItem: true` judges each item |
-| Hits while you search | `classification: {predicates: [...], context?}` on the search itself; add the `contextLines` the predicate needs |
+| You have                             | Send (`operation: evaluate`)                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| One file or page                     | `source: {tool: "localFetch", query: {path, ranges?}}`, or `ghGetFileContent`, or `{url}`                        |
+| Search hits, paths, history rows     | `source: {tool, query}`; each row is a unit (`path:line` for a hit, judged with its `contextLines`)              |
+| Several files, one answer each       | `resources: {name: {tool, query: {path: "glob"}}}`                                                               |
+| Where in many files the answer lives | `operation: sections` with `resources` and `questions`; page with `next.nextPage` until no sections remain       |
+| Command output or a log              | save it under the workspace, then `source` on that path; `sections` for every place or event order               |
+| Text or an array in hand             | `content`; an array with `perItem: true` judges each item                                                        |
+| Hits while you search                | `classification: {predicates: [...], context?}` on the search itself; add the `contextLines` the predicate needs |
 
 One of `source`, `resources` or `content` per row; a path inside `content` is just text. A row-level `model` overrides the default (`operation: models` lists them); `longContext` is rarely needed. Up to 5 rows per call. Narrow with a glob or `ranges` first; that is the main cost control.
 

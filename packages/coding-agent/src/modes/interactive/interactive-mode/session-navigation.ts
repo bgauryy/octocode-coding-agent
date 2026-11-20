@@ -76,7 +76,7 @@ export function showUserMessageSelector(host: SessionNavigationHost): void {
 	const userMessages = host.session.getUserMessagesForForking();
 
 	if (userMessages.length === 0) {
-		host.showStatus("No messages to fork from");
+		host.showStatus("No messages to fork from · send one first");
 		return;
 	}
 

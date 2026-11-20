@@ -179,7 +179,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 			);
 		const job = jobs.jobs.get("bash-1")!;
 		await commands.get("jobs")!.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^bash-1 · \d+s · pid \d+ · trap /);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Background bash jobs\nbash-1 · \d+s · pid \d+ · trap /);
 		await commands.get("jobs")!.handler("kill", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({
 			type: "warning",

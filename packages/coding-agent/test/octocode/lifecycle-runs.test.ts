@@ -55,7 +55,7 @@ afterEach(() => {
 
 describe("the agent_runs table", () => {
 	it("gives a main session a run at its join, with where it works", () => {
-		process.title = "octocode-main-abcd1234";
+		process.title = "octocode-agent-main-abcd1234";
 		const main = member("steady-main", { role: "main" });
 		expect(store.join(main)).toBe(true);
 		const [run] = store.presence.runs({ agentId: "steady-main" });
@@ -66,7 +66,7 @@ describe("the agent_runs table", () => {
 			sessionId: "session-main",
 			cwd: root,
 			branch: "feature/audit",
-			processTitle: "octocode-main-abcd1234",
+			processTitle: "octocode-agent-main-abcd1234",
 			startedBy: "user",
 			pid: process.pid,
 		});
@@ -150,7 +150,7 @@ describe("the agent_runs table", () => {
 
 describe("resolving an agent by any name it goes by", () => {
 	it("finds it by name, session, registration, process title, pid and backlog item, live and after its row is gone", () => {
-		process.title = "octocode-researcher-lone-fox";
+		process.title = "octocode-agent-researcher-lone-fox";
 		const ws = store.workspaceId;
 		store.presence.beginRun(
 			{
@@ -165,7 +165,14 @@ describe("resolving an agent by any name it goes by", () => {
 		const fox = member("lone-fox");
 		store.join(fox);
 		const registration = store.presence.runs({ agentId: "lone-fox" })[0].registrationId!;
-		const refs = ["lone-fox", "session-main", registration, "octocode-researcher-lone-fox", String(process.pid), "B7"];
+		const refs = [
+			"lone-fox",
+			"session-main",
+			registration,
+			"octocode-agent-researcher-lone-fox",
+			String(process.pid),
+			"B7",
+		];
 		for (const ref of refs)
 			expect(store.presence.resolve(ref, ws), ref).toMatchObject({
 				agentId: "lone-fox",

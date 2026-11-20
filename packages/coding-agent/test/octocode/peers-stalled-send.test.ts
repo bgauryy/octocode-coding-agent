@@ -56,7 +56,7 @@ async function receiver(answer: (params: Record<string, unknown>) => Record<stri
 		JSON.stringify({
 			id: "oc-slow",
 			pid: process.ppid,
-			name: "octocode-main-slow",
+			name: "octocode-agent-main-slow",
 			cwd: "/w",
 			startedAt: 1,
 			protocol: 1,
@@ -73,14 +73,14 @@ function sender() {
 		cwd: "/w",
 		startedAt: 1,
 		protocol: 1,
-		name: "octocode-main-self",
+		name: "octocode-agent-main-self",
 	};
 	writeFileSync(join(instancesDir(apiDir()), "oc-self.json"), JSON.stringify(self));
 	publishOwnInstance(self);
 	const notices: string[] = [];
 	const peers = new Peers({ authorize: async () => undefined, notice: (text) => void notices.push(text) }, process.env);
 	const ctx = { cwd: home } as unknown as FeatureContext;
-	return { notices, send: (text: string) => peers.send("octocode-main-slow", text, {}, ctx) };
+	return { notices, send: (text: string) => peers.send("octocode-agent-main-slow", text, {}, ctx) };
 }
 
 it("gives up on a receiver that never answers within the reply bound, and a retry reuses the first call's key", async () => {

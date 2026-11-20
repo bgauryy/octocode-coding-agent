@@ -14,11 +14,11 @@ export const SPINNER = {
 
 /**
  * Marks. A state has exactly one glyph (`running` animates through `SPINNER.braille`; `GLYPH.running` is its static
- * frame); presence and structure marks never stand for a state.
+ * mark, a hollow dotted circle shown whenever motion is still); presence and structure marks never stand for a state.
  */
 export const GLYPH = {
 	pending: "○",
-	running: SPINNER.braille[0],
+	running: "◌",
 	waiting: "◇",
 	done: "✓",
 	failed: "✗",
@@ -42,15 +42,41 @@ export const GLYPH = {
 	light: "⏺",
 } as const;
 
+/** Glyph marks: one cell wide in common terminals, none shared with a `GLYPH` state mark; the theme colours them. */
+const TONE_GLYPH = { calm: "≋", caution: "▲", problem: "◆" } as const;
+/** Sea emoji: the opt-in branding for the same three tones. */
+const TONE_EMOJI = { calm: "🐚", caution: "🦀", problem: "🦈" } as const;
+/** The mark of the main session in a terminal title. */
+const TITLE_GLYPH = "◈";
+const TITLE_EMOJI = "🦑";
+
+let emojiMarks = false;
+
+/** Whether tone marks and the terminal title use emoji (width varies by terminal) instead of glyphs. Off by default. */
+export function setEmojiMarks(enabled: boolean): void {
+	emojiMarks = enabled;
+}
+
+/** The main session's mark in a terminal title: a glyph, or the squid emoji when emoji marks are on. */
+export function titleMark(): string {
+	return emojiMarks ? TITLE_EMOJI : TITLE_GLYPH;
+}
+
 /**
- * Sea marks for the tone of a notice, shown beside its state glyph and never instead of it: `calm` good news or a plain
- * note, `caution` a warning or trade-off, `problem` an error or risk.
+ * Marks for the tone of a notice, shown beside its state glyph and never instead of it: `calm` good news or a plain
+ * note, `caution` a warning or trade-off, `problem` an error or risk. Read at use, so `setEmojiMarks` reaches them.
  */
 export const TONE = {
-	calm: "🐚",
-	caution: "🦀",
-	problem: "🦈",
-} as const;
+	get calm(): string {
+		return emojiMarks ? TONE_EMOJI.calm : TONE_GLYPH.calm;
+	},
+	get caution(): string {
+		return emojiMarks ? TONE_EMOJI.caution : TONE_GLYPH.caution;
+	},
+	get problem(): string {
+		return emojiMarks ? TONE_EMOJI.problem : TONE_GLYPH.problem;
+	},
+};
 
 /** The one ellipsis, and the one separator between items on a line. */
 export const ELLIPSIS = "…";

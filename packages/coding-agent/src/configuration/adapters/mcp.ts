@@ -11,8 +11,7 @@ import {
 	globalMcpConfigPath,
 	projectMcpConfigPath,
 	presetEntries,
-	browserPreset,
-	recommendedPresets,
+	builtinPresets,
 	mcpEntryRowInput,
 	mcpRowFacts,
 	mcpRowSummary,
@@ -28,7 +27,7 @@ export const loadMcpServers = (ctx: Pick<ConfigContext, "agentDir" | "cwd" | "pr
 		agentDir: ctx.agentDir,
 		cwd: ctx.cwd,
 		projectTrusted: ctx.projectTrusted,
-		defaults: presetEntries([...recommendedPresets(), browserPreset()]),
+		defaults: presetEntries(builtinPresets()),
 	});
 
 /** The scope whose file decides the entry's state. */

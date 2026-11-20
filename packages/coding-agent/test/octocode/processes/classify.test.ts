@@ -24,7 +24,7 @@ const sample = (over: Partial<ProcessSample> & { pid: number; started: string })
 	at: NOW - 60_000,
 	ppid: 1,
 	role: "main",
-	title: "octocode-main-aaaaaaaa",
+	title: "octocode-agent-main-aaaaaaaa",
 	id: "aaaaaaaa",
 	sessionId: null,
 	agentId: null,
@@ -40,7 +40,7 @@ const sample = (over: Partial<ProcessSample> & { pid: number; started: string })
 describe("classifyProcesses", () => {
 	it("lists live processes with role, id, age, RSS and the children they own", () => {
 		const table = [
-			row(100, 50, "9000", "octocode-main-aaaaaaaa", 2048),
+			row(100, 50, "9000", "octocode-agent-main-aaaaaaaa", 2048),
 			row(101, 100, "9100", "node /x/octocode-mcp/dist/index.js", 4096),
 			row(102, 101, "9100", "/x/octocode mcp", 1024),
 		];
@@ -60,15 +60,15 @@ describe("classifyProcesses", () => {
 	});
 
 	it("shows an octocode-titled process that has no sample yet, with the role and id its title names", () => {
-		const table = [row(200, 1, "9500", "octocode-reviewer-sneaky-starfish")];
+		const table = [row(200, 1, "9500", "octocode-agent-reviewer-sneaky-starfish")];
 		const [entry] = classifyProcesses({ table, samples: [], now: NOW }).processes;
 		expect(entry).toMatchObject({ pid: 200, role: "reviewer", id: "sneaky-starfish" });
 	});
 
 	it("keeps subagents separate from their parent's children, with the parent as owner", () => {
 		const table = [
-			row(100, 50, "9000", "octocode-main-aaaaaaaa"),
-			row(110, 100, "9200", "octocode-implementer-nifty-beak"),
+			row(100, 50, "9000", "octocode-agent-main-aaaaaaaa"),
+			row(110, 100, "9200", "octocode-agent-implementer-nifty-beak"),
 		];
 		const samples = [
 			sample({ pid: 100, started: "9000" }),
@@ -110,7 +110,7 @@ describe("classifyProcesses", () => {
 	});
 
 	it("flags a child reparented to init while its owner lives", () => {
-		const table = [row(100, 50, "9000", "octocode-main-aaaaaaaa"), row(102, 1, "9100", "/x/octocode mcp")];
+		const table = [row(100, 50, "9000", "octocode-agent-main-aaaaaaaa"), row(102, 1, "9100", "/x/octocode mcp")];
 		const samples = [sample({ pid: 100, started: "9000", children: [child(102, 101, "9100")] })];
 		const { orphans } = classifyProcesses({ table, samples, now: NOW });
 		expect(orphans.map((o) => [o.pid, o.reason])).toEqual([[102, "reparented"]]);
@@ -118,7 +118,7 @@ describe("classifyProcesses", () => {
 
 	it("leaves a child alone while its recorded parent still runs", () => {
 		const table = [
-			row(100, 50, "9000", "octocode-main-aaaaaaaa"),
+			row(100, 50, "9000", "octocode-agent-main-aaaaaaaa"),
 			row(101, 100, "9100", "node s.js"),
 			row(102, 101, "9100", "native"),
 		];
@@ -137,7 +137,7 @@ describe("classifyProcesses", () => {
 	});
 
 	it("flags a subagent whose parent Octocode is gone", () => {
-		const table = [row(110, 1, "9200", "octocode-implementer-nifty-beak")];
+		const table = [row(110, 1, "9200", "octocode-agent-implementer-nifty-beak")];
 		const samples = [
 			sample({ pid: 110, started: "9200", role: "implementer", id: "nifty-beak", ownerPid: 100, ownerStarted: "9000" }),
 		];
@@ -147,7 +147,7 @@ describe("classifyProcesses", () => {
 	});
 
 	it("gives a subagent that just ended and whose parent is gone a grace period before it counts as an orphan", () => {
-		const table = [row(110, 1, "9200", "octocode-implementer-nifty-beak")];
+		const table = [row(110, 1, "9200", "octocode-agent-implementer-nifty-beak")];
 		const ended = (at: number) =>
 			sample({
 				pid: 110,
@@ -163,8 +163,8 @@ describe("classifyProcesses", () => {
 		expect(classifyProcesses({ table, samples: [ended(NOW - ORPHAN_GRACE_MS - 1)], now: NOW }).orphans).toHaveLength(1);
 	});
 
-	it("shows a process still named octocode-main or octocode-rpc, before its session id exists", () => {
-		const table = [row(300, 50, "9500", "octocode-main"), row(301, 50, "9501", "octocode-rpc --mode rpc")];
+	it("shows a process still named octocode-agent-main or octocode-agent-rpc, before its session id exists", () => {
+		const table = [row(300, 50, "9500", "octocode-agent-main"), row(301, 50, "9501", "octocode-agent-rpc --mode rpc")];
 		const { processes } = classifyProcesses({ table, samples: [], now: NOW });
 		expect(processes.map((entry) => [entry.pid, entry.role])).toEqual([
 			[300, "main"],
@@ -203,7 +203,7 @@ describe("memory growth", () => {
 	});
 
 	it("reports growth on a live process and on a child, from the owner's samples", () => {
-		const table = [row(100, 50, "9000", "octocode-main-aaaaaaaa"), row(101, 100, "9100", "node s.js")];
+		const table = [row(100, 50, "9000", "octocode-agent-main-aaaaaaaa"), row(101, 100, "9100", "node s.js")];
 		const samples = [100, 130, 170, 220, 260].map((mb, i) =>
 			sample({
 				pid: 100,

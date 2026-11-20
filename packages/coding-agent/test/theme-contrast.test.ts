@@ -7,8 +7,8 @@ const THEMES = ["light", "dark", "octocode-light", "octocode-dark", "octocode-co
 
 /** Backgrounds a theme's text can land on: the terminal (guessed black or a common dark grey, or white) and every band. */
 const TERMINAL_BG = {
-	light: ["#ffffff"],
-	dark: ["#000000", "#1e1e1e"],
+	light: ["#ffffff", "#f6f8fa"],
+	dark: ["#000000", "#1e1e1e", "#0d1117"],
 } as const;
 const BANDS: ThemeToken[] = [
 	"userMessageBg",
@@ -59,6 +59,7 @@ const TEXT: ThemeToken[] = [
 /** Glyphs and rules that carry meaning: seen as shapes (3:1, WCAG non-text). */
 const GLYPH: ThemeToken[] = [
 	"border",
+	"borderMuted",
 	"borderAccent",
 	"scrollbarThumb",
 	"mdCodeBlockBorder",
@@ -74,8 +75,8 @@ const GLYPH: ThemeToken[] = [
 	"bashMode",
 ];
 
-/** Decorative hairlines: may be quiet, never invisible. */
-const HAIRLINE: ThemeToken[] = ["borderMuted", "scrollbarTrack"];
+/** The scrollbar track is a quiet fill behind the thumb: may be quiet, never invisible. */
+const HAIRLINE: ThemeToken[] = ["scrollbarTrack"];
 
 function luminance(hex: { r: number; g: number; b: number }): number {
 	const [r, g, b] = [hex.r, hex.g, hex.b].map((channel) => {
@@ -123,11 +124,11 @@ describe.each(THEMES)("theme contrast: %s", (name) => {
 		expect(failures(name, TEXT, 4.5, true)).toEqual([]);
 	});
 
-	it("keeps glyph and border tokens at 3:1 on the terminal and every band", () => {
+	it("keeps glyph and border tokens (the muted border too) at 3:1 on the terminal and every band", () => {
 		expect(failures(name, GLYPH, 3, true)).toEqual([]);
 	});
 
-	it("keeps decorative hairlines visible on the terminal", () => {
+	it("keeps the scrollbar track visible on the terminal", () => {
 		expect(failures(name, HAIRLINE, 1.5, false)).toEqual([]);
 	});
 

@@ -19,12 +19,8 @@
 			"registerNotify@octocode/ui/notify.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
-		"agent_interrupted": [
-			"registerInterruptHook@octocode/hooks/register/events.ts"
-		],
-		"agent_settle_end": [
-			"registerWake@octocode/wake/register.ts"
-		],
+		"agent_interrupted": ["registerInterruptHook@octocode/hooks/register/events.ts"],
+		"agent_settle_end": ["registerWake@octocode/wake/register.ts"],
 		"agent_settled": [
 			"Delivery.install@octocode/ui/delivery.ts",
 			"new WorkspaceRuntime@octocode/workspace/runtime.ts",
@@ -94,8 +90,7 @@
 			"registerCheckpoints@octocode/files/checkpoint-command.ts",
 			"registerPromptOptimization@octocode/prompt-optimization/register.ts",
 			"registerPromptHook@octocode/hooks/register/events.ts",
-			"registerWakeRetry@octocode/wake-retry.ts",
-			"Subcommands.register@octocode/shared/commands.ts"
+			"registerWakeRetry@octocode/wake-retry.ts"
 		],
 		"message_end": [
 			"recordChildReports@octocode/permission/provenance/reports.ts",
@@ -135,12 +130,8 @@
 			"registerFooter@octocode/ui/footer.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"model_stall": [
-			"registerWebNotices@octocode/ui/web-notices.ts"
-		],
-		"resources_discover": [
-			"registerSkills@octocode/skills.ts"
-		],
+		"model_stall": ["registerWebNotices@octocode/ui/web-notices.ts"],
+		"resources_discover": ["registerSkills@octocode/skills.ts"],
 		"session_before_compact": [
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerPreCompactHook@octocode/hooks/register/events.ts",
@@ -151,15 +142,9 @@
 			"registerLeaveConfirmation@octocode/session-guards.ts",
 			"registerCheckpoints@octocode/files/checkpoint-command.ts"
 		],
-		"session_before_quit": [
-			"registerLeaveConfirmation@octocode/session-guards.ts"
-		],
-		"session_before_switch": [
-			"registerLeaveConfirmation@octocode/session-guards.ts"
-		],
-		"session_before_tree": [
-			"registerCheckpoints@octocode/files/checkpoint-command.ts"
-		],
+		"session_before_quit": ["registerLeaveConfirmation@octocode/session-guards.ts"],
+		"session_before_switch": ["registerLeaveConfirmation@octocode/session-guards.ts"],
+		"session_before_tree": ["registerCheckpoints@octocode/files/checkpoint-command.ts"],
 		"session_compact": [
 			"registerPlanning@octocode/plan/register.ts",
 			"registerRunningWork@octocode/sessions/register.ts",
@@ -184,16 +169,12 @@
 			"registerNoticeLines@octocode/ui/notice-lines.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
-		"session_compact_failed": [
-			"registerCompaction@octocode/compaction/register.ts"
-		],
+		"session_compact_failed": ["registerCompaction@octocode/compaction/register.ts"],
 		"session_compact_prewarm": [
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"session_context_changed": [
-			"registerFooter@octocode/ui/footer.ts"
-		],
+		"session_context_changed": ["registerFooter@octocode/ui/footer.ts"],
 		"session_info_changed": [
 			"registerSessions@octocode/sessions/register.ts",
 			"registerFooter@octocode/ui/footer.ts",
@@ -269,6 +250,7 @@
 			"registerWorktrees@octocode/worktrees/register.ts",
 			"registerWorktreeFooter@octocode/worktrees/footer.ts",
 			"registerTerminal@octocode/terminal/register.ts",
+			"registerStalledItems@octocode/subagents/stalled-items.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
 			"registerUnpricedNotice@octocode/ui/footer/notices.ts",
@@ -317,16 +299,9 @@
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerFooter@octocode/ui/footer.ts"
 		],
-		"tool_call": [
-			"registerTurnSetup@octocode/turn.ts",
-			"registerToolGates@octocode/tool-gates.ts"
-		],
-		"tool_call_discarded": [
-			"registerToolGates@octocode/tool-gates.ts"
-		],
-		"tool_call_early_start": [
-			"registerToolGates@octocode/tool-gates.ts"
-		],
+		"tool_call": ["registerTurnSetup@octocode/turn.ts", "registerToolGates@octocode/tool-gates.ts"],
+		"tool_call_discarded": ["registerToolGates@octocode/tool-gates.ts"],
+		"tool_call_early_start": ["registerToolGates@octocode/tool-gates.ts"],
 		"tool_execution_end": [
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
 			"registerReadReceipts@octocode/files/read-receipts.ts",
@@ -383,16 +358,12 @@
 			"registerPostToolBatchHook@octocode/hooks/register/events.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"turn_prompt": [
-			"registerTurnSetup@octocode/turn.ts"
-		],
+		"turn_prompt": ["registerTurnSetup@octocode/turn.ts"],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts"
 		],
-		"ui_notice": [
-			"registerWebNotices@octocode/ui/web-notices.ts"
-		],
+		"ui_notice": ["registerWebNotices@octocode/ui/web-notices.ts"],
 		"ui_prompt_end": [
 			"registerPhaseFeed@octocode/ui/phase-feed.ts",
 			"registerAwaiting@octocode/ui/awaiting.ts",
@@ -405,13 +376,8 @@
 			"registerActivity@octocode/ui/activity.ts",
 			"registerNotify@octocode/ui/notify.ts"
 		],
-		"user_bash": [
-			"registerTerminal@octocode/terminal/register.ts",
-			"registerToolGates@octocode/tool-gates.ts"
-		],
-		"user_input": [
-			"registerPromptHook@octocode/hooks/register/events.ts"
-		]
+		"user_bash": ["registerTerminal@octocode/terminal/register.ts", "registerToolGates@octocode/tool-gates.ts"],
+		"user_input": ["registerPromptHook@octocode/hooks/register/events.ts"]
 	},
 	"tools": [
 		"file",

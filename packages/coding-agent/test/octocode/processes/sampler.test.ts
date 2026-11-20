@@ -34,7 +34,7 @@ const row = (pid: number, ppid: number, command: string, started = "9000"): Proc
 const identity = () => ({
 	role: "main",
 	id: "aaaaaaaa",
-	title: "octocode-main-aaaaaaaa",
+	title: "octocode-agent-main-aaaaaaaa",
 	sessionId: "aaaaaaaa-1111",
 	agentId: null,
 	ownerPid: null,
@@ -72,10 +72,10 @@ describe("sampleIntervalMs", () => {
 
 describe("process sampler", () => {
 	const table = async () => [
-		row(100, 50, "octocode-main-aaaaaaaa", "8000"),
+		row(100, 50, "octocode-agent-main-aaaaaaaa", "8000"),
 		row(101, 100, "node /x/octocode-mcp/dist/index.js"),
 		row(102, 101, "/x/octocode mcp"),
-		row(110, 100, "octocode-implementer-nifty-beak"),
+		row(110, 100, "octocode-agent-implementer-nifty-beak"),
 		row(111, 110, "node /x/octocode-mcp/dist/index.js"),
 		row(200, 1, "unrelated"),
 	];
@@ -89,7 +89,7 @@ describe("process sampler", () => {
 			started: "8000",
 			ppid: 50,
 			role: "main",
-			title: "octocode-main-aaaaaaaa",
+			title: "octocode-agent-main-aaaaaaaa",
 			sessionId: "aaaaaaaa-1111",
 			rss: 123,
 			heapUsed: 45,

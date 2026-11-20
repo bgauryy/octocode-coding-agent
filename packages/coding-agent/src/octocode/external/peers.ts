@@ -7,6 +7,7 @@ import { issueTicket, ownInstance } from "../api/identity.ts";
 import { probeInstances } from "../api/probe.ts";
 import { CLIENT_MARGIN_MS, PREPARING, SEND_REPLY_MS, WAIT_MS, WAITING_FOR_USER } from "../api/protocol.ts";
 import { ticketTarget } from "../api/registry-integrity.ts";
+import { TITLE_PREFIX } from "../processes/title.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
@@ -16,8 +17,6 @@ import { canonical, locateRepo } from "../worktrees/repo.ts";
 /** The `to` of a worktree session's merge request: the session in the repository's main checkout. */
 const COORDINATOR = "coordinator";
 
-/** How a process name looks, so a mistyped or stale one is told what is running instead of being read as a teammate. */
-const PROCESS_NAME = /^octocode-[A-Za-z0-9._]+-/;
 
 /** What sending needs of the session: the same checks an external prompt passes, and a way to tell the model later. */
 interface PeerPolicy {
@@ -146,7 +145,8 @@ export class Peers {
 		return (
 			to === COORDINATOR ||
 			this.member(to) !== undefined ||
-			PROCESS_NAME.test(to) ||
+			// A process name, even a mistyped or stale one, is told what is running instead of being read as a teammate.
+			to.startsWith(`${TITLE_PREFIX}-`) ||
 			this.instances().some((entry) => entry.name === to || entry.id === to || entry.session === to)
 		);
 	}

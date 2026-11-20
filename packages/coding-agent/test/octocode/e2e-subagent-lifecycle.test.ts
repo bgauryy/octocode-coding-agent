@@ -50,7 +50,7 @@ const background = (goal: string, task: string, extra: Record<string, unknown> =
 	args: { type: "task", background: true, goal, task, ...extra },
 });
 /**
- * Every process below `root` by parent pid. A subagent retitles itself (`octocode-<role>-<id>`), so its command line no
+ * Every process below `root` by parent pid. A subagent retitles itself (`octocode-agent-<role>-<id>`), so its command line no
  * longer names the sandbox and only its ancestry finds it.
  */
 function descendantsOf(root: number): number[] {

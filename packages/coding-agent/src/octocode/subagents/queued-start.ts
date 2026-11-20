@@ -123,6 +123,7 @@ export function handoffLines(
 			reports.push(`report:${each.id}`);
 			continue;
 		}
+		if (each.kind !== "item") continue;
 		const item = backlog?.store.get(each.ref);
 		const summary = item?.completions.at(-1)?.summary;
 		if (item && summary) lines.push(`- ${each.ref} (${item.title}) is done: ${cutText(summary, SUMMARY_CHARS)}`);

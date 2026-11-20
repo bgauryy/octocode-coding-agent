@@ -1,5 +1,9 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { Backlog } from "./context.ts";
+import { workGraph } from "../graph/model.ts";
+import { busyPools, readyItems, readyText } from "../graph/ready.ts";
+import { readRunLockSnap } from "../graph/run-lock.ts";
+import { itemSnaps } from "./graph-sources.ts";
 import type { Item } from "./item.ts";
 
 /** The items that depend on `ref` in `states`, epics aside (they follow their items), in board order: one listing. */
@@ -30,6 +34,38 @@ function closedNotice(backlog: Backlog, ref: string): string | undefined {
 }
 
 /**
+ * The board's ready list, code-ordered (priority, then what it unblocks, then age), without the `named` items the notice
+ * already names; the busy pools come from the full-run lock. Empty when nothing else is ready.
+ */
+function readyLine({ store }: Backlog, named: ReadonlySet<string>): string {
+	const items = itemSnaps(store);
+	const lock = readRunLockSnap();
+	const graph = workGraph({
+		items,
+		agents: lock?.agent === undefined ? [] : [{ name: lock.agent, state: "running" }],
+		resources: lock
+			? [
+					{
+						id: "full-run",
+						label: lock.label,
+						owner: lock.agent ?? "unknown",
+						...(lock.item === undefined ? {} : { item: lock.item }),
+					},
+				]
+			: [],
+	});
+	const ready = readyItems(graph, items).filter((item) => !named.has(item.ref));
+	return readyText(ready, busyPools(graph));
+}
+
+/** `notice` and the ready list after it, when the list has items the notice does not name. */
+function withReady(backlog: Backlog, notice: string | undefined, named: readonly string[]): string | undefined {
+	if (notice === undefined) return undefined;
+	const line = readyLine(backlog, new Set(named));
+	return line ? `${notice} ${line}` : notice;
+}
+
+/**
  * What the end of `ref` means for the items that wait on it, for the coordinator: done, the unstarted items that now
  * wait on nothing; closed, those and what the others still wait on; still open after its owner child `owner` stopped
  * working on it, the open items left waiting and what to do: the owner ended, or it `lingers` (still reachable, so a
@@ -44,18 +80,22 @@ export function graphNotice(
 ): string | undefined {
 	const item = backlog.store.get(ref);
 	if (!item) return undefined;
-	if (item.state === "done" && item.closed) return closedNotice(backlog, item.ref);
+	if (item.state === "done" && item.closed) {
+		const named = [item.ref, ...dependents(backlog, item.ref, ["backlog", "todo"]).map((each) => each.ref)];
+		return withReady(backlog, closedNotice(backlog, item.ref), named);
+	}
 	if (item.state === "done") {
 		// An item a queued child waits for starts by itself: its started notice (`startedNotice`) replaces this one.
 		const ready = dependents(backlog, item.ref, ["backlog", "todo"], false)
 			.map((each) => each.ref)
 			.filter((each) => !queued.has(each));
 		if (!ready.length) return undefined;
-		return renderPrompt("notices/subagents/item-ready.md", {
+		const notice = renderPrompt("notices/subagents/item-ready.md", {
 			ready: ready.join(", "),
 			several: ready.length > 1,
 			done: item.ref,
 		}).trim();
+		return withReady(backlog, notice, ready);
 	}
 	if (owner === undefined) return undefined;
 	const waiting = dependents(backlog, item.ref, ["backlog", "todo", "ongoing"]).map((each) => each.ref);

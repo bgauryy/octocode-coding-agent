@@ -143,7 +143,10 @@ describe("after validation", () => {
 			"B9",
 			[],
 		);
-		expect(open.map((each) => (each.kind === "item" ? each.ref : each.id))).toEqual(["B1", "a"]);
+		expect(open.map((each) => (each.kind === "item" ? each.ref : each.kind === "agent" ? each.id : "?"))).toEqual([
+			"B1",
+			"a",
+		]);
 	});
 
 	it("refuses a cycle through dependsOn (V2) and through queued children", () => {

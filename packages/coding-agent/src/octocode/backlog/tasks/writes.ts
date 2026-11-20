@@ -9,6 +9,7 @@ import type { AddTaskInput, PromoteTaskInput, TaskTarget, UpdateTaskInput } from
 import { itemAccess, openItemFor, sessionAccess, taskAccess } from "./access.ts";
 import { TaskError, requireTask } from "./reads.ts";
 import { toTask } from "./rows.ts";
+import { ownerKey, refuseSecondOngoing } from "./single-ongoing.ts";
 
 const conflict = (task: BacklogTask) => new TaskError(`${task.ref} changed elsewhere — reload it.`, task);
 
@@ -38,6 +39,7 @@ export function addTask(
 	return agentDb.withActor(auditActor(actor), () =>
 		agentDb.transaction(() => {
 			const owner = target(agentDb.db, repo, input, actor);
+			if (state === "ongoing") refuseSecondOngoing(agentDb.db, repo, owner, actor);
 			const row = tasks.insertTask(agentDb.db, {
 				repo,
 				seq: tasks.nextTaskSeq(agentDb.db, repo),
@@ -54,7 +56,7 @@ export function addTask(
 }
 
 /**
- * Changes a task. `ongoing` claims it for `actor`, `todo` releases it, `done` stamps `doneAt` and leaving `done` clears
+ * Changes a task. `ongoing` claims it for `actor` (refused while another step of the same owner is ongoing for them), `todo` releases it, `done` stamps `doneAt` and leaving `done` clears
  * it; reopening a task of a done item is refused (reopen the item first). Refused when `input.version` is stale.
  */
 export function updateTask(
@@ -79,6 +81,9 @@ export function updateTask(
 			if (task.owner.kind === "item" && isOpenTask(state) && !isOpenTask(task.state)) {
 				if (getItem(db, repo, task.owner.ref)?.state === "done")
 					throw new TaskError(`Reopen ${task.owner.ref} before reopening its task ${task.ref}.`);
+			}
+			if (state === "ongoing" && task.state !== "ongoing") {
+				refuseSecondOngoing(db, repo, ownerKey(db, repo, task), actor, task);
 			}
 			const assignee = state === "ongoing" ? actor.id : state === "todo" ? null : (task.assignee ?? null);
 			const reason = input.reason === undefined ? task.reason : storedText(input.reason);

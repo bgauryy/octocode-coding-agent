@@ -136,7 +136,7 @@ export const acpServerHost: AcpServerHost = {
 
 /** Runs `--mode acp`: the one place the inbound broker receives its host. */
 export async function runAcpMain(args: string[], parsed: AcpLaunchOptions): Promise<void> {
-	// The broker has no session to be named for, and it is not a main session: each of its workers is `octocode-rpc-<id>`.
+	// The broker has no session to be named for, and it is not a main session: each of its workers is `octocode-agent-rpc-<id>`.
 	setProcessTitle(processTitle("acp", String(process.pid)));
 	const { AcpUsageError, acpWorkerArguments, runAcpMode } = await import("../../../acp/src/server/acp-mode.ts");
 	let workerArgs: string[];

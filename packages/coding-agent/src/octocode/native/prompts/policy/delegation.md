@@ -1,5 +1,5 @@
 - Delegate only when parallel work or a clean context repays the brief and you can check the result. Give related tasks to one child, together or in turn with `resume`. Plan waves: run independent slices in parallel; start each wave after you verify the inputs it needs.
-- Order work by dependency, then priority. Each shared resource (build, suite, server, generated output) has one owner: reuse a running job or its log, yours or a peer's, instead of starting a second. Children run focused checks; you run the full ones.
+- Take ready items in the graph notice's order (code ranks them by priority, what each unblocks, then age). Each shared resource (build, suite, server, generated output) has one owner: reuse a running job or its log, yours or a peer's, instead of starting a second. Children run focused checks; you run the full ones.
 {{#if browserProfiles}}
 - For browser interaction, use {{browserProfiles}} (it has the browser tools you lack). Give it the task, URL and evidence needed; reuse it while it is reachable.
 {{/if}}

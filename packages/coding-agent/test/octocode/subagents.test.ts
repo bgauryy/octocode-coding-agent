@@ -154,6 +154,21 @@ describe("profile permissions", () => {
 		await expect(askSpawn(permission, ctx, profile, "look")).rejects.toThrow(/denied starting a subagent/);
 	});
 
+	it("asks at every spawn, in full too, when the profile declares desktop control, and a denial starts nothing", async () => {
+		const fake = fakeHost();
+		const permission = new Permission({ api: fake.api, env: { OCTOCODE_PERMISSION: "full" }, isSubagent: false });
+		const { ctx, titles } = spawnCtx(["Allow once", "Allow once", "Deny"]);
+		permission.start(ctx);
+		const profile = parseProfile("x", text("[desktop.control]"));
+		expect(await askSpawn(permission, ctx, profile, "open Calculator")).toContain("desktop.control");
+		expect(titles).toHaveLength(1);
+		expect(titles[0]).toContain("permission it declares: desktop.control");
+		// Neither the remembered profile nor a session grant answers it: the next spawn asks again, and a denial throws.
+		expect(await askSpawn(permission, ctx, profile, "again")).toContain("desktop.control");
+		expect(titles).toHaveLength(2);
+		await expect(askSpawn(permission, ctx, profile, "third")).rejects.toThrow(/denied/);
+	});
+
 	it("runs a declaring profile in full without a prompt, and still records the reason", async () => {
 		const fake = fakeHost();
 		const permission = new Permission({
@@ -250,7 +265,7 @@ describe("subagents", () => {
 			"read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 			// A profile that does not name the browser server never starts it.
 			"--exclude-tools",
-			"mcp__browser__*,mcp__freellama__*",
+			"mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -308,7 +323,7 @@ describe("subagents", () => {
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",
-			"browser,bash,mcp__browser__*,mcp__freellama__*",
+			"browser,bash,mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
 		]);
 	});
 
@@ -338,7 +353,14 @@ describe("subagents", () => {
 
 	it("bundles one browser specialist with shared instructions and a headless default", () => {
 		const profiles = loadProfiles(tmp(), tmp(), false, {});
-		expect([...profiles.keys()].sort()).toEqual(["browser", "implementer", "lean", "researcher", "reviewer"]);
+		expect([...profiles.keys()].sort()).toEqual([
+			"browser",
+			"desktop",
+			"implementer",
+			"lean",
+			"researcher",
+			"reviewer",
+		]);
 		const profile = profiles.get("browser")!;
 		expect(profile.headless).toBe(true);
 		expect(profile.prompt.length).toBeLessThanOrEqual(2_000);

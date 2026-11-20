@@ -72,7 +72,9 @@ describe("/web with the daemon", () => {
 			vi.fn(async () => {}),
 		).handler("", ctx);
 		expect(open).not.toHaveBeenCalled();
-		expect(ctx.ui.notes.at(-1)?.message).toContain("keeps running after this session closes");
+		expect(ctx.ui.notes.at(-1)?.message).toMatch(
+			/keeps running after this session closes and stops by itself after 10 minutes/,
+		);
 		const failing = fakeCtx({ cwd: "/tmp" });
 		await command(
 			open,

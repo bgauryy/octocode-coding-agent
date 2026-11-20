@@ -35,11 +35,14 @@ import { JOB_TYPE } from "../../../shared/messages.ts";
 import { itemKey, wakeGateOf } from "../../../wake/gate.ts";
 import { jobDetails, jobReport } from "../../../files/bash-jobs/report.ts";
 import { reapOrphanJobs } from "../../../files/bash-jobs/records.ts";
-import { registerJobsCommand, reloadNotice } from "../../../files/bash-jobs/command.ts";
+import { type JobLinks, registerJobsCommand, reloadNotice } from "../../../files/bash-jobs/command.ts";
 import { type ShellSettings, shellSettings, shellScript } from "../../../files/bash-jobs/shell.ts";
-import { backgroundStarted } from "../../../files/bash/background.ts";
+import { backgroundJoined, backgroundStarted } from "../../../files/bash/background.ts";
+import { backgroundJoins } from "./background-joins.ts";
 import { bashDescription, bashOutputSchema, bashParameters } from "../../../files/bash/declaration.ts";
 import { capturePipeStatus } from "./pipe-status.ts";
+import { ownerSpawnHook, runOwner, withRunOwner } from "./owner-env.ts";
+import { agentNameOf } from "../../../shared/agent-name.ts";
 import { activeCommandSandbox } from "../../../../utils/command-sandbox.ts";
 
 /** The refusal of `sandbox: false` when the `sandbox.allowUnsandboxed` setting is false. */
@@ -61,6 +64,8 @@ export function registerBashTool(
 	commands?: Subcommands,
 	jobs = new BashJobs(),
 	settingsFor: (ctx: FeatureContext) => ShellSettings = (ctx) => shellSettings(ctx.cwd, ctx.isProjectTrusted()),
+	/** What `/jobs` adds after each command (the item a job serves, the lock it holds); the composition root passes it. */
+	links: JobLinks = () => new Map(),
 ): BashJobs {
 	// Octocode's bash, for its output schema; each call builds its own with that call's settings and process handling.
 	const builtin = createBashToolDefinition(process.cwd());
@@ -71,6 +76,13 @@ export function registerBashTool(
 	let sessionGeneration = 0;
 	const reportedAtShutdown = new WeakSet<BashJob>();
 	const work = runningWorkOf(api);
+	const rows = backgroundJoins(
+		api,
+		jobs,
+		() => current?.sessionManager?.getSessionId?.() ?? "standalone:bash",
+		() => closing,
+		(text) => current && say(current, text, "warning"),
+	);
 	/** Publishes the running jobs to the footer's typed counts and the work rows above it (`team/panel.ts`). */
 	const showJobs = () =>
 		work.set(
@@ -126,6 +138,7 @@ export function registerBashTool(
 	};
 	const onExit = (job: BashJob, exit: JobExit) => {
 		showJobs();
+		rows.end(job, exit);
 		// Reported at session_shutdown already, while the session could still record it.
 		if (reportedAtShutdown.has(job)) return;
 		if (job.verification) job.verification = finishVerification(job.verification, exit, job);
@@ -172,13 +185,14 @@ export function registerBashTool(
 		// A job that exited just before reports its own status once its last output drained (within the drain time).
 		const ending = [...jobs.jobs.values()].filter((job) => job.exited).map((job) => job.done);
 		await Promise.all([jobs.stopAll(reason), ...ending]);
+		rows.stop();
 		current = undefined;
 	});
 	api.renderers.message(JOB_TYPE, (message, { expanded, outputPad }, theme) =>
 		renderJobMessage(contentText(message.content), expanded, theme, outputPad ?? 1),
 	);
 
-	if (commands) registerJobsCommand(commands, jobs);
+	if (commands) registerJobsCommand(commands, jobs, work, links);
 
 	api.tools.register(
 		timedTool({
@@ -216,9 +230,18 @@ export function registerBashTool(
 				const item = itemKey(params.item);
 				if (params.item !== undefined && !item)
 					throw new Error(`item must be a backlog item ref like B12, not "${params.item}"`);
+				// Shared resources the command takes (the full-run lock) name this owner.
+				const owner = runOwner(agentNameOf(api).get(), item);
 				if (params.background) {
+					const joined = rows.join({
+						command: params.command,
+						cwd: ctx.cwd,
+						fresh: params.fresh,
+						verify: params.verify,
+					});
+					if (joined) return backgroundJoined(joined, ctx.cwd, Date.now());
 					const job = await jobs.start(params.command, ctx.cwd, params.timeout, onExit, {
-						env: bashSessionEnv(ctx),
+						env: withRunOwner(bashSessionEnv(ctx), owner),
 						shell: settings,
 						verification,
 						reason: params.reason,
@@ -226,6 +249,13 @@ export function registerBashTool(
 						unsandboxed: params.sandbox === false,
 					});
 					if (verification) verification.startedAt = job.startedAt;
+					try {
+						rows.record(job, owner.agent);
+					} catch (error) {
+						// A job nothing can find or join is stopped rather than left running unseen.
+						jobs.stop(job.id, "run end");
+						throw error;
+					}
 					showJobs();
 					return backgroundStarted(job, ctx.cwd, verification);
 				}
@@ -240,6 +270,7 @@ export function registerBashTool(
 				let movedFor = "deadline" as HandoffReason;
 				const run = createBashToolDefinition(process.cwd(), {
 					...settings,
+					spawnHook: ownerSpawnHook(owner),
 					commandPrefix: undefined,
 					maxOutputBytes: settings.outputMaxBytes,
 					operations: foregroundOperations(

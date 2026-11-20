@@ -36,7 +36,8 @@ export { addMcpServerConfig, removeMcpServerConfig, updateMcpServerConfig } from
 export { listVendorMcpServers } from "./file-servers.ts";
 export { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 export { presetEntries } from "./preset.ts";
-export { browserPreset } from "./presets/browser/index.ts";
+export { builtinPresets } from "./presets/index.ts";
+export { desktopAvailable } from "./presets/desktop/index.ts";
 export { recommendedPresets } from "./recommended/index.ts";
 export { mcpGroupLabel, mcpServerSource } from "./group.ts";
 export { isEnabled } from "./server.ts";

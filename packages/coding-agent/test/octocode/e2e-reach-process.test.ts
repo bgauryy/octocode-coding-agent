@@ -69,7 +69,7 @@ async function runningSession(box: Sandbox, extra: string[] = [], cwd?: string) 
 	await until(() => instancesOf(box).some((instance) => !before.has(instance.id)), "the API to come up", 60_000);
 	const instance = instancesOf(box).find((each) => !before.has(each.id)) as InstanceRecord;
 	const status = await new ApiClient(instance).call<{ sessionId: string }>("status");
-	await until(() => titleOf(instance.pid).startsWith("octocode-rpc-"), "the process title", 30_000);
+	await until(() => titleOf(instance.pid).startsWith("octocode-agent-rpc-"), "the process title", 30_000);
 	return { run, instance, sessionId: status.sessionId, name: titleOf(instance.pid) };
 }
 
@@ -87,7 +87,7 @@ describe("finding a running session", () => {
 	it("by instance id, process name, session id and pid, and the sent text reaches its model and the answer comes back", async () => {
 		const box = withApi();
 		const { run, instance, sessionId, name } = await runningSession(box);
-		expect(name).toBe(`octocode-rpc-${sessionId.slice(-8)}`);
+		expect(name).toBe(`octocode-agent-rpc-${sessionId.slice(-8)}`);
 
 		const listed = await octocodeApi(box, ["list"]);
 		expect(listed.code).toBe(0);
@@ -150,7 +150,7 @@ describe("an ACP worker's local API", () => {
 		const { update } = acp.updates.find(({ update: each }) => each._meta?.["octocode/external"] !== undefined)!;
 		expect(update._meta?.["octocode/external"]).toMatchObject({ from: "ci", transport: "socket", waiting: true });
 		expect(JSON.stringify(update.content)).toContain("<<<untrusted-");
-		expect(titleOf(run.process.pid ?? 0)).toMatch(/^octocode-acp-\d+$/);
+		expect(titleOf(run.process.pid ?? 0)).toMatch(/^octocode-agent-acp-\d+$/);
 		run.process.stdin?.end();
 		expect((await run.exited).code).toBe(0);
 		expect(box.survivors()).toEqual([]);
@@ -250,10 +250,10 @@ describe("Octocode as a client of another Octocode", () => {
 			action: "connect",
 			transport: "octocode",
 			id: "other",
-			instanceId: "octocode-main-00000000",
+			instanceId: "octocode-agent-main-00000000",
 		});
 		expect(bad.code).toBe(1);
-		expect(bad.stderr).toContain("octocode-main-00000000");
+		expect(bad.stderr).toContain("octocode-agent-main-00000000");
 		expect(bad.stderr).toContain(peer.instance.id);
 
 		const mismatch = await external({
@@ -419,7 +419,7 @@ describe("an external message", () => {
 			await until(() => instancesOf(box).length === 1, "the terminal session's API", 60_000);
 			const [instance] = instancesOf(box);
 			const name = titleOf(instance?.pid ?? 0);
-			expect(name).toMatch(/^octocode-main-/);
+			expect(name).toMatch(/^octocode-agent-main-/);
 			const sent = await octocodeApi(box, [
 				"send",
 				"--to",

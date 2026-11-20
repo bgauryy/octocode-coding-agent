@@ -1,5 +1,6 @@
 import { renderChanges } from "./diff.ts";
 import { visible } from "./visible.ts";
+import { columnRows } from "../../theme/columns.ts";
 import { badge, RATINGS, type Review, type ReviewWord } from "./types.ts";
 
 /**
@@ -57,10 +58,17 @@ export function renderList(reviews: readonly Review[], enforced: (review: Review
 		const rows = sortReviews(reviews).filter((review) => review.word === word);
 		if (!rows.length) continue;
 		lines.push(`${word[0]?.toUpperCase()}${word.slice(1)} (${rows.length})`);
-		for (const review of rows)
-			lines.push(
-				`  ${visible(review.item.label).slice(0, 40).padEnd(40)}  ${KIND_WORDS[review.item.kind].padEnd(10)}  ${badge(review)}${word !== "approved" && !enforced(review) ? " (loads: not enforced)" : ""}  ${visible(review.item.id)}`,
-			);
+		lines.push(
+			...columnRows(
+				rows.map((review) => [
+					visible(review.item.label),
+					KIND_WORDS[review.item.kind],
+					`${badge(review)}${word !== "approved" && !enforced(review) ? " (loads: not enforced)" : ""}`,
+					visible(review.item.id),
+				]),
+				{ indent: "  ", min: [40, 10] },
+			),
+		);
 	}
 	return lines.join("\n");
 }

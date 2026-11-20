@@ -6,6 +6,7 @@ import { plural } from "../shared/text.ts";
 import { type Orphan, type ProcessReport, classifyProcesses } from "./classify.ts";
 import { formatReport } from "./format.ts";
 import { SAMPLE_RETENTION_MS } from "./sampler.ts";
+import { scopeToSession } from "./scope.ts";
 import { stopOrphans, type StopDeps } from "./stop.ts";
 import type { ProcessTableSource } from "./table.ts";
 
@@ -19,12 +20,12 @@ export interface ProcessesCommandOptions {
 	apiInstances?: () => ReadonlyArray<{ id: string; pid: number }>;
 }
 
-const USAGE = "Usage: /processes [stop]";
+const USAGE = "Usage: /processes [all|stop]";
 
 /**
- * `/processes`: the Octocode processes on this machine (main sessions, subagents, RPC hosts) with the MCP servers and bash
- * jobs each owns, flagging orphans and memory that keeps growing; `/processes stop` stops the orphans after a
- * confirmation. It reads the process table and every process's samples (`processSamples`), so what another session
+ * `/processes`: this session's process and its subagents with the MCP servers and bash jobs each owns, flagging
+ * orphans and memory that keeps growing; `/processes all` lists every Octocode process on the machine (other sessions,
+ * RPC hosts); `/processes stop` stops the orphans after a confirmation. It reads the process table and every process's samples (`processSamples`), so what another session
  * recorded about its children is visible here.
  */
 export function processesCommand(options: ProcessesCommandOptions): Subcommand {
@@ -64,18 +65,28 @@ export function processesCommand(options: ProcessesCommandOptions): Subcommand {
 
 	return {
 		description: "List or stop Octocode processes and orphans",
-		argumentHint: "[stop]",
+		argumentHint: "[all|stop]",
 		handler: async (args, ctx) => {
-			if (args !== "" && args !== "stop") return say(ctx, USAGE, "warning");
+			if (args !== "" && args !== "all" && args !== "stop") return say(ctx, USAGE, "warning");
 			const current = await report();
 			if (!current)
 				return say(ctx, "The process table cannot be read here (it needs `ps`, which Windows lacks).", "warning");
 			if (args === "stop") return stop(ctx, current.orphans);
-			say(ctx, formatReport(current), current.orphans.length ? "warning" : "info");
+			// A terminal wraps at its width, so rows are laid out for it; other modes get the full table.
+			const width = ctx.mode === "tui" && process.stdout.columns ? process.stdout.columns - 2 : undefined;
+			const shown = args === "all" ? { report: current, hidden: 0 } : scopeToSession(current, process.pid);
+			say(
+				ctx,
+				formatReport(shown.report, { width, hidden: shown.hidden }),
+				current.orphans.length ? "warning" : "info",
+			);
 		},
-		complete: (prefix) =>
-			"stop".startsWith(prefix)
-				? [{ value: "stop", label: "stop", description: "stop orphaned processes (asks first)" }]
-				: null,
+		complete: (prefix) => {
+			const options = [
+				{ value: "all", label: "all", description: "every Octocode process on this machine" },
+				{ value: "stop", label: "stop", description: "stop orphaned processes (asks first)" },
+			].filter((option) => option.value.startsWith(prefix));
+			return options.length ? options : null;
+		},
 	};
 }

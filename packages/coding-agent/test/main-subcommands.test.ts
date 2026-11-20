@@ -39,4 +39,28 @@ describe("one-shot subcommands", () => {
 			await expect(runSubcommand(args, { cwd: "/work", agentDir: "/agent" })).resolves.toBe(false);
 		expect(process.exitCode).toBeUndefined();
 	});
+
+	it("reject a lone word no command claims at a terminal, listing the commands, and leave piped input alone", async () => {
+		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		const original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+		const setTty = (value: boolean) =>
+			Object.defineProperty(process.stdin, "isTTY", { value, configurable: true, writable: true });
+		try {
+			setTty(true);
+			await expect(runSubcommand(["nosuch"], { cwd: "/work", agentDir: "/agent" })).resolves.toBe(true);
+			expect(process.exitCode).toBe(2);
+			expect(String(stderr.mock.calls[0]?.[0])).toMatch(
+				/unknown command "nosuch"\. Commands: .*\bbacklog\b.*\btrust\b|Commands: .*\btrust\b.*\bbacklog\b/,
+			);
+			// A known command name never reaches the check; a sentence is a prompt.
+			for (const args of [["fix the bug"], ["two", "words"]])
+				await expect(runSubcommand(args, { cwd: "/work", agentDir: "/agent" })).resolves.toBe(false);
+			setTty(false);
+			await expect(runSubcommand(["nosuch"], { cwd: "/work", agentDir: "/agent" })).resolves.toBe(false);
+		} finally {
+			if (original) Object.defineProperty(process.stdin, "isTTY", original);
+			else Reflect.deleteProperty(process.stdin, "isTTY");
+			stderr.mockRestore();
+		}
+	});
 });

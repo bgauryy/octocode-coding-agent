@@ -786,7 +786,7 @@ describe("compaction", () => {
 		// Exact user constraints are kept as written, not paraphrased (code keeps whole messages only within its budget).
 		expect(
 			log.some((call) =>
-				call.text.includes("keep user limits, numbers, paths, identifiers and prohibitions exactly as written"),
+				call.text.includes("Keep user limits, numbers, paths, identifiers and prohibitions exactly as written"),
 			),
 		).toBe(true);
 		// The summary is asked for inside the session's own request (its messages, then one more), not as a standalone prompt.

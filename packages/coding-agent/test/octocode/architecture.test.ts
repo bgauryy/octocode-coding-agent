@@ -119,8 +119,10 @@ const ALLOWED: Record<string, string[]> = {
 		"worktree-paths",
 		"wake",
 		"native/tools/agent",
-		// The idle-items rule.
+		// The idle-items and stalled-item rules.
 		"monitor",
+		// The ready list, the full-run lock owner and stall tracking a coordinator is told about.
+		"graph",
 	],
 	"native/prompts": ["shared", "history", "worktree-paths"],
 	"native/agents": [],
@@ -142,7 +144,11 @@ const ALLOWED: Record<string, string[]> = {
 	"native/tools/wait": ["shared", "render", "timer"],
 	"native/tools/web": ["shared", "render", "permission", "web"],
 	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
-	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan"],
+	// `graph`: the board's ready list and `octocode backlog graph` read the work graph over its items.
+	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan", "graph"],
+	// The derived work graph (items, steps, agents, jobs, resources, waits), its ready order and stall tracking; its
+	// readers of the backlog live in `backlog/`.
+	graph: ["shared"],
 	trust: ["shared"],
 	// The extension guard: review items, the scanner and the review records. A leaf: loaders hand it plain data.
 	// `trust`: the commands that record a decision refuse inside a session's shell.
@@ -179,7 +185,8 @@ const ALLOWED: Record<string, string[]> = {
 	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
 	realm: ["shared", "worktrees", "worktree-paths", "sessions"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
-	timer: ["shared", "files", "permission", "plan", "render", "wake", "native/tools/wait"],
+	// `graph`: the `unlocked full-run` wait reads the lock's owner record.
+	timer: ["shared", "files", "permission", "plan", "render", "wake", "native/tools/wait", "graph"],
 	// The wake gate: what each run was woken about, the `woke` row, the hold window; every wake source sends through it.
 	wake: ["shared"],
 	// `/octocode` and the agent-shell shim for the research CLI.

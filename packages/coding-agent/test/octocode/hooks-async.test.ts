@@ -299,6 +299,48 @@ it("enforces the timeout for asyncRewake even when async is also true", async ()
 	expect(result.timedOut).toBe(true);
 });
 
+it("stops a Claude async hook after 10 minutes, though its own timeout does not apply", async () => {
+	const config = parseHooks(
+		{
+			hooks: {
+				PreToolUse: [
+					{
+						hooks: [
+							{
+								type: "command",
+								command: process.execPath,
+								args: ["-e", "setInterval(()=>{},1000)"],
+								async: true,
+								timeout: 0.01,
+							},
+						],
+					},
+				],
+			},
+		},
+		"fixture",
+		undefined,
+		[],
+		undefined,
+		"claude",
+	);
+	const selected = commandsFor(config, "PreToolUse", ["Bash"])[0];
+	expect(selected).toBeDefined();
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+	try {
+		let result: Awaited<ReturnType<typeof hookRunner.runHook>> | undefined;
+		const run = hookRunner.runHook(selected, {}, tmp()).then((done) => (result = done));
+		await vi.advanceTimersByTimeAsync(10 * 60_000 - 1_000);
+		expect(result).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.waitFor(() => expect(result).toBeDefined(), { timeout: 10_000, interval: 50 });
+		await run;
+		expect(result?.timedOut).toBe(true);
+	} finally {
+		vi.useRealTimers();
+	}
+}, 20_000);
+
 it("retains completed context when the next prompt has already been cancelled", async () => {
 	const f = await fixture();
 	vi.spyOn(hookRunner, "runHook").mockResolvedValue({

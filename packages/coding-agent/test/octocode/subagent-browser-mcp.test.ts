@@ -108,4 +108,24 @@ describe("browser MCP server in a subagent", () => {
 			"mcp__browser__",
 		);
 	});
+
+	// Desktop control follows the browser rule: only the `desktop` profile, or a task that lists the server, starts it.
+	it("excludes the desktop server for every bundled role except desktop, unless a task lists it", () => {
+		const roles = profiles();
+		const exclusions = (name: string, named: string[] = []) => {
+			const args = buildAgentArgs(roles.get(name), undefined, { dir: "/s", id: "a" }, [], undefined, named);
+			return args.includes("--exclude-tools") ? (args[args.indexOf("--exclude-tools") + 1] ?? "") : "";
+		};
+		for (const name of ["browser", "implementer", "researcher", "reviewer"])
+			expect(exclusions(name).split(","), name).toContain("mcp__desktop__*");
+		expect(exclusions("desktop")).not.toContain("mcp__desktop__");
+		expect(exclusions("implementer", ["desktop"])).not.toContain("mcp__desktop__");
+	});
+
+	it("ships the desktop profile read-only with its permission declared", () => {
+		const desktop = profiles().get("desktop");
+		expect(desktop?.permissions).toEqual(["desktop.control"]);
+		expect(desktop?.readOnly).toBe(true);
+		expect(profileTools(desktop)?.split(",")).toContain("mcp__desktop__*");
+	});
 });

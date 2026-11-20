@@ -41,6 +41,7 @@ export const ATTENTION_RULES = [
 	},
 	{ id: "compaction-prewarm", trigger: "compaction cycle", delivery: "ledger", settings: [] },
 	{ id: "idle-items", trigger: "main session settles", delivery: "wake", settings: [] },
+	{ id: "stalled-item", trigger: "once a minute while children run", delivery: "wake", settings: [] },
 ] as const satisfies readonly AttentionRule[];
 
 export type AttentionRuleId = (typeof ATTENTION_RULES)[number]["id"];

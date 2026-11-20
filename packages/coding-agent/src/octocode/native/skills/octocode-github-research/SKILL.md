@@ -9,16 +9,16 @@ Use the Octocode GitHub tools instead of `gh`, `curl` or `npm view`. Carry `owne
 
 ## Route
 
-| You have | Do |
-| --- | --- |
-| No repository yet | `ghSearchRepo` (`keywords`, `filters`; `owner` lists one owner's repositories) |
-| A repository, unknown paths | `ghStructure` `tree` (`path`, `maxDepth`); `refs` resolves a branch, tag or glob (`v4.*`) to a SHA |
-| A term to find | `ghSearchCode` with `owner` (required) and `repo`; `fields: ["path"]` for paths only, `extensions`, `nameContains` to narrow |
-| A path | `ghGetFileContent` at the commit SHA: `matchString` + `block: true` for one function, `ranges` for spans, `view: symbols` for an outline of a big file, `view: compact` for one you only follow (never quote it) |
-| "Why / when / who changed it" | `ghSearchHistory` (`operation: commit` with `path`; `pullRequest`, `issue` with `keywords` and `filters`) then `ghGetHistoryItem` |
-| One PR, issue or commit | `ghGetHistoryItem` with `sections: ["patches"]` and `include: [path]` for one file's diff; `comments`, `reviews`, `body` otherwise. Compare two refs with `operation` compare, `baseRef`, `headRef` |
-| A package name and version | `artifactSearch` (`operation: resolve`, `ecosystem`, `packageName`, the lockfile's `version`) then read the returned `owner`, `repo`, `ref` |
-| Known vulnerabilities | `securityCheck`; no advisories means none known, not safe |
+| You have                      | Do                                                                                                                                                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No repository yet             | `ghSearchRepo` (`keywords`, `filters`; `owner` lists one owner's repositories)                                                                                                                                   |
+| A repository, unknown paths   | `ghStructure` `tree` (`path`, `maxDepth`); `refs` resolves a branch, tag or glob (`v4.*`) to a SHA                                                                                                               |
+| A term to find                | `ghSearchCode` with `owner` (required) and `repo`; `fields: ["path"]` for paths only, `extensions`, `nameContains` to narrow                                                                                     |
+| A path                        | `ghGetFileContent` at the commit SHA: `matchString` + `block: true` for one function, `ranges` for spans, `view: symbols` for an outline of a big file, `view: compact` for one you only follow (never quote it) |
+| "Why / when / who changed it" | `ghSearchHistory` (`operation: commit` with `path`; `pullRequest`, `issue` with `keywords` and `filters`) then `ghGetHistoryItem`                                                                                |
+| One PR, issue or commit       | `ghGetHistoryItem` with `sections: ["patches"]` and `include: [path]` for one file's diff; `comments`, `reviews`, `body` otherwise. Compare two refs with `operation` compare, `baseRef`, `headRef`              |
+| A package name and version    | `artifactSearch` (`operation: resolve`, `ecosystem`, `packageName`, the lockfile's `version`) then read the returned `owner`, `repo`, `ref`                                                                      |
+| Known vulnerabilities         | `securityCheck`; no advisories means none known, not safe                                                                                                                                                        |
 
 `ghSearchCode` sees only the default branch and skips some forks and large files, so an empty answer is not absence. For another revision list the tree at that `ref` and read from there. Trust a package's `ref` by its `verification`: `provenance` and `tag` tie it to the version; `registryRef` and `defaultBranch` need a check of that tree's manifest. Pass the version in use, not latest.
 

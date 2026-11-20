@@ -45,7 +45,7 @@ export interface FileKind {
 export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
-	version: 10,
+	version: 11,
 	carried: COORDINATION_CARRIED,
 	create: (db) => {
 		db.exec(SCHEMA);

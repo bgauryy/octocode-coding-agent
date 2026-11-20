@@ -185,7 +185,7 @@ describe("interactive retry lifecycle", () => {
 				errorMessage: "fetch failed (ENOTFOUND)",
 				offlineSince: 1,
 			});
-			expect(line()).toContain("✗ 🦈 Retry failed after 4 attempts: fetch failed (ENOTFOUND) - trying again in 60s");
+			expect(line()).toContain("✗ ◆ Retry failed after 4 attempts: fetch failed (ENOTFOUND) - trying again in 60s");
 			expect(line()).toMatch(/cancel\s*$/);
 			expect(host.showError).not.toHaveBeenCalled();
 		} finally {

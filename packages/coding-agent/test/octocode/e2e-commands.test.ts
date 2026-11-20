@@ -109,7 +109,8 @@ const CASES: Record<string, Case> = {
 	harness: {
 		check: asks(/Skills\s+[1-9]\d* on · \d+ off[\s\S]*Sources[\s\S]*←\/→ section/),
 	},
-	jobs: { check: says(/No background bash jobs are running\./) },
+	// `/jobs` lists what runs in the background: the cron the `/loop` case set shows in its overview.
+	jobs: { check: says(/Crons[\s\S]*cron \*\/10 \* \* \* \*/) },
 	memory: { check: asks(/memor/i) },
 	// Bare `/optimize` shows the state and offers the toggle; the terminal dismisses the dialog, which changes nothing.
 	optimize: { check: asks(/Prompt optimization is off/) },
@@ -142,7 +143,9 @@ const CASES: Record<string, Case> = {
 			expect(run.opened).toEqual([
 				expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/open\/[^?#]+\?s=[^&]+&view=activity$/),
 			]);
-			expect(run.text).toMatch(/Opened the web workspace\. It keeps running after this session closes\./);
+			expect(run.text).toMatch(
+				/Opened the web workspace\. It keeps running after this session closes and stops by itself after 10 minutes/,
+			);
 		},
 	},
 	// Bare `/backlog` runs `/web backlogs`.
@@ -300,6 +303,14 @@ describe("every slash command through the terminal editor", () => {
 		}
 		expect(failures.join("\n\n")).toBe("");
 	}, 600_000);
+
+	it("ends a finished feature command with its one next-step hint, keyed by its first argument", async () => {
+		const jobs = await run("jobs");
+		expect(jobs.settled).toBe(true);
+		expect(jobs.text.match(/\/jobs kill <id>\s+stop one/g)).toHaveLength(1);
+		const trust = await run("trust", "list");
+		expect(trust.text).toMatch(/\/trust add \[path\]\s+trust a folder/);
+	});
 
 	it("passes /octocode arguments to the research CLI as typed: bare is its own no-argument output, no aliases", async () => {
 		const bare = await run("octocode");

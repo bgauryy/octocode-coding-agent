@@ -125,8 +125,15 @@ export const TerminalSettingsSchema = Type.Object({
 	reduceMotion: Type.Optional(
 		Type.Union([Type.Boolean(), Type.Literal("auto")], {
 			description:
-				'Freeze spinners, shimmer and glow; elapsed times still tick. "auto" follows OCTOCODE_REDUCE_MOTION (1 or true).',
+				'Freeze spinners, shimmer and glow; elapsed times still tick. "auto" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true.',
 			default: SETTINGS_DEFAULTS.terminal.reduceMotion,
+		}),
+	),
+	emojiMarks: Type.Optional(
+		Type.Boolean({
+			description:
+				"Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal.",
+			default: SETTINGS_DEFAULTS.terminal.emojiMarks,
 		}),
 	),
 	hyperlinks: Type.Optional(Type.Union([Type.Boolean(), Type.Literal("auto")])),

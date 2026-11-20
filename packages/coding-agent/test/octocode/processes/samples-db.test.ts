@@ -16,7 +16,7 @@ const sample = (over: Partial<processSamples.ProcessSample> = {}): processSample
 	started: "1700000000",
 	ppid: 1,
 	role: "main",
-	title: "octocode-main-01a1a2c5",
+	title: "octocode-agent-main-01a1a2c5",
 	id: "01a1a2c5",
 	sessionId: "01a1a2c5-eb93-75f9-8dc5-67f9daa09bdb",
 	agentId: null,

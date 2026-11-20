@@ -37,7 +37,7 @@ export type TmuxLaunchDependencies = {
 const TMUX_TIMEOUT_MS = 5000;
 
 /** Configuration locations a new pane must share with this process; tmux starts it in the server's environment. */
-const FORWARDED_ENV = [ENV_AGENT_DIR, ENV_SESSION_DIR, "OCTOCODE_HOME"] as const;
+const FORWARDED_ENV = [ENV_AGENT_DIR, ENV_SESSION_DIR, "OCTOCODE_HOME", "OCTOCODE_AGENT_DB"] as const;
 
 /** The variables of `env` that point a new pane at this process's configuration and sessions. */
 export function forwardedLaunchEnv(env: NodeJS.ProcessEnv): Record<string, string> {

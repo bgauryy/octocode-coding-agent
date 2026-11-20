@@ -1,5 +1,6 @@
 import assert from "node:assert";
 import { afterEach, describe, it, mock } from "node:test";
+import { Loader } from "../src/components/loader.ts";
 import { animationClock } from "../src/tokens/clock.ts";
 import { breathe, GLYPH, MOTION, SPINNER, settle } from "../src/tokens/design.ts";
 
@@ -251,11 +252,32 @@ describe("animationClock", () => {
 });
 
 describe("design tokens", () => {
-	it("gives each state one distinct mark, the running one being the spinner's first frame", () => {
+	it("gives each state one distinct mark, the running one a static mark apart from the spinner", () => {
 		const states = [GLYPH.pending, GLYPH.running, GLYPH.waiting, GLYPH.done, GLYPH.failed, GLYPH.stopped];
 		assert.strictEqual(new Set(states).size, states.length);
-		assert.strictEqual(GLYPH.running, SPINNER.braille[0]);
+		assert.strictEqual(GLYPH.running, "◌");
+		assert.ok(!(SPINNER.braille as readonly string[]).includes(GLYPH.running));
 		assert.ok(!(states as string[]).includes(GLYPH.live));
+	});
+
+	it("shows the running mark for a default Loader in reduced motion, and custom frames their first", () => {
+		const ui = { requestRender: () => undefined } as never;
+		const plain = (text: string) => text;
+		const line = (loader: Loader) => loader.render(40).join("\n");
+		animationClock.setReducedMotion(true);
+		try {
+			const spinner = new Loader(ui, plain, plain, "Working");
+			const custom = new Loader(ui, plain, plain, "Working", { frames: ["a", "b"] });
+			assert.match(line(spinner), /◌ Working/);
+			assert.match(line(custom), /a Working/);
+			spinner.stop();
+			custom.stop();
+		} finally {
+			animationClock.setReducedMotion(false);
+		}
+		const moving = new Loader(ui, plain, plain, "Working");
+		assert.match(line(moving), new RegExp(`${SPINNER.braille[0]} Working`));
+		moving.stop();
 	});
 
 	it("breathes 0 → 1 → 0 over a period and settles 1 → 0 after a flash", () => {

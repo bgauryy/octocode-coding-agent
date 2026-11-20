@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_OFFLINE_INTERVAL_MS } from "@octocodeai/octocode-ai/utils/retry";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../src/core/http-dispatcher.ts";
 import { type Settings, SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -361,12 +362,17 @@ describe("SettingsManager", () => {
 				maxRetries: 3,
 				baseDelayMs: 2000,
 				maxAgentDelayMs: 60000,
+				offlineIntervalMs: DEFAULT_OFFLINE_INTERVAL_MS,
 			});
-			expect(
-				SettingsManager.inMemory({
-					retry: { enabled: true, maxRetries: 10, baseDelayMs: 500, maxAgentDelayMs: 5000 },
-				}).getRetrySettings(),
-			).toEqual({ enabled: true, maxRetries: 10, baseDelayMs: 500, maxAgentDelayMs: 5000 });
+			const retry = {
+				enabled: true,
+				maxRetries: 10,
+				baseDelayMs: 500,
+				maxAgentDelayMs: 5000,
+				offlineIntervalMs: 250,
+				offlineMaxMs: 9000,
+			};
+			expect(SettingsManager.inMemory({ retry }).getRetrySettings()).toEqual(retry);
 		});
 	});
 
@@ -580,7 +586,18 @@ describe("SettingsManager", () => {
 
 	describe("terminal.reduceMotion", () => {
 		const original = process.env.OCTOCODE_REDUCE_MOTION;
+		const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+		// Auto motion also turns off without a terminal or in CI: pretend to be an interactive terminal.
+		beforeEach(() => {
+			vi.stubEnv("CI", "");
+			vi.stubEnv("REDUCE_MOTION", "");
+			vi.stubEnv("NO_MOTION", "");
+			Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		});
 		afterEach(() => {
+			if (ttyDescriptor) Object.defineProperty(process.stdout, "isTTY", ttyDescriptor);
+			else delete (process.stdout as { isTTY?: boolean }).isTTY;
+			vi.unstubAllEnvs();
 			if (original === undefined) delete process.env.OCTOCODE_REDUCE_MOTION;
 			else process.env.OCTOCODE_REDUCE_MOTION = original;
 		});
@@ -625,6 +642,17 @@ describe("SettingsManager", () => {
 		it("treats unsupported stored values as auto", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ terminal: { reduceMotion: "yes" } }));
 			expect(SettingsManager.create(projectDir, agentDir).getReduceMotion()).toBe("auto");
+		});
+	});
+
+	describe("emoji marks", () => {
+		it("are off by default and persist an opt-in", async () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getEmojiMarks()).toBe(false);
+			manager.setEmojiMarks(true);
+			await manager.flush();
+			expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")).terminal.emojiMarks).toBe(true);
+			expect(SettingsManager.create(projectDir, agentDir).getEmojiMarks()).toBe(true);
 		});
 	});
 

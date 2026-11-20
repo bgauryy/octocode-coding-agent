@@ -213,7 +213,9 @@ export function openPrerequisites(
 	for (const text of [...named, ...waitsOn]) {
 		const prerequisite = parsePrerequisite(text);
 		if (!prerequisite)
-			throw new Error(`after entry "${text}" is neither a backlog item (B12) nor an agent (agent:<name>).`);
+			throw new Error(
+				`after entry "${text}" is neither a backlog item (B12), an agent (agent:<name>), a job (job:bash-3) nor a lock (lock:full-run).`,
+			);
 		wanted.set(prerequisiteName(prerequisite), prerequisite);
 	}
 	for (const [name, prerequisite] of wanted) {
@@ -223,6 +225,11 @@ export function openPrerequisites(
 			if (standing === "missing") throw new Error(`after names ${name}, which does not exist.`);
 			if (standing === "closed")
 				throw new Error(`after names ${name}, which was closed without completion: it will never be done.`);
+			continue;
+		}
+		if (prerequisite.kind === "job" || prerequisite.kind === "lock") {
+			const standing = queue.gate.standing(prerequisite);
+			if (standing.state === "failed") throw new Error(`after names ${name}, which cannot be met: ${standing.why}.`);
 			continue;
 		}
 		const ended = queue.gate.ended(prerequisite.id);

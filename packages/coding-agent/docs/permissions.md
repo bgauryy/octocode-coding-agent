@@ -31,7 +31,7 @@ An invalid `OCTOCODE_PERMISSION` starts in `manual`. In a session: `/permissions
 | Reads outside the workspace (`read.outside`), file changes in the repository (`file.workspace`), shell commands (`shell`), web requests (`web`), browser actions (`browser`), MCP tool calls (`mcp.write`), starting a subagent (`agent.spawn`)                                                        | asks     | allows      | allows |
 | File changes outside the workspace (`file.outside`), destructive shell commands (`shell.destructive`), taking control of the browser (`browser.control`), private or local addresses (`net.private`), uploads from outside the workspace (`upload.outside`), destructive MCP tools (`mcp.destructive`) | asks     | asks        | allows |
 | A message from another process (`message.external`, [below](#external-messages))                                                                                                                                                                                                                       | asks     | asks        | allows |
-| Browser cookie access (`browser.cookies`), landing commits on the default branch of the main checkout (`worktree.merge`, [below](#worktree-merges))                                                                                                                                                    | asks     | asks        | asks   |
+| Browser cookie access (`browser.cookies`), desktop control (`desktop.control`, [below](#desktop-control)), landing commits on the default branch of the main checkout (`worktree.merge`, [below](#worktree-merges))                                                                                    | asks     | asks        | asks   |
 
 Raw browser CDP commands, including commands inside a `run` plan or `step`, custom browser scripts and page-defined WebMCP invocations ask for `browser.cookies`: they can execute arbitrary browser code or access cookies. This includes apparently harmless CDP reads; the permission gate does not inspect programs to guess their effects. Dismissing the dialog stops the whole call before any plan step runs. Ordinary typed DOM actions, extraction, snapshots and protocol/schema discovery keep their existing permissions. One cookie-access approval can cover the session; profiles cannot grant it.
 
@@ -203,6 +203,12 @@ The main session is asked, not refused, before `git stash`, `git restore` or `gi
 | `add`, `rm`, `stash` (except `list`, `show`, `create`), `commit`, `reset`, `restore`, `checkout -- <path>` or `.`, `switch`/`checkout` that moves HEAD or rewrites files, `merge`, `rebase`, `pull`, `cherry-pick`, `revert`, `am`, `mv`, `clean` | Dry runs (`-n`, `--dry-run`) of `add`, `rm`, `commit`, `mv`, `clean`, `pull`; a new branch at HEAD (`git switch -c x`) |
 
 The check reads past wrappers, `VAR=value`, chains, `eval` and `bash -c`/heredoc/`echo | sh` scripts; quoting and variable tricks can get past it.
+
+## Desktop control
+
+The `desktop` MCP server (Cua Driver, [MCP reference](mcp-reference.md#built-in-mcp-host)) clicks, types and reads the screen of your real desktop, where every open app and signed-in session is within reach. In your own session every call to it asks `desktop.control`, in `manual`, `workspace` and `full`; only `bypass` allows it. No session grant covers it, so each call asks again, unless its server entry declares the tool read-only (`roles`): that call stays an `mcp.read`.
+
+The bundled `desktop` profile declares `desktop.control`. Starting it asks in every mode but `bypass`, `full` included, and every spawn asks again: no session grant or remembered profile answers it. Approving is the consent for that child's whole run, because a subagent cannot ask anyone; its desktop calls then run without a prompt each. The bundled `desktop` profile is `readOnly`: its child cannot change the repository or run a mutating shell command, while its desktop calls are decided by `desktop.control` alone. On-screen text is untrusted, like a page.
 
 ## MCP tools
 

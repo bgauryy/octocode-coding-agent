@@ -1,0 +1,1 @@
+{{ref}} stalled again: {{agent}} has made no progress on it for {{minutes}} minutes, the second time. Re-plan it: split it, change its route or model, or take it yourself. Octocode will not flag it again.

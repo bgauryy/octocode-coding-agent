@@ -26,3 +26,14 @@ describe("a command of a built-in feature that is off", () => {
 		expect(await tryExecuteFeatureCommand(runnerWith(), "/nosuch")).toBe(false);
 	});
 });
+
+describe("a moved name", () => {
+	it("runs its replacement once, with its arguments", async () => {
+		const ran: string[] = [];
+		const harness = { handler: async (args: string) => void ran.push(args) };
+		const runner = runnerWith({ harness });
+		expect(await tryExecuteFeatureCommand(runner, "/plugins disable x")).toBe(true);
+		expect(await tryExecuteFeatureCommand(runner, "/hooks events")).toBe(true);
+		expect(ran).toEqual(["disable x", "hooks events"]);
+	});
+});
