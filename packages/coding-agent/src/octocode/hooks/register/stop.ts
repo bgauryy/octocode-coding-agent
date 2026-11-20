@@ -8,7 +8,7 @@ import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
 import { hookLabel } from "../config.ts";
 import { backgroundTasks } from "./background-tasks.ts";
-import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
+import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_CONTINUE_RUN_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
 import { commandsFor } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler } from "../contracts.ts";
@@ -50,8 +50,11 @@ export function registerStopHook(api: FeatureSetup, session: HookSession, dispat
 	const work = runningWorkOf(api);
 	/** Stop-hook continuations in a row (reset by a prompt or a tool call). */
 	let stopContinues = 0;
+	/** Continuations since the last prompt; unlike `stopContinues`, tool calls do not reset it. */
+	let runContinues = 0;
 	api.bus.on("before_agent_start", async () => {
 		stopContinues = 0;
+		runContinues = 0;
 		return undefined;
 	});
 	api.bus.on("tool_execution_start", async (event) => {
@@ -86,8 +89,9 @@ export function registerStopHook(api: FeatureSetup, session: HookSession, dispat
 			})),
 		);
 		const feedback = [verdict.block, verdict.continueReason].filter(Boolean).join("\n\n");
-		if (!feedback || stopContinues >= STOP_CONTINUE_CAP) return undefined;
+		if (!feedback || stopContinues >= STOP_CONTINUE_CAP || runContinues >= STOP_CONTINUE_RUN_CAP) return undefined;
 		stopContinues += 1;
+		runContinues += 1;
 		// Octocode replaces the boundary's entries with a handler's: keep what earlier handlers proposed.
 		return {
 			entries: [

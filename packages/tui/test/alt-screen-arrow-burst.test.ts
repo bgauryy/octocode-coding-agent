@@ -20,7 +20,7 @@ class Rows {
 
 const PROMPT = "LAST-SUBMITTED-PROMPT";
 
-async function withChat(run: (ctx: { terminal: VirtualTerminal; editor: Editor }) => Promise<void>) {
+async function withChat(run: (ctx: { terminal: VirtualTerminal; editor: Editor; tui: TuiAltScreen }) => Promise<void>) {
 	const terminal = new VirtualTerminal(40, 12);
 	const tui = new TuiAltScreen(terminal);
 	const document = new Container();
@@ -39,7 +39,7 @@ async function withChat(run: (ctx: { terminal: VirtualTerminal; editor: Editor }
 	tui.start();
 	try {
 		await terminal.waitForRender();
-		await run({ terminal, editor });
+		await run({ terminal, editor, tui });
 	} finally {
 		tui.stop();
 	}
@@ -89,6 +89,19 @@ describe("arrow keys sent for the wheel", () => {
 			});
 		});
 	}
+
+	it("reach a focused selector unchanged, however fast they come", async () => {
+		await withChat(async ({ terminal, tui }) => {
+			const received: string[] = [];
+			const selector = { render: () => [], invalidate() {}, handleInput: (data: string) => received.push(data) };
+			const before = top(terminal);
+			tui.setFocus(selector);
+			for (let i = 0; i < 3; i++) terminal.sendInput("\x1b[A");
+			await delay(20);
+			assert.deepEqual(received, ["\x1b[A", "\x1b[A", "\x1b[A"]);
+			assert.equal(top(terminal), before);
+		});
+	});
 
 	it("deliver a held arrow before the key that follows it", async () => {
 		await withChat(async ({ terminal, editor }) => {

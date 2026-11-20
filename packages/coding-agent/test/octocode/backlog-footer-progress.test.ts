@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, meta } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
-import { sessionTaskTally, taskProgressText } from "../../src/octocode/backlog/format.ts";
+import { sessionTaskTally } from "../../src/octocode/backlog/format.ts";
+import { currentStep, progressText } from "../../src/octocode/backlog/progress.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -63,22 +64,38 @@ describe("live checklist progress in the footer", () => {
 		store.tasks.add({ goal: "Other session step", session: "other-session" }, HUMAN);
 		const tally = sessionTaskTally(store, "session-test");
 		expect(tally).toEqual({ todo: 1, ongoing: 0, done: 1, dropped: 1 });
-		expect(taskProgressText(tally)).toBe("1/3 steps done · 1 dropped");
-		expect(taskProgressText(sessionTaskTally(store, "absent"))).toBeUndefined();
+		expect(progressText(tally)).toBe("▰▰▱ 1/3 steps · 1 dropped");
+		expect(progressText(tally, currentStep(store, "session-test"))).toBe("▰▰▱ 1/3 steps · 1 dropped · ▶ B1 Own step");
+		expect(progressText(sessionTaskTally(store, "absent"))).toBeUndefined();
+		expect(currentStep(store, "absent")).toBeUndefined();
+	});
+
+	it("names the ongoing step before the next to do, its own steps first, and keeps a long checklist's bar short", () => {
+		const { store } = setup();
+		store.add({ ...READY, title: "Mine", state: "ongoing" }, { id: "session-test" });
+		store.tasks.add({ goal: "Item step", item: "B1" }, HUMAN);
+		const own = store.tasks.add({ goal: "Own next", session: "session-test" }, HUMAN);
+		expect(currentStep(store, "session-test")).toEqual({ goal: "Own next" });
+		const running = store.tasks.add({ goal: "Item running", item: "B1" }, HUMAN);
+		store.tasks.update(running.ref, { state: "ongoing" }, { id: "session-test" });
+		expect(currentStep(store, "session-test")).toEqual({ goal: "Item running", item: "B1" });
+		store.tasks.update(own.ref, { state: "done" }, HUMAN);
+		const long = progressText({ todo: 15, ongoing: 1, done: 4, dropped: 0 }, { goal: "x".repeat(60) });
+		expect(long).toBe(`▰▱▱▱▱▱ 4/20 steps · ▶ ${"x".repeat(47)}…`);
 	});
 
 	it("refreshes external checklist writes mid-turn, keeps completed progress, and ignores unrelated writes", async () => {
 		const t = setup();
 		const step = t.store.tasks.add({ goal: "Check behavior", session: "session-test" }, HUMAN);
 		await t.emit("session_start", {}, t.ctx);
-		expect(t.ctx.ui.statuses.get(STATUS.steps)).toBe("0/1 steps done");
+		expect(t.ctx.ui.statuses.get(STATUS.steps)).toBe("▱ 0/1 steps · ▶ Check behavior");
 		const list = vi.spyOn(BacklogStore.prototype, "list");
 		meta.write(sharedAgentDb().db, "footer-test", "unrelated");
 		vi.advanceTimersByTime(1000);
 		expect(list).not.toHaveBeenCalled();
 		t.store.tasks.update(step.ref, { state: "done", result: "Focused test passed" }, HUMAN);
 		vi.advanceTimersByTime(1000);
-		expect(t.ctx.ui.statuses.get(STATUS.steps)).toBe("1/1 steps done");
+		expect(t.ctx.ui.statuses.get(STATUS.steps)).toBe("▰ 1/1 steps");
 		expect(t.ctx.ui.statuses.get(STATUS.backlog)).toContain("/web");
 		list.mockClear();
 		vi.advanceTimersByTime(5000);
@@ -95,13 +112,13 @@ describe("live checklist progress in the footer", () => {
 		expect(next.ui.statuses.get(STATUS.steps)).toBeUndefined();
 		t.store.tasks.add({ goal: "Next session", session: "next-session" }, HUMAN);
 		vi.advanceTimersByTime(1000);
-		expect(next.ui.statuses.get(STATUS.steps)).toBe("0/1 steps done");
+		expect(next.ui.statuses.get(STATUS.steps)).toBe("▱ 0/1 steps · ▶ Next session");
 		await t.emit("session_shutdown", {}, next);
 		const list = vi.spyOn(BacklogStore.prototype, "list");
 		t.store.tasks.add({ goal: "After shutdown", session: "next-session" }, HUMAN);
 		vi.advanceTimersByTime(1000);
 		expect(list).not.toHaveBeenCalled();
-		expect(next.ui.statuses.get(STATUS.steps)).toBe("0/1 steps done");
+		expect(next.ui.statuses.get(STATUS.steps)).toBe("▱ 0/1 steps · ▶ Next session");
 	});
 
 	it("does not subscribe or paint when the host has no UI", async () => {

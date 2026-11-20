@@ -56,11 +56,7 @@ export function sendOutcome(args: Record<string, unknown>, details: Record<strin
 const KIND_COLOR = { request: "warning", interrupt: "error", FYI: "dim" } as const;
 
 /** One delivered message: `✉ 🐙 ink(main) [worktree fix] → you(main) · #51 · request · 16:05:00`, then its whole body. */
-function mailEntry(
-	theme: Theme,
-	entry: Record<string, unknown>,
-	resolve: EndpointResolver | undefined,
-): Component[] {
+function mailEntry(theme: Theme, entry: Record<string, unknown>, resolve: EndpointResolver | undefined): Component[] {
 	const from = clip(text(entry.from) || "agent", 64);
 	const recorded = asRecord(entry.sender).role;
 	const isUser = from === USER_SENDER;
@@ -110,7 +106,6 @@ export function mailRows(
 	// Details are another process's data: anything but a batch shows the text the model got.
 	const entries: unknown[] = Array.isArray(mail) ? mail : [{ from: "agent", text: text(message.content) }];
 	for (const entry of entries)
-		for (const row of mailEntry(theme, asRecord(entry), options.endpoints))
-			box.addChild(row);
+		for (const row of mailEntry(theme, asRecord(entry), options.endpoints)) box.addChild(row);
 	return box;
 }

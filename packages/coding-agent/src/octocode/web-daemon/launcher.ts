@@ -144,8 +144,10 @@ async function live(file: string): Promise<Live | undefined> {
 	return { record, status, origin, token };
 }
 
-/** The package version in a build identity (`1.3.0:<page hash>`). */
+/** The package version in a build identity (`1.3.0:<page hash>:<install hash>`). */
 const versionOf = (build: string): string | null => semver.valid(build.split(":")[0]);
+/** The install hash in a build identity; daemons from before it was added have none. */
+const installOf = (build: string): string | undefined => build.split(":")[2];
 
 /** Whether `launcher` is a newer package version than `daemon`; builds with no comparable version are never newer. */
 function isNewer(launcher: string, daemon: string): boolean {
@@ -155,13 +157,27 @@ function isNewer(launcher: string, daemon: string): boolean {
 }
 
 /**
- * Whether a launcher of `build` can use this daemon. An older or equal launcher uses a running daemon as it is: only a
- * newer launcher drains an older daemon, so two installed versions never drain each other in turn.
+ * Whether one install serves both builds with different pages: the same version from the same package directory (a
+ * daemon that names no install counts as this one). Then the launcher's page is the current one.
  */
-const usable = (daemon: Live, build: string): boolean =>
+function samePlaceOtherPage(launcher: string, daemon: string): boolean {
+	const version = versionOf(launcher);
+	const install = installOf(daemon);
+	return (
+		version !== null && version === versionOf(daemon) && (install === undefined || install === installOf(launcher))
+	);
+}
+
+/**
+ * Whether a launcher of `build` can use this daemon. A launcher drains a daemon of an older version, or one of its own
+ * install that serves another page (the source changed since it started). It uses every other daemon as it is, so two
+ * installs never drain each other in turn.
+ */
+export const usable = (daemon: Pick<Live, "status">, build: string): boolean =>
 	daemon.status.protocolVersion === DAEMON_PROTOCOL_VERSION &&
 	!daemon.status.draining &&
-	(daemon.status.build === build || !isNewer(build, daemon.status.build));
+	(daemon.status.build === build ||
+		(!isNewer(build, daemon.status.build) && !samePlaceOtherPage(build, daemon.status.build)));
 
 /** Waits `ms`; rejects with an `AbortError` as soon as `signal` aborts, so a cancelled launch stops polling. */
 const sleep = (ms: number, signal?: AbortSignal) =>

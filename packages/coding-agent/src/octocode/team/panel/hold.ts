@@ -7,8 +7,8 @@ export const THINKING_HOLD_MS = 400;
 /** A running bash command shows its elapsed time once it has run this long. */
 const ELAPSED_AFTER_MS = 1_000;
 
-const THINKING = /^Thinking\b/;
-const BASH = /^Running bash\b/;
+const THINKING = /^Thinking\b/i;
+const BASH = /^Running bash\b/i;
 
 interface Held {
 	line: string;

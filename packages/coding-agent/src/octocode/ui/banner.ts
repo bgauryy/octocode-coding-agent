@@ -62,12 +62,18 @@ function paintArt(paint: BannerPaint, line: string): string {
 	return out;
 }
 
-export function bannerLines(paint: BannerPaint, width: number): string[] {
+/** `status` (painted): one more line under the notice, such as the backlog counts (`backlog-status.ts`). */
+export function bannerLines(
+	paint: BannerPaint,
+	width: number,
+	status?: (paint: BannerPaint) => string | undefined,
+): string[] {
 	const art =
 		width >= ART_WIDTH
 			? BANNER_ART.map((line) => paintArt(paint, line))
 			: [`${paint.fg("accent", "OCTOCODE")} ${paint.fg("mdLink", "AGENT")}`, ""];
 	const notice = `${paint.fg("warning", "BETA version")} ${paint.fg("muted", "; please assign issues here")} ${paint.fg("mdLink", ISSUES_URL)}`;
 	// Every line must fit the width, however narrow the terminal.
-	return [...art, notice].map((line) => truncateToWidth(line, Math.max(1, width), ""));
+	const extra = status?.(paint);
+	return [...art, notice, ...(extra ? [extra] : [])].map((line) => truncateToWidth(line, Math.max(1, width), ""));
 }

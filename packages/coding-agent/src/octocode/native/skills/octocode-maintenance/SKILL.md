@@ -11,22 +11,22 @@ Sweep first, act second. Each area below ends in a finding, then either a fix wi
 
 ## Repository
 
-| Area | Check | Finding becomes |
-| --- | --- | --- |
-| Dependencies | `yarn outdated` or `yarn npm audit`; read the changelog of a major bump | An item per upgrade with the breaking changes; a security advisory is a fix item |
-| Dead code | `yarn knip`, then confirm each candidate with `lspSearch` references and a search for registration, config and docs | Delete the confirmed code with its tests; list the rest as candidates |
-| Stale docs | Compare docs' commands, flags and paths with the code (search each name); check links | Fix the page that owns the fact |
-| Lint and format drift | `yarn run check` (rewrites nothing), `yarn oxfmt <files>` for formatting | Fix in the touched files; report an old failure instead of hiding it |
-| Flaky tests | Rerun a suspect test file a few times, alone; compare with the failure's log | An item with the trigger, the rate and the suspected cause; never skip the test |
+| Area                  | Check                                                                                                               | Finding becomes                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Dependencies          | `yarn outdated` or `yarn npm audit`; read the changelog of a major bump                                             | An item per upgrade with the breaking changes; a security advisory is a fix item |
+| Dead code             | `yarn knip`, then confirm each candidate with `lspSearch` references and a search for registration, config and docs | Delete the confirmed code with its tests; list the rest as candidates            |
+| Stale docs            | Compare docs' commands, flags and paths with the code (search each name); check links                               | Fix the page that owns the fact                                                  |
+| Lint and format drift | `yarn run check` (rewrites nothing), `yarn oxfmt <files>` for formatting                                            | Fix in the touched files; report an old failure instead of hiding it             |
+| Flaky tests           | Rerun a suspect test file a few times, alone; compare with the failure's log                                        | An item with the trigger, the rate and the suspected cause; never skip the test  |
 
 ## Octocode upkeep
 
-| Area | Check | Finding becomes |
-| --- | --- | --- |
-| Retention | `retention.days` and `retention.sessionDays` are set and the sizes of `.octocode/code/` folders, `.octocode/tmp`, transcripts and the database are sane (`du -sh`) | Automatic cleanup handles normal growth; an item when it does not. Manual removal is `/purge`, which previews and needs the user's typed confirmation |
-| Worktrees | `/worktree list` and `git worktree list`: merged branches, detached and abandoned trees, changed counts | Ask before `/worktree remove`; never remove one with uncommitted work |
-| Caches, logs, sessions | Old scratch under `.octocode/code/temp/agents/`, bash logs, large session folders | Retention removes them; ask before deleting anything sooner |
-| MCP health | `/mcp list`; a server that fails or times out: restart it with `mcp` | Report persistent failures with the last error |
+| Area                   | Check                                                                                                                                                              | Finding becomes                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Retention              | `retention.days` and `retention.sessionDays` are set and the sizes of `.octocode/code/` folders, `.octocode/tmp`, transcripts and the database are sane (`du -sh`) | Automatic cleanup handles normal growth; an item when it does not. Manual removal is `/purge`, which previews and needs the user's typed confirmation |
+| Worktrees              | `/worktree list` and `git worktree list`: merged branches, detached and abandoned trees, changed counts                                                            | Ask before `/worktree remove`; never remove one with uncommitted work                                                                                 |
+| Caches, logs, sessions | Old scratch under `.octocode/code/temp/agents/`, bash logs, large session folders                                                                                  | Retention removes them; ask before deleting anything sooner                                                                                           |
+| MCP health             | `/mcp list`; a server that fails or times out: restart it with `mcp`                                                                                               | Report persistent failures with the last error                                                                                                        |
 
 ## Memories
 
@@ -34,7 +34,7 @@ List the memories (`memory` `list`; `/memory review` shows notes never recalled 
 
 ## Backlog
 
-Groom the board per octocode-backlog's grooming reference: state, age, relevance, overlap and owner of each open item, then close done, obsolete or duplicate items, release stale claims and reprioritize. An item a live session holds gets a note, not a change.
+Run `octocode backlog groom` first: code flags stale claims, finished epics, gone paths, duplicates, blocked and idle items at no model cost. Then groom per octocode-backlog's grooming reference, judging the flagged rows first. An item a live session holds gets a note, not a change.
 
 ## Act
 

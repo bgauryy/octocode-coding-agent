@@ -4,6 +4,7 @@ import type { StatusEntry } from "../../../core/footer-data-provider.ts";
 import { paintStatus } from "../../../theme/status.ts";
 import { PERMISSION_ID } from "../../permission/mode.ts";
 import { STATUS } from "../../shared/status.ts";
+import { STEP_SEPARATOR } from "../../backlog/progress.ts";
 import { fitFooterLine, fitFooterZones, type FooterPaint, type FooterPart } from "./fit.ts";
 import { chipPart, healthParts, plainRow, PRIORITY, sigmaText, wherePart } from "./parts.ts";
 import type { FooterState } from "./state.ts";
@@ -129,11 +130,20 @@ export function footerLines(
 			priority: 75,
 		},
 	];
+	// The step in progress goes first on a narrow line; the bar and the count stay.
+	const steps = text(OWN.steps);
+	const stepsCount = steps.split(STEP_SEPARATOR)[0];
 	const others = [...statuses]
 		.filter(([key]) => !(Object.values(OWN) as string[]).includes(key))
 		.sort(([a], [b]) => a.localeCompare(b));
 	const details: FooterPart[] = [
-		{ text: status(OWN.steps), priority: 76, keep: true, details: true },
+		{
+			text: status(OWN.steps),
+			...(stepsCount !== steps ? { short: status(OWN.steps, stepsCount) } : {}),
+			priority: 76,
+			keep: true,
+			details: true,
+		},
 		{ text: status(OWN.backlog), priority: 20, keep: true, short: theme.fg("dim", "/web") },
 		// Glyph and word, never colour alone: NO_COLOR still reads.
 		state.githubToken === undefined

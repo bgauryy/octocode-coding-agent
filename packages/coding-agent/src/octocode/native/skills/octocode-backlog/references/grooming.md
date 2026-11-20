@@ -16,10 +16,11 @@ flowchart LR
 
 ## 1. Snapshot
 
-1. List the open board: `backlogPlan` `list` with `states` `["backlog","todo","ongoing"]`, `sort` `board` and `limit` 200. Page with `offset` until the list ends, then count items per state, type and priority. These counts are the "before" column of the report.
-2. Run `agent` `coordinate` `list` to see live sessions, their claimed items and the paths they hold. An item that a live session or its child holds is theirs: you may only add a `note`, or `message` the holder with a finding.
-3. Read items in batches with `backlog` `get` and several ids. Each read shows the goal ("Done when"), where, why, evidence, plan, notes, open steps, prerequisites and the created, updated and claimed ages.
-4. For more than about 40 items, split them into batches and delegate the checks; see [delegation](delegation.md). You apply every change yourself.
+1. Run `octocode backlog groom` with `bash` first. It does every check that needs no judgment in code: claims whose holder ended, epics with every item finished, items whose paths are gone, likely duplicate titles, blocked and idle items. Judge its flagged rows before anything else, and do not redo its checks by hand.
+2. Take the "before" counts from the footer's backlog line or `backlogPlan` `list` (its header counts states); list the board with `states` `["backlog","todo","ongoing"]`, `sort` `board`, `limit` 200 only to judge items the groom report did not flag.
+3. Run `agent` `coordinate` `list` to see live sessions, their claimed items and the paths they hold. An item that a live session or its child holds is theirs: you may only add a `note`, or `message` the holder with a finding.
+4. Read items in batches with `backlog` `get` and several ids. Each read shows the goal ("Done when"), where, why, evidence, plan, notes, open steps, prerequisites and the created, updated and claimed ages.
+5. For more than about 40 items, split them into batches and delegate the checks; see [delegation](delegation.md). You apply every change yourself.
 
 ## 2. Check each item
 

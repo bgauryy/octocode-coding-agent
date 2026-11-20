@@ -305,8 +305,7 @@ export function registerSendMessageTool(
 				const text = contentText(result.content);
 				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
-				const summary =
-					typeof details.id === "number" ? sendOutcome(asRecord(context.args), details) : firstLine(text);
+				const summary = typeof details.id === "number" ? sendOutcome(asRecord(context.args), details) : firstLine(text);
 				return resultBlock(theme, context, {
 					summary,
 					body: context.isError ? text.split("\n").slice(1).join("\n") : message,

@@ -18,6 +18,7 @@ import {
 	type SmallModel,
 } from "./passes.ts";
 import type { MemoryFileRef } from "../../permission/memory-files.ts";
+import { savedKeys, splitCandidates } from "./prefilter.ts";
 import { quarantineReason, type Taint } from "./quarantine.ts";
 import type { SessionSignal } from "./signals.ts";
 
@@ -69,9 +70,12 @@ export async function reflectOnSession(
 	const { files, unreadable } = await readPassFiles(input.files, deps.env);
 	if (files.length === 0) return;
 	const all = listCandidates(deps.store);
-	const mine = pendingCandidates(all)
-		.filter((memory) => memory.sourceSession === input.session)
-		.slice(0, CANDIDATES_SHOWN);
+	// A candidate a saved lesson already says is no news to the model; the signals still are, so the call stays.
+	const { remaining: mine } = splitCandidates(
+		pendingCandidates(all).filter((memory) => memory.sourceSession === input.session),
+		savedKeys(files),
+	);
+	mine.splice(CANDIDATES_SHOWN);
 	const now = deps.now?.() ?? Date.now();
 	const prompt = renderPrompt("workflows/memory/reflect.md", {
 		maxOps: MAX_OPS,

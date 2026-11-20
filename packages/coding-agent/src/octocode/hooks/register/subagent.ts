@@ -14,6 +14,7 @@ import {
 	type HookHostMetadata,
 	type HookSession,
 	STOP_CONTINUE_CAP,
+	STOP_CONTINUE_RUN_CAP,
 	STOP_PREFIX,
 	STOP_TYPE,
 } from "./types.ts";
@@ -33,6 +34,8 @@ export function registerSubagentHooks(
 	/** Protocols whose SubagentStart hooks already ran: they run once when the subagent starts, not on every turn. */
 	const started = new Map<"claude" | "codex", string | undefined>();
 	let stopContinues = 0;
+	/** Continuations since the last prompt; tool calls do not reset it. */
+	let runContinues = 0;
 	const agentType = metadata?.().agentType || "general";
 	const identity = (ctx: FeatureContext, protocol: "claude" | "codex", stop: boolean): Record<string, unknown> => ({
 		agent_id:
@@ -73,9 +76,11 @@ export function registerSubagentHooks(
 		codexStart = event.reason === "startup" || event.reason === "fork";
 		started.clear();
 		stopContinues = 0;
+		runContinues = 0;
 	});
 	api.bus.on("before_agent_start", async (_event, ctx) => {
 		stopContinues = 0;
+		runContinues = 0;
 		const contexts: string[] = [];
 		const contextKeys: string[] = [];
 		for (const protocol of ["claude", "codex"] as const) {
@@ -179,8 +184,9 @@ export function registerSubagentHooks(
 			.flatMap((verdict) => [verdict.block, verdict.continueReason])
 			.filter(Boolean)
 			.join("\n\n");
-		if (!feedback || stopContinues >= STOP_CONTINUE_CAP) return;
+		if (!feedback || stopContinues >= STOP_CONTINUE_CAP || runContinues >= STOP_CONTINUE_RUN_CAP) return;
 		stopContinues += 1;
+		runContinues += 1;
 		return {
 			entries: [
 				...event.entries,

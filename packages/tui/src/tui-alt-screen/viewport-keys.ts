@@ -1,7 +1,9 @@
+import { Editor } from "../components/editor.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
 import { getKeybindings } from "../keybindings.ts";
 import { isKeyRelease } from "../keys/sequences.ts";
 import type { LayoutFrame } from "../layout/types.ts";
+import type { Component } from "../tui/component.ts";
 import { getScrollViewBox } from "../layout.ts";
 import { OSC133_PROMPT_START } from "../terminal/sequences.ts";
 import { PAGE_SCROLL_OVERLAP } from "./constants.ts";
@@ -12,6 +14,7 @@ import type { AltScreenSearchController } from "./search-controller.ts";
 export interface AltScreenViewportKeysHost {
 	readonly search: AltScreenSearchController;
 	readonly arrowBurst: ArrowBurstScroll;
+	getFocusedComponent(): Component | null;
 	getCurrentLayout(): LayoutFrame | undefined;
 	getPrimaryScrollView(): ScrollView;
 	shouldDeferViewportInputToOverlay(): boolean;
@@ -59,7 +62,9 @@ export function handleViewportKeys(host: AltScreenViewportKeysHost, data: string
 		}
 	}
 	if (host.shouldDeferViewportInputToOverlay()) return undefined;
-	if (host.arrowBurst.handle(data)) return { consume: true };
+	// Arrow bursts are a wheel only where arrows recall history: the editor. A selector or dialog keeps its arrows.
+	if (!(host.getFocusedComponent() instanceof Editor)) host.arrowBurst.flush();
+	else if (host.arrowBurst.handle(data)) return { consume: true };
 	if (keybindings.matches(data, "tui.altScreen.pageUp")) {
 		if (!isRelease) {
 			host.scrollBy(-Math.max(1, host.getPrimaryScrollView().viewportHeight - PAGE_SCROLL_OVERLAP));

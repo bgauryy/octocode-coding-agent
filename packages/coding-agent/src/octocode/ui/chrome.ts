@@ -16,6 +16,8 @@ import { registerPhaseLine } from "./phase-line.ts";
 import { registerTurnLine } from "./turn-line.ts";
 import { registerWakeRow } from "./wake-row.ts";
 import { registerBacklogLine } from "./backlog-line.ts";
+import { backlogStatusLine, startupBacklogCounts } from "./backlog-status.ts";
+import type { BacklogCounts } from "../backlog/counts.ts";
 
 let version: { value: string | undefined } | undefined;
 
@@ -81,7 +83,8 @@ export function spinnerFrames(theme: Theme): string[] {
  * `onInvalidate` runs when Octocode invalidates the header: a theme switch does, and Octocode has no theme event for
  * features.
  */
-export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
+export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: BacklogCounts) {
+	const status = backlog ? (paint: BannerPaint) => backlogStatusLine(paint, backlog) : undefined;
 	// Read from the theme again on invalidate: Octocode invalidates components when the theme changes.
 	const painted = (): BannerPaint => {
 		const ramp = themeRamp(theme);
@@ -91,7 +94,7 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void) {
 	let cached: { width: number; lines: string[] } | undefined;
 	return {
 		render(width: number): string[] {
-			if (cached?.width !== width) cached = { width, lines: bannerLines(paint, width) };
+			if (cached?.width !== width) cached = { width, lines: bannerLines(paint, width, status) };
 			return cached.lines;
 		},
 		invalidate(): void {
@@ -150,8 +153,10 @@ export function registerUi(api: FeatureSetup, isSubagent: boolean): void {
 }
 
 function decorate(ctx: FeatureContext): void {
-	// The spinner is a painted string: repaint it whenever a theme switch invalidates the header.
-	ctx.ui.setHeader((_tui, current) => bannerHeader(current, () => paintIndicators(ctx)));
+	// The spinner is a painted string: repaint it whenever a theme switch invalidates the header. The backlog counts are
+	// read once per session start; the footer keeps them live.
+	const backlog = startupBacklogCounts(ctx);
+	ctx.ui.setHeader((_tui, current) => bannerHeader(current, () => paintIndicators(ctx), backlog));
 	paintIndicators(ctx);
 }
 

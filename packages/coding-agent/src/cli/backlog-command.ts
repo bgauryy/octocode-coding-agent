@@ -14,16 +14,19 @@ import { sessionWorkspace } from "../octocode/shared/home/workspace.ts";
 import { getResult } from "../octocode/backlog/tool-get.ts";
 import { runList } from "../octocode/backlog/tool-list.ts";
 import { BacklogError, BacklogStore } from "../octocode/backlog/store.ts";
+import { groomReport, groomText } from "../octocode/backlog/groom.ts";
 
 const BACKLOG_COMMAND_USAGE = `Usage:
   ${APP_NAME} backlog get <id> [--limit <notes>] [--offset <notes>] [--changes]
   ${APP_NAME} backlog list [--query <text>] [--states <state,...>] [--ids <id,...>] [--type <type>] [--under <epic>]
                            [--tag <tag>] [--sort board|updated|created] [--limit <n>] [--offset <n>]
   ${APP_NAME} backlog export <file>
+  ${APP_NAME} backlog groom
 
 Reads this folder's backlog board without changing it, for scripts and for subagents that have no backlog tool.
 get prints one item with its steps, runs and newest notes; list prints one page of items (default: the open ones);
-export writes the whole board with every note as Markdown. Reads Octocode's agent database (OCTOCODE_AGENT_DB names
+export writes the whole board with every note as Markdown; groom runs grooming's mechanical checks (claims whose
+holder ended, finished epics, gone paths, likely duplicates, blocked and idle items) and prints only what they flag. Reads Octocode's agent database (OCTOCODE_AGENT_DB names
 another file).`;
 
 export interface BacklogCommandIo {
@@ -147,6 +150,10 @@ function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo
 		}).content[0]?.text;
 		return forCommand(text ?? "");
 	}
+	if (sub === "groom") {
+		if (options.operands.length > 0) throw new UsageError(`groom takes no arguments, not ${options.operands[0]}.`);
+		return groomText(groomReport(board.store, board.repoRoot, Date.now()));
+	}
 	if (options.operands.length !== 1) throw new UsageError("export takes one file path.");
 	const file = path.resolve(io.cwd, options.operands[0] ?? "");
 	fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -165,7 +172,8 @@ export async function runBacklogCommand(args: string[], io: BacklogCommandIo): P
 	}
 	const env = io.env ?? process.env;
 	try {
-		if (sub !== "get" && sub !== "list" && sub !== "export") throw new UsageError(`Unknown backlog command ${sub}.`);
+		if (sub !== "get" && sub !== "list" && sub !== "export" && sub !== "groom")
+			throw new UsageError(`Unknown backlog command ${sub}.`);
 		const options = parse(rest);
 		// Reading must not create the database: a machine that never ran a session has no board.
 		if (!fs.existsSync(agentDbPath(env))) {

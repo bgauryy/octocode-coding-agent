@@ -10,7 +10,8 @@ import { registerBacklogDigest } from "./digest.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
 import type { CompletionGate } from "./completion-gate.ts";
 import type { Holdings } from "./done-guard.ts";
-import { countsText, sessionTaskTally, taskProgressText } from "./format.ts";
+import { countsText } from "./format.ts";
+import { sessionProgressText } from "./progress.ts";
 import { refreshItemTitles } from "./title-lookup.ts";
 import { registerBacklogPlanTool } from "../native/tools/backlog-plan/tool.ts";
 import { registerBacklogTool } from "../native/tools/backlog/tool.ts";
@@ -79,7 +80,7 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 			refreshItemTitles(backlog.store);
 			const text = countsText(backlog.store.counts());
 			ctx.ui.setStatus(STATUS.backlog, text || undefined);
-			ctx.ui.setStatus(STATUS.steps, taskProgressText(sessionTaskTally(backlog.store, backlog.session)));
+			ctx.ui.setStatus(STATUS.steps, sessionProgressText(backlog.store, backlog.session));
 		} catch {
 			// An unreadable agent database (a foreign file) hides the counts; the tool and command report why.
 			lastAudit = undefined;

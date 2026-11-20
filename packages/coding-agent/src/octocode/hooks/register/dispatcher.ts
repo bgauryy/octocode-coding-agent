@@ -256,7 +256,7 @@ export function createDispatcher(
 								event === "UserPromptSubmit")
 						? `${event} hook ${failure}; onFailure: "block"`
 						: undefined;
-			if (failure && !gate && hook.protocol && (ctx.hasUI || event === "Interrupt" || event === "PermissionRequest")) {
+			if (failure && !gate && (ctx.hasUI || event === "Interrupt" || event === "PermissionRequest")) {
 				const key = `${event}\0${hookIdentity(hook)}`;
 				if (!failureWarned.has(key)) {
 					failureWarned.add(key);

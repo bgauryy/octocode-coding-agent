@@ -5,7 +5,9 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { acquireRegistryLock } from "../../src/octocode/backlog/shared-web-lock.ts";
-import { ensureWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
+import { VERSION } from "../../src/config.ts";
+import { daemonPage } from "../../src/octocode/web-daemon/build.ts";
+import { ensureWebDaemon, usable } from "../../src/octocode/web-daemon/launcher.ts";
 import { startWebDaemon } from "../../src/octocode/web-daemon/main.ts";
 import { webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
 import { readDaemonRecord } from "../../src/octocode/web-daemon/records.ts";
@@ -97,6 +99,52 @@ describe("daemon launcher", () => {
 		expect(current.record.build).not.toBe("0.0.0:old");
 		await expect.poll(() => processAlive(old.record.pid), { timeout: 15_000, interval: 100 }).toBe(false);
 		expect(readDaemonRecord(webDaemonPaths(env).record)!.pid).toBe(current.record.pid);
+	});
+
+	it("drains a daemon of its own install and version that serves an older page", async () => {
+		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
+		const install = daemonPage().build.split(":")[2];
+		const stale = `${VERSION}:oldpage:${install}`;
+		const old = track(
+			await ensureWebDaemon({
+				env: { ...env, OCTOCODE_TEST_DAEMON_BUILD: stale },
+				build: stale,
+				invocation: invocation(oldEntry),
+			}),
+		);
+		expect(old.record.build).toBe(stale);
+		const current = track(await ensureWebDaemon({ env, invocation: invocation() }));
+		expect(current.record.pid).not.toBe(old.record.pid);
+		expect(current.record.build).toBe(daemonPage().build);
+		await expect.poll(() => processAlive(old.record.pid), { timeout: 15_000, interval: 100 }).toBe(false);
+	});
+
+	it("reuses or drains by version, page and install, so two installs never drain each other in turn", () => {
+		const status = (build: string, draining = false) => ({
+			status: {
+				ok: true as const,
+				protocolVersion: 1 as const,
+				build,
+				nonce: "n",
+				pid: 1,
+				startedAt: 0,
+				tabs: 0,
+				sessions: 0,
+				draining,
+			},
+		});
+		const mine = "1.3.0:page-new:inst-a";
+		const cases: Array<[daemon: string, reuse: boolean]> = [
+			[mine, true],
+			["1.3.0:page-old:inst-a", false], // same install, source changed since it started
+			["1.3.0:page-old", false], // a daemon from before builds named their install
+			["1.3.0:page-old:inst-b", true], // another install of this version: leave it
+			["1.2.0:page-old:inst-b", false], // older version
+			["1.4.0:page-old:inst-a", true], // newer version: an older launcher never drains it
+			["x", true], // no comparable version
+		];
+		for (const [daemon, reuse] of cases) expect([daemon, usable(status(daemon), mine)]).toEqual([daemon, reuse]);
+		expect(usable(status(mine, true), mine)).toBe(false);
 	});
 
 	it("replaces a record whose pid is alive with another start time, and never talks to that stranger", async () => {

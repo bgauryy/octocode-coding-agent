@@ -39,6 +39,19 @@ describe("backlog discovery in the native footer", () => {
 		expect(footerLines(state, "main", statuses, theme, 60)[1]).toContain("/web");
 	});
 
+	it("shows the step in progress when there is room and drops it before the bar and count", () => {
+		const chip = "▰▰▱▱ 2/4 steps · ▶ B12 Run the focused tests for the footer";
+		const statuses = new Map([
+			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 0, todo: 4, ongoing: 2, done: 0 })) }],
+			[STATUS.steps, { text: chip }],
+		]);
+		expect(footerLines(state, "main", statuses, theme, 200)[1]).toContain(chip);
+		const narrow = footerLines(state, "main", statuses, theme, 80)[1];
+		expect(narrow).toContain("▰▰▱▱ 2/4 steps");
+		expect(narrow).not.toContain("Run the focused");
+		expect(visibleWidth(narrow)).toBeLessThanOrEqual(80);
+	});
+
 	it("keeps completed step progress and the web entry point at ordinary terminal widths", () => {
 		const statuses = new Map([
 			[STATUS.backlog, { text: countsText(itemCounts({ backlog: 3, todo: 4, ongoing: 2, done: 5 })) }],

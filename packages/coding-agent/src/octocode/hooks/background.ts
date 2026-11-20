@@ -124,9 +124,7 @@ export function registerBackgroundHooks(api: FeatureSetup) {
 							if (result.code !== 0 || result.timedOut) return;
 							const context = codexContext(event, result.stdout, warn);
 							if (context)
-								pending = [
-									capContext([...pending, limitCodexContext(context, hook.additionalContextLimit)].join("\n\n")),
-								];
+								pending.push(capContext(limitCodexContext(context, hook.additionalContextLimit)));
 							return;
 						}
 						if (hook.asyncRewake && result.code === 2) {
@@ -136,7 +134,7 @@ export function registerBackgroundHooks(api: FeatureSetup) {
 						}
 						if (result.code !== 0) return;
 						const context = backgroundContext(result.stdout);
-						if (context) pending = [capContext([...pending, context].join("\n\n"))];
+						if (context) pending.push(capContext(context));
 					})
 					.catch(() => undefined)
 					.finally(() => {

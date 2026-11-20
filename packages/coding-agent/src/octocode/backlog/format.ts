@@ -274,13 +274,6 @@ export function sessionTaskTally(store: BacklogStore, self: string): TaskTally {
 	return total;
 }
 
-/** Dropped steps stay in the denominator and are named separately; an empty checklist has no progress chip. */
-export function taskProgressText(tally: TaskTally): string | undefined {
-	const total = tally.todo + tally.ongoing + tally.done + tally.dropped;
-	if (!total) return undefined;
-	return `${tally.done}/${total} steps done${tally.dropped ? ` · ${tally.dropped} dropped` : ""}`;
-}
-
 /** Keep the web workspace discoverable even when there are no open items; append the open backlog counts (closed items stay in `/backlog`). */
 export function countsText(counts: BacklogCounts): string {
 	const { items } = counts;

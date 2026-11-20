@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { stripRowMarks, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow } from "../../src/octocode/team/panel.ts";
@@ -16,7 +16,8 @@ import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
 /** Lines without the style resets a cut (`…`) adds, for exact comparisons. */
-const plain = (lines: string[]) => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+/** A row as drawn: no colour, and no row marks (the renderer strips them before output). */
+const plain = (lines: string[]) => lines.map((line) => stripRowMarks(line).replace(/\x1b\[[0-9;]*m/g, ""));
 /** An agent's grid row and the line under it (its stats line when open and it has stats). */
 const groupOf = (lines: string[], name: string): [string, string] => {
 	const at = lines.findIndex((line) => line.includes(name));

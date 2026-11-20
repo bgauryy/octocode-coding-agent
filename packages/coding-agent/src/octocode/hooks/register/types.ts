@@ -15,6 +15,8 @@ export const STOP_TYPE = "octocode-hook-stop";
 export const STOP_PREFIX = "Stop hook feedback:\n";
 /** Claude Code's cap on consecutive Stop-hook continuations; a tool call resets the count. */
 export const STOP_CONTINUE_CAP = 8;
+/** Octocode's own bound on Stop-hook continuations in one run: a tool call does not reset it, only a new prompt does. */
+export const STOP_CONTINUE_RUN_CAP = 32;
 /** A hook run this slow is reported once: PreToolUse hooks hold back every call of the batch. */
 export const SLOW_HOOK_MS = 5_000;
 

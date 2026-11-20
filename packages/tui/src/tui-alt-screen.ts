@@ -133,6 +133,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.scrollbar = new AltScreenScrollbar(host);
 		this.viewport = {
 			search: this.search,
+			getFocusedComponent: () => this.getFocusedComponent(),
 			arrowBurst: new ArrowBurstScroll(this.wheelScroll, this.scrollBy.bind(this), this.deliverInput.bind(this)),
 			selection: this.selection,
 			scrollbar: this.scrollbar,

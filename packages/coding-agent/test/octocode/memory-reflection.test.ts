@@ -267,6 +267,30 @@ describe("reflection at session end", () => {
 		user("No, use yarn here, not npm"),
 	];
 
+	it("shows the model only candidates no saved lesson already says", async () => {
+		writeWorkspace("## Gotchas\n- Use yarn here; npm rewrites the lockfile (user 2026-11-18)\n");
+		queueCandidates(
+			memoryStore(cwd),
+			["use yarn here, npm rewrites the lockfile!", "Run the db tests with the node runner"].map((text) => ({
+				text,
+				kind: "gotcha" as const,
+				origin: "checkpoint" as const,
+				evidence: "session s1",
+			})),
+			"s1",
+		);
+		const small = scripted("{}");
+		await setup({ small }).fire(
+			"session_shutdown",
+			{ reason: "quit" },
+			ctxWith([...turns(4), call("a", "file", {}), result("a", "file", "ok"), user("No, use yarn here, not npm")]),
+		);
+		// The session's end also runs consolidation; the reflection's prompt is the one that names the signal.
+		const prompt = small.prompts.find((text) => text.includes("correction (session s1"));
+		expect(prompt).toContain("Run the db tests with the node runner");
+		expect(prompt).not.toContain("npm rewrites the lockfile!");
+	});
+
 	it("runs only with a signal, writes at most 3 ops as the reflection's, and keeps pins", async () => {
 		writeWorkspace("## Preferences\n- ! Spend money only when I ask (user 2026-11-18)\n");
 		const small = scripted(
@@ -494,6 +518,29 @@ describe("consolidation", () => {
 		expect(small.prompts).toHaveLength(1);
 		expect(readWorkspace()).toContain("Use yarn; npm rewrites the lockfile");
 		expect(fake.entries.filter((entry) => entry.customType === MEMORY_PASS_TYPE)).toHaveLength(1);
+	});
+
+	it("does not call the model when every candidate is a saved line, a repeat of AGENTS.md or a copy", async () => {
+		writeWorkspace("## Decisions\n- Keep the TUI renderer (user 2026-11-18)\n");
+		queue("keep the  TUI renderer!", "Never run two full test suites at once", "Use yarn: npm breaks CI");
+		queue("USE YARN, npm breaks CI.");
+		const small = scripted("{}");
+		await consolidateDue(ctxWith([]), deps(small), "start");
+		// "Use yarn" is not a copy of anything saved: only it reaches the model, once, with no duplicate.
+		expect(small.prompts).toHaveLength(1);
+		expect(small.prompts[0]).toContain("Use yarn: npm breaks CI");
+		expect(small.prompts[0]).not.toContain("USE YARN");
+		expect(small.prompts[0]).not.toContain("- [decision] keep the");
+		expect(small.prompts[0]).not.toContain("two full test suites at once (");
+	});
+
+	it("skips the model call entirely when nothing is left to merge, and drops the settled candidates", async () => {
+		writeWorkspace("## Decisions\n- Keep the TUI renderer (user 2026-11-18)\n");
+		queue("keep the  TUI renderer!", "Never run two full test suites at once");
+		const small = scripted("{}");
+		await consolidateDue(ctxWith([]), deps(small), "start");
+		expect(small.prompts).toHaveLength(0);
+		expect(listCandidates(memoryStore(cwd))).toEqual([]);
 	});
 
 	it("without a model: evicts a repeat of AGENTS.md, marks a gone path, confirms a restated line", async () => {

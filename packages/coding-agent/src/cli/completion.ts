@@ -23,7 +23,7 @@ const commands: Record<string, readonly string[]> = {
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	trust: ["list", "add", "remove"],
-	backlog: ["get", "list", "export"],
+	backlog: ["get", "list", "export", "groom"],
 	profile: [],
 	marketplace: ["add", "list", "update", "remove"],
 	plugin: ["install", "update", "remove", "list"],

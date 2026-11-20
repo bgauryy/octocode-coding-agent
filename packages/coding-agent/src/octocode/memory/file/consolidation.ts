@@ -25,6 +25,7 @@ import {
 	type SmallModel,
 } from "./passes.ts";
 import { globalMemoryFile, type MemoryFileRef, workspaceMemoryFile } from "../../permission/memory-files.ts";
+import { savedKeys, splitCandidates } from "./prefilter.ts";
 import { quarantineReason, type Taint } from "./quarantine.ts";
 
 /**
@@ -146,11 +147,13 @@ export async function consolidateDue(
 		const now = deps.now?.() ?? Date.now();
 		const shown = pending.slice(0, MAX_CANDIDATES);
 		const modelOps = new Map<string, MemoryOp[]>();
+		// Code settles candidates a saved line, AGENTS.md or an earlier candidate covers; the model sees only the rest.
+		const { remaining, resolved } = splitCandidates(shown, savedKeys(files), deps.repeats);
 		let model: string | undefined;
-		if (deps.small && files.length > 0) {
+		if (deps.small && files.length > 0 && remaining.length > 0) {
 			const reply = await askSmallModel(deps.api, ctx, deps.small, {
 				kind: "memory_consolidation",
-				prompt: consolidationPrompt(files, shown, new Date(now).toISOString().slice(0, 10)),
+				prompt: consolidationPrompt(files, remaining, new Date(now).toISOString().slice(0, 10)),
 				maxTokens: MAX_TOKENS,
 				timeoutMs: deps.timeoutMs,
 				...(deps.signal ? { signal: deps.signal } : {}),
@@ -197,9 +200,8 @@ export async function consolidateDue(
 			);
 			outcomes.push(outcome);
 		}
-		// The model saw these and kept what it wanted; without one only the candidates that restate a line did their work.
-		const restated = new Set(files.flatMap((file) => file.lines.map((line) => memoryLineKey(line.text))));
-		const used = model ? shown : pending.filter((memory) => restated.has(normalizeTitle(memory.title)));
+		// The model saw `remaining` and kept what it wanted; without a call only the candidates code settled did their work.
+		const used = model ? shown : resolved;
 		dropCandidates(
 			deps.store,
 			used.map((memory) => memory.id),

@@ -433,8 +433,9 @@ describe("team tools on a fake Octocode", () => {
 			content: [{ type: "text", text: "Queued message #42 for b." }],
 			details: { id: 42, to: ["b"] },
 		};
-		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: false }))).toBe(
-			'  ⎿  #42 queued for b · "hello" (ctrl+o to expand)',
+		// The whole message shows, collapsed too.
+		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: false }), 1_000)).toBe(
+			`  ⎿  #42 queued for b\n     hello\n     ${"x".repeat(500)}`,
 		);
 		expect(rendered(send.renderResult(delivered, {}, theme, { args: { message: long }, expanded: true }), 1_000)).toBe(
 			`  ⎿  #42 queued for b\n     hello\n     ${"x".repeat(500)}`,
