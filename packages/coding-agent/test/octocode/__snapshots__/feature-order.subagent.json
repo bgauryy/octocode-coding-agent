@@ -12,7 +12,9 @@
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"agent_settle_end": ["registerWake@octocode/wake/register.ts"],
+		"agent_settle_end": [
+			"registerWake@octocode/wake/register.ts"
+		],
 		"agent_settled": [
 			"Delivery.install@octocode/ui/delivery.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
@@ -43,7 +45,9 @@
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts"
 		],
-		"cache_warming_decision": ["registerCompaction@octocode/compaction/register.ts"],
+		"cache_warming_decision": [
+			"registerCompaction@octocode/compaction/register.ts"
+		],
 		"context": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerCompaction@octocode/compaction/register.ts"
@@ -65,14 +69,22 @@
 			"registerTurnBudget@octocode/compaction/turn-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts"
 		],
-		"message_start": ["Delivery.install@octocode/ui/delivery.ts", "registerTeamEvents@octocode/team/tools/events.ts"],
-		"message_update": ["registerTeamEvents@octocode/team/tools/events.ts", "registerActivity@octocode/ui/activity.ts"],
+		"message_start": [
+			"Delivery.install@octocode/ui/delivery.ts",
+			"registerTeamEvents@octocode/team/tools/events.ts"
+		],
+		"message_update": [
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerActivity@octocode/ui/activity.ts"
+		],
 		"model_select": [
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"resources_discover": ["registerSkills@octocode/skills.ts"],
+		"resources_discover": [
+			"registerSkills@octocode/skills.ts"
+		],
 		"session_before_compact": [
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
@@ -82,9 +94,15 @@
 			"registerLeaveConfirmation@octocode/session-guards.ts",
 			"registerCheckpoints@octocode/files/checkpoint-command.ts"
 		],
-		"session_before_quit": ["registerLeaveConfirmation@octocode/session-guards.ts"],
-		"session_before_switch": ["registerLeaveConfirmation@octocode/session-guards.ts"],
-		"session_before_tree": ["registerCheckpoints@octocode/files/checkpoint-command.ts"],
+		"session_before_quit": [
+			"registerLeaveConfirmation@octocode/session-guards.ts"
+		],
+		"session_before_switch": [
+			"registerLeaveConfirmation@octocode/session-guards.ts"
+		],
+		"session_before_tree": [
+			"registerCheckpoints@octocode/files/checkpoint-command.ts"
+		],
 		"session_compact": [
 			"registerPlanning@octocode/plan/register.ts",
 			"registerRunningWork@octocode/sessions/register.ts",
@@ -100,7 +118,9 @@
 			"registerDeferredSchemaRestore@octocode/compaction/deferred-schemas.ts",
 			"registerArchiveLifecycle@octocode/archive/lifecycle.ts"
 		],
-		"session_compact_failed": ["registerCompaction@octocode/compaction/register.ts"],
+		"session_compact_failed": [
+			"registerCompaction@octocode/compaction/register.ts"
+		],
 		"session_compact_prewarm": [
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
 			"registerCompaction@octocode/compaction/register.ts"
@@ -161,10 +181,19 @@
 			"registerRecordedSpend@octocode/team/tools/spend.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
-		"thinking_level_select": ["registerTeamEvents@octocode/team/tools/events.ts"],
-		"tool_call": ["registerTurnSetup@octocode/turn.ts", "registerToolGates@octocode/tool-gates.ts"],
-		"tool_call_discarded": ["registerToolGates@octocode/tool-gates.ts"],
-		"tool_call_early_start": ["registerToolGates@octocode/tool-gates.ts"],
+		"thinking_level_select": [
+			"registerTeamEvents@octocode/team/tools/events.ts"
+		],
+		"tool_call": [
+			"registerTurnSetup@octocode/turn.ts",
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_call_discarded": [
+			"registerToolGates@octocode/tool-gates.ts"
+		],
+		"tool_call_early_start": [
+			"registerToolGates@octocode/tool-gates.ts"
+		],
 		"tool_execution_end": [
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
 			"registerReadReceipts@octocode/files/read-receipts.ts",
@@ -180,7 +209,9 @@
 			"registerActivity@octocode/ui/activity.ts",
 			"registerLoopGuard@octocode/loop-guard.ts"
 		],
-		"tool_execution_update": ["registerTeamEvents@octocode/team/tools/events.ts"],
+		"tool_execution_update": [
+			"registerTeamEvents@octocode/team/tools/events.ts"
+		],
 		"tool_result": [
 			"registerReadReceipts@octocode/files/read-receipts.ts",
 			"registerNestedContext@octocode/files/nested-context.ts",
@@ -199,14 +230,33 @@
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerHarnessSync@octocode/subagents/harness-sync.ts"
 		],
-		"turn_prompt": ["registerTurnSetup@octocode/turn.ts"],
+		"turn_prompt": [
+			"registerTurnSetup@octocode/turn.ts"
+		],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts"
 		],
-		"ui_prompt_end": ["registerActivity@octocode/ui/activity.ts"],
-		"ui_prompt_start": ["registerActivity@octocode/ui/activity.ts"],
-		"user_bash": ["registerToolGates@octocode/tool-gates.ts"]
+		"ui_prompt_end": [
+			"registerActivity@octocode/ui/activity.ts"
+		],
+		"ui_prompt_start": [
+			"registerActivity@octocode/ui/activity.ts"
+		],
+		"user_bash": [
+			"registerToolGates@octocode/tool-gates.ts"
+		]
 	},
-	"tools": ["file", "bash", "backlog", "backlogPlan", "memory", "web", "agent", "archive", "skill", "wait"]
+	"tools": [
+		"file",
+		"bash",
+		"backlog",
+		"backlogPlan",
+		"memory",
+		"web",
+		"agent",
+		"archive",
+		"skill",
+		"wait"
+	]
 }

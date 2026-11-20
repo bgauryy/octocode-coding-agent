@@ -466,9 +466,13 @@ describe("Team", () => {
 				false,
 			);
 			child.onUsage({ input: 5, output: 1, cost: { total: 0 } }, "local/llama", true);
-			// Activity, tool counts and usage are written with the 5-second heartbeat, not on every tick.
+			// A changed activity line is written within LINE_FLUSH_MS (the panel follows a child within about a second), and the
+			// write carries the counts; unchanged rows wait for the 5-second heartbeat.
 			vi.advanceTimersByTime(1_000);
-			expect(main.members().find((m) => m.id === "researcher-1234")).toMatchObject({ toolCalls: 0 });
+			expect(main.members().find((m) => m.id === "researcher-1234")).toMatchObject({
+				activity: "Running localSearch foo",
+				toolCalls: 1,
+			});
 			vi.advanceTimersByTime(4_000);
 			expect(main.members().find((m) => m.id === "researcher-1234")).toMatchObject({
 				status: "working",

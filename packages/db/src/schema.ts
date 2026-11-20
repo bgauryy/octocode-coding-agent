@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import * as schemaVersion from "./queries/schema-version.ts";
 import { COORDINATION_CARRIED, type CarriedTable } from "./carry-over.ts";
+import { amendCoordination, coordinationGaps } from "./schema-amend.ts";
 import { FTS, SCHEMA } from "./schema-sql.ts";
 
 /** A foreign file or unsupported schema. Retrying the same file cannot fix it. */
@@ -39,14 +40,20 @@ export interface FileKind {
 	create(db: DatabaseSync): { fts: boolean };
 	/** Tables the new file takes over from one this version retires (`carry-over.ts`); a rebuildable file has none. */
 	carried?: readonly CarriedTable[];
+	/**
+	 * Additions this version made without a bump (`schema-amend.ts`): whether a current file lacks any, and adding them.
+	 * Only tables and nullable columns an older Octocode of the same version never reads.
+	 */
+	amend?: { gaps(db: DatabaseSync): boolean; apply(db: DatabaseSync): void };
 }
 
 /** The coordination file (`workspaces.db`): its schema with the optional full-text index over memories. */
 export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
-	version: 11,
+	version: 10,
 	carried: COORDINATION_CARRIED,
+	amend: { gaps: coordinationGaps, apply: amendCoordination },
 	create: (db) => {
 		db.exec(SCHEMA);
 		try {
@@ -108,7 +115,11 @@ export function prepareSchema(
 ): { fts: boolean } {
 	for (;;) {
 		const state = schemaState(db, file, kind);
-		if (state.status === "current") return { fts: state.fts };
+		if (state.status === "current") {
+			// Checked first, so opening a complete file never takes the write lock.
+			if (kind.amend?.gaps(db)) transaction(() => kind.amend?.apply(db));
+			return { fts: state.fts };
+		}
 		const created = transaction(() => {
 			if (schemaState(db, file, kind).status !== "empty") return undefined;
 			const made = kind.create(db);

@@ -1,7 +1,7 @@
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import type { Db } from "../../../../../db/src/api.ts";
 import { type Actor, type Item, BacklogError, auditActor, parseRef } from "../item.ts";
-import { getItem, liveHolder } from "../reads.ts";
+import { getItem, handedTo, liveHolder } from "../reads.ts";
 
 /**
  * Who may touch which tasks, in the item rules' terms. The user may touch any task. A subagent touches only the tasks
@@ -15,9 +15,9 @@ export function itemAccess(db: Db, item: Item, actor: Actor): void {
 			throw new BacklogError(
 				`${item.ref} is not claimed by your coordinator: a subagent touches only the tasks of items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or put the finding in your report.`,
 			);
-		if (actor.item !== undefined && parseRef(actor.item) !== item.seq)
+		if (actor.item !== undefined && parseRef(actor.item) !== item.seq && !handedTo(db, actor, item))
 			throw new BacklogError(
-				`${item.ref} is not your item: your coordinator started you for B${parseRef(actor.item) ?? actor.item}, the only item whose tasks you may touch.`,
+				`${item.ref} is not your item: your coordinator started you for B${parseRef(actor.item) ?? actor.item} and may hand you more; you touch only those items' tasks.`,
 			);
 		return;
 	}

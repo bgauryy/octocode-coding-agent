@@ -13,6 +13,7 @@ import {
 	type AgentRun,
 	agentRuns,
 	backlog,
+	itemHandoffs,
 	dbStamp,
 	archivedAudits,
 	transactionWhenReady,
@@ -250,5 +251,15 @@ export class BacklogStore {
 	/** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */
 	liveHolder(assignee: string, timer = false): string | undefined {
 		return holderOf(this.db, assignee, timer);
+	}
+
+	/** Lets running subagent `agent`, started by `by`, update `item` besides its start item (`agent` `message` with `item`). */
+	hand(item: Pick<Item, "rowId">, agent: string, by: string): void {
+		itemHandoffs.grant(this.db, agent, item.rowId, by, this.now());
+	}
+
+	/** Takes back `item` from `agent`, or every item handed to it when its run ends. */
+	unhand(agent: string, item?: Pick<Item, "rowId">): void {
+		itemHandoffs.revoke(this.db, agent, item?.rowId);
 	}
 }

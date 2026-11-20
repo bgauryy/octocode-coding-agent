@@ -44,9 +44,20 @@ export async function tryExecuteFeatureCommand(
 	// Parse command name and args
 	const parsed = parseSlashCommand(text);
 	if (!parsed) return false;
-	const { name: commandName, args } = parsed;
+	let { name: commandName, args } = parsed;
 
-	const command = runner.getCommand(commandName);
+	let command = runner.getCommand(commandName);
+	if (!command) {
+		// A retired form the terminal resolves to a built-in (`/mcp disable x` runs `/configuration`) still reaches its
+		// own handler where that built-in is not available, so the handler can say where the command moved.
+		const typed = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+		const typedCommand = typed && typed[1] !== commandName ? runner.getCommand(typed[1]) : undefined;
+		if (typed && typedCommand) {
+			commandName = typed[1];
+			args = typed[2] ?? "";
+			command = typedCommand;
+		}
+	}
 	if (!command) {
 		if (getBuiltinCommand(commandName)?.requiresNative) throw new Error(`/${commandName} requires native features.`);
 		if (getBuiltinCommand(commandName))

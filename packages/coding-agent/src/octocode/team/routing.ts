@@ -150,7 +150,6 @@ export function interruptRefusal(
 	return undefined;
 }
 
-
 /** A path to lock as the file tools resolve it: relative from the session's cwd (not the repository root), `~` from home. */
 export function resolveLockPath(cwd: string | undefined, entry: string): string {
 	return resolveToolPath(cwd ?? process.cwd(), entry);

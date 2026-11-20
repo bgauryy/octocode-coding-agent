@@ -4,6 +4,7 @@ Entries are shown once by `octocode` after an update and on demand with `/change
 
 ## [Unreleased]
 
+- Every Octocode process is now named `octocode-agent-<role>-<id>` (`octocode-agent-main-c0ea9f3e`, `octocode-agent-implementer-nifty-beak`) in `ps`, `/processes` and the monitor; `--to`, `/agents external connect` and `agent` messages take the new names. Restart running sessions after updating so every process uses one spelling.
 - A prompt no longer pays for two compactions in a row: a compaction before a prompt keeps room for it, and after a compaction (before the prompt, after the last reply or between turns) the request it was for compacts again only when it would not fit the model's window at all. One over the threshold but within the window is sent, and the next request compacts. A compaction you cancel with Esc is not started again for the same request.
 - Automatic compaction counts each model's tokens at its own tokenizer's ratio: GPT models at about 3.5 characters per token and DeepSeek models (new) at about 3.3, instead of Claude's denser 2.5 for every model, so GPT sessions no longer compact about 30% early. The context meter and the compaction outcome use the same count.
 - The web view shows what the terminal says: each notice (a memory pass's summary, a cache warming cost, a hook diagnostic) appears as a toast and as a line in Activity while the page is open; an identical notice within 10 seconds appears once.

@@ -22,13 +22,12 @@ export function agentToolSpec(runners: readonly string[] = []) {
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Skills to load. Omit for the profile default; an empty list loads none",
+					description: "Skills to load; omit: profile default; empty: none",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description:
-						"MCP servers added to the profile defaults. Omit to use the session's servers; an empty list uses the profile only",
+					description: "MCP servers added to the profile defaults; omit: the session's servers; empty: profile only",
 				}),
 			),
 			goal: Type.Optional(
@@ -42,13 +41,13 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			}),
 			item: Type.Optional(
 				Type.String({
-					description: "Your ongoing item or an unclaimed one (claimed here); the child updates only it.",
+					description: "Your ongoing or an unclaimed item (claimed here); the child updates only it.",
 				}),
 			),
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: start once each B<n> is done, each agent:<name> reports done, each job:bash-<n> (this session) exits 0 and lock:full-run is free; a failure holds it.",
+						"With background: start after each B<n>, agent:<name> and job:bash-<n> (this session) finishes and lock:full-run is free; a failure holds it.",
 				}),
 			),
 			resume: Type.Optional(

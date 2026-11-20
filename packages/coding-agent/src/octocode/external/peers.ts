@@ -7,7 +7,7 @@ import { issueTicket, ownInstance } from "../api/identity.ts";
 import { probeInstances } from "../api/probe.ts";
 import { CLIENT_MARGIN_MS, PREPARING, SEND_REPLY_MS, WAIT_MS, WAITING_FOR_USER } from "../api/protocol.ts";
 import { ticketTarget } from "../api/registry-integrity.ts";
-import { TITLE_PREFIX } from "../processes/title.ts";
+import { TITLE_PREFIX } from "../shared/process-title.ts";
 import { apiDir, describeInstance, type InstanceRecord, listInstances, selectInstance } from "../api/registry.ts";
 import { fenceUntrusted } from "../shared/fence.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
@@ -16,7 +16,6 @@ import { canonical, locateRepo } from "../worktrees/repo.ts";
 
 /** The `to` of a worktree session's merge request: the session in the repository's main checkout. */
 const COORDINATOR = "coordinator";
-
 
 /** What sending needs of the session: the same checks an external prompt passes, and a way to tell the model later. */
 interface PeerPolicy {

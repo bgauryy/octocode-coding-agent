@@ -167,47 +167,44 @@ describe("a schema change that retires the agent database", () => {
 		expect(kept(`${file}.v${older.version}.retired`)).toBe("me");
 	});
 
-	it("carries items, memories and the other carried tables from a version 10 file, which has no jobs table or lease item", () => {
-		const tenth: FileKind = {
+	it("adds the jobs table and the lease item to a file made before them, in place, while an older Octocode still has it open", () => {
+		// What an Octocode built before the additions creates and opens: the same version, without them, adding nothing.
+		const before: FileKind = {
 			...COORDINATION_FILE,
-			version: 10,
+			amend: undefined,
 			create: (db) => {
 				const made = COORDINATION_FILE.create(db);
 				db.exec("DROP TABLE jobs; ALTER TABLE leases DROP COLUMN item;");
 				return made;
 			},
 		};
-		const file = previous(tenth);
-		const before = new DatabaseSync(file, { readOnly: true });
+		const file = previous(before);
+		const old = open(file, before);
 		try {
-			expect(before.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'jobs'").get()).toBeUndefined();
+			const agent = open(file);
+			try {
+				expect(versionOf(file)).toBe(COORDINATION_FILE.version);
+				expect(count(agent, "jobs")).toBe(0);
+				expect(agent.db.prepare("SELECT name FROM pragma_table_info('leases') WHERE name = 'item'").all()).toHaveLength(
+					1,
+				);
+				// The same file, every row in place: nothing was set aside or carried.
+				expect(agent.db.prepare("SELECT title FROM backlog").all()).toEqual([{ title: "Ship the carry step" }]);
+				expect(agent.db.prepare("SELECT value FROM meta WHERE key = 'carried_from_retired'").get()).toBeUndefined();
+				expect(fs.readdirSync(path.dirname(file)).filter((name) => name.includes(".retired"))).toEqual([]);
+			} finally {
+				agent.close();
+			}
+			// The older Octocode keeps writing and reading through the change.
+			old.db.prepare("INSERT INTO meta (key, value) VALUES ('old', 'still here')").run();
+			expect(old.db.prepare("SELECT title FROM backlog").all()).toEqual([{ title: "Ship the carry step" }]);
 		} finally {
-			before.close();
+			old.close();
 		}
-
-		const agent = open(file);
-		try {
-			expect(versionOf(file)).toBe(11);
-			expect(agent.db.prepare("SELECT title FROM backlog").all()).toEqual([{ title: "Ship the carry step" }]);
-			expect(agent.db.prepare("SELECT title FROM memories").all()).toEqual([{ title: "Answer in tables" }]);
-			expect(count(agent, "backlog_notes")).toBe(1);
-			expect(count(agent, "trusted_folders")).toBe(1);
-			// The new tables are there and empty: jobs are rebuildable state, never carried.
-			expect(count(agent, "jobs")).toBe(0);
-			expect(agent.db.prepare("SELECT name FROM pragma_table_info('leases') WHERE name = 'item'").all()).toHaveLength(
-				1,
-			);
-			const { carried, left } = JSON.parse(
-				(agent.db.prepare("SELECT value FROM meta WHERE key = 'carried_from_retired'").get() as { value: string })
-					.value,
-			) as { carried: Record<string, number>; left: Record<string, string> };
-			expect(carried).toMatchObject({ workspaces: 1, memories: 1, backlog: 1, backlog_notes: 1, trusted_folders: 1 });
-			expect(carried).not.toHaveProperty("jobs");
-			expect(left).toEqual({});
-		} finally {
-			agent.close();
-		}
-		expect(kept(`${file}.v10.retired`)).toBe("me");
+		// A complete file is opened without another change.
+		const again = open(file);
+		again.close();
+		expect(read<{ value: string }>(file, "SELECT value FROM meta WHERE key = 'old'")?.value).toBe("still here");
 	});
 
 	it("leaves a table whose columns the new schema lacks in the retired file, with the tables that need it", () => {

@@ -41,8 +41,8 @@ const LEAF_MESSAGE_LINE =
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
 
-/** Fields two types share on purpose: the same value with the same meaning (files, or "dir/" for a tree). */
-const SHARED_FIELDS = new Set(["paths"]);
+/** Fields two types share on purpose: the same value with the same meaning (files, or "dir/" for a tree; a backlog item). */
+const SHARED_FIELDS = new Set(["paths", "item"]);
 
 type Schema = { properties?: Record<string, TSchema & { description?: string }> };
 

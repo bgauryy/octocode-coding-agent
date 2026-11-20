@@ -28,7 +28,7 @@ import { describeMembers } from "../../../team/member-list.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { describeChanges, describeConflicts, memberGoals, mutatedPaths } from "../../../team/routing.ts";
 import type { Team } from "../../../team/session.ts";
-import { type ChildBudgets, grantRequests } from "../../../team/tools/grant.ts";
+import { type ChildBudgets, childStanding, grantRequests } from "../../../team/tools/grant.ts";
 import {
 	INTERPRETER_HELD,
 	NOT_CHECKED_HELD,
@@ -123,7 +123,7 @@ export function registerCollab(
 ): { reservationGate: (event: ToolCallEvent, ctx: FeatureContext) => Promise<ToolCallEventResult | undefined> } {
 	registerMessageRenderer(api, team);
 	registerCoordinateTool(api, team, options);
-	registerSendMessageTool(api, team, options.registerTool, options.peers);
+	registerSendMessageTool(api, team, options.registerTool, options.peers, options.budgets?.hand);
 	registerTeamEvents(api, team, options.beforeLeave, options.shellChanges);
 	registerRecordedSpend(api, team);
 	registerBreakAttribution(api, team);
@@ -231,10 +231,10 @@ function registerCoordinateTool(
 				action: StringEnum(actions, {
 					description:
 						"list: agents, held paths; " +
-						(canStop ? "join: set your goal; leave: unregister, release reservations; " : "") +
+						(canStop ? "join: set your goal; leave: unregister; " : "") +
 						"lock: reserve paths, all or none; unlock: release (none named: all); " +
 						(canStop
-							? "stop: kill your background child; merge: land an isolated child's work here, or a linked worktree branch in the main checkout (asks user); grant: more model requests for your running child this run; "
+							? "stop: kill your background child; merge: land an isolated child's work here, or a linked worktree branch (asks user); grant: more model requests for your running child; "
 							: "") +
 						"changes: recent agent file changes",
 				}),
@@ -340,7 +340,7 @@ function registerCoordinateTool(
 				if (error) throw new Error(error);
 				const working = members.filter((member) => member.status === "working").length;
 				const asks = childAsks(members, team.id, (child, parent, since) => team.asks(child, parent, since));
-				const standing = (id: string) => budgets?.usage(id);
+				const standing = (id: string) => childStanding(budgets, id);
 				const details = team.audit.details(members);
 				const agents = describeMembers(
 					members,

@@ -28,6 +28,8 @@ interface PromptInputs {
 		| undefined;
 	/** Browser specialists to use when the main session has no browser tool. */
 	browserProfiles?: string[];
+	/** Desktop specialists to use for native apps; empty without Cua Driver, or when the main session holds the desktop tools. */
+	desktopProfiles?: string[];
 	/** False inside a subagent: no delegation, report back to the parent. */
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
@@ -57,6 +59,8 @@ interface PromptInputs {
 	canMcp?: boolean;
 	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
 	browserControl?: boolean;
+	/** Whether this agent controls the desktop: its profile declares `desktop.control`. */
+	desktopControl?: boolean;
 	/** Days an untouched scratch folder is kept (`retention.days`; 0 keeps it); default from `resolveRetention`. */
 	scratchDays?: number;
 }
@@ -91,6 +95,7 @@ function policyFlags(input: PromptInputs) {
 		askUser: input.canAsk !== false,
 		backlog: input.canBacklog !== false,
 		browserControl: input.browserControl === true,
+		desktopControl: input.desktopControl === true,
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
 		childStarted: input.childStarted === true,
@@ -114,6 +119,7 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 	const values = {
 		...renderPolicySection("policy", () => policyFlags(input)),
 		browserProfiles: (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", "),
+		desktopProfiles: (input.desktopProfiles ?? []).map((name) => `\`${name}\``).join(", "),
 		profiles: input.profiles
 			.map(
 				(profile) =>

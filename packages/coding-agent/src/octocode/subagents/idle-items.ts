@@ -9,20 +9,17 @@ import { runningWorkOf } from "../shared/running-work.ts";
 import type { Team } from "../team/session.ts";
 import { itemKey, wakeGateOf } from "../wake/gate.ts";
 import type { AgentRuns } from "./claim.ts";
+import { servedItems } from "./handed-items.ts";
 import type { Lingering } from "./linger.ts";
 import { registerStalledItems } from "./stalled-items.ts";
 
 /** Ongoing items read to find this session's; the board lists the most urgent first. */
 const SCAN = 50;
 
-/** The items a running child of this session works on (an ended child's entry is dropped). */
-function linkedItems(runs: Pick<AgentRuns, "running" | "items">): Set<string> {
-	const linked = new Set<string>();
-	for (const [id, ref] of runs.items) {
-		if (runs.running.has(id)) linked.add(ref);
-		else runs.items.delete(id);
-	}
-	return linked;
+/** The items a running child of this session works on, started for or handed since (an ended child's entry is dropped). */
+function linkedItems(runs: Pick<AgentRuns, "running" | "items" | "handed">): Set<string> {
+	for (const id of runs.items.keys()) if (!runs.running.has(id)) runs.items.delete(id);
+	return new Set([...servedItems(runs)].map(([, ref]) => ref));
 }
 
 /** The items a running background bash job was started for (its `item`). */
@@ -67,7 +64,7 @@ function withAncestors(store: Pick<BacklogStore, "get">, refs: Iterable<string>)
 export function registerIdleItems(
 	api: FeatureSetup,
 	team: Team,
-	runs: Pick<AgentRuns, "running" | "items">,
+	runs: Pick<AgentRuns, "running" | "items" | "handed">,
 	lingering: Pick<Lingering, "onItem">,
 ): () => void {
 	const stopStalls = registerStalledItems(api, team, runs);

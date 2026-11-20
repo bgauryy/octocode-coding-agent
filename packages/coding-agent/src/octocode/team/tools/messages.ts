@@ -13,6 +13,7 @@ import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { liveEndpoints, type LiveTeam } from "../endpoint-live.ts";
 import { mailRows, sendOutcome, sendSummary } from "./message-rows.ts";
 import { attachmentText } from "../attachment.ts";
+import { type HandItem, type SendParams, handAndSend } from "./hand.ts";
 
 /** Shows team mail in the conversation: a header per message, its body previewed while collapsed. */
 export function registerMessageRenderer(api: FeatureSetup, team?: LiveTeam): void {
@@ -105,7 +106,125 @@ export function registerSendMessageTool(
 	team: Team,
 	registerTool: FeatureSetup["tools"]["register"] = (tool) => api.tools.register(tool),
 	peers?: PeerRoute,
+	hand?: HandItem,
 ): void {
+	/** Sends one message (without a handoff: `handAndSend` puts its notice in front). */
+	const deliver = async (params: SendParams, signal: AbortSignal | undefined, ctx: FeatureContext) => {
+		// A teammate keeps its name: only a `to` no live agent answers to can be another process.
+		const to = params.to;
+		if (params.attach && params.forward !== undefined)
+			throw new Error("attach goes with a new message, not a forward. Nothing was sent.");
+		if (
+			to !== undefined &&
+			peers?.addresses(to) &&
+			!team.members().some((each) => each.id === to || each.role === to)
+		) {
+			if (params.attach)
+				throw new Error(
+					`${to} is another process: attach reaches teammates only. Nothing was sent; send the message without it.`,
+				);
+			return sendToPeer(peers, { ...params, to }, ctx, signal);
+		}
+		const me = team.join();
+		if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
+		if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
+		// The reference leads, so a long message whose tail is saved to a file still delivers it.
+		const body = params.attach
+			? `${await attachmentText(ctx.cwd, params.attach)}\n\n${params.message}`
+			: params.message;
+		const result = await team.send(params.to, body, {
+			...(signal ? { signal } : {}),
+			...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
+			...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),
+			...(params.interrupt ? { interrupt: true } : {}),
+			...(params.wake !== undefined ? { wake: params.wake } : {}),
+		});
+		if ("error" in result) throw new Error(result.error);
+		const details = {
+			to: result.sent,
+			id: result.id,
+			...(result.delivery ? { delivery: result.delivery } : {}),
+			...(result.departed?.length ? { departed: result.departed } : {}),
+			...(result.starting?.length ? { starting: result.starting } : {}),
+		};
+		if (result.resumed) return textResult(result.resumed, details);
+		// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
+		const waits =
+			process.env[PARENT_WAITS_ENV] === "1" && team.parentId !== undefined && result.sent.includes(team.parentId)
+				? ` ${renderPrompt("shared/parent-waits.md")}`
+				: "";
+		if (result.relayed)
+			return textResult(
+				`${result.sent.join(", ")} is not a live agent in your team: message #${result.id} goes through your coordinator ${result.relayed}, which resumes it with the message if it is a finished subagent it can resume. If not, you get a notice saying why.`,
+				{ ...details, relayed: result.relayed },
+			);
+		if (params.interrupt)
+			return textResult(
+				`Interrupt queued for ${result.sent.join(", ")} as message #${result.id}: a busy subagent stops its current step within a second.`,
+				details,
+			);
+		const departed = result.departed?.length ? ` Not sent to ${result.departed.join(", ")} (left the team).` : "";
+		const starting = result.starting?.length
+			? ` Not reached, still starting: ${result.starting.join(", ")}; send again once they have joined.`
+			: "";
+		const recipients = result.sent.join(", ");
+		// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
+		const delivery = result.delivery ?? {};
+		const group = (status: string) => result.sent.filter((recipient) => delivery[recipient] === status);
+		const pull = group("pull");
+		const fate = (who: string[], one: string, many: string) =>
+			who.length === 0 ? "" : `${who.join(", ")} ${who.length > 1 ? many : one}`;
+		const stalled = fate(
+			group("stalled"),
+			"has not been seen for over a minute: the message waits, and you are told if it never recovers (it then becomes a dead letter).",
+			"have not been seen for over a minute: the message waits, and you are told if they never recover (it then becomes a dead letter).",
+		);
+		// An answer to the recipient's own question is never paced; any other agent-started turn is.
+		const pace =
+			params.replyTo === undefined && group("wake").length > 0
+				? `Agent-started turns are paced (at most one per ${WAKE_INTERVAL_MS / 1000}s; mail meanwhile joins that turn).`
+				: "";
+		if (params.replyRequired === true)
+			return textResult(
+				`Queued message #${result.id} for ${recipients} as a request: ${pull.length ? `${pull.join(", ")} must fetch their cooperative inbox; no turn is started there` : `${recipients} ${result.sent.length > 1 ? "are" : "is"} woken`} and must answer with replyTo ${result.id}.${departed}${starting}${[
+					pace,
+					stalled,
+				]
+					.filter(Boolean)
+					.map((part) => ` ${part}`)
+					.join("")}${waits}`,
+				details,
+			);
+		const fates = [
+			pull.length
+				? `${pull.join(", ")} reads it only when it fetches its cooperative runner inbox; this does not wake or resume the task.`
+				: "",
+			fate(
+				group("wake"),
+				"is woken: a turn starts if it is idle, otherwise it reads the message at its next step.",
+				"are woken: a turn starts for each idle one, otherwise they read the message at their next steps.",
+			),
+			pace,
+			fate(group("next-step"), "reads it at its next step.", "read it at their next steps."),
+			fate(
+				group("queued-quiet"),
+				"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes.",
+				"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes.",
+			),
+			stalled,
+		]
+			.filter(Boolean)
+			.join(" ");
+		return textResult(
+			[`Queued message #${result.id} for ${recipients} as an FYI (no reply requested).`, fates]
+				.filter(Boolean)
+				.join(" ") +
+				departed +
+				starting +
+				waits,
+			details,
+		);
+	};
 	registerTool(
 		timedTool({
 			name: "sendMessage",
@@ -118,11 +237,16 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Also an Octocode process name, or from a linked worktree "coordinator" (the main checkout session; none or several: nothing sent).'
+							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Or an Octocode process name; from a linked worktree, "coordinator": the main checkout session.'
 							: 'Agent id, role or "parent" in your tree; parent relays beyond it. "all": whole tree. Omit with replyTo: its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
+				item: Type.Optional(
+					Type.String({
+						description: "Backlog item to hand to the running child `to` names (claimed if unclaimed)",
+					}),
+				),
 				attach: Type.Optional(
 					Type.String({
 						description: "Text file in your worktree (≤64 KB) sent by reference; the recipient writes it by sha256",
@@ -131,7 +255,7 @@ export function registerSendMessageTool(
 				forward: Type.Optional(
 					Type.Integer({
 						description:
-							"Stored message # passed on unchanged (message: optional note); replies go to its sender. Teammates only",
+							"Stored message # passed on unchanged (message: a note); replies go to its sender. Teammates only",
 					}),
 				),
 				replyRequired: Type.Optional(
@@ -142,138 +266,26 @@ export function registerSendMessageTool(
 				wake: Type.Optional(
 					Type.Boolean({
 						description:
-							"Default: a new message starts an idle named agent's turn, paced; false: read at its next turn. Not with to: all",
+							"Default: starts an idle named agent's turn, paced; false: read at its next turn. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description:
-							"Message number answered: wakes the asker, closes its ask (a broadcast closes none). Teammates only",
+						description: "Message number answered: wakes the asker, closes its ask. Teammates only",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop the recipient's current step (starter only; with to: all, every recipient must be your subagent); default: its next step. Teammates only",
+							"true: stop its current step (starter only; with to: all, only your subagents); default: its next step. Teammates only",
 					}),
 				),
 			}),
 			async execute(_id, params, signal, _onUpdate, ctx) {
 				signal?.throwIfAborted();
-				// A teammate keeps its name: only a `to` no live agent answers to can be another process.
-				const to = params.to;
-				if (params.attach && params.forward !== undefined)
-					throw new Error("attach goes with a new message, not a forward. Nothing was sent.");
-				if (
-					to !== undefined &&
-					peers?.addresses(to) &&
-					!team.members().some((each) => each.id === to || each.role === to)
-				) {
-					if (params.attach)
-						throw new Error(
-							`${to} is another process: attach reaches teammates only. Nothing was sent; send the message without it.`,
-						);
-					return sendToPeer(peers, { ...params, to }, ctx, signal);
-				}
-				const me = team.join();
-				if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
-				if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
-				// The reference leads, so a long message whose tail is saved to a file still delivers it.
-				const body = params.attach
-					? `${await attachmentText(ctx.cwd, params.attach)}\n\n${params.message}`
-					: params.message;
-				const result = await team.send(params.to, body, {
-					...(signal ? { signal } : {}),
-					...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
-					...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),
-					...(params.interrupt ? { interrupt: true } : {}),
-					...(params.wake !== undefined ? { wake: params.wake } : {}),
-				});
-				if ("error" in result) throw new Error(result.error);
-				const details = {
-					to: result.sent,
-					id: result.id,
-					...(result.delivery ? { delivery: result.delivery } : {}),
-					...(result.departed?.length ? { departed: result.departed } : {}),
-					...(result.starting?.length ? { starting: result.starting } : {}),
-				};
-				if (result.resumed) return textResult(result.resumed, details);
-				// A foreground child's parent is inside this child's `agent` call: nothing it sends is read before its report.
-				const waits =
-					process.env[PARENT_WAITS_ENV] === "1" && team.parentId !== undefined && result.sent.includes(team.parentId)
-						? ` ${renderPrompt("shared/parent-waits.md")}`
-						: "";
-				if (result.relayed)
-					return textResult(
-						`${result.sent.join(", ")} is not a live agent in your team: message #${result.id} goes through your coordinator ${result.relayed}, which resumes it with the message if it is a finished subagent it can resume. If not, you get a notice saying why.`,
-						{ ...details, relayed: result.relayed },
-					);
-				if (params.interrupt)
-					return textResult(
-						`Interrupt queued for ${result.sent.join(", ")} as message #${result.id}: a busy subagent stops its current step within a second.`,
-						details,
-					);
-				const departed = result.departed?.length ? ` Not sent to ${result.departed.join(", ")} (left the team).` : "";
-				const starting = result.starting?.length
-					? ` Not reached, still starting: ${result.starting.join(", ")}; send again once they have joined.`
-					: "";
-				const recipients = result.sent.join(", ");
-				// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
-				const delivery = result.delivery ?? {};
-				const group = (status: string) => result.sent.filter((recipient) => delivery[recipient] === status);
-				const pull = group("pull");
-				const fate = (who: string[], one: string, many: string) =>
-					who.length === 0 ? "" : `${who.join(", ")} ${who.length > 1 ? many : one}`;
-				const stalled = fate(
-					group("stalled"),
-					"has not been seen for over a minute: the message waits, and you are told if it never recovers (it then becomes a dead letter).",
-					"have not been seen for over a minute: the message waits, and you are told if they never recover (it then becomes a dead letter).",
-				);
-				// An answer to the recipient's own question is never paced; any other agent-started turn is.
-				const pace =
-					params.replyTo === undefined && group("wake").length > 0
-						? `Agent-started turns are paced (at most one per ${WAKE_INTERVAL_MS / 1000}s; mail meanwhile joins that turn).`
-						: "";
-				if (params.replyRequired === true)
-					return textResult(
-						`Queued message #${result.id} for ${recipients} as a request: ${pull.length ? `${pull.join(", ")} must fetch their cooperative inbox; no turn is started there` : `${recipients} ${result.sent.length > 1 ? "are" : "is"} woken`} and must answer with replyTo ${result.id}.${departed}${starting}${[
-							pace,
-							stalled,
-						]
-							.filter(Boolean)
-							.map((part) => ` ${part}`)
-							.join("")}${waits}`,
-						details,
-					);
-				const fates = [
-					pull.length
-						? `${pull.join(", ")} reads it only when it fetches its cooperative runner inbox; this does not wake or resume the task.`
-						: "",
-					fate(
-						group("wake"),
-						"is woken: a turn starts if it is idle, otherwise it reads the message at its next step.",
-						"are woken: a turn starts for each idle one, otherwise they read the message at their next steps.",
-					),
-					pace,
-					fate(group("next-step"), "reads it at its next step.", "read it at their next steps."),
-					fate(
-						group("queued-quiet"),
-						"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes.",
-						"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes.",
-					),
-					stalled,
-				]
-					.filter(Boolean)
-					.join(" ");
-				return textResult(
-					[`Queued message #${result.id} for ${recipients} as an FYI (no reply requested).`, fates]
-						.filter(Boolean)
-						.join(" ") +
-						departed +
-						starting +
-						waits,
-					details,
-				);
+				const { item, ...rest } = params;
+				if (item === undefined) return deliver(rest, signal, ctx);
+				return handAndSend(hand, rest, item, ctx, (sent) => deliver(sent, signal, ctx));
 			},
 			// The app and web transcript get the same words as the terminal rows (`message-rows.ts`).
 			display(input) {

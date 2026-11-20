@@ -38,6 +38,7 @@ export * as guard from "./queries/guard.ts";
 export * as apiReceipts from "./queries/api-receipts.ts";
 export * as openings from "./queries/openings.ts";
 export type { Opening } from "./queries/openings.ts";
+export * as itemHandoffs from "./queries/item-handoffs.ts";
 export * as processSamples from "./queries/process-samples.ts";
 export * as machineSamples from "./queries/machine-samples.ts";
 export * as purge from "./queries/purge.ts";

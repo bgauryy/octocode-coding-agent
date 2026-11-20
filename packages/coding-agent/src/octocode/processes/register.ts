@@ -11,7 +11,7 @@ import { processesCommand, type ProcessesCommandOptions } from "./command.ts";
 import { type ProcessSampler, type SampleIdentity, sampleIntervalMs, startProcessSampler } from "./sampler.ts";
 import { liveStopDeps, type StopDeps } from "./stop.ts";
 import { readProcessTable, type ProcessTableSource } from "./table.ts";
-import { processTitle, sessionProcessTitle, sessionTitleId, setProcessTitle, subagentIdentity } from "./title.ts";
+import { processTitle, sessionProcessTitle, sessionTitleId, setProcessTitle, subagentIdentity } from "../shared/process-title.ts";
 
 export interface ProcessesOptions {
 	commands: Subcommands;

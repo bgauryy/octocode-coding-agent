@@ -1,5 +1,5 @@
 import type { OwnedChild, ProcessSample } from "../../../../db/src/api.ts";
-import { isProcessTitle, parseTitle } from "./title.ts";
+import { isProcessTitle, parseTitle } from "../shared/process-title.ts";
 import type { ProcessRow } from "./table.ts";
 
 /**

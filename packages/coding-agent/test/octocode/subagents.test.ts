@@ -163,6 +163,7 @@ describe("profile permissions", () => {
 		expect(await askSpawn(permission, ctx, profile, "open Calculator")).toContain("desktop.control");
 		expect(titles).toHaveLength(1);
 		expect(titles[0]).toContain("permission it declares: desktop.control");
+		expect(titles[0]).toContain("will control your real desktop");
 		// Neither the remembered profile nor a session grant answers it: the next spawn asks again, and a denial throws.
 		expect(await askSpawn(permission, ctx, profile, "again")).toContain("desktop.control");
 		expect(titles).toHaveLength(2);

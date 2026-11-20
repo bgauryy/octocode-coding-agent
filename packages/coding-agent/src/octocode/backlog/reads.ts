@@ -13,7 +13,7 @@ import {
 	type BacklogAudit,
 } from "@octocodeai/octocode-contracts/snapshot";
 import { redactData, visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { type Db, backlog } from "../../../../db/src/api.ts";
+import { type Db, backlog, itemHandoffs } from "../../../../db/src/api.ts";
 import { sessionRunningPid } from "../shared/session-liveness.ts";
 import { type Row, toItem } from "./row.ts";
 import { enrichItems } from "./entities.ts";
@@ -192,6 +192,14 @@ export function noteCount(db: Db, item: Item, kind?: NoteKind): number {
 }
 
 /** `assignee` when it is a session whose process still runs, else undefined (a finished session's claim can be taken over). */
+/**
+ * Whether `actor`, a subagent started for one item, may also touch `item`: its coordinator handed it over while it runs
+ * (`agent` `message` with `item`).
+ */
+export function handedTo(db: Db, actor: { id: string }, item: Pick<Item, "rowId">): boolean {
+	return itemHandoffs.holds(db, actor.id, item.rowId);
+}
+
 export function liveHolder(db: Db, assignee: string, timer = false): string | undefined {
 	const pid = sessionRunningPid(db, assignee, timer);
 	return pid !== undefined && pid !== process.pid ? assignee : undefined;

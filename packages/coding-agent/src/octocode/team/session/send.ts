@@ -5,7 +5,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Mail } from "../mail.ts";
 import type { DeliveryStatus, Message, SendOptions } from "../model.ts";
 import { interruptRefusal, nextStep, outside, resolveTarget } from "../routing.ts";
-import { isSessionTitle } from "../../processes/title.ts";
+import { isSessionTitle } from "../../shared/process-title.ts";
 import type { TeamStore } from "../store.ts";
 import { patiently } from "../store/patient.ts";
 import type { Vouches } from "./vouches.ts";

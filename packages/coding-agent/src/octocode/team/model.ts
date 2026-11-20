@@ -56,6 +56,8 @@ export interface BudgetStanding {
 	soft: number;
 	/** Where the run stops. */
 	hard: number;
+	/** How full its context is (`context 45% (90k of 200k)`), once a model reply says so; only `coordinate list` shows it. */
+	context?: string;
 }
 
 /** A message whose recipients left before reading it, or before answering its question, for its sender. */

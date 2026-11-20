@@ -24,6 +24,7 @@ const FLAGS = [
 	"canBacklog",
 	"canMcp",
 	"browserControl",
+	"desktopControl",
 	"childStarted",
 ] as const satisfies ReadonlyArray<keyof Inputs>;
 const POLICY = SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map((section) => section.name);
@@ -41,6 +42,7 @@ describe("policy section templates", () => {
 				],
 				routing,
 				browserProfiles: ["browser"],
+				desktopProfiles: ["desktop"],
 				scratchDays: 0,
 			},
 		];
@@ -65,6 +67,18 @@ describe("policy section templates", () => {
 			expect(
 				octocodePromptSections({ research: undefined, profiles: [], canDelegate: false, scratchDays }).subagent,
 			).not.toBe("");
+	});
+
+	it("tells the main agent when to delegate to the desktop specialist, only while one exists", () => {
+		const base = { research: undefined, profiles: [], canDelegate: true, canUseAgent: true } as Inputs;
+		const delegation = (desktopProfiles?: string[]) =>
+			octocodePromptSections({ ...base, ...(desktopProfiles ? { desktopProfiles } : {}) }).delegation ?? "";
+		expect(delegation()).not.toMatch(/desktop/i);
+		const text = delegation(["desktop"]);
+		expect(text).toContain("`desktop`");
+		expect(text).toMatch(/native desktop app/);
+		expect(text).toMatch(/user approves each start/);
+		expect(text).toMatch(/browser/);
 	});
 
 	it("render the lean policy under every flag combination", () => {

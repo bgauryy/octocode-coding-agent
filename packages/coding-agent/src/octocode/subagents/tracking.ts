@@ -104,6 +104,13 @@ function replyPromptTokens(reply: Record<string, unknown> | undefined): number |
 	return sum > 0 ? sum : undefined;
 }
 
+/** The context window of the model that sent `reply`, from this session's registry. */
+function contextWindowOf(reply: Record<string, unknown> | undefined, find: ModelLookup): number | undefined {
+	if (typeof reply?.provider !== "string" || typeof reply.model !== "string") return undefined;
+	const window = find(reply.provider, reply.model)?.contextWindow;
+	return window !== undefined && window > 0 ? window : undefined;
+}
+
 /**
  * Progress of a run into `details` (tool lines, usage, the latest screenshot), mirrored to `onUpdate`. A reply from a model
  * without pricing (looked up in this session's registry) marks the run's cost `n/a`.
@@ -181,9 +188,14 @@ export function tracker(
 				latest = saveShot(dir, identity.id, shots, image);
 				details.shot = latest.path;
 			}
-			const first = replyPromptTokens(reply);
+			const prompt = replyPromptTokens(reply);
 			if (reply) details.cache = noteChildCache(details.cache, reply);
-			if (first !== undefined && details.firstTurnTokens === undefined) details.firstTurnTokens = first;
+			if (prompt !== undefined) {
+				details.firstTurnTokens ??= prompt;
+				details.contextTokens = prompt;
+				const window = contextWindowOf(reply, find);
+				if (window !== undefined) details.contextWindow = window;
+			}
 			// `usage` is the run's total so far: the details restart from it. Cached prompt tokens count in ↑.
 			const unpriced = details.unpriced || unpricedModel(reply, find) !== undefined;
 			spent.set(details, usage);

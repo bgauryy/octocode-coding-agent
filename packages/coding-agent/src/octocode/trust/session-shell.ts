@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { isProcessTitle } from "../processes/title.ts";
+import { isProcessTitle } from "../shared/process-title.ts";
 
 /**
  * Trust is the user's decision, so a command that records it must not be one the agent can run. The bash tool gives its

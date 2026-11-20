@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import * as compactions from "./compactions.ts";
 import * as machineSamples from "./machine-samples.ts";
 import * as apiReceipts from "./api-receipts.ts";
+import * as itemHandoffs from "./item-handoffs.ts";
 import * as openings from "./openings.ts";
 import * as processSamples from "./process-samples.ts";
 import { eraseMirror, eraseRows } from "./sessions.ts";
@@ -195,6 +196,7 @@ export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOption
 		counts.machine_samples = machineSamples.clear(db);
 		counts.worktree_openings = openings.clear(db);
 		counts.api_message_receipts = apiReceipts.clear(db);
+		counts.item_handoffs = itemHandoffs.clear(db);
 	});
 	return counts;
 }

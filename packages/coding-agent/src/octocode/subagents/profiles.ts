@@ -336,7 +336,7 @@ export function spawnRequest(
 		...(alwaysAsk.length > 0 ? { also: alwaysAsk } : {}),
 		title: "Start this subagent?",
 		what: [
-			`${name} ${may}; other actions follow the child's permission policy.`,
+			`${name} ${declared.includes("desktop.control") ? "will control your real desktop (only the apps its task names), and " : ""}${may}; other actions follow the child's permission policy.`,
 			...declared.map((action) => `permission it declares: ${action} (${actionNoun(action)})`),
 			`task: ${task}`,
 		],

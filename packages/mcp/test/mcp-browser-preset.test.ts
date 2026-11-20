@@ -125,7 +125,9 @@ describe("browser MCP preset", () => {
 			operation: "extract",
 		});
 		const text = textOf(result);
-		expect(text.startsWith("OK\n")).toBe(true);
-		expect(JSON.parse(text.slice(3))).toMatchObject({ ok: true, data: { plan: expect.any(Object) } });
+		// The server's acknowledgement is one line (`OK; data in structuredContent: <keys>`); the preset appends the JSON evidence.
+		const [acknowledgement, evidence] = [text.slice(0, text.indexOf("\n")), text.slice(text.indexOf("\n") + 1)];
+		expect(acknowledgement).toMatch(/^OK; data in structuredContent: /);
+		expect(JSON.parse(evidence)).toMatchObject({ ok: true, data: { plan: expect.any(Object) } });
 	}, 60_000);
 });

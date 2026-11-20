@@ -22,9 +22,9 @@ import {
 } from "@octocodeai/octocode-common/env";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
-import { BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
+import { BROWSER_SERVER, DESKTOP_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
-import { type AgentProfile, profileSelectsBrowser } from "./subagents/profiles.ts";
+import { type AgentProfile, profileSelectsBrowser, profileSelectsServer } from "./subagents/profiles.ts";
 import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
 import { agentCall } from "./child-sessions/agent-call.ts";
 import { entryMessage } from "./shared/util.ts";
@@ -119,6 +119,9 @@ export function registerTurnSetup(
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
 		const browserControl = browserMcp && ownProfile?.permissions?.includes("browser.control") === true;
+		const desktopControl = ownProfile?.permissions?.includes("desktop.control") === true;
+		// The main session names no desktop tool of its own, so it delegates to the profiles that select the desktop server.
+		const desktopMcp = selected.some((name) => name.startsWith(`${mcpNamespace(DESKTOP_SERVER)}__`));
 		// A resumed, reloaded or forked session: its entries say whether it delegated before this process. Read once.
 		if (!options.isSubagent && !delegated && !entriesRead) {
 			entriesRead = true;
@@ -137,6 +140,10 @@ export function registerTurnSetup(
 				!options.isSubagent && selected.includes("agent") && !browserMcp
 					? profiles.filter(profileSelectsBrowser).map(({ name }) => name)
 					: [],
+			desktopProfiles:
+				!options.isSubagent && selected.includes("agent") && !desktopMcp
+					? profiles.filter((profile) => profileSelectsServer(profile, DESKTOP_SERVER)).map(({ name }) => name)
+					: [],
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
 			canExternal: selected.includes("agent") && options.canExternal?.() === true,
@@ -153,6 +160,7 @@ export function registerTurnSetup(
 			// Availability follows the connected servers; a global MCP opt-out still applies.
 			canMcp: canReachMcp(selected),
 			browserControl,
+			desktopControl,
 			childStarted: delegated,
 		};
 		const leanNow = lean || leanMain;

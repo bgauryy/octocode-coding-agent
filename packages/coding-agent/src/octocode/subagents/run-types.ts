@@ -100,6 +100,9 @@ export interface RunDetails {
 	shot?: string;
 	/** Initial context of its first model reply: uncached input plus cache reads and writes. */
 	firstTurnTokens?: number;
+	/** Context of its latest model reply, counted like `firstTurnTokens`, and the window of the model that sent it. */
+	contextTokens?: number;
+	contextWindow?: number;
 	/** The run failed before its first model turn (`cause`: the one error line). */
 	startup?: { failed: true; cause?: string };
 	/** Who paid for a runner's turns (`runner` tasks): `plan`, its own subscription, counts no cost. */

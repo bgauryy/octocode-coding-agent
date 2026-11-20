@@ -1,6 +1,6 @@
 import { type Db, isBusy, type OwnedChild, processSamples, withoutWaiting } from "../../../../db/src/api.ts";
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "@octocodeai/octocode-common/time";
-import { isProcessTitle } from "./title.ts";
+import { isProcessTitle } from "../shared/process-title.ts";
 import type { ProcessRow, ProcessTableSource } from "./table.ts";
 
 /**

@@ -1,6 +1,6 @@
 import { APP_NAME } from "../../config.ts";
-import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
-import { AGENT_ID_ENV, AGENT_ROLE_ENV } from "../team/store/env.ts";
+import { AGENT_ID_ENV, AGENT_ROLE_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
 /**
  * Every Octocode process names itself `octocode-agent-<role>-<id>` so `ps`, `pgrep -f` and `/processes` tell them
@@ -16,7 +16,7 @@ export const MAX_TITLE_LENGTH = 64;
 
 /** What every title starts with. */
 export const TITLE_PREFIX = `${APP_NAME}-agent`;
-const PREFIX = TITLE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const PREFIX = escapeRegExp(TITLE_PREFIX);
 const TITLE = new RegExp(`^${PREFIX}-([A-Za-z0-9._]+)-([A-Za-z0-9._-]+)(?:\\s|$)`);
 const BARE_TITLE = new RegExp(`^${PREFIX}-(main|rpc)(?:\\s|$)`);
 const SESSION_ID_LENGTH = 8;

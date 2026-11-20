@@ -78,9 +78,13 @@ export interface ManagePageOptions {
 	onCancel(): void;
 }
 
-/** Wraps `text` (which starts with `indent` spaces) so each continuation line keeps that indent. */
+/**
+ * Wraps `text` (which starts with `indent` spaces) so each continuation line keeps that indent. When the indent leaves
+ * no room for text, the indent is dropped so no line is wider than `width`.
+ */
 function wrapIndented(text: string, width: number, indent: number): string[] {
-	const room = Math.max(1, width - indent);
+	if (width <= indent) return wrapTextWithAnsi(text.slice(indent), Math.max(1, width));
+	const room = width - indent;
 	const [first = "", ...rest] = wrapTextWithAnsi(text.slice(indent), room);
 	return [`${" ".repeat(indent)}${first}`, ...rest.map((line) => `${" ".repeat(indent)}${line}`)];
 }

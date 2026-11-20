@@ -12,6 +12,7 @@ import {
 	revokeWorktreeGrant,
 } from "../../src/octocode/trust/grants.ts";
 import { folderEntry } from "../../src/octocode/trust/identity.ts";
+import { acpServerHost } from "../../src/main/acp-host.ts";
 import { folderTrustResolver } from "../../src/octocode/trust/port.ts";
 import { resolveFolderTrust, type TrustOptions } from "../../src/octocode/trust/resolve.ts";
 import { tmp } from "./helpers.ts";
@@ -335,6 +336,22 @@ describe("failures", () => {
 		const result = resolveFolderTrust(cwd, broken);
 		expect(result).toMatchObject({ state: "untrusted", reason: "store-unavailable" });
 		expect(result.state === "untrusted" && result.detail).toContain(bad);
+	});
+
+	it("tells an ACP client the cause when the records cannot be read, and offers no `trust add` that would fail the same way", () => {
+		const bad = path.join(root, "acp-not-a-db.db");
+		fs.writeFileSync(bad, "this is not an SQLite database, it is plain text padding".repeat(10));
+		const cwd = dir("code", "acp-app");
+		const before = process.env.OCTOCODE_AGENT_DB;
+		process.env.OCTOCODE_AGENT_DB = bad;
+		try {
+			const verdict = acpServerHost.folderTrust(cwd);
+			expect(verdict).toMatchObject({ trusted: false, message: expect.stringContaining(bad) });
+			expect(verdict.trusted === false && verdict.command).toBeUndefined();
+		} finally {
+			if (before === undefined) delete process.env.OCTOCODE_AGENT_DB;
+			else process.env.OCTOCODE_AGENT_DB = before;
+		}
 	});
 });
 

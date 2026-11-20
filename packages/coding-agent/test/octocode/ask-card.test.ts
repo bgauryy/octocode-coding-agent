@@ -119,7 +119,7 @@ describe("external-message ask card", () => {
 		const view = asked[0].card?.view as AskView;
 		const raw = renderAskCard(view, { cursor: 0, expanded: false }, theme, 80);
 		expect(raw[0]).toContain(theme.fg("accent", theme.bold("Let this external message reach the agent?")));
-		expect(plain(raw).join("\n")).toContain("(external, not you) · pid 2779 · in /Users/bgaryy/");
+		expect(plain(raw).join("\n")).toContain("(external, not you) · pid 2779 · in /Users/b");
 		const { frames } = drive(asked[0], ["\t"]);
 		const [collapsed, expanded] = frames.map((frame) => frame.join("\n"));
 		expect(collapsed).toContain("│ line 2 of the sender's message");

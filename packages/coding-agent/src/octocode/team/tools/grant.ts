@@ -5,6 +5,7 @@ import { plural } from "../../shared/text.ts";
 import { textResult } from "../../shared/util.ts";
 import type { BudgetStanding } from "../model.ts";
 import type { Team } from "../session.ts";
+import type { HandItem } from "./hand.ts";
 
 /** The request budgets of the children this agent started (wired by `index.ts` from the subagents domain); unset in a subagent. */
 export interface ChildBudgets {
@@ -15,6 +16,17 @@ export interface ChildBudgets {
 	cost?(id: string): number | undefined;
 	/** The children queued behind prerequisites or held, one row each (`coordinate` `list`). */
 	queued?(): string[];
+	/** How full running child `id`'s context is (`context 45% (90k of 200k)`); undefined before its first reply. */
+	context?(id: string): string | undefined;
+	/** Hands a backlog item to running child `id` (`agent` `message` with `item`). */
+	hand?: HandItem;
+}
+
+/** Running child `id`'s requests against its limits, with its context fill, for `coordinate list`. */
+export function childStanding(budgets: ChildBudgets | undefined, id: string): BudgetStanding | undefined {
+	const usage = budgets?.usage(id);
+	const context = budgets?.context?.(id);
+	return usage && context ? { ...usage, context } : usage;
 }
 
 /**

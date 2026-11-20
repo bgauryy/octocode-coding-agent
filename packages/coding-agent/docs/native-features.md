@@ -31,6 +31,7 @@ The native runtime loads automatically. Octocode has no extensions: features add
 | Process list, orphans                        | `/processes`                                             | [below](#process-names-list-and-orphans)               |
 | Monitor rules and their alerts               | `/monitor`, the `MonitorAlert` hook                      | [below](#monitor-room-and-hooks)                       |
 | Web retrieval, browser                       | `web`, `mcp__browser__*`                                 | [below](#browser-and-web-access)                       |
+| Native desktop apps                          | `desktop` profile, `mcp__desktop__*`                     | [below](#desktop-control)                              |
 | Questions, permissions                       | `askUser`, `/permissions`                                | [permissions](permissions.md)                          |
 | Command hooks                                | `/harness hooks`                                         | [hooks](hooks.md)                                      |
 | Backlog, memory, history                     | `backlog`, `backlogPlan`, `memory`, `archive`, `/memory` | [web workspace](web-workspace.md), [memory](memory.md) |
@@ -640,6 +641,18 @@ flowchart TD
 | Resume at or past the soft limit | A whole new allowance: soft = saved count + soft, stop = saved count + hard; the child is told its usage and where it stops. A peer's message relayed by the parent's process decided nothing, so it stays within the old limits and at the hard limit returns `partial` without launching                                      |
 | Recorded                         | Each run records requests and cache reads/writes apart from summary and warming spend; `/agents stats` aggregates per profile. A `coordinate` `grant` result names the requests the child has used and their cost so far, and the line saying a finished run stays reachable names what that run used                           |
 
+### Handing an item to a running child
+
+Work that belongs with what a running child already holds can go to that child instead of a new one: `agent` type `message` with `to` (the child) and `item`.
+
+| Topic        | Behavior                                                                                                                                                                                                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Who          | Only the session that started the child, and only while the child runs                                                                                                                                                                                                         |
+| Checks       | The item must be one a delegation could take (not an epic, not done or closed, no open prerequisite, not held by another live session). An item another running or still-reachable child works on is refused, as is the child's own item                                       |
+| Effect       | An unclaimed item is claimed for your session. The child reads the item's ref, title and goal before your message, and may update the item (notes, steps, completion) besides the one it was started for. The grant ends with the child's run; a send that fails takes it back |
+| Reply        | Names the claim, the child's context fill and the paths the item shares with the child's own item. It warns when the child's context is at 70% or more of its model's window: a fresh child may do better                                                                      |
+| Context fill | `coordinate list` shows each running child's context after its requests (`context 45% (90k of 200k)`), from its latest model reply                                                                                                                                             |
+
 ### Isolated worktrees
 
 `isolate: true` runs the child in its own git worktree; `resume` is refused for it. Isolated worktrees of every checkout of a repository share one folder under the Octocode home's `worktrees/`, so a session in any worktree prunes another's crashed run after saving its changes to a ref. Creating one never runs repository hooks such as `post-checkout`.
@@ -794,6 +807,45 @@ flowchart TD
 
 It reuses saved captures, skips classification when URL, title and DOM digest are unchanged, and keeps a page map in its scratch folder. A box is never clicked.
 
+## Desktop control
+
+Native apps (a desktop app, a simulator, system settings, a window you must see) are driven with [Cua Driver](https://cua.ai/docs/cua-driver/quickstart), which Octocode neither installs nor bundles. Install it yourself; while `cua-driver` is on `PATH` the built-in `desktop` MCP server and the bundled `desktop` profile exist, and without it both stay out of the way: the server is listed disabled with the install pointer, and the profile is not offered, so the main prompt is unchanged. `OCTOCODE_MCP_DESKTOP=0` keeps both off.
+
+```mermaid
+flowchart TD
+  M[Main agent needs a native app] --> W{A browser reaches it?}
+  W -->|yes| B[browser tools or specialist]
+  W -->|no| D[agent task profile desktop]
+  D --> A{You approve this start?}
+  A -->|no| X[Task refused]
+  A -->|yes| C[Child controls the apps the task names]
+  C --> R[Report: outcome, evidence screenshot paths]
+```
+
+| Topic           | Behavior                                                                                                                                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| When it is used | The main agent reads the delegation rule only while the `desktop` profile exists: native apps go to it, anything a browser reaches does not. The `desktop` profile's description says the same where the profile list is shown                                                                                                                         |
+| Approval        | Starting the profile asks you in every mode but `bypass`, `full` included, every time (`desktop.control`; [permissions](permissions.md#desktop-control)). Your approval is the child's consent for that run; its desktop calls then run without a prompt each                                                                                          |
+| Isolation       | The work runs in a child session, so window trees and screenshots stay out of the main context. The child is `readOnly`: it cannot change the repository or run a mutating command. Every specialist still carries the shared tools (`file`, `agent`, `wait`, `archive`, `memory`, local research), so a child with only desktop tools is not possible |
+| Tools           | 12 everyday tools are declared (`list_apps`, `list_windows`, `get_window_state`, `get_desktop_state`, `verify_state`, `launch_app`, `click`, `type_text`, `press_key`, `hotkey`, `scroll`, `set_value`); the rest load on demand. `install_extension`, `install_ffmpeg` and `set_config` are removed                                                   |
+| Results         | Driver returns a one-line text and keeps window ids, `snapshot_id`, `element_token` and the accessibility tree in `structuredContent`; Octocode appends it so the model can click by element                                                                                                                                                           |
+| Cost            | Driver serves 58 tools (about 100,000 characters of descriptions and schemas), so only the child pays for them, and most are on demand. The child's cached prompt was about 70,000 tokens per request in a live run, so the prefix, not tool output, is the main cost                                                                                  |
+| Guide           | Driver serves its own guide as MCP resources (`skill://cua-driver/SKILL.md`, about 9 KB, plus per-platform pages). The child reads it on demand with the `mcp` tool, so it always matches the installed version and adds nothing to any prompt until read                                                                                              |
+| Telemetry       | Cua Driver sends content-free telemetry by default. Octocode leaves your setting alone: `cua-driver telemetry status`, `cua-driver telemetry disable`                                                                                                                                                                                                  |
+| Your own server | A `desktop` server in `mcp.json` replaces the preset. The bundled profile then stays hidden unless the preset is enabled, so give your server a profile of your own. Octocode never passes `--grant existing-profile`; adding it attaches Driver to your signed-in Chromium profile                                                                    |
+
+Ask for it in plain words ("open Calculator and compute 6 × 7, then show me the screenshot"), or start it yourself:
+
+```json
+{
+	"type": "task",
+	"profile": "desktop",
+	"goal": "Check the Calculator result",
+	"task": "Open Calculator, compute 6 x 7, verify the display shows 42, save a screenshot after the last action, then quit it.",
+	"reason": "Check the desktop feature"
+}
+```
+
 ## Security review
 
 A hook, MCP server or skill that Octocode did not ship stays off until you check its report and approve its exact content. Octocode's own skills and MCP server always load, and a session never waits for a decision. Changing an approved item's content switches it off again, and it shows as `changed`.
@@ -853,8 +905,8 @@ File edit and write previews bound the search for a minimal line diff. A large r
 
 Every Octocode process names itself `octocode-agent-<role>-<id>`, so `ps`, `pgrep -f octocode` and `/processes` tell them apart.
 
-| Process      | Name                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Process      | Name                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Main session | `octocode-agent-main-<last 8 characters of its session id>` (renamed on `/new`, `/resume`, a fork or a session switch) |
 | RPC host     | `octocode-agent-rpc-<id>`                                                                                              |
 | ACP broker   | `octocode-agent-acp-<pid>`                                                                                             |
@@ -957,11 +1009,11 @@ flowchart LR
   API -->|failure| RF[Refusal listing what runs]
 ```
 
-| To                                           | `to`                                                                     | Carried by                    | Failure the caller sees                                                                  |
-| -------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| A subagent, its parent, a sibling            | id, role, `parent`, `all`                                                | Team mail                     | Dead letter or relay notice                                                              |
+| To                                           | `to`                                                                           | Carried by                    | Failure the caller sees                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------- |
+| A subagent, its parent, a sibling            | id, role, `parent`, `all`                                                      | Team mail                     | Dead letter or relay notice                                                              |
 | Another Octocode process (main session only) | exact process name (`octocode-agent-main-c0ea9f3e`), instance ID or session ID | [Session API](session-api.md) | A refusal listing what runs; [what the sender gets](session-api.md#what-the-sender-gets) |
-| The main checkout, from a linked worktree    | `coordinator`                                                            | Session API                   | [None or several](#finishing-a-worktree): told, nothing sent                             |
+| The main checkout, from a linked worktree    | `coordinator`                                                                  | Session API                   | [None or several](#finishing-a-worktree): told, nothing sent                             |
 
 A session's own name is in the `environment` section of its prompt, after the cached prefix; `coordinate list` shows other sessions with name, busy state and folder and marks this repository's coordinator. Under each worktree it also names other vendors' agent CLIs working there (Claude Code, Codex, Cursor agent, Gemini CLI, opencode, Aider), found in the process table by their working folder, with their pid. These get no `message`, so agents keep off their files, read their work, or ask you to relay. `/new`, `/resume` and `/fork` start a new conversation with a new name and instance ID, so a message to the old name fails with what is running. A process message does not wait for the receiver's run; the answer arrives as a message from its name, so two sessions cannot wait on each other. Its text arrives [marked as external](session-api.md#what-the-session-sees), and whether it arrives is [the receiver's permission mode](permissions.md#external-messages). `forward`, `replyTo` and `interrupt` reach teammates only, and a subagent has no process route: a restricted child must not ask an unrestricted session to act. An outside agent stays `agent` type `external` ([lifecycle](#external-agent-lifecycle)).
 

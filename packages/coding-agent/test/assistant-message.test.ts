@@ -152,7 +152,7 @@ describe("AssistantMessageComponent", () => {
 			const first = component.render(60).join("\n");
 			vi.advanceTimersByTime(80);
 			expect(component.render(60).join("\n")).toBe(first);
-			expect(stripAnsi(first)).toContain("⠋ Thinking…");
+			expect(stripAnsi(first)).toContain("◌ Thinking…");
 			expect(animationClock.isRunning()).toBe(false);
 		});
 	});

@@ -1,6 +1,6 @@
 import { applyNoColor } from "./no-color.ts";
 import { configureHttpDispatcher } from "../core/http-dispatcher.ts";
-import { initialTitle, setProcessTitle } from "../octocode/processes/title.ts";
+import { initialTitle, setProcessTitle } from "../octocode/shared/process-title.ts";
 import { dropForeignChildEnv } from "../octocode/subagents/process/child-env.ts";
 
 export function setupCli(argv: readonly string[] = []): void {

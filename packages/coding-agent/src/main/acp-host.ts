@@ -14,7 +14,7 @@ import { SessionManager } from "../core/session-manager.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { type RpcEvent, RpcClient } from "../modes/rpc/rpc-client.ts";
 import type { RpcExtensionUIRequest } from "../modes/rpc/rpc-types.ts";
-import { processTitle, setProcessTitle } from "../octocode/processes/title.ts";
+import { processTitle, setProcessTitle } from "../octocode/shared/process-title.ts";
 import { homeFolderMessage, refusedFolderMessage } from "../octocode/trust/messages.ts";
 import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 
@@ -109,6 +109,13 @@ export const acpServerHost: AcpServerHost = {
 		if (trust.state === "refused") return { trusted: false, message: refusedFolderMessage(trust.path), command };
 		if (trust.state === "untrusted" && (trust.reason === "home" || trust.reason === "filesystem-root"))
 			return { trusted: false, message: homeFolderMessage(trust.path, trust.reason), command };
+		// The trust records cannot be read (a database another Octocode holds or an older schema) or the folder is gone: `trust add`
+		// would fail the same way, so the message carries the cause and no command.
+		if (trust.state === "untrusted" && (trust.reason === "store-unavailable" || trust.reason === "missing-folder"))
+			return {
+				trusted: false,
+				message: `Folder trust could not be decided for ${trust.path}: ${trust.detail ?? trust.reason}`,
+			};
 		const why = trust.state === "untrusted" ? ` (${trust.reason})` : "";
 		return { trusted: false, message: `Folder is not trusted: ${trust.path}${why}`, command };
 	},

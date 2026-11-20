@@ -37,6 +37,7 @@ import { type AgentProfile, GENERAL_PROFILE, profileSelectsBrowser, profileTools
 import type { RunDetails } from "./run-types.ts";
 import type { ChainQueue } from "./chain.ts";
 import type { GraphWake } from "./graph-wake.ts";
+import type { HandedItems } from "./handed-items.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
@@ -153,7 +154,7 @@ export interface AgentRuns {
 	/** Foreground runs, so `/agents kill` can stop one without aborting the whole turn. */
 	foreground: Background;
 	/** What each task running now has spent so far (`spawn-limits.ts`). */
-	live: Map<string, Pick<RunDetails, "cost">>;
+	live: Map<string, Pick<RunDetails, "cost" | "contextTokens" | "contextWindow">>;
 	reports: ReportQueue;
 	/** The children each parent step started, whose reports wait for each other (`report-groups.ts`). */
 	groups: ReportGroups;
@@ -162,6 +163,8 @@ export interface AgentRuns {
 	running: Map<string, undefined>; // The ids of the running subagents (a map because the team session reads it as one).
 	/** The backlog item each child was started for (`agent` `item`), by name; an entry of an ended child is dropped when read (`idle-items.ts`). */
 	items: Map<string, string>;
+	/** The items handed to each running child after its start (`hand-item.ts`); taken back when its run ends. */
+	handed?: HandedItems;
 	/** Their slots under the limit, taken before the spawn ask and given back by `Run.release`. */
 	slots: Slots;
 	/** Called when a background run starts or ends: the footer counts them while the agents panel cannot show them. */
@@ -377,6 +380,7 @@ export function claimRun(
 	if (identity.item) runs.items.set(identity.id, identity.item);
 	const release = () => {
 		if (!runs.running.delete(identity.id)) return;
+		runs.handed?.end(identity.id);
 		runs.team.approvals.noteStarted(identity.id);
 		if (slot.held) runs.slots.give();
 		const kept = scratch && !dropEmptyScratch(scratch);

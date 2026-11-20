@@ -15,7 +15,7 @@ const entry = (role: string, id: string, extra: Partial<ProcessEntry> = {}): Pro
 	started: "1",
 	role,
 	id,
-	title: `octocode-${role}-${id}`,
+	title: `octocode-agent-${role}-${id}`,
 	sessionId: null,
 	rssKb: 1024,
 	ageMs: 60_000,

@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	initialTitle,
 	isProcessTitle,
+	isSessionTitle,
 	MAX_TITLE_LENGTH,
 	processTitle,
 	sessionProcessTitle,
-} from "../../../src/octocode/processes/title.ts";
+} from "../../../src/octocode/shared/process-title.ts";
 
 const SESSION = "01a1a2c5-eb93-75f9-8dc5-67f9daa09bdb";
 
@@ -45,7 +46,7 @@ describe("process titles", () => {
 	});
 
 	it("keeps a title to safe characters and a bounded length", () => {
-		expect(processTitle("my role!", "a b/c\n")).toBe("octocode-my_role_-a_b_c_");
+		expect(processTitle("my role!", "a b/c\n")).toBe("octocode-agent-my_role_-a_b_c_");
 		expect(processTitle("main", "x".repeat(200))).toHaveLength(MAX_TITLE_LENGTH);
 		expect(processTitle("main", "").startsWith("octocode-agent-main")).toBe(true);
 	});
@@ -59,5 +60,14 @@ describe("process titles", () => {
 		expect(isProcessTitle("octocode")).toBe(false);
 		expect(isProcessTitle("node /repo/octocode-mcp/dist/index.js")).toBe(false);
 		expect(isProcessTitle("/usr/bin/octocode mcp")).toBe(false);
+	});
+
+	it("tells a main session or RPC host by its titled id, never a subagent, a bare title or the pre-agent spelling", () => {
+		expect(isSessionTitle(sessionProcessTitle("main", SESSION))).toBe(true);
+		expect(isSessionTitle(sessionProcessTitle("rpc", SESSION))).toBe(true);
+		expect(isSessionTitle(processTitle("researcher", "inky"))).toBe(false);
+		expect(isSessionTitle(processTitle("main"))).toBe(false);
+		expect(isSessionTitle("octocode-main-daa09bdb")).toBe(false);
+		expect(isProcessTitle("octocode-main-daa09bdb")).toBe(false);
 	});
 });

@@ -220,7 +220,7 @@ export interface AcpServerHost {
 	 * Whether the user trusts the folder a session would open in. A client cannot grant trust, so an untrusted folder is
 	 * a per-session error; `command` is what the user can run to trust it. Nothing of the folder is read.
 	 */
-	folderTrust(cwd: string): { trusted: true } | { trusted: false; message: string; command: string };
+	folderTrust(cwd: string): { trusted: true } | { trusted: false; message: string; command?: string };
 	/** Saved sessions of `cwd` (or of every directory) in `sessionDir`, newest first. */
 	listSessions(cwd: string | undefined, sessionDir: string | undefined): Promise<AcpSessionInfo[]>;
 	/** The current branch of the transcript at `path`; throws when it cannot be read. */

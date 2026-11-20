@@ -1,5 +1,5 @@
 import type { MachineProcess } from "../../../../db/src/api.ts";
-import { isProcessTitle } from "../processes/title.ts";
+import { isProcessTitle } from "../shared/process-title.ts";
 import { type CommandRunner, runCommand } from "./readers.ts";
 
 /** One row of `ps -A -o pid=,ppid=,%cpu=,rss=,command=`. */

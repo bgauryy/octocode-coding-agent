@@ -8,7 +8,6 @@ import { modelLookup, settleWithin } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import { AgentsView } from "../team/panel.ts";
-import type { BudgetStanding } from "../team/model.ts";
 import type { Team } from "../team/session.ts";
 import { RunningBudgets } from "./budget.ts";
 import { type AgentRuns, type Run, Slots } from "./claim.ts";
@@ -42,6 +41,9 @@ import { agentToolSpec } from "../native/tools/agent/spec.ts";
 import type { Runners } from "./runner-port.ts";
 import { FORK_NOTE_TYPE, forkNote, resumedChildren } from "./children.ts";
 import { type MergeResult, mergeChild } from "./merge-child.ts";
+import type { Handoff } from "../team/tools/hand.ts";
+import { type ChildContext, contextOf, handItem } from "./hand-item.ts";
+import { HandedItems } from "./handed-items.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
@@ -69,6 +71,9 @@ export interface AgentControl {
 	running(): string[];
 	/** The backlog item each running child works on, by child name (`done` waits for them). */
 	serving(): Map<string, string>;
+	/** Hands an item to a running child (`agent` `message` with `item`), and reads a running child's context fill. */
+	handItem(child: string, ref: string, ctx: FeatureContext): Handoff;
+	context(id: string): ChildContext | undefined;
 	/** Stop background agents and wait for their reports before shutdown. */
 	stopAll(reason?: string): Promise<void>;
 	/** Follow-up windows any session holds open for finished children (they live in session folders, not in memory). */
@@ -79,21 +84,6 @@ export interface AgentControl {
 
 /** A note to the model that starts no turn, so its send settles at once: awaited, a failure reaches the bus's error report. */
 const NOTE_SEND = { triggerTurn: false, deliverAs: "followUp" } as const;
-/** `coordinate merge` for a registration that reaches the agent tool later (`index.ts` builds the team tools first). */
-export const mergeThrough =
-	(agents: () => AgentControl | undefined) =>
-	async (id: string, ctx: FeatureContext, signal?: AbortSignal): Promise<MergeResult> =>
-		(await agents()?.merge(id, ctx, signal)) ?? { ok: false, text: "Agent controls are unavailable." };
-
-/** `coordinate` `grant` and `list` for a registration that reaches the agent tool later, like `mergeThrough`. */
-export const budgetsThrough = (agents: () => AgentControl | undefined) => ({
-	grant: (id: string, requests: number): BudgetStanding | string =>
-		agents()?.budgets.grant(id, requests) ?? "Agent controls are unavailable.",
-	usage: (id: string): BudgetStanding | undefined => agents()?.budgets.usage(id),
-	queued: (): string[] => agents()?.queued() ?? [], // queued and held children, one row each, for `coordinate list`
-	cost: (id: string): number | undefined => agents()?.budgets.cost(id),
-});
-
 /** How long shutdown waits for stopped background subagents: past the SIGTERM grace, after which they are killed. */
 const SHUTDOWN_WAIT_MS = SUBAGENT_STOP_GRACE_MS + 1_000;
 
@@ -133,6 +123,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		read: new ReadReports(),
 		running: new Map(),
 		items,
+		handed: new HandedItems(),
 		slots: new Slots(),
 		session: 0,
 		changed: () => panel.setBackground([...runs.background.keys()]),
@@ -393,6 +384,8 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		background: () => background.size,
 		running: () => [...runs.foreground.keys(), ...background.keys()],
 		serving: () => new Map([...runs.items].filter(([id]) => runs.running.has(id))),
+		handItem: (child, ref, ctx) => handItem(runs, lingering, child, ref, ctx),
+		context: (id) => contextOf(runs, id),
 		stopAll,
 		parked: Lingering.parkedChildren,
 		command: agentsCommand(team, background, runs.foreground, questions, (id) => budgets.usage(id)),

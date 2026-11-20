@@ -117,7 +117,9 @@ export function describeMembers(
 				const folder = memberWorktree(member, here);
 				const worktree = folder ? ` · ${worktreeLabel(folder)}` : "";
 				const budget = standing?.(member.id);
-				const requests = budget ? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}` : "";
+				const requests = budget
+					? ` · ${budget.used} of ${budget.soft} requests, stops at ${budget.hard}${budget.context ? ` · ${budget.context}` : ""}`
+					: "";
 				return [
 					`${member.id}${you} · ${member.role} · ${shown}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),

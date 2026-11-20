@@ -5,14 +5,18 @@ import { columnRows, fitCell, labelValueRows } from "../src/theme/columns.ts";
 
 const rows = [
 	["NAME", "PID", "COMMAND"],
-	["octocode-agent-main-aaaaaaaa", "2604", "/opt/homebrew/Cellar/node/26.4.0/bin/node packages/octocode-mcp/dist/index.js"],
+	[
+		"octocode-agent-main-aaaaaaaa",
+		"2604",
+		"/opt/homebrew/Cellar/node/26.4.0/bin/node packages/octocode-mcp/dist/index.js",
+	],
 	["octocode-agent-implementer-nifty-beak", "9", "sleep 8"],
 ];
 
 describe("columns", () => {
 	it("keeps natural widths without a width and trims trailing spaces", () => {
 		const lines = columnRows(rows);
-		expect(lines[0]).toBe("NAME                             PID   COMMAND");
+		expect(lines[0]).toBe(`${"NAME".padEnd(39)}PID   COMMAND`);
 		expect(lines[2]).toBe("octocode-agent-implementer-nifty-beak  9     sleep 8");
 	});
 

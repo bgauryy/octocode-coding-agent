@@ -1,4 +1,5 @@
 import { JOBS_SCHEMA } from "./schema-jobs.ts";
+import { ITEM_HANDOFFS_SCHEMA } from "./schema-handoffs.ts";
 
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
 export const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
@@ -376,6 +377,7 @@ ${ITEM_REVIEWS_SCHEMA}
 ${SHELL_HISTORY_SCHEMA}
 ${WORKTREE_OPENINGS_SCHEMA}
 ${API_MESSAGE_RECEIPTS_SCHEMA}
+${ITEM_HANDOFFS_SCHEMA}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

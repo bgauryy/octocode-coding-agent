@@ -15,7 +15,7 @@ import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
-import { grantRequests } from "../../src/octocode/team/tools/grant.ts";
+import { childStanding, grantRequests } from "../../src/octocode/team/tools/grant.ts";
 
 describe("maxRequests resolution", () => {
 	const env = (value?: string) => (value === undefined ? {} : { [MAX_REQUESTS_ENV]: value });
@@ -309,6 +309,16 @@ describe("coordinate grant", () => {
 		).toContain(" · 8 of 12 requests, stops at 15");
 		expect(describeMembers([member], "main", 2, undefined, undefined, () => undefined)).not.toContain("requests");
 		expect(describeMembers([member], "main", 2)).not.toContain("requests");
+		// The context fill rides on the same line once the child's first reply says how full it is.
+		const budgets = {
+			grant: () => "no",
+			usage: () => ({ used: 8, soft: 12, hard: 15 }),
+			context: (id: string) => (id === "a-1" ? "context 75% (150k of 200k)" : undefined),
+		};
+		expect(describeMembers([member], "main", 2, undefined, undefined, (id) => childStanding(budgets, id))).toContain(
+			" · 8 of 12 requests, stops at 15 · context 75% (150k of 200k)",
+		);
+		expect(childStanding({ ...budgets, context: () => undefined }, "a-1")).toEqual({ used: 8, soft: 12, hard: 15 });
 	});
 });
 

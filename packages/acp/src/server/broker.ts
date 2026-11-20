@@ -209,7 +209,10 @@ export class AcpBroker {
 			const directory = await canonicalDirectory(cwd);
 			const trust = this.options.host.folderTrust(directory);
 			if (!trust.trusted)
-				throw new RequestError(FOLDER_NOT_TRUSTED, trust.message, { path: directory, command: trust.command });
+				throw new RequestError(FOLDER_NOT_TRUSTED, trust.message, {
+					path: directory,
+					...(trust.command ? { command: trust.command } : {}),
+				});
 			const replaySaved =
 				replay && path && expectedId ? prepareHistoryReplay(this.options.host, path, expectedId, client) : undefined;
 			const worker = await this.options.createWorker(directory, servers, path);

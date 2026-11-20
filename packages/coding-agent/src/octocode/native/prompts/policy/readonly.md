@@ -27,7 +27,11 @@
 {{#if browserControl}}
 - Use browser tools in your isolated browser within the task and user authorization. Other MCP tools must not change files or external state.
 {{else}}
+{{#if desktopControl}}
+- Use desktop tools only on the apps the task names, within what the user approved at start. Other MCP tools must not change files or external state.
+{{else}}
 - Call only MCP tools that cannot change files or external state; the permission layer does not check other servers' tools for you.
+{{/if}}
 {{/if}}
 {{/if}}
 

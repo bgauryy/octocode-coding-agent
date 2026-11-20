@@ -21,7 +21,7 @@ import type { AddInput, UpdateInput } from "./inputs.ts";
 import { applyEntities, entityColumns, validateEntityInput } from "./entity-write.ts";
 import { checkEpicState } from "./hierarchy.ts";
 import { evidenceLink, mergeLinks, splitEvidence } from "./evidence-links.ts";
-import { getItem, liveHolder, origin } from "./reads.ts";
+import { getItem, handedTo, liveHolder, origin } from "./reads.ts";
 import { closeRecord } from "./close.ts";
 
 /** What closing an item takes; the tool guideline, the hand-over prompts and the refusal all say it with these words. */
@@ -229,10 +229,10 @@ export function updateItem(
 					`${item.ref} is not claimed by your coordinator: a subagent updates only the items its coordinator has claimed. Ask your coordinator to claim it (agent message, to: "parent"), or put the finding in your report.`,
 				);
 			}
-			if (actor.item !== undefined && parseRef(actor.item) !== item.seq) {
+			if (actor.item !== undefined && parseRef(actor.item) !== item.seq && !handedTo(agentDb.db, actor, item)) {
 				const own = `B${parseRef(actor.item) ?? actor.item}`;
 				throw new BacklogError(
-					`${item.ref} is not your item: your coordinator started you for ${own}, the only item you may update. Propose a follow-up with add (from: ${own}) or report to your coordinator.`,
+					`${item.ref} is not your item: your coordinator started you for ${own} and may hand you more (agent message with item); you update only those. Propose a follow-up with add (from: ${own}) or report to your coordinator.`,
 				);
 			}
 			const holder =
