@@ -12,6 +12,7 @@ import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { hasTornTail, SessionManager } from "../../../core/session-manager.ts";
 import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
+import { sharedPickerRemoval } from "../../../octocode/sessions/delete.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
 import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
@@ -306,6 +307,7 @@ export function showSessionSelector(host: SessionNavigationHost): void {
 				},
 				showRenameHint: true,
 				keybindings: host.keybindings,
+				removeSessions: sharedPickerRemoval(() => host.sessionManager.getSessionId()),
 			},
 
 			host.sessionManager.getSessionFile(),

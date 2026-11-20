@@ -9,6 +9,28 @@ function advance(ms: number, step = 20): void {
 }
 
 describe("animationClock", () => {
+	it("spaces a decor subscriber whose interval is no multiple of the cadence evenly", () => {
+		let wall = 1_000_000;
+		mock.timers.enable({ apis: ["setInterval"] });
+		const wallClock = mock.method(Date, "now", () => wall);
+		const fires: number[] = [];
+		const stopFast = animationClock.subscribe(() => {}, { everyMs: 80, kind: "decor" });
+		const stopSlow = animationClock.subscribe((now) => fires.push(now), { everyMs: 200, kind: "decor" });
+		try {
+			for (let done = 0; done < 3000; done += 20) {
+				wall += 20;
+				mock.timers.tick(20);
+			}
+			const gaps = fires.slice(1).map((at, index) => at - fires[index]);
+			assert.ok(gaps.length >= 8);
+			assert.strictEqual(new Set(gaps).size, 1, `gaps ${gaps.join(",")}`);
+		} finally {
+			stopSlow();
+			stopFast();
+			wallClock.mock.restore();
+		}
+	});
+
 	it("resumes ticking within one interval after the wall clock steps back", () => {
 		// The interval timer is monotonic; only Date.now() steps back.
 		let wall = 1_000_000;

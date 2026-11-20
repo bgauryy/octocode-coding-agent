@@ -4,6 +4,7 @@ import { archiveRankedWindow, type RankedContext } from "../archive/ranked.ts";
 import { scanQuery, type ScanQuery } from "../rank/analyze.ts";
 import { type FirstPass, firstPass, type RankedPassage, type Scored, scorePassages } from "../rank/score.ts";
 import { type Filtered, type RankFile, scanFiles } from "../rank/scan.ts";
+import { matchesWithin } from "../rank/line-runs.ts";
 import { parseKeywords, termsOf, WORD } from "../rank/terms.ts";
 import { syncFiles } from "./sync.ts";
 
@@ -15,12 +16,6 @@ import { syncFiles } from "./sync.ts";
 
 /** Bytes of changed or new files a query indexes before ranking; past it they are scanned this time. */
 const QUERY_SYNC_BYTES = 4 * 1024 * 1024;
-
-function matchesWithin(matched: ReadonlySet<number> | undefined, start: number, end: number): boolean {
-	if (!matched) return false;
-	for (let at = start; at <= end; at++) if (matched.has(at)) return true;
-	return false;
-}
 
 /** Passages found in the index, by passage id there; their byte range and context load only when read back. */
 type Unranged = Map<RankedPassage, number>;

@@ -594,7 +594,7 @@ describe("Native features through the SDK", () => {
 		);
 		expect(out.some((text) => /^Moved B3\b/.test(text))).toBe(true);
 		expect(out.some((text) => /^Saved M\d+ .*Tabs everywhere/.test(text))).toBe(true);
-		const listed = out.find((text) => text.startsWith("Memories (auto on)"))!;
+		const listed = out.find((text) => text.startsWith("Memories (recall main)"))!;
 		expect(listed).toMatch(/^Workspace:$/m);
 		expect(listed).toContain("Tabs everywhere");
 		expect(listed).toContain("The answer constant lives in app.ts");

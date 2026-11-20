@@ -23,7 +23,7 @@ afterEach(() => {
 
 /** One prompt in a session on `manager`; returns the transcript the scripted model received. */
 async function promptOnce(fx: Fixture, manager: SessionManager, text: string): Promise<TranscriptContext> {
-	const { session, faux } = await scriptedSession(fx, { noMcp: true }, manager);
+	const { session, faux, end } = await scriptedSession(fx, { noMcp: true }, manager);
 	try {
 		let captured: TranscriptContext | undefined;
 		faux.setResponses([
@@ -36,7 +36,7 @@ async function promptOnce(fx: Fixture, manager: SessionManager, text: string): P
 		if (!captured) throw new Error("The scripted model received no request");
 		return captured;
 	} finally {
-		session.dispose?.();
+		await end();
 	}
 }
 

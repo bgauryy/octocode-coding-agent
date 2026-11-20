@@ -48,6 +48,7 @@ import {
 } from "./agent-session/wiring.ts";
 import type {
 	AgentSessionConfig,
+	AgentSessionEvent,
 	AgentSessionEventListener,
 	ModeBindingOptions,
 	PendingUserInput,
@@ -56,6 +57,7 @@ import type { BashResult } from "./bash-executor.ts";
 import { runUserBash, type UserBashOptions } from "./agent-session/user-bash.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
 import type { CompactionPreparation, CompactionResult, SummaryRequestPolicy } from "./compaction/index.ts";
+import type { SummaryFocus } from "./compaction/summary-focus.ts";
 import type { FeatureHost, ReplacedSessionContext } from "./features/index.ts";
 import type { BeforeAgentStartTrigger } from "./features/runner.ts";
 import type { CompactionReason } from "./session-compaction.ts";
@@ -168,7 +170,7 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		model: Model<any>,
 		signal: AbortSignal,
 		reason: CompactionReason,
-		customInstructions?: string,
+		customInstructions?: string | SummaryFocus,
 		summaryRequest?: SummaryRequestPolicy,
 	): Promise<CompactionResult> {
 		return runDefaultCompaction(
@@ -203,8 +205,9 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 		willRetry: boolean,
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
+		incomingTokens?: number,
 	): Promise<boolean> {
-		return this._c.compaction.runAuto(reason, willRetry, targetModel, targetThinking);
+		return this._c.compaction.runAuto(reason, willRetry, targetModel, targetThinking, incomingTokens);
 	}
 
 	// Lifecycle (documented on `AgentSessionApi`)
@@ -262,6 +265,11 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	}
 	runUserBash(command: string, options?: UserBashOptions): Promise<BashResult> {
 		return runUserBash(this, command, options);
+	}
+	/** Session listeners see every event; features also hear `session_context_changed` (the footer's gauge depends on it). */
+	protected override _emit(event: AgentSessionEvent): void {
+		super._emit(event);
+		if (event.type === "session_context_changed") void this._featureHost.emit({ type: "session_context_changed" });
 	}
 	setSessionName(name: string, source?: SessionNameSource): void {
 		this.sessionManager.appendSessionInfo(name, source);

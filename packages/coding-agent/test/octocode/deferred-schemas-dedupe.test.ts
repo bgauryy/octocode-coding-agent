@@ -51,7 +51,7 @@ function fixture(declared: ReturnType<typeof deferred>[], tail: unknown[], branc
 }
 
 describe("restored schemas against the kept tail", () => {
-	it("skips a tool whose schema the tail holds as an mcp tools result or a refused call", () => {
+	it("skips a tool whose schema the tail holds as an mcp tools result or a refused call", async () => {
 		const declared = [deferred("alpha"), deferred("beta"), deferred("gamma")];
 		const tail = [
 			result("mcp", `alpha [deferred] — Search.\nInput schema:\n${JSON.stringify(schemaOf("alpha"), null, 2)}`),
@@ -61,15 +61,15 @@ describe("restored schemas against the kept tail", () => {
 			),
 		];
 		const { api, ctx, sent } = fixture(declared, tail, ["alpha", "beta", "gamma"]);
-		expect(restoreDeferredSchemas(api, ctx)).toEqual(["gamma"]);
+		expect(await restoreDeferredSchemas(api, ctx)).toEqual(["gamma"]);
 		expect(String(sent[0].content)).not.toContain("alphaField");
 		expect(String(sent[0].content)).not.toContain("betaField");
 	});
 
-	it("restores a tool the tail only mentions without its schema", () => {
+	it("restores a tool the tail only mentions without its schema", async () => {
 		const declared = [deferred("alpha")];
 		const { api, ctx } = fixture(declared, [result("mcp", "alpha [deferred] — Search.")], ["alpha"]);
-		expect(restoreDeferredSchemas(api, ctx)).toEqual(["alpha"]);
+		expect(await restoreDeferredSchemas(api, ctx)).toEqual(["alpha"]);
 	});
 
 	it("renders the schemas sorted by name whatever the call order, so equal tool sets give equal bytes", () => {

@@ -5,8 +5,8 @@ import { animationClock } from "../tokens/clock.ts";
 const SGR_MOUSE_PREFIX = "\x1b[<";
 
 /**
- * Note a terminal focus report (mode 1004) for the animation clock, which slows decoration while the terminal is
- * unfocused. The report is only observed: input listeners (notifications) still receive it. Other input than mouse
+ * Note a terminal focus report (mode 1004) for the animation clock, which slows decoration (it keeps stepping about
+ * every half second) while the terminal is unfocused. The report is only observed: input listeners (notifications) still receive it. Other input than mouse
  * reports proves focus, for terminals that send focus-out but miss a focus-in.
  */
 export function observeFocusReport(data: string): void {

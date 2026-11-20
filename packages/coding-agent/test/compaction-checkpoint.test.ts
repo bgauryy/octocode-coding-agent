@@ -67,6 +67,39 @@ describe("what stays inline when a checkpoint is archived", () => {
 		expect(splitSummary(finalized.summary).messages.at(-1)).toBe("newest request");
 	});
 
+	it("counts every user message it leaves out, even when none fits inline", () => {
+		const summary = heavy(["x".repeat(40_000)]);
+		const finalized = finalizeCompactionResult(result(summary), {
+			branchEntries: branch(),
+			contextWindow: 8000,
+			reserveTokens: 1000,
+			sessionFile: sessionFile(),
+		});
+		expect(finalized.summary).not.toContain("<user-message>");
+		expect(finalized.summary).toContain(
+			`${USER_HEADING}\nEarlier user messages not kept here: 3 (the checkpoint file has them).`,
+		);
+		expect(splitSummary(finalized.summary).omitted).toBe(3);
+	});
+
+	it("keeps the standing constraints and key decisions inline, so the ledger survives an archived checkpoint", () => {
+		const ledger = [
+			"## Constraints & Preferences\n- [C1] Never push to main\n- [C2] Run the parser tests before each commit",
+			"## Key Decisions\n- [D1] Keep the hand-written lexer",
+		].join("\n\n");
+		const summary = heavy(["newest request"]).replace("## TL;DR", `${ledger}\n\n## TL;DR`);
+		const finalized = finalizeCompactionResult(result(summary), {
+			branchEntries: branch(),
+			contextWindow: 8000,
+			reserveTokens: 1000,
+			sessionFile: sessionFile(),
+		});
+		expect(finalized.summary).not.toContain("long entry of finished work");
+		expect(finalized.summary).toContain("- [C1] Never push to main\n- [C2] Run the parser tests before each commit");
+		expect(finalized.summary).toContain("## Key Decisions\n- [D1] Keep the hand-written lexer");
+		expect(splitSummary(finalized.summary).messages.at(-1)).toBe("newest request");
+	});
+
 	it("keeps what fits, newest messages first, when the window is small", () => {
 		const big = "x".repeat(2000);
 		const finalized = finalizeCompactionResult(result(heavy([big, "newest request"])), {

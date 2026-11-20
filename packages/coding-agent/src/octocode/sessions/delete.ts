@@ -1,8 +1,8 @@
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionRemoval } from "../../core/session-picker.ts";
-import { shownLine } from "./store.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { type RemovalResult, type RemovalTarget, removeSessions } from "./remove.ts";
-import type { SessionIndex } from "./store.ts";
+import { SessionIndex, shownLine } from "./store.ts";
 
 /** What the host knows to name a session in a notice. */
 const label = (info: Pick<SessionInfo, "id" | "name" | "firstMessage">): string =>
@@ -45,6 +45,17 @@ export function pickerRemoval(
 			method: "trash",
 		};
 	};
+}
+
+/**
+ * The `removeSessions` port for a host that has no session index of its own (the startup picker, `/resume` in the
+ * terminal): each call opens the shared agent database, so a database that cannot open is reported as a failed delete and
+ * no transcript is removed without its rows and session folders.
+ */
+export function sharedPickerRemoval(
+	current: () => string | undefined,
+): (sessions: readonly SessionInfo[]) => Promise<SessionRemoval> {
+	return (sessions) => pickerRemoval(new SessionIndex(sharedAgentDb()), current)(sessions);
 }
 
 export interface DeleteByIdResult extends RemovalResult {

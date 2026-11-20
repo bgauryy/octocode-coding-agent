@@ -1,23 +1,26 @@
 /**
  * Deferred exposure. A deferred tool is declared like a direct one, validated against the server's full schema, and
- * the `declared` presentation gives it the server's whole description with its top-level field names only; its
- * server's block keeps the server's instructions and lists the tool's name and trigger. The agent loads the full
- * schema with the `mcp` tool (intent `tools`) or from the refusal of a call its fields do not satisfy. The text arrives
- * as a tool result, so loading never changes the cached prefix.
+ * the `declared` presentation gives it the server's whole description with thin parameters (`thinParameters`: field
+ * names and types, the few values a field allows, item bounds, required fields); its server's block keeps the
+ * server's instructions and lists the tool's name and trigger. The agent loads the full schema with the `mcp` tool
+ * (intent `tools`) or from the refusal of a call its fields do not satisfy. The text arrives as a tool result, so
+ * loading never changes the cached prefix.
  *
  * The `mcpExposure` setting decides tools the configuration leaves open (no `exposure`, no matching `toolExposure`):
- * `usage` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where a tool is deferred unless the promotion snapshot names it
- * (the share of declaring sessions across all workspaces that called or loaded it, `common/src/usage-counts.ts`; no
- * data promotes nothing); `recent`, where a tool the workspace called in the last 24 hours is direct and any other is
- * deferred; `direct`; `deferred`; or `auto:<bytes>`, where servers stay direct, in name order, while the text
- * of the direct blocks fits within that many bytes and are deferred past it (`McpPresentation.describe`). For `recent`
- * and `usage` the set is fixed when the session starts (`McpFeatureState.recentTools`), a resumed session declares
- * the set it saved (`recent-session.ts`) and a child the set of its coordinator. The `auto` budget is in bytes, not a
- * share of the context window, so switching models never re-decides it and rewrites the prefix.
+ * `usage` (the default, `DEFAULT_MCP_EXPOSURE_SETTING`), where every open tool is deferred and the promotion snapshot
+ * (the share of declaring sessions across all workspaces that called or loaded a tool, `common/src/usage-counts.ts`,
+ * within the `mcpPromotedBytes` budget) only decides whether a tool the configuration puts on demand is declared, thin,
+ * from the session's start; with too little data a tool keeps the exposure its configuration gives it. `recent`: a tool
+ * the workspace called in the last 24 hours is direct and any other is deferred; `direct`; `deferred`; or
+ * `auto:<bytes>`, where servers stay direct, in name order, while the text of the direct blocks fits within that many
+ * bytes and are deferred past it (`McpPresentation.describe`). For `recent` and `usage` the set is fixed when the
+ * session starts (`McpFeatureState.recentTools`), a resumed session declares the set it saved (`recent-session.ts`) and
+ * a child the set of its coordinator. Both budgets are in bytes, not a share of the context window, so switching models
+ * never re-decides them and rewrites the prefix.
  */
 
 import type { McpServerEntry } from "./config.ts";
-import { MCP_DEFER_ROLES_ENV } from "@octocodeai/octocode-common/env";
+import { MCP_DEFER_ROLES_ENV, MCP_RECENT_TOOLS_ENV } from "@octocodeai/octocode-common/env";
 import { configuredMcpToolExposure } from "./servers.ts";
 import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 
@@ -27,6 +30,8 @@ export interface McpDeferral {
 	auto?: { tools: ReadonlySet<string>; budget: number };
 	/** Tools registered but not declared (`on-demand.ts`): the block lists each by name and trigger. */
 	onDemand?: ReadonlySet<string>;
+	/** A block that declares none of the server's tools leaves its instructions out (`McpServerPreset.instructionsOnDemand`). */
+	instructionsOnDemand?: boolean;
 }
 
 /** Roles a child may defer (`mcpDefer` in a profile); the value of `OCTOCODE_MCP_DEFER_ROLES` lists them. */
@@ -39,6 +44,18 @@ export function deferRolesFromEnv(env: NodeJS.ProcessEnv): McpDeferRole[] {
 	return MCP_DEFER_ROLES.filter((role) => names.includes(role));
 }
 
+/** The set a coordinator handed its child, or undefined when it handed none or the value is not a list of names. */
+export function recentToolsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> | undefined {
+	const text = env[MCP_RECENT_TOOLS_ENV];
+	if (text === undefined) return undefined;
+	try {
+		const value: unknown = JSON.parse(text);
+		return Array.isArray(value) ? new Set(value.filter((name): name is string => typeof name === "string")) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 const AUTO = /^auto:(\d+)$/;
 
 /**
@@ -47,6 +64,17 @@ const AUTO = /^auto:(\d+)$/;
  * defaults name the same value.
  */
 export const DEFAULT_MCP_EXPOSURE_SETTING = "usage";
+
+/**
+ * Bytes per role group (main, subagent) that usage promotion may add to the tool list when no `mcpPromotedBytes` is
+ * set: the thin declarations of promoted on-demand tools, most used first. The coding agent's settings defaults name
+ * the same value.
+ */
+export const DEFAULT_MCP_PROMOTED_BYTES = 8192;
+
+/** The promotion budget a `mcpPromotedBytes` value names: a whole number of bytes, else the default. */
+export const promotionBudget = (value: unknown): number =>
+	typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : DEFAULT_MCP_PROMOTED_BYTES;
 
 /** Whether the setting defers by use (`recent` or `usage`), so the caller knows to supply the in-use set. */
 export const defersByRecentUse = (setting: unknown): boolean => setting === "recent" || setting === "usage";
@@ -74,7 +102,7 @@ export function deferralOf(
 	setting: unknown,
 	activeTools: readonly string[],
 	deferRoles: readonly McpDeferRole[] = [],
-	/** `recent`, `usage`: the tools in use (`recentToolKey`); an open tool outside it is deferred. */
+	/** `recent`: the tools in use (`recentToolKey`), direct; `usage`: the promoted ones, declared thin when on demand. */
 	recent: ReadonlySet<string> = new Set(),
 	/** On-demand tools this session declared in full (`loadedOnDemand`). */
 	loaded: ReadonlySet<string> = new Set(),
@@ -95,16 +123,17 @@ export function deferralOf(
 	const open = new Set<string>();
 	for (const tool of tools) {
 		const configured = configuredMcpToolExposure(entry.config, tool);
-		// Declared at all, an on-demand tool is deferred (no in-place addition, or the transcript declares it thin), unless
-		// it is in use or this session loaded it: then it is declared in full.
+		const inUse = recent.has(recentToolKey(entry.name, tool));
+		// Declared at all, an on-demand tool is deferred (no in-place addition, the transcript declares it thin, or `usage`
+		// promoted it), unless this session loaded it or `recent` counts it in use: then it is declared in full.
 		if (configured === "onDemand") {
-			if (!loaded.has(tool) && !recent.has(recentToolKey(entry.name, tool))) deferred.add(tool);
+			if (!loaded.has(tool) && !(inUse && fallback === "recent")) deferred.add(tool);
 			continue;
 		}
 		const roleDeferred = byRole.has(tool) && configuredMcpToolExposure(serverWide, tool) === undefined;
-		const unused = (fallback === "recent" || fallback === "usage") && !recent.has(recentToolKey(entry.name, tool));
-		if (configured === "deferred" || roleDeferred || (configured === undefined && (fallback === "deferred" || unused)))
-			deferred.add(tool);
+		// `usage` promotes nothing to a full schema: an open tool is declared thin, used often or not.
+		const thin = fallback === "deferred" || fallback === "usage" || (fallback === "recent" && !inUse);
+		if (configured === "deferred" || roleDeferred || (configured === undefined && thin)) deferred.add(tool);
 		else if (configured === undefined) open.add(tool);
 	}
 	return typeof fallback === "object" && open.size > 0

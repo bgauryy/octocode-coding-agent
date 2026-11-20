@@ -28,10 +28,14 @@ afterEach(() => {
 
 const TITLE = "Staging migrations only";
 
-/** The memory feature on a real in-memory session; `tool` runs the `memory` tool and records its result as the agent loop does. */
+/**
+ * The memory feature on a real in-memory session; `tool` runs the `memory` tool and records its result as the agent loop
+ * does. Without the MEMORY.md files, so recall alone decides what is sent (a saved line in the prompt's file section is
+ * left out of recall: memory-file-session.test.ts).
+ */
 function harness() {
 	const session = SessionManager.inMemory(cwd);
-	const fake = fakeHost();
+	const fake = fakeHost({ memory: { file: false } });
 	registerMemory(fake.api, {
 		commands: new Subcommands(),
 		isSubagent: false,
@@ -59,9 +63,11 @@ function harness() {
 	};
 	/** The next prompt's injection, committed to the session as the host commits it. */
 	const prompt = async (text: string) => {
-		const out = (await fake.fire("before_agent_start", { prompt: text }, ctx())) as
-			| { message: { customType: string; content: string; display: boolean; details: unknown } }
-			| undefined;
+		const out = (await fake.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: text },
+			ctx(),
+		)) as { message: { customType: string; content: string; display: boolean; details: unknown } } | undefined;
 		if (out) session.appendCustomMessageEntry(out.message.customType, out.message.content, false, out.message.details);
 		session.appendMessage({ role: "user", content: text, timestamp: Date.now() } as never);
 		return out?.message.content ?? "";

@@ -79,6 +79,8 @@ class Provenance {
 	private nextSource = 1;
 	/** Some source read here is outside what a workspace read trusts: what a parent needs to know of its child. */
 	private exposure = false;
+	/** Team mail attachments by SHA-256 → their source: a `fromAttachment` reference stands for the attached text. */
+	private readonly attachments = new Map<string, number>();
 	/** Children their own run reported as having read nothing untrusted: their reports are indexed as nothing. */
 	private readonly cleanChildren = new Set<string>();
 	private readonly workspaceRoot: (cwd: string) => string | undefined;
@@ -121,8 +123,31 @@ class Provenance {
 				for (const key of shingles(normalize(text))) this.remember(key, id, true);
 			}
 		}
+		this.indexSecrets(text, event.toolName);
+	}
+
+	/**
+	 * Indexes text that reached this session as a message instead of a tool result (team mail, `permission/provenance/
+	 * reports.ts`): untrusted however it was worded, as a subagent's report is, and named by `agent` for a session grant.
+	 * An attachment's `sha256` makes a `fromAttachment` reference to it count as its text, read or not.
+	 */
+	recordUntrusted(label: string, text: string, agent?: string, sha256?: string): void {
+		const capped = capBytes(text, this.maxBytes);
+		const id = this.addSource("untrusted", label, false, agent);
+		if (sha256) {
+			this.attachments.delete(sha256.toLowerCase());
+			this.attachments.set(sha256.toLowerCase(), id);
+			if (this.attachments.size > MAX_SOURCES) this.attachments.delete(this.attachments.keys().next().value!);
+		}
+		for (const key of atoms(capped)) this.remember(key, id, false);
+		for (const key of shingles(normalize(capped))) this.remember(key, id, true);
+		this.indexSecrets(capped, label);
+	}
+
+	/** Secret-looking lines of `text` as private text from `label`, so a later egress repeating one is a hit. */
+	private indexSecrets(text: string, label: string): void {
 		if (!secretProblem(text)) return;
-		const secretId = this.addSource("private", event.toolName, true);
+		const secretId = this.addSource("private", label, true);
 		for (const line of text.split("\n")) {
 			if (!secretProblem(line)) continue;
 			for (const key of tokens(line)) this.remember(key, secretId, true);
@@ -152,6 +177,7 @@ class Provenance {
 		this.index.clear();
 		this.sources.clear();
 		this.cursors.clear();
+		this.attachments.clear();
 		this.cleanChildren.clear();
 		this.exposure = false;
 		this.keys = undefined;
@@ -170,7 +196,7 @@ class Provenance {
 		ctx: CheckContext,
 		allowed: AllowedSource | undefined,
 	): ProvenanceHit | undefined {
-		if (this.index.size === 0) return undefined;
+		if (this.index.size === 0 && this.attachments.size === 0) return undefined;
 		const { cwd } = ctx;
 		for (const value of consequential(toolName, input, cwd, this.workspaceRoot)) {
 			const hit = this.untrustedIn(value, this.scope(ctx), allowed);
@@ -249,6 +275,10 @@ class Provenance {
 			return source?.agent !== undefined && allowed?.(source.agent) ? undefined : source;
 		};
 		const named = (source: Source): { agent?: string } => (source.agent ? { agent: source.agent } : {});
+		const attached = this.attachments.get(value.trim().toLowerCase());
+		const attachment = attached === undefined ? undefined : this.sources.get(attached);
+		if (attachment && !(attachment.agent !== undefined && allowed?.(attachment.agent)))
+			return { why: `writes ${attachment.label} (${formatAgo(this.now() - attachment.at)})`, ...named(attachment) };
 		for (const key of atoms(value)) {
 			const source = found(key);
 			if (source)

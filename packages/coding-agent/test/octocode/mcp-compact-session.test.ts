@@ -48,7 +48,12 @@ describe("thin MCP declarations in the agent loop", () => {
 		expect(toToolDeclaration(tool)).toEqual({
 			name: "mcp__octocode__localFetch",
 			description: "Read files.",
-			parameters: { type: "object", properties: { queries: { type: "array" } }, additionalProperties: true },
+			parameters: {
+				type: "object",
+				properties: { queries: { type: "array", maxItems: 2 } },
+				additionalProperties: true,
+				required: ["queries"],
+			},
 		});
 	});
 

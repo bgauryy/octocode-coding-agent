@@ -1,5 +1,6 @@
-import { type FeatureSetup, readsMessagesOnly } from "../../../core/features/index.ts";
+import { type FeatureContext, type FeatureSetup, readsMessagesOnly } from "../../../core/features/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
+import { USER_NOTICE_CHANNEL, type UserNotice } from "../../shared/user-notice.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
 
@@ -162,26 +163,40 @@ export function registerMessageHooks(
 	return { messageSend, messageReceive };
 }
 
-/** Notification observers outlive the foreground turn, but never their session. */
+const isUserNotice = (value: unknown): value is UserNotice =>
+	isRecord(value) &&
+	typeof value.type === "string" &&
+	typeof value.title === "string" &&
+	typeof value.message === "string";
+
+/**
+ * Notification observers outlive the foreground turn, but never their session. Besides the notices the notifier passes
+ * in (dialogs, an unread answer), every notice announced on `USER_NOTICE_CHANNEL` runs them, in the session it belongs to.
+ */
 export function notificationHook(
 	api: FeatureSetup,
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): HooksView["notification"] {
 	let controller = new AbortController();
 	let closed = false;
+	let context: FeatureContext | undefined;
 	const active = new Set<Promise<void>>();
 	const stop = async () => {
 		closed = true;
 		controller.abort();
 		await Promise.allSettled(active);
 	};
-	api.bus.on("session_shutdown", stop);
-	api.bus.on("session_start", async () => {
+	api.bus.on("session_shutdown", async () => {
+		context = undefined;
+		await stop();
+	});
+	api.bus.on("session_start", async (_event, ctx) => {
 		await stop();
 		controller = new AbortController();
 		closed = false;
+		context = ctx;
 	});
-	return (notice, ctx) => {
+	const notification: HooksView["notification"] = (notice, ctx) => {
 		if (closed) return;
 		const input = {
 			message: notice.message,
@@ -196,4 +211,8 @@ export function notificationHook(
 			.finally(() => active.delete(task));
 		active.add(task);
 	};
+	api.channels.on(USER_NOTICE_CHANNEL, (value) => {
+		if (context && isUserNotice(value)) notification(value, context);
+	});
+	return notification;
 }

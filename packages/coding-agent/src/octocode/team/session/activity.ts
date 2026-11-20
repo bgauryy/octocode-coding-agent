@@ -10,6 +10,9 @@ import type { TeamStore } from "../store.ts";
 /** Refresh the agent's row at least this often so peers can tell it is alive (and its leases stay valid). */
 export const HEARTBEAT_MS = 5_000;
 
+/** A changed activity line reaches the row this soon at the earliest: the panel follows a child within about a second. */
+export const LINE_FLUSH_MS = 500;
+
 /** What activity accounting reads of the team (`Team`, `session.ts`): the current values each time. */
 interface ActivityHost {
 	me(): Member | undefined;
@@ -28,6 +31,8 @@ export class Activity {
 	private readonly host: ActivityHost;
 	/** A status or goal change waits for the next tick; activity, tool counts and usage ride the heartbeat. */
 	private statusChanged = false;
+	/** The activity line changed since the last write: the next heartbeat check writes it once `LINE_FLUSH_MS` passed. */
+	private lineChanged = false;
 	private savedAt = 0;
 	/** When this agent last worked (or joined): an idle owner's reservations lapse `LEASE_IDLE_MS` (`held.ts`) after it. */
 	private activeAt = 0;
@@ -89,8 +94,11 @@ export class Activity {
 	/** What the agent does now (the line src/ui/activity.ts describes), or undefined between steps and when idle. */
 	setLine(line: string | undefined): void {
 		this.update((me) => {
-			if (line) me.activity = storedText(line, LINE_MAX);
+			const next = line ? storedText(line, LINE_MAX) : undefined;
+			if (next === me.activity) return;
+			if (next) me.activity = next;
 			else delete me.activity;
+			this.lineChanged = true;
 		});
 	}
 
@@ -129,6 +137,7 @@ export class Activity {
 		this.host.renewChildren(db, now);
 		this.savedAt = now;
 		this.statusChanged = false;
+		this.lineChanged = false;
 		if (!this.host.held.holding) return;
 		// A heartbeat stall can let a lease lapse (and a peer take the path): say so once, and refuse edits until re-locked.
 		const lost = this.host.held.lost(db.owned(me.id, now));
@@ -137,9 +146,14 @@ export class Activity {
 			this.host.mail.notice(renderPrompt("notices/mail/reservation-lapsed.md", { paths: lost.join(", "), why }));
 	}
 
-	/** Writes the heartbeat when a status changed or `HEARTBEAT_MS` passed since the last; whether it did. */
+	/**
+	 * Writes the row when a status changed, when the activity line changed and `LINE_FLUSH_MS` passed since the last write,
+	 * or when `HEARTBEAT_MS` passed; whether it did. No timer: the delivery tick asks.
+	 */
 	heartbeat(db: TeamStore): boolean {
-		if (!this.statusChanged && Date.now() - this.savedAt < HEARTBEAT_MS) return false;
+		const since = Date.now() - this.savedAt;
+		const lineDue = this.lineChanged && since >= LINE_FLUSH_MS;
+		if (!this.statusChanged && !lineDue && since < HEARTBEAT_MS) return false;
 		this.flush(db);
 		return true;
 	}

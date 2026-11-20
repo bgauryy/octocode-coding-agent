@@ -10,6 +10,7 @@ import { foldScrolledTranscript } from "./live-window.ts";
 import { ApplicationServiceError, getApplicationPort } from "../../../core/application/index.ts";
 import { onProviderSettingsApplied } from "../../../core/provider-sources/index.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../../core/messages.ts";
+import { compactionUsage } from "./compaction-cost.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events.ts";
 import { applicationRenderer } from "./application-events.ts";
@@ -160,13 +161,8 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 				host.addMessageToChat(
 					createCompactionSummaryMessage(event.entry.summary, event.entry.tokensBefore, event.entry.timestamp),
 				);
-				if (event.entry.usage) {
-					host.addCompactionCostNotice({
-						type: "compaction_cost",
-						kind: "compaction",
-						usage: event.entry.usage,
-					});
-				}
+				const usage = compactionUsage(event.entry, (id) => host.sessionManager.getEntry(id));
+				if (usage) host.addCompactionCostNotice({ type: "compaction_cost", kind: "compaction", usage });
 				host.renderSessionEntries(retainedEntries.filter((entry) => entriesAfterCompaction.has(entry.id)));
 				for (const entryId of entriesAfterCompaction) host.entriesRenderedByRebuild.add(entryId);
 				// `compaction_end` follows for this entry: it finds the transcript already rebuilt.

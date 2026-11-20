@@ -140,6 +140,45 @@ describe("early compaction summary", () => {
 		expect(notes[1]).toMatch(/^early-summary: the early summary is ready after /);
 	});
 
+	it("is used by the agent's own compaction, whose focus then follows the summary, never by the user's", async () => {
+		const agent = setup();
+		startEarlySummary(agent.api, agent.prewarm, agent.ctx, false);
+		const written = await writeSummary(
+			agent.api,
+			agent.compaction({ reason: "manual", requestedBy: "agent", customInstructions: "next: the parser tests" }),
+			agent.ctx,
+		);
+		expect(agent.calls).toHaveLength(1);
+		expect(summaryOf(written)).toContain("summary 1");
+		if (!written || !("compaction" in written) || !written.compaction) throw new Error("no compaction");
+		expect(written.compaction.details).toMatchObject({
+			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared", early: { waitedMs: expect.any(Number) } },
+			focus: { delivery: "follow-up" },
+			attemptIds: [],
+		});
+
+		const user = setup();
+		startEarlySummary(user.api, user.prewarm, user.ctx, false);
+		await writeSummary(
+			user.api,
+			user.compaction({ reason: "manual", requestedBy: "user", customInstructions: "x" }),
+			user.ctx,
+		);
+		expect(user.calls).toHaveLength(2);
+		expect(user.notes).toContainEqual(expect.stringMatching(/discarded .*the user's compaction has its own focus/));
+	});
+
+	it("notes an early summary a newer plan replaced, so its spend is counted", async () => {
+		const { notes, api, ctx, prewarm } = setup();
+		startEarlySummary(api, prewarm, ctx, false);
+		startEarlySummary(api, prewarm, ctx, false);
+		expect(notes).toContainEqual(
+			expect.stringMatching(
+				/^early-summary: the early summary was replaced by a newer plan's while its request was running/,
+			),
+		);
+	});
+
 	it("is waited for when the compaction arrives while it is still being written", async () => {
 		let release: () => void = () => undefined;
 		const held = new Promise<void>((resolve) => {
@@ -171,9 +210,7 @@ describe("early compaction summary", () => {
 		startEarlySummary(manual.api, manual.prewarm, manual.ctx, false);
 		await writeSummary(manual.api, manual.compaction({ reason: "manual" }), manual.ctx);
 		expect(manual.calls).toHaveLength(2);
-		expect(manual.notes).toContainEqual(
-			expect.stringMatching(/discarded .*the compaction is manual, not at the threshold/),
-		);
+		expect(manual.notes).toContainEqual(expect.stringMatching(/discarded .*the user asked for this compaction/));
 
 		const focused = setup();
 		startEarlySummary(focused.api, focused.prewarm, focused.ctx, false);

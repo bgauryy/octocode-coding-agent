@@ -24,6 +24,8 @@ export interface ApplicationRuntimeState {
 	status: "idle" | "compacting" | "retrying" | "stalled";
 	/** One line on why `status` is not idle, e.g. how long the model has been quiet. */
 	statusDetail?: string;
+	/** When `status` ends on its own (ms since the epoch): the start of a retry's attempt. */
+	statusUntil?: number;
 	/** The blocking dialog the run waits on, until it closes. */
 	awaiting?: ApplicationAwaiting;
 	/** What the session is doing, as the host last published it; undefined before the first publication. */
@@ -79,7 +81,7 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 			store.setState({ runId: undefined, streaming: false });
 			break;
 		case "session.status":
-			store.setState({ status: event.status, statusDetail: event.detail });
+			store.setState({ status: event.status, statusDetail: event.detail, statusUntil: event.until });
 			break;
 		case "session.awaiting":
 			store.setState({ awaiting: event.awaiting ? { ...event.awaiting } : undefined });

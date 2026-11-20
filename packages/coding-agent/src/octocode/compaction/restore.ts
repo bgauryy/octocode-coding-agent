@@ -98,14 +98,20 @@ function windowOf(text: string, max: number, line = 1): Window {
 	return { text: lines.slice(first, last).join(""), first: first + 1, last, total, cut: true };
 }
 
-/** A file to read back: `onlyRead` when the summarized span read it without changing it (`restore-picks.ts`). */
+/**
+ * A file to read back: `onlyRead` when the summarized span read it without changing it (`restore-picks.ts`). Such a
+ * file is named, not read back: most of them are never touched again after a compaction, and a read brings one back
+ * when the work returns to it.
+ */
 export interface RestoreCandidate extends WorkedFile {
 	onlyRead?: boolean;
 }
 
 interface Restored {
-	/** The message body: each file in a `<file>` block. */
+	/** The message body: each file in a `<file>` block, then the line naming the files only read (`listed`). */
 	content: string;
+	/** The files only read, as named (relative to the working directory, with the line last read). */
+	listed: string[];
 	/** `stamp`: the file's stat when it was read back (`settleRestoredFiles` checks it is unchanged). */
 	files: Array<{ file: string; whole: boolean; sha256?: string; size?: number; stamp: Stamp }>;
 	/** The work each restored file stands for, so the next compaction ranks it by that (`seenFiles`). */
@@ -140,8 +146,8 @@ export function heldFiles(
  * Reads back up to `limits.maxFiles` of `candidates` (most recent first) except those in `held` (`heldFiles`: the
  * context has their current content), within the budgets, and gives up after `RESTORE_MAX_SKIPPED` candidates that
  * cannot be read back. A cut window of a file that `shown` (`shownRanges`) already covers is not read back either.
- * A candidate marked `onlyRead` shows only its outline, and none when it has no declaration to list. Undefined when
- * none qualifies.
+ * A candidate marked `onlyRead` is only named, up to `limits.maxFiles` of them, in one line after the files. Undefined
+ * when nothing qualifies.
  */
 export function restoreFiles(
 	candidates: readonly RestoreCandidate[],
@@ -154,18 +160,36 @@ export function restoreFiles(
 	const blocks: string[] = [];
 	const files: Restored["files"] = [];
 	const worked: WorkedFile[] = [];
+	const listed: string[] = [];
 	const intro = renderPrompt("notices/compaction/restored-files.md");
 	let used = intro.length + 2;
 	let skipped = 0;
 	// One file read by two paths (a symlink and its target) comes back once.
 	const taken = new Set<string>();
+	let full = false;
+	const shownAs = (file: string) => {
+		const relative = path.relative(cwd, file);
+		return relative.startsWith("..") ? file : relative;
+	};
 	for (const candidate of candidates) {
 		const { file } = candidate;
+		const real = canonicalPath(file);
+		if (candidate.onlyRead) {
+			if (listed.length < limits.maxFiles && !held.has(real) && !taken.has(real)) {
+				taken.add(real);
+				listed.push(`${shownAs(file)}${candidate.line ? `:${candidate.line}` : ""}`);
+			}
+			continue;
+		}
+		// Past the budgets no other file is read back; the files only read are still named.
+		if (full) continue;
 		const separator = blocks.length > 0 ? 2 : 0;
 		const available = total - used - separator;
 		let room = Math.min(limits.fileChars, available);
-		if (files.length >= limits.maxFiles || room < RESTORE_MIN_FILE_CHARS || skipped >= RESTORE_MAX_SKIPPED) break;
-		const real = canonicalPath(file);
+		if (files.length >= limits.maxFiles || room < RESTORE_MIN_FILE_CHARS || skipped >= RESTORE_MAX_SKIPPED) {
+			full = true;
+			continue;
+		}
 		if (held.has(real) || taken.has(real)) continue;
 		const read = textOf(file);
 		if (read === undefined) {
@@ -174,25 +198,21 @@ export function restoreFiles(
 		}
 		const { text } = read;
 		// A file over the whole-file size shows its outline when it has declarations, else a window of whole lines.
-		// A file only read shows its outline or nothing: a read brings it back whole when the work returns to it.
-		const viewOf = (chars: number): Window | undefined => {
+		const viewOf = (chars: number): Window => {
 			const outline =
-				text.length > limits.fileChars || candidate.onlyRead
+				text.length > limits.fileChars
 					? outlineOf(text, Math.min(chars, limits.outlineChars), candidate.line)
 					: undefined;
-			if (!outline) return candidate.onlyRead ? undefined : windowOf(text, chars, candidate.line);
+			if (!outline) return windowOf(text, chars, candidate.line);
 			const lines = text.match(/[^\n]*\n|[^\n]+$/g)?.length ?? 0;
 			return { text: outline.text, first: 1, last: lines, total: lines, cut: true, outline };
 		};
-		const first = viewOf(room);
-		if (first === undefined) continue;
-		let view = first;
+		let view = viewOf(room);
 		if (view.text.length === 0 && text.length > 0) {
 			skipped++;
 			continue;
 		}
-		const relative = path.relative(cwd, file);
-		const display = relative.startsWith("..") ? file : relative;
+		const display = shownAs(file);
 		const render = (window: Window): string => {
 			const note = window.outline
 				? `\n${renderPrompt("notices/compaction/restored-outline.md", {
@@ -218,12 +238,13 @@ export function restoreFiles(
 		while (block.length > available && room >= RESTORE_MIN_FILE_CHARS) {
 			room -= block.length - available;
 			if (room < RESTORE_MIN_FILE_CHARS) break;
-			const smaller = viewOf(room);
-			if (smaller === undefined) break;
-			view = smaller;
+			view = viewOf(room);
 			block = render(view);
 		}
-		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) break;
+		if (room < RESTORE_MIN_FILE_CHARS || block.length > available) {
+			full = true;
+			continue;
+		}
 		// The tail's reads show every line of this window: the same text would come twice.
 		if (view.cut && !view.outline && covers(shown.get(real), view.first, view.last)) continue;
 		taken.add(real);
@@ -237,8 +258,17 @@ export function restoreFiles(
 		worked.push(work);
 		used += separator + block.length;
 	}
-	if (files.length === 0) return undefined;
-	return { content: `${intro}\n\n${blocks.join("\n\n")}`, files, worked };
+	const list =
+		listed.length > 0
+			? renderPrompt("notices/compaction/restored-read-list.md", {
+					alone: files.length === 0,
+					files: listed.join(", "),
+				})
+			: undefined;
+	const named = list !== undefined && (files.length === 0 ? list.length : used + 2 + list.length) <= total;
+	if (files.length === 0) return named ? { content: list, listed, files, worked } : undefined;
+	const content = `${intro}\n\n${blocks.join("\n\n")}${named ? `\n\n${list}` : ""}`;
+	return { content, listed: named ? listed : [], files, worked };
 }
 
 /** Files sent back to the context, recorded in the guard once a model call carries the message (`settleRestoredFiles`). */
@@ -252,14 +282,14 @@ export interface PendingRestore {
  * message, within `total` characters. Run it after the guard was rebuilt from the compacted context; returns what to
  * record once the message is delivered.
  */
-export function deliverRestoredFiles(
+export async function deliverRestoredFiles(
 	api: SetupPick<"session", "sendMessage">,
 	pending: readonly WorkedFile[],
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager"> & Partial<Pick<FeatureContext, "model">>,
 	budget: number,
 	thinking?: CompactionThinking,
 	contextHeld: ReadonlySet<string> = new Set(),
-): PendingRestore | undefined {
+): Promise<PendingRestore | undefined> {
 	let total = budget;
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
 		try {
@@ -307,9 +337,10 @@ export function deliverRestoredFiles(
 			id,
 			files: restored.files.map((entry) => entry.file),
 			...(partial.length > 0 ? { partial } : {}),
+			...(restored.listed.length > 0 ? { listed: restored.listed } : {}),
 			worked: restored.worked,
 		};
-		void api.session.sendMessage(
+		await api.session.sendMessage(
 			{ customType: RESTORED_FILES_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);

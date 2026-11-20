@@ -5,7 +5,7 @@ import { registerMcpHost } from "../src/index.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { McpOAuthCredentialStore } from "../src/oauth.ts";
 import { defaultPreset } from "./mcp-default-preset.ts";
-import type { McpFeatureOptions } from "../src/state.ts";
+import type { McpFeatureOptions } from "../src/options.ts";
 import { StdioTransport } from "../src/client/index.ts";
 import { createDefaultTransport } from "../src/runtime.ts";
 import { fakeCtx, fakeHost } from "../../coding-agent/test/octocode/fake-host.ts";

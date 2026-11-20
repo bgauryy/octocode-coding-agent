@@ -16,9 +16,13 @@ import { estimateContextTokens } from "../utils/estimate.ts";
 const CONTEXT_SAFETY_TOKENS = 4096;
 const MIN_MAX_TOKENS = 1;
 
+/**
+ * `maxTokens`, lowered so the context, estimated at `model`'s family ratio (as the compaction trigger estimates it), and
+ * a safety margin still fit the window.
+ */
 export function clampMaxTokensToContext(model: Model<Api>, context: TranscriptContext, maxTokens: number): number {
 	if (model.contextWindow <= 0) return Math.max(MIN_MAX_TOKENS, maxTokens);
-	const available = model.contextWindow - estimateContextTokens(context).tokens - CONTEXT_SAFETY_TOKENS;
+	const available = model.contextWindow - estimateContextTokens(context, model).tokens - CONTEXT_SAFETY_TOKENS;
 	return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
 }
 

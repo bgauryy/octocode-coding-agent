@@ -248,6 +248,7 @@ export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts"
 export { TuiMainScreen } from "./tui-main-screen.ts";
 // Utilities
 export { wrapTextWithAnsi } from "./utils/wrap.ts";
+export { markFolded, stripRowMarks } from "./utils/row-marks.ts";
 export { visibleWidth } from "./utils/width.ts";
 export { padToWidth, truncateToWidth } from "./utils/truncate.ts";
 export { closeOpenStyles } from "./utils/ansi-tracker.ts";

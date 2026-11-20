@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationActivity, ApplicationHistory } from "@octocodeai/octocode-contracts";
+import {
+	APPLICATION_NOTICE_KIND,
+	APPLICATION_NOTICE_REPEAT_MS,
+	type ApplicationActivity,
+	type ApplicationHistory,
+	type ApplicationNoticeLevel,
+} from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import type { SessionEntry } from "../../session-manager.ts";
 import type { ApplicationAssets } from "../assets.ts";
@@ -16,6 +22,8 @@ export class ApplicationActivities {
 		return this.entries.values;
 	}
 	private shellId = randomUUID();
+	/** When each notice (level and text) was last sent, so a repeat within `APPLICATION_NOTICE_REPEAT_MS` is not. */
+	private readonly noticed = new Map<string, number>();
 	private readonly assets: ApplicationAssets;
 	constructor(assets: ApplicationAssets, state: ApplicationStateStore) {
 		this.assets = assets;
@@ -87,6 +95,18 @@ export class ApplicationActivities {
 		const data = nativeActivity(event);
 		return data ? this.put(data, { id: `activity:${randomUUID()}`, at: Date.now(), source: "live" }) : undefined;
 	}
+	/** A notice the session's UI showed, as a live activity; undefined when the same notice was sent just before. */
+	notice(text: string, level: ApplicationNoticeLevel, now = Date.now()): ApplicationActivity | undefined {
+		const key = `${level}\n${text}`;
+		const last = this.noticed.get(key);
+		if (last !== undefined && now - last < APPLICATION_NOTICE_REPEAT_MS) return undefined;
+		for (const [seen, at] of this.noticed) if (now - at >= APPLICATION_NOTICE_REPEAT_MS) this.noticed.delete(seen);
+		this.noticed.set(key, now);
+		return this.put(
+			{ kind: APPLICATION_NOTICE_KIND, text, data: { level }, ...(level === "error" ? { failed: true } : {}) },
+			{ id: `notice:${randomUUID()}`, at: now, source: "live" },
+		);
+	}
 	private page(activities: ApplicationActivity[], end: number): ActivityPage {
 		return cloneDisplay({ activities, activityBefore: activities[0]?.id, hasMoreActivities: end > activities.length });
 	}
@@ -104,5 +124,6 @@ export class ApplicationActivities {
 	}
 	clear(): void {
 		this.entries.clear();
+		this.noticed.clear();
 	}
 }

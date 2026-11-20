@@ -61,6 +61,8 @@ export interface SessionChild {
 	reportArtifact?: ReportArtifact;
 	/** It ran in a private worktree, removed when it ended. */
 	isolated?: true;
+	/** The vendor runner its turns ran on (`runner`): its conversation lives in that CLI, not here. */
+	runner?: string;
 	/** The browser mode the call chose. */
 	headless?: boolean;
 	/** The hook mode a call named for it (`hooks`): a resume keeps it unless it names another. */
@@ -190,6 +192,9 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		child.goal = text(details.goal) ?? child.goal;
 		if (input.isolate === true) child.isolated = true;
 		else delete child.isolated;
+		const runner = text(input.runner);
+		if (runner) child.runner = runner;
+		else delete child.runner;
 		if (typeof input.headless === "boolean") child.headless = input.headless;
 		if (input.hooks === "off" || input.hooks === "decisions" || input.hooks === "all") child.hooks = input.hooks;
 		const task = text(input.task);

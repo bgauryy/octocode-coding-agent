@@ -161,6 +161,11 @@ function matchSession(
 	return { matches: true, score: totalScore };
 }
 
+/** Why `query` cannot be searched (an invalid `re:` pattern), or undefined when it can. */
+export function searchQueryError(query: string): string | undefined {
+	return query.trim() ? parseSearchQuery(query).error : undefined;
+}
+
 /** Whether `query` finds the session only in its transcript, not in what its row shows. */
 export function isTranscriptOnlyMatch(session: SessionInfo, query: string): boolean {
 	if (!query.trim()) return false;

@@ -47,7 +47,8 @@ import {
 	PARENT_HOLDS_LEASES_ENV,
 	PARENT_WAITS_ENV,
 } from "../../team/store/env.ts";
-import { type AgentProfile, GENERAL_CATALOG } from "../profiles.ts";
+import type { AgentProfile } from "../profiles.ts";
+import { GENERAL_CATALOG, GENERAL_MCP_DEFER } from "../general-defaults.ts";
 import { DEFAULT_MAX_REQUESTS } from "../budget.ts";
 import type { ResultContract } from "../result-schema.ts";
 import { CHILD_OWNED_ENV, NESTING_ENV, nestingOf } from "./child-env.ts";
@@ -101,8 +102,8 @@ export function childCachePreferences(
 	policy: { options: CachePreferences; sources: Partial<Record<keyof CachePreferences, string>> },
 	choice: CacheChoice,
 ): CachePreferences {
-	if (policy.sources.cacheRetention !== "defaults" || choice === "long") return policy.options;
-	return { cacheRetention: "short", instructionCacheRetention: policy.options.instructionCacheRetention };
+	if (policy.sources.cacheRetention !== "defaults") return policy.options;
+	return { cacheRetention: choice, instructionCacheRetention: policy.options.instructionCacheRetention };
 }
 
 /** The child's place in the team: its name (id), its role (profile), its goal, and the agent that started it. */
@@ -113,7 +114,7 @@ export interface Identity {
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	/** Servers the parent stopped for this session only: the child leaves them out unless its tool selection names them. */
 	mcpStopped?: readonly string[];
-	/** The MCP tools the parent counts as in use (`mcpExposure: "recent"`): the child defers the same ones, so both share a cached prefix. */
+	/** The tools the parent counts as in use (`mcpExposure` `usage` or `recent`), less its role-dependent native ones (`childInUseTools`): the child defers the same ones, so both share a cached prefix. */
 	mcpRecent?: readonly string[];
 	/** The configured servers the task gave the child (`mcp` on the task, plus those its tools name): any other stays out. */
 	mcpOnly?: readonly string[];
@@ -192,6 +193,9 @@ export function subagentProcessEnv(
 	const hooks = identity?.hooks ?? childHookMode(profile?.hooks);
 	// User settings survive; run identity, permissions and browser mode belong to this child (trust comes from the shared trust store).
 	for (const key of [...CHILD_OWNED_ENV, PERMISSION_ENV]) delete inherited[key];
+	// A child without a role takes the general defaults; a role's own fields replace them, absent ones included.
+	const mcpDefer = profile ? profile.mcpDefer : GENERAL_MCP_DEFER;
+	const catalog = profile ? profile.catalog : GENERAL_CATALOG;
 	return {
 		...inherited,
 		...(identity?.promptCacheKey ? { [PROMPT_CACHE_KEY_ENV]: identity.promptCacheKey } : {}),
@@ -204,14 +208,13 @@ export function subagentProcessEnv(
 		// Children ask the provider why a request missed the cache (Anthropic API only) so a cold start can be attributed; a user value wins.
 		[CACHE_DIAGNOSTICS_ENV]: inherited[CACHE_DIAGNOSTICS_ENV] ?? "on",
 		...(hooks === "off" ? {} : { [SUBAGENT_HOOKS_ENV]: hooks }),
-		...(profile?.mcpDefer?.length ? { [MCP_DEFER_ROLES_ENV]: profile.mcpDefer.join(",") } : {}),
+		...(mcpDefer?.length ? { [MCP_DEFER_ROLES_ENV]: mcpDefer.join(",") } : {}),
 		...(identity?.mcpRecent ? { [MCP_RECENT_TOOLS_ENV]: JSON.stringify(identity.mcpRecent) } : {}),
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),
-		...((profile ? profile.catalog : GENERAL_CATALOG)?.length
-			? { [SKILL_CATALOG_ENV]: (profile ? profile.catalog! : GENERAL_CATALOG).join(",") }
-			: {}),
+		// An empty catalog (`catalog: []`) still reaches the child, as an empty value: its prompt lists none of the skills.
+		...(catalog ? { [SKILL_CATALOG_ENV]: catalog.join(",") } : {}),
 		...(identity?.skillsInTask ? { [SKILLS_IN_TASK_ENV]: "1" } : {}),
 		[SUBAGENT_ENV]: "1",
 		[NESTING_ENV]: String(nestingOf(base) + 1),

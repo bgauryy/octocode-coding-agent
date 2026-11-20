@@ -367,7 +367,7 @@ describe("words kept beside the user's messages", () => {
 			hasUI: false,
 		} as never;
 		expect(await writeSummary(api, event, ctx, undefined, fallback, "main-1")).toBeUndefined();
-		expect(fallback.deliver(api, { id: "c", fromHook: false, firstKeptEntryId: "kept" } as never)).toBe(true);
+		expect(await fallback.deliver(api, { id: "c", fromHook: false, firstKeptEntryId: "kept" } as never)).toBe(true);
 		expect(splitSummary(sent[0].content).messages).toEqual([
 			"refactor the parser",
 			'[askUser answer]\n"Keep v1?" → No',

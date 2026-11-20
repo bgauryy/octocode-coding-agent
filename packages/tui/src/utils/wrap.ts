@@ -1,6 +1,7 @@
 import { ansiCodeLength, extractAnsiCode } from "./ansi-codes.ts";
 import { AnsiCodeTracker, updateTrackerFromText } from "./ansi-tracker.ts";
 import { cjkBreakRegex } from "./chars.ts";
+import { WRAP_JOIN_MARK } from "./row-marks.ts";
 import { graphemeSegmenter, graphemeSegments, isPrintableAscii, visibleWidth } from "./width.ts";
 
 /**
@@ -152,6 +153,8 @@ function wrapSingleLine(line: string, width: number): string[] {
 
 	let currentLine = "";
 	let currentVisibleLength = 0;
+	// A row break after a visible token (CJK text has no spaces) cuts no space: search joins such rows without one.
+	let afterWhitespace = true;
 
 	for (const token of tokens) {
 		const tokenVisibleLength = visibleWidth(token);
@@ -172,11 +175,13 @@ function wrapSingleLine(line: string, width: number): string[] {
 
 			// Break long token - breakLongWord handles its own resets
 			const broken = breakLongWord(token, width, tracker);
+			if (wrapped.length > 0 && !afterWhitespace) broken[0] = WRAP_JOIN_MARK + broken[0];
 			for (let i = 0; i < broken.length - 1; i++) {
 				wrapped.push(broken[i]);
 			}
 			currentLine = broken[broken.length - 1];
 			currentVisibleLength = visibleWidth(currentLine);
+			afterWhitespace = false;
 			continue;
 		}
 
@@ -196,7 +201,7 @@ function wrapSingleLine(line: string, width: number): string[] {
 				currentLine = tracker.getActiveCodes();
 				currentVisibleLength = 0;
 			} else {
-				currentLine = tracker.getActiveCodes() + token;
+				currentLine = (afterWhitespace ? "" : WRAP_JOIN_MARK) + tracker.getActiveCodes() + token;
 				currentVisibleLength = tokenVisibleLength;
 			}
 		} else {
@@ -204,6 +209,7 @@ function wrapSingleLine(line: string, width: number): string[] {
 			currentVisibleLength += tokenVisibleLength;
 		}
 
+		afterWhitespace = isWhitespace;
 		// Printable ASCII cannot change the active terminal style.
 		if (!ascii) updateTrackerFromText(token, tracker);
 	}
@@ -290,7 +296,8 @@ function breakLongWord(word: string, width: number, tracker: AnsiCodeTracker): s
 				currentLine += lineEndReset;
 			}
 			lines.push(currentLine);
-			currentLine = tracker.getActiveCodes();
+			// The next row continues this word: search joins the two rows without a space.
+			currentLine = WRAP_JOIN_MARK + tracker.getActiveCodes();
 			currentWidth = 0;
 		}
 

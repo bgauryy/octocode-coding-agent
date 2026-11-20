@@ -4,6 +4,7 @@ import {
 	type Api,
 	type AssistantMessage,
 	type Model,
+	normalizeContext,
 	retryAssistantCall,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
@@ -14,10 +15,12 @@ import type { FeatureSetup, SetupPick, FeatureContext, SessionBeforeCompactEvent
 import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { projectForcedSystemPrompt } from "../../core/forced-system-prompt.ts";
-import { forkPromptCacheKey } from "../../core/session-manager/cache-key.ts";
+import { promptCacheKeyFor } from "../../core/cache-key-group.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
+import { applyLedger, ledgerDetails, ledgerOf, ledgerPrompt } from "../../core/compaction/ledger.ts";
+import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { clipText, contentText } from "../shared/util.ts";
 import { latestReminderOnly } from "../shared/reminder-view.ts";
@@ -127,7 +130,8 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
 /**
  * Octocode's compaction result from the cache-sharing request, or undefined when it cannot be used: images are blocked
  * (the request would carry them), the call or the projection failed, or the reply stopped early, is empty, calls a tool
- * or is longer than the cap. `instructions` are Octocode's built-in summary focus. `unusable` gets the reason
+ * or is longer than the cap. `instructions` is the compaction's focus as the request states it, labelled by who wrote it
+ * (`focusBlock`), or empty; the preservation rules are part of the request itself. `unusable` gets the reason
  * for every failure, so the caller can say why it falls back to a request that bills the whole input; `userChoice` marks
  * blocked images, the user's own setting, which needs no warning. A cancel (abort) reports nothing. `cacheCold`: the
  * history's cache entry has expired, so this request has nothing to read there, and what it would write is never read,
@@ -143,7 +147,7 @@ export async function sharedSummary(
 		SetupPick<"settings", "get"> &
 		SetupPick<"tools", "getHiddenDeclarations">,
 	event: Pick<SessionBeforeCompactEvent, "preparation" | "signal" | "summaryRequest">,
-	ctx: Pick<FeatureContext, "modelRegistry" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "modelRegistry" | "sessionManager">,
 	model: Model<Api>,
 	instructions: string,
 	unusable: (reason: string, userChoice?: boolean) => void = () => undefined,
@@ -178,13 +182,18 @@ export async function sharedSummary(
 		const room = model.contextWindow - preparation.tokensBefore - CONTEXT_MARGIN_TOKENS;
 		if (model.contextWindow > 0 && room < cap)
 			return fail(`the window leaves ${Math.max(0, room)} output tokens, under the ${cap} cap`);
+		// The earlier checkpoint's standing constraints and decisions, which code writes back (`ledger.ts`).
+		const ledger = ledgerOf(
+			preparation.previousSummary === undefined ? undefined : splitSummary(preparation.previousSummary).body,
+		);
 		const prompt = [
 			SHARED_SUMMARY_PROMPT,
 			boundaryNote(projection.entries, preparation.firstKeptEntryId),
 			// Every summary gets the size target: a first one without it ran past the cap on long sessions.
 			`${preparation.previousSummary === undefined ? "" : PREVIOUS_SUMMARY_NOTE} ${summarySizeTarget(summaryTargetTokens(cap))}`.trim(),
 			archivedPreviousNote(projection.entries),
-			`Additional focus:\n${instructions}`,
+			ledgerPrompt(ledger),
+			instructions,
 		]
 			.filter(Boolean)
 			.join("\n\n");
@@ -196,7 +205,15 @@ export async function sharedSummary(
 			preferences.cacheRetention !== "long" &&
 			!rewritten &&
 			!instructionsCold;
-		const promptCacheKey = forkPromptCacheKey(ctx.sessionManager.getHeader());
+		const request = {
+			messages: [
+				...convertToLlm(messages),
+				{ role: "user" as const, content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() },
+			],
+		};
+		// The key the session's own requests carry (`create-session.ts`): its prefix group's on OpenAI, else the fork
+		// chain's, so the summary reads the session's cache, and a fork's the parent's shard.
+		const promptCacheKey = promptCacheKeyFor(ctx.sessionManager, ctx.cwd, model, normalizeContext(request).messages);
 		const options: SimpleStreamOptions = {
 			...preferences,
 			// A cold history is not marked (nothing reads what it writes). History `none` makes octocode-ai send no markers
@@ -209,16 +226,9 @@ export async function sharedSummary(
 			...(settings.thinkingBudgets ? { thinkingBudgets: settings.thinkingBudgets } : {}),
 			...(settings.transport ? { transport: settings.transport } : {}),
 			sessionId: ctx.sessionManager.getSessionId(),
-			// The key the session's own requests carry (`create-session.ts`), so a fork's summary reads the parent's shard.
 			...(promptCacheKey ? { promptCacheKey } : {}),
 			signal: event.signal,
 			maxTokens: cap,
-		};
-		const request = {
-			messages: [
-				...convertToLlm(messages),
-				{ role: "user" as const, content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() },
-			],
 		};
 		// Watched and retried as the session's summary requests are: a retry reads the same cached prefix.
 		const policy = event.summaryRequest;
@@ -241,12 +251,13 @@ export async function sharedSummary(
 		if (text === "") return fail("the reply was empty");
 		if (overCap(response, text, cap)) return fail("the reply was longer than the cap");
 		const lists = computeFileLists(preparation.fileOps);
+		const carried = applyLedger(text, ledger);
 		return {
-			summary: `${text}${formatFileOperations(lists.readFiles, lists.modifiedFiles)}`,
+			summary: `${carried.text}${formatFileOperations(lists.readFiles, lists.modifiedFiles)}`,
 			firstKeptEntryId: preparation.firstKeptEntryId,
 			tokensBefore: preparation.tokensBefore,
 			usage: response.usage,
-			details: lists,
+			details: { ...lists, ...ledgerDetails(carried.text, carried.lifted) },
 		};
 	} catch (error) {
 		if (error instanceof UsagePersistenceError) throw error;

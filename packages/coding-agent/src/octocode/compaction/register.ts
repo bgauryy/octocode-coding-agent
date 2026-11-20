@@ -22,7 +22,7 @@ import { registerPrewarmWatch } from "./prewarm-watch.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import { type AwaitsAnswer, expectsWake } from "./warm-wait.ts";
 import { shellParserReady } from "../permission/shell/mutation.ts";
-import { clearStaleResults, prefixRewritten } from "./clearing.ts";
+import { clearStaleResults, rewriteCause } from "./clearing.ts";
 import { COMPACT_TOOL, CompactRequests } from "../native/tools/compact/tool.ts";
 import { FallbackContinuity, latestCompaction } from "./continuity.ts";
 import { contextBands, noticeContextUsage } from "../monitor/attention/context.ts";
@@ -39,6 +39,7 @@ import {
 } from "./pacing.ts";
 import { recordCompactionNote } from "./record.ts";
 import { recordContextFiles } from "./restore-context.ts";
+import { restoreLoadedSkills } from "./restore-skills.ts";
 import { TooLargeRecovery } from "./recovery.ts";
 import {
 	deliverRestoredFiles,
@@ -283,14 +284,20 @@ export function registerCompaction(
 		// After Octocode's default summary, what code appends to a summary follows it, archive pointer included; any other
 		// summary that is not Octocode's gets only the pointer.
 		const entry = event.compactionEntry;
-		if (!continuity.deliver(api, entry) && segment !== undefined && summaryMethodOf(entry.details) === undefined)
-			deliverArchivePointer(api, segment);
+		if (
+			!(await continuity.deliver(api, entry)) &&
+			segment !== undefined &&
+			summaryMethodOf(entry.details) === undefined
+		)
+			await deliverArchivePointer(api, segment);
 		guard.restore(contextReads(ctx));
 		const pending = restoreCandidates;
 		restoreCandidates = [];
 		// The system prompt shows the project context files whole: they count as read and are not sent again.
 		const contextHeld = recordContextFiles(guard, ctx.getSystemPromptOptions?.().contextFiles ?? []);
-		pendingRestore = deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api), contextHeld);
+		pendingRestore = await deliverRestoredFiles(api, pending, ctx, restoreBudget, compactionThinking(api), contextHeld);
+		// The workflows loaded last come back whole too: a pointer alone is seldom followed (`restore-skills.ts`).
+		await restoreLoadedSkills(api, ctx);
 	});
 	api.bus.on("session_compact_failed", async () => {
 		archive.discard();
@@ -303,13 +310,13 @@ export function registerCompaction(
 		"context",
 		readsMessagesOnly(async (event, ctx) => {
 			// Before every request, in a run or at its start: old results are cleared when this request rewrites the cache anyway
-			// (an idle gap or a long tool past its lifetime, a model switch, a folded system update) or when clearing them costs
+			// (an idle gap or a long tool past its lifetime, a compaction, a model switch, a folded system update) or when clearing them costs
 			// less than re-sending them (`clearing-cost.ts`). A bash result is cleared only when its command is read-only, which
 			// the bash parse must confirm: load it first.
 			await shellParserReady();
 			const usage = ctx.getContextUsage();
 			clearStaleResults(api, ctx, guard, promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx)), {
-				rewrite: prefixRewritten(event.transcript ?? event.messages, ctx.model),
+				rewrite: rewriteCause(event.transcript ?? event.messages, ctx.model),
 				// Compaction summarizes the old results at the threshold, before the window fills. A usage without a known
 				// window reports 0; one without a threshold falls back to the window.
 				contextWindow:

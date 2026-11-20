@@ -17,7 +17,7 @@ flowchart TD
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | Tool declarations                            | Role-invariant tools in fixed order, other built-in and extension tools, MCP tools by server and name, role tools | sessions with the same tools and MCP servers |
 | Block 1 (base)                               | `preamble`, `tools`, `rules`, `docs`, `mcps`                                                                      | sessions with the same tools and MCP servers |
-| Block 2 (session)                            | `addendum`, policy, `children`, `coordinator`, `project_context`, `skills`, `hooks`, `role`, `harnesses`          | one project and role, any day                |
+| Block 2 (session)                            | `addendum`, policy, `children`, `subagent`, `project_context`, `memory`, `skills`, `hooks`, `role`, `harnesses`   | one project and role, any day                |
 | Block 3 (volatile, no breakpoint of its own) | `cwd`, `environment`, `planning`, `mcp_status`                                                                    | one directory, day, surface and MCP state    |
 | History                                      | Checkpoint, messages, tool calls and results, section updates, memory, restored files                             | one session                                  |
 
@@ -36,22 +36,23 @@ In prompt order. An empty section is left out. `SYSTEM.md` replaces `preamble` a
 | `addendum`                                                  | `APPEND_SYSTEM.md`                                                                                                                                |
 | `work`, `research`, `delegation`, `safety`, `communication` | Policy, adapted to the tools and to main or child agent; `lean` replaces it for lean profiles                                                     |
 | `children`                                                  | Main session only: running children and using their reports; added at the first child or agent message                                            |
-| `coordinator`                                               | A writable child's execution and reporting policy, in place of `delegation`; its identity and task arrive in history                              |
+| `subagent`                                                  | A writable child's execution and reporting policy, in place of `delegation`; its identity and task arrive in history                              |
 | `project_context`                                           | [Project context](#project-context)                                                                                                               |
+| `memory`                                                    | The global and the repository's `MEMORY.md`, read at session start and kept for the session ([memory](../packages/coding-agent/docs/memory.md))   |
 | `skills`                                                    | Name, description and path of each skill; the body loads on `skill`                                                                               |
 | `hooks`                                                     | One line per event and matcher that may act on a call; never a command, URL or prompt                                                             |
 | `role`                                                      | The subagent's profile                                                                                                                            |
 | `harnesses`                                                 | Which other agent products Octocode reads; main session only                                                                                      |
 | `cwd`, `environment`, `planning`, `mcp_status`              | Working directory; platform, shell, date, process, surface, terminal host, what replies render; plan mode; servers not ready or partly undeclared |
 
-Memory (pinned and matching notes, up to 2,400 characters per notice) and a child's task arrive in history, not as sections. Notices accumulate until compaction. The `mcps` section never includes raw `mcp.json`, launch commands, environment values or credentials; server instructions, tool descriptions and results are still model-visible.
+Recalled notes (pinned and matching notes from the notes database, up to 2,400 characters per notice) and a child's task arrive in history, not as sections. Notices accumulate until compaction. The `mcps` section never includes raw `mcp.json`, launch commands, environment values or credentials; server instructions, tool descriptions and results are still model-visible.
 
 ### Project context
 
 `project_context` holds, in order:
 
 1. The global context file in the agent directory.
-2. For each ancestor through `cwd`, outermost first, the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`. The walk stops at a folder with a trust grant, and at the repository root when a parent repository lies above. A linked worktree nested in its main checkout uses its own file.
+2. For each ancestor through `cwd`, outermost first, the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, else its `CLAUDE.md` (a folder set up only for Claude Code). The walk stops at a folder with a trust grant, and at the repository root when a parent repository lies above. A linked worktree nested in its main checkout uses its own file.
 3. Claude's project `MEMORY.md` when the `claude:memory` `/harness` switch is on: first 200 lines or 25 KB, labeled read-only.
 
 These load without project trust (the permission gate still decides each action). A file over 64 KiB is cut and named by path. `--no-context-files` skips them all.
@@ -69,7 +70,7 @@ Before each prompt, the `before_agent_start` handlers fill the sections; the ses
 | Model switched            | The previous model's cache is not reusable                                                                                                                                                                                                           |
 | Idle past the history TTL | The history may need a new cache write; messages are unchanged. A request that failed (a timeout) reads nothing and does not renew the entry; while the session waits on children, jobs or timers, the warmer refreshes it within one rewrite's cost |
 
-Some adapters must place an update in the leading message (Mistral after a tool result). To see why a request missed the cache, set `OCTOCODE_CACHE_DIAGNOSTICS=on` or `showCacheMissNotices` ([prompt caching](../packages/coding-agent/docs/prompt-caching.md#provider-reported-miss-reasons)).
+Some adapters must place an update in the leading message (Mistral after a tool result). On the Anthropic API Octocode asks why each request missed the cache unless `OCTOCODE_CACHE_DIAGNOSTICS=off`; `showCacheMissNotices` shows the reasons in the transcript ([prompt caching](../packages/coding-agent/docs/prompt-caching.md#provider-reported-miss-reasons)).
 
 ## Keeping the history small
 
@@ -84,7 +85,7 @@ Clearing is a session entry, so resume and fork apply the same placeholders.
 
 ## When compaction runs
 
-After each run and before each prompt (counting the incoming message). `/compact [focus]` runs one now. The agent's `compact` tool queues one for the end of its reply; it is refused under half the room before automatic compaction, within two turns of the last one, or when recent compactions kept refilling.
+After each run and before each prompt (counting the incoming message). `/compact [focus]` runs one now. The agent's `compact` tool queues one for the end of its reply; a context notice suggests it from 90% of the room before automatic compaction, and it is refused under half that room, within two turns of the last one, or when recent compactions kept refilling.
 
 | Situation                                                                 | Action                                           |
 | ------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -95,7 +96,7 @@ After each run and before each prompt (counting the incoming message). `/compact
 | Context tokens > window − reserve                                         | Compact                                          |
 | Switch to a model whose window is too small                               | Compact on the previous model                    |
 
-The window is `contextBudget` (default 300,000 tokens) capped at 90% of the model's capacity, or all of it with `"full"`. Counts use provider receipts where they apply and character estimates for new content, tools and images.
+The window is `contextBudget` (default 300,000 tokens) capped at 90% of the model's capacity, or all of it with `"full"`. Counts use provider receipts where they apply and character estimates for new content, tools and images: 2.5 characters per token for Claude and for a model of unknown family, 3.3 for DeepSeek models, 3.5 for OpenAI models.
 
 | Value       | Rule                                                                                       | 200k window, thinking off |
 | ----------- | ------------------------------------------------------------------------------------------ | ------------------------- |
@@ -129,7 +130,7 @@ sequenceDiagram
     end
     S->>S: save compaction entry, rebuild context
     X->>D: archive summarized messages as Markdown
-    X->>S: re-read up to 5 recent files (edited whole, read-only as outline)
+    X->>S: re-read up to 5 changed files, name the ones only read, restore recent skills
 ```
 
 1. **Cut.** Never on a tool result; a cut inside a turn adds a summary of that turn's start. If the kept part leaves no room for a summary (often after switching to a smaller model), more is summarized; if even the newest turn does not fit, compaction fails with that reason: switch to a larger window or `/new`.
@@ -137,19 +138,20 @@ sequenceDiagram
    - _Shared_ (same model, no overflow): the session's own prompt, tools, thinking and messages plus "write a checkpoint", so a live cache entry can be read. When nothing would read what it writes (history entry expired, model switched, an update folded into the leading prompt), it is sent with `cacheRetention: "none"`, keeping the instruction markers while that entry is live.
    - _Standalone_ (downshift, overflow, or the shared request failed): the serialized conversation under its own prompt, custom and external messages labeled by type, `cacheRetention: "none"`, no routing id (except OpenCode's `x-opencode-session`, which [OpenCode Go requires](https://opencode.ai/v2/docs/console/harnesses/)). Long tool results are saved whole and shown as references. Without Octocode's handler, the core sends this request.
 3. **Validate.** The reply needs nonempty summary text within `maxTokens`; otherwise compaction fails and the active history stays. A paid summary is reused after a persistence failure only for the same input, files, model, instructions and budget.
-4. **Checkpoint.** Goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR. Code then appends the user's messages, askUser answers and, for a child, its coordinator's messages word for word within a budget (older or long ones move behind saved references), file lists, saved results, loaded skills by name and path, and the backlog and running work as the tools report them now. The shared request also asks what each image shows; the standalone one says images do not arrive.
+4. **Checkpoint.** Goal, constraints, progress, decisions, errors and fixes, where we stopped, critical context, TL;DR. Standing constraints and key decisions form a ledger with ids (`[C3]`, `[D2]`): an update writes only new bullets and marks a carried one lifted or superseded with its reason, code puts every other carried bullet back word for word, and the compaction entry records each lift. A focus from the agent's own `compact` reaches the summarizer labelled as the agent's, not as the user's words. Code then appends the user's messages, askUser answers and, for a child, its coordinator's messages word for word within a budget (older or long ones move behind saved references), file lists, saved results, and a Recovery section of about 800 characters: where the archive and transcript are, the backlog and running work as the tools report them now, and the loaded skills by name (one not loaded again across two compactions leaves the list). The shared request also asks what each image shows; the standalone one says images do not arrive.
 5. **Store.** Within 80% of the reserve the summary stays inline; otherwise a session with a file saves it whole behind a reference, and an in-memory session keeps head and tail.
 6. **Rebuild.** The entry is saved with the system message in force (blocks stay cached); the context becomes instructions, checkpoint, newest messages and restored files.
-7. **Archive and restore.** Summarized messages become searchable Markdown (`archive`; they also stay in the session file). Up to 5 recent files are re-read. A file the agent changed in the summarized part comes back whole within 8k characters, else as an outline (at most 4k) or a window of lines. A file it only read comes back as an outline, or not at all when it has no declarations; dependencies under `node_modules` it only read are skipped. Scratch (`.octocode/tmp`, `.octocode/code/temp`) never comes back. The total is 20k characters, at most 10% of the window after the reserve.
+7. **Archive and restore.** Summarized messages become searchable Markdown (`archive`; they also stay in the session file). Up to 5 files the agent changed in the summarized part are re-read: whole within 8k characters, else as an outline (at most 4k) or a window of lines; the total is 20k characters, at most 10% of the window after the reserve. Files it only read are named in one line, newest first, and not re-read; dependencies under `node_modules` are dropped. Octocode's own files under `.octocode/` never come back (a worktree there counts as work). The bodies of the 2 skills loaded most recently come back as they were loaded, each within 5,000 tokens and 10,000 in all (at most 5% of the window); a longer one is cut at a line, with a note naming its file.
 
 **Summary requested early.** So a compaction does not hold the turn while the summary is written, the session plans it a tenth of the window before the threshold (8,000–32,000 tokens) and Octocode requests the shared summary then, beside the run. The compaction uses it if ready, or waits only for the rest. Everything after the planned cut stays verbatim; file lists are rebuilt at use.
 
-| Case                                                                             | Result                                                       |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Model, thinking or branch changed; a context edit or another compaction happened | Plan dropped, request cancelled; the compaction asks its own |
-| Early request failed or unusable                                                 | The compaction asks its own                                  |
-| Session cache expired                                                            | Not sent: it would bill the whole input                      |
-| `/compact`, compaction with instructions, overflow recovery                      | Early summary not used                                       |
+| Case                                                                             | Result                                                           |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Model, thinking or branch changed; a context edit or another compaction happened | Plan dropped, request cancelled; the compaction asks its own     |
+| Early request failed or unusable                                                 | The compaction asks its own                                      |
+| Session cache expired                                                            | Not sent: it would bill the whole input                          |
+| Your `/compact`, a threshold compaction with instructions, overflow recovery     | Early summary not used                                           |
+| The agent's own `compact`                                                        | Early summary can be used; the agent's focus follows the summary |
 
 One plan per compaction. Each step is recorded as an `early-summary` note: requested, ready, unusable, or discarded (with whether its request had finished and was billed). A used one is noted in the compaction entry with its wait. Usage is charged to the session that started the request, even if the reply arrives after cancellation.
 

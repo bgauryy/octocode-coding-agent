@@ -143,7 +143,9 @@ export function describeMembers(
 						? [
 								`  holds ${member.locks.join(", ")}${elsewhere ? ` (in worktree ${path.basename(member.checkout!)})` : ""}`,
 							]
-						: []),
+						: member.id === selfId
+							? ["  holds no paths"]
+							: []),
 				].join("\n");
 			}),
 			...silent,

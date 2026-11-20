@@ -30,6 +30,17 @@ const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	"quota exceeded",
 	"billing",
 
+	// OpenAI's 429 billing codes: "Retrying billing, spend, or quota errors won't restore API access"
+	// (https://developers.openai.com/api/docs/guides/error-codes).
+	"credit_balance_exhausted",
+	"(?:organization|project)_spend_limit_exceeded",
+	"organization_usage_limit_exceeded",
+	// Anthropic's spend caps: the tier cap is a 429 `rate_limit_error` without `retry-after` that "keeps failing until
+	// access resumes" (code `enforced_spend_limit_reached`), and a self-set limit is a 400 that "starts with `You have
+	// reached your specified API usage limits`" (https://platform.claude.com/docs/en/api/rate-limits).
+	"enforced_spend_limit_reached",
+	"reached your (?:specified )?(?:workspace )?API usage limits",
+
 	// Sign in with ChatGPT: the subscription's shared usage limit, which resets
 	// after hours rather than seconds.
 	"subscription_sharing_usage_limit_exceeded",
@@ -100,6 +111,17 @@ const OFFLINE_PATTERN = buildProviderErrorPattern([
 /** Whether a failure says the network is unreachable for now: it clears when the connection returns. */
 export function isOfflineText(text: string): boolean {
 	return OFFLINE_PATTERN.test(text);
+}
+
+/** Transport wording a lost network also produces; whether the machine is offline is then asked of the network itself. */
+const NETWORK_FAILURE_PATTERN = new RegExp(
+	`${SOCKET_ERROR_CODES}|\\bENOTFOUND\\b|getaddrinfo|fetch failed|connection error|network error|socket hang up`,
+	"i",
+);
+
+/** Whether a failure could come from the machine being offline (no route, unresolved host, a dropped transport). */
+export function isNetworkFailureText(text: string): boolean {
+	return isOfflineText(text) || NETWORK_FAILURE_PATTERN.test(text);
 }
 
 /**

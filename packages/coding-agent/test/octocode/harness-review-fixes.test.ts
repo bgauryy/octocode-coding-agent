@@ -87,15 +87,30 @@ describe("Claude Code auto memory is switched globally only", () => {
 describe("a harness only a project key switches on", () => {
 	it("is marked project-only in the status, the prompt and its /harness row", () => {
 		const f = fixture();
+		write(path.join(f.home, ".claude", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: d\n---\nB\n");
 		const project = harnessStatuses(f.input({ "project:harness:claude": true })).find((s) => s.id === "claude")!;
 		expect(project).toMatchObject({ on: true, projectOnly: true });
 		expect(formatHarnessesForPrompt([project])).toContain("Claude Code on for this project");
 		expect(vendorItems([project], {})[0]?.detail).toContain("on for this project only");
 		const global = harnessStatuses(f.input({ "harness:claude": true })).find((s) => s.id === "claude")!;
 		expect(global.projectOnly).toBeUndefined();
-		expect(formatHarnessesForPrompt([global])).toBe(
-			"Harnesses: Claude Code on, nothing found. The user switches them with /harness.",
-		);
+		expect(formatHarnessesForPrompt([global])).toBe("Harnesses: Claude Code on. The user switches them with /harness.");
+	});
+});
+
+describe("the prompt's harnesses line", () => {
+	it("names only the harnesses that are on and found something, and is absent when none is", () => {
+		const f = fixture();
+		write(path.join(f.home, ".claude", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: d\n---\nB\n");
+		// Claude Code holds a skill but is off; with it on, Codex is on too and holds nothing.
+		const off = harnessStatuses(f.input({ "harness:codex": true }));
+		expect(off.find((s) => s.id === "claude")).toMatchObject({ on: false, found: { skill: 1 } });
+		expect(formatHarnessesForPrompt(off)).not.toMatch(/Claude Code|Codex|off|nothing found/);
+		const on = harnessStatuses(f.input({ "harness:claude": true, "harness:codex": true }));
+		const line = formatHarnessesForPrompt(on);
+		expect(line).toContain("Claude Code on");
+		expect(line).not.toMatch(/Codex|off|nothing found/);
+		expect(formatHarnessesForPrompt(on.filter((s) => s.id === "codex"))).toBe("");
 	});
 });
 

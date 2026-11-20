@@ -8,6 +8,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { FeatureHost } from "../src/core/features/runner.ts";
 import type { FeatureRegister, Feature } from "../src/core/features/types.ts";
 import { DefaultResourceLoader, loadProjectContextFiles } from "../src/core/resource-loader.ts";
+import { nestedContextFiles } from "../src/core/resource-loader/context-files.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { Skill } from "../src/core/skills.ts";
@@ -354,6 +355,26 @@ Content`,
 			]);
 		});
 
+		it("falls back to CLAUDE.md in a folder with no AGENTS.override.md or AGENTS.md, folder by folder", async () => {
+			const nestedCwd = join(cwd, "service");
+			mkdirSync(nestedCwd);
+			writeFileSync(join(cwd, "AGENTS.md"), "project instructions");
+			writeFileSync(join(cwd, "CLAUDE.md"), "project claude instructions");
+			writeFileSync(join(nestedCwd, "CLAUDE.md"), "service claude instructions");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(nestedCwd, agentDir, { projectTrusted: true }),
+				cwd: nestedCwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getAgentsFiles().agentsFiles.filter((file) => file.path.startsWith(cwd))).toEqual([
+				{ path: join(cwd, "AGENTS.md"), content: "project instructions" },
+				{ path: join(nestedCwd, "CLAUDE.md"), content: "service claude instructions" },
+			]);
+		});
+
 		it("should ignore context file candidates that are directories", async () => {
 			mkdirSync(join(cwd, "AGENTS.override.md"));
 			mkdirSync(join(cwd, "AGENTS.md"));
@@ -368,7 +389,8 @@ Content`,
 			await loader.reload();
 
 			const paths = loader.getAgentsFiles().agentsFiles.map((file) => file.path);
-			expect(paths.filter((file) => file.startsWith(cwd))).toEqual([]);
+			// Both directories are skipped, so the folder's fallback file is its instructions.
+			expect(paths.filter((file) => file.startsWith(cwd))).toEqual([join(cwd, "CLAUDE.md")]);
 			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.md")));
 			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.override.md")));
 			consoleError.mockRestore();
@@ -1148,6 +1170,41 @@ Content`,
 			// The trust limit still applies below the repository root.
 			const trusted = loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: sub });
 			expect(trusted.map((f) => f.content)).toEqual(["subfolder"]);
+		});
+
+		it("reads a CLAUDE.md fallback within the trust grant only, and never from a parent repository", () => {
+			const outer = join(tempDir, "claude-parent");
+			const nested = join(outer, "vendor", "app");
+			const sub = join(nested, "src");
+			mkdirSync(join(outer, ".git"), { recursive: true });
+			mkdirSync(join(nested, ".git"), { recursive: true });
+			mkdirSync(sub, { recursive: true });
+			writeFileSync(join(outer, "CLAUDE.md"), "parent repository");
+			writeFileSync(join(nested, "CLAUDE.md"), "nested repository");
+			writeFileSync(join(sub, "CLAUDE.md"), "subfolder");
+
+			expect(loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: outer }).map((f) => f.content)).toEqual([
+				"nested repository",
+				"subfolder",
+			]);
+			expect(loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: sub }).map((f) => f.content)).toEqual([
+				"subfolder",
+			]);
+		});
+
+		it("delivers a deeper folder's CLAUDE.md on read only when the folder has no AGENTS.md", () => {
+			const plain = join(cwd, "plain");
+			const both = join(cwd, "both");
+			mkdirSync(plain, { recursive: true });
+			mkdirSync(both, { recursive: true });
+			writeFileSync(join(plain, "CLAUDE.md"), "plain claude");
+			writeFileSync(join(both, "AGENTS.md"), "both agents");
+			writeFileSync(join(both, "CLAUDE.md"), "both claude");
+			for (const dir of [plain, both]) writeFileSync(join(dir, "a.ts"), "");
+
+			// Paths come back canonical (`/private/var` on macOS), so compare what each file says.
+			expect(nestedContextFiles(join(plain, "a.ts"), cwd).map((f) => f.content)).toEqual(["plain claude"]);
+			expect(nestedContextFiles(join(both, "a.ts"), cwd).map((f) => f.content)).toEqual(["both agents"]);
 		});
 
 		it("keeps a context file under the cap whole", () => {

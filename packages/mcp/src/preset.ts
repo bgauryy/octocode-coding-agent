@@ -7,6 +7,12 @@ export interface McpServerPreset {
 	config?: McpServerConfig;
 	prepareLaunch?: (entry: McpServerEntry, cwd: string, trusted: boolean) => McpServerEntry;
 	defineTool?: typeof createMcpToolDefinition;
+	/**
+	 * The server's instructions stay out of the prompt while none of its tools is declared at the session's start (all
+	 * on demand): its block lists the tools by name and trigger, and the instructions arrive with the `mcp` tool's read of
+	 * the server or of one of its tools.
+	 */
+	instructionsOnDemand?: boolean;
 	/** Warnings raised while preparing launches since the last call, for the host to show the user. */
 	takeWarnings?: () => string[];
 	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown with the session's folder, so it must be idempotent. */

@@ -370,7 +370,8 @@ export interface Mismatch {
 	what: string;
 }
 
-const model = { contextWindow: 50_000 } as Model<any>;
+// An id outside every tokenizer family: the estimate uses the default ratio, as the oracle does.
+const model = { id: "test-model", contextWindow: 50_000 } as Model<any>;
 
 /** Every read the kept projection serves compared with the oracle; returns the first mismatch. */
 function compare(session: SessionManager, rng: Random, n: number, freeze: boolean): string | undefined {

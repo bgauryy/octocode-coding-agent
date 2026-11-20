@@ -1,6 +1,8 @@
 import {
 	type Component,
 	CountdownTimer,
+	GLYPH,
+	TONE,
 	Loader,
 	MOTION,
 	SEPARATOR,
@@ -172,6 +174,43 @@ export class RetryStatusIndicator extends StatusIndicator {
 			ui,
 			(seconds) => {
 				this.setMessage(retryMessage(seconds));
+			},
+			() => {
+				this.countdown = undefined;
+			},
+		);
+	}
+
+	override dispose(): void {
+		this.countdown?.dispose();
+		this.countdown = undefined;
+		super.dispose();
+	}
+}
+
+/**
+ * The one row an outage shows: `✗ 🦈 Retry failed after 3 attempts: fetch failed (ENOTFOUND) - trying again in 42s · esc cancel`.
+ * A static mark, not a spinner: nothing is running while the countdown waits.
+ */
+export class OfflineRetryStatusIndicator extends StatusIndicator {
+	private countdown: CountdownTimer | undefined;
+
+	constructor(ui: TUI, text: string, delayMs: number) {
+		const message = (seconds: number) =>
+			`${text} - ${seconds > 0 ? `trying again in ${seconds}s` : "trying again…"}${cancelHint()}`;
+		super(
+			"retry",
+			ui,
+			(mark) => theme.fg("error", mark),
+			(line) => theme.fg("muted", line),
+			message(Math.ceil(delayMs / 1000)),
+			{ frames: [`${GLYPH.failed} ${TONE.problem}`] },
+		);
+		this.countdown = new CountdownTimer(
+			delayMs,
+			ui,
+			(seconds) => {
+				this.setMessage(message(seconds));
 			},
 			() => {
 				this.countdown = undefined;

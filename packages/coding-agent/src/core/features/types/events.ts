@@ -17,12 +17,14 @@ import type {
 	MessageEndEvent,
 	MessageStartEvent,
 	MessageUpdateEvent,
+	ModelStallEvent,
 	ToolExecutionEndEvent,
 	ToolExecutionStartEvent,
 	ToolExecutionUpdateEvent,
 	TurnEndEvent,
 	TurnPromptEvent,
 	TurnStartEvent,
+	UINoticeEvent,
 	UIPromptEndEvent,
 	UIPromptStartEvent,
 } from "./agent-events.ts";
@@ -51,6 +53,8 @@ export type FeatureEvent =
 	| AgentSettleEndEvent
 	| UIPromptStartEvent
 	| UIPromptEndEvent
+	| UINoticeEvent
+	| ModelStallEvent
 	| TurnStartEvent
 	| TurnPromptEvent
 	| TurnEndEvent

@@ -1,5 +1,5 @@
 /**
- * Schemas of deferred tools after a compaction. A deferred tool is declared with its field names only, and its full
+ * Schemas of deferred tools after a compaction. A deferred tool is declared with its top-level fields only, and its full
  * input schema reaches the model as a tool result (a refused call, or the `mcp` tool's `tools` intent). A compaction
  * summarizes those results away while the declaration stays thin, so the next call would be guessed again. After each
  * compaction the schemas of the deferred tools this session called come back as one hidden message, like the files
@@ -17,7 +17,7 @@ import { isStaleSessionError } from "../shared/util.ts";
 
 export const RESTORED_SCHEMAS_TYPE = "octocode-restored-tool-schemas";
 
-/** All restored schemas together stay within this many characters (about 8k tokens at `CHARS_PER_TOKEN`)... */
+/** All restored schemas together stay within this many characters (about 9.6k tokens at `CHARS_PER_TOKEN`)... */
 export const RESTORE_SCHEMAS_CHARS = 24_000;
 /** ...and within this share of the model's context window. */
 const RESTORE_SCHEMAS_SHARE = 0.03;
@@ -117,10 +117,10 @@ export function restoredSchemas(
 type RestoreContext = Pick<FeatureContext, "sessionManager"> & Partial<Pick<FeatureContext, "model">>;
 
 /** Sends the schemas of the deferred tools this session called back into the context; returns the tools restored. */
-export function restoreDeferredSchemas(
+export async function restoreDeferredSchemas(
 	api: SetupPick<"session", "sendMessage"> & SetupPick<"tools", "getAll" | "getActive">,
 	ctx: RestoreContext,
-): string[] {
+): Promise<string[]> {
 	try {
 		const branch = ctx.sessionManager.getBranch().flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
 		const called = calledTools(branch);
@@ -145,7 +145,7 @@ export function restoreDeferredSchemas(
 			tools: restored.tools,
 			...(restored.omitted.length > 0 ? { omitted: restored.omitted } : {}),
 		};
-		void api.session.sendMessage(
+		await api.session.sendMessage(
 			{ customType: RESTORED_SCHEMAS_TYPE, content: restored.content, display: false, details },
 			{ triggerTurn: false },
 		);
@@ -160,6 +160,6 @@ export function restoreDeferredSchemas(
 /** After every compaction, the schemas of the deferred tools the session called follow the summary. */
 export function registerDeferredSchemaRestore(api: FeatureSetup): void {
 	api.bus.on("session_compact", async (_event, ctx) => {
-		restoreDeferredSchemas(api, ctx);
+		await restoreDeferredSchemas(api, ctx);
 	});
 }

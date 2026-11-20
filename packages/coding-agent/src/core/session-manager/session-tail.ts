@@ -109,7 +109,7 @@ export function endSessionTail(
 		return undefined;
 	}
 	const entry = recoveryEntry(state, tail, pending[0].parentId);
-	appendFileSync(file, `\n${JSON.stringify(state.codec.encode(entry))}\n`);
+	appendFileSync(file, `\n${state.codec.line(entry)}\n`);
 	scheduleSessionSync(file);
 	return entry.id;
 }

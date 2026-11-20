@@ -245,20 +245,25 @@ describe("the mcps section of an agent with a user-configured MCP server", () =>
 		expect(request.sections.mcp_status).toBeUndefined();
 	});
 
-	it("(compact) declares the tools thin: a trigger and top-level types, never a second copy of the schema", async () => {
+	it("(compact) declares the tools thin: a trigger, field types, required fields and short value lists, never a second copy of the schema", async () => {
 		const request = await firstRequest({ toolExposure: { purge: "hidden" } }, { settings: COMPACT });
 		const lookup = request.declared.find((tool) => tool.name === "mcp__docs__lookup")!;
 		expect(lookup.description).toBe("Find a document by its title words.");
 		expect(lookup.parameters).toEqual({
 			type: "object",
-			properties: { query: { type: "string" }, limit: { type: "integer" }, section: { type: "string" } },
+			properties: {
+				query: { type: "string" },
+				limit: { type: "integer" },
+				section: { type: "string", enum: ["guide", "api", "changelog"] },
+			},
 			additionalProperties: true,
+			required: ["query"],
 		});
 		// The plain-form tool is thin too: its schema is in the section.
 		const legacy = request.declared.find((tool) => tool.name === "mcp__docs__legacy")!;
 		expect(JSON.stringify(legacy.parameters)).not.toContain("$ref");
 		const declarations = JSON.stringify(request.declared.filter((tool) => tool.name.startsWith("mcp__docs__")));
-		for (const text of ["Title words to search for.", "Most pages to return.", "changelog", "Report only."])
+		for (const text of ["Title words to search for.", "Most pages to return.", "Report only."])
 			expect(declarations, text).not.toContain(text);
 	});
 

@@ -49,6 +49,19 @@ export function builtInCompactionSettings(model?: CompactionModel, thinking?: Co
 }
 
 /**
+ * Tokens a request must leave free in its window to be worth sending: the answer room and the output clamp's margin that
+ * the reserve holds, without the thinking budget it also holds. It is never more than the reserve itself (a small
+ * window's reserve is already less than that) or the model's own output limit (`maxOutputTokens`, when known). A request
+ * past the threshold but within this still gets a reply, with less room to think.
+ */
+export function replyFloorTokens(reserveTokens: number, maxOutputTokens?: number): number {
+	const floor = Math.min(reserveTokens, ANSWER_ROOM_TOKENS + CONTEXT_CLAMP_TOKENS);
+	return maxOutputTokens !== undefined && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+		? Math.min(floor, maxOutputTokens)
+		: floor;
+}
+
+/**
  * The most a standalone summary request (compaction, split-turn prefix, branch summary) may write: twice the reserve the
  * policy keeps for the reply, so a summary up to about 2.5 times what fits inline (`inlineSummaryTokens`) still ends
  * and is saved to a file, while one that would run on to the model's own output limit stops. A summary that hits it

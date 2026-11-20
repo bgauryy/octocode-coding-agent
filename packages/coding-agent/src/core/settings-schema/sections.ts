@@ -44,6 +44,20 @@ export const RetrySettingsSchema = Type.Object({
 		}),
 	),
 	maxAgentDelayMs: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxAgentDelayMs })),
+	offlineIntervalMs: Type.Optional(
+		Type.Number({
+			minimum: 1000,
+			description: "Wait between retries while the machine is offline.",
+			default: SETTINGS_DEFAULTS.retry.offlineIntervalMs,
+		}),
+	),
+	offlineMaxMs: Type.Optional(
+		Type.Number({
+			minimum: 0,
+			description:
+				"How long an outage may last before the request fails; 0 waits until the network returns. Unset: 0, and 30 minutes in print mode.",
+		}),
+	),
 	provider: Type.Optional(ProviderRetrySettingsSchema),
 	fallbackCooldownMs: Type.Optional(
 		Type.Number({

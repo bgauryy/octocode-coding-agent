@@ -14,7 +14,7 @@ import { asSetup } from "./fake-host.ts";
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 
 /** A child session as the reminder sees it: its branch of entries, the handlers it registered and what it sent. */
-function child(env: NodeJS.ProcessEnv, sendError?: Error) {
+function child(env: NodeJS.ProcessEnv, sendError?: Error, rejects = false) {
 	const branch: Array<{ type: string; customType?: string; data?: unknown }> = [];
 	const handlers = new Map<string, Handler>();
 	const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
@@ -22,8 +22,11 @@ function child(env: NodeJS.ProcessEnv, sendError?: Error) {
 		on: (name: string, handler: Handler) => handlers.set(name, handler),
 		appendEntry: (customType: string, data: unknown) => branch.push({ type: "custom", customType, data }),
 		sendMessage: (message: Record<string, unknown>, options: unknown) => {
+			// A session write that fails after the call returned rejects; a replaced session throws at the call.
+			if (sendError && rejects) return Promise.reject(sendError);
 			if (sendError) throw sendError;
 			sent.push({ message, options });
+			return undefined;
 		},
 	});
 	registerIdentityReminder(api, env);
@@ -104,5 +107,9 @@ describe("child identity reminder after compaction", () => {
 		const broken = child(env, new Error("disk full"));
 		await broken.emit("session_start");
 		await expect(broken.emit("session_compact")).rejects.toThrow("disk full");
+		// The send is awaited: a rejection reaches the bus's error report instead of no one.
+		const failing = child(env, new Error("write failed"), true);
+		await failing.emit("session_start");
+		await expect(failing.emit("session_compact")).rejects.toThrow("write failed");
 	});
 });

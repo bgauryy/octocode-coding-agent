@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { initTheme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
+import { stripRowMarks } from "@octocodeai/octocode-tui";
 import { Checkpoints } from "../../src/octocode/files/checkpoint.ts";
 import { contextReads, seenFiles } from "../../src/octocode/files/reads.ts";
 import { diffStats, querySize } from "../../src/octocode/files/outcome.ts";
@@ -1524,6 +1525,7 @@ describe("file change rendering", () => {
 				isError: false,
 			})
 			.render(120)
+			.map(stripRowMarks)
 			.join("\n");
 		expect(collapsed.split("\n")[0]).toBe("  ⎿  Applied 1 of 2 changes");
 		// Each file in a several-file result carries no mark of its own unless it failed.
@@ -1539,6 +1541,7 @@ describe("file change rendering", () => {
 				durationMs: 5,
 			})
 			.render(120)
+			.map(stripRowMarks)
 			.join("\n")
 			.split("\n");
 		// One change: the header names the path, so the outcome row is the size alone, then a five-line diff preview.

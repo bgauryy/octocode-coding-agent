@@ -8,6 +8,8 @@ import type {
 } from "../../core/features/index.ts";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CACHE_RETENTION_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS } from "../../core/cache-warmer/economics.ts";
+import { idleContinuation } from "../../core/cache-warmer/idle-pool.ts";
 import { interactive } from "../shared/interactive.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
@@ -16,8 +18,9 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
  * but whose replies show caching: 5 minutes for short retention and, where the model holds it, 1 hour for long (Anthropic's tiers).
  */
 export const INFERRED_CACHE_TTL_SECONDS = { short: 300, long: 3600 } as const;
-/** Idle gaps needed before this session's own history is trusted over Octocode's constant continuation estimate (fewer gaps are noise). */
-const MIN_IDLE_SAMPLES = 5;
+
+/** q(t) from a session's own idle gaps (`core/cache-warmer/idle-pool.ts`), re-exported for the feature's callers. */
+export { idleContinuation };
 
 type PromptCache = NonNullable<Model<Api>["promptCache"]>;
 type CacheModel = Pick<Model<Api>, "provider" | "id" | "api" | "promptCache" | "compat">;
@@ -96,10 +99,14 @@ export class PromptCacheLifetimes {
 		const key = keyOf(model);
 		if (this.caching.has(key) && (!model.promptCache || this.supplied.has(key)))
 			return inferredPromptCache(model, !this.shortOnly.has(key));
-		const { mechanism, lifetimes } = resolveModelCapabilities(model as Model<Api>).cache;
+		const { mechanism, lifetimes, longInstructionsOnly } = resolveModelCapabilities(model as Model<Api>).cache;
 		if (Object.keys(lifetimes).length === 0) return undefined;
-		// A marker adapter sends long history at the short lifetime where the endpoint has no long tier.
-		if (mechanism === "markers" && lifetimes.long === undefined && lifetimes.short !== undefined)
+		// A marker adapter sends long history at the short lifetime where the endpoint has no long tier, and OpenAI
+		// explicit mode keeps long history on the request's short TTL (its long tier is for instruction breakpoints).
+		if (
+			((mechanism === "markers" && lifetimes.long === undefined) || longInstructionsOnly) &&
+			lifetimes.short !== undefined
+		)
 			return { ...lifetimes, long: lifetimes.short };
 		return lifetimes;
 	}
@@ -115,6 +122,8 @@ export class PromptCacheLifetimes {
 		if (!usage || !(Number(usage.cacheRead) > 0 || Number(usage.cacheWrite) > 0) || !isRecord(message)) return;
 		const model = ctx.modelRegistry.find(String(message.provider), String(message.model));
 		if (!model || model.api !== "anthropic-messages") return;
+		// An upstream that is not Anthropic's (a gateway serving OpenAI or Gemini) has no Anthropic cache entries to infer.
+		if (resolveModelCapabilities(model).cache.mechanism !== "markers") return;
 		const key = keyOf(model);
 		if (model.promptCache && !this.supplied.has(key)) return;
 		const learnedShort =
@@ -154,9 +163,10 @@ export class PromptCacheLifetimes {
  * run, or it waits for an answer: `warm-wait.ts`) will send its next request without a person, so its refreshes are kept
  * up while the refreshes of this wait, the next one included, cost no more than the one rewrite they save; the core's
  * idle safety limit still ends the wait. Otherwise an idle refresh is decided from this session's own idle gaps at the
- * current idle age: warm when q(t) × the miss cost beats the refresh cost. Without enough gaps, an interactive session
- * keeps Octocode's assumed 15% chance that it resumes, and a headless one or a settled subagent stops; a settled
- * subagent whose gaps show its coordinator's mail tends to come within the lifetime is refreshed.
+ * current idle age: warm when q(t) × the miss cost, less the refresh cost, reaches the warmer's $0.05 floor. Without enough
+ * gaps, an interactive session keeps Octocode's estimate (the idle gaps pooled across sessions), and a headless one or a
+ * settled subagent stops; a settled subagent whose gaps show its coordinator's mail tends to come within the lifetime
+ * is refreshed. A wait that expects a wake warms while its refreshes, the next one included, save at least the floor.
  * Undefined keeps Octocode's decision (a streaming refresh, whose run is still going, or too little history).
  */
 export function warmingDecision(
@@ -170,7 +180,8 @@ export function warmingDecision(
 	if (event.continuationProbability >= 1) return undefined;
 	if (expectsWake) {
 		const { warms } = cacheClock(ctx.sessionManager);
-		const action = (warms + 1) * event.warmCost <= event.missCost ? "warm" : "stop";
+		const action =
+			event.missCost - (warms + 1) * event.warmCost >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop";
 		return action === event.action ? undefined : { action };
 	}
 	const person = interactive(ctx, isSubagent);
@@ -180,19 +191,8 @@ export function warmingDecision(
 	const { replyAt, gaps } = cacheClock(ctx.sessionManager);
 	const q = replyAt === undefined ? undefined : idleContinuation(gaps, now - replyAt, ttlMs);
 	if (q === undefined) return person ? undefined : stop;
-	const action = q * event.missCost > event.warmCost ? "warm" : "stop";
+	const action = q * event.missCost - event.warmCost >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop";
 	return action === event.action ? undefined : { action };
-}
-
-/**
- * q(t): the chance a refresh now is used, from this session's idle gaps (next request after a finished run). Of the gaps that
- * lasted longer than `idleMs`, the share that ended after a tenth of the lifetime (sooner, the entry is still warm
- * without the refresh) and within the lifetime (later, the refreshed entry has expired too). Undefined with too few.
- */
-export function idleContinuation(gaps: readonly number[], idleMs: number, ttlMs: number): number | undefined {
-	const survivors = gaps.filter((gap) => gap > idleMs);
-	if (survivors.length < MIN_IDLE_SAMPLES) return undefined;
-	return survivors.filter((gap) => gap > idleMs + ttlMs / 10 && gap <= idleMs + ttlMs).length / survivors.length;
 }
 
 /** What the cache clock reads off a branch: its last reply and refresh, and the idle gaps. */

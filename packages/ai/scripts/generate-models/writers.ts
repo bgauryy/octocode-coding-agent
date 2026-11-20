@@ -20,10 +20,14 @@ import {
 	validateGeneratedModelData,
 	validateModelDataDirectory,
 } from "../model-data.ts";
+import { buildCacheFlagTable, serializeCacheFlagTable } from "./cache-flags.ts";
 import type { SortedProviderCatalogs } from "./catalog.ts";
 import { generatorOptions, packageRoot } from "./options.ts";
 
 /** Writers for the provider data, the TypeScript catalog and the JSON catalog. */
+
+/** Per-model cache flags the runtime reads; written with every data run, tracked like `src/models.generated.ts`. */
+const CACHE_FLAGS_MODULE = "src/utils/cache-capability-flags.generated.ts";
 
 function serializeJson(value: unknown): string {
 	return `${JSON.stringify(value, null, generatorOptions.pretty ? 2 : undefined)}\n`;
@@ -185,6 +189,7 @@ export function writeModelCatalogs({
 				throw error;
 			}
 			restoreGeneratedCatalog = undefined;
+			writeFileSync(join(packageRoot, CACHE_FLAGS_MODULE), serializeCacheFlagTable(buildCacheFlagTable()));
 			console.log(
 				generatorOptions.dataOnly
 					? "Hydrated JSON model values under src/providers/data/"

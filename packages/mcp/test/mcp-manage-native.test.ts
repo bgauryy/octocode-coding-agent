@@ -58,12 +58,24 @@ describe("mcp tools with server native", () => {
 		expect(result.details).toMatchObject({ server: "native", tool: { name: "web", inputSchema: WEB.parameters } });
 	});
 
-	it("answers an unknown or non-deferred native tool by naming what is deferred, and counts nothing", async () => {
+	it("answers an unknown native tool by naming what is deferred, and counts nothing", async () => {
 		const { run, loaded } = setup();
 		await expect(run({ intent: "tools", server: "native", tool: "bash" })).rejects.toThrow(
-			/No deferred native tool named "bash".*archive, web/,
+			/No native tool named "bash" in this session.*archive, web/,
 		);
 		expect(loaded).not.toHaveBeenCalled();
+	});
+
+	it("returns the schema of a native tool declared in full instead of refusing, and counts no load", async () => {
+		const BASH = { description: "Run a command.", parameters: { type: "object", properties: { command: {} } } };
+		const native = { ...port(), declared: (name: string) => (name === "bash" ? BASH : undefined) };
+		const { run, loaded } = setup(native);
+		const result = await run({ intent: "tools", server: "native", tool: "bash" });
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toContain("bash [direct] — Run a command.");
+		expect(text).toContain(JSON.stringify(BASH.parameters, null, 2));
+		expect(loaded).not.toHaveBeenCalled();
+		expect(native.loaded).not.toHaveBeenCalled();
 	});
 
 	it("lists the deferred natives without a tool, and says so when there are none", async () => {

@@ -3,8 +3,9 @@ import { generateDiffString } from "../../src/core/tools/edit-diff.ts";
 import { renderFileResult } from "../../src/octocode/files/render.ts";
 import * as diffModule from "../../src/theme/diff.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
+import { stripRowMarks } from "@octocodeai/octocode-tui";
 
-const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
+const plain = (text: string) => stripRowMarks(text).replace(/\x1b\[[0-9;]*m/g, "");
 const before = Array.from({ length: 400 }, (_, i) => `const value${i} = ${i};`).join("\n");
 const after = Array.from({ length: 400 }, (_, i) => `const value${i} = ${i * 2}; // doubled`).join("\n");
 const { diff } = generateDiffString(before, after);

@@ -44,6 +44,9 @@ const QuerySchema = Type.Object({
 		),
 	),
 	content: Type.Optional(Type.String({ description: "write: complete file content" })),
+	fromAttachment: Type.Optional(
+		Type.String({ description: "write: sha256 of a received attachment, instead of content" }),
+	),
 });
 
 export const Params = Type.Object({

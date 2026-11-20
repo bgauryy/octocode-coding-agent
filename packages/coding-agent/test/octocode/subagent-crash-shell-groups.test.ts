@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
 import { foregroundOperations } from "../../src/octocode/files/bash-run.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
+import { killTrackedDetachedChildren } from "../../src/utils/shell.ts";
 import { SHELL_GROUPS_FILE_ENV } from "../../src/octocode/shared/shell-groups.ts";
 import { runSubagent } from "../../src/octocode/subagents/process.ts";
 import { tmp } from "./helpers.ts";
@@ -43,6 +44,20 @@ fs.writeSync(1, JSON.stringify(event) + '\\n');
 process.kill(process.pid, 'SIGKILL');
 `;
 
+/** The same child, but it stays alive: its parent is the one that crashes. */
+const LIVE_MID_BASH = CRASH_MID_BASH.replace("process.kill(process.pid, 'SIGKILL');", "setInterval(() => {}, 60000);");
+
+/** Blocks this thread (so no asynchronous cleanup can run) until `pid` is gone or `ms` pass; returns whether it is gone. */
+function goneWhileBlocked(pid: number, ms: number): boolean {
+	const deadline = Date.now() + ms;
+	const pause = new Int32Array(new SharedArrayBuffer(4));
+	while (Date.now() < deadline) {
+		if (!processAlive(pid)) return true;
+		Atomics.wait(pause, 0, 0, 20);
+	}
+	return !processAlive(pid);
+}
+
 describe.skipIf(process.platform === "win32")("a subagent that dies mid-bash", () => {
 	it("has its bash command's process group stopped by the parent before the run settles, and says what it was doing", async () => {
 		const dir = tmp();
@@ -66,6 +81,40 @@ describe.skipIf(process.platform === "win32")("a subagent that dies mid-bash", (
 			expect(shell).toBeGreaterThan(0);
 			// The run has settled: the command the dead child left running is already gone.
 			expect(processAlive(shell)).toBe(false);
+		} finally {
+			try {
+				if (shell) process.kill(-shell, "SIGKILL");
+			} catch {
+				/* Already gone. */
+			}
+		}
+	}, 20_000);
+
+	it("has its bash command's group stopped by the parent's own crash exit, which cannot wait for anything", async () => {
+		const dir = tmp();
+		const script = path.join(dir, "octocode");
+		fs.writeFileSync(script, LIVE_MID_BASH);
+		process.argv[1] = script;
+		const pidFile = path.join(dir, "shell.pid");
+		process.env.TEST_SHELL_PID_FILE = pidFile;
+		let shell = 0;
+		const run = runSubagent({
+			task: "go",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "a-parent-crash", scratch: tmp() },
+			onProgress: () => undefined,
+		});
+		const settled = run.catch((error: unknown) => error);
+		try {
+			const deadline = Date.now() + 10_000;
+			while (!fs.existsSync(pidFile) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+			shell = Number(fs.readFileSync(pidFile, "utf8"));
+			expect(processAlive(shell)).toBe(true);
+			// What `uncaughtCrash` and the exit hook run, just before `process.exit`: nothing asynchronous comes after it.
+			killTrackedDetachedChildren();
+			expect(goneWhileBlocked(shell, 3_000)).toBe(true);
+			await settled;
 		} finally {
 			try {
 				if (shell) process.kill(-shell, "SIGKILL");

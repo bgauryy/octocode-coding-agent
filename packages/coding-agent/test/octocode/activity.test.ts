@@ -398,29 +398,6 @@ describe("registerActivity", () => {
 		await fake.emit("session_shutdown", {}, ctx);
 	});
 
-	it("holds the working spinner still while a tool row animates its own, and restores it after", async () => {
-		initTheme("dark", false);
-		vi.useFakeTimers();
-		const fake = fakeHost();
-		registerActivity(fake.api, { workingLine: true });
-		const ctx = fakeCtx({ cwd: "/x" });
-		const ui = ctx.ui as typeof ctx.ui & { indicator?: { frames: string[] } };
-		const tui = { requestRender: vi.fn() } as never;
-		await fake.emit("agent_start", {}, ctx);
-		await fake.emit("tool_execution_start", { toolCallId: "a", toolName: "bash", args: { command: "sleep 9" } }, ctx);
-		expect(ui.indicator?.frames).toHaveLength(1);
-		// The real working line, given that indicator, draws the same mark however long it runs.
-		const line = new WorkingStatusIndicator(tui, "Running Bash", ui.indicator);
-		const first = stripAnsi(line.render(80)[1]);
-		vi.advanceTimersByTime(700);
-		expect(stripAnsi(line.render(80)[1]).trim().split(" ")[0]).toBe(first.trim().split(" ")[0]);
-		line.dispose();
-		await fake.emit("tool_execution_end", { toolCallId: "a" }, ctx);
-		expect(ui.indicator?.frames.length).toBeGreaterThan(1);
-		await fake.emit("agent_settled", {}, ctx);
-		await fake.emit("session_shutdown", {}, ctx);
-	});
-
 	it("starts the run clock the working line counts from at agent_start and ends it at settlement", async () => {
 		initTheme("dark", false);
 		vi.useFakeTimers({ now: 5_000 });

@@ -153,6 +153,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 	const followUp = host.getAppKeyDisplay("app.message.followUp");
 	const dequeue = host.getAppKeyDisplay("app.message.dequeue");
 	const pasteImage = host.getAppKeyDisplay("app.clipboard.pasteImage");
+	const searchTranscript = keyText("tui.altScreen.search");
 
 	const hotkeys = `
 **Navigation**
@@ -197,6 +198,7 @@ export function handleHotkeysCommand(host: InfoCommandsHost): void {
 | \`${followUp}\` | Queue follow-up message |
 | \`${dequeue}\` | Restore the last queued message (\`/queue\` manages all) |
 | \`${pasteImage}\` | Paste files on macOS, images, or text from clipboard |
+| \`${searchTranscript}\` / \`/find\` | Search the transcript (fullscreen mode) |
 | \`/\` | Slash commands |
 | \`!\` | Run bash command |
 | \`!!\` | Run bash command (excluded from context) |

@@ -34,6 +34,7 @@ import { itemTitle, withItemTitles, withItemTitlesIn } from "../render/item-titl
 import type { RenderContext } from "../render/types.ts";
 import { ReportView } from "../render/report.ts";
 import { displayReport } from "./report-display.ts";
+import { fullReportText } from "./report-full.ts";
 import { timingOf } from "../render/rows.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
@@ -355,7 +356,8 @@ export const renderAgentMessage: MessageRenderer = (message, { expanded, outputP
 	const details = (message.details ?? {}) as Partial<ResultDetails>;
 	const presentation = presentAgentReport(message.content, details);
 	const footer = fencedParts(contentText(message.content).split("\n").slice(1).join("\n"))?.footer ?? "";
-	const report = withItemTitlesIn(presentation.body, footer, itemTitle);
+	// The model reads the head of a long report; the user reads all of it from the saved version.
+	const report = withItemTitlesIn(fullReportText(details) ?? presentation.body, footer, itemTitle);
 	const stopped = details.status === "stopped";
 	// A stop (asked for or not) is an interruption, not a failure: drawn `◼` in the warning colour.
 	const context = {

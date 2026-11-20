@@ -14,6 +14,13 @@ const LABELS = {
 	stalled: "Model not answering",
 } as const;
 
+/** A retry counts down to its attempt; once the attempt is out, the line names the retry alone. */
+function retryWords(phase: Extract<RunPhase, { kind: "retrying" }>, now: number): string {
+	const words = phase.detail || LABELS.retrying;
+	const left = phase.until === undefined ? 0 : phase.until - now;
+	return left > 0 ? `${words} in ${span(Math.ceil(left / 1000) * 1000)}` : words;
+}
+
 /** The small shape that tells phases apart beside the label, so colour is not the only cue. */
 function PhaseIcon({ phase }: { phase: Exclude<RunPhase, { kind: "idle" }> }) {
 	switch (phase.kind) {
@@ -66,9 +73,11 @@ export function RunIndicator({
 					? `Running ${phase.name}`
 					: phase.kind === "job"
 						? jobWords(phase.phase, (startedAt ?? seen) + elapsed)
-						: phase.kind === "waiting"
-							? `Waiting for you${phase.awaiting.id ? "" : " in the terminal"}${phase.awaiting.title ? `: ${phase.awaiting.title}` : ""}`
-							: ("detail" in phase && phase.detail) || LABELS[phase.kind]}
+						: phase.kind === "retrying"
+							? retryWords(phase, (startedAt ?? seen) + elapsed)
+							: phase.kind === "waiting"
+								? `Waiting for you${phase.awaiting.id ? "" : " in the terminal"}${phase.awaiting.title ? `: ${phase.awaiting.title}` : ""}`
+								: ("detail" in phase && phase.detail) || LABELS[phase.kind]}
 			</span>
 			{stale && <span className="muted">last known</span>}
 			<span className="run-elapsed">{span(elapsed)}</span>

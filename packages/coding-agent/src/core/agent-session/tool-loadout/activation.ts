@@ -19,6 +19,10 @@ export function toToolInfo({ definition, sourceInfo }: ToolDefinitionEntry, expo
 export interface ActivationInput {
 	/** The `--tools` matcher, when an allowlist is set. */
 	allowedTools?: (name: string) => boolean;
+	/** The allowlist's entries: only one that is a tool's exact name, not a pattern, activates an on-demand tool. */
+	allowedEntries?: readonly string[];
+	/** Whether the tool is registered undeclared until first use (`ToolDefinition.onDemand`). */
+	isOnDemand: (name: string) => boolean;
 	/** The caller named the active tools, so nothing is added on registration. */
 	explicitActiveNames: boolean;
 	includeAllFeatureTools: boolean;
@@ -35,7 +39,9 @@ export function toolsToActivate(input: ActivationInput): string[] {
 	const added: string[] = [];
 	if (input.allowedTools) {
 		for (const name of input.registered) {
-			// Naming or matching a tool activates it even when it is not active by default.
+			// Naming or matching a tool activates it even when it is not active by default. An on-demand tool only by its
+			// exact name: a pattern (a role's `mcp__browser__*`) leaves such a tool undeclared until its first use.
+			if (input.isOnDemand(name) && !input.allowedEntries?.includes(name)) continue;
 			if (input.allowedTools(name) && input.isDeclarable(name) && !input.deselected.has(name)) added.push(name);
 		}
 	} else if (input.includeAllFeatureTools) {

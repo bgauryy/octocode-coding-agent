@@ -95,7 +95,9 @@ describe("retention with no settings", () => {
 			modelsStore: new InMemoryModelsStore(),
 			allowModelNetwork: false,
 		});
-	const LONG = { cacheRetention: "long", instructionCacheRetention: "long" };
+	// Defaults: history is written every turn and read within minutes, so the short tier;
+	// instructions are shared across turns, sessions and children, so the long tier.
+	const DEFAULTS = { cacheRetention: "short", instructionCacheRetention: "long" };
 	/** What `claim.ts` resolves for a child on `model`, and the environment its process starts with. */
 	const child = (models: ModelRuntime, model: Model<Api>, parent: SettingsManager) => {
 		const preferences = models.getCachePolicy(model, undefined, [
@@ -109,41 +111,42 @@ describe("retention with no settings", () => {
 		};
 	};
 
-	it("is long/long for the main session and every child, on every built-in provider and model", async () => {
+	it("is short history with long instructions for the main session and every child, on every built-in model", async () => {
 		unset();
 		const models = await runtime();
 		const settings = SettingsManager.inMemory({});
 		const providers = getBuiltinProviders();
 		expect(providers.length).toBeGreaterThan(5);
-		let withLong = 0;
+		let withShort = 0;
 		const lifetimes = new PromptCacheLifetimes();
 		for (const provider of providers) {
 			for (const model of getBuiltinModels(provider) as Model<Api>[]) {
 				const id = `${provider}/${model.id}`;
 				const main = models.getCachePolicy(model, undefined, settings.getCachePreferenceLayers()).options;
-				expect({ id, main }).toEqual({ id, main: LONG });
+				expect({ id, main }).toEqual({ id, main: DEFAULTS });
 				const started = child(models, model, settings);
-				expect({ id, child: started.preferences }).toEqual({ id, child: LONG });
-				expect({ id, env: started.env }).toEqual({ id, env: { history: "long", instructions: "long" } });
-				// The child plans with the lifetime the adapter sends for long history: the model's resolved long tier.
-				const long = resolveModelCapabilities(model).cache.lifetimes.long;
-				if (long !== undefined) {
-					withLong++;
-					expect({ id, ttlMs: started.ttlMs }).toEqual({ id, ttlMs: long * 1000 });
+				expect({ id, child: started.preferences }).toEqual({ id, child: DEFAULTS });
+				expect({ id, env: started.env }).toEqual({ id, env: { history: "short", instructions: "long" } });
+				// The child plans with the lifetime the adapter sends for short history: the model's resolved short tier.
+				const short = resolveModelCapabilities(model).cache.lifetimes.short;
+				if (short !== undefined) {
+					withShort++;
+					expect({ id, ttlMs: started.ttlMs }).toEqual({ id, ttlMs: short * 1000 });
 					// Compaction (clearing, idle warming) plans with the same lifetime as the warmer.
-					const compaction = promptCacheTtlMs(lifetimes.of(model), { [CACHE_RETENTION_ENV]: "long" });
-					expect({ id, compaction }).toEqual({ id, compaction: long * 1000 });
+					const compaction = promptCacheTtlMs(lifetimes.of(model), { [CACHE_RETENTION_ENV]: "short" });
+					expect({ id, compaction }).toEqual({ id, compaction: short * 1000 });
 				}
 			}
 		}
-		// Not vacuous: Bedrock Claude, OpenAI Responses and Azure extended models declare no `promptCache`. Claude on
-		// Anthropic-protocol gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax) has no long tier by default.
-		expect(withLong).toBeGreaterThan(150);
-		// The gateway default, pinned both ways: Claude through a gateway has no long tier, Claude on api.anthropic.com
-		// has the one-hour tier.
-		const gateway = getBuiltinModel("openrouter", "anthropic/claude-haiku-4.5") as Model<Api>;
+		// Not vacuous: every marker model (Anthropic, Bedrock Claude, Anthropic-protocol gateways) and OpenAI explicit mode.
+		expect(withShort).toBeGreaterThan(150);
+		// The gateway default, pinned both ways: Claude through a gateway without a documented 1h tier has no long tier,
+		// Claude on api.anthropic.com and on OpenRouter (which documents `ttl: "1h"` for Claude) has the one-hour tier.
+		const gateway = getBuiltinModel("vercel-ai-gateway", "anthropic/claude-haiku-4.5") as Model<Api>;
 		expect(gateway.api).toBe("anthropic-messages");
 		expect(resolveModelCapabilities(gateway).cache.lifetimes.long).toBeUndefined();
+		const openRouter = getBuiltinModel("openrouter", "anthropic/claude-haiku-4.5") as Model<Api>;
+		expect(resolveModelCapabilities(openRouter).cache.lifetimes.long).toBe(3600);
 		const direct = getBuiltinModel("anthropic", "claude-haiku-4-5") as Model<Api>;
 		expect(direct.baseUrl).toBe("https://api.anthropic.com");
 		expect(resolveModelCapabilities(direct).cache.lifetimes.long).toBe(3600);
@@ -195,30 +198,30 @@ describe("retention with no settings", () => {
 
 	// User decision (2026-11-08): no `--print` exception. `claim.ts` resolves a child's pair from the parent's settings,
 	// session overrides included, so a print-only override would reach every child (the ship eval runs `-p`).
-	it("is long/long for a one-shot `--print` run, its children and their children", async () => {
+	it("is short history with long instructions for a one-shot `--print` run, its children and theirs", async () => {
 		unset();
 		const models = await runtime();
 		const created = await printRuntime();
 		try {
 			const settings = created.services.settingsManager;
-			expect(settings.getCachePreferences()).toEqual(LONG);
+			expect(settings.getCachePreferences()).toEqual(DEFAULTS);
 			for (const model of [
 				getBuiltinModel("anthropic", "claude-opus-4-6"),
 				getBuiltinModel("openai", "gpt-6.1-sol"),
 			] as Model<Api>[]) {
 				const id = `${model.provider}/${model.id}`;
 				const main = models.getCachePolicy(model, undefined, settings.getCachePreferenceLayers()).options;
-				expect({ id, main }).toEqual({ id, main: LONG });
+				expect({ id, main }).toEqual({ id, main: DEFAULTS });
 				const started = child(models, model, settings);
-				expect({ id, child: started.preferences }).toEqual({ id, child: LONG });
-				expect({ id, env: started.env }).toEqual({ id, env: { history: "long", instructions: "long" } });
+				expect({ id, child: started.preferences }).toEqual({ id, child: DEFAULTS });
+				expect({ id, env: started.env }).toEqual({ id, env: { history: "short", instructions: "long" } });
 				// A grandchild resolves in the child process, whose environment carries the pair the child started with.
 				vi.stubEnv(CACHE_RETENTION_ENV, started.env.history);
 				vi.stubEnv(INSTRUCTION_CACHE_RETENTION_ENV, started.env.instructions);
 				const grandchild = child(models, model, SettingsManager.inMemory({}));
 				expect({ id, grandchild: grandchild.env }).toEqual({
 					id,
-					grandchild: { history: "long", instructions: "long" },
+					grandchild: { history: "short", instructions: "long" },
 				});
 				unset();
 			}

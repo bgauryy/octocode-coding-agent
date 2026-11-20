@@ -11,6 +11,7 @@ import { prepareAgentDb } from "../../storage/database.ts";
 import { hostTrust } from "../../../../mcp/src/api.ts";
 import { APP_NAME } from "../../config.ts";
 import { contextSizeWarnings } from "../../core/context-budget.ts";
+import { skillListingBudgetChars } from "../../core/skills/listing-budget.ts";
 import { loadProjectContextFiles } from "../../core/resource-loader/context-files.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { contextOptimizationDirs } from "../shared/home.ts";
@@ -31,9 +32,6 @@ const CONTEXT_USAGE = `Usage:
 
 Overrides file: { "skills": { "<skill name>": "<description agents read>" } }
 Run in the project whose skills you optimize; user-level skills are shared by every project.`;
-
-/** The skills listing's share of the prompt (`formatSkillsForPrompt`), for the size line. */
-const SKILLS_LISTING_BUDGET_CHARS = 8_000;
 
 interface ContextCommandOptions {
 	agentDir: string;
@@ -58,24 +56,29 @@ function scopes(options: ContextCommandOptions): Scope[] {
 	].map((scope) => ({ ...scope, store: readSkillsStore(scope.dir) }));
 }
 
+/** A folder or file that is missing or that this user may not read. */
+const UNREADABLE = new Set(["ENOENT", "ENOTDIR", "EACCES", "EPERM"]);
+
 /**
  * What a session in this folder would be warned about in `/context`: the project's context files together pass 1% of
- * the default window. A folder that cannot be read warns about nothing.
+ * the default window. A folder that is missing or cannot be read warns about nothing; any other failure propagates.
  */
 function sizeWarnings(options: ContextCommandOptions): string[] {
+	let files: Array<{ content: string }>;
 	try {
-		const files = loadProjectContextFiles({
+		files = loadProjectContextFiles({
 			cwd: options.cwd,
 			agentDir: options.agentDir,
 			projectTrusted: hostTrust().folderTrusted(options.cwd),
 		});
-		return contextSizeWarnings({
-			servers: [],
-			contextFilesChars: files.reduce((sum, file) => sum + file.content.length, 0),
-		});
-	} catch {
-		return [];
+	} catch (error) {
+		if (UNREADABLE.has((error as NodeJS.ErrnoException).code ?? "")) return [];
+		throw error;
 	}
+	return contextSizeWarnings({
+		servers: [],
+		contextFilesChars: files.reduce((sum, file) => sum + file.content.length, 0),
+	});
 }
 
 function skillRows(store: SkillsStore) {
@@ -110,7 +113,7 @@ function list(options: ContextCommandOptions, json: boolean, log: (line: string)
 		const before = all.reduce((sum, skill) => sum + skill.sourceChars, 0);
 		const after = all.reduce((sum, skill) => sum + skill.chars, 0);
 		log(
-			`Skills: ${all.filter((skill) => skill.optimized).length}/${all.length} optimized; descriptions ${before} → ${after} characters (the listing's budget is ${SKILLS_LISTING_BUDGET_CHARS} with names and paths).`,
+			`Skills: ${all.filter((skill) => skill.optimized).length}/${all.length} optimized; descriptions ${before} → ${after} characters (the listing's budget is ${skillListingBudgetChars()} with names and paths).`,
 		);
 	}
 	for (const row of rows) {

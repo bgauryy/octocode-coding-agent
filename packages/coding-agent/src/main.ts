@@ -3,6 +3,7 @@
  * answer and return; everything else is a session run (`main/run-session.ts`).
  */
 
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { runCompletionCommand } from "./cli/completion.ts";
 import { startupCwd } from "./cli/worktree-startup.ts";
 import { getAgentDir, getPackageDir } from "./config.ts";
@@ -44,6 +45,9 @@ export async function main(args: string[]) {
 	cleanupManagedInstall();
 	const cwd = await startupCwd(args);
 	const agentDir = getAgentDir();
+	// What this process removes at exit is what it made: never the agent folder or the workspace, nor a folder holding one.
+	processLifetime.protectPath(agentDir);
+	processLifetime.protectPath(cwd);
 	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher();

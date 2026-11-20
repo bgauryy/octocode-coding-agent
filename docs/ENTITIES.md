@@ -18,7 +18,7 @@ An item can involve several sessions, agents and attempts, and a session can wor
 
 ## Database
 
-Schema version 10. There are no upgrade steps: a file at an older version is set aside and a new one created, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
+Schema version 10. There are no upgrade steps: a file at an older version is set aside and a new one created that takes over the tables people wrote (memories, backlog, trust, reviews, command history) when their columns still fit, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
 | Tables                                                                      | Holds                                                                                                                                             |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -31,7 +31,7 @@ Schema version 10. There are no upgrade steps: a file at an older version is set
 | `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                   |
 | `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                |
 | `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                    |
-| `timers`                                                                    | The `wait` tool's wakes                                                                                                                          |
+| `timers`                                                                    | The `wait` tool's wakes                                                                                                                           |
 | `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                           |
 | `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                   |
 

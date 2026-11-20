@@ -13,10 +13,11 @@ export interface FooterState {
 	/** Thinking level, only for models that reason: drawn as `model:effort`. */
 	thinking?: string | undefined;
 	/**
-	 * `limit` is where Octocode compacts automatically (the window less the built-in reserve); `percent`
-	 * is of `limit`, and null right after compaction, until the next response.
+	 * `window` is the model's context window (what `/context` measures against); `percent` is of `window`, and null
+	 * right after compaction, until the next response. `compactAt` is where Octocode compacts automatically: it only
+	 * moves the alarm colour, never the figure.
 	 */
-	context?: { percent: number | null; limit: number } | undefined;
+	context?: { percent: number | null; window: number; compactAt?: number } | undefined;
 	/** The session ledger: its replies, recorded spend and every subagent result or report added so far. `input` is the whole prompt (cache reads included); `cost` is Octocode's estimate. */
 	usage: UsageTotals;
 	/** This session's own replies whose provider bills by plan, and their estimated cost: all of the ledger means `Σ (sub)`. */

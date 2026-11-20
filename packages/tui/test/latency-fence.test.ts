@@ -42,7 +42,13 @@ function fenced(options: { interactive?: boolean } = {}) {
 	s.start();
 	started.push(s);
 	const probes = () => writes.filter((w) => w === FENCE_PROBE).length;
-	return { s, frames, writes, probes, terminal };
+	let replies = 0;
+	/** Answer the oldest unanswered probe, as a terminal does, and count it. */
+	const reply = () => {
+		replies++;
+		s.fenceReply();
+	};
+	return { s, frames, writes, probes, terminal, reply, replies: () => replies };
 }
 
 /** Answer the probe that `paint` caused after `ms`. */
@@ -51,7 +57,7 @@ async function answerAfter(f: ReturnType<typeof fenced>, ms: number): Promise<vo
 	f.s.paintNow();
 	await until(() => f.probes() === n + 1, "a probe");
 	await wait(ms);
-	f.s.fenceReply();
+	f.reply();
 }
 
 /** A fast first reply sets the terminal's floor; a later probe aged past the threshold makes the scheduler behind. */
@@ -190,10 +196,10 @@ describe("latency fence pacing", () => {
 	it("keeps probing while behind with no frames, so a recovered terminal releases held decoration", async () => {
 		const f = fenced();
 		await becomeBehind(f);
-		const n = f.probes();
-		// No frame follows: decoration is held, so only the fence itself can notice that the terminal caught up.
-		await until(() => f.probes() === n + 1, "a probe while behind without frames");
-		f.s.fenceReply(); // answered at once
+		// No frame follows: decoration is held, so only the fence itself can notice that the terminal caught up. Its
+		// timer may send that probe as becomeBehind's last reply lands, so wait for the first unanswered one.
+		await until(() => f.probes() > f.replies(), "a probe while behind without frames");
+		f.reply(); // answered at once
 		assert.equal(f.s.getStats().fence?.behind, false);
 	});
 });

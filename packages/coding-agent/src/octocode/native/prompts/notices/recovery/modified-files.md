@@ -1,1 +1,1 @@
-`<modified-files>` lists files this session changed{{#if agents}}, with `file` or `bash` or through its subagents ({{agents}}){{else}} with `file` or `bash`{{/if}}: they are your own work, not another process's.
+Your own changes{{#if agents}}, with `file`, `bash` or {{agents}} ({{files}}{{#if list}}; by subagent: {{list}}{{/if}}),{{else}}, with `file` or `bash`,{{/if}} are in `<modified-files>`: not another process's.

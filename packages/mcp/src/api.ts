@@ -60,7 +60,7 @@ export {
 	serializeMcpSessionServers,
 	type TaskMcpServers,
 } from "./session-servers.ts";
-export { MCP_DEFER_ROLES, type McpDeferRole } from "./deferral.ts";
+export { MCP_DEFER_ROLES, type McpDeferRole, promotionBudget } from "./deferral.ts";
 export { getMcpHookCaller, type BoundMcpHookCaller, type McpHookCaller } from "./hook-caller.ts";
 export { liveStdioServerPids } from "./client/transports/stdio.ts";
 

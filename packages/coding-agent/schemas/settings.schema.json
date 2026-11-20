@@ -19,7 +19,7 @@
           "const": "long"
         }
       ],
-      "description": "Conversation cache retention. Without a separate instruction preference, applies to both layers."
+      "description": "Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers."
     },
     "instructionCacheRetention": {
       "anyOf": [
@@ -36,7 +36,7 @@
           "const": "long"
         }
       ],
-      "description": "Instruction cache retention, limited by endpoint capabilities. Long writes can cost more."
+      "description": "Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more."
     },
     "$schema": {
       "type": "string",
@@ -162,6 +162,17 @@
         "maxAgentDelayMs": {
           "type": "number",
           "default": 60000
+        },
+        "offlineIntervalMs": {
+          "type": "number",
+          "minimum": 1000,
+          "description": "Wait between retries while the machine is offline.",
+          "default": 60000
+        },
+        "offlineMaxMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How long an outage may last before the request fails; 0 waits until the network returns. Unset: 0, and 30 minutes in print mode."
         },
         "provider": {
           "type": "object",
@@ -390,8 +401,14 @@
           "pattern": "^auto:[0-9]+$"
         }
       ],
-      "description": "How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). \"direct\": the full description and schema. \"deferred\": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. \"recent\": a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. \"usage\" (the default): every tool is deferred with its whole description unless the promotion snapshot names it: a tool that at least 10% of the last 7 days' sessions with the same role (main or subagent) that declared it called or loaded, with 20 or more such sessions, or whose first calls the deferred schema often refused; with no usage data nothing is promoted. The snapshot is computed at session start when the saved one is over an hour old, and then fixed for the session, its resumptions and its subagents. \"auto:<bytes>\": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool.",
+      "description": "How much of each MCP tool the cached system prompt carries, for tools whose server sets no `exposure` (a server's or tool's own `exposure` wins). \"direct\": the full description and schema. \"deferred\": the server's purpose and one trigger line per tool; the agent reads the full upstream text with the `mcp` tool when it needs it, as a tool result, so the cached prefix never changes. \"recent\": a tool this working directory called in the last 24 hours is direct, any other is deferred with its whole description, and the deferrable native tools (see nativeToolExposure) follow the same rule; the set is fixed when the session starts and a subagent uses the set of its parent. \"usage\" (the default): every tool is deferred with its whole description, its field names and types, the few values a field allows, list bounds and required fields, whether sessions use it or not; the promotion snapshot only decides whether a tool its server leaves on demand is declared that way from the session's start instead of after its first use. The snapshot names the tools that at least 10% of the last 7 days' sessions with the same role (main or subagent) that offered them called or loaded, with 20 or more such sessions, or whose first calls the deferred schema often refused, kept while their declarations fit mcpPromotedBytes; a tool with fewer sessions keeps the exposure its configuration gives it. It is computed once per UTC day and installed version, and then fixed for the session, its resumptions and its subagents. \"auto:<bytes>\": servers stay direct, in name order, while their direct text fits within that many bytes, and are deferred past it. Tools stay declared and validated against the server's full schema either way, and nothing is deferred for an agent without the `mcp` tool.",
       "default": "usage"
+    },
+    "mcpPromotedBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Under mcpExposure \"usage\": the bytes, per role group (main or subagent), that promoted on-demand tools may add to the tool list at the start of a session, most used first; a promoted tool that does not fit stays on demand. 0 keeps every on-demand tool on demand. Bytes, not a share of the context window, so changing models never changes the tool list.",
+      "default": 8192
     },
     "nativeToolExposure": {
       "type": "object",
@@ -409,7 +426,7 @@
           ]
         }
       },
-      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level field names only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and under \"usage\" unless the promotion snapshot names it; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned web, archive or models that would be deferred is on demand instead: listed in the prompt, declared after its first call or a read with the `mcp` tool."
+      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level fields (types, the few values a field allows, required fields) only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and always under \"usage\"; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned archive or models (and memory in a subagent) that would be deferred is on demand instead, unless the \"usage\" promotion snapshot names it: listed in the prompt, declared after its first call or a read with the `mcp` tool."
     },
     "research": {
       "type": "object",
@@ -1282,6 +1299,106 @@
       },
       "additionalProperties": false
     },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "boolean",
+          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/octocodecode/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
+          "default": true
+        },
+        "autoUpdate": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "explicit"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Who writes the MEMORY.md files: \"off\" nobody (the files are only read), \"explicit\" saves you or the agent make with memory set or /memory add, \"auto\" those plus the background passes that harvest and consolidate lessons.",
+          "default": "auto"
+        },
+        "subagents": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "workspace"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "string",
+              "const": "none"
+            }
+          ],
+          "description": "Which MEMORY.md files a subagent gets: \"workspace\" the repository's, \"all\" the global one too, \"none\" neither. A lean subagent gets none.",
+          "default": "workspace"
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "main"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            }
+          ],
+          "description": "Before each prompt, add pinned and word-matched notes from the notes database: \"off\" never, \"main\" in the main session only, \"all\" in subagents too. OCTOCODE_MEMORY_AUTO=0 turns it off for the process.",
+          "default": "main"
+        },
+        "reflection": {
+          "type": "boolean",
+          "description": "Let a long main session end with one call to the cheaper model (subagents.models.small) that proposes lessons for MEMORY.md. Needs autoUpdate \"auto\".",
+          "default": true
+        },
+        "subagentPinnedKind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "preference"
+            },
+            {
+              "type": "string",
+              "const": "fact"
+            },
+            {
+              "type": "string",
+              "const": "decision"
+            },
+            {
+              "type": "string",
+              "const": "gotcha"
+            },
+            {
+              "type": "string",
+              "const": "procedure"
+            },
+            {
+              "type": "string",
+              "const": "reference"
+            }
+          ],
+          "description": "The one kind of pinned note a subagent's recall includes (with recall \"all\"); pinned notes of other kinds stay out of its prompt. The main session always gets every pinned kind.",
+          "default": "preference"
+        }
+      },
+      "additionalProperties": false
+    },
     "cacheWarming": {
       "anyOf": [
         {
@@ -1314,6 +1431,12 @@
           "minimum": 0,
           "description": "Days a session transcript (JSONL, in a workspace or the legacy per-folder directories) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
           "default": 90
+        },
+        "archiveAfterDays": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Days after which backlog audit, configuration audit and workspace command history rows move from the database to gzip archive files; archived rows older than `days` are dropped. A window longer than `days` is cut to it.",
+          "default": 14
         }
       },
       "description": "How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it.",
@@ -1340,12 +1463,12 @@
         "maxChildren": {
           "type": "integer",
           "minimum": 1,
-          "description": "Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running."
+          "description": "Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
         },
         "maxCost": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running."
+          "description": "US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
         },
         "queuedStarts": {
           "type": "boolean",
@@ -1397,6 +1520,24 @@
       "type": "boolean",
       "description": "Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it.",
       "default": false
+    },
+    "leanPrompt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "string",
+          "const": "on"
+        },
+        {
+          "type": "string",
+          "const": "off"
+        }
+      ],
+      "description": "The main session's policy text. \"auto\" (the default) uses the lean policy for a model whose context window is under 64k tokens or the model subagents.models.small names, and the full policy otherwise; \"on\" always uses the lean policy, \"off\" never. The lean policy states the working, safety and reporting rules only: it leaves out delegation, the rules for running subagents and the list of skills (each stays loadable by name), so a small or local model keeps its window for the work.",
+      "default": "auto"
     },
     "tuiMode": {
       "anyOf": [

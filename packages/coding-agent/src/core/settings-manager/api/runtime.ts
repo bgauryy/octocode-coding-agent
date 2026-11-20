@@ -3,6 +3,16 @@ import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-polic
 import type { builtInCompactionSettings, CompactionModel } from "../../compaction/settings.ts";
 import type { CacheWarmingMode, Settings } from "../../settings-schema.ts";
 
+/** Resolved `retry` settings; `offlineMaxMs` stays unset unless configured. */
+export interface RetrySettings {
+	enabled: boolean;
+	maxRetries: number;
+	baseDelayMs: number;
+	maxAgentDelayMs: number;
+	offlineIntervalMs: number;
+	offlineMaxMs?: number;
+}
+
 /** The model fields the compaction policy reads. */
 export type CompactionPolicyModel = Pick<Model<string>, "provider" | "id"> &
 	Pick<CompactionModel, "contextWindow" | "reasoning" | "compat">;
@@ -21,7 +31,8 @@ export interface RuntimeSettingsApi {
 	getBranchSummarySkipPrompt(): boolean;
 	getRetryEnabled(): boolean;
 	setRetryEnabled(enabled: boolean): void;
-	getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number };
+	/** `offlineMaxMs` is unset unless configured, so a host may pick its own bound (print mode does). */
+	getRetrySettings(): RetrySettings;
 	getRetryFallbackModels(): string[];
 	/** `retry.fallbackCooldownMs`: how long a model that failed on a usage limit or refused credential is skipped. */
 	getRetryFallbackCooldownMs(): number;

@@ -60,21 +60,26 @@ afterEach(() => vi.useRealTimers());
 
 describe("layered cache warming", () => {
 	it("refreshes on the history lifetime, which expires before the instruction entry", () => {
-		expect(getPromptCacheLifetime(model, layered)).toEqual({ ttlMs: 300_000, layered: true });
+		expect(getPromptCacheLifetime(model, layered)).toEqual({ ttlMs: 300_000, layered: true, history: "short" });
 		expect(getPromptCacheTtlMs(model, layered)).toBe(300_000);
 	});
 	it("treats the pair as one lifetime when the endpoint cannot write long entries", () => {
 		const shortOnly = { ...model, compat: { supportsLongCacheRetention: false } };
-		expect(getPromptCacheLifetime(shortOnly, layered)).toEqual({ ttlMs: 300_000, layered: false });
+		expect(getPromptCacheLifetime(shortOnly, layered)).toEqual({ ttlMs: 300_000, layered: false, history: "short" });
 	});
 	it("plans with the 1h instruction entry the adapter writes when the model declares only its short lifetime", () => {
 		expect(getPromptCacheLifetime({ ...model, promptCache: { short: 300 } }, layered)).toEqual({
 			ttlMs: 300_000,
 			layered: true,
+			history: "short",
 		});
 	});
 	it("keeps single-lifetime warming and honors explicit disabling", () => {
-		expect(getPromptCacheLifetime(model, { cacheRetention: "long" })).toEqual({ ttlMs: 3600000, layered: false });
+		expect(getPromptCacheLifetime(model, { cacheRetention: "long" })).toEqual({
+			ttlMs: 3600000,
+			layered: false,
+			history: "long",
+		});
 		expect(getPromptCacheTtlMs(model, { cacheRetention: "none", instructionCacheRetention: "long" })).toBeUndefined();
 		expect(getPromptCacheTtlMs(model, { env: { OCTOCODE_CACHE_RETENTION: "none" } })).toBeUndefined();
 		expect(getPromptCacheTtlMs(model, { cacheRetention: "short", instructionCacheRetention: "none" })).toBe(300_000);
@@ -84,8 +89,9 @@ describe("layered cache warming", () => {
 	it("prices a miss as the history alone, since the instruction prefix outlives it", () => {
 		const systemPrompt = "x".repeat(30_000);
 		const context = normalizeContext({ systemPrompt, messages: [] });
+		// Without a model: the densest family's 2.5 characters per token.
 		const instructionTokens = estimateInstructionPrefixTokens(context);
-		expect(instructionTokens).toBe(10_000);
+		expect(instructionTokens).toBe(12_000);
 
 		vi.useFakeTimers();
 		const single = warmer(100_000);

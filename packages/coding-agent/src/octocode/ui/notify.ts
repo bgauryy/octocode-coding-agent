@@ -15,6 +15,7 @@ import { isPendingPhase, sessionPhaseOf } from "../shared/session-phase.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { plainTitle, TitleTracker, terminalTitle } from "./terminal-title.ts";
+import { registerNoticeLines } from "./notice-lines.ts";
 import { registerPhaseFeed } from "./phase-feed.ts";
 import { registerPresentWarming } from "./present-warming.ts";
 
@@ -160,6 +161,8 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 	const work = runningWorkOf(api);
 	const name = agentNameOf(api);
 	registerPhaseFeed(api);
+	// The once-only session notes (a compaction's lifted rules, the lean prompt turning on) belong to the root session too.
+	registerNoticeLines(api);
 	const phase = sessionPhaseOf(api);
 	/** The first prompt of the session, its description in the tab until it has a name. */
 	let firstPrompt: string | undefined;

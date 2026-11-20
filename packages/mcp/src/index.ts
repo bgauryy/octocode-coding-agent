@@ -9,12 +9,13 @@ import { registerSessionEvents } from "./events.ts";
 import { registerMcpManageTool } from "./manage-tool-wiring.ts";
 import { registerAcpClientMcpServers } from "./acp-session-servers.ts";
 import { registerInheritedMcpServers } from "./session-servers.ts";
-import { McpFeatureState, type McpFeatureOptions } from "./state.ts";
+import type { McpFeatureOptions } from "./options.ts";
+import { McpFeatureState } from "./state.ts";
 import { createMcpToolRenderers } from "./tool-definition.ts";
 import { mcpToolStates, publishMcpToolStates } from "./tool-states.ts";
 
 export type { McpTransportFactory } from "./runtime.ts";
-export type { McpFeatureOptions } from "./state.ts";
+export type { McpFeatureOptions } from "./options.ts";
 export { currentToolRoles, resolveToolRoles, roleOf, type ResolvedRoles, type RoleEntry } from "./roles.ts";
 export type { McpInstallConfig, McpToolRolesConfig } from "@octocodeai/octocode-contracts/mcp-server";
 

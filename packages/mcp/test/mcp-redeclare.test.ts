@@ -179,7 +179,9 @@ describe("a deferred tool after its first call", () => {
 		// The cached prefix: the request's tool list and instruction blocks are byte-identical.
 		expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
 		expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
-		expect(before.tools?.find((tool) => tool.name === SHOUT)?.input_schema?.required ?? []).toEqual([]);
+		expect(before.tools?.find((tool) => tool.name === SHOUT)?.input_schema).toMatchObject({
+			additionalProperties: true,
+		});
 		expect(additions(before)).toEqual([]);
 		const added = additions(after);
 		expect(added).toHaveLength(1);

@@ -126,7 +126,7 @@ export function showLoadedResources(
 		// Collapsed, the listing shows what the agent includes now; agents, prompts, themes and code that does not run are
 		// listed only expanded.
 		view = loadedContextView(host, skillsResult.skills);
-		const budget = skillListingBudgetChars(host.session.model?.contextWindow);
+		const budget = skillListingBudgetChars(host.session.model?.contextWindow, host.session.model);
 		const prompt = host.session.systemPrompt ?? "";
 		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path), {
 			context: { chars: projectContextOf(prompt)?.length ?? 0, budget },
@@ -273,12 +273,13 @@ export function showLoadedResources(
 		const contextWindow = model?.contextWindow;
 		const listing = skillListingOf(systemPrompt);
 		const overBudget = listing
-			? skillListingBudgetWarning({ skills: skillsResult.skills, listing, contextWindow })
+			? skillListingBudgetWarning({ skills: skillsResult.skills, listing, contextWindow, model })
 			: undefined;
 		const contextOver = contextFilesBudgetWarning({
 			systemPrompt,
 			files: resourceLoader.getAgentsFiles().agentsFiles,
 			contextWindow,
+			model,
 		});
 		addWarningLines({
 			...startup,

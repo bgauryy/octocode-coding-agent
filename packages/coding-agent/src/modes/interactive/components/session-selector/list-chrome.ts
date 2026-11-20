@@ -1,7 +1,7 @@
 import { truncateToWidth } from "@octocodeai/octocode-tui";
 import { theme } from "../../../../theme/theme.ts";
 import { noMatchMessage, keyText } from "../../../../theme/theme-tui-helpers.ts";
-import type { NameFilter } from "../session-selector-search.ts";
+import { searchQueryError, type NameFilter } from "../session-selector-search.ts";
 import type { GroupMode } from "./groups.ts";
 import { folderColumn } from "./utils.ts";
 
@@ -15,7 +15,10 @@ export function emptyFor(
 	query: string,
 ): { message: string; recover?: readonly [key: string, verb: string] } {
 	const what = nameFilter === "named" ? "named sessions" : "sessions";
-	if (query.trim()) return { message: noMatchMessage(what, query) };
+	if (query.trim()) {
+		const error = searchQueryError(query);
+		return { message: error ? `Invalid search: ${error}` : noMatchMessage(what, query) };
+	}
 	if (nameFilter === "named")
 		return {
 			message: `No named sessions${allFolders ? "" : " in this folder"}`,

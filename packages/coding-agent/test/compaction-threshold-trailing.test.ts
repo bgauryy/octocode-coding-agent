@@ -119,7 +119,8 @@ describe("threshold compaction counts content after the last response", () => {
 			timestamp: Date.now(),
 		};
 		await run(assistant, false, [prompt]);
-		expect(compacted).toHaveBeenCalledWith("threshold", false, session.model);
+		// The compaction is told the waiting prompt's size (3,000 characters, 1,200 tokens) so it keeps room for it.
+		expect(compacted).toHaveBeenCalledWith("threshold", false, session.model, undefined, 1_200);
 	});
 
 	it("does not compact for a small incoming prompt", async () => {
@@ -147,7 +148,9 @@ describe("threshold compaction counts content after the last response", () => {
 			session.agent.state.messages = manager.buildSessionContext().messages;
 			const { run, compacted } = check();
 			await run(assistant, false, source === "incoming" ? [large] : []);
-			expect(compacted).toHaveBeenCalledWith("threshold", false, session.model);
+			if (source === "incoming")
+				expect(compacted).toHaveBeenCalledWith("threshold", false, session.model, undefined, 480_000);
+			else expect(compacted).toHaveBeenCalledWith("threshold", false, session.model);
 		},
 	);
 });

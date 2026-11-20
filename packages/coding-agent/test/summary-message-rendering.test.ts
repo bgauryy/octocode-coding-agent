@@ -86,7 +86,7 @@ describe("summary messages", () => {
 			timestamp: Date.now(),
 		});
 		const collapsed = lines(component, 80).join("\n");
-		expect(collapsed).toContain("[compaction] 1.2k tokens → 6-token summary (ctrl+o to expand)");
+		expect(collapsed).toContain("[compaction] 1.2k tokens → 8-token summary (ctrl+o to expand)");
 		expect(collapsed).not.toContain("archive:");
 		component.setExpanded(true);
 		expect(lines(component, 80).join("\n")).toContain("Plain summary text");

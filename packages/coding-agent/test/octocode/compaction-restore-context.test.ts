@@ -20,10 +20,10 @@ function setup() {
 		cwd: dir,
 		sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) },
 	};
-	const restore = (contextFiles: Array<{ path: string; content: string }>) => {
+	const restore = async (contextFiles: Array<{ path: string; content: string }>) => {
 		const guard = new FileGuard();
 		const held = recordContextFiles(guard, contextFiles);
-		const pending = deliverRestoredFiles(
+		const pending = await deliverRestoredFiles(
 			api,
 			[{ file: context }, { file: other }],
 			ctx as never,
@@ -37,25 +37,25 @@ function setup() {
 }
 
 describe("project context files after a compaction", () => {
-	it("are not read back, and count as read", () => {
+	it("are not read back, and count as read", async () => {
 		const { context, other, text, sent, restore } = setup();
-		const { guard, pending } = restore([{ path: context, content: text }]);
+		const { guard, pending } = await restore([{ path: context, content: text }]);
 		expect(pending?.files.map((entry) => entry.file)).toEqual([other]);
 		expect(sent[0].content).not.toContain("keep it small");
 		expect(guard.check(context, "write", "AGENTS.md")).toBeUndefined();
 	});
 
-	it("refuse an edit once the file changed on disk after the compaction", () => {
+	it("refuse an edit once the file changed on disk after the compaction", async () => {
 		const { context, text, restore } = setup();
-		const { guard } = restore([{ path: context, content: text }]);
+		const { guard } = await restore([{ path: context, content: text }]);
 		fs.writeFileSync(context, `${text}changed\n`);
 		expect(guard.check(context, "write", "AGENTS.md")).toMatch(/changed on disk/);
 	});
 
-	it("are read back when the file changed since it was loaded", () => {
+	it("are read back when the file changed since it was loaded", async () => {
 		const { context, text, sent, restore } = setup();
 		fs.writeFileSync(context, `${text}new rule\n`);
-		const { guard, pending } = restore([{ path: context, content: text }]);
+		const { guard, pending } = await restore([{ path: context, content: text }]);
 		expect(pending?.files.map((entry) => entry.file)).toContain(context);
 		expect(sent[0].content).toContain("new rule");
 		expect(guard.check(context, "write", "AGENTS.md")).toMatch(/not read/);

@@ -12,11 +12,12 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { resolveJsonSchemaStrictSampling } from "@octocodeai/octocode-ai/api/constrained-sampling";
+import { deferredInputSchema } from "../../../../mcp/src/api.ts";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
 import type { FeatureRegister } from "../../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../../src/core/resource-loader.ts";
-import { createTestSession } from "../../helpers/session.ts";
+import { createTestSession, endTestSession } from "../../helpers/session.ts";
 import { trustFolder } from "../helpers.ts";
 import { installFreellamaReplay, SERVED_PROJECT_INSTRUCTIONS, SERVED_RECENT_TOOLS, writeRecentUse } from "./served.ts";
 import { SessionManager } from "../../../src/core/session-manager.ts";
@@ -35,6 +36,7 @@ import { shortPath } from "../../../src/utils/display-path.ts";
 import { bundledSkillDirs } from "../../../src/octocode/skills.ts";
 import { subagentProcessEnv, type Identity } from "../../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.ts";
+import { childInUseTools } from "../../../src/octocode/subagents/core-tools.ts";
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
 import { taskSkillPlan, taskSkillText, withRoleSkills } from "../../../src/octocode/subagents/task-skills.ts";
 import { childTaskInput } from "../../../src/octocode/subagents/task-text.ts";
@@ -69,6 +71,17 @@ export function strictResolution(tool: Tool): boolean | { refused: string } {
 	}
 }
 
+/**
+ * A tool the first request does not declare in full: declared thin (`deferred`, its full schema loads on a refused call
+ * or an `mcp` read) or left out until its first call (`onDemand`). Each costs a round trip on first use.
+ */
+export interface DeferredTool {
+	name: string;
+	state: "deferred" | "onDemand";
+	/** Bytes of its full declaration (name, description, parameter schema), declared once it is loaded. */
+	fullBytes: number;
+}
+
 /** The first model request one agent receives, with machine-specific values replaced by fixed ones. */
 export interface AgentContext {
 	/** The folder name under `.octocode/tmp/agent-prompts/`. */
@@ -80,6 +93,8 @@ export interface AgentContext {
 	sections: Array<{ name: string; text: string }>;
 	tools: CapturedTool[];
 	messages: Array<{ role: string; text: string }>;
+	/** The tools its first use must load (`DeferredTool`), in registration order. */
+	deferred?: DeferredTool[];
 }
 
 export interface Fixture {
@@ -156,7 +171,7 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		// The FreeLlama server is off unless the user opts in: the fixture capture keeps it off, and a served capture opts in
 		// and replays its recorded listing (`served.ts`).
 		OCTOCODE_MCP_FREELLAMA: fx.served ? "1" : "0",
-		...(fx.served ? { OCTOCODE_MCP_RECENT_TOOLS: JSON.stringify(SERVED_RECENT_TOOLS) } : {}),
+		...(fx.served ? { OCTOCODE_MCP_RECENT_TOOLS: JSON.stringify(childInUseTools(SERVED_RECENT_TOOLS)) } : {}),
 		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the
 		// fixture home is empty. A real session declares both: opt in so the capture lists the same tools. The listing
 		// makes no call; the API host is a placeholder that is never contacted.
@@ -189,13 +204,16 @@ export interface SessionShape {
 	skillResourceSnapshot?: SkillResourceSnapshot;
 	/** Settings over the defaults, e.g. `{ mcpExposure: "direct" }` to capture every tool declared in full. */
 	settings?: Record<string, unknown>;
+	/** The scripted model's context window; default 200,000 tokens. A window under 64k picks the lean main policy. */
+	contextWindow?: number;
 }
 
 /**
  * A real session on the scripted model `faux/faux-1` (200,000-token window), built as the CLI builds it for `shape`, in
- * `sessionManager` (in memory by default). The caller disposes it. The model speaks the Anthropic Messages API with
- * mid-conversation tool changes (tool loading mode `changes`), as the flagship models do, so `onDemand` tools are left
- * out of the first request.
+ * `sessionManager` (in memory by default). The caller ends it with `end()`, as the product ends a session: features
+ * close what they started (MCP servers) and the model runtime stops watching credentials. The model speaks the
+ * Anthropic Messages API with mid-conversation tool changes (tool loading mode `changes`), as the flagship models do,
+ * so `onDemand` tools are left out of the first request.
  */
 export async function scriptedSession(
 	fx: Fixture,
@@ -205,7 +223,7 @@ export async function scriptedSession(
 	const faux = createFauxCore({
 		provider: "faux",
 		api: "anthropic-messages",
-		models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 4_096 }],
+		models: [{ id: "faux-1", contextWindow: shape.contextWindow ?? 200_000, maxTokens: 4_096 }],
 	});
 	const provider: FeatureRegister = (api) => {
 		api.providers.register("faux", {
@@ -237,7 +255,7 @@ export async function scriptedSession(
 		noThemes: true,
 	});
 	await resourceLoader.reload();
-	const { session } = await createTestSession({
+	const { session, services } = await createTestSession({
 		cwd: fx.cwd,
 		agentDir: fx.agentDir,
 		resourceLoader,
@@ -246,19 +264,24 @@ export async function scriptedSession(
 		...(shape.tools ? { tools: shape.tools } : {}),
 		...(shape.excludeTools ? { excludeTools: shape.excludeTools } : {}),
 	});
+	const end = () => endTestSession(session, services);
 	try {
 		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
 	} catch (error) {
-		session.dispose?.();
+		try {
+			await end();
+		} catch (endError) {
+			throw new AggregateError([error, endError], "Scripted session setup and shutdown failed", { cause: endError });
+		}
 		throw error;
 	}
-	return { session, faux };
+	return { session, faux, end };
 }
 
 /** A real session on a scripted model; returns the system message, tools and messages of its first request. */
 async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
-	const { session, faux } = await scriptedSession(fx, shape);
+	const { session, faux, end } = await scriptedSession(fx, shape);
 	try {
 		let captured: TranscriptContext | undefined;
 		faux.setResponses([
@@ -269,12 +292,21 @@ async function firstRequest(fx: Fixture, shape: SessionShape, request: string) {
 		]);
 		await session.prompt(request);
 		if (!captured) throw new Error("The scripted model received no request");
+		const declared = new Set(getCurrentTools(captured.messages).map((tool) => tool.name));
 		return {
 			context: captured,
 			roleVariant: new Set(session.agent.state.tools.filter((t) => t.roleVariant).map((t) => t.name)),
+			deferred: session.getAllTools().flatMap((tool) => {
+				// Declared thin: its declaration names the full schema it loads. Undeclared: only an on-demand tool waits for a load.
+				const full = declared.has(tool.name) ? deferredInputSchema(tool.parameters) : undefined;
+				const onDemand = !declared.has(tool.name) && session.getToolDefinition(tool.name)?.onDemand === true;
+				if (full === undefined && !onDemand) return [];
+				const state: DeferredTool["state"] = onDemand ? "onDemand" : "deferred";
+				return [{ name: tool.name, state, description: tool.description ?? "", parameters: full ?? tool.parameters }];
+			}),
 		};
 	} finally {
-		session.dispose?.();
+		await end();
 	}
 }
 
@@ -299,7 +331,7 @@ function describeRequest(
 	name: string,
 	kind: AgentContext["kind"],
 	role: string | undefined,
-	{ context, roleVariant }: Awaited<ReturnType<typeof firstRequest>>,
+	{ context, roleVariant, deferred }: Awaited<ReturnType<typeof firstRequest>>,
 	normalize: (text: string) => string,
 ): AgentContext {
 	const system = getCurrentSystemMessage(context.messages);
@@ -336,14 +368,26 @@ function describeRequest(
 					: String(content ?? "");
 				return { role: message.role, text: normalize(text) };
 			}),
+		deferred: deferred.map((tool) => ({
+			name: tool.name,
+			state: tool.state,
+			fullBytes: Buffer.byteLength(
+				tool.name + normalize(tool.description) + normalize(JSON.stringify(tool.parameters ?? null)),
+			),
+		})),
 	};
 }
 
 /** The main session as the user starts it: native tools, the Octocode MCP server, bundled skills and a project AGENTS.md. */
-export async function captureMain(settings?: Record<string, unknown>, served = false): Promise<AgentContext> {
+export async function captureMain(
+	settings?: Record<string, unknown>,
+	served = false,
+	contextWindow?: number,
+): Promise<AgentContext> {
 	const fx = fixture(served);
 	try {
-		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, { settings }, MAIN_REQUEST));
+		const shape = { settings, ...(contextWindow === undefined ? {} : { contextWindow }) };
+		const context = await withEnv(baseEnv(fx), () => firstRequest(fx, shape, MAIN_REQUEST));
 		return describeRequest("main", "main", undefined, context, normalizer(fx));
 	} finally {
 		fs.rmSync(fx.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -426,6 +470,8 @@ export async function captureChild(
 			scratch: fx.scratch,
 			skillsInTask: skillPlan.inTask,
 			permission: { mode: "workspace", grants: [] },
+			// What `configureIdentity` hands a child of a warm parent: the parent's in-use set less its role-dependent tools.
+			...(served ? { mcpRecent: childInUseTools(SERVED_RECENT_TOOLS) } : {}),
 			// `isolation.ts`: the child runs in the worktree (its resolved path) and its prompt names the main checkout.
 			...(worktree
 				? {

@@ -45,6 +45,16 @@ export function agentDbPath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
+ * `file` as an agent database to open, whoever named it (`OCTOCODE_AGENT_DB`, the home, or a caller's own path): under a
+ * test runner the real home's file is refused, and so is the transcript mirror beside it (`transcriptDbPath`).
+ */
+export function checkedAgentDbPath(file: string, env: NodeJS.ProcessEnv = process.env): string {
+	refuseRealHomeDatabase(file, env);
+	refuseRealHomeDatabase(transcriptDbPath(file), env);
+	return file;
+}
+
+/**
  * The archive search index beside a coordination file: `archive-index.db` beside `workspaces.db`, else
  * `<name>.archive-index.db`. A disposable cache, rebuilt from the archive files when missing.
  */

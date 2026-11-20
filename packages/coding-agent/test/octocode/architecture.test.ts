@@ -174,7 +174,8 @@ const ALLOWED: Record<string, string[]> = {
 	"monitor-room": ["shared", "monitor"],
 	"native/skills": [],
 	"terminal-launch": [],
-	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths"],
+	// `processes`: the process table names other vendors' agent CLIs working in a worktree.
+	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths", "processes"],
 	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
 	realm: ["shared", "worktrees", "worktree-paths", "sessions"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.

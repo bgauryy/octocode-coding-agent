@@ -79,9 +79,11 @@ function harness(options: { subagent?: boolean; mode?: PermissionMode; session?:
 	};
 	/** Fires before_agent_start and commits the hidden message it returns, as the host does; undefined when it adds none. */
 	const turn = async (messageType: "user" | "custom" = "user", prompt = "carry on") => {
-		const result = (await fake.fire("before_agent_start", { prompt, messageType }, ctx())) as
-			| { message: { customType: string; content: string; details: unknown } }
-			| undefined;
+		const result = (await fake.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt, messageType },
+			ctx(),
+		)) as { message: { customType: string; content: string; details: unknown } } | undefined;
 		if (!result) return undefined;
 		const { message } = result;
 		const id = session.appendCustomMessageEntry(message.customType, message.content, false, message.details);

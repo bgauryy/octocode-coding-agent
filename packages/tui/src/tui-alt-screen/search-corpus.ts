@@ -1,15 +1,21 @@
 /**
  * The text transcript search runs over: every rendered row's words joined by single spaces, and where each piece of
- * text came from (row and columns). Built row by row, so a change at row `r` keeps the text and spans of the rows
- * before it and rebuilds only the rest; a long transcript is indexed in slices instead of in one blocking pass.
+ * text came from (row and columns). A row the wrap marked as continuing a word cut by the width joins the previous row
+ * without a space; a row marked as standing for hidden content is counted, so search can say it was not searched.
+ * Built row by row, so a change at row `r` keeps the text and spans of the rows before it and rebuilds only the rest;
+ * a long transcript is indexed in slices instead of in one blocking pass.
  */
 
 import { stripTerminalSequences } from "../utils/ansi-codes.ts";
+import { continuesPreviousRow, isFoldRow } from "../utils/row-marks.ts";
 import { getGraphemeSegmenter, visibleWidth } from "../utils/width.ts";
 
 const segmenter = getGraphemeSegmenter();
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 const WHITESPACE = /^\s+$/u;
+/** A box border drawn at a row's edge is frame, not text: it must not sit between two words of neighbouring rows. */
+const LEADING_GUTTER = /^\s*[│┃]/u;
+const TRAILING_GUTTER = /[│┃]\s*$/u;
 
 /** Fields of one span, stored side by side in one typed array. */
 const START = 0;
@@ -109,6 +115,10 @@ export class SearchCorpus {
 	/** Text length and span count where each indexed row starts. */
 	private readonly rowText = new Offsets();
 	private readonly rowSpan = new Offsets();
+	/** Fold rows before each indexed row. */
+	private readonly rowFolds = new Offsets();
+	/** Fold rows among the indexed rows. */
+	folds = 0;
 	/** The text, as a head that rarely changes and a tail of the rows indexed since the last fold. */
 	private head = "";
 	private tail: string[] = [];
@@ -128,6 +138,7 @@ export class SearchCorpus {
 		if (row >= this.rows) return;
 		const length = this.rowText.get(row);
 		this.spans.length = this.rowSpan.get(row);
+		this.folds = this.rowFolds.get(row);
 		this.rows = row;
 		if (length >= this.head.length) {
 			const kept = this.tailText().slice(0, length - this.head.length);
@@ -164,22 +175,28 @@ export class SearchCorpus {
 		let textLength = this.textLength;
 		this.rowText.set(row, textLength);
 		this.rowSpan.set(row, this.spans.length);
-		// Every row after text ends with a pending separator, so a row starts with one exactly when text came before.
-		let pendingSeparator = textLength > 0;
+		this.rowFolds.set(row, this.folds);
+		const raw = rawLine ?? "";
+		if (isFoldRow(raw)) this.folds += 1;
+		// Every row after text ends with a pending separator, so a row starts with one exactly when text came before,
+		// unless it continues the previous row's word: then the indent before its first text adds none either.
+		let joining = textLength > 0 && continuesPreviousRow(raw);
+		let pendingSeparator = textLength > 0 && !joining;
 		const appendSeparator = (): void => {
+			joining = false;
 			if (!pendingSeparator) return;
 			this.push(" ");
 			textLength += 1;
 			pendingSeparator = false;
 		};
-		const line = stripTerminalSequences(rawLine ?? "");
+		const line = stripTerminalSequences(raw);
 		let column = 0;
 		// Rendered transcripts are overwhelmingly ASCII: index whole non-space runs instead of segmenting each cell.
 		if (PRINTABLE_ASCII.test(line)) {
 			let index = 0;
 			while (index < line.length) {
 				if (line.charCodeAt(index) === 0x20) {
-					if (textLength > 0) pendingSeparator = true;
+					if (textLength > 0 && !joining) pendingSeparator = true;
 					column += 1;
 					index += 1;
 					continue;
@@ -195,11 +212,18 @@ export class SearchCorpus {
 				index = end;
 			}
 		} else {
+			const gutterEnd = LEADING_GUTTER.exec(line)?.[0].length ?? 0;
+			const gutterStart = TRAILING_GUTTER.exec(line)?.index ?? line.length;
 			for (const grapheme of segmenter.segment(line)) {
-				const text = grapheme.segment;
-				const width = visibleWidth(text);
+				// Text is indexed in NFC, so a query typed either way matches; columns come from the drawn grapheme.
+				const text = grapheme.segment.normalize("NFC");
+				const width = visibleWidth(grapheme.segment);
+				if (grapheme.index < gutterEnd || grapheme.index >= gutterStart) {
+					column += width;
+					continue;
+				}
 				if (WHITESPACE.test(text)) {
-					if (textLength > 0) pendingSeparator = true;
+					if (textLength > 0 && !joining) pendingSeparator = true;
 					column += width;
 					continue;
 				}

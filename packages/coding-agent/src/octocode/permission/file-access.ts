@@ -10,6 +10,7 @@ import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
+import { memoryFileRefusal } from "./memory-files.ts";
 
 /**
  * Repository folders that load code, hooks or agent instructions in later sessions (git config, Pi, Claude Code, Codex and
@@ -139,7 +140,8 @@ export function shellTargetPath(target: BashFileTarget): string | undefined {
 }
 
 /**
- * How a shell target is treated: the state-folder refusal for any resolvable write (checked first, in every mode), then
+ * How a shell target is treated: for any resolvable write (checked first, in every mode) the refusal of a curated
+ * MEMORY.md file (it belongs to the `memory` tool) and of the state folder, then
  * the class a write outside the workspace or to a run-later file needs, or `uncertain` when it names no known place.
  */
 export function shellTargetAccess(
@@ -155,7 +157,8 @@ export function shellTargetAccess(
 	if (!spelled) return { uncertain: true };
 	const file = canonicalPath(shellPath(cwd, spelled));
 	if (target.kind === "write") {
-		const refusal = stateFolderRefusal(file, target.raw, "Bash", cwd);
+		const refusal =
+			memoryFileRefusal(file, target.raw, "Bash", cwd) ?? stateFolderRefusal(file, target.raw, "Bash", cwd);
 		if (refusal) return { refusal };
 	}
 	const root = workspaceRoot(cwd);

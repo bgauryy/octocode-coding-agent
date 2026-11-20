@@ -46,7 +46,8 @@ describe("system prompt updates", () => {
 			const head = harness.session.messages[0];
 			if (head?.role !== "system") throw new Error("expected system message");
 			expect(head.content).toBe("");
-			expect(Object.keys(head.sections ?? {})).toEqual(["preamble", "tools", "rules", "docs", "harnesses", "cwd"]);
+			// No harness supplies anything in this home, so the prompt has no harnesses line.
+			expect(Object.keys(head.sections ?? {})).toEqual(["preamble", "tools", "rules", "docs", "cwd"]);
 			expect(head.toolsAdded?.map((tool) => tool.name)).toEqual(["bash"]);
 			expect(getSystemMessageText(head)).toBe(harness.session.systemPrompt);
 		} finally {

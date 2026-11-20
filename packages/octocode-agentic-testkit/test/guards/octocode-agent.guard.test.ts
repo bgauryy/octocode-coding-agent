@@ -9,7 +9,8 @@ import { requireBundle } from "./support.ts";
 /** Measured on the bundled agent (main agent, request 1), plus ~5%. Raise only with a reviewed reason. */
 const CEILING = {
 	systemPromptBytes: 30_800,
-	toolJsonBytes: 42_100,
+	/** Thin MCP declarations keep short enums, `maxItems` and `required` (review CK-013, user decision): 43,472 B plus 5%. */
+	toolJsonBytes: 45_600,
 	/** Warm requests (all but the first) must read at least this share of the prompt from cache. */
 	warmCacheReadRatio: 0.9,
 };

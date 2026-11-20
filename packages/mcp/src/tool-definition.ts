@@ -1,4 +1,6 @@
 import { toolProgressText, type ToolDisplay } from "@octocodeai/octocode-contracts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { liftedProperties } from "@octocodeai/octocode-ai/utils/json-schema-shape";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
@@ -79,6 +81,22 @@ export interface McpToolDefinitionOptions {
 	};
 }
 
+/**
+ * Whether a server's input schema refuses a top-level `reason`: it declares no such field (in its properties or any
+ * root alternative's) and accepts no field it does not declare. Every native tool requires `reason`, and models carry
+ * the habit into MCP calls, which such a schema then rejects.
+ */
+function refusesReason(inputSchema: Record<string, unknown>): boolean {
+	if (Object.hasOwn(liftedProperties(inputSchema), "reason")) return false;
+	const branches = inputSchema.anyOf ?? inputSchema.oneOf;
+	const shapes = Array.isArray(branches) && branches.length > 0 ? branches : [inputSchema];
+	const closed = (shape: unknown) =>
+		isRecord(shape) &&
+		(shape.additionalProperties === false || shape.unevaluatedProperties === false) &&
+		shape.patternProperties === undefined;
+	return closed(inputSchema) || shapes.every(closed);
+}
+
 export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpToolDefinition<TSchema, McpToolDetails> {
 	const { server, tool } = options;
 	const title = tool.title;
@@ -86,6 +104,7 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 	const description = tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`;
 	const inputSchema = toParameters(tool.inputSchema);
 	const { compact } = options;
+	const dropsReason = refusesReason(tool.inputSchema ?? {});
 	const prepare: PrepareCall = async (args, ctx) => (await options.presentation?.prepareCall?.(args, ctx)) ?? { args };
 	let lastFailure: string | undefined;
 	// A definition is built from one tool list, so its checker lives exactly as long as the declared schema.
@@ -136,8 +155,18 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 			return hints.length ? hints.join("\n\n") : undefined;
 		},
 		// The server owns its input: arguments are checked against its schema as the model sent them and reach the server
-		// unchanged, with no field added, dropped, moved, converted or parsed. A call the schema rejects fails with its hint.
+		// unchanged, with no field added, moved, converted or parsed. A call the schema rejects fails with its hint. The one
+		// field dropped is a top-level string `reason` that the schema neither declares nor accepts (`refusesReason`).
 		coerceArguments: false,
+		...(dropsReason
+			? {
+					prepareArguments: (args: unknown) => {
+						if (!isRecord(args) || typeof args.reason !== "string") return args;
+						const { reason: _reason, ...rest } = args;
+						return rest;
+					},
+				}
+			: {}),
 		...(options.presentation
 			? options.presentation.outputSchema
 				? { outputSchema: options.presentation.outputSchema }

@@ -385,6 +385,30 @@ describe("subagents", () => {
 		expect(localResearchTools()).toEqual([]);
 	});
 
+	it("leaves out of the MCP floor the research tools the configuration puts on demand", () => {
+		publishRoles([
+			{
+				name: RESEARCH.server,
+				config: {
+					command: "research-server",
+					roles: { reader: ["read_file"], search: ["search_code", "search_ast"], judge: ["judge"] },
+					toolExposure: { search_ast: "onDemand", judge: "onDemand" },
+				},
+			},
+		]);
+		try {
+			// Other servers' tools named: every local research tool but the on-demand ones.
+			expect(mcpFloor(["mcp__browser__*"])).toEqual([RESEARCH.reader, RESEARCH.search]);
+			// The research server named: its reader and first search, unless one of them is on demand.
+			expect(mcpFloor([RESEARCH.readOnly])).toEqual([RESEARCH.reader, RESEARCH.search]);
+			expect(localResearchTools()).toEqual(
+				expect.arrayContaining(["mcp__research__search_ast", "mcp__research__judge"]),
+			);
+		} finally {
+			publishRoles([]);
+		}
+	});
+
 	it("gives the browser role its server and the specialist MCP floor without naming a research server's tools", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		const tools = (browser.tools ?? "").split(",");

@@ -25,6 +25,7 @@ it("rejects oversized terminal clipboard transfers and permits a later small cop
 		},
 		dispatchMouseToOverlay: () => ({ hit: false }),
 		dispatchMouseToLayout: () => undefined,
+		hitLayoutAt: () => [],
 		applyMouseDispatchResult: () => false,
 	};
 	const selection = new AltScreenSelection(host);
@@ -55,6 +56,7 @@ function copyHost(screen: string[], copied: string[], messages: string[]): AltSc
 		},
 		dispatchMouseToOverlay: () => ({ hit: false }),
 		dispatchMouseToLayout: () => undefined,
+		hitLayoutAt: () => [],
 		applyMouseDispatchResult: () => false,
 	};
 }

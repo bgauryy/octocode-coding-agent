@@ -15,10 +15,12 @@ const SAME_READ_MS = 1;
 // A sustained flick moves about 16 a frame, so only events piled up behind a stall or in one read reach it.
 const FRAME_MS = 1000 / 60;
 const MAX_FRAME_LINES = 24;
+// Lines beyond a frame's cap wait for the following frames; a flood never queues more than this many.
+const MAX_PENDING_LINES = MAX_FRAME_LINES * 20;
 
 // Several events closer than this belong to one physical notch (Ghostty emits them ~4 ms apart)
 // or come from a high-resolution source. They move one line each and do not accelerate.
-const BURST_GAP_MS = 5;
+export const BURST_GAP_MS = 5;
 // A pause longer than this ends a scroll gesture.
 const GESTURE_GAP_MS = 200;
 // Average notch gap that maps to one notch's lines per event. Faster notches scale up proportionally.
@@ -76,6 +78,10 @@ export class WheelScrollAccelerator {
 	private readEvents = 0;
 	private frameStart = Number.NEGATIVE_INFINITY;
 	private frameLines = 0;
+	/** Lines the frame cap held back, to move in `pendingDirection` in following frames. */
+	private pending = 0;
+	private pendingDirection: -1 | 1 = 1;
+	private drainTimer: NodeJS.Timeout | undefined;
 
 	constructor(lines: WheelScrollLines = "auto", accelerate = !terminalAcceleratesWheel()) {
 		this.lines = lines;
@@ -107,7 +113,39 @@ export class WheelScrollAccelerator {
 			this.readEvents = 1;
 		}
 		const lines = this.accelerate ? this.notch(direction, now, gap) : this.flick(direction, now, gap, pace);
-		return this.limitFrame(lines, now);
+		if (direction !== this.pendingDirection) this.pending = 0;
+		this.pendingDirection = direction;
+		return this.limitFrame(lines + this.pending, now);
+	}
+
+	/**
+	 * Move the lines the frame cap held back, as far as the frame at `now` allows. Returns the line count, to scroll in
+	 * the direction of the last event.
+	 */
+	takePending(now: number): { direction: -1 | 1; lines: number } {
+		return { direction: this.pendingDirection, lines: this.limitFrame(this.pending, now) };
+	}
+
+	/**
+	 * Call `apply` once a frame with held-back lines until none remain. The timer never keeps the process alive;
+	 * `clearPending` stops it.
+	 */
+	drainPending(apply: (direction: -1 | 1, lines: number) => void): void {
+		if (this.pending === 0 || this.drainTimer) return;
+		this.drainTimer = setTimeout(() => {
+			this.drainTimer = undefined;
+			const { direction, lines } = this.takePending(performance.now());
+			if (lines > 0) apply(direction, lines);
+			this.drainPending(apply);
+		}, FRAME_MS);
+		this.drainTimer.unref();
+	}
+
+	/** Drop held-back lines and stop the drain timer: on focus loss and when the screen stops. */
+	clearPending(): void {
+		this.pending = 0;
+		if (this.drainTimer) clearTimeout(this.drainTimer);
+		this.drainTimer = undefined;
 	}
 
 	/** Lines for an event on a terminal that sends one event per notch: three, more for fast spins. */
@@ -172,10 +210,12 @@ export class WheelScrollAccelerator {
 		}
 		const allowed = Math.max(0, Math.min(lines, MAX_FRAME_LINES - this.frameLines));
 		this.frameLines += allowed;
+		this.pending = Math.min(MAX_PENDING_LINES, lines - allowed);
 		return allowed;
 	}
 
 	private reset(): void {
+		this.clearPending();
 		this.flickRun = 0;
 		this.flickGap = undefined;
 		this.lastTime = Number.NEGATIVE_INFINITY;

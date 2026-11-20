@@ -114,13 +114,14 @@ describe("harness vendors", () => {
 		expect(loaded).toMatchObject({ "project-skill": true, "user-skill": false });
 	});
 
-	it("reads AGENTS.md and never CLAUDE.md", () => {
+	it("reads CLAUDE.md only in a folder without AGENTS.md", () => {
 		const w = workspace();
 		write(path.join(w.cwd, "CLAUDE.md"), "claude instructions");
-		const files = () => loadProjectContextFiles({ cwd: w.cwd, agentDir: w.agentDir, contextRoot: w.cwd });
-		expect(files()).toEqual([]);
+		const files = () =>
+			loadProjectContextFiles({ cwd: w.cwd, agentDir: w.agentDir, contextRoot: w.cwd }).map((file) => file.content);
+		expect(files()).toEqual(["claude instructions"]);
 		write(path.join(w.cwd, "AGENTS.md"), "agents instructions");
-		expect(files().map((file) => file.content)).toEqual(["agents instructions"]);
+		expect(files()).toEqual(["agents instructions"]);
 	});
 
 	it("keeps Pi models, settings and keybindings when Pi is switched off, and drops its skills", () => {

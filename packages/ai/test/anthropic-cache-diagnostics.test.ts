@@ -31,9 +31,13 @@ describe("Anthropic cache diagnostics request field", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("is not sent unless enabled", async () => {
+	it("is sent by default and not when turned off", async () => {
 		const payload = await capture(model, transcript([user("task")]));
-		expect("diagnostics" in payload).toBe(false);
+		expect(diagnostics(payload)).toEqual({ previous_message_id: null });
+		for (const value of ["off", "0", "false", "no"]) {
+			const off = await capture(model, transcript([user("task")]), { env: { OCTOCODE_CACHE_DIAGNOSTICS: value } });
+			expect("diagnostics" in off).toBe(false);
+		}
 	});
 
 	it("opts in with a null previous id on the first request", async () => {
@@ -58,7 +62,7 @@ describe("Anthropic cache diagnostics request field", () => {
 		expect(diagnostics(payload)).toEqual({ previous_message_id: null });
 	});
 
-	it("accepts the other truthy spellings and ignores anything else", async () => {
+	it("accepts the other truthy spellings", async () => {
 		for (const value of ["1", "true", "ON"]) {
 			const payload = await capture(model, transcript([user("task")]), { env: { OCTOCODE_CACHE_DIAGNOSTICS: value } });
 			expect(diagnostics(payload)).toEqual({ previous_message_id: null });

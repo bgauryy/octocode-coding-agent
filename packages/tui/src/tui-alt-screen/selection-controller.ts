@@ -5,6 +5,7 @@ import type { Terminal } from "../terminal.ts";
 import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { getOsc8LinkAtColumn } from "../utils/columns.ts";
+import type { LayoutHit } from "./mouse-gesture.ts";
 import { COPY_ERROR_FLASH_DURATION_MS, DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
 import {
 	applySelectionToScreen,
@@ -16,7 +17,12 @@ import {
 	selectionSourceLine,
 	selectedTextLines,
 } from "./selection.ts";
-import { collectSelectionText, NATIVE_CLIPBOARD_BYTES, TERMINAL_CLIPBOARD_BYTES } from "./selection-copy.ts";
+import {
+	collectSelectionText,
+	copyTextToClipboard,
+	NATIVE_CLIPBOARD_BYTES,
+	TERMINAL_CLIPBOARD_BYTES,
+} from "./selection-copy.ts";
 
 export { NATIVE_CLIPBOARD_BYTES };
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
@@ -42,7 +48,8 @@ export interface AltScreenSelectionHost {
 		extra?: Partial<Pick<TuiMouseEvent, "wheelDelta" | "clickCount">>,
 	): TuiMouseEvent;
 	dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult };
-	dispatchMouseToLayout(event: TuiMouseEvent): TuiMouseDispatchResult | undefined;
+	dispatchMouseToLayout(event: TuiMouseEvent, hits?: readonly LayoutHit[]): TuiMouseDispatchResult | undefined;
+	hitLayoutAt(x: number, y: number): LayoutHit[];
 	applyMouseDispatchResult(event: TuiMouseEvent, result: TuiMouseDispatchResult): boolean;
 }
 
@@ -60,6 +67,8 @@ export class AltScreenSelection {
 	private copyGeneration = 0;
 	pressedUrl?: string;
 	selectionDragged = false;
+	/** Where the press landed on screen and the components it hit: a click is decided by the cell, not by content rows. */
+	private pressCell?: { x: number; y: number; hits: LayoutHit[] };
 	private readonly host: AltScreenSelectionHost;
 
 	constructor(host: AltScreenSelectionHost) {
@@ -75,6 +84,17 @@ export class AltScreenSelection {
 		this.selectionInitialRange = undefined;
 		this.pressedUrl = undefined;
 		this.selectionDragged = false;
+		this.pressCell = undefined;
+	}
+
+	/** End a press whose release never arrived, keeping the selection it made. */
+	endSelectionPress(): void {
+		if (!this.selectionPressActive) return;
+		this.selectionPressActive = false;
+		this.stopSelectionAutoScroll();
+		this.pressCell = undefined;
+		this.pressedUrl = undefined;
+		this.host.requestRender();
 	}
 
 	/** Drop the anchor, focus, multi-click history and pressed URL without stopping auto-scroll. */
@@ -240,12 +260,12 @@ export class AltScreenSelection {
 			this.selectionPressActive = false;
 			this.stopSelectionAutoScroll();
 			if (!this.selectionAnchor) return;
-			this.updateSelectionFocus(point);
-			const isClick =
-				!this.selectionDragged &&
-				this.selectionAnchor.scrollView === point.scrollView &&
-				this.selectionAnchor.row === point.row &&
-				this.selectionAnchor.col === point.col;
+			const press = this.pressCell;
+			// Same screen cell as the press: content that moved meanwhile (streaming, scrolling) does not turn it into a drag.
+			const isClick = !this.selectionDragged && press !== undefined && press.x === event.x && press.y === event.y;
+			// A click keeps a word or line range from a multi-click and drops the one-cell range of a plain click.
+			if (!isClick) this.updateSelectionFocus(point);
+			else if (this.selectionGranularity === "character") this.selectionFocus = this.selectionAnchor;
 			const clickedUrl = isClick ? this.pressedUrl : undefined;
 			this.pressedUrl = undefined;
 			if (clickedUrl && this.host.openUrl) {
@@ -264,7 +284,8 @@ export class AltScreenSelection {
 					clickCount: this.lastClick?.count ?? 1,
 				});
 				const overlay = this.host.dispatchMouseToOverlay(clickEvent);
-				const result = overlay.result ?? (overlay.hit ? undefined : this.host.dispatchMouseToLayout(clickEvent));
+				const result =
+					overlay.result ?? (overlay.hit ? undefined : this.host.dispatchMouseToLayout(clickEvent, press?.hits));
 				if (result) {
 					const render = this.host.applyMouseDispatchResult(clickEvent, result);
 					this.clearTextSelection();
@@ -278,9 +299,13 @@ export class AltScreenSelection {
 		}
 		if ((event.button & 32) !== 0) {
 			if (!this.selectionPressActive || !this.selectionAnchor) return;
-			this.selectionDragged = true;
-			this.lastClick = undefined;
-			this.pressedUrl = undefined;
+			// Jitter inside the press cell is still a click; the pointer must leave the cell for a drag.
+			const press = this.pressCell;
+			this.selectionDragged = press === undefined || press.x !== event.x || press.y !== event.y;
+			if (this.selectionDragged) {
+				this.lastClick = undefined;
+				this.pressedUrl = undefined;
+			}
 			this.updateSelectionFocus(point);
 			this.updateSelectionAutoScroll(event);
 			this.host.requestRender();
@@ -300,6 +325,7 @@ export class AltScreenSelection {
 		this.selectionAnchor = range?.start ?? anchor;
 		this.selectionFocus = range?.end ?? anchor;
 		this.selectionDragged = false;
+		this.pressCell = { x: event.x, y: event.y, hits: this.host.hitLayoutAt(event.x, event.y) };
 		this.pressedUrl = range
 			? undefined
 			: getOsc8LinkAtColumn(
@@ -355,32 +381,8 @@ export class AltScreenSelection {
 		return result.text ? this.copyTextToClipboard(result.text) : false;
 	}
 
-	async copyTextToClipboard(text: string): Promise<boolean> {
-		// Prefer an injected clipboard implementation (native clipboard + platform tools with a
-		// verified success path) when the host app provides one. A bare OSC 52 write can show
-		// "Copied!" while leaving the system clipboard untouched (e.g. macOS Terminal.app, tmux
-		// without OSC 52 clipboard passthrough), so only report success when it actually copies.
-		if (this.host.copySelection) {
-			let result: boolean | string;
-			try {
-				result = await this.host.copySelection(text);
-			} catch (error) {
-				result = error instanceof Error ? error.message : "Copy failed";
-			}
-			const ok = result === true;
-			this.host.flash(
-				ok ? "Copied!" : typeof result === "string" ? result : "Copy failed",
-				ok ? undefined : COPY_ERROR_FLASH_DURATION_MS,
-			);
-			return ok;
-		}
-		if (Buffer.byteLength(text) > TERMINAL_CLIPBOARD_BYTES) {
-			this.host.flash("Copy failed: selection exceeds terminal clipboard limit", COPY_ERROR_FLASH_DURATION_MS);
-			return false;
-		}
-		this.host.getTerminal().write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
-		this.host.flash("Copied!");
-		return true;
+	copyTextToClipboard(text: string): Promise<boolean> {
+		return copyTextToClipboard(this.host, text);
 	}
 
 	applySelection(screen: string[], layout: LayoutFrame | undefined): string[] {

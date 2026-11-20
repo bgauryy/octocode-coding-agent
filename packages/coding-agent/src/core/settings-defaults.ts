@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_RETRY_DELAY_MS } from "@octocodeai/octocode-ai/utils/retry";
+import { DEFAULT_MAX_RETRY_DELAY_MS, DEFAULT_OFFLINE_INTERVAL_MS } from "@octocodeai/octocode-ai/utils/retry";
 import { RETENTION_DEFAULTS } from "../storage/retention.ts";
 import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 import { MONITOR_DEFAULTS } from "./settings-schema/monitor.ts";
@@ -16,6 +16,8 @@ export const SETTINGS_DEFAULTS = {
 	followUpMode: "one-at-a-time",
 	/** Working context for a session: this many tokens, at most 90% of the model's capacity. */
 	contextBudget: 300_000,
+	/** When the main session gets the lean policy: "auto" decides by the model's window and tier (`octocode/turn.ts`). */
+	leanPrompt: "auto" as "auto" | "on" | "off",
 	/**
 	 * Built-in compaction values, not a user setting: `compaction` is not a settings key (a settings file's block is reported as
 	 * unknown and has no effect), and `builtInCompactionSettings` derives the real thresholds from
@@ -35,6 +37,7 @@ export const SETTINGS_DEFAULTS = {
 		maxRetries: 3,
 		baseDelayMs: 2000,
 		maxAgentDelayMs: DEFAULT_MAX_RETRY_DELAY_MS,
+		offlineIntervalMs: DEFAULT_OFFLINE_INTERVAL_MS,
 		provider: {
 			maxRetryDelayMs: 60000,
 		},
@@ -69,8 +72,10 @@ export const SETTINGS_DEFAULTS = {
 	sessionApi: true,
 	sessionApiTurnPermission: "session",
 	mcpPresentation: "declared",
-	/** MCP tools and the deferrable native tools deferred unless the usage snapshot promotes them (the MCP package's `DEFAULT_MCP_EXPOSURE_SETTING`). */
+	/** MCP tools and the deferrable native tools declared thin; the usage snapshot only declares on-demand ones (the MCP package's `DEFAULT_MCP_EXPOSURE_SETTING`). */
 	mcpExposure: "usage",
+	/** Bytes per role group that usage promotion may add to the tool list (the MCP package's `DEFAULT_MCP_PROMOTED_BYTES`). */
+	mcpPromotedBytes: 8192,
 	collapseChangelog: false,
 	enableInstallTelemetry: true,
 	enableAnalytics: false,
@@ -106,8 +111,19 @@ export const SETTINGS_DEFAULTS = {
 	optimizePrompts: false,
 	remote: { transport: "ssh", autoStart: "off" },
 	sessions: { autoTitle: true },
+	/** The curated MEMORY.md files and per-prompt recall from the notes database (`octocode/memory/`). */
+	memory: {
+		file: true,
+		autoUpdate: "auto" as "off" | "explicit" | "auto",
+		subagents: "workspace" as "workspace" | "all" | "none",
+		recall: "main" as "off" | "main" | "all",
+		reflection: true,
+		subagentPinnedKind: "preference" as "preference" | "fact" | "decision" | "gotcha" | "procedure" | "reference",
+	},
 	security: { enforce: ["hooks", "mcp", "skills"] },
-	cacheRetention: "long",
+	// History is written every turn and read within minutes: the short tier is cheaper. Instructions are shared across
+	// turns, sessions and subagents: the long tier pays (see prompt-caching.md).
+	cacheRetention: "short",
 	instructionCacheRetention: "long",
 	tuiMode: "fullscreen",
 	fullscreenExitOutput: "transcript",

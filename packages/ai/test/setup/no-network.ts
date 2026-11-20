@@ -1,4 +1,6 @@
 import { beforeEach, vi } from "vitest";
+// The offline check after a network failure would send DNS lookups: tests answer it as online unless they set it.
+process.env.OCTOCODE_NETWORK_PROBE ??= "online";
 const originalFetch = globalThis.fetch;
 beforeEach(() => {
 	vi.stubGlobal("fetch", async (input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {

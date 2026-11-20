@@ -10,7 +10,7 @@ Paths are under `packages/`.
 | --- | --- |
 | `coding-agent/src/core/` | sessions, resource loading, prompt assembly; `application/` serves terminal and web; session lines go through `session-manager/codec.ts` |
 | `coding-agent/src/octocode/` | native tools, permissions, subagents, team, memory, hooks, recovery; `index.ts` composes (later features via `composedLater`, never reorder); `/web` daemon, `workspace/server.ts` its fallback |
-| `coding-agent/src/octocode/native/` | `prompts/` (agent prose as Markdown; README maps sections), `tools/`, `hooks/`, `agents/`, `skills/`; ✗ prose in `.ts` |
+| `coding-agent/src/octocode/native/` | `prompts/` (agent prose as Markdown; README maps sections), `tools/`, `hooks/`, `agents/`, `skills/`; a tool's description, fields and replies may stay in its `tool.ts`; ✗ other prose in `.ts` |
 | `coding-agent/src/theme/` | theme tokens, shared terminal UI kit; ✗ import `modes/` or `octocode/` |
 | `db/src/` | schema, connections, `queries/` (one module per table family), retention; `api.ts` is the only import |
 | `agent/` | agent loop, tool execution, events; ✗ app configuration or UI policy |
@@ -21,6 +21,7 @@ Paths are under `packages/`.
 | `terminal/src/` | `!`-line shell completion, parsing, history ranking; ✗ read settings, history or models (`octocode/terminal/` passes them in) |
 | `common/src/` | host-free utilities (JSON, paths, atomic writes, sanitizing, redaction, web guard); ✗ import coding-agent, mcp or acp |
 | `contracts/`, `telemetry/` | serializable contracts, schemas and shared guards (`isRecord`); telemetry adds the no-op and a test recorder; ✗ DB, provider, DOM or permission code |
+| `projections/` | portable frame interpretation every interface shares (`ApplicationStream`); imports only contracts; ✗ Node, DOM, React, terminal or host code |
 | `webview/` | browser state, transport, rendering; ✗ execute, authenticate or authorize |
 | `octocode-agentic-testkit/` | behavior tests for any agent harness through per-harness adapters; ✗ import other workspaces |
 

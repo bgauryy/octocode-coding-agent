@@ -1,9 +1,10 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { stripRowMarks } from "../src/utils/row-marks.ts";
 import { wrapTextWithAnsi } from "../src/utils/wrap.ts";
 import { visibleWidth } from "../src/utils/width.ts";
 
-const visible = (line: string): string => line.replace(/\x1b\[[0-9;]*m/g, "");
+const visible = (line: string): string => stripRowMarks(line).replace(/\x1b\[[0-9;]*m/g, "");
 
 describe("wrapTextWithAnsi long word after a space", () => {
 	it("emits no style-only line when a long word follows a space that filled the row", () => {

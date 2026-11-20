@@ -8,6 +8,7 @@ import type { SessionInfo, SessionListProgress } from "../core/session-manager.t
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { SessionSelectorComponent } from "../modes/interactive/components/session-selector.ts";
 import { createStartupTui, showStartupSelector, startStartupTui } from "./startup-ui.ts";
+import { sharedPickerRemoval } from "../octocode/sessions/delete.ts";
 import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
 
 type SessionsLoader = (onProgress?: SessionListProgress, signal?: AbortSignal) => Promise<SessionInfo[]>;
@@ -65,7 +66,7 @@ export async function selectSession(
 				process.exit(0);
 			},
 			() => ui.requestRender(),
-			{ showRenameHint: false, keybindings },
+			{ showRenameHint: false, keybindings, removeSessions: sharedPickerRemoval(() => undefined) },
 		);
 
 		ui.addChild(selector);

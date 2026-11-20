@@ -103,6 +103,8 @@ describe("team tools on a fake Octocode", () => {
 		const before = text(await run(coordinate, { action: "list" }, a.ctx));
 		expect(before).toContain(`${a.team.id} (you) · main`);
 		expect(before).toContain(`${b.team.id} · main`);
+		// The viewer is told it reserves nothing; a peer's row stays quiet about it.
+		expect(before.match(/ {2}holds no paths$/gm)).toHaveLength(1);
 		const joined = text(await run(coordinate, { action: "join", goal: "refactor auth\nsecond line" }, a.ctx));
 		expect(joined).toContain(a.team.id!);
 		await expect(run(coordinate, { action: "lock" }, a.ctx)).rejects.toThrow("lock needs paths.");

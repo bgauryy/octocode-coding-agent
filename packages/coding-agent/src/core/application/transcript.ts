@@ -160,7 +160,7 @@ export class ApplicationTranscript {
 			{
 				role: typeof source.role === "string" ? source.role.slice(0, 128) : "custom",
 				stopReason: source.stopReason,
-				display: source.display === true,
+				display: source.display === true || source.display === "only",
 				content: [
 					{
 						type: "unsupported",

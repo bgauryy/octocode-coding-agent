@@ -6,13 +6,8 @@ import { describe, expect, it } from "vitest";
 import { SUMMARIZER_RESULT_CHARS } from "../../src/octocode/compaction/checkpoint-text.ts";
 import { COMPACTION_NOTE_TYPE } from "../../src/octocode/compaction/record.ts";
 import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
-import {
-	SHARED_IMAGE_FOCUS,
-	STANDALONE_IMAGE_FOCUS,
-	SUMMARY_FOCUS,
-	SUMMARY_METHOD_DETAILS,
-	writeSummary,
-} from "../../src/octocode/compaction/summary.ts";
+import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
@@ -66,6 +61,7 @@ interface Setup {
 	firstKeptEntryId?: string;
 	previousSummary?: string;
 	customInstructions?: string;
+	requestedBy?: "user" | "agent";
 	signal?: { aborted: boolean };
 }
 
@@ -127,6 +123,7 @@ function setup(options: Setup = {}) {
 		},
 		branchEntries: [],
 		customInstructions: options.customInstructions,
+		...(options.requestedBy ? { reason: "manual", requestedBy: options.requestedBy } : {}),
 		signal: options.signal ?? { aborted: false },
 	} as never;
 	return { calls, notices, notes, api, ctx, event, fileOps, recordedUsage };
@@ -167,15 +164,88 @@ describe("cache-sharing compaction summary", () => {
 	});
 
 	it("asks for what an image shows on the shared request, and says images do not arrive only on the standalone one", async () => {
+		const preservation = renderPrompt("workflows/compaction/preservation.md");
+		const sharedImages = renderPrompt("workflows/compaction/focus-images-shared.md");
 		const shared = setup();
 		await writeSummary(shared.api, shared.event, shared.ctx);
-		expect(finalPrompt(shared.calls[0])).toContain(SHARED_IMAGE_FOCUS);
-		expect(finalPrompt(shared.calls[0])).toContain(SUMMARY_FOCUS);
+		expect(finalPrompt(shared.calls[0])).toContain(sharedImages);
+		// The preservation rules are part of the required request, never an optional focus.
+		expect(finalPrompt(shared.calls[0])).toContain(preservation);
+		expect(finalPrompt(shared.calls[0])).not.toMatch(/Additional focus from/);
 		const standalone = setup();
 		await writeSummary(standalone.api, standalone.event, standalone.ctx, { ...model, id: "previous" } as never);
-		const sent = JSON.stringify(standalone.calls[0].context.messages);
-		expect(sent).toContain(STANDALONE_IMAGE_FOCUS);
-		expect(sent).not.toContain(SHARED_IMAGE_FOCUS);
+		const standaloneText = JSON.stringify(standalone.calls[0].context.messages);
+		expect(standaloneText).toContain(renderPrompt("workflows/compaction/focus-images-standalone.md"));
+		expect(standaloneText).toContain(preservation);
+		expect(standaloneText).not.toContain(sharedImages);
+	});
+
+	it("fails the compaction at the model's own output limit instead of writing Octocode's default summary", async () => {
+		const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+		const cut = setup({
+			reply: () => {
+				const message = reply([text("## Goal\nfix the par")], "length", 10_000);
+				return { ...message, usage: { ...message.usage, cost } };
+			},
+		});
+		const out = await writeSummary(cut.api, cut.event, cut.ctx, undefined, {
+			hold: () => {
+				throw new Error("the default summary's sections were built");
+			},
+			discard: () => undefined,
+		} as never);
+		// The shared request, then the standalone one with its shrinking retries; no default summary after them.
+		expect(cut.calls).toHaveLength(5);
+		expect(out).toMatchObject({ cancel: true, failure: expect.stringMatching(/m's own output limit/) });
+		expect(cut.notes.map((note) => JSON.stringify(note.data))).not.toContainEqual(
+			expect.stringMatching(/default-summary/),
+		);
+	});
+
+	it("sends the session's prefix-group cache key on OpenAI's API, so the summary reads the session's cache", async () => {
+		const openai = {
+			...model,
+			provider: "openai",
+			id: "gpt-5.5",
+			api: "openai-responses",
+			baseUrl: "https://api.openai.com/v1",
+		};
+		const { calls, api, ctx, event } = setup();
+		await sharedSummary(api, event, { ...(ctx as object), cwd: "/w" } as never, openai as never, "");
+		expect(calls[0].options.promptCacheKey).toMatch(/^octocode-[0-9a-f]{40}/);
+	});
+
+	it("carries the earlier checkpoint's constraints on the shared request, and writes back the ones the reply left out", async () => {
+		const previousSummary =
+			"## Goal\nship\n\n## Constraints & Preferences\n- [C1] Never push to main\n- [C2] Ask before deleting";
+		const { calls, api, ctx, event } = setup({
+			previousSummary,
+			reply: () =>
+				reply([text("## Goal\nship more\n\n## Constraints & Preferences\n- Lifted [C2]: the user allowed it")]),
+		});
+		const out = await sharedSummary(api, event, ctx, model as never, "");
+		expect(finalPrompt(calls[0])).toContain("<carried-constraints>\n[C1] Never push to main\n[C2] Ask before deleting");
+		expect(out?.summary).toMatch(
+			/^## Goal\nship more\n\n## Constraints & Preferences\n- \[C1\] Never push to main\n\n<read-files>/,
+		);
+		expect(out?.details).toMatchObject({
+			lifted: [{ id: "C2", text: "Ask before deleting", reason: "the user allowed it" }],
+		});
+	});
+
+	it("labels the agent's own focus as the agent's, and the user's as the user's, on both requests", async () => {
+		const focus = "next: wire the parser tests";
+		const agent = setup({ customInstructions: focus, requestedBy: "agent" });
+		const written = await writeSummary(agent.api, agent.event, agent.ctx);
+		const prompt = finalPrompt(agent.calls[0]);
+		expect(prompt).toMatch(/Additional focus from the agent[^\n]*\n[\s\S]*next: wire the parser tests$/);
+		expect(prompt).not.toMatch(/focus from the user/);
+		expect(written?.compaction?.details).toMatchObject({ focus: { delivery: "summary" } });
+		const user = setup({ customInstructions: focus });
+		await writeSummary(user.api, user.event, user.ctx, { ...model, id: "previous" } as never);
+		const standalone = JSON.stringify(user.calls[0].context.messages);
+		expect(standalone).toContain("Additional focus from the user:");
+		expect(standalone).not.toContain("focus from the agent");
 	});
 
 	describe("with a cold prompt cache", () => {
@@ -577,6 +647,8 @@ describe("writeSummary with the shared path", () => {
 			modifiedFiles: ["src/b.ts", "src/new.ts"],
 			// `ms`: how long writing the summary held the turn, for the profiler.
 			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared", ms: expect.any(Number) },
+			// The focus shaped this summary (not an early one written before it).
+			focus: { delivery: "summary" },
 		});
 		expect(out?.compaction?.usage).toBeUndefined();
 		expect(recordedUsage).toHaveLength(1);

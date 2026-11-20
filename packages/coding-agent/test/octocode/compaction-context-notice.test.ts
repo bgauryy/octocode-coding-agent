@@ -84,13 +84,27 @@ describe("context usage notice", () => {
 });
 
 describe("compact hint", () => {
-	it("is in the first notice, at half, so it names the tool the `compact` description says to use then", () => {
+	it("is only in the last band's notice, near automatic compaction, never at half", () => {
+		const usage = (tokens: number) => ({
+			model,
+			getContextUsage: () => ({ tokens, contextWindow: 200_000, percent: tokens / 2_000 }),
+		});
+		const half: Array<{ content: string }> = [];
+		noticeContextUsage(
+			asSetup({ sendMessage: (message: { content: string }) => half.push(message) }) as never,
+			usage(100_000) as never,
+			[],
+			undefined,
+			true,
+		);
+		expect(half).toHaveLength(1);
+		expect(half[0].content).not.toContain("`compact`");
 		const sent: Array<{ content: string }> = [];
 		const api = asSetup({ sendMessage: (message: { content: string }) => sent.push(message) });
-		const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
+		const ctx = usage(170_000);
 		noticeContextUsage(api, ctx as never, [], undefined, true);
 		expect(sent).toHaveLength(1);
-		expect(sent[0].content).toMatch(/\(5\d%\).*At a task boundary, `compact` can summarize sooner\.$/);
+		expect(sent[0].content).toMatch(/\(9\d%\).*`compact`/);
 		// Without the tool the notice does not offer it.
 		const bare: Array<{ content: string }> = [];
 		noticeContextUsage(
@@ -101,5 +115,29 @@ describe("compact hint", () => {
 			false,
 		);
 		expect(bare[0].content).not.toContain("`compact`");
+	});
+
+	it("waits for the prewarm lead in a window where nine tenths comes before it", () => {
+		const large = { provider: "anthropic", id: "claude-x", contextWindow: 1_000_000 };
+		const notice = (tokens: number) => {
+			const sent: Array<{ content: string; details: { limit: number } }> = [];
+			noticeContextUsage(
+				asSetup({ sendMessage: (message: never) => sent.push(message) }) as never,
+				{
+					model: large,
+					getContextUsage: () => ({ tokens, contextWindow: 1_000_000, percent: tokens / 10_000 }),
+				} as never,
+				[],
+				undefined,
+				true,
+			);
+			return sent[0];
+		};
+		const limit = notice(900_000).details.limit;
+		// Nine tenths of a 1M window's room is about 65k tokens before the plan made 32k ahead of the threshold.
+		const early = notice(Math.ceil(0.9 * limit));
+		expect(early.content).toMatch(/\(90%\)/);
+		expect(early.content).not.toContain("`compact`");
+		expect(notice(limit - 20_000).content).toContain("`compact`");
 	});
 });

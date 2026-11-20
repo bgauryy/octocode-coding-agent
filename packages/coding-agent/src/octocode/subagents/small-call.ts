@@ -1,8 +1,9 @@
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
-import type { Api, AssistantMessage, Model, SimpleStreamOptions, Usage } from "@octocodeai/octocode-ai/compat";
+import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
 import { completeSimple } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext } from "../../core/features/index.ts";
+import type { SmallCallResult } from "../shared/small-model.ts";
 import { currentCatalog } from "./catalog.ts";
 import { resolveTier } from "./model.ts";
 
@@ -28,11 +29,6 @@ export function smallModelLabel(ctx: FeatureContext): string | undefined {
 	const chosen = resolveTier("small", ctx.modelRegistry.getAvailable(), ctx.model, currentCatalog());
 	return chosen ? `${chosen.provider}/${chosen.id}` : undefined;
 }
-
-/** A reply's text, the `provider/id` that wrote it and what the call used and cost (so a caller can record the spend). */
-export type SmallCallResult =
-	| { text: string; model: string; provider: string; modelId: string; usage: Usage }
-	| { error: string };
 
 /**
  * One call to the cheapest capable model the `small` purpose resolves to among the session's available models: no tools,

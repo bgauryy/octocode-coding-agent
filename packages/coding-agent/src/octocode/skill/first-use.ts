@@ -1,6 +1,11 @@
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import { agentCall } from "../child-sessions/agent-call.ts";
-import { carriedLoadedSkills, LOADED_SKILLS_DETAILS, loadedSkills } from "../compaction/loaded-skills.ts";
+import {
+	carriedLoadedSkills,
+	LOADED_SKILLS_DETAILS,
+	loadedSkills,
+	skillBlocksIn,
+} from "../compaction/loaded-skills.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { SkillCatalog } from "./catalog.ts";
 import { loadSkill } from "./load.ts";
@@ -30,7 +35,7 @@ function held(name: string, ctx: Pick<FeatureContext, "sessionManager" | "getSys
 	const branch = ctx.sessionManager.getBranch();
 	const messages = branch.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
 	if (loadedSkills(messages, carriedLoadedSkills(branch)).some((skill) => skill.name === name)) return true;
-	return ctx.getSystemPrompt().includes(`<skill name="${name}" `);
+	return skillBlocksIn(ctx.getSystemPrompt()).has(name);
 }
 
 export function registerSkillFirstUse(api: FeatureSetup, catalog: SkillCatalog): void {

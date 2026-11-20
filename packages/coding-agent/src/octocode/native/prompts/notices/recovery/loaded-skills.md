@@ -1,1 +1,1 @@
-Skills loaded before this summary (load again if the work still needs them): {{skills}}.
+Loaded skills (load again with `skill` when needed): {{skills}}.

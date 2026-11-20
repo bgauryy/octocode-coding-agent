@@ -15,7 +15,11 @@ import { combineUsage } from "../usage-totals.ts";
 import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
 import { generateTurnPrefixSummary } from "./bounded-summary.ts";
+import { ledgerDetails, type LiftedBullet } from "./ledger.ts";
+import { replyFloorTokens } from "./settings.ts";
 import { generateSummaryWithUsage } from "./summarization.ts";
+import type { SummaryFocus } from "./summary-focus.ts";
+import { withTurnContext } from "./summary-format.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
 import type { CompactionResult } from "./types.ts";
 import {
@@ -99,6 +103,21 @@ export interface CompactionSettings {
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled || !(contextWindow > 0)) return false;
 	return contextTokens > contextWindow - settings.reserveTokens;
+}
+
+/**
+ * Whether a request of `contextTokens` would not fit `contextWindow` at all: it leaves less than the reply's floor
+ * (`replyFloorTokens`, with the model's `maxOutputTokens`) free. This is the hard limit, past the threshold. A window of 0
+ * or less is unknown, so nothing exceeds it.
+ */
+export function exceedsContextWindow(
+	contextTokens: number,
+	contextWindow: number,
+	settings: CompactionSettings,
+	maxOutputTokens?: number,
+): boolean {
+	if (!settings.enabled || !(contextWindow > 0)) return false;
+	return contextTokens + replyFloorTokens(settings.reserveTokens, maxOutputTokens) > contextWindow;
 }
 
 // Compaction Preparation (for features)
@@ -207,8 +226,9 @@ export function prepareCompaction(
  * Returns CompactionResult - SessionManager adds uuid/parentUuid when saving.
  *
  * @param preparation - Pre-calculated preparation from prepareCompaction()
- * @param customInstructions - Optional custom focus for the summary; a split turn sends it with the history request,
- * or with the turn-prefix request when there is no history to summarize, never with both
+ * @param customInstructions - Optional focus for the summary, labelled by who wrote it (a string is the user's); a split
+ * turn sends it with the history request, or with the turn-prefix request when there is no history to summarize, never
+ * with both
  * @param sessionId - Optional routing session ID; with `cache`, the session's cache preferences, so the summary request
  * is routed and cached as the session's own are (without them: a fresh id and no cache writes)
  */
@@ -217,7 +237,7 @@ export async function compact(
 	model: Model<any>,
 	apiKey: string | undefined,
 	headers?: Record<string, string>,
-	customInstructions?: string,
+	customInstructions?: string | SummaryFocus,
 	signal?: AbortSignal,
 	thinkingLevel?: ThinkingLevel,
 	streamFn?: StreamFn,
@@ -240,6 +260,8 @@ export async function compact(
 	// Generate summaries and merge into one
 	let summary: string;
 	let summaryUsage: Usage;
+	// The carried bullets the model lifted (`ledger.ts`), recorded with the compaction.
+	let lifted: LiftedBullet[] = [];
 
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
 		let historyText = previousSummary ?? "No prior history.";
@@ -264,6 +286,7 @@ export async function compact(
 			);
 			historyText = historyResult.text;
 			historyUsage = historyResult.usage;
+			lifted = historyResult.lifted;
 		}
 		const turnPrefixResult = await generateTurnPrefixSummary(
 			turnPrefixMessages,
@@ -280,8 +303,8 @@ export async function compact(
 			messagesToSummarize.length > 0 ? undefined : customInstructions,
 			cache,
 		);
-		// Merge into single summary
-		summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
+		// One checkpoint: the turn's prefix is a section of it, ahead of its closing TL;DR.
+		summary = withTurnContext(historyText, turnPrefixResult.text);
 		summaryUsage = historyUsage ? combineUsage(historyUsage, turnPrefixResult.usage) : turnPrefixResult.usage;
 	} else {
 		// Just generate history summary
@@ -304,6 +327,7 @@ export async function compact(
 		);
 		summary = result.text;
 		summaryUsage = result.usage;
+		lifted = result.lifted;
 	}
 
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
@@ -318,6 +342,6 @@ export async function compact(
 		firstKeptEntryId,
 		tokensBefore,
 		usage: summaryUsage,
-		details: { readFiles, modifiedFiles },
+		details: { readFiles, modifiedFiles, ...ledgerDetails(summary, lifted) },
 	};
 }

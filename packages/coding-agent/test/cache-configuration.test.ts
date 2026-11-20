@@ -15,13 +15,14 @@ describe("cache configuration", () => {
 	};
 	it("uses application defaults without changing the environment", () => {
 		environment();
+		// Long instructions, short history: the history is written every turn and read again within minutes.
 		expect(resolveConfiguredCache(model, undefined).options).toEqual({
-			cacheRetention: "long",
+			cacheRetention: "short",
 			instructionCacheRetention: "long",
 		});
 		expect(process.env.OCTOCODE_CACHE_RETENTION).toBeUndefined();
 	});
-	it("keeps the long default for a model models.json re-declares on Anthropic's own host", () => {
+	it("keeps the long instruction default for a model models.json re-declares on Anthropic's own host", () => {
 		environment();
 		const opus: Model<"anthropic-messages"> = {
 			id: "claude-opus-5-5",
@@ -38,7 +39,7 @@ describe("cache configuration", () => {
 		expect(
 			resolveConfiguredCache(opus, { models: [{ id: "claude-opus-5-5", contextWindow: 500000 }] }).options,
 		).toEqual({
-			cacheRetention: "long",
+			cacheRetention: "short",
 			instructionCacheRetention: "long",
 		});
 	});
@@ -66,16 +67,19 @@ describe("cache configuration", () => {
 			"Instructions 5m; history 5m.",
 		);
 		const declared = custom({ supportsLongCacheRetention: true });
-		expect(resolveConfiguredCache(declared, provider).options.cacheRetention).toBe("long");
+		expect(resolveConfiguredCache(declared, provider).options).toEqual({
+			cacheRetention: "short",
+			instructionCacheRetention: "long",
+		});
 		// An explicit preference still wins over the default.
 		const settings = [{ source: "global settings", values: { cacheRetention: "long" as const } }];
 		expect(resolveConfiguredCache(custom(), provider, {}, settings).options.cacheRetention).toBe("long");
-		// Built-in models outside models.json keep the long default.
+		// Built-in models outside models.json keep the long instruction default.
 		for (const builtin of [
 			getBuiltinModel("anthropic", "claude-opus-5-5"),
 			getBuiltinModel("openrouter", "anthropic/claude-fable-5.2"),
 		]) {
-			expect(resolveConfiguredCache(builtin, undefined).options.cacheRetention).toBe("long");
+			expect(resolveConfiguredCache(builtin, undefined).options.instructionCacheRetention).toBe("long");
 		}
 	});
 	it("persists settings and applies session overrides without changing stored preferences", async () => {
@@ -196,9 +200,9 @@ describe("cache configuration", () => {
 			expect(text).toContain("no caching at all");
 			expect(text).not.toContain("may still cache automatically");
 		});
-		it("reports the explicit 12h tier for long history and instructions", () => {
+		it("reports the explicit 12h tier on the instructions, and history on the request's 30m", () => {
 			expect(describeWith(model, { cacheRetention: "long", instructionCacheRetention: "long" })).toContain(
-				"Instructions 12h; history 12h.",
+				"Instructions 12h; history 30m (the 12h tier goes on instruction breakpoints only).",
 			);
 			expect(describeWith(model, { cacheRetention: "short", instructionCacheRetention: "long" })).toContain(
 				"Instructions 12h; history 30m.",
@@ -232,9 +236,9 @@ describe("cache configuration", () => {
 					"Instructions 5m; history 5m (1h history cannot follow 5m instructions).",
 				);
 			}
-			// OpenAI has no ordering rule: a 12h history breakpoint may follow 30m instructions.
+			// OpenAI explicit mode keeps the history on the request's 30m TTL, whatever the instructions get.
 			expect(describeWith(model, { cacheRetention: "long", instructionCacheRetention: "short" })).toContain(
-				"Instructions 30m; history 12h.",
+				"Instructions 30m; history 30m (the 12h tier goes on instruction breakpoints only).",
 			);
 		});
 		// Azure OpenAI Responses sends `prompt_cache_retention: "24h"` only where `azureAcceptsExtendedRetention` says so:

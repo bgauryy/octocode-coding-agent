@@ -17,6 +17,7 @@ import {
 	noClearingViolations,
 	restoreViolations,
 	runFlow,
+	SCRIPTED_CHARS_PER_TOKEN,
 	toolResults,
 	type FlowRun,
 } from "./context-flows.ts";
@@ -80,12 +81,15 @@ const fetchTool: ToolDef = {
 /**
  * Compaction: T1 edits `src/edited.ts` and writes a scratch file under `.octocode/tmp` with `file`, and reads
  * `src/read.ts` whole through an MCP tool declared as a reader (or, with `editFile: false`, only reads both). T2 brings
- * about 25k estimated tokens and the agent calls `compact`: the recent-token tail keeps T2, so the compaction
+ * about 25k estimated tokens (62 KB) and the agent calls `compact`: the recent-token tail keeps T2, so the compaction
  * summarizes exactly T1, and the 96k window leaves room for the turn to continue after it. With `overflow`, no turn
- * calls `compact` and the window is 58k, the middle of the band (56k-60k at the current prompt size) where exactly the
- * checks before T3 and T4 cross the threshold and the restore still fits: T2 brings about 80 KB, T3 and T4 about 50 KB each. The check before T3 compacts T1 and T2, the
- * one before T4 compacts T3, whose span holds the files only as the first compaction's read-back. (A T3 of 80 KB leaves
- * no room for the second summary in this window: the compaction fails.)
+ * calls `compact` and the window is 61k (a window under 64k runs the lean main prompt; 54,900 tokens after the default
+ * budget, threshold 45,750). The gateway counts at the agent's own ratio (`SCRIPTED_CHARS_PER_TOKEN`), so its usage and
+ * the agent's estimates agree. T2 brings about 25 KB, T3 and T4 about 40 KB each (10k and 16k tokens). T2's request
+ * (about 32k) stays below the prewarm lead. T3 crosses the threshold (about 48k): its request compacts T1 and T2,
+ * keeping T3, and goes out at about 39k. T4 crosses it again (about 55k): its request compacts T3 and the first
+ * compaction's read-back, the only place the files still are, and goes out at about 40k, so no reply ends over the
+ * threshold and nothing compacts a third time.
  */
 async function compactionRun(opts: { summary: string; editFile?: boolean; overflow?: boolean }) {
 	const files = { "src/read.ts": READ_ONLY, "src/edited.ts": EDITED };
@@ -118,7 +122,7 @@ async function compactionRun(opts: { summary: string; editFile?: boolean; overfl
 		},
 		opts.summary,
 	);
-	const gw = await gateway({ responder: script.responder });
+	const gw = await gateway({ responder: script.responder, charsPerToken: SCRIPTED_CHARS_PER_TOKEN });
 	const src = mcp(gw, "src", [fetchTool]);
 	src
 		.tool("fetch")
@@ -128,13 +132,13 @@ async function compactionRun(opts: { summary: string; editFile?: boolean; overfl
 			turns: opts.overflow
 				? [
 						"T1 edit and read",
-						`T2 ${block("FILL-T2", 200)}`,
-						`T3 ${block("FILL-T3", 125)}`,
-						`T4 ${block("FILL-T4", 125)}`,
+						`T2 ${block("FILL-T2", 62)}`,
+						`T3 ${block("FILL-T3", 100)}`,
+						`T4 ${block("FILL-T4", 100)}`,
 					]
-				: ["T1 edit and read", `T2 ${block("FILL-T2", 250)}`],
+				: ["T1 edit and read", `T2 ${block("FILL-T2", 156)}`],
 			files: { ...files },
-			contextWindow: opts.overflow ? 58_000 : 96_000,
+			contextWindow: opts.overflow ? 61_000 : 96_000,
 			mcp: { src: { url: await src.listen(), roles: { reader: ["fetch"] } } },
 		});
 		return { run, summaryRequests: script.summaryRequests };
@@ -147,10 +151,12 @@ const SUMMARY = "## Summary\nSUMMARY-MARK T1 edited src/edited.ts and read src/r
 
 /**
  * Measured on this scenario (bytes): what the summary request adds to the conversation it summarizes, and the
- * injected summary message. Each ceiling is the measured value +5%; never raise one to pass.
+ * injected summary message. Each ceiling is the measured value plus a margin; never raise one to pass.
  */
-// Measured 3,285 B (summary request) and 1,496 B (injected summary).
-const SUMMARY_REQUEST_ADDED_MAX = 3_449;
+// Measured 3,285 B (summary request) and 1,496 B (injected summary), +5%; 3,373 B and 1,187 B once the gateway counted
+// at the agent's ratio. The summary request is re-pinned at 3,483 B +1%: review CK-055 keeps standing rules (the
+// checkpoint's constraints line names limits, approvals and their scope; "a standing rule stays until the user lifts it").
+const SUMMARY_REQUEST_ADDED_MAX = 3_518;
 const INJECTED_SUMMARY_MAX = 1_570;
 
 function summaryBytes(run: FlowRun, summaryRequests: CapturedRequest[]) {
@@ -259,10 +265,13 @@ describe("context flows (scripted gateway, real bundle)", () => {
 	describe("prompts that each nearly fill a small window", () => {
 		it("leave the session able to answer a short prompt after them", async (ctx) => {
 			requireBundle(ctx);
-			const gw = await gateway({ responder: sequence([]) });
+			const gw = await gateway({ responder: sequence([]), charsPerToken: SCRIPTED_CHARS_PER_TOKEN });
 			try {
-				// Five prompts of about 80 KB on a 64k window: the newest turn kept whole leaves no room for a summary.
-				const big = [1, 2, 3, 4, 5].map((i) => `T${i} ${block(`BIG-${i}`, 200)}`);
+				// Five prompts of about 60 KB (24k tokens at the agent's ratio, which the gateway counts at too) on a 64k window
+				// (57,600 usable, 9,600 reserved for the reply): each request, about 45k with the system prompt and tools, nearly
+				// fills what the reserve leaves, so the turn before a prompt is summarized for it to fit. A prompt that passes the
+				// reserve with the system prompt and tools alone (80 KB) leaves no room for a summary: that turn fails by design.
+				const big = [1, 2, 3, 4, 5].map((i) => `T${i} ${block(`BIG-${i}`, 150)}`);
 				const run = await runFlow(gw, { turns: [...big, "T6 short"], files: {}, contextWindow: 64_000 });
 				expect(run.exitCode, run.stderr).toBe(0);
 				const short = mainRequests(run.requests).filter((r) =>

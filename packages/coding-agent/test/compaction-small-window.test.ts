@@ -70,11 +70,11 @@ function seed(sessionManager: SessionManager, pairs: number): void {
 }
 
 describe("one token estimator", () => {
-	it("is shared by core and the Octocode add-ons at the more conservative three characters per token", () => {
-		expect(CHARS_PER_TOKEN).toBe(3);
-		expect(estimateTokens({ role: "user", content: "x".repeat(300), timestamp: 0 })).toBe(100);
+	it("is shared by core and the Octocode add-ons at the densest measured ratio, 2.5 characters per token", () => {
+		expect(CHARS_PER_TOKEN).toBe(2.5);
+		expect(estimateTokens({ role: "user", content: "x".repeat(300), timestamp: 0 })).toBe(120);
 		expect(estimateTokens({ role: "toolResult", content: [{ type: "text", text: "x".repeat(301) }] } as never)).toBe(
-			101,
+			121,
 		);
 		expect(charsToTokens(10)).toBe(4);
 	});

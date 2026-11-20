@@ -190,6 +190,13 @@ const CASES: Record<string, Case> = {
 	},
 	changelog: { check: says(/What's New/) },
 	keys: { check: says(/Keyboard Shortcuts/) },
+	// Fullscreen is the default: /find opens the transcript search box; escape closes it for the next command.
+	find: {
+		check: (_run, t) => {
+			expect(t.host.ui.hasOverlay(), "opens the search box").toBe(true);
+			t.press("\x1b");
+		},
+	},
 	debug: { check: says(/Debug log written/) },
 	// Session-changing commands, run last.
 	resume: { check: (run) => expect(run.dialogs.length).toBeGreaterThan(0) },

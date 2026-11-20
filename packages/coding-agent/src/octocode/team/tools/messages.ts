@@ -11,7 +11,7 @@ import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
 import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { liveEndpoints, type LiveTeam } from "../endpoint-live.ts";
-import { mailRows, sendOutcome, sendPreview, sendSummary } from "./message-rows.ts";
+import { mailRows, sendOutcome, sendSummary } from "./message-rows.ts";
 import { attachmentText } from "../attachment.ts";
 
 /** Shows team mail in the conversation: a header per message, its body previewed while collapsed. */
@@ -111,7 +111,7 @@ export function registerSendMessageTool(
 			name: "sendMessage",
 			label: "Send message",
 			description:
-				"Queue steering, questions or evidence to teammates; unread departures are reported. Messages resume only reachable non-isolated background children (yours, or siblings via your coordinator).",
+				"Queue steering, questions or evidence to teammates; unread departures are reported. A message resumes your finished non-isolated child (not a runner's) or a lingering one (yours, or siblings via your coordinator).",
 			promptGuidelines: renderPrompt("tools/send-message/guidelines.md").split("\n"),
 			parameters: Type.Object({
 				to: Type.Optional(
@@ -125,7 +125,7 @@ export function registerSendMessageTool(
 				message: Type.Optional(Type.String()),
 				attach: Type.Optional(
 					Type.String({
-						description: "Text file in your worktree (≤64 KB) sent with message; the recipient checks its sha256",
+						description: "Text file in your worktree (≤64 KB) sent by reference; the recipient writes it by sha256",
 					}),
 				),
 				forward: Type.Optional(
@@ -168,13 +168,19 @@ export function registerSendMessageTool(
 					to !== undefined &&
 					peers?.addresses(to) &&
 					!team.members().some((each) => each.id === to || each.role === to)
-				)
+				) {
+					if (params.attach)
+						throw new Error(
+							`${to} is another process: attach reaches teammates only. Nothing was sent; send the message without it.`,
+						);
 					return sendToPeer(peers, { ...params, to }, ctx, signal);
+				}
 				const me = team.join();
 				if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
 				if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
+				// The reference leads, so a long message whose tail is saved to a file still delivers it.
 				const body = params.attach
-					? `${params.message}\n\n${await attachmentText(ctx.cwd, params.attach)}`
+					? `${await attachmentText(ctx.cwd, params.attach)}\n\n${params.message}`
 					: params.message;
 				const result = await team.send(params.to, body, {
 					...(signal ? { signal } : {}),
@@ -299,15 +305,13 @@ export function registerSendMessageTool(
 				const text = contentText(result.content);
 				// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
 				const message = isRecord(context.args) ? String(context.args.message ?? "") : "";
-				// Collapsed, the start of what was sent; the whole message shows when expanded.
 				const summary =
-					typeof details.id === "number"
-						? `${sendOutcome(asRecord(context.args), details)}${context.expanded ? "" : sendPreview(message)}`
-						: firstLine(text);
+					typeof details.id === "number" ? sendOutcome(asRecord(context.args), details) : firstLine(text);
 				return resultBlock(theme, context, {
 					summary,
 					body: context.isError ? text.split("\n").slice(1).join("\n") : message,
-					max: context.isError ? 3 : 0,
+					// What was sent is shown whole; an error keeps a short preview.
+					...(context.isError ? { max: 3 } : { expanded: true }),
 					...timingOf(result.details),
 				});
 			},

@@ -2,6 +2,7 @@ import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts"
 import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { AgentRuns, Run } from "./claim.ts";
+import { childInUseTools } from "./core-tools.ts";
 import { siblingRoster } from "./siblings.ts";
 import type { ItemLink } from "./item-link.ts";
 import type { askSpawn } from "./profiles.ts";
@@ -42,7 +43,7 @@ export function configureIdentity(
 	run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
 	// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
 	const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.channels);
-	if (recent) run.identity.mcpRecent = recent;
+	if (recent) run.identity.mcpRecent = childInUseTools(recent);
 	const inherited = taskServers?.servers ?? addedServers;
 	if (Object.keys(inherited).length > 0) run.identity.mcpServers = inherited;
 	if (stopped.length > 0) run.identity.mcpStopped = stopped;

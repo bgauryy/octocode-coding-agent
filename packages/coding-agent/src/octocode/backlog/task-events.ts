@@ -3,6 +3,8 @@ import { type AgentDb, backlog as backlogQueries } from "../../../../db/src/api.
 import { sharedAgentDb } from "../../storage/database.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
+import { recordProblem } from "../../core/diagnostics-log.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { clip } from "../shared/text.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { taskLine } from "./task-source.ts";
@@ -86,15 +88,16 @@ class TaskEvents {
 		this.lastLine = taskLine(snap, b.session, [], b.actor.item);
 	}
 
-	/** After a tool result (or a database change during a run): sends the urgent events, once. */
-	urgent(ctx: FeatureContext): void {
+	/** After a tool result (or a database change during a run): sends the urgent events, once. Settles once they are sent. */
+	async urgent(ctx: FeatureContext): Promise<void> {
 		const b = this.read(ctx);
 		if (!b) return;
 		const urgent = [...this.pending].filter(([, change]) => isUrgent(change, b));
 		if (urgent.length === 0) return;
 		for (const [ref] of urgent) this.pending.delete(ref);
 		const content = eventsNotice(urgent.map(([ref, change]) => describe(ref, change, b)).join("; "));
-		void this.api.session.sendMessage(
+		// Steered into the run (or appended when idle): it starts no turn, so it settles at once.
+		await this.api.session.sendMessage(
 			{ customType: BACKLOG_EVENTS_TYPE, content, display: false },
 			{ deliverAs: "steer" },
 		);
@@ -215,8 +218,8 @@ export function registerTaskEvents(
 	const events = new TaskEvents(api, options);
 	const active = () => api.tools.getActive().includes("backlog");
 	api.bus.on("session_start", (_event, ctx) => events.start(ctx));
-	api.bus.on("tool_result", (_event, ctx) => {
-		if (active()) events.urgent(ctx);
+	api.bus.on("tool_result", async (_event, ctx) => {
+		if (active()) await events.urgent(ctx);
 		return undefined;
 	});
 	api.bus.on("before_agent_start", (event, ctx) => {
@@ -227,7 +230,11 @@ export function registerTaskEvents(
 	});
 	return {
 		poke: (ctx) => {
-			if (active() && !ctx.isIdle()) events.urgent(ctx);
+			// A database change has no awaiting caller: a failed notice goes to the problems log.
+			if (active() && !ctx.isIdle())
+				void events
+					.urgent(ctx)
+					.catch((error: unknown) => recordProblem("backlog", `Backlog events not sent: ${errorMessage(error)}`));
 		},
 	};
 }

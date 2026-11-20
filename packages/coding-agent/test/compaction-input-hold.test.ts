@@ -397,8 +397,10 @@ describe("automatic compaction before a prompt is sent: input that arrives while
 		await harness.session.prompt("seed old");
 		await harness.session.prompt("seed recent");
 		const gate = gateSummary(harness);
-		// The incoming prompt alone pushes the context over the threshold, so it waits for the summary.
-		const running = harness.session.prompt(`big prompt ${"y".repeat(9000)}`);
+		// The incoming prompt alone pushes the context over the threshold, so it waits for the summary. About 3,000
+		// tokens (7,500 characters at the default 2.5 per token): after the compaction the request is still over the
+		// threshold, within the window, so it is sent without a second compaction.
+		const running = harness.session.prompt(`big prompt ${"y".repeat(7500)}`);
 		await gate.started;
 		expect(harness.session.isCompacting).toBe(true);
 		await harness.session.steer("steer while waiting");
@@ -417,6 +419,8 @@ describe("automatic compaction before a prompt is sent: input that arrives while
 			ending,
 		);
 		expect(count(branchLines(harness), "bare while waiting")).toBe(0);
+		// One compaction for the prompt's request.
+		if (ending === "success") expect(branchLines(harness).filter((line) => line === "compaction")).toHaveLength(1);
 		const context = contextLines(harness);
 		const at = (text: string) => context.findIndex((line) => line.includes(text));
 		expect(at("big prompt")).toBeLessThan(at("steer while waiting"));

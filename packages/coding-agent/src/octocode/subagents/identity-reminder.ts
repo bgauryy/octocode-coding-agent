@@ -90,7 +90,7 @@ export function registerIdentityReminder(api: FeatureSetup, env: NodeJS.ProcessE
 		const latest = latestIdentity(ctx.sessionManager.getBranch(), id);
 		if (!latest) return;
 		try {
-			void api.session.sendMessage(
+			await api.session.sendMessage(
 				{ customType: IDENTITY_REMINDER_TYPE, content: latest.text, display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);

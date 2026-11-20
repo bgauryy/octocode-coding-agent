@@ -81,6 +81,9 @@ export interface RpcSessionState {
 
 // RPC Responses (stdout)
 
+/** How a `prompt` was taken; `not-sent` only answers a `waitForCompletion` prompt cancelled before it was accepted. */
+export type RpcPromptDisposition = PromptDisposition | "not-sent";
+
 // Success responses with data
 export type RpcResponse =
 	// Prompting
@@ -89,8 +92,12 @@ export type RpcResponse =
 			type: "response";
 			command: "prompt";
 			success: true;
-			/** `outcome` is set on a `waitForCompletion` answer: how the run ended, since a failed run still answers success. */
-			data: { disposition: PromptDisposition; outcome?: RunOutcome };
+			/**
+			 * `outcome` is set on a `waitForCompletion` answer when the prompt ran: how its run ended, since a failed run still
+			 * answers success. A prompt whose dispatch was cancelled before it was accepted answers `not-sent` and a bare
+			 * aborted `outcome`.
+			 */
+			data: { disposition: RpcPromptDisposition; outcome?: RunOutcome };
 	  }
 	| { id?: string; type: "response"; command: "steer"; success: true; data: { disposition: QueuedInputDisposition } }
 	| {

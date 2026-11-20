@@ -24,7 +24,9 @@ import {
 	getCacheWarmingDelayMs,
 	getPromptCacheTtlMs,
 	isReplayable,
+	type CacheWarmerIdleOptions,
 } from "../src/core/cache-warmer.ts";
+import { IdleContinuationPool } from "../src/core/cache-warmer/idle-pool.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createFeatureRuntime, loadFeatureFromFactory } from "./helpers/features.ts";
 import { FeatureHost } from "../src/core/features/runner.ts";
@@ -92,6 +94,7 @@ function fakeRuntime(
 		decide?: (event: CacheWarmingDecisionEvent) => CacheWarmingAction | Promise<CacheWarmingAction>;
 		mode?: CacheWarmingMode;
 		branch?: SessionEntry[];
+		idle?: CacheWarmerIdleOptions;
 	} = {},
 ) {
 	const calls: Array<{ model: Model<Api>; options: ModelsSimpleStreamOptions | undefined }> = [];
@@ -119,6 +122,7 @@ function fakeRuntime(
 			events.push(event);
 			return options.decide?.(event) ?? event.action;
 		},
+		options.idle,
 	);
 	warmer.onWarmed = (entry) => warmedEntries.push(entry);
 	return { warmer, calls, events, warmedEntries, appendUsage, usageManager, state };
@@ -310,7 +314,7 @@ describe("cache warming", () => {
 			adaptiveModel.provider,
 			adaptiveModel.id,
 			warmUsage,
-			undefined,
+			"streaming",
 			expect.any(Number),
 		);
 		expect(warmedEntries).toEqual([appendUsage.mock.results[0]?.value]);
@@ -383,7 +387,13 @@ describe("cache warming", () => {
 		vi.useFakeTimers();
 		let release!: () => void;
 		const decisions: CacheWarmingDecisionEvent[] = [];
+		// Pooled gaps that all outlast the refreshed entry: an idle refresh is rarely used.
+		const pool = new IdleContinuationPool();
+		for (let gap = 0; gap < 100; gap++) pool.record(2 * 3_600_000);
+		const idleChance = pool.probability(270_000, 300_000);
+		expect(idleChance).toBeLessThan(0.1);
 		const { warmer, calls } = fakeRuntime({
+			idle: { pool },
 			decide: (event) => {
 				decisions.push(event);
 				if (decisions.length === 1) {
@@ -403,7 +413,7 @@ describe("cache warming", () => {
 		release();
 		await pending;
 		await vi.waitFor(() => expect(warmer.status.state).not.toBe("refreshing"));
-		expect(decisions.map((event) => event.continuationProbability)).toEqual([1, 0.15]);
+		expect(decisions.map((event) => event.continuationProbability)).toEqual([1, idleChance]);
 		expect(calls).toHaveLength(0);
 		expect(warmer.status).toMatchObject({ state: "inactive", reason: "expected savings below threshold" });
 	});
@@ -542,7 +552,7 @@ describe("cache warming", () => {
 		forced.warmer.start(request(), current);
 		await vi.advanceTimersByTimeAsync(270_000);
 		expect(forced.calls).toHaveLength(1);
-		expect(forced.warmedEntries[0]?.note).toBe("feature override");
+		expect(forced.warmedEntries[0]?.note).toBe("streaming, feature override");
 		forced.warmer.cancel();
 
 		const vetoed = fakeRuntime({ decide: () => "stop" });

@@ -222,7 +222,7 @@ describe("session context edits", () => {
 
 		const estimate = estimateProjectedContextTokens(session.buildSessionProjection(), session.getBranch());
 		expect(estimate.usageTokens).toBe(4_100);
-		// "next" is four characters: two tokens at three characters per token.
+		// "next" is four characters: two tokens at 2.5 characters per token.
 		expect(estimate.trailingTokens).toBe(2);
 		expect(estimate.tokens).toBe(4_102);
 	});

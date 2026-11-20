@@ -45,6 +45,7 @@ import { type MergeResult, mergeChild } from "./merge-child.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
+import { messageResumer } from "./message-resume.ts";
 import { spawnAgent, type SpawnEnv } from "./spawn.ts";
 import { recordRun, runDetails, tracker } from "./tracking.ts";
 
@@ -76,6 +77,8 @@ export interface AgentControl {
 	command: Subcommand;
 }
 
+/** A note to the model that starts no turn, so its send settles at once: awaited, a failure reaches the bus's error report. */
+const NOTE_SEND = { triggerTurn: false, deliverAs: "followUp" } as const;
 /** `coordinate merge` for a registration that reaches the agent tool later (`index.ts` builds the team tools first). */
 export const mergeThrough =
 	(agents: () => AgentControl | undefined) =>
@@ -318,11 +321,8 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	api.bus.on("session_start", async (event, ctx) => {
 		const forked = event.reason === "fork" ? forkNote(ctx.sessionManager.getEntries()) : undefined;
 		const tell = (content: string) =>
-			void api.session.sendMessage(
-				{ customType: FORK_NOTE_TYPE, content, display: false },
-				{ triggerTurn: false, deliverAs: "followUp" },
-			);
-		if (forked) tell(forked);
+			api.session.sendMessage({ customType: FORK_NOTE_TYPE, content, display: false }, NOTE_SEND);
+		if (forked) await tell(forked);
 		lingering.reopen(ctx);
 		current = ctx;
 		backlog = undefined;
@@ -341,7 +341,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		// After the reports waiting for this session were taken: a child that filed one is not gone without a word.
 		if (event.reason === "resume" || event.reason === "startup") {
 			const gone = resumedChildren(ctx.sessionManager.getEntries(), runs.reports.pendingIds(), runs.running, team);
-			if (gone.note) tell(gone.note);
+			if (gone.note) await tell(gone.note);
 			panel.restoreFinished(gone.rows);
 		}
 		// Off the start path: it lists and deletes directories.
@@ -379,7 +379,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 			renderResult: renderAgentResult,
 		}),
 	);
-	team.setResumer((id, text, from, signal, request) => lingering.resume(id, text, from, signal, request), runs.running);
+	team.setResumer(messageResumer(spawnEnv), runs.running);
 	return {
 		// A lingering run has nothing running: stopping it ends its window.
 		stop: (id, by) => (lingering.forget(id) ? undefined : stopBackground(background, id, by)),

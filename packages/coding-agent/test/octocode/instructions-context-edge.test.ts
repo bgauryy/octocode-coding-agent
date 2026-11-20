@@ -11,8 +11,9 @@ describe("instruction context edges", () => {
 			on: true,
 			defaultOn: true,
 			switchable: false,
-			found: {},
-			loaded: {},
+			// The line names only a harness that supplies something.
+			found: { skill: 1 },
+			loaded: { skill: 1 },
 		};
 		const sections = buildSystemPromptSections({
 			cwd: "/tmp",

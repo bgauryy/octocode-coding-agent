@@ -22,9 +22,37 @@ export interface CacheMiss {
 	fullMiss: boolean;
 	/** True when an instruction or tool update (a system message) entered the conversation since the previous request. */
 	promptChanged: boolean;
+	/**
+	 * How the history already sent was rewritten since the previous request, which moves the cached prefix: old tool
+	 * results replaced by placeholders on a warm cache (`cleared-results`, Octocode's clearing) or an entry edited in place
+	 * (`context-edit`).
+	 */
+	contextChange?: ContextChange;
 	/** Why the provider says the prefix diverged (`OCTOCODE_CACHE_DIAGNOSTICS`), for example `tools_changed`. */
 	apiReason?: string;
 }
+
+/** A rewrite of history that was already sent; see {@link CacheMiss.contextChange}. */
+type ContextChange = "cleared-results" | "context-edit";
+
+/** The custom entry Octocode's tool-result clearing writes when it replaces old results with placeholders. */
+const CLEARED_RESULTS_ENTRY = "octocode-cleared-results";
+
+/**
+ * Whether a clearing entry broke a warm cache: its `trigger` is `warm` (it paid on its own). A clearing at a point that
+ * rewrote the cache anyway (`idle`, `compaction`, a model or prompt change) breaks nothing. An entry from before
+ * `trigger` was recorded counts unless it says `rewriteAnyway`.
+ */
+function clearingBrokeCache(data: unknown): boolean {
+	if (typeof data !== "object" || data === null) return true;
+	const { trigger, rewriteAnyway } = data as { trigger?: unknown; rewriteAnyway?: unknown };
+	return trigger === undefined ? rewriteAnyway !== true : trigger === "warm";
+}
+
+const CONTEXT_CHANGE_CAUSE: Record<ContextChange, string> = {
+	"cleared-results": "after tool-result clearing",
+	"context-edit": "after context edit",
+};
 
 /** The reason the provider reported for this reply's miss, from the `cache_miss` diagnostic the adapter records. */
 function apiMissReason(message: AssistantMessage): string | undefined {
@@ -33,10 +61,12 @@ function apiMissReason(message: AssistantMessage): string | undefined {
 }
 
 /**
- * The area a miss re-billed and its likely cause. The cause is a model switch, an instruction or tool update, or an idle
- * gap past a known `ttlMs`, the lifetime of the history entry the previous request wrote; an unknown lifetime or shorter gap
- * does not explain the miss, so none is named. The area is "Full" when the instructions were re-billed too, "History"
- * when a cached prefix was still read.
+ * The area a miss re-billed and its likely cause. The cause is a model switch, an instruction or tool update, an idle
+ * gap past a known `ttlMs` (the lifetime of the history entry the previous request wrote), or else a rewrite of the
+ * history already sent: tool-result clearing or a context edit. An idle gap outranks a rewrite, since clearing after
+ * the entry expired costs nothing extra; an unknown lifetime or shorter gap with no rewrite does not explain the miss,
+ * so none is named. The area is "Full" when the instructions were re-billed too, "History" when a cached prefix was
+ * still read.
  */
 export function cacheMissLabel(miss: CacheMiss, ttlMs?: number): string {
 	// The provider compared the two requests; that outranks every inference below.
@@ -46,6 +76,7 @@ export function cacheMissLabel(miss: CacheMiss, ttlMs?: number): string {
 	if (miss.promptChanged) return "Cache miss after instruction or tool update";
 	const area = miss.fullMiss ? "Full cache miss" : "History cache miss";
 	if (ttlMs !== undefined && miss.idleMs >= ttlMs) return `${area} after ${Math.round(miss.idleMs / 60_000)}m idle`;
+	if (miss.contextChange) return `${area} ${CONTEXT_CHANGE_CAUSE[miss.contextChange]}`;
 	return area;
 }
 
@@ -80,6 +111,8 @@ interface PreviousRequest {
 	reportedCache: boolean;
 	/** A system message (instruction or tool update) was recorded after this request. */
 	promptChanged: boolean;
+	/** The latest rewrite of already-sent history recorded after this request. */
+	contextChange?: ContextChange;
 }
 
 /**
@@ -129,6 +162,7 @@ function detectMiss(
 		modelChanged: modelKeyOf(message) !== prev.modelKey,
 		fullMiss: usage.cacheRead === 0,
 		promptChanged: prev.promptChanged,
+		...(prev.contextChange ? { contextChange: prev.contextChange } : {}),
 		...(apiMissReason(message) ? { apiReason: apiMissReason(message) } : {}),
 	};
 }
@@ -176,10 +210,19 @@ function scan(
 					timestamp: Date.parse(entry.timestamp),
 					reportedCache: true,
 					promptChanged: prev?.promptChanged ?? false,
+					...(prev?.contextChange ? { contextChange: prev.contextChange } : {}),
 				};
 			}
 		} else if (entry.type === "message" && entry.message.role === "system") {
 			if (prev) prev = { ...prev, promptChanged: true };
+		} else if (entry.type === "context_edit") {
+			if (prev) prev = { ...prev, contextChange: "context-edit" };
+		} else if (
+			entry.type === "custom" &&
+			entry.customType === CLEARED_RESULTS_ENTRY &&
+			clearingBrokeCache(entry.data)
+		) {
+			if (prev) prev = { ...prev, contextChange: "cleared-results" };
 		} else if (entry.type === "message" && entry.message.role === "assistant") {
 			const miss = detectMiss(prev, entry.message, models);
 			if (miss) {
@@ -228,7 +271,11 @@ export function detectCacheMiss(
 }
 
 interface CacheUsageMetrics {
-	/** Number of recorded usage entries; tool usage may aggregate child requests. */
+	/**
+	 * Recorded requests that reported prompt tokens, as the profiler counts them: a reply that failed or was aborted
+	 * before the provider counted it reports none and is left out (its cost, if any, still counts). Tool usage may
+	 * aggregate child requests.
+	 */
 	requests: number;
 	promptTokens: number;
 	cacheRead: number;
@@ -263,8 +310,9 @@ export function computeCacheMetrics(entries: readonly SessionEntry[]): CacheMetr
 	};
 	const add = (purpose: keyof CacheMetrics, usage: Usage): void => {
 		const target = metrics[purpose];
-		target.requests++;
-		target.promptTokens += usage.input + usage.cacheRead + usage.cacheWrite;
+		const prompt = usage.input + usage.cacheRead + usage.cacheWrite;
+		if (prompt > 0) target.requests++;
+		target.promptTokens += prompt;
 		target.cacheRead += usage.cacheRead;
 		target.cacheWrite += usage.cacheWrite;
 		target.cost += usage.cost.total;

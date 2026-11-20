@@ -41,7 +41,7 @@ async function restoredIn(dir: string, messages: unknown[], branch: unknown[] = 
 }
 
 describe("what comes back after a compaction", () => {
-	it("reads an edited file back whole and a file only read as its outline, newest work first", async () => {
+	it("reads an edited file back whole and only names a file only read, with the line last read, newest work first", async () => {
 		const dir = tmp();
 		fs.writeFileSync(path.join(dir, "edited.ts"), "export const a = 1;\n");
 		fs.writeFileSync(path.join(dir, "looked.ts"), code("looked"));
@@ -50,15 +50,16 @@ describe("what comes back after a compaction", () => {
 			...edit("2", "edited.ts", 200),
 		]);
 		expect(byFile.get("edited.ts")?.whole).toBe(true);
-		expect(byFile.get("looked.ts")?.whole).toBe(false);
 		expect(restored?.content).toContain("export const a = 1;");
-		// The outline lists declarations, not their bodies.
-		expect(restored?.content).toContain("looked0");
-		expect(restored?.content).not.toContain("return value + 0;");
-		expect(restored?.files.map((entry) => path.basename(entry.file))).toEqual(["edited.ts", "looked.ts"]);
+		// The file only read is not read back: no outline, no text, only its path in one line after the files.
+		expect(byFile.has("looked.ts")).toBe(false);
+		expect(restored?.content).not.toContain("looked0");
+		expect(restored?.listed).toEqual(["looked.ts"]);
+		expect(restored?.content.split("\n").at(-1)).toMatch(/not restored.*: looked\.ts\.$/);
+		expect(restored?.files.map((entry) => path.basename(entry.file))).toEqual(["edited.ts"]);
 	});
 
-	it("skips a file only read that has no declaration to outline, small or not, and a dependency's file only read", async () => {
+	it("names files only read even when nothing is read back, but not a dependency's file", async () => {
 		const dir = tmp();
 		fs.writeFileSync(path.join(dir, "notes.md"), "plain words\n".repeat(50));
 		fs.writeFileSync(path.join(dir, "tiny.txt"), "x\n");
@@ -69,24 +70,35 @@ describe("what comes back after a compaction", () => {
 			...read("2", "tiny.txt", 200),
 			...read("3", "node_modules/dep/index.ts", 300),
 		]);
-		expect(restored).toBeUndefined();
+		expect(restored?.files).toEqual([]);
+		expect(restored?.listed).toEqual(["tiny.txt", "notes.md"]);
+		expect(restored?.content).toMatch(/^\[After compaction\] Read before this summary and not restored/);
+		expect(restored?.content).not.toContain("plain words");
 	});
 
-	it("never reads back scratch: .octocode/tmp or .octocode/code/temp, edited or not", async () => {
+	it("never reads back anything under .octocode/, edited or not, but does read back a worktree checkout's own files", async () => {
 		const dir = tmp();
-		const scratch = [".octocode/tmp/plan.ts", ".octocode/code/temp/agents/a/out.ts"];
-		for (const file of scratch) {
+		const octocode = [".octocode/tmp/plan.ts", ".octocode/code/temp/agents/a/out.ts", ".octocode/roast/report.ts"];
+		const worktree = ".octocode/worktrees/fix-a/src/kept.ts";
+		for (const file of [...octocode, worktree, ".octocode/worktrees/fix-a/.octocode/tmp/x.ts"]) {
 			fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
 			fs.writeFileSync(path.join(dir, file), "export const s = 1;\n");
 		}
-		fs.mkdirSync(path.join(dir, ".octocode/roast"), { recursive: true });
-		fs.writeFileSync(path.join(dir, ".octocode/roast/kept.ts"), "export const k = 1;\n");
 		const { candidates } = await restoredIn(dir, [
-			...edit("1", scratch[0], 100),
-			...edit("2", scratch[1], 200),
-			...edit("3", ".octocode/roast/kept.ts", 300),
+			...edit("1", octocode[0], 100),
+			...edit("2", octocode[1], 200),
+			...edit("3", octocode[2], 300),
+			...edit("4", worktree, 400),
+			...edit("5", ".octocode/worktrees/fix-a/.octocode/tmp/x.ts", 500),
 		]);
-		expect(candidates.map((candidate) => path.relative(dir, candidate.file))).toEqual([".octocode/roast/kept.ts"]);
+		expect(candidates.map((candidate) => path.relative(dir, candidate.file))).toEqual([worktree]);
+		// A session working inside the worktree gets its own files back.
+		const inside = await restoreCandidates(
+			{ messagesToSummarize: edit("6", "src/kept.ts", 600) as never, turnPrefixMessages: [] },
+			path.join(dir, ".octocode/worktrees/fix-a"),
+			[],
+		);
+		expect(inside.map((candidate) => path.basename(candidate.file))).toEqual(["kept.ts"]);
 	});
 
 	it("after a second compaction, reads a file edited before the first back whole, as the first did", async () => {
@@ -117,12 +129,14 @@ describe("what comes back after a compaction", () => {
 			const { byFile, restored } = await restoredIn(dir, span, [compaction(fromHook)]);
 			expect(byFile.get("edited.ts")?.whole).toBe(true);
 			expect(restored?.content).toContain("return value + 0;");
-			// A file only read stays an outline.
-			expect(byFile.get("looked.ts")?.whole).toBe(false);
+			// A file only read stays a name.
+			expect(byFile.has("looked.ts")).toBe(false);
+			expect(restored?.listed).toEqual(["looked.ts"]);
 		}
 		// Without the earlier summary's modified list, the read-back alone is no change.
-		const { byFile } = await restoredIn(dir, span);
-		expect(byFile.get("edited.ts")?.whole).toBe(false);
+		const { byFile, restored } = await restoredIn(dir, span);
+		expect(byFile.has("edited.ts")).toBe(false);
+		expect(restored?.listed).toEqual(["looked.ts", "edited.ts"]);
 	});
 
 	it("counts a file the session's own bash wrote as edited", async () => {

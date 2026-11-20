@@ -157,4 +157,22 @@ describe("session picker asynchronous state", () => {
 		expect(render).not.toHaveBeenCalled();
 		expect(load).toHaveBeenCalledTimes(1);
 	});
+
+	it("refuses to delete when the host supplies no removal, leaving the transcript and the row", async () => {
+		const picker = new SessionSelectorComponent(
+			async () => [session],
+			async () => [],
+			() => {},
+			() => {},
+			() => {},
+			() => {},
+		);
+		opened.push(picker);
+		await flush();
+		picker.handleInput("\x04");
+		picker.handleInput("\r");
+		await flush();
+		expect(picker.render(120).join("\n")).toContain("no session removal");
+		expect(picker.getSessionList().getSelectedSessionPath()).toBe(session.path);
+	});
 });

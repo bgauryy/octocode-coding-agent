@@ -1,5 +1,5 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { BashExecutionMessage, CustomMessage } from "../messages.ts";
+import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "../messages.ts";
 import { getCompactionBoundarySystem } from "./context.ts";
 import { generateId } from "./entries.ts";
 import { appendEntry } from "./persistence.ts";
@@ -158,7 +158,7 @@ export function appendCustomMessageEntry<T = unknown>(
 	state: SessionState,
 	customType: string,
 	content: string | (TextContent | ImageContent)[],
-	display: boolean,
+	display: MessageDisplay,
 	details?: T,
 	timestamp?: number,
 ): string {

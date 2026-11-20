@@ -9,7 +9,6 @@ import type { Static } from "typebox";
 import type { FeatureSetup, ToolContext } from "../../../../core/features/index.ts";
 import type { Permission } from "../../../permission/ask.ts";
 import { declareToolEffect } from "../../../permission/tool-effects.ts";
-import { stateFolderRefusal } from "../../../permission/file-access.ts";
 import { systemLines } from "../../../permission/effect.ts";
 import { changedOnDisk } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
@@ -25,8 +24,11 @@ import { parsePatch } from "../../../tool-input/codex-patch/patch.ts";
 import { FILE_TOOL_EFFECT, patchChanges, validateFileInput } from "../../../tool-input/file-input.ts";
 import { askReview } from "../../../files/review.ts";
 import { bashReads } from "../../../files/bash-reads.ts";
+import { repeatReadNotes } from "../../../files/repeat-reads.ts";
 import { type FileGuard, returnedContent } from "../../../files/tool/guard.ts";
+import { protectedFileRefusal } from "../../../files/tool/protected-files.ts";
 import { inspectQueryBatch, preparePatch } from "../../../files/tool/prepare.ts";
+import { type AttachmentContent, withAttachments } from "../../../files/tool/attachment-source.ts";
 import {
 	changePurpose,
 	type FileQuery,
@@ -56,8 +58,8 @@ const FILE_ABORT_GRACE_MS = 2 * PS_TIMEOUT_MS + 2 * KILL_GRACE_MS + 500;
  * it is changed, even if the disk did not move.
  *
  * Paths are checked against the workspace first: Octocode's own state folder (the Octocode home, holding trust
- * decisions, memory and sessions) is never changed, and a path outside the repository is a `file.outside` permission
- * ask. In `manual` mode the batch's review dialog is its `file.workspace` ask.
+ * decisions, memory and sessions) and the curated MEMORY.md files (the `memory` tool's) are never changed, and a path
+ * outside the repository is a `file.outside` permission ask. In `manual` mode the batch's review dialog is its `file.workspace` ask.
  *
  * A read is recorded by stat (size, mtime, ctime, inode) of the canonical path, without reading the file again; its
  * digest is known only when the read returned the whole file (a credited whole read) or the file tool wrote it, and is then
@@ -71,6 +73,8 @@ export function registerFileTool(
 	permission: Permission,
 	checkpoints?: Checkpoints,
 	replacementOwner?: FileReplacementOwner,
+	/** Reads a `fromAttachment` reference: the team layer's (`team/attachment-source.ts`), wired by the composition root. */
+	attachmentContent?: AttachmentContent,
 ): void {
 	api.tools.register(
 		declareToolEffect(
@@ -81,7 +85,7 @@ export function registerFileTool(
 					label: "File",
 					promptSnippet: renderPrompt("tools/file/snippet.md"),
 					description:
-						"Applies file changes; it does not read. Send queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; a patch validates everything, then stops at the first failure; neither rolls back. Read an existing file before write (all lines) or delete: only unpiped, unredirected bash reads count, and search content rows count for their shown lines. Edits need no read when every oldText matches exactly. Stale files refuse write/delete; paths outside the workspace need approval.",
+						"Applies file changes; it does not read. Send queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; a patch validates everything, then stops at the first failure; neither rolls back. Read an existing file before write (all lines) or delete: the declared read tool's reads count, as do search content rows (their lines) and unpiped bash prints. Edits need no read when every oldText matches exactly. Stale files refuse write/delete; paths outside the workspace need approval.",
 					promptGuidelines: renderPrompt("tools/file/guidelines.md").split("\n"),
 					parameters: Params,
 					prepareArguments: renameReasoning,
@@ -113,12 +117,13 @@ export function registerFileTool(
 									? "Empty patch: it changes no file. Put at least one `*** Add File:`, `*** Update File:` or `*** Delete File:` section between `*** Begin Patch` and `*** End Patch`."
 									: "No queries: pass at least one edit, write or delete query.",
 							);
-						// Octocode's own state folder is never changed: refused in every mode before any dialog asks for it.
+						// An attachment's text joins its write here, so every check below sees the bytes that will be written.
+						if (!canonical) queries = withAttachments(queries, ctx, attachmentContent);
+						// A curated memory file and Octocode's own state folder are never changed: refused in every mode before any dialog asks.
 						for (const query of queries) {
-							const refusal = stateFolderRefusal(
+							const refusal = protectedFileRefusal(
 								canonicalPath(resolveToolPath(ctx.cwd, query.path)),
 								query.path,
-								"the file tool",
 								ctx.cwd,
 							);
 							if (!refusal) continue;
@@ -160,7 +165,7 @@ export function registerFileTool(
 								},
 							);
 							validateFileInput(candidate);
-							const nextQueries = candidate.queries as FileQuery[];
+							const nextQueries = withAttachments(candidate.queries as FileQuery[], ctx, attachmentContent);
 							await replacementOwner.refresh(ctx);
 							signal?.throwIfAborted();
 							const inspected = await inspectQueryBatch(nextQueries, guard, ctx, signal, true);
@@ -211,7 +216,7 @@ export function registerFileTool(
 									for (const key of Object.keys(params)) delete (params as Record<string, unknown>)[key];
 									replacementOwner.committed?.(id, candidate, ctx.cwd);
 									Object.assign(params, candidate);
-									queries = params.queries as FileQuery[];
+									queries = nextQueries;
 									effectivePrepared = final.prepared;
 									replacementCommitted = true;
 								},
@@ -329,20 +334,25 @@ export function registerFileTool(
 		),
 	);
 
+	const repeats = repeatReadNotes();
 	api.bus.on("tool_result", async (event, ctx) => {
 		// A call another tool made may return content the script never showed the model, so only the model's own calls count as reads.
-		if (event.isError || event.parentToolCallId) return;
+		if (event.isError || event.parentToolCallId) return undefined;
 		for (const read of recordedLocalReads(event.details)) guard.record(read.file, read, !read.whole, read.lines);
 		const known = returnedContent(event.toolName, event.input, event.content, event.details);
 		const view = readView(event.toolName, event.input, event.content, event.details);
 		for (const file of readPaths(event.toolName, event.input, ctx.cwd))
 			guard.record(file, known, view?.whole !== true, view?.lines);
 		// A plain file printer in bash counts as a read whichever reader is available (`bashReads`).
-		if (event.toolName !== "bash") return;
-		const { command, background } = event.input;
-		if (typeof command !== "string" || background === true) return;
-		const details = asRecord(event.details);
-		const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
-		for (const read of bashReads(command, ctx.cwd, cut)) guard.record(read.file, undefined, !read.whole, read.lines);
+		if (event.toolName === "bash") {
+			const { command, background } = event.input;
+			const details = asRecord(event.details);
+			const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
+			if (typeof command === "string" && background !== true)
+				for (const read of bashReads(command, ctx.cwd, cut))
+					guard.record(read.file, undefined, !read.whole, read.lines);
+		}
+		// Once the guard has credited the read: a repeated whole read of an unchanged file becomes a note pointing at the first.
+		return repeats(event, ctx);
 	});
 }

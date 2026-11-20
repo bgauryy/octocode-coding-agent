@@ -276,6 +276,7 @@ function Shell({
 						/>
 					)}
 				</main>
+				{live?.SessionNotices && <live.SessionNotices />}
 			</div>
 			{sheetOpen && (
 				<ItemSheet

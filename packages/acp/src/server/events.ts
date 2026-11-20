@@ -182,7 +182,8 @@ function retryNotice(event: Extract<AcpWorkerEvent, { type: "auto_retry_start" }
 		sessionUpdate: "agent_thought_chunk",
 		content: {
 			type: "text",
-			text: `Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt} of ${maxAttempts}): ${errorMessage}\n`,
+			// maxAttempts 0: no cap (offline until the network returns).
+			text: `Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt}${maxAttempts > 0 ? ` of ${maxAttempts}` : ""}): ${errorMessage}\n`,
 		},
 		_meta: { "octocode/autoRetry": { attempt, maxAttempts, delayMs } },
 	};

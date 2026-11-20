@@ -4,14 +4,28 @@ import { parseSkillBlock } from "./prompt-expansion.ts";
 import type { ContextUsage } from "../features/index.ts";
 import type { AgentSessionModelApi, AgentSessionStateApi } from "./api-state.ts";
 import { estimateTokens, estimateProjectedContextTokens } from "../compaction/tokens.ts";
-import { contextSizeWarnings, mcpInstructionSizes } from "../context-budget.ts";
+import {
+	contextSizeWarnings,
+	declarationChars,
+	mcpInstructionSizes,
+	mcpToolServer,
+	mcpToolSizes,
+} from "../context-budget.ts";
 import { MCPS_SECTION } from "@octocodeai/octocode-common/mcp-names";
 import { sectionFamilyText } from "../system-prompt-spec.ts";
 import { archivedSummary } from "../compaction/checkpoint.ts";
+import { usageCells, usagePercent } from "./usage-gauge.ts";
 import { renderContextLifecycle, type ContextLifecycle } from "./context-lifecycle.ts";
 
 interface ContextContributor {
 	name: string;
+	tokens: number;
+}
+
+/** The declared tools of one owner: the native tools, or one MCP server's (`mcp__<server>__…`). */
+interface DeclaredToolGroup {
+	owner: string;
+	tools: number;
 	tokens: number;
 }
 export interface ContextReport {
@@ -28,8 +42,10 @@ export interface ContextReport {
 	estimatedTotal: number;
 	difference: number | null;
 	contributors: ContextContributor[];
-	/** Parts of the instructions over their share of the window (`context-budget.ts`); nothing is cut for them. */
+	/** Parts of the instructions or tool declarations over their share of the window (`context-budget.ts`); nothing is cut for them. */
 	warnings: string[];
+	/** The declared tools by owner, native first, then MCP servers largest first; absent in older saved reports. */
+	declaredTools?: DeclaredToolGroup[];
 	note: string;
 	/** Committed-projection lifecycle snapshot, before request hooks; absent in older saved reports. */
 	compaction?: ContextLifecycle;
@@ -62,7 +78,7 @@ export function contextReport(
 	add("System instructions", charsToTokens(system ? contentText(system.content).length : session.systemPrompt.length));
 	for (const [name, text] of Object.entries(system?.sections ?? {}))
 		if (text) add(`Instruction section: ${name}`, charsToTokens(text.length));
-	for (const tool of tools) add(`Tool definition: ${tool.name}`, charsToTokens(JSON.stringify(tool).length));
+	for (const tool of tools) add(`Tool definition: ${tool.name}`, charsToTokens(declarationChars(tool)));
 	const groups = new Map<string, number>();
 	for (const message of projection.messages) {
 		if (message.role === "system") continue;
@@ -104,9 +120,12 @@ export function contextReport(
 		contributors,
 		warnings: contextSizeWarnings({
 			servers: mcpInstructionSizes(sectionFamilyText(system?.sections ?? {}, MCPS_SECTION)),
+			tools: mcpToolSizes(tools),
 			contextFilesChars: sectionFamilyText(system?.sections ?? {}, "project_context").length,
 			contextWindow: capacity,
+			model: session.routedModel?.model ?? session.model,
 		}),
+		declaredTools: declaredToolGroups(tools),
 		compaction: {
 			enabled: settings.enabled,
 			recordedCompactions: compactions.length,
@@ -128,10 +147,34 @@ export function contextReport(
 	};
 }
 
+/** The declared tools grouped by owner: native first, then each MCP server, largest first; empty groups are left out. */
+function declaredToolGroups(tools: ReadonlyArray<{ name: string }>): DeclaredToolGroup[] {
+	const groups = new Map<string, DeclaredToolGroup>();
+	for (const tool of tools) {
+		const owner = mcpToolServer(tool.name) ?? "native";
+		const group = groups.get(owner) ?? { owner, tools: 0, tokens: 0 };
+		group.tools += 1;
+		group.tokens += charsToTokens(declarationChars(tool));
+		groups.set(owner, group);
+	}
+	const servers = [...groups.values()].filter((group) => group.owner !== "native").sort((a, b) => b.tokens - a.tokens);
+	const native = groups.get("native");
+	return [...(native ? [native] : []), ...servers];
+}
+
+/** `Declared tools: 41 (24,015 tokens): native 13 (5,734), octocode 15 (15,069)`; empty without tools. */
+function declaredToolsLine(groups: readonly DeclaredToolGroup[], number: (value: number | null) => string): string {
+	if (groups.length === 0) return "";
+	const count = groups.reduce((sum, group) => sum + group.tools, 0);
+	const tokens = groups.reduce((sum, group) => sum + group.tokens, 0);
+	const parts = groups.map((group) => `${group.owner} ${group.tools} (${number(group.tokens)})`);
+	return `Declared tools: ${count} (${number(tokens)} tokens): ${parts.join(", ")}.`;
+}
+
 /** Cells of the usage bar under the total. */
 const BAR_CELLS = 30;
 
-const percentOf = (part: number, whole: number) => `${Math.round((part / whole) * 100)}%`;
+const percentOf = (part: number, whole: number) => usagePercent((part / whole) * 100);
 
 /**
  * The total first: tokens in use out of the working window, the share, what is free and how far compaction is, with a
@@ -142,7 +185,7 @@ function totalLines(report: ContextReport, number: (value: number | null) => str
 	const source = report.currentTokens === null ? " (estimated from the contents below)" : "";
 	if (!report.capacity)
 		return `**Total context: ${number(used)} tokens in use**${source}; the model's window is unknown.`;
-	const filled = Math.min(BAR_CELLS, Math.max(0, Math.round((used / report.capacity) * BAR_CELLS)));
+	const filled = usageCells(Math.max(0, (used / report.capacity) * 100), BAR_CELLS);
 	const lines = [
 		`**Total context: ${number(used)} of ${number(report.capacity)} tokens in use (${percentOf(used, report.capacity)})**${source}`,
 		`\`${"█".repeat(filled)}${"░".repeat(BAR_CELLS - filled)}\` ${number(Math.max(0, report.capacity - used))} free`,
@@ -166,6 +209,7 @@ export function renderContextReport(report: ContextReport, all = false): string 
 	return [
 		totalLines(report, number),
 		report.warnings.map((warning) => `Warning: ${warning}`).join("\n"),
+		declaredToolsLine(report.declaredTools ?? [], number),
 		report.compaction ? renderContextLifecycle(report.compaction, report.threshold) : "",
 		[
 			"| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",

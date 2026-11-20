@@ -240,6 +240,16 @@ describe("measured cache usage by purpose", () => {
 			expect(stats[purpose]).toMatchObject({ requests: 1, promptTokens: 1000, hitRate: 0.9, cost: 0.2 });
 		}
 	});
+	it("counts as requests only the replies that reported prompt tokens, as the profiler does", () => {
+		// A failed or aborted reply records zero usage: it is no request the cache saw.
+		const failed = { ...assistant({}), stopReason: "error" as const };
+		const stats = computeCacheMetrics([
+			entry(assistant({ input: 100 })),
+			entry(failed),
+			entry(assistant({ cacheRead: 100 })),
+		]);
+		expect(stats.conversation).toMatchObject({ requests: 2, promptTokens: 200, hitRate: 0.5 });
+	});
 	it("reports unknown for no input, and zero for a measured cold request", () => {
 		expect(computeCacheMetrics([]).conversation.hitRate).toBeNull();
 		expect(computeCacheMetrics([entry(assistant({ input: 100 }))]).conversation.hitRate).toBe(0);
@@ -335,6 +345,37 @@ describe("cacheMissLabel", () => {
 			"Cache miss after model switch",
 		);
 		expect(cacheMissLabel({ ...miss, promptChanged: true })).toBe("Cache miss after instruction or tool update");
+	});
+
+	it("names tool-result clearing and context edits, after an idle gap that already expired the entry", () => {
+		const cleared = { ...miss, contextChange: "cleared-results" as const };
+		expect(cacheMissLabel(cleared, 60 * 60_000)).toBe("History cache miss after tool-result clearing");
+		expect(cacheMissLabel({ ...miss, contextChange: "context-edit" })).toBe("History cache miss after context edit");
+		// Clearing after the entry expired costs nothing extra: the idle gap is the cause.
+		expect(cacheMissLabel(cleared, 5 * 60_000)).toBe("History cache miss after 10m idle");
+	});
+
+	it("records clearing and context edits between two requests as the miss's context change", () => {
+		const previous = assistant({ cacheRead: 90_000, cacheWrite: 1_000, timestamp: 1_000 });
+		const missed = assistant({ cacheRead: 20_000, cacheWrite: 72_000, timestamp: 2_000 });
+		const clearing = (data: Record<string, unknown> = { trigger: "warm" }) =>
+			({ type: "custom", ...link(), customType: "octocode-cleared-results", data }) as SessionEntry;
+		const cleared = [entry(previous), clearing()];
+		expect(detectCacheMiss(cleared, missed, models)?.contextChange).toBe("cleared-results");
+		// A clearing at a point that rewrote the cache anyway breaks nothing, so it is not named.
+		for (const trigger of ["idle", "compaction", "model"]) {
+			expect(detectCacheMiss([entry(previous), clearing({ trigger })], missed, models)?.contextChange).toBeUndefined();
+		}
+		// An entry from before `trigger` was recorded counts unless it says the cache was rewritten anyway.
+		expect(detectCacheMiss([entry(previous), clearing({})], missed, models)?.contextChange).toBe("cleared-results");
+		const legacyFree = clearing({ rewriteAnyway: true });
+		expect(detectCacheMiss([entry(previous), legacyFree], missed, models)?.contextChange).toBeUndefined();
+		const edited = [entry(previous), { type: "context_edit", ...link(), targetId: "t1", replacement: null }];
+		expect(detectCacheMiss(edited as SessionEntry[], missed, models)?.contextChange).toBe("context-edit");
+		// A later request starts clean.
+		const later = [entry(previous), clearing(), entry(missed)];
+		const after = assistant({ cacheRead: 20_000, cacheWrite: 72_000, timestamp: 3_000 });
+		expect(detectCacheMiss(later, after, models)?.contextChange).toBeUndefined();
 	});
 });
 

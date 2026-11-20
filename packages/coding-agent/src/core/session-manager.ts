@@ -1,7 +1,7 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import { existsSync } from "node:fs";
 import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
-import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
+import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "./messages.ts";
 import type { SessionManagerApi } from "./session-manager/api.ts";
 import * as appends from "./session-manager/appends.ts";
 import { loadSessionFileAsync, type LoadedSessionFile } from "./session-manager/file-reader.ts";
@@ -66,8 +66,9 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 		newSessionOptions?: NewSessionOptions,
 		preloadedFileEntries?: FileEntry[],
 		loadedFile?: LoadedSessionFile,
+		sessionDirFromFile = false,
 	) {
-		super(sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist));
+		super(sessionState.createSessionState(resolvePath(cwd), normalizePath(sessionDir), persist, sessionDirFromFile));
 		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries, loadedFile);
 	}
 
@@ -166,7 +167,7 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	appendCustomMessageEntry<T = unknown>(
 		customType: string,
 		content: string | (TextContent | ImageContent)[],
-		display: boolean,
+		display: MessageDisplay,
 		details?: T,
 		timestamp?: number,
 	): string {
@@ -221,8 +222,12 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	 * @param cwdOverride Optional cwd override instead of the session header cwd.
 	 */
 	static open(path: string, sessionDir?: string, cwdOverride?: string): SessionManager {
-		const { cwd, dir, resolvedPath, preloadedFileEntries } = resolveOpenedSession(path, sessionDir, cwdOverride);
-		return new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries);
+		const { cwd, dir, dirFromFile, resolvedPath, preloadedFileEntries } = resolveOpenedSession(
+			path,
+			sessionDir,
+			cwdOverride,
+		);
+		return new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries, undefined, dirFromFile);
 	}
 
 	/** Open while yielding disk reads and transcript decoding to input; reuse the resulting codec and indexes. */
@@ -234,14 +239,14 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	): Promise<SessionManager> {
 		const loaded = await loadSessionFileAsync(resolvePath(path), signal);
 		const header = loaded.entries[0];
-		const { cwd, dir, resolvedPath } = resolveOpenedSession(
+		const { cwd, dir, dirFromFile, resolvedPath } = resolveOpenedSession(
 			path,
 			sessionDir,
 			cwdOverride,
 			header?.type === "session" ? header : null,
 		);
 		signal?.throwIfAborted();
-		return new SessionManager(cwd, dir, resolvedPath, true, undefined, undefined, loaded);
+		return new SessionManager(cwd, dir, resolvedPath, true, undefined, undefined, loaded, dirFromFile);
 	}
 
 	/**

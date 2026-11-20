@@ -5,10 +5,10 @@ import { mcpInstallDir } from "../../../../mcp/src/install.ts";
 import freellamaPreset from "../../../../mcp/src/recommended/freellama.json" with { type: "json" };
 
 /**
- * The first request as a user's home serves it, for the size guard (`served-first-request.test.ts`): the recommended
- * FreeLlama preset on (a user who opted in), the octocode-mcp tools declared as a workspace that has used
- * its research tools declares them (`mcpExposure: "usage"`, the default, promoting them), and a model whose transport cannot add tools
- * mid-conversation, so every on-demand tool is declared deferred.
+ * The first request as a warm user's home serves it, for the size guard (`served-first-request.test.ts`): the
+ * recommended FreeLlama preset on (a user who opted in), the octocode-mcp research tools and the native tools a main
+ * session calls most named by the promotion snapshot (`mcpExposure: "usage"`, the default) and the folder's record,
+ * and a model whose transport cannot add tools mid-conversation, so every on-demand tool is declared deferred.
  */
 
 /** The server and its tool list as FreeLlama's package serves them, recorded once from the version the preset installs. */
@@ -24,15 +24,17 @@ export interface FreellamaRecording {
 export const readFreellamaRecording = (): FreellamaRecording =>
 	JSON.parse(fs.readFileSync(RECORDING, "utf8")) as FreellamaRecording;
 
-/** The octocode-mcp tools sessions use often: declared in full under `usage` (and, called in the last day, `recent`). */
+/**
+ * The tools a warm user's sessions use often: the octocode-mcp research tools and the native tools this repository's
+ * own promotion snapshot names for main sessions, as the snapshot (`usage`) and the folder's record of the last day
+ * (`recent`) hold them; a child takes the set less the role-dependent native tools (`childInUseTools`).
+ */
 export const SERVED_RECENT_TOOLS = [
-	"localSearch",
-	"localFetch",
-	"structureSearch",
-	"astSearch",
-	"lspSearch",
-	"clasify",
-].map((tool) => `octocode/${tool}`);
+	...["localSearch", "localFetch", "structureSearch", "astSearch", "lspSearch", "clasify"].map(
+		(tool) => `octocode/${tool}`,
+	),
+	...["web", "wait", "memory", "archive", "models", "backlogPlan"].map((tool) => `native/${tool}`),
+];
 
 /** An AGENTS.md of the size a real project has (a pinned copy of this repository's), so the `project_context` layer is not a few lines. */
 export const SERVED_PROJECT_INSTRUCTIONS = fs.readFileSync(

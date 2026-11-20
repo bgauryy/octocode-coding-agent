@@ -57,8 +57,10 @@ export function residentBlock({
 	}
 	const onDemand = [...(deferral.onDemand ?? [])].filter((tool) => !offered.includes(tool));
 	const index = [...offered.filter((tool) => deferred.has(tool)).map(indexLine), ...onDemand.map(onDemandLine)];
-	// With no direct tool the block's head would be missing: the instructions come first.
-	const head = direct.text || (index.length > 0 ? instructionsOf() : "");
+	// With no direct tool the block's head would be missing: the instructions come first, unless the server keeps them
+	// for the `mcp` tool's read while it declares nothing.
+	const withheld = deferral.instructionsOnDemand === true && offered.length === 0;
+	const head = direct.text || (index.length > 0 && !withheld ? instructionsOf() : "");
 	return {
 		file: direct.file,
 		text: [head, ...index].filter(Boolean).join("\n"),
@@ -71,11 +73,12 @@ export function residentBlock({
 }
 
 /**
- * The trigger of an on-demand tool's index line: the description's `<when>` text, else its first sentence. The line is
- * all the model reads of the tool before it loads it.
+ * The trigger of an on-demand tool's index line: the first sentence of the description's `<when>` text, else of the
+ * description. The line is all the model reads of the tool before it loads it, and it rides in every request, so it
+ * says when to use the tool; how to use it arrives with the load.
  */
 export function onDemandTrigger(description: string | undefined): string | undefined {
 	if (!description) return undefined;
-	const when = /<when>([\s\S]*?)<\/when>/i.exec(description)?.[1]?.replace(/\s+/g, " ").trim();
-	return when || firstSentence(description) || undefined;
+	const when = /<when>([\s\S]*?)<\/when>/i.exec(description)?.[1];
+	return firstSentence(when?.trim() ? when : description) || undefined;
 }

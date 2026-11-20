@@ -15,13 +15,14 @@ import {
 	type ApplicationOperation,
 	type ApplicationOperationArgs,
 	type ApplicationOperationResult,
+	type ApplicationNoticeLevel,
 } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../agent-session/types.ts";
 import { type ApplicationOperations, type ApplicationSession, invokeOperation } from "./session-port.ts";
 import { acceptApplicationCommand, type RecordingCommand } from "./service/accept.ts";
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
-import { publishLifecycle } from "./service/lifecycle.ts";
+import { publishLifecycle, SessionStatusTracker } from "./service/lifecycle.ts";
 import { applicationModel, publishModelChange } from "./service/model.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
 import { readOnlyApplicationState } from "./service/state-source.ts";
@@ -46,6 +47,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
 	private readonly source = new ContextSource();
+	private readonly status = new SessionStatusTracker();
 	setToolOutputProjector(project: ToolOutputProjector): () => void {
 		this.assertOpen();
 		let active = true;
@@ -180,6 +182,14 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			if (sessionId === this.sessionId) this.publish(event);
 		});
 	}
+	/** Shows a notice the session's UI showed (`ApplicationActivities.notice`); an identical one sent just before is dropped. */
+	publishNotice(text: string, level: ApplicationNoticeLevel): void {
+		if (this.disposed) throw new Error("Application service is closed");
+		this.delivery.run(() => {
+			const activity = this.activities.notice(text, level);
+			if (activity) this.publish({ type: "session.activity", activity });
+		});
+	}
 	/** False once publishing closed the service. */
 	private publish(received: ApplicationEvent, hint?: StreamHint): boolean {
 		if (this.disposed) return false;
@@ -303,7 +313,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 				this.publish(this.transcript.tool(event));
 				break;
 			default:
-				publishLifecycle(event, this.state.getState().runId, (lifecycle) => this.publish(lifecycle));
+				publishLifecycle(event, this.state.getState(), this.status, (lifecycle) => this.publish(lifecycle));
 		}
 		if (this.disposed) return;
 		const activity = this.activities.project(event);

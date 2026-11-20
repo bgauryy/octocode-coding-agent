@@ -8,7 +8,12 @@ import { randomUUID } from "node:crypto";
 import type { AgentContext, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import type { Model, TextContent } from "@octocodeai/octocode-ai/compat";
-import { estimateLeafContextTokens, estimateUndeclaredToolTokens, shouldCompact } from "../compaction/index.ts";
+import {
+	estimateLeafContextTokens,
+	estimateUndeclaredToolTokens,
+	exceedsContextWindow,
+	shouldCompact,
+} from "../compaction/index.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { projectForcedSystemPrompt, type RequestSystemOverride } from "../forced-system-prompt.ts";
 import { convertToLlm } from "../messages.ts";
@@ -20,6 +25,7 @@ import {
 	VIRTUAL_MODEL_STATE_ENTRY,
 	type VirtualModelStateData,
 } from "../virtual-models.ts";
+import { compactedSinceLastResponse, compactionCancelledForRequest } from "./compaction-check.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
@@ -38,12 +44,15 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 	prewarmCompaction(tokens: number, model: Model<any>, thinking?: ThinkingLevel): void;
 }
 
-/** Estimated tokens of a request built from `projection`, counting the tools it will declare that it does not yet. */
-function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjection): number {
+/**
+ * Estimated tokens of a request to `model` built from `projection`, counting the tools it will declare that it does
+ * not yet, at the model's tokenizer ratio.
+ */
+function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjection, model: Model<any>): number {
 	const { session } = host;
 	return (
-		estimateLeafContextTokens(projection, session.sessionManager).tokens +
-		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations())
+		estimateLeafContextTokens(projection, session.sessionManager, model).tokens +
+		estimateUndeclaredToolTokens(projection.messages, session.agent.state.tools, host.tools.hiddenDeclarations(), model)
 	);
 }
 
@@ -53,7 +62,7 @@ function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjecti
  */
 function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
 	if (!host.run.windowUnfit || !(model.contextWindow > 0)) return;
-	const tokens = requestTokens(host, host.session.sessionManager.readSessionProjection());
+	const tokens = requestTokens(host, host.session.sessionManager.readSessionProjection(), model);
 	if (tokens <= model.contextWindow) return;
 	throw new Error(
 		`The context is about ${tokens.toLocaleString("en-US")} tokens, more than ${model.id}'s ` +
@@ -63,10 +72,13 @@ function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
 }
 
 /**
- * Whether `projection`, the current session projection, exceeds the compaction threshold of `model` at `thinking`
- * (default: the session's routed or selected level).
+ * Whether the request built from `projection`, the current session projection, compacts first: past the compaction
+ * threshold of `model` at `thinking` (default: the session's routed or selected level). At most one compaction per
+ * request: after one since the latest response, only a request that would not fit the window at all compacts again.
+ * One over the threshold but within the window is sent; the next request, or overflow recovery, compacts. After the
+ * user cancelled an automatic compaction for this request, none runs.
  */
-function exceedsCompactionThreshold(
+function needsCompaction(
 	host: AgentHooksHost,
 	model: Model<any>,
 	projection: ReadonlySessionProjection,
@@ -74,12 +86,15 @@ function exceedsCompactionThreshold(
 ): boolean {
 	if (model.contextWindow <= 0) return false;
 	const { session } = host;
-	const tokens = requestTokens(host, projection);
+	if (compactionCancelledForRequest(host.run, session.sessionManager)) return false;
+	const tokens = requestTokens(host, projection, model);
 	const settings = session.settingsManager.getCompactionSettings(
 		model,
 		thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 	);
-	return shouldCompact(tokens, model.contextWindow, settings);
+	return compactedSinceLastResponse(projection, session.sessionManager)
+		? exceedsContextWindow(tokens, model.contextWindow, settings, model.maxTokens)
+		: shouldCompact(tokens, model.contextWindow, settings);
 }
 
 export function installAgentInputPreparation(host: AgentHooksHost): void {
@@ -194,7 +209,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			let refreshInput = previous?.refreshInput;
 			// Input gates and turn_prompt updates have committed. A late update can cross the threshold,
 			// but a declined or insufficient early compaction must not be retried in the same request.
-			if (!thresholdAttempted && exceedsCompactionThreshold(host, model, projection, thinkingLevel)) {
+			if (!thresholdAttempted && needsCompaction(host, model, projection, thinkingLevel)) {
 				thresholdAttempted = true;
 				refreshInput = true;
 				await host.runAutoCompaction("threshold", false, model, thinkingLevel);
@@ -204,7 +219,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 				assertFitsWindow(host, model);
 			}
 			if (thresholdAttempted) attempted.add(context);
-			else host.prewarmCompaction(requestTokens(host, projection), model, thinkingLevel);
+			else host.prewarmCompaction(requestTokens(host, projection, model), model, thinkingLevel);
 			assertImageRequestContext(model, convertToLlm(context.messages));
 			return { ...previous, context, model, thinkingLevel, refreshInput };
 		}
@@ -240,7 +255,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 		// One attempt per request, as for a model that is not virtual: a declined or futile one is not retried when the
 		// request is prepared again.
 		let thresholdAttempted = attempted.has(request.context);
-		if (!thresholdAttempted && exceedsCompactionThreshold(host, route.model, projection, routeThinking)) {
+		if (!thresholdAttempted && needsCompaction(host, route.model, projection, routeThinking)) {
 			thresholdAttempted = true;
 			await host.runAutoCompaction("threshold", false, route.model, routeThinking);
 			host.inputs.flushDuringRun(host.run.outcome);
@@ -250,7 +265,7 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			assertFitsWindow(host, route.model);
 		}
 		if (thresholdAttempted) attempted.add(context);
-		else host.prewarmCompaction(requestTokens(host, projection), route.model, routeThinking);
+		else host.prewarmCompaction(requestTokens(host, projection, route.model), route.model, routeThinking);
 		assertImageRequestContext(route.model, convertToLlm(context.messages));
 		return {
 			...previous,
@@ -268,7 +283,7 @@ function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<Ag
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
 		let projection = session.sessionManager.readSessionProjection();
 		const model = session.model;
-		const compactEarly = model && !isVirtualModel(model) && exceedsCompactionThreshold(host, model, projection);
+		const compactEarly = model && !isVirtualModel(model) && needsCompaction(host, model, projection);
 		if (compactEarly) {
 			await host.runAutoCompaction("threshold", false);
 			host.inputs.flushDuringRun(host.run.outcome);

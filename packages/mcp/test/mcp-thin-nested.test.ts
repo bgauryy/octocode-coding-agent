@@ -44,24 +44,65 @@ describe("thin MCP declarations of nested fields", () => {
 			},
 			$defs: { line: { type: "integer", minimum: 1 } },
 		});
-		// No description, enum, bound or `required` is copied, and every object stays open.
+		// Enums, item bounds and required fields are kept; no description or other bound is, and every object stays open.
 		expect(JSON.stringify(thin)).toBe(
 			JSON.stringify(
 				open({
 					queries: {
 						type: "array",
-						items: open({
-							path: { type: "string" },
-							view: {},
-							ranges: { type: "array", items: open({ startLine: { type: "integer" }, endLine: { type: "integer" } }) },
-							context: { type: "object" },
-							tags: { type: "array" },
-						}),
+						maxItems: 5,
+						items: {
+							...open({
+								path: { type: "string" },
+								view: { type: "string", enum: ["content", "symbols"] },
+								ranges: {
+									type: "array",
+									items: {
+										...open({ startLine: { type: "integer" }, endLine: { type: "integer" } }),
+										required: ["startLine", "endLine"],
+									},
+								},
+								context: { type: "object" },
+								tags: { type: "array" },
+							}),
+							required: ["path"],
+						},
 					},
 					cursor: { type: "string" },
 				}),
 			),
 		);
+	});
+
+	it("never declares an enum-only field as any value, and keeps a union of constants as its values", () => {
+		const thin = thinParameters({
+			type: "object",
+			required: ["op"],
+			properties: {
+				op: {
+					anyOf: [
+						{ const: "add", type: "string" },
+						{ const: "list", type: "string" },
+					],
+				},
+				mode: { enum: ["fast", 2] },
+				strict: { const: true },
+				fields: { type: "array", minItems: 1, maxItems: 3, items: { enum: ["a", "b"] } },
+				many: { enum: Array.from({ length: 17 }, (_, i) => `v${i}`) },
+				either: { anyOf: [{ enum: ["x"] }, { type: "null" }] },
+			},
+		});
+		expect(thin).toEqual({
+			...open({
+				op: { type: "string", enum: ["add", "list"] },
+				mode: { enum: ["fast", 2] },
+				strict: { type: "boolean", enum: [true] },
+				fields: { type: "array", minItems: 1, maxItems: 3, items: { type: "string", enum: ["a", "b"] } },
+				many: { type: "string" },
+				either: { anyOf: [{ type: "string" }, { type: "null" }] },
+			}),
+			required: ["op"],
+		});
 	});
 
 	it("names a top-level object's fields, and lifts item alternatives and references", () => {
@@ -135,8 +176,13 @@ describe("thin MCP declarations of nested fields", () => {
 		expect(fields.path).toEqual({ type: "string" });
 		expect(fields.ranges).toEqual({
 			type: "array",
-			items: open({ startLine: { type: "integer" }, endLine: { type: "integer" } }),
+			minItems: 1,
+			maxItems: 100,
+			items: {
+				...open({ startLine: { type: "integer" }, endLine: { type: "integer" } }),
+				required: ["startLine", "endLine"],
+			},
 		});
-		expect(JSON.stringify(thin)).not.toMatch(/"(description|required|enum|minimum|maxItems)"/);
+		expect(JSON.stringify(thin)).not.toMatch(/"(description|minimum|maximum|minLength|pattern)"/);
 	});
 });

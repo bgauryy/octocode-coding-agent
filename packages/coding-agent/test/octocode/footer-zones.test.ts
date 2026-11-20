@@ -14,7 +14,7 @@ const idle: FooterState = {
 	model: "claude-opus-5-5",
 	thinking: "high",
 	kind: "subscription",
-	context: { percent: 34, limit: 271_000 },
+	context: { percent: 34, window: 271_000 },
 	cwd: "/Users/me/code/octocodecode",
 	home: "/Users/me",
 	chip: { ...chipParts("manual"), key: "shift+tab" },
@@ -113,7 +113,7 @@ describe("footer zones (footer.md §4.3)", () => {
 		statuses.set("provider", { text: "provider error: retrying in 5m (a message cancels)", tone: "warning" });
 		const calls: Array<[string, string]> = [];
 		const recording = { fg: (tone: string, text: string) => (calls.push([tone, text]), text), bold: (t: string) => t };
-		const lines = footerLines({ ...busy, context: { percent: 86, limit: 271_000 } }, "main", statuses, recording, 80);
+		const lines = footerLines({ ...busy, context: { percent: 86, window: 271_000 } }, "main", statuses, recording, 80);
 		expect(lines[0]).toBe(pad("octocodecode ⎇ main · ⏸ manual", "ctx ▰▰▰▰▰▰▰▱ 86%", "5 agents · ✉ 2 · Σ ≈$13.13", 80));
 		expect(calls).toContainEqual(["error", "86%"]);
 		expect(lines[2]).toBe("warning: provider error: retrying in 5m (a message cancels)");
@@ -153,6 +153,46 @@ describe("footer zones (footer.md §4.3)", () => {
 		for (let width = 1; width <= 220; width++)
 			for (const line of [...render(idle, idleStatuses, width), ...render(busy, busyStatuses, width)])
 				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+	});
+
+	it("elides a long path's middle before the permission chip or the context window shorten, before and after a turn", () => {
+		const cwd = "/private/var/folders/nf/tf_qg9k56l97qnkcc2b_w5z40000gn/T/vt-Bl1RoK/octocode-real-process/project";
+		const start = {
+			...idle,
+			cwd,
+			chip: chipParts("full"),
+			usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
+		};
+		const after = { ...start, usage: { input: 300, cacheRead: 0, output: 15, cost: 0.0003, unpriced: false } };
+		for (const state of [start, after]) {
+			const [top] = render(state, new Map(), 140);
+			expect(top.startsWith("/…/octocode-real-process/project ⎇ main · ⏵⏵ permission: full · shift+tab")).toBe(true);
+			expect(top).toContain("of 271k");
+		}
+	});
+
+	it("moves a detail line 1 drops onto line 2's free room instead of pointing to /status", () => {
+		const state = { ...idle, chip: chipParts("full", { actions: 12, warnings: 0 }) };
+		const [top, bottom] = render(state, new Map(), 140);
+		expect(top).not.toContain("12 actions");
+		expect(bottom).toBe(
+			ends("claude-opus-5-5:high · subscription", "12 actions · ✓ GitHub · /providers · /model · /resume", 140),
+		);
+		// Line 2's own details keep their place: a moved detail takes only the room the hints held.
+		const crowded = render(state, idleStatuses, 120)[1];
+		expect(crowded).toContain("backlog 12 open · 3 ongoing · ✓ GitHub · 58 tok/s");
+		const narrow = render(state, idleStatuses, 100)[1];
+		expect(narrow).toContain("backlog 12 open · 3 ongoing");
+		expect(narrow).not.toContain("12 actions");
+		expect(crowded).toContain("… /status");
+	});
+
+	it("writes <1% beside the one filled cell of a barely used context, never 0%", () => {
+		const [top] = render({ ...idle, context: { percent: 0.2, window: 164_000 } }, new Map(), 200);
+		expect(top).toContain("ctx ▰▱▱▱▱▱▱▱ <1% of 164k");
+		expect(render({ ...idle, context: { percent: 0, window: 164_000 } }, new Map(), 200)[0]).toContain(
+			"ctx ▱▱▱▱▱▱▱▱ 0% of 164k",
+		);
 	});
 
 	it("does not abbreviate a sibling of the home directory that shares its prefix", () => {

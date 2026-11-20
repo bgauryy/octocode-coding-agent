@@ -7,7 +7,7 @@ import type { PlanOptions, PlanState } from "../../core/plan-state.ts";
 
 import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { ImageContent } from "@octocodeai/octocode-ai";
-import type { PromptDisposition, QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
+import type { QueuedInputDisposition, SessionStats } from "../../core/agent-session.ts";
 import type { BashResult } from "../../core/bash-executor.ts";
 import type { CompactionResult } from "../../core/compaction/index.ts";
 import type { SessionEntry, SessionTreeNode } from "../../core/session-manager.ts";
@@ -18,6 +18,7 @@ import type { ModelInfo, RpcClientOptions, RpcCommandBody, RpcEvent, RpcEventLis
 import type {
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
+	RpcPromptDisposition,
 	RpcResponse,
 	RpcSessionState,
 	RpcSlashCommand,
@@ -77,7 +78,8 @@ export class RpcClient {
 
 	/**
 	 * Send a prompt to the agent.
-	 * Returns acceptance unless waitForCompletion also waits for feature-dispatched work.
+	 * Returns acceptance unless waitForCompletion also waits for feature-dispatched work; then a prompt whose dispatch was
+	 * cancelled before it was accepted resolves `not-sent`.
 	 * A handled prompt may have started other work; use onEvent() for streaming events.
 	 */
 	async prompt(
@@ -85,12 +87,12 @@ export class RpcClient {
 		images?: ImageContent[],
 		streamingBehavior?: "steer" | "followUp",
 		options?: { waitForCompletion?: boolean; dispatchId?: string },
-	): Promise<PromptDisposition> {
+	): Promise<RpcPromptDisposition> {
 		const response = await this.send(
 			{ type: "prompt", message, images, streamingBehavior, ...options },
 			options?.waitForCompletion ? null : undefined,
 		);
-		return this.getData<{ disposition: PromptDisposition }>(response).disposition;
+		return this.getData<{ disposition: RpcPromptDisposition }>(response).disposition;
 	}
 
 	/**

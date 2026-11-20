@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ApplicationStream } from "@octocodeai/octocode-webview/application-stream";
+import { ApplicationStream } from "@octocodeai/octocode-projections";
 import {
 	ApplicationProjection,
 	activityCard,

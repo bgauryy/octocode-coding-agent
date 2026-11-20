@@ -42,13 +42,15 @@ describe("MCP reason argument declared outside the root properties", () => {
 		expect(tool.coerceArguments).toBe(false);
 	});
 
-	it("rewrites no Octocode tool's arguments and preserves the server's required fields", () => {
+	it("rewrites no Octocode tool's arguments beyond a leaked reason and preserves the server's required fields", () => {
 		const catalog = JSON.parse(
 			readFileSync(new URL("fixtures/compact/catalog-research.json", import.meta.url), "utf8"),
 		) as { tools: { name: string; inputSchema: Record<string, unknown> }[] };
+		const args = { queries: [{ reasoning: "why" }], responseChars: 4000 };
 		for (const { inputSchema } of catalog.tools) {
 			const tool = define(inputSchema);
-			expect(tool.prepareArguments).toBeUndefined();
+			expect(tool.prepareArguments?.({ ...args, reason: "native habit" })).toEqual(args);
+			expect(tool.prepareArguments?.(args)).toBe(args);
 			expect(tool.coerceArguments).toBe(false);
 		}
 		const required = define({ type: "object", properties: { q: { type: "string" } }, required: ["q", "reason"] });
@@ -58,8 +60,8 @@ describe("MCP reason argument declared outside the root properties", () => {
 	});
 });
 
-// In declared presentation (no compact signature, no queries cap) a native `reason` copied into the call is rejected;
-// the failure names the accepted call shape, and the input stays unchanged.
+// In declared presentation (no compact signature, no queries cap) the validator rejects a native `reason` copied into
+// the call and names the accepted call shape; argument preparation drops that reason before validation.
 describe("MCP declared tool sent an undeclared reason", () => {
 	it("rejects the call and names the call shape without reason", () => {
 		const tool = createMcpToolDefinition({
@@ -87,5 +89,6 @@ describe("MCP declared tool sent an undeclared reason", () => {
 			/unexpected property reason[\s\S]*mcp__third__note requires \{"q":"\.\.\."\} at the top level\./,
 		);
 		expect(call({ q: "x" })).toEqual({ q: "x" });
+		expect(call(tool.prepareArguments?.({ q: "x", reason: "why" }) as Record<string, unknown>)).toEqual({ q: "x" });
 	});
 });

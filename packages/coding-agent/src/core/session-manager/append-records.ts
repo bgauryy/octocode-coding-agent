@@ -28,7 +28,7 @@ export function appendRecords(state: SessionState, file: string, pending: readon
 	try {
 		for (const entry of pending) {
 			// Stored against the lines before it, and remembered for the lines after it only once it is written.
-			const line = `${JSON.stringify(state.codec.encode(entry))}\n`;
+			const line = `${state.codec.line(entry)}\n`;
 			try {
 				if (sessionSyncFailed(file)) {
 					// The last deferred sync failed: flush here, so the error is raised by this append and handled below.

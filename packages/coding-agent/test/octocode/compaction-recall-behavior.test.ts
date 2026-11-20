@@ -316,7 +316,7 @@ describe("resuming a compacted session", () => {
 });
 
 describe("files after a compaction", () => {
-	it("hands the model the file's current disk text, not what it read before the compaction", () => {
+	it("hands the model the file's current disk text, not what it read before the compaction", async () => {
 		const file = path.join(cwd(), "w.ts");
 		fs.writeFileSync(file, "export const v = 'BEFORE-COMPACTION';\n");
 		const worked = [{ file, workedAt: 1, line: 1 }];
@@ -328,12 +328,12 @@ describe("files after a compaction", () => {
 				sent.push(message);
 			},
 		});
-		const pending = deliverRestoredFiles(
+		const pending = (await deliverRestoredFiles(
 			api,
 			worked,
 			{ cwd: cwd(), sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } } as never,
 			RESTORE_TOTAL_CHARS,
-		)!;
+		))!;
 		expect(sent).toHaveLength(1);
 		expect(sent[0].content).toContain("LATEST-ON-DISK");
 		expect(sent[0].content).not.toContain("BEFORE-COMPACTION");
@@ -346,16 +346,16 @@ describe("files after a compaction", () => {
 		expect(guard.check(file, "edit", "w.ts")).toBeUndefined();
 	});
 
-	it("does not count a restored file as read when the file changed again before the model call carried it", () => {
+	it("does not count a restored file as read when the file changed again before the model call carried it", async () => {
 		const file = path.join(cwd(), "x.ts");
 		fs.writeFileSync(file, "one\n");
 		const sent: Array<{ details: { id: string } }> = [];
-		const pending = deliverRestoredFiles(
+		const pending = (await deliverRestoredFiles(
 			asSetup({ sendMessage: (message: never) => void sent.push(message) }) as never,
 			[{ file, workedAt: 1, line: 1 }],
 			{ cwd: cwd(), sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } } as never,
 			RESTORE_TOTAL_CHARS,
-		)!;
+		))!;
 		fs.writeFileSync(file, "two, longer\n");
 		fs.utimesSync(file, new Date(Date.now() + 5_000), new Date(Date.now() + 5_000));
 		const guard = new FileGuard();

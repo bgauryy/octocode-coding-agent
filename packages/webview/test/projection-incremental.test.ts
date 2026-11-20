@@ -12,7 +12,7 @@ import {
 	mergeEvents,
 	settleToolStarts,
 } from "../src/app/live/model.ts";
-import { ApplicationStream } from "../src/application-stream.ts";
+import { ApplicationStream } from "@octocodeai/octocode-projections";
 
 const frame = (sequence: number, body: Record<string, unknown>, sessionId = "s"): ApplicationFrame =>
 	({ protocolVersion: 1, cursor: { sessionId, epoch: "e", sequence }, at: sequence, ...body }) as ApplicationFrame;

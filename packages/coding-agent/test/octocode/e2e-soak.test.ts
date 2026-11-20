@@ -270,7 +270,7 @@ async function soak(fx: Fixture): Promise<Observed> {
 	};
 
 	const open = async (manager: SessionManager) => {
-		const { session, faux } = await scriptedSession(fx, shape, manager);
+		const { session, faux, end } = await scriptedSession(fx, shape, manager);
 		// Real retries, with a backoff too short to slow the suite. `maxRetries` stays the default.
 		session.settingsManager.applyOverrides({ retry: { enabled: true, baseDelayMs: 1 } });
 		faux.setResponses(Array.from({ length: TURNS * 4 }, () => respond));
@@ -282,7 +282,7 @@ async function soak(fx: Fixture): Promise<Observed> {
 			}
 			if (event.type === "tool_execution_end" && event.isError) seen.toolErrors.push(event.toolName);
 		});
-		return { session, unsubscribe };
+		return { session, unsubscribe, end };
 	};
 
 	// A contended database reports on stderr while the session waits; the run keeps the lines to judge them.
@@ -293,17 +293,17 @@ async function soak(fx: Fixture): Promise<Observed> {
 
 	let manager = SessionManager.create(fx.cwd, sessionDir);
 	seen.file = manager.getSessionFile()!;
-	let { session, unsubscribe } = await open(manager);
+	let { session, unsubscribe, end } = await open(manager);
 	try {
 		const bulk = "check the parser module ".repeat(Math.ceil(TURN_CHARS / 24));
 		for (let turn = 1; turn <= TURNS; turn++) {
 			if (turn === TURN.resume) {
 				unsubscribe();
-				session.dispose?.();
+				await end();
 				seen.compactionsBeforeResume = seen.compactionsSeen;
 				// A new process reopens the same file; nothing of the old session object survives but the file and database.
 				manager = SessionManager.open(seen.file, sessionDir);
-				({ session, unsubscribe } = await open(manager));
+				({ session, unsubscribe, end } = await open(manager));
 				seen.memoryAfterResume = session.messages.length;
 				resumed = true;
 			}
@@ -350,7 +350,7 @@ async function soak(fx: Fixture): Promise<Observed> {
 		seen.finalIdle = session.isIdle;
 	} finally {
 		unsubscribe();
-		session.dispose?.();
+		await end();
 		stderr.mockRestore();
 	}
 

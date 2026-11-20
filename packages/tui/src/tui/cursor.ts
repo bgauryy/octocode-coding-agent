@@ -3,6 +3,7 @@
  * hardware cursor (for IME candidate windows) and draw fake cursors.
  */
 
+import { stripRowMarks } from "../utils/row-marks.ts";
 import { visibleWidth } from "../utils/width.ts";
 
 /** APC string terminator (ST, ESC \). APC ends with ST; BEL ends only OSC, and a terminal may swallow the rest of the row after it. */
@@ -53,10 +54,13 @@ export function extractCursorPosition(lines: string[], height: number): { row: n
 /**
  * Resolve fake cursor markers to reverse video. When the hardware cursor is shown, a fake cursor
  * directly after CURSOR_MARKER is dropped because the terminal cursor is drawn there. Fake cursors
- * of components without focus have no CURSOR_MARKER and stay visible.
+ * of components without focus have no CURSOR_MARKER and stay visible. Row marks (`row-marks.ts`) are dropped: they
+ * tell search what a row is and must not reach the terminal.
  */
 export function resolveFakeCursors(lines: string[], showHardwareCursor: boolean): string[] {
-	return lines.map((line) => {
+	return lines.map((marked) => {
+		if (!marked.includes("\x1b_octo:")) return marked;
+		const line = stripRowMarks(marked);
 		if (!line.includes(FAKE_CURSOR_START)) return line;
 		const resolved = showHardwareCursor ? line.replace(FOCUSED_FAKE_CURSOR, "$1$2") : line;
 		return resolved.replaceAll(FAKE_CURSOR_START, "\x1b[7m").replaceAll(FAKE_CURSOR_END, "\x1b[27m");

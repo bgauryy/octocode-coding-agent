@@ -15,6 +15,12 @@ import { DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
 import { decodeMouseButton } from "./mouse-input.ts";
 import type { SgrMouseEvent } from "./types.ts";
 
+/** A component under a screen cell and the rect it was painted at. */
+export interface LayoutHit {
+	component: Component;
+	rect: { x: number; y: number; width: number; height: number };
+}
+
 /** Alternate-screen state and focus operations the component mouse dispatch reads and calls live. */
 export interface AltScreenMouseGestureHost {
 	getTerminal(): Terminal;
@@ -109,12 +115,26 @@ export class AltScreenMouseGesture {
 		};
 	}
 
-	dispatchMouseToLayout(event: TuiMouseEvent): TuiMouseDispatchResult | undefined {
+	/** The components under a screen cell with their painted rects, as they are now. */
+	hitLayoutAt(x: number, y: number): LayoutHit[] {
 		const currentLayout = this.host.getCurrentLayout();
-		if (!currentLayout) return undefined;
+		if (!currentLayout) return [];
+		return getLayoutBoxesAt(currentLayout, x, y).map((box) => ({
+			component: box.component,
+			rect: { ...box.rect },
+		}));
+	}
+
+	/**
+	 * Offer the event to the components of `hits` (default: those under the event's cell now), innermost first. A press
+	 * remembers its hits, so a click lands on the component that was pressed although content moved before release.
+	 */
+	dispatchMouseToLayout(
+		event: TuiMouseEvent,
+		hits: readonly LayoutHit[] = this.hitLayoutAt(event.screenX, event.screenY),
+	): TuiMouseDispatchResult | undefined {
 		const visited = new Set<Component>();
-		const boxes = getLayoutBoxesAt(currentLayout, event.screenX, event.screenY);
-		for (const box of boxes) {
+		for (const box of hits) {
 			if (visited.has(box.component)) continue;
 			if (getLayoutNode(box.component) && box.component.handleMouse === Container.prototype.handleMouse) continue;
 			visited.add(box.component);
@@ -182,10 +202,10 @@ export class AltScreenMouseGesture {
 			this.lastComponentClick = undefined;
 			return true;
 		}
-		if (this.mousePressPoint && (raw.x !== this.mousePressPoint.x || raw.y !== this.mousePressPoint.y)) {
-			this.mousePressMoved = true;
-			this.lastComponentClick = undefined;
-		}
+		// Jitter that returns to the press cell is still a click: only where the pointer is now counts.
+		this.mousePressMoved =
+			this.mousePressPoint !== undefined && (raw.x !== this.mousePressPoint.x || raw.y !== this.mousePressPoint.y);
+		if (this.mousePressMoved) this.lastComponentClick = undefined;
 		let render = false;
 		const targetResult = this.dispatchMouseToTarget(event, target);
 		if (targetResult) render = this.applyMouseDispatchResult(event, targetResult);

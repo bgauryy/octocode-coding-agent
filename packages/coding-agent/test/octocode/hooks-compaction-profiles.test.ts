@@ -54,6 +54,110 @@ describe("compaction source semantics", () => {
 			expect(ctx.abort).toHaveBeenCalledTimes(protocol === "codex" ? 1 : 0);
 		},
 	);
+	it.each(["claude", "codex"] as const)(
+		"%s hooks also get the outcome: who asked, tokens before and after, the focus source and the lifted rules",
+		async (protocol) => {
+			const home = tmp();
+			vi.stubEnv("OCTOCODE_HOME", tmp());
+			const capture = path.join(tmp(), "payloads.jsonl");
+			const script = path.join(tmp(), "hook.cjs");
+			fs.writeFileSync(
+				script,
+				`let s=''; process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{require('fs').appendFileSync(${JSON.stringify(capture)},JSON.stringify(JSON.parse(s))+'\\n');});`,
+			);
+			const file = path.join(home, protocol === "claude" ? ".claude/settings.json" : ".codex/hooks.json");
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			const hook = [{ hooks: [{ type: "command", command: `${process.execPath} ${script}` }] }];
+			fs.writeFileSync(file, JSON.stringify({ hooks: { PreCompact: hook, PostCompact: hook } }));
+			const f = fakeHost(HOOK_SETTINGS);
+			registerHooks(f.api, { env: {}, home });
+			const ctx = fakeCtx({ cwd: tmp() });
+			await f.fire("session_start", { reason: "startup" }, ctx);
+			await f.fire(
+				"session_before_compact",
+				{ reason: "manual", requestedBy: "agent", preparation: { tokensBefore: 212_000 } },
+				ctx,
+			);
+			const lifted = [{ id: "C3", text: "Never push to main", reason: "the user allowed it" }];
+			await f.fire(
+				"session_compact",
+				{
+					reason: "manual",
+					compactionEntry: {
+						summary: "summary",
+						tokensBefore: 212_000,
+						details: { trigger: "agent", estimatedTokensAfter: 96_000, focus: { source: "agent" }, lifted },
+					},
+				},
+				ctx,
+			);
+			// An entry written before outcomes were recorded still sends every field.
+			await f.fire("session_compact", { reason: "threshold", compactionEntry: { summary: "older" } }, ctx);
+			const [before, after, older] = fs
+				.readFileSync(capture, "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line));
+			expect(before).toMatchObject({
+				hook_event_name: "PreCompact",
+				trigger: "manual",
+				trigger_source: "agent",
+				tokens_before: 212_000,
+			});
+			expect(after).toMatchObject({
+				hook_event_name: "PostCompact",
+				trigger: "manual",
+				trigger_source: "agent",
+				tokens_before: 212_000,
+				tokens_after: 96_000,
+				focus_source: "agent",
+				lifted,
+			});
+			expect(older).toMatchObject({
+				trigger: "auto",
+				trigger_source: "threshold",
+				tokens_before: null,
+				tokens_after: null,
+				focus_source: null,
+				lifted: [],
+			});
+		},
+	);
+	it("passes a manual compaction's focus as custom_instructions, saying whose it is, and none for an automatic one", async () => {
+		const home = tmp();
+		vi.stubEnv("OCTOCODE_HOME", tmp());
+		const capture = path.join(tmp(), "payloads.jsonl");
+		const script = path.join(tmp(), "hook.cjs");
+		fs.writeFileSync(
+			script,
+			`let s=''; process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{require('fs').appendFileSync(${JSON.stringify(capture)},JSON.stringify(JSON.parse(s))+'\\n');});`,
+		);
+		fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+		const hook = [{ hooks: [{ type: "command", command: `${process.execPath} ${script}` }] }];
+		fs.writeFileSync(path.join(home, ".claude/settings.json"), JSON.stringify({ hooks: { PreCompact: hook } }));
+		const f = fakeHost(HOOK_SETTINGS);
+		registerHooks(f.api, { env: {}, home });
+		const ctx = fakeCtx({ cwd: tmp() });
+		await f.fire("session_start", { reason: "startup" }, ctx);
+		const compact = (event: Record<string, unknown>) =>
+			f.fire("session_before_compact", { preparation: { tokensBefore: 1000 }, ...event }, ctx);
+		await compact({ reason: "manual", customInstructions: "Keep the test plan" });
+		await compact({ reason: "manual", requestedBy: "agent", customInstructions: "Keep the open diff" });
+		await compact({ reason: "manual" });
+		await compact({ reason: "threshold", customInstructions: "ignored" });
+		const [user, agent, bare, auto] = fs
+			.readFileSync(capture, "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		expect(user).toMatchObject({ custom_instructions: "Keep the test plan", custom_instructions_source: "user" });
+		expect(agent).toMatchObject({ custom_instructions: "Keep the open diff", custom_instructions_source: "agent" });
+		for (const payload of [bare, auto]) {
+			expect(payload.custom_instructions).toBe("");
+			expect(payload).not.toHaveProperty("custom_instructions_source");
+		}
+		expect(auto).toMatchObject({ trigger: "auto", trigger_source: "threshold" });
+	});
 	it("keeps PostCompact unavailable to native configs", () => {
 		const errors: string[] = [];
 		const config = parseHooks(

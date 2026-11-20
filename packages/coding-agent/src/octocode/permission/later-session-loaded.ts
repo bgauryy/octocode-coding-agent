@@ -14,14 +14,17 @@
  *   `core/resource-loader/themes.ts`;
  * - `agents`: subagent profiles, `octocode/shared/home.ts` (`projectAgentDirs`) and `octocode/discovery/agents.ts`;
  * - `system.md`, `append_system.md`: the system prompt, `core/discovery/vendors/octocode.ts`;
- * - `agents.md`, `agents.override.md`: instruction files a session loads from the folder it starts in
- *   (`core/discovery/sources.ts`, `CONTEXT_FILE_CANDIDATES`), which can be here;
+ * - `agents.md`, `agents.override.md`, `claude.md`: instruction files a session loads from the folder it starts in
+ *   (`core/discovery/sources.ts`, `CONTEXT_FILE_CANDIDATES`; `CLAUDE.md` where the folder has no AGENTS file), which
+ *   can be here;
  * - `plugins`: not discovered by folder; a plugin that `settings.json` names loads from any path (`core/plugin-resources.ts`),
  *   and this is the conventional place for it;
  * - `npm`, `git`: project-installed packages, `core/package-manager/npm.ts` and `git.ts` (code that loads as resources);
  * - `worktrees`: checkouts (`octocode/worktrees/repo.ts`) that a session can start in and load all of the above from;
  * - `code`: the workspace state folder (transcripts, workspace id, database), `config/workspace.ts`; only its
- *   `temp/` scratch is data (`file-access.ts`, `read-only-role.ts`).
+ *   `temp/` scratch is data (`file-access.ts`, `read-only-role.ts`);
+ * - `octocodecode`: the repository's curated `MEMORY.md`, which every session loads into its prompt
+ *   (`permission/memory-files.ts`, `memory/file/section.ts`).
  */
 export const LOADED_BY_LATER_SESSIONS: ReadonlySet<string> = new Set(
 	[
@@ -41,7 +44,9 @@ export const LOADED_BY_LATER_SESSIONS: ReadonlySet<string> = new Set(
 		"append_system.md",
 		"agents.md",
 		"agents.override.md",
+		"claude.md",
 		"worktrees",
 		"code",
+		"octocodecode",
 	].map((name) => name.toLowerCase()),
 );

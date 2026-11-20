@@ -19,6 +19,7 @@ import {
 } from "../compaction/index.ts";
 import type { FeatureHost } from "../features/index.ts";
 import type { SessionEntry, SessionManager } from "../session-manager.ts";
+import { ancestors } from "../session-manager/ancestors.ts";
 
 /** How far below the compaction threshold the plan is made: about the context a run adds while a summary is written. */
 export function prewarmLeadTokens(contextWindow: number): number {
@@ -43,6 +44,40 @@ const targetOf = (model: Model<any>, settings: CompactionSettings, forced?: stri
 		settings.keepRecentTokens,
 		forced,
 	]);
+
+/** Whether `plan` still fits `branchEntries`: same session, model and settings, grown past its leaf with no compaction or edit. */
+function holds(
+	plan: Plan,
+	branchEntries: readonly SessionEntry[],
+	sessionId: string,
+	model: Model<any>,
+	settings: CompactionSettings,
+	forcedSystemPrompt?: string,
+): boolean {
+	const leafAt = branchEntries.findIndex((entry) => entry.id === plan.leafId);
+	return (
+		plan.sessionId === sessionId &&
+		plan.target === targetOf(model, settings, forcedSystemPrompt) &&
+		leafAt >= 0 &&
+		!plan.controller.signal.aborted &&
+		branchEntries.some((entry) => entry.id === plan.preparation.firstKeptEntryId) &&
+		!branchEntries.slice(leafAt + 1).some((entry) => entry.type === "compaction" || entry.type === "context_edit")
+	);
+}
+
+/** A plan taken out for a manual compaction (`detach`): its summary request runs on until `release`. */
+export interface DetachedPlan {
+	/** The plan's preparation when it still fits the branch (as `take` checks), else undefined. */
+	preparationFor(
+		branchEntries: readonly SessionEntry[],
+		sessionId: string,
+		model: Model<any>,
+		settings: CompactionSettings,
+		forcedSystemPrompt?: string,
+	): CompactionPreparation | undefined;
+	/** Ends the plan and its request: the compaction is done with it, or did not use it. */
+	release(): void;
+}
 
 export class CompactionPrewarm {
 	/** The plan in force: one is made, then kept until it is used, dropped or a compaction succeeds. */
@@ -70,7 +105,7 @@ export class CompactionPrewarm {
 		let preparation: CompactionPreparation | undefined;
 		try {
 			const prepared = prepareCompaction(branchEntries, settings);
-			preparation = prepared && fitCompactionToWindow(branchEntries, prepared, model.contextWindow);
+			preparation = prepared && fitCompactionToWindow(branchEntries, prepared, model.contextWindow, { model });
 		} catch {
 			// The kept part does not fit the window: the compaction itself reports that.
 		}
@@ -103,19 +138,26 @@ export class CompactionPrewarm {
 	): CompactionPreparation | undefined {
 		const plan = this.plan;
 		if (!plan) return undefined;
-		const leafAt = branchEntries.findIndex((entry) => entry.id === plan.leafId);
-		const holds =
-			plan.sessionId === sessionId &&
-			plan.target === targetOf(model, settings, forcedSystemPrompt) &&
-			leafAt >= 0 &&
-			!plan.controller.signal.aborted &&
-			branchEntries.some((entry) => entry.id === plan.preparation.firstKeptEntryId) &&
-			!branchEntries.slice(leafAt + 1).some((entry) => entry.type === "compaction" || entry.type === "context_edit");
-		if (!holds) {
+		if (!holds(plan, branchEntries, sessionId, model, settings, forcedSystemPrompt)) {
 			this.drop();
 			return undefined;
 		}
 		return plan.preparation;
+	}
+
+	/**
+	 * Takes the plan out, so the abort a manual compaction starts with does not end its request: the agent's own
+	 * compaction at a task boundary then runs the plan and uses the summary already requested for it.
+	 */
+	detach(): DetachedPlan | undefined {
+		const plan = this.plan;
+		if (!plan) return undefined;
+		this.plan = undefined;
+		return {
+			preparationFor: (branchEntries, sessionId, model, settings, forcedSystemPrompt) =>
+				holds(plan, branchEntries, sessionId, model, settings, forcedSystemPrompt) ? plan.preparation : undefined,
+			release: () => plan.controller.abort(),
+		};
 	}
 
 	/** Ends the plan and its request. The next approach to the threshold plans again. */
@@ -129,8 +171,24 @@ export class CompactionPrewarm {
 		this.drop();
 	}
 
-	/** Ends a plan made for another model or other settings, so the request that follows plans for the ones in use. */
-	dropIfStale(model: Model<any>, settings: CompactionSettings, forcedSystemPrompt?: string): void {
-		if (this.plan && this.plan.target !== targetOf(model, settings, forcedSystemPrompt)) this.drop();
+	/**
+	 * Ends a plan made for another model or other settings, or for a branch the session left (a `/tree` jump or a rewind
+	 * since: the plan's last entry is not on the branch now), so its request stops and the request that follows plans for
+	 * the model, settings and branch in use. The branch is walked from its leaf back only until the plan's entry.
+	 */
+	dropIfStale(
+		model: Model<any>,
+		settings: CompactionSettings,
+		forcedSystemPrompt?: string,
+		sessionManager?: Pick<SessionManager, "getSessionId" | "getLeafEntry" | "getEntry">,
+	): void {
+		const plan = this.plan;
+		if (!plan) return;
+		if (plan.target !== targetOf(model, settings, forcedSystemPrompt)) return this.drop();
+		if (!sessionManager) return;
+		if (plan.sessionId !== sessionManager.getSessionId()) return this.drop();
+		for (const entry of ancestors(sessionManager.getLeafEntry(), (id) => sessionManager.getEntry(id)))
+			if (entry.id === plan.leafId) return;
+		this.drop();
 	}
 }

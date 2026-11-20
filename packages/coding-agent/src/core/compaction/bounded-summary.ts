@@ -7,7 +7,9 @@ import { contentText, type RetryCallbacks, type RetryPolicy } from "@octocodeai/
 import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { renderPrompt } from "../prompt-template.ts";
-import { completeBounded, createSummarizationOptions, getSummarizationFailure } from "./summarization.ts";
+import { completeBounded, createSummarizationOptions } from "./summarization.ts";
+import { summaryFailure } from "./summary-failure.ts";
+import { focusBlock, type SummaryFocus } from "./summary-focus.ts";
 import { serializeMessages } from "./utils.ts";
 
 const TURN_PREFIX_SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/turn-prefix.md");
@@ -27,13 +29,15 @@ export async function generateTurnPrefixSummary(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
-	customInstructions?: string,
+	customInstructions?: string | SummaryFocus,
 	cache?: CachePreferences,
 ): Promise<{ text: string; usage: Usage }> {
 	const response = await completeBounded(
 		messages,
-		(remaining) =>
-			`# Conversation\n${serializeMessages(remaining)}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${customInstructions ? `\n\nAdditional summary focus:\n${customInstructions}` : ""}`,
+		(remaining) => {
+			const focus = focusBlock(customInstructions);
+			return `# Conversation\n${serializeMessages(remaining)}\n\n# Instructions\n${TURN_PREFIX_SUMMARIZATION_PROMPT}${focus ? `\n\n${focus}` : ""}`;
+		},
 		model,
 		createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache),
 		streamFn,
@@ -41,9 +45,9 @@ export async function generateTurnPrefixSummary(
 		callbacks,
 	);
 
-	const failure = getSummarizationFailure(response, "Turn prefix summarization");
+	const failure = summaryFailure(response, "Turn prefix summarization", model);
 	if (failure) {
-		throw new Error(failure);
+		throw failure;
 	}
 	if (response.content.some((block) => block.type === "toolCall")) {
 		throw new Error("Turn prefix summarization attempted to call a tool");

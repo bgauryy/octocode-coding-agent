@@ -13,6 +13,7 @@ import {
 } from "../src/core/compaction/index.ts";
 import { runCompaction } from "../src/core/session-compaction.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -29,28 +30,31 @@ const usage = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+/** Characters for a length sized at three characters per token, at the estimator's ratio: the token sizes stay. */
+const sized = (chars: number) => Math.round((chars * CHARS_PER_TOKEN) / 3);
+
 /** A session built on a 200k model: an 11k-token prompt and tools, then `pairs` turns of about 1,000 tokens each. */
 function seed(sessionManager: SessionManager, pairs: number, promptChars = 18_175): void {
 	sessionManager.appendMessage({
 		role: "system",
 		content: "",
-		sections: { base: "b".repeat(promptChars), octocode: "o".repeat(3_285) },
+		sections: { base: "b".repeat(sized(promptChars)), octocode: "o".repeat(sized(3_285)) },
 		toolsAdded: Array.from({ length: 8 }, (_, i) => ({
 			name: `tool_${i}`,
-			description: "d".repeat(360),
-			parameters: { type: "object", properties: { text: { type: "string", description: "p".repeat(1_100) } } },
+			description: "d".repeat(sized(360)),
+			parameters: { type: "object", properties: { text: { type: "string", description: "p".repeat(sized(1_100)) } } },
 		})),
 		timestamp: at,
 	} as never);
 	for (let i = 0; i < pairs; i++) {
 		sessionManager.appendMessage({
 			role: "user",
-			content: [{ type: "text", text: `ask ${i} ${"u".repeat(1_500)}` }],
+			content: [{ type: "text", text: `ask ${i} ${"u".repeat(sized(1_500))}` }],
 			timestamp: at + i * 2,
 		});
 		sessionManager.appendMessage({
 			role: "assistant",
-			content: [{ type: "text", text: `answer ${i} ${"a".repeat(1_500)}` }],
+			content: [{ type: "text", text: `answer ${i} ${"a".repeat(sized(1_500))}` }],
 			api: "x",
 			provider: "p",
 			model: "large",
@@ -93,7 +97,11 @@ describe("a switch from a 200k-window model to a 16k one", () => {
 		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fit-window-"));
 		directories.push(directory);
 		const finalized = finalizeCompactionResult(
-			{ summary: "s".repeat(6_000), firstKeptEntryId: fitted.firstKeptEntryId, tokensBefore: fitted.tokensBefore },
+			{
+				summary: "s".repeat(sized(6_000)),
+				firstKeptEntryId: fitted.firstKeptEntryId,
+				tokensBefore: fitted.tokensBefore,
+			},
 			{
 				branchEntries: branch,
 				contextWindow: small,

@@ -11,7 +11,7 @@ import type { SessionRemoval } from "../../src/core/session-picker.ts";
 import { SessionSelectorComponent } from "../../src/modes/interactive/components/session-selector.ts";
 import { handleDeleteSessions, handlePurge } from "../../src/modes/rpc/rpc-mode/session-delete.ts";
 import { validateRpcCommand } from "../../src/modes/rpc/rpc-command-schema.ts";
-import { pickerRemoval } from "../../src/octocode/sessions/delete.ts";
+import { pickerRemoval, sharedPickerRemoval } from "../../src/octocode/sessions/delete.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { tmp } from "./helpers.ts";
@@ -66,6 +66,20 @@ function session(id: string, pid: number | null = null) {
 	};
 	return { file, folder, info };
 }
+
+describe("the shared picker removal", () => {
+	it("removes transcript, folder and database row, and refuses the current session", async () => {
+		const [gone, current] = [session("shared-gone"), session("shared-current")];
+		const outcome = await sharedPickerRemoval(() => "shared-current")([gone.info, current.info]);
+		expect(outcome.removed).toEqual([gone.file]);
+		expect(outcome.problems).toHaveLength(1);
+		expect(fs.existsSync(gone.file)).toBe(false);
+		expect(fs.existsSync(gone.folder)).toBe(false);
+		expect(new SessionIndex(sharedAgentDb()).get("shared-gone")).toBeUndefined();
+		expect(fs.existsSync(current.file)).toBe(true);
+		expect(new SessionIndex(sharedAgentDb()).get("shared-current")).toBeDefined();
+	});
+});
 
 describe("deleting sessions from the picker", () => {
 	it("deletes every marked session: transcript, folder and rows", async () => {

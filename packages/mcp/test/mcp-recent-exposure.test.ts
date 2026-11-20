@@ -51,11 +51,12 @@ const text = (result: { content: Array<{ type: string; text?: string }> }) =>
 	result.content.map((part) => part.text ?? "").join("");
 
 describe("mcpExposure recent", () => {
-	it("is not the default (usage is), and no bundled server pins its own exposure past the setting", () => {
+	it("is not the default (usage is), and only FreeLlama, all on demand, sets its own exposure past the setting", () => {
 		expect(DEFAULT_MCP_EXPOSURE_SETTING).toBe("usage");
 		const presets = recommendedPresets();
 		expect(presets.map(({ name }) => name)).toContain("octocode");
-		for (const { name, config } of presets) expect(config?.exposure, name).toBeUndefined();
+		for (const { name, config } of presets)
+			expect(config?.exposure, name).toBe(name === "freellama" ? "onDemand" : undefined);
 	});
 
 	it("defers an unused tool with the server's whole description and thin parameters", async () => {
@@ -66,6 +67,7 @@ describe("mcpExposure recent", () => {
 			type: "object",
 			properties: { text: { type: "string" } },
 			additionalProperties: true,
+			required: ["text"],
 		});
 		expect(text(await cold.h.call("mcp__docs__shout", { text: "hi" }))).toContain("HI");
 	});

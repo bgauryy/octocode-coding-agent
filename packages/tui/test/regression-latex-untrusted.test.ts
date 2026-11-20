@@ -2,6 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Markdown } from "../src/components/markdown.ts";
 import { renderLatex } from "../src/latex.ts";
+import { stripRowMarks } from "../src/utils/row-marks.ts";
 import { defaultMarkdownTheme } from "./test-themes.ts";
 
 function renderMarkdown(text: string): string {
@@ -36,7 +37,7 @@ describe("LaTeX from untrusted model output", () => {
 		const deep = `${"{".repeat(20000)}x${"}".repeat(20000)}`;
 		assert.strictEqual(renderLatex(deep), undefined);
 		const output = renderMarkdown(`math $${deep}$ done`);
-		assert.match(output.replace(/\s+/g, ""), /^math\$\{+x\}+\$done$/);
+		assert.match(stripRowMarks(output).replace(/\s+/g, ""), /^math\$\{+x\}+\$done$/);
 	});
 
 	it("renders long spacing runs inside scripts in linear time", () => {

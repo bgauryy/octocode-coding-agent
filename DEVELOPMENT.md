@@ -114,6 +114,7 @@ A disposable-registry result is not a production lock: after the dependency tarb
 | [tui](packages/tui/README.md)                                           | library  | Terminal components, input, differential renderer; prebuilt clipboard and modifier-key helpers                                                                          |
 | [tui-ink](packages/tui-ink/README.md)                                   | library  | Opt-in Ink + React renderer (`OCTOCODE_UI=ink`): screen modes, input bridge, clock, theme, `<Legacy>` bridge over `tui` components; `tui` never imports it              |
 | [webview](packages/webview/README.md)                                   | library  | The `/web` page: views, store, transport; never executes or authorizes                                                                                                  |
+| [projections](packages/projections/README.md)                           | library  | Portable frame interpretation every interface shares: ordering, snapshots, receipts, resync; imports only contracts, no Node, DOM or host code                          |
 | [contracts](packages/contracts/README.md)                               | library  | TypeBox schemas and types that cross a package or interface boundary                                                                                                    |
 | [common](packages/common/README.md)                                     | library  | Host-free utilities: JSON, paths, atomic writes, process helpers, redaction, web guard                                                                                  |
 | [telemetry](packages/telemetry/README.md)                               | library  | Span and metric contracts with a no-op context                                                                                                                          |
@@ -131,7 +132,7 @@ flowchart LR
   CA --> AI
   CA --> TUI[tui]
   CA --> INK[tui-ink] --> TUI
-  CA --> WEB[webview]
+  CA --> WEB[webview] --> PROJ[projections]
   CA -.->|hosts| MCP[mcp]
   CA -.->|hosts| ACP[acp]
   CA -.->|hosts| DB[db]

@@ -1,5 +1,5 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
-import type { BashExecutionMessage, CustomMessage } from "../messages.ts";
+import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "../messages.ts";
 import type {
 	InputOrigin,
 	ContextEditEntry,
@@ -108,7 +108,7 @@ export interface SessionManagerApi {
 	appendCustomMessageEntry<T = unknown>(
 		customType: string,
 		content: string | (TextContent | ImageContent)[],
-		display: boolean,
+		display: MessageDisplay,
 		details?: T,
 		timestamp?: number,
 	): string;

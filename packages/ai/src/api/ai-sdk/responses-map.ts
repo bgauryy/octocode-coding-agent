@@ -22,7 +22,8 @@ export function responsesMapping(
 ) {
 	const compat = getCompat(model);
 	const signIn = isChatGPTSignIn(model, options.apiKey);
-	const cache = resolveOpenAIResponsesCacheFields(compat, options, signIn);
+	// Azure breakpoints take no `ttl`: its request TTL is their only lifetime.
+	const cache = resolveOpenAIResponsesCacheFields(compat, options, signIn, model.api !== "azure-openai-responses");
 	const requested = options.reasoningEffort ?? (options.reasoningSummary ? "medium" : undefined);
 	const update = getConfigurationUpdateEffort(model, options, compat);
 	const mapped = requested ? (model.thinkingLevelMap?.[requested] ?? requested) : undefined;
@@ -55,6 +56,9 @@ export function responsesMapping(
 	if (typeof options.toolChoice === "string") toolChoice = options.toolChoice;
 	else if (options.toolChoice?.type === "function") toolChoice = { type: "tool", toolName: options.toolChoice.name };
 	let serviceTier = options.serviceTier;
+	// The SDK's raw finish reason is only `incomplete_details.reason` (absent on a completed response), so the terminal
+	// event's own status is kept: `completed`, or `incomplete.<reason>`.
+	let terminalStatus: string | undefined;
 	const reasoningSignatures = new Map<string, string>();
 	const rich = responsesRich(context);
 	const onPart: NonNullable<SdkMapping["onPart"]> = (part, output, stream) => {
@@ -62,7 +66,7 @@ export function responsesMapping(
 		if (part.type === "raw") {
 			const event = part.rawValue as {
 				type?: string;
-				response?: { id?: string };
+				response?: { id?: string; status?: string; incomplete_details?: { reason?: string } | null };
 				item?: {
 					type?: string;
 					id?: string;
@@ -71,6 +75,10 @@ export function responsesMapping(
 				};
 			};
 			if (event.response?.id) output.responseId = event.response.id;
+			if ((event.type === "response.completed" || event.type === "response.incomplete") && event.response?.status) {
+				const reason = event.response.incomplete_details?.reason;
+				terminalStatus = reason ? `${event.response.status}.${reason}` : event.response.status;
+			}
 			if (event.type === "response.output_item.done" && event.item?.type === "reasoning" && event.item.id) {
 				const item = event.item;
 				reasoningSignatures.set(event.item.id, JSON.stringify(item));
@@ -117,7 +125,7 @@ export function responsesMapping(
 			if (typeof part.providerMetadata?.openai?.serviceTier === "string")
 				serviceTier = part.providerMetadata.openai.serviceTier as OpenAIResponsesOptions["serviceTier"];
 			if (!output.responseId) output.responseId = part.response.id;
-			output.rawStopReason = part.rawFinishReason;
+			output.rawStopReason = terminalStatus ?? part.rawFinishReason;
 			if (part.response.modelId && part.response.modelId !== model.id) output.responseModel = part.response.modelId;
 			return true;
 		}

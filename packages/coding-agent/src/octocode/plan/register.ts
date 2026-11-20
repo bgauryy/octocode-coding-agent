@@ -4,6 +4,7 @@ import type { FeatureSetup, CommandContext, FeatureContext } from "../../core/fe
 import { getApplicationPortForSession } from "../../core/application/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { STATUS } from "../shared/status.ts";
+import { isStaleSessionError } from "../shared/util.ts";
 import { planningRefusal, type ShellReader } from "./gate.ts";
 import { getMcpSessionStatus } from "../../../../mcp/src/api.ts";
 import { planStartupRequested } from "./startup.ts";
@@ -55,12 +56,13 @@ export function registerPlanning(api: FeatureSetup, commands: Subcommands, stopW
 		ensureState(ctx);
 		if (!state.active || !state.text) return;
 		try {
-			void api.session.sendMessage(
+			await api.session.sendMessage(
 				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
-		} catch {
-			// The session was replaced.
+		} catch (error) {
+			// The session was replaced; anything else reaches the bus's error report.
+			if (!isStaleSessionError(error)) throw error;
 		}
 	});
 	api.bus.on("agent_end", async (event, ctx) => {

@@ -1,4 +1,5 @@
 import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
+import { leanMainPolicy } from "../core/lean-main.ts";
 import type { Skill } from "../core/skills.ts";
 import {
 	currentEnvironment,
@@ -74,6 +75,8 @@ export function registerTurnSetup(
 	// Only the coordinator routes tasks: its prompt states the routes once per session, later changes arrive as a notice.
 	const routing = new RoutingWatch();
 	const coordinates = (selected: readonly string[]) => !options.isSubagent && selected.includes("agent");
+	const leansMain = (ctx: Pick<FeatureContext, "model">) =>
+		!options.isSubagent && leanMainPolicy(ctx.model, typeof api.settings.get === "function" ? api.settings.get() : {});
 
 	api.bus.on("before_agent_start", async (event, ctx) => {
 		// Read each turn: the prompt changes only when a person attaches or leaves, not on its own.
@@ -106,9 +109,12 @@ export function registerTurnSetup(
 					}
 				: undefined;
 		const profiles = [...options.profiles().values()];
-		const reading = coordinates(selected) ? currentRouting(ctx, profiles) : undefined;
-		const routes = routing.prompt(reading?.facts, reading?.catalog);
-		const notice = ownsPrompt(ctx) ? undefined : routing.notice(reading?.facts, reading);
+		// A main session on a small window or a small-tier model gets the lean policy too: no delegation, no skill list, and
+		// no routes, which wait (unfrozen) for a model that reads the full policy.
+		const leanMain = leansMain(ctx);
+		const reading = coordinates(selected) && !leanMain ? currentRouting(ctx, profiles) : undefined;
+		const routes = leanMain ? undefined : routing.prompt(reading?.facts, reading?.catalog);
+		const notice = ownsPrompt(ctx) || leanMain ? undefined : routing.notice(reading?.facts, reading);
 		// A child whose profile declares `browser.control` and that holds the browser server drives its own isolated
 		// browser. Both are fixed by the profile, so every child of one profile keeps the same policy text.
 		const ownProfile = options.isSubagent ? options.profiles().get(process.env[AGENT_ROLE_ENV] ?? "") : undefined;
@@ -149,19 +155,22 @@ export function registerTurnSetup(
 			browserControl,
 			childStarted: delegated,
 		};
-		policyInputs = lean ? undefined : inputs;
-		const key = JSON.stringify(inputs);
+		const leanNow = lean || leanMain;
+		policyInputs = leanNow ? undefined : inputs;
+		const key = JSON.stringify([leanNow, inputs]);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
-			prompt = lean
+			prompt = leanNow
 				? leanPromptSections({
 						canShell: inputs.canShell,
 						canSave: inputs.canSave,
 						readOnly,
 						agentTool: inputs.canUseAgent,
+						main: leanMain,
 					})
 				: octocodePromptSections(inputs);
 		}
+		if (leanMain) event.systemPromptOptions.skills = [];
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta. The policy and the
 		// role stay session sections: the profile list and a project-defined role are project specific, and project
 		// instructions follow the policy (`core/system-prompt-spec.ts`).
@@ -190,7 +199,8 @@ export function registerTurnSetup(
 			event.systemPromptOptions.sections.docs = "";
 			event.systemPromptOptions.sections.harnesses = "";
 			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
-			if (skillCatalog?.length && !skillsInTask) event.systemPromptOptions.skillCatalog = skillCatalog;
+			// An empty catalog (`catalog: []`) lists none of the skills; an unset one lists them all.
+			if (skillCatalog && !skillsInTask) event.systemPromptOptions.skillCatalog = skillCatalog;
 		}
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});
@@ -213,12 +223,13 @@ export function registerTurnSetup(
 	api.bus.on("session_compact", () => routing.compacted());
 
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
-	api.bus.on("turn_end", (_event, ctx) => {
-		if (!coordinates(api.tools.getActive()) || ownsPrompt(ctx)) return;
+	api.bus.on("turn_end", async (_event, ctx) => {
+		if (!coordinates(api.tools.getActive()) || ownsPrompt(ctx) || leansMain(ctx)) return;
 		const reading = currentRouting(ctx, options.profiles().values());
 		const notice = routing.notice(reading.facts, reading);
+		// It starts no turn, so it settles at once; a failure reaches the bus's error report.
 		if (notice)
-			void api.session.sendMessage(
+			await api.session.sendMessage(
 				{ customType: ROUTING_NOTICE_ID, content: notice, display: false },
 				{ triggerTurn: false },
 			);

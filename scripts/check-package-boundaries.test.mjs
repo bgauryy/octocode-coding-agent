@@ -41,6 +41,42 @@ test("rejects relative package crossing and unclassified packages", () => {
 	assert.ok(issues.some((x) => x.includes("relative")));
 	assert.ok(issues.some((x) => x.includes("rogue")));
 });
+test("a portable package imports only its policy workspaces: no Node, DOM, React or host code", () => {
+	const portablePackages = {
+		...packages,
+		projections: { name: "@app/projections", dependencies: { "@app/contracts": "1" } },
+	};
+	const portable = new Set(["projections"]);
+	const check = (imports) =>
+		checkPackageBoundaries(
+			portablePackages,
+			[{ package: "projections", path: "src/stream.ts", imports }],
+			{ ...policy, projections: ["contracts"] },
+			LAYER_RULES,
+			portable,
+		);
+	assert.deepEqual(check(["@app/contracts", "@app/contracts/events", "./local.ts"]), []);
+	assert.deepEqual(check(["node:fs", "path", "react-dom/client", "@xterm/xterm"]), [
+		"Node built-in in portable package: projections/src/stream.ts -> node:fs",
+		"Node built-in in portable package: projections/src/stream.ts -> path",
+		"external package in portable package: projections/src/stream.ts -> react-dom/client",
+		"external package in portable package: projections/src/stream.ts -> @xterm/xterm",
+	]);
+	const host = check(["@app/agent", "../../webview/src/view.ts"]);
+	assert.ok(host.some((x) => x.startsWith("forbidden import: projections/src/stream.ts -> agent")));
+	assert.ok(host.some((x) => x.startsWith("relative package import: projections/src/stream.ts")));
+	// Another package may import what a portable package may not.
+	assert.deepEqual(
+		checkPackageBoundaries(
+			portablePackages,
+			[{ package: "webview", path: "src/page.ts", imports: ["react-dom/client"] }],
+			{ ...policy, projections: ["contracts"] },
+			LAYER_RULES,
+			portable,
+		),
+		[],
+	);
+});
 test("rejects declared package cycles", () => {
 	const p = {
 		a: { name: "@app/a", dependencies: { "@app/b": "1" } },

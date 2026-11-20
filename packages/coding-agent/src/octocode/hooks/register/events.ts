@@ -1,23 +1,35 @@
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import type { FeatureSetup } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
+import { compactionOutcome } from "../../../core/compaction/outcome-read.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { claudeSessionEndOverride } from "../profiles.ts";
 import { capContext } from "../runner.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookHostMetadata, type HookSession } from "./types.ts";
 
-/** Native PreCompact remains observational; source-profile vetoes cancel through the core owner. */
+/**
+ * Native PreCompact remains observational; source-profile vetoes cancel through the core owner. `trigger` keeps the
+ * hosts' `manual` or `auto`; `trigger_source` says who or what asked (`user`, `agent`, `threshold`, `overflow`).
+ * `custom_instructions` is the focus a manual compaction was given ("" without one), and `custom_instructions_source`
+ * says whose it is: the user's `/compact` text or the agent's own `compact` focus.
+ */
 export function registerPreCompactHook(api: FeatureSetup, dispatch: Dispatch): void {
 	api.bus.on("session_before_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
+		const source = event.reason === "manual" ? (event.requestedBy ?? "user") : event.reason;
+		// As in Claude Code, an automatic compaction has no instructions of its own.
+		const instructions = trigger === "manual" && event.customInstructions?.trim() ? event.customInstructions : "";
 		const verdict = await dispatch(
 			ctx,
 			"PreCompact",
 			[trigger],
 			() => ({
 				trigger,
-				custom_instructions: "",
+				custom_instructions: instructions,
+				...(instructions ? { custom_instructions_source: source } : {}),
+				trigger_source: source,
+				tokens_before: event.preparation?.tokensBefore ?? null,
 			}),
 			event.signal,
 		);
@@ -68,13 +80,25 @@ export function registerSessionEndHook(
 	});
 }
 
+/**
+ * PostCompact: Claude's and Codex's `trigger` and `compact_summary`, plus the outcome the compaction entry records:
+ * who asked, the tokens before and the estimated tokens after, whose focus it had, and the carried rules it lifted.
+ */
 export function registerPostCompactHook(api: FeatureSetup, dispatch: Dispatch): void {
 	api.bus.on("session_compact", async (event, ctx) => {
 		const trigger = event.reason === "manual" ? "manual" : "auto";
-		const verdict = await dispatch(ctx, "PostCompact", [trigger], () => ({
-			trigger,
-			compact_summary: event.compactionEntry.summary,
-		}));
+		const verdict = await dispatch(ctx, "PostCompact", [trigger], () => {
+			const outcome = compactionOutcome(event.compactionEntry);
+			return {
+				trigger,
+				compact_summary: event.compactionEntry.summary,
+				trigger_source: outcome.trigger ?? (event.reason === "manual" ? "user" : event.reason),
+				tokens_before: outcome.tokensBefore ?? null,
+				tokens_after: outcome.estimatedTokensAfter ?? null,
+				focus_source: outcome.focusSource ?? null,
+				lifted: outcome.lifted,
+			};
+		});
 		if (verdict.stop) ctx.abort("internal");
 		if (verdict.context && !verdict.stop && !ctx.signal?.aborted) {
 			await api.session.sendMessage(

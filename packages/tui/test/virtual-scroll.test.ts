@@ -603,7 +603,7 @@ describe("virtualized scroll view", () => {
 				}),
 				requestRender() {},
 			},
-			(text) => text,
+			{ navigationButton: (text) => text },
 		);
 		search.toggleSearch();
 		const active = search.activeSearch;

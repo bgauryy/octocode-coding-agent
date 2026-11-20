@@ -32,7 +32,10 @@ import {
 	summarySizeTarget,
 	TLDR_HEADING,
 } from "./summary-format.ts";
+import { carryLedger, ledgerPrompt, ledgerOf, type LiftedBullet } from "./ledger.ts";
 import { summaryMaxTokens, summaryThinkingLevel } from "./settings.ts";
+import { summaryFailure } from "./summary-failure.ts";
+import { focusBlock, type SummaryFocus } from "./summary-focus.ts";
 
 const SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/summarize.md", {
 	format: SUMMARY_CHECKPOINT_FORMAT,
@@ -42,27 +45,6 @@ const UPDATE_SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/summarize
 	format: SUMMARY_CHECKPOINT_FORMAT,
 	tldrHeading: TLDR_HEADING,
 });
-
-/**
- * Returns an error message when a summarization response cannot safely be persisted.
- * A length stop or a cancel (providers return `aborted` rather than throwing) leaves partial text, which must not
- * become a session checkpoint.
- */
-export function getSummarizationFailure(response: AssistantMessage, label: string): string | undefined {
-	if (response.stopReason === "aborted") {
-		return `${label} was cancelled`;
-	}
-	if (response.stopReason === "error") {
-		return `${label} failed: ${response.errorMessage || "Unknown error"}`;
-	}
-	if (response.stopReason === "length") {
-		return `${label} failed: generation hit the token cap and the summary is incomplete (output ${response.usage.output} tokens)`;
-	}
-	if (!response.content.some((block) => block.type === "toolCall") && !contentText(response.content).trim()) {
-		return `${label} failed: the summary was empty`;
-	}
-	return undefined;
-}
 
 export function createSummarizationOptions(
 	model: Model<any>,
@@ -167,7 +149,7 @@ const overflowed = (response: AssistantMessage, signal: AbortSignal | undefined)
  */
 function olderPartEnd(messages: AgentMessage[]): number | undefined {
 	if (messages.length < 2) return undefined;
-	const sizes = messages.map(estimateTokens);
+	const sizes = messages.map((message) => estimateTokens(message));
 	const half = sizes.reduce((sum, size) => sum + size, 0) / 2;
 	let cut = 1;
 	for (let seen = sizes[0]; cut < messages.length - 1 && seen < half; cut++) seen += sizes[cut];
@@ -224,19 +206,19 @@ const CUT_OFF_NOTE = renderPrompt("workflows/compaction/cut-off-note.md");
  * The text of a history summary after every shrinking retry: one still cut off at the cap is kept, marked as cut, when it
  * already says where the work stopped (the sections after it only condense); otherwise it throws like `summaryText`.
  */
-function keptSummaryText(response: AssistantMessage): string {
+function keptSummaryText(response: AssistantMessage, model: Model<any>): string {
 	if (response.stopReason === "length" && !response.content.some((block) => block.type === "toolCall")) {
 		const text = contentText(response.content).trim();
 		if (summarySection(text, STOPPED_HEADING).length > 0) return `${text}\n\n${CUT_OFF_NOTE.trim()}`;
 	}
-	return summaryText(response);
+	return summaryText(response, model);
 }
 
 /** The text of a finished summary response; throws when it failed, was cut off or asked for a tool. */
-function summaryText(response: AssistantMessage): string {
-	const failure = getSummarizationFailure(response, "Summarization");
+function summaryText(response: AssistantMessage, model: Model<any>): string {
+	const failure = summaryFailure(response, "Summarization", model);
 	if (failure) {
-		throw new Error(failure);
+		throw failure;
 	}
 	if (response.content.some((block) => block.type === "toolCall")) {
 		throw new Error("Summarization attempted to call a tool");
@@ -305,7 +287,10 @@ export async function completeBounded(
 	return response.usage === usage ? response : { ...response, usage };
 }
 
-/** Generate or update a conversation summary and return its provider usage. */
+/**
+ * Generate or update a conversation summary and return its provider usage. The ledger of the summary it updates
+ * (`ledger.ts`) is named in the request and written back by code; `lifted` lists the bullets the model lifted.
+ */
 export async function generateSummaryWithUsage(
 	currentMessages: AgentMessage[],
 	model: Model<any>,
@@ -314,7 +299,7 @@ export async function generateSummaryWithUsage(
 	apiKey: string | undefined,
 	headers?: Record<string, string>,
 	signal?: AbortSignal,
-	customInstructions?: string,
+	customInstructions?: string | SummaryFocus,
 	previousSummary?: string,
 	thinkingLevel?: ThinkingLevel,
 	streamFn?: StreamFn,
@@ -323,7 +308,7 @@ export async function generateSummaryWithUsage(
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
 	cache?: CachePreferences,
-): Promise<{ text: string; usage: Usage }> {
+): Promise<{ text: string; usage: Usage; lifted: LiftedBullet[] }> {
 	// Every summary is asked for a size (a first one without it ran past the cap); `completeBounded` halves it per retry.
 	const room = reserveTokens ? inlineSummaryTokens(reserveTokens) : summaryMaxTokens(model);
 	const buildPrompt =
@@ -337,7 +322,9 @@ export async function generateSummaryWithUsage(
 			}
 			// Use the update prompt if we have a previous summary, the initial prompt otherwise.
 			promptText += previous ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
-			return customInstructions ? `${promptText}\n\nAdditional focus: ${customInstructions}` : promptText;
+			return [promptText, ledgerPrompt(ledgerOf(previous)), focusBlock(customInstructions)]
+				.filter(Boolean)
+				.join("\n\n");
 		};
 
 	const options = createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache);
@@ -357,13 +344,18 @@ export async function generateSummaryWithUsage(
 	// overflow goes on by dropping the oldest messages.
 	if (split === undefined) {
 		const response = await complete(currentMessages, previousSummary, whole);
-		return { text: keptSummaryText(response), usage: response.usage };
+		return { ...carryLedger(keptSummaryText(response, model), previousSummary), usage: response.usage };
 	}
 	// Too large for one request: the older part is summarized on its own, and that summary is the previous summary of
 	// the newer part, so the oldest history is condensed twice instead of left out. A part that still does not fit
 	// drops its own oldest messages and says so.
 	const older = await complete(currentMessages.slice(0, split), previousSummary);
-	const olderSummary = keptSummaryText(older);
-	const newer = await complete(currentMessages.slice(split), olderSummary);
-	return { text: keptSummaryText(newer), usage: combineUsage(older.usage, newer.usage) };
+	const olderPart = carryLedger(keptSummaryText(older, model), previousSummary);
+	const newer = await complete(currentMessages.slice(split), olderPart.text);
+	const newerPart = carryLedger(keptSummaryText(newer, model), olderPart.text);
+	return {
+		text: newerPart.text,
+		usage: combineUsage(older.usage, newer.usage),
+		lifted: [...olderPart.lifted, ...newerPart.lifted],
+	};
 }

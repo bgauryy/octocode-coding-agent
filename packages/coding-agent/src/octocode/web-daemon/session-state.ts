@@ -15,13 +15,16 @@ export interface SessionState {
 }
 
 const RECONNECT_MS = 1000;
+/** The longest wait between attempts while each one fails. */
+const RECONNECT_MAX_MS = 60_000;
 const TITLE_MAX = 300;
 
 /**
  * Follows one attached session's application stream for the two facts the daemon's session list and `remote list` show:
  * `busy` (a run is in progress, or the session's phase still waits on background work) and `needsYou` (the session is blocked on a dialog). One stream per attached session; a
- * resync or a dropped stream reconnects after a short wait while the session stays attached. `state` is undefined until
- * the first snapshot arrived, so a list never claims a session is idle before it heard from it.
+ * resync or a dropped stream reconnects after a short wait while the session stays attached; while attempts keep failing
+ * the wait doubles, up to a minute, and a failure that repeats is reported once. `state` is undefined until the first
+ * snapshot arrived, so a list never claims a session is idle before it heard from it.
  */
 export class SessionWatch {
 	state: SessionState | undefined;
@@ -34,6 +37,9 @@ export class SessionWatch {
 	/** The two facts `busy` combines: a run is going, and the phase waits on work that continues the job. */
 	private running = false;
 	private waiting = false;
+	/** Attempts that failed in a row, and the last failure reported; a stream that ends normally clears both. */
+	private failures = 0;
+	private reported: string | undefined;
 
 	/** Where a throw goes: by default a rejection the daemon's `unhandledRejection` guard logs to `web/daemon.log`. */
 	private readonly report: (error: unknown) => void;
@@ -51,10 +57,13 @@ export class SessionWatch {
 		this.start();
 	}
 
-	/** Follows the session. A throw (a frame `apply` cannot read, a broken stream) is reported and still reconnects. */
+	/** Follows the session. A throw (a frame `apply` cannot read, a broken stream) still reconnects, later each time. */
 	private start(): void {
 		this.follow().catch((error: unknown) => {
-			this.later();
+			this.failed();
+			const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+			if (text === this.reported) return;
+			this.reported = text;
 			this.report(error);
 		});
 	}
@@ -65,7 +74,8 @@ export class SessionWatch {
 		try {
 			connection = this.port.connect({ sessionId: this.sessionId });
 		} catch {
-			return this.later();
+			// The session cannot take a connection now (it is closing or not attached yet): try again later.
+			return this.failed();
 		}
 		this.connection = connection;
 		try {
@@ -84,12 +94,19 @@ export class SessionWatch {
 				this.changed();
 			}
 		}
-		this.later();
+		this.failures = 0;
+		this.reported = undefined;
+		this.later(RECONNECT_MS);
 	}
 
-	private later(): void {
+	private failed(): void {
+		this.failures++;
+		this.later(Math.min(RECONNECT_MS * 2 ** (this.failures - 1), RECONNECT_MAX_MS));
+	}
+
+	private later(delayMs: number): void {
 		if (this.stopped) return;
-		this.timer = setTimeout(() => this.start(), RECONNECT_MS);
+		this.timer = setTimeout(() => this.start(), delayMs);
 		this.timer.unref();
 	}
 

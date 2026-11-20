@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 
 /**
  * Bytes a Unix socket path may hold: macOS `sun_path` is 104 including the terminating NUL, Linux 108. The library
@@ -28,15 +29,14 @@ export function tempDirTooLongForSocket(tempDir: string = os.tmpdir()): boolean 
 export async function withSocketFriendlyTempDir<T>(start: () => Promise<T>): Promise<T> {
 	if (!tempDirTooLongForSocket()) return start();
 	const dir = fs.mkdtempSync(path.join(SHORT_ROOT, "octocode-sb-"));
-	const remove = () => fs.rmSync(dir, { recursive: true, force: true });
-	process.once("exit", remove);
+	const atExit = processLifetime.acquirePath("sandbox socket folder", dir);
 	const hostTmpdir = process.env.TMPDIR;
 	process.env.TMPDIR = dir;
 	try {
 		return await start();
 	} catch (error) {
-		process.off("exit", remove);
-		remove();
+		atExit();
+		fs.rmSync(dir, { recursive: true, force: true });
 		throw error;
 	} finally {
 		if (hostTmpdir === undefined) delete process.env.TMPDIR;

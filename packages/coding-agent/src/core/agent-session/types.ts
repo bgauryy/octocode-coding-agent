@@ -69,22 +69,29 @@ export type AgentSessionEvent =
 	| {
 			type: "auto_retry_start";
 			attempt: number;
+			/** 0: no cap (the machine is offline and retries until the network returns). */
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
+			/** Set while the machine is offline: when the outage began (epoch ms). */
+			offlineSince?: number;
 	  }
 	| {
 			type: "auto_retry_end";
 			success: boolean;
 			attempt: number;
 			finalError?: string;
+			/** How long the machine was offline, when the series ended an outage. */
+			offlineMs?: number;
 	  }
 	| {
 			type: "summarization_retry_scheduled";
 			attempt: number;
+			/** 0: no cap (offline). */
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
+			offlineSince?: number;
 	  }
 	| { type: "summarization_retry_attempt_start"; source: "branchSummary" }
 	| {

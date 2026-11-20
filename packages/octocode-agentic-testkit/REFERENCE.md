@@ -237,6 +237,7 @@ With `onExhausted: "repeat-last"`, the default, the last step repeats. With `"fa
 | `token`            | requires this bearer token                                                                                                                                                 |
 | `roots`            | paths replaced by `<ws>` in canonical requests                                                                                                                             |
 | `simulateCache`    | estimates prompt-cache reads for scripted runs                                                                                                                             |
+| `charsPerToken`    | characters per token of scripted usage (default 4); set the harness's own ratio when its provider counts and its estimates must agree                                      |
 
 ### Real-model runs
 
@@ -591,7 +592,7 @@ unsandboxed one.
 - **Stopping early has a price.** `live` checks the posterior after every trial and stops as soon as it decides. That
   keeps runs cheap, but it means the 0.95 is not a frequentist error rate. Set `minTrials`, and report `passHatK` when
   consistency matters.
-- **Scripted usage is estimated.** Scripted token counts are chars / 4 and marked `estimated`. Only forwarded runs
+- **Scripted usage is estimated.** Scripted token counts are chars / 4 (`charsPerToken` changes the ratio) and marked `estimated`. Only forwarded runs
   report real provider usage and cache reads.
 - **Trials need fresh samples.** With a run cache, pass `cassette: { sample: trial }`; otherwise every trial replays
   the first.

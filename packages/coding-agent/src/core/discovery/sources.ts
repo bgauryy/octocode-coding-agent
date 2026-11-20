@@ -11,8 +11,11 @@ import type { ConfigItem, ConfigKind, DiscoverInput, Product } from "./types.ts"
 
 /** Helpers the vendor files (`vendors/*.ts`) compose into their sources: each takes the roots or folders of one vendor. */
 
-/** Context files a directory may hold, in the order the first one found is used. */
-export const CONTEXT_FILE_CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD"];
+/**
+ * Context files a directory may hold, in the order the first one found is used. `CLAUDE.md` is the fallback for a folder
+ * set up only for Claude Code, as Claude Code and OpenCode read it; it loads under the same walk, trust boundary and cap.
+ */
+export const CONTEXT_FILE_CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md"];
 
 /** The context file a directory holds, if any. */
 function findContextFile(dir: string): string | undefined {

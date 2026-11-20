@@ -1,6 +1,7 @@
 /** Startup, resource and session lifecycle events. */
 
 import type { CompactionPreparation, SummaryRequestPolicy } from "../../compaction/index.ts";
+import type { CompactionRequester } from "../../compaction/manual-options.ts";
 import type { RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionNameSource } from "../../session-manager.ts";
 
@@ -53,6 +54,11 @@ export interface SessionInfoChangedEvent {
 	source?: SessionNameSource;
 }
 
+/** Fired when what the model sees or the room it has changes: a context size, an observed capacity, a reset or a rebuilt context. */
+export interface SessionContextChangedEvent {
+	type: "session_context_changed";
+}
+
 /** Fired before switching to another session (can be cancelled) */
 export interface SessionBeforeSwitchEvent {
 	type: "session_before_switch";
@@ -75,6 +81,8 @@ export interface SessionBeforeQuitEvent {
 /** Fired before context compaction. Return values are ignored; preparation is an isolated snapshot. */
 export interface SessionBeforeCompactEvent {
 	customInstructions?: string;
+	/** Who asked for a manual compaction: the user, or the agent itself (its `compact` tool). Absent otherwise. */
+	requestedBy?: CompactionRequester;
 	type: "session_before_compact";
 	preparation: CompactionPreparation;
 	branchEntries: SessionEntry[];
@@ -173,6 +181,7 @@ export interface SessionTreeEvent {
 export type SessionEvent =
 	| SessionStartEvent
 	| SessionInfoChangedEvent
+	| SessionContextChangedEvent
 	| SessionBeforeSwitchEvent
 	| SessionBeforeForkEvent
 	| SessionBeforeQuitEvent

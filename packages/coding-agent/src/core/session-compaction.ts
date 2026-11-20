@@ -12,8 +12,12 @@ import {
 	estimateTokens,
 	finalizeCompactionResult,
 	fitCompactionToWindow,
+	projectionAfterCompaction,
 	type SummaryRequestPolicy,
 } from "./compaction/index.ts";
+import type { CompactionRequester } from "./compaction/manual-options.ts";
+import { compactionAttemptIds, withOutcome } from "./compaction/outcome.ts";
+import type { SummaryFocus } from "./compaction/summary-focus.ts";
 import type { FeatureHost } from "./features/index.ts";
 import type { SessionEntry, SessionManager } from "./session-manager.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -30,7 +34,7 @@ export interface CompactionHost {
 		model: Model<any>,
 		signal: AbortSignal,
 		reason: CompactionReason,
-		customInstructions?: string,
+		customInstructions?: string | SummaryFocus,
 		request?: SummaryRequestPolicy,
 	): Promise<CompactionResult>;
 	/** How this compaction's summary requests are watched and retried; made once per run. */
@@ -41,6 +45,8 @@ export interface CompactionHost {
 
 export interface CompactionRun {
 	customInstructions?: string;
+	/** Who asked for a manual compaction (default the user); its focus is labelled as theirs. */
+	requestedBy?: CompactionRequester;
 	reason: CompactionReason;
 	willRetry: boolean;
 	model: Model<any>;
@@ -49,6 +55,8 @@ export interface CompactionRun {
 	reserveTokens: number;
 	preparation: CompactionPreparation;
 	branchEntries: SessionEntry[];
+	/** Estimated tokens of a prompt that waits for this compaction, not yet on the branch: the kept tail makes room for it. */
+	incomingTokens?: number;
 	signal: AbortSignal;
 	/** Throws when the run must stop, checked after the feature hook and after the summary. */
 	checkAbort(stage: "hook" | "summary"): void;
@@ -56,24 +64,38 @@ export interface CompactionRun {
 	outcome: { fromFeature: boolean; cancelledByFeature: boolean };
 }
 
-function estimateMessagesTokens(messages: AgentMessage[]): number {
+/**
+ * The tokens `messages` take on `model`, at its tokenizer family's ratio (`charsPerToken`), so a GPT model's context is
+ * not read as Claude's denser count.
+ */
+function estimateMessagesTokens(messages: readonly AgentMessage[], model: Pick<Model<any>, "id" | "provider">): number {
 	let tokens = 0;
 	for (const message of messages) {
-		tokens += estimateTokens(message);
+		tokens += estimateTokens(message, model);
 	}
 	return tokens;
 }
 
 /**
  * Fit the kept tail to the target window, ask `session_before_compact` features, summarize (theirs or the default),
- * save the compaction entry, refresh the context and announce `session_compact`. Throws "Compaction cancelled" when an
- * feature cancels, and `CompactionFitError` before any request when nothing kept can fit the window.
+ * save the compaction entry with its outcome (`compaction/outcome.ts`), refresh the context and announce
+ * `session_compact`. Throws "Compaction cancelled" when an feature cancels, and `CompactionFitError` before any request
+ * when nothing kept can fit the window.
  */
 export async function runCompaction(host: CompactionHost, run: CompactionRun): Promise<CompactionResult> {
 	const { reason, willRetry, signal } = run;
-	// Sized for the target window before any request: a summary that could never be saved is not paid for.
-	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow, !willRetry);
+	// Sized for the target window before any request: a summary that could never be saved is not paid for, and a prompt
+	// that waits for it must fit beside what it keeps.
+	const preparation = fitCompactionToWindow(run.branchEntries, run.preparation, run.contextWindow, {
+		incomingTokens: run.incomingTokens,
+		model: run.model,
+		summarizeFailedTurn: !willRetry,
+	});
 	const startedAt = new Date().toISOString();
+	const requestedBy = reason === "manual" ? (run.requestedBy ?? "user") : undefined;
+	const focus: SummaryFocus | undefined = run.customInstructions
+		? { text: run.customInstructions, source: requestedBy ?? "user" }
+		: undefined;
 	let featureCompaction: CompactionResult | undefined;
 	const summaryRequest = host.summaryRequest?.(reason);
 
@@ -82,6 +104,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 			type: "session_before_compact",
 			preparation,
 			customInstructions: run.customInstructions,
+			...(requestedBy ? { requestedBy } : {}),
 			branchEntries: run.branchEntries,
 			reason,
 			willRetry,
@@ -105,8 +128,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 
 	// Feature-provided content, or the shared default summary generator.
 	const produced =
-		featureCompaction ??
-		(await host.summarize(preparation, run.model, signal, reason, run.customInstructions, summaryRequest));
+		featureCompaction ?? (await host.summarize(preparation, run.model, signal, reason, focus, summaryRequest));
 	const { firstKeptEntryId, tokensBefore } = produced;
 	const usage: Usage | undefined = produced.usage;
 	run.checkAbort("summary");
@@ -128,11 +150,24 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		},
 	);
 	const { summary } = finalized;
+	const branch = host.sessionManager.getBranch();
+	// Estimated before the entry is saved, from the context the entry will leave, so the entry can record it: for the
+	// model the next request goes to.
+	const estimatedTokensAfter = estimateMessagesTokens(
+		projectionAfterCompaction(branch, firstKeptEntryId, tokensBefore)(summary).projection.messages,
+		run.model,
+	);
 	// The entry's own timestamp is its save time; `startedAt` makes the run's wall time measurable.
-	const details =
+	const timed =
 		finalized.details === undefined || isRecord(finalized.details)
 			? { ...finalized.details, startedAt }
 			: finalized.details;
+	const details = withOutcome(timed, {
+		trigger: reason === "manual" ? (requestedBy ?? "user") : reason,
+		focus,
+		estimatedTokensAfter,
+		attemptIds: compactionAttemptIds(branch, startedAt),
+	});
 
 	const compactionId = host.sessionManager.appendCompaction(
 		summary,
@@ -143,7 +178,6 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		usage,
 	);
 	host.refreshContext();
-	const estimatedTokensAfter = estimateMessagesTokens(host.sessionManager.buildSessionProjection().messages);
 
 	const savedCompactionEntry = host.sessionManager.getEntry(compactionId);
 	if (host.featureHost && savedCompactionEntry?.type === "compaction") {

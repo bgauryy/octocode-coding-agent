@@ -32,8 +32,19 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-function setup(options: { isSubagent?: boolean; goal?: string } = {}) {
-	const fake = fakeHost();
+function setup(
+	options: {
+		isSubagent?: boolean;
+		goal?: string;
+		recall?: "off" | "main" | "all";
+		subagentPinnedKind?: "preference" | "fact" | "decision" | "gotcha" | "procedure" | "reference";
+	} = {},
+) {
+	const memory = {
+		...(options.recall ? { recall: options.recall } : {}),
+		...(options.subagentPinnedKind ? { subagentPinnedKind: options.subagentPinnedKind } : {}),
+	};
+	const fake = fakeHost(Object.keys(memory).length > 0 ? { memory } : {});
 	const commands = new Subcommands();
 	registerMemory(fake.api, {
 		commands,
@@ -81,7 +92,11 @@ describe("memory age labels", () => {
 		expect(await run(tool, { op: "search", query: "checkpoints" })).toMatch(
 			/^M1 \(workspace, decision, 12d\) Rewind keeps checkpoints/m,
 		);
-		const result = (await fire("before_agent_start", { prompt: "rewind checkpoints" }, ctxFor())) as any;
+		const result = (await fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind checkpoints" },
+			ctxFor(),
+		)) as any;
 		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) "Rewind/);
 	});
 });
@@ -91,7 +106,11 @@ describe("memory notices (UI only)", () => {
 		const { fire } = setup();
 		memoryStore(cwd).set({ title: "Rewind keeps checkpoints", author: "agent" });
 		const ctx = ctxFor();
-		const result = (await fire("before_agent_start", { prompt: "rewind checkpoints" }, ctx)) as any;
+		const result = (await fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind checkpoints" },
+			ctx,
+		)) as any;
 		expect(result.message.content.startsWith(MEMORY_HEADER)).toBe(true);
 		expect(ctx.ui.notes).toEqual([]);
 		await fire("message_end", { message: { role: "custom", ...result.message } }, ctx);
@@ -137,6 +156,7 @@ describe("saving memories", () => {
 
 describe("what recall searches by", () => {
 	const notice = (text: string) => ({
+		systemPromptOptions: { sections: {}, contextFiles: [] },
 		messageType: "custom",
 		message: { role: "custom", customType: "octocode-bash-job", content: text, display: true, timestamp: 1 },
 	});
@@ -153,7 +173,7 @@ describe("what recall searches by", () => {
 		// The user's prompt recalls by its words.
 		const asked = (await host.fire(
 			"before_agent_start",
-			{ prompt: "how is the parser rewrite going?" },
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "how is the parser rewrite going?" },
 			ctxFor(),
 		)) as any;
 		expect(asked.message.details.ids).toContain(1);
@@ -174,20 +194,48 @@ describe("what recall searches by", () => {
 
 describe("subagent recall", () => {
 	const brief = "You are a subagent. Shared context about teammates, scratch folders and reports.";
+	const start = { systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief };
+
+	it("follows memory.recall: by default (main) a subagent gets no notes from the database, off leaves main none", async () => {
+		seedPins();
+		memoryStore(cwd).set({ title: "Parser rewrite plan", body: "tokens first", author: "agent" });
+		expect(
+			await setup({ isSubagent: true, goal: "parser rewrite" }).fire("before_agent_start", start, ctxFor()),
+		).toBeUndefined();
+		expect(await setup({ recall: "off" }).fire("before_agent_start", start, ctxFor())).toBeUndefined();
+		const main = (await setup().fire("before_agent_start", start, ctxFor())) as any;
+		expect(main.message.details.ids.length).toBeGreaterThan(0);
+	});
 
 	it("searches by the child's goal instead of the brief", async () => {
 		memoryStore(cwd).set({ title: "Parser rewrite plan", body: "tokens first", author: "agent" });
-		const withGoal = setup({ isSubagent: true, goal: "parser rewrite" });
-		const result = (await withGoal.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const withGoal = setup({ isSubagent: true, goal: "parser rewrite", recall: "all" });
+		const result = (await withGoal.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
 		expect(result.message.details.ids).toEqual([1]);
-		const withoutGoal = setup({ isSubagent: true });
-		expect(await withoutGoal.fire("before_agent_start", { prompt: brief }, ctxFor())).toBeUndefined();
+		const withoutGoal = setup({ isSubagent: true, recall: "all" });
+		expect(
+			await withoutGoal.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+				ctxFor(),
+			),
+		).toBeUndefined();
 	});
 
 	it("ignores a goal in the main session", async () => {
 		memoryStore(cwd).set({ title: "Parser rewrite plan", body: "tokens first", author: "agent" });
 		const main = setup({ goal: "parser rewrite" });
-		expect(await main.fire("before_agent_start", { prompt: brief }, ctxFor())).toBeUndefined();
+		expect(
+			await main.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+				ctxFor(),
+			),
+		).toBeUndefined();
 	});
 
 	// Owner decision, 2026-11-11: a subagent's pins are the pinned preferences; every other pinned kind stays out.
@@ -206,8 +254,12 @@ describe("subagent recall", () => {
 
 	it("gives a subagent a pinned preference and no pinned fact, decision or other kind", async () => {
 		const ids = seedPins();
-		const child = setup({ isSubagent: true });
-		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const child = setup({ isSubagent: true, recall: "all" });
+		const result = (await child.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
 		expect(result.message.details.ids).toEqual([ids.preference]);
 		expect(result.message.content).toContain("Reply in short sentences");
 		expect(result.message.content).not.toContain("Deploys run on Tuesdays");
@@ -215,10 +267,27 @@ describe("subagent recall", () => {
 		expect(result.message.content).not.toContain("more pinned memor");
 	});
 
+	it("gives a subagent the pinned kind the memory.subagentPinnedKind setting names", async () => {
+		const ids = seedPins();
+		const child = setup({ isSubagent: true, recall: "all", subagentPinnedKind: "decision" });
+		const result = (await child.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
+		expect(result.message.details.ids).toEqual([ids.decision]);
+		expect(result.message.content).toContain("Queue stays on SQLite");
+		expect(result.message.content).not.toContain("Reply in short sentences");
+	});
+
 	it("leaves the main session's pins unchanged: every pinned kind, no unpinned note without a hit", async () => {
 		const ids = seedPins();
 		const main = setup();
-		const result = (await main.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const result = (await main.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
 		expect([...result.message.details.ids].sort((x: number, y: number) => x - y)).toEqual([
 			ids.preference,
 			ids.fact,
@@ -238,8 +307,12 @@ describe("subagent recall", () => {
 				author: "user",
 			});
 		store.set({ title: "Pinned fact", body: "omega ".repeat(100), pinned: true, author: "user" });
-		const child = setup({ isSubagent: true });
-		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const child = setup({ isSubagent: true, recall: "all" });
+		const result = (await child.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
 		const lines = (result.message.content as string).split("\n");
 		const pins = lines.filter((line) => line.includes('"Style '));
 		expect(pins).toHaveLength(2);
@@ -253,8 +326,12 @@ describe("subagent recall", () => {
 
 	it("still ranks a subagent's hits across every kind, beside its pinned preference", async () => {
 		const ids = seedPins();
-		const child = setup({ isSubagent: true, goal: "deploys tuesdays" });
-		const result = (await child.fire("before_agent_start", { prompt: brief }, ctxFor())) as any;
+		const child = setup({ isSubagent: true, goal: "deploys tuesdays", recall: "all" });
+		const result = (await child.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+			ctxFor(),
+		)) as any;
 		// The pinned fact arrives as a relevant hit for this goal, not as a pin.
 		expect(result.message.details.ids).toEqual([ids.preference, ids.fact]);
 	});
@@ -263,8 +340,14 @@ describe("subagent recall", () => {
 		seedPins();
 		// A lean child's process is started with `OCTOCODE_MEMORY_AUTO=0` (asserted in subagent-tiers.test.ts).
 		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "0");
-		const lean = setup({ isSubagent: true, goal: "deploys tuesdays" });
-		expect(await lean.fire("before_agent_start", { prompt: brief }, ctxFor())).toBeUndefined();
+		const lean = setup({ isSubagent: true, goal: "deploys tuesdays", recall: "all" });
+		expect(
+			await lean.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: brief },
+				ctxFor(),
+			),
+		).toBeUndefined();
 	});
 });
 

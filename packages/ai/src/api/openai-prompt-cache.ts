@@ -5,11 +5,12 @@ import {
 	resolvePromptCacheKey,
 } from "../utils/cache-policy.ts";
 
-// OpenAI prompt caching fields, verified 2026-10-24 against
+// OpenAI prompt caching fields, verified 2026-11-19 against
 // https://developers.openai.com/api/docs/guides/prompt-caching
 // GPT-5.6 and later take prompt_cache_options and per-block prompt_cache_breakpoint (Responses API only);
-// earlier models take prompt_cache_retention. prompt_cache_key routes requests before GPT-5.6 and only
-// separates accounting from GPT-5.6 on.
+// earlier models take prompt_cache_retention ("typically keeps entries available for around 30 minutes and can
+// retain them for up to 24 hours", no write charge). prompt_cache_key routes requests before GPT-5.6 and only
+// separates accounting from GPT-5.6 on; the caller chooses the key (`promptCacheKey`).
 
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 
@@ -43,10 +44,16 @@ function toTtl(retention: CacheRetention, compat: CacheCompat): OpenAIPromptCach
  * Cache fields for one Responses request. `omitUnsupportedFields` drops everything but the key, for
  * credentials that reject the API cache parameters (Sign in with ChatGPT).
  *
- * Explicit-mode models: `none` selects explicit mode with no breakpoints (no caching, no writes); long history
- * sets the request TTL, which also covers the implicit breakpoint; instructions get their own explicit
- * breakpoints. A 12h breakpoint may follow a 30m one, and at most three of the four write slots are used
- * (two instruction blocks and the implicit breakpoint). Earlier models only take a request-level retention.
+ * Explicit-mode models: `none` selects explicit mode with no breakpoints (no caching, no writes); instructions get
+ * their own explicit breakpoints, each with its own `ttl` ("`prompt_cache_breakpoint.ttl` overrides the request
+ * default for one breakpoint"), and at most three of the four write slots are used (two instruction blocks and the
+ * implicit breakpoint). The request TTL "applies to the implicit breakpoint", so it stays at the default 30m: a 12h
+ * request TTL would write every turn's new tail at 2.5x instead of 1.25x for a window idle gaps rarely reach, and 12h
+ * is worth its price only on the instruction blocks that sessions share. `breakpointsCarryTtl` false (Azure, whose
+ * breakpoints take no `ttl`) keeps the request TTL as the only lifetime, so long history still sets it.
+ *
+ * Earlier models only take a request-level retention, with no write charge: `24h` goes out when either layer is
+ * long, since it is the only way to keep the instructions longer.
  */
 export function resolveOpenAIResponsesCacheFields(
 	compat: CacheCompat,
@@ -54,22 +61,27 @@ export function resolveOpenAIResponsesCacheFields(
 		| Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "sessionId" | "promptCacheKey" | "env">
 		| undefined,
 	omitUnsupportedFields: boolean,
+	breakpointsCarryTtl = true,
 ): OpenAIResponsesCacheFields {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
 	const fields: OpenAIResponsesCacheFields = {
 		prompt_cache_key: history === "none" ? undefined : clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
 	};
 	if (omitUnsupportedFields) return fields;
+	const instructions = resolveInstructionCacheRetention(options);
 	if (!compat.supportsExplicitPromptCacheMode) {
-		if (history === "long" && compat.supportsLongCacheRetention) fields.prompt_cache_retention = "24h";
+		const long = history === "long" || (history !== "none" && instructions === "long");
+		if (long && compat.supportsLongCacheRetention) fields.prompt_cache_retention = "24h";
 		return fields;
 	}
 	if (history === "none") {
 		fields.prompt_cache_options = { mode: "explicit" };
 		return fields;
 	}
-	if (toTtl(history, compat) === "12h") fields.prompt_cache_options = { ttl: "12h" };
-	const instructions = resolveInstructionCacheRetention(options);
-	if (instructions !== undefined && instructions !== "none") fields.instructionCacheTtl = toTtl(instructions, compat);
+	if (!breakpointsCarryTtl && toTtl(history, compat) === "12h") fields.prompt_cache_options = { ttl: "12h" };
+	// Instructions that follow a long history (a legacy `cacheRetention: "long"` alone) carry the long tier themselves.
+	const instructionTier = instructions ?? (breakpointsCarryTtl && history === "long" ? history : undefined);
+	if (instructionTier !== undefined && instructionTier !== "none")
+		fields.instructionCacheTtl = toTtl(instructionTier, compat);
 	return fields;
 }

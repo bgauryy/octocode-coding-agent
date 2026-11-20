@@ -115,16 +115,23 @@ export function prefixKey(
 	return [role, model, plan.inTask ? "task-skills" : "catalog", sha256(JSON.stringify(fixed)).slice(0, 16)].join("\0");
 }
 
-/** Keep sibling affinity within one parent session and prefix group, without exposing paths or task text. */
-export function childPromptCacheKey(parentSession: string, prefix: string): string {
-	return `octocode-child-${sha256(JSON.stringify([parentSession, prefix])).slice(0, 48)}`;
+/**
+ * The key of a prefix group of children, without paths or task text. It names the prefix alone, not the parent session:
+ * OpenAI says to "use a stable `prompt_cache_key` for requests that share a reusable prefix", and from GPT-5.6 on
+ * "separate keys help prevent cache-hit probing across users", so a key per parent kept a new parent's children from
+ * reading the instructions an earlier parent's children wrote
+ * (https://developers.openai.com/api/docs/guides/prompt-caching, read 2026-11-19; `core/cache-key-group.ts`).
+ */
+export function childPromptCacheKey(prefix: string): string {
+	return `octocode-child-${sha256(JSON.stringify([prefix])).slice(0, 48)}`;
 }
 
 /**
- * Puts `run` in its cache group: its prefix (for the stagger) and the sibling key its process receives. Everything
- * that fixes the child's prompt prefix goes in, so children that cannot share an entry do not share a group.
+ * Puts `run` in its cache group: its prefix (for the stagger) and the group key its process receives. Everything
+ * that fixes the child's prompt prefix goes in, so children that cannot share an entry do not share a group; children
+ * of other parent sessions with the same prefix share it.
  */
-export function childCacheGroup(run: Run, plan: TaskSkillPlan, parentSession: string): string {
+export function childCacheGroup(run: Run, plan: TaskSkillPlan): string {
 	const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, plan, {
 		tools: profileTools(run.profile),
 		lean: run.profile?.lean,
@@ -134,6 +141,6 @@ export function childCacheGroup(run: Run, plan: TaskSkillPlan, parentSession: st
 			...(run.identity.mcpOnly ?? []).map((name) => `only:${name}`),
 		],
 	});
-	run.identity.promptCacheKey = childPromptCacheKey(parentSession, prefix);
+	run.identity.promptCacheKey = childPromptCacheKey(prefix);
 	return prefix;
 }

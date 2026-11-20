@@ -7,6 +7,7 @@ import { loadHooks } from "../config.ts";
 import { enforces, guardNotices } from "../../guard/registry.ts";
 import { emptyHooks } from "../config/parse.ts";
 import { capContext } from "../runner.ts";
+import { resumeFields } from "./resume-fields.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
 
 /** Octocode's session start reasons in Claude Code's SessionStart matcher vocabulary. */
@@ -48,7 +49,8 @@ export function loadSessionHooks(
 
 /**
  * SessionStart (also after a compaction, source `compact`): loads the hook config on each session start, runs the
- * SessionStart hooks, and hands their context to the next prompt.
+ * SessionStart hooks, and hands their context to the next prompt. A resumed or forked session's payload adds Claude
+ * Code's resume fields (`resume-fields.ts`).
  */
 export function registerSessionStartHooks(
 	api: FeatureSetup,
@@ -75,6 +77,8 @@ export function registerSessionStartHooks(
 		}
 		const abort = startAbort;
 		const previous = fresh ? undefined : starting;
+		// A resumed or forked session also says what its first request will re-send (Claude Code's resume fields).
+		const resumed = source === "resume" || source === "fork";
 		const hooks = Promise.all(
 			(["octocode", "claude", "codex"] as const)
 				.filter((protocol) => !child || protocol === "octocode")
@@ -84,7 +88,10 @@ export function registerSessionStartHooks(
 						ctx,
 						"SessionStart",
 						[profileSource],
-						() => ({ source: profileSource }),
+						() => ({
+							source: profileSource,
+							...(resumed ? resumeFields(api.settings.get(), ctx) : undefined),
+						}),
 						abort.signal,
 						protocol,
 					);

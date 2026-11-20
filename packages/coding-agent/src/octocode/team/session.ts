@@ -152,6 +152,11 @@ export class Team extends TeamState {
 		return this.ticker.watch(listener);
 	}
 
+	/** Refreshes the view and calls the watchers when the database changed since the last read (see `TeamTicker.poll`). */
+	poll(): void {
+		this.ticker.poll();
+	}
+
 	/** The latest snapshot the ticker read (for watchers). */
 	get view(): TeamView {
 		return this.ticker.view;

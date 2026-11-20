@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
+import { stripRowMarks } from "@octocodeai/octocode-tui";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import type { FeatureSetup, CommandContext, FeatureContext } from "../../src/core/features/index.ts";
 import type { ModelRegistry } from "../../src/core/model-registry.ts";
@@ -28,10 +29,11 @@ export const theme = {
 } as never;
 
 /** The text a rendered component shows at `width`, lines trimmed at the end. */
+/** The rows as the terminal draws them: zero-width row marks for transcript search dropped, trailing blanks trimmed. */
 export function rendered(component: { render(width: number): string[] }, width = 200): string {
 	return component
 		.render(width)
-		.map((line) => line.trimEnd())
+		.map((line) => stripRowMarks(line).trimEnd())
 		.join("\n");
 }
 

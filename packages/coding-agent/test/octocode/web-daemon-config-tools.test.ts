@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
 	NATIVE_PINNABLE_TOOLS,
+	NATIVE_USAGE_ONLY_TOOLS,
 	ToolExposureListSchema,
 	type ToolExposureList,
 	type ToolPinCommand,
@@ -37,6 +38,17 @@ const group = (list: ToolExposureList, name: string) => list.groups.find((entry)
 const tool = (list: ToolExposureList, groupName: string, name: string) =>
 	group(list, groupName)?.tools.find((entry) => entry.name === name);
 const options = () => ({ agentDir, actor: "web:test", audit: (entry: ConfigAuditEntry) => audits.push(entry) });
+/** `declaring` main sessions declared the native tool `name`, and the first `callers` of them called it. */
+const seedNativeUse = (name: string, declaring: number, callers: number) => {
+	for (let i = 0; i < declaring; i++) {
+		const recorder = new UsageRecorder(
+			() => path.join(agentDir, USAGE_FILE_NAME),
+			() => "main",
+		);
+		recorder.record("declared", [`native/${name}`]);
+		if (i < callers) recorder.record("called", [`native/${name}`]);
+	}
+};
 const refusal = (promise: Promise<unknown>) =>
 	promise.then(
 		() => undefined,
@@ -93,16 +105,12 @@ describe("tool exposure usage audit", () => {
 		seed("archive", 25, 0);
 		seed("models", 3, 1, 3);
 		seed("backlogPlan", 25, 1);
+		// Under usage a session declares every deferrable tool thin, used or not.
 		const list = await listToolExposure({
 			agentDir,
 			native: () => ({
 				names: [...NATIVE_PINNABLE_TOOLS, "bash"],
-				declared: new Map([
-					["web", false],
-					["archive", true],
-					["models", false],
-					["backlogPlan", true],
-				]),
+				declared: new Map(NATIVE_PINNABLE_TOOLS.map((name) => [name, true])),
 				saved: new Map(NATIVE_PINNABLE_TOOLS.map((name) => [name, 700])),
 			}),
 		});
@@ -113,7 +121,9 @@ describe("tool exposure usage audit", () => {
 		expect(tool(list, "native", "archive")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 700 });
 		expect(tool(list, "native", "backlogPlan")?.audit).toMatchObject({ bytesSaved: 700, called: 1 });
 		expect(tool(list, "native", "backlogPlan")?.audit?.reason).toBeUndefined();
-		expect(tool(list, "native", "web")?.audit).toMatchObject({ reason: "promoted", rate: 0.2, bytesSaved: 0 });
+		// The snapshot holds web too, but only an on-demand tool (models) is declared from the start because of it.
+		expect(tool(list, "native", "web")?.audit).toMatchObject({ rate: 0.2, bytesSaved: 700 });
+		expect(tool(list, "native", "web")?.audit?.reason).toBeUndefined();
 		expect(tool(list, "native", "models")?.audit).toMatchObject({ reason: "promoted", refused: 3 });
 		expect(tool(list, "native", "bash")?.audit).toBeUndefined();
 	});
@@ -124,7 +134,7 @@ describe("audit rows of the usage-only native tools", () => {
 		names: [...NATIVE_PINNABLE_TOOLS, "memory", "wait", "bash"],
 		declared: new Map([
 			["memory", true],
-			["wait", false],
+			["wait", true],
 		]),
 		saved: new Map([["memory", 400]]),
 	};
@@ -147,8 +157,10 @@ describe("audit rows of the usage-only native tools", () => {
 		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
 		expect(tool(list, "native", "memory")).toMatchObject({ state: "deferred", decidedBy: "usage" });
 		expect(tool(list, "native", "memory")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 400 });
-		expect(tool(list, "native", "wait")).toMatchObject({ state: "direct" });
-		expect(tool(list, "native", "wait")?.audit).toMatchObject({ reason: "promoted", rate: 0.4 });
+		// Used often, timer is still declared thin: promotion changes only on-demand tools.
+		expect(tool(list, "native", "wait")).toMatchObject({ state: "deferred", decidedBy: "usage" });
+		expect(tool(list, "native", "wait")?.audit).toMatchObject({ rate: 0.4 });
+		expect(tool(list, "native", "wait")?.audit?.reason).toBeUndefined();
 	});
 
 	it("shows them when pinned under another setting, and lists an unpinned one as a core tool otherwise", async () => {
@@ -207,8 +219,11 @@ describe("tool exposure read model", () => {
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
 		const here = process.cwd();
 		writeJson(path.join(agentDir, "tool-use.json"), { [here]: { "native/models": Date.now() } });
+		// The promotion snapshot names web and models: under usage that declares neither in full.
+		for (const name of ["web", "models"]) seedNativeUse(name, 25, 10);
 		for (const settings of [
 			{},
+			{ mcpExposure: "usage" },
 			{ mcpExposure: "recent" },
 			{ mcpExposure: "recent", nativeToolExposure: { web: "direct", models: "deferred" } },
 			{ mcpExposure: "deferred", nativeToolExposure: { archive: "deferred" } },
@@ -386,6 +401,39 @@ describe("/api/admin/config/tools", () => {
 		expect(pinned.status).toBe(200);
 		expect(tool((await pinned.json()) as ToolExposureList, "native", "web")?.pin).toBe("deferred");
 		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { web: "deferred" } });
+	});
+
+	it("predicts what a new session declares under usage: every deferrable tool thin, promoted or not", async () => {
+		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", agentDir);
+		for (const name of ["web", "models"]) seedNativeUse(name, 25, 10);
+		const { server, call } = await daemon();
+		const listed = await call(server.token);
+		expect(listed.status).toBe(200);
+		const list = (await listed.json()) as ToolExposureList;
+		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
+		expect(list).toMatchObject({ setting: "usage", live: false });
+		for (const name of NATIVE_PINNABLE_TOOLS)
+			expect(tool(list, "native", name), name).toMatchObject({
+				state: nativeToolDeferred(name, {}, {}) ? "deferred" : "direct",
+				decidedBy: "usage",
+			});
+		expect(tool(list, "native", "web")?.state).toBe("deferred");
+		// Only the on-demand tool the snapshot holds is declared from the start because of it.
+		expect(tool(list, "native", "models")?.audit?.reason).toBe("promoted");
+		expect(tool(list, "native", "web")?.audit?.reason).toBeUndefined();
+	});
+
+	it("pins the native tools only the usage rule defers, which the panel lists as pinnable", async () => {
+		const { server, call } = await daemon();
+		for (const name of NATIVE_USAGE_ONLY_TOOLS) {
+			const pinned = await call(server.token, { kind: "native", tool: name, pin: "direct", scope: "global" });
+			expect(pinned.status).toBe(200);
+			expect(tool((await pinned.json()) as ToolExposureList, "native", name)?.pin).toBe("direct");
+		}
+		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { memory: "direct", wait: "direct" } });
+		const unpinned = await call(server.token, { kind: "native", tool: "wait", pin: null, scope: "global" });
+		expect(unpinned.status).toBe(200);
+		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { memory: "direct" } });
 	});
 
 	it("refuses a body that is not one pin", async () => {

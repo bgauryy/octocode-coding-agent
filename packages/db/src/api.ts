@@ -106,7 +106,7 @@ export type { FolderDecision, FolderGrantRow, FolderIdentity } from "./queries/t
 export type { ReviewDecision, ReviewInput, ReviewKey, ReviewRow } from "./queries/guard.ts";
 export { archivedAudits } from "./history-archive.ts";
 export { archiveHistory } from "./retention.ts";
-export { scheduleHistoryArchive } from "./history-scheduler.ts";
+export { historyArchivesSettled, scheduleHistoryArchive } from "./history-scheduler.ts";
 export { DEFAULT_HISTORY_WINDOWS, type HistoryWindows } from "./history-archive.ts";
 export { bindingKey, sameBinding } from "./binding.ts";
 

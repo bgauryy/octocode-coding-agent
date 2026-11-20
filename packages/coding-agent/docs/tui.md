@@ -34,7 +34,7 @@ Fullscreen-only settings (see [settings](settings.md)):
 
 With `fullscreenWheelScrollLines` at `auto`, a single wheel notch moves three lines (as in vim), steady scrolling moves at least as fast as separate notches, and a fast spin or flick moves more, more the longer it lasts. Frames sum every wheel event that arrives before they paint, up to 24 lines a frame, at the display's 60 Hz. A number fixes the lines per event. Alt+wheel scrolls five times as far. While you scroll, spinners and shimmer hold still. The scrollbar shows while you scroll and highlights under the pointer; bare pointer movement is reported only while it shows.
 
-Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen).
+Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen). `/find` opens transcript search too, for terminals where `ctrl+shift+f` arrives as `ctrl+f`.
 
 ## Typing, pasting and sending
 
@@ -48,7 +48,7 @@ Scroll, jump between prompts and search the transcript with the [fullscreen keys
 
 Typing or dismissing completion cancels its pending lookup, so a stalled lookup cannot block later completions. Shell completion limits retained output and stops stalled helper processes. Model command suggestions release canceled requests and discard results from an earlier session context.
 
-Scrolling away from the end keeps your reading position while output arrives. The jump-to-latest row reports how many rendered rows are below the viewport; it is not a count of unread messages. Search covers the loaded transcript. On a resumed long session, load earlier entries to search their rendered text. `/links all` searches assistant text in the current session context without rendering hidden history; compacted-away text requires the archive.
+Scrolling away from the end keeps your reading position while output arrives. The jump-to-latest row reports how many rendered rows are below the viewport; it is not a count of unread messages. Search covers the loaded transcript as drawn: a word the terminal width breaks across two rows still matches, but text inside a collapsed block is not searched until you expand it, and a search without matches says so when the transcript has one. On a resumed long session, load earlier entries to search their rendered text. `/links all` searches assistant text in the current session context without rendering hidden history; compacted-away text requires the archive.
 
 ## References and copying
 
@@ -117,7 +117,7 @@ Marks, colors, spacing and cut rules are listed in [Terminal UI design rules](tu
 
 `/help` opens a searchable command picker (it inserts the command; it does not run it). `/effort` sets reasoning effort; `/context size` sets the session context budget. More on status lines: [native features](native-features.md#live-status).
 
-The footer shows one cost, `Σ ≈$X`: this session and every agent under it, live or finished, each counted once. The context gauge (`ctx 42% of 144k`) counts against the auto-compact point, the window less the reserve kept for the summary, so it reads 100% when compaction starts; `/context` shows the real window. Tokens are new prompt tokens plus output; cache reads show only as the cached share (`96% cached`, the whole session's rate). As the terminal narrows, the command hints leave first, then the routine counters, the token breakdown, the context bar, the tokens and the cached share; the folder shortens to its name. The permission mode, the context percentage and `Σ` stay; above 80% the context keeps its bar and percent, in red. When details do not fit, `… /status` ends line 2. A warning or error that does not fit whole gets up to two rows of its own below the footer, then `+N alerts · /status`. `/status` puts every current footer status and its full text into the transcript, alongside session, token, cache and cost details. Error and warning labels remain readable without color.
+The footer shows one cost, `Σ ≈$X`: this session and every agent under it, live or finished, each counted once. The context gauge (`ctx ▰▰▰▱▱▱▱▱ 42% of 200k`) is the tokens in use over the model's context window, the same figure `/context` shows; it follows `/context <size>` at once, and any use fills one bar cell and reads `<1%`. It turns yellow from half of the window and red once use reaches 80% of the auto-compact point, so it warns before compaction. Tokens are new prompt tokens plus output; cache reads show only as the cached share (`96% cached`, the whole session's rate). As the terminal narrows, a long folder path loses its middle first (`/…/app/src`), the command hints leave, then the routine counters, the token breakdown, the context bar, the tokens and the cached share; the folder shortens to its name. The permission mode, the context percentage and `Σ` stay; in red the context keeps its bar and percent. A detail with no room on line 1 moves to free room on line 2; when details still do not fit, `… /status` ends line 2. A warning or error that does not fit whole gets up to two rows of its own below the footer, then `+N alerts · /status`. `/status` puts every current footer status and its full text into the transcript, alongside session, token, cache and cost details. Error and warning labels remain readable without color.
 
 Session loading shows progress before the full list is ready. Rename and delete show their pending state and accept one submission at a time. Closing the picker keeps a late completion from reopening it. A search with no matches offers a way to clear the query.
 
@@ -181,7 +181,7 @@ While the terminal is not reading, Octocode keeps running: it drops frames, hold
 Octocode adapts to any terminal on its own:
 
 - When the terminal falls behind drawing (measured from its replies, above the normal delay of an SSH or mosh link), spinners and shimmer pause and streaming text repaints once per reply; keystrokes always repaint at once. A terminal that does not answer is paced as before. Inside tmux, Zellij or mosh the multiplexer answers, so pacing follows the multiplexer rather than the terminal around it.
-- While the terminal window is not focused, spinners and shimmer pause; elapsed counters keep ticking, so running work still shows it moves. A focus report or any keystroke resumes them.
+- While the terminal window is not focused, spinners and shimmer slow to a step about every half second; elapsed counters keep ticking, so running work still shows it moves. Reduced motion still stops them. A focus report or any keystroke restores full speed.
 
 The tab title starts with 🐙 and Octocode's state, then the session's name (else its first prompt) and folder: `🐙⠋ Running - fix login · repo · 2 agents`. While background subagents run, the title ends with their number.
 

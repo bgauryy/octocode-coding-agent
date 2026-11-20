@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "../src/core/session-manager.ts";
-import { filterAndSortSessions } from "../src/modes/interactive/components/session-selector-search.ts";
+import { emptyFor } from "../src/modes/interactive/components/session-selector/list-chrome.ts";
+import {
+	filterAndSortSessions,
+	searchQueryError,
+} from "../src/modes/interactive/components/session-selector-search.ts";
 
 function makeSession(
 	overrides: Partial<SessionInfo> & { id: string; modified: Date; allMessagesText: string },
@@ -206,5 +210,12 @@ describe("session selector search", () => {
 		for (const sort of ["recent", "relevance", "threaded"] as const) {
 			expect(filterAndSortSessions(sessions, '"deploy the docs"', sort).map((s) => s.id)).toEqual(["quick"]);
 		}
+	});
+
+	it("reports an invalid re: pattern instead of saying no sessions match", () => {
+		expect(searchQueryError("re:(")).toBeTruthy();
+		expect(searchQueryError("re:ok")).toBeUndefined();
+		expect(emptyFor("all", true, "re:(").message).toMatch(/^Invalid search: /);
+		expect(emptyFor("all", true, "zzz").message).toBe('No sessions match "zzz"');
 	});
 });

@@ -85,6 +85,16 @@ const inlineLazyImportsPlugin = {
 	},
 };
 
+/** Rolldown leaves non-ASCII raw where escaping would change behavior, such as tagged template text (`String.raw`). */
+function assertAscii(chunk) {
+	const at = chunk.code.search(/[\u0080-\uffff]/);
+	if (at === -1) return;
+	const context = JSON.stringify(chunk.code.slice(Math.max(0, at - 60), at + 20));
+	throw new Error(
+		`${chunk.fileName} has a non-ASCII character at ${at}: ${context}. Use an escape or an untagged string there.`,
+	);
+}
+
 /**
  * Bundle `input` for Node into one file. Imports that do not resolve stay external and are recorded in `unresolved`;
  * they must be built-ins or optional packages listed in `allowedExternalPackages`.
@@ -115,12 +125,17 @@ async function bundle(input, output, unresolved) {
 			format: "esm",
 			banner,
 			comments: { legal: false },
+			// Non-ASCII escaped (`\uXXXX`): a source with any character above U+00FF makes V8 hold the whole file at two
+			// bytes per character, in every process that loads it.
+			charset: "ascii",
 			// Whitespace and syntax only: identifiers keep their names for stack traces.
 			minify: { compress: true, mangle: false, codegen: { removeWhitespace: true } },
 			sourcemap: false,
 			...output,
 		});
-		return result.output.filter((item) => item.type === "chunk");
+		const chunks = result.output.filter((item) => item.type === "chunk");
+		for (const chunk of chunks) assertAscii(chunk);
+		return chunks;
 	} finally {
 		await build.close();
 	}

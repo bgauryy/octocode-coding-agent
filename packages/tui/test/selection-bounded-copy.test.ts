@@ -26,6 +26,7 @@ function fixture(lines: readonly string[], copySelection?: (text: string) => Pro
 		},
 		dispatchMouseToOverlay: () => ({ hit: false }),
 		dispatchMouseToLayout: () => undefined,
+		hitLayoutAt: () => [],
 		applyMouseDispatchResult: () => false,
 	};
 	const selection = new AltScreenSelection(host);

@@ -60,6 +60,8 @@ export interface ActiveRun extends CacheWarmRequest {
 	isCurrent: () => boolean;
 	/** Lifetime of the history entry, which expires first. */
 	ttlMs: number;
+	/** The tier the history entry was written at: a miss rewrites it at that tier's price. */
+	historyTier: "short" | "long";
 	/** Estimated instruction-prefix tokens that outlive the history entry; 0 for a single lifetime. */
 	instructionTokens: number;
 	delayMs: number;

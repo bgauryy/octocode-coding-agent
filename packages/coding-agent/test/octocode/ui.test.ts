@@ -29,6 +29,16 @@ const colorTheme = {
 } as never;
 
 describe("chrome", () => {
+	it("gives the working line a spinner that turns, whatever the tool rows do", async () => {
+		initTheme("dark", false);
+		const fake = fakeHost();
+		registerUi(fake.api, false);
+		const ctx = fakeCtx({ cwd: "/work/app" });
+		await fake.emit("session_start", { reason: "startup" }, ctx);
+		const indicator = (ctx.ui as typeof ctx.ui & { indicator?: { frames: string[] } }).indicator;
+		expect(indicator?.frames.length).toBeGreaterThan(1);
+	});
+
 	it("draws the banner without touching the transcript's thinking visibility", async () => {
 		initTheme("dark", false);
 		const fake = fakeHost();

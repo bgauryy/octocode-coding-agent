@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import type { MessageDisplay } from "../messages.ts";
 import type {
 	AssistantMessage,
 	ImageContent,
@@ -158,13 +159,14 @@ export interface SessionInfoEntry extends SessionEntryBase {
  * display controls TUI rendering:
  * - false: hidden entirely
  * - true: rendered with distinct styling (different from user messages)
+ * - "only": rendered like true, but never converted to a user message (display-only)
  */
 export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 	type: "custom_message";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
 	details?: T;
-	display: boolean;
+	display: MessageDisplay;
 }
 
 /** Content that an append-only context edit may replace without changing message metadata. */

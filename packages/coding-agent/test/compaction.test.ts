@@ -241,7 +241,8 @@ describe("estimateContextTokens", () => {
 	});
 
 	it("sizes standard roles with the shared ratio and its image estimate", () => {
-		expect(estimateTokens(createUserMessage("x".repeat(300)))).toBe(100);
+		// 2.5 characters per token: the densest family measured (Claude), used without a model.
+		expect(estimateTokens(createUserMessage("x".repeat(300)))).toBe(120);
 		const image: AgentMessage = {
 			role: "user",
 			content: [{ type: "image", data: "", mimeType: "image/png" }],

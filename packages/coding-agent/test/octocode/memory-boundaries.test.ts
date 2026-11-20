@@ -105,16 +105,35 @@ describe("memory retrieval and write boundaries", () => {
 		registerMemory(fake.api, { commands: new Subcommands(), isSubagent: false, permission: fakePermission(), env });
 		const ctx = fakeCtx({ cwd: root });
 		Object.assign(ctx.sessionManager, { getBranch: () => [] });
-		for (let i = 0; i < 2; i++) expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();
+		for (let i = 0; i < 2; i++)
+			expect(
+				await fake.fire(
+					"before_agent_start",
+					{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "test" },
+					ctx,
+				),
+			).toBeUndefined();
 		expect(ctx.ui.notes).toHaveLength(1);
 		expect(ctx.ui.notes[0]).toMatchObject({
 			message: expect.stringContaining("Memory injection failed"),
 			type: "warning",
 		});
 		env.OCTOCODE_AGENT_DB = path.join(root, "valid.db");
-		expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();
+		expect(
+			await fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "test" },
+				ctx,
+			),
+		).toBeUndefined();
 		env.OCTOCODE_AGENT_DB = broken;
-		expect(await fake.fire("before_agent_start", { prompt: "test" }, ctx)).toBeUndefined();
+		expect(
+			await fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "test" },
+				ctx,
+			),
+		).toBeUndefined();
 		expect(ctx.ui.notes).toHaveLength(2);
 	});
 });

@@ -4,7 +4,7 @@ import { builtInCompactionSettings } from "../../compaction/settings.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../../http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { CacheWarmingMode } from "../../settings-schema.ts";
-import type { CompactionPolicyModel, RuntimeSettingsApi } from "../api/runtime.ts";
+import type { CompactionPolicyModel, RetrySettings, RuntimeSettingsApi } from "../api/runtime.ts";
 import { CACHE_WARMING_MODES } from "../constants.ts";
 import { parseTimeoutSetting } from "../merge.ts";
 import { ModelSettingsAccessors } from "./model.ts";
@@ -52,12 +52,14 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		this.save();
 	}
 
-	getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number } {
+	getRetrySettings(): RetrySettings {
 		return {
 			enabled: this.getRetryEnabled(),
 			maxRetries: this.settings.retry?.maxRetries ?? SETTINGS_DEFAULTS.retry.maxRetries,
 			baseDelayMs: this.settings.retry?.baseDelayMs ?? SETTINGS_DEFAULTS.retry.baseDelayMs,
 			maxAgentDelayMs: this.settings.retry?.maxAgentDelayMs ?? SETTINGS_DEFAULTS.retry.maxAgentDelayMs,
+			offlineIntervalMs: this.settings.retry?.offlineIntervalMs ?? SETTINGS_DEFAULTS.retry.offlineIntervalMs,
+			offlineMaxMs: this.settings.retry?.offlineMaxMs,
 		};
 	}
 

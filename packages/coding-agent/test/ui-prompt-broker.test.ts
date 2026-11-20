@@ -32,6 +32,20 @@ function tracker() {
 }
 
 describe("dialog broker", () => {
+	it("shows each notice in the mode's UI, then reports it as ui_notice for other clients", async () => {
+		const { t, events, flush } = tracker();
+		const shown: string[] = [];
+		const wrapped = t.wrap({ ...fakeUi().ui, notify: (message: string) => void shown.push(message) });
+		wrapped.notify("Memory reflection: workspace MEMORY.md +1 −0 lines.");
+		wrapped.notify("Hook configuration diagnostics: bad matcher", "warning");
+		expect(shown).toHaveLength(2);
+		await flush();
+		expect(events).toEqual([
+			{ type: "ui_notice", message: "Memory reflection: workspace MEMORY.md +1 −0 lines.", level: "info" },
+			{ type: "ui_notice", message: "Hook configuration diagnostics: bad matcher", level: "warning" },
+		]);
+	});
+
 	it("reports each dialog with an id and its options, and lets a remote answer close the mode's dialog", async () => {
 		const { t, events, flush } = tracker();
 		const { ui, open } = fakeUi();

@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { describe, expect, it } from "vitest";
 import { displayReport, withoutOutcome } from "../../src/octocode/subagents/report-display.ts";
 import { renderAgentCall, renderAgentMessage } from "../../src/octocode/subagents/render.ts";
@@ -89,6 +93,23 @@ describe("background report rows", () => {
 		expect(open).toContain("asked");
 		expect(open).toContain("answered red");
 		expect(open).not.toContain("earlier report");
+	});
+
+	it("draws the whole saved report, collapsed too, where the message content holds only the head", () => {
+		const full = `done\n${Array.from({ length: 80 }, (_, i) => `finding ${i}`).join("\n")}\nthe last finding`;
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "report-full-"));
+		const hash = sha256(full);
+		const file = path.join(dir, `report-${hash}.md`);
+		fs.writeFileSync(file, full);
+		const reportArtifact = { path: file, sha256: hash };
+		const shown = message(report("done\nfinding 0\n… cut"), false, { reportArtifact });
+		expect(shown).toContain("finding 79");
+		expect(shown).toContain("the last finding");
+		expect(shown).not.toMatch(/\+\d+ lines/);
+		// A saved version that no longer matches its hash is not trusted: the content is drawn.
+		fs.writeFileSync(file, "tampered");
+		expect(message(report("done\nfinding 0\n… cut"), false, { reportArtifact })).not.toContain("tampered");
+		fs.rmSync(dir, { recursive: true });
 	});
 
 	it("shows tokens, cost and the model without provider only when expanded", () => {

@@ -2,6 +2,7 @@ import {
 	getCapabilities,
 	hyperlink,
 	type Keybinding,
+	markFolded,
 	pointerClicksActive,
 	truncateToWidth,
 } from "@octocodeai/octocode-tui";
@@ -26,13 +27,14 @@ export function expandKey(): string {
  * The one expand hint, `(ctrl+o to expand)` or `(ctrl+o or click to expand)`, as plain text for the caller to style.
  * It names only what works: no key when unbound, no click without the mouse; empty when neither. Say it only where
  * content is hidden. A row that does not toggle on click passes `clickable: false`, so it never advertises one.
+ * The `expand` hint carries the tui's zero-width fold mark, so transcript search can say hidden text was not searched.
  */
 export function expandHint(verb = "expand", key = expandKey(), clickable = true): string {
 	const bound = key !== UNBOUND && key !== "";
 	const click = clickable && pointerClicksActive();
-	if (bound && click) return `(${key} or click to ${verb})`;
-	if (bound) return `(${key} to ${verb})`;
-	return click ? `(click to ${verb})` : "";
+	const hint =
+		bound && click ? `(${key} or click to ${verb})` : bound ? `(${key} to ${verb})` : click ? `(click to ${verb})` : "";
+	return hint && verb === "expand" ? markFolded(hint) : hint;
 }
 
 /** Compact shortcut text, including an explicit unbound state. */

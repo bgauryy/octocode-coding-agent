@@ -1,20 +1,76 @@
 import { randomUUID } from "node:crypto";
 import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
-import { modelWaitText, retryText } from "../../agent-session/model-wait.ts";
+import { modelWaitText, offlineRetryText, retryText } from "../../agent-session/model-wait.ts";
+import type { ApplicationRuntimeState } from "../state.ts";
 import { queuePreview } from "./projection.ts";
+
+type ShownStatus = Pick<ApplicationRuntimeState, "status" | "statusDetail" | "statusUntil">;
+
+/**
+ * The session's `status` from the causes that overlap: a compaction, a retry and a quiet model request. A compaction
+ * wins, then a retry that still waits out its delay, then a quiet request, then a retry whose attempt is already out.
+ * So a quiet request never hides a compaction or a pending retry, and when it ends the status goes back to what it was.
+ */
+export class SessionStatusTracker {
+	private compacting = false;
+	private retry: { detail: string; until: number } | undefined;
+	private quiet: string | undefined;
+
+	/** Takes the status causes `event` changes; returns the status event when what `shown` says must change. */
+	next(event: AgentSessionEvent, shown: ShownStatus): ApplicationEvent | undefined {
+		switch (event.type) {
+			case "compaction_start":
+				this.compacting = true;
+				break;
+			case "compaction_end":
+				this.compacting = false;
+				break;
+			case "auto_retry_start":
+				this.retry = {
+					detail:
+						event.offlineSince === undefined
+							? retryText(event.attempt, event.maxAttempts)
+							: offlineRetryText(event.attempt, event.errorMessage),
+					until: Date.now() + event.delayMs,
+				};
+				break;
+			case "auto_retry_end":
+				this.retry = undefined;
+				break;
+			case "model_wait":
+				this.quiet = event.idleMs > 0 ? modelWaitText(event.idleMs) : undefined;
+				break;
+			default:
+				return undefined;
+		}
+		const next = this.current();
+		if (next.status === shown.status && next.detail === shown.statusDetail && next.until === shown.statusUntil)
+			return undefined;
+		return { type: "session.status", ...next };
+	}
+
+	private current(): { status: ShownStatus["status"]; detail?: string; until?: number } {
+		if (this.compacting) return { status: "compacting" };
+		const retry = this.retry && { status: "retrying" as const, detail: this.retry.detail, until: this.retry.until };
+		if (retry && retry.until > Date.now()) return retry;
+		if (this.quiet) return { status: "stalled", detail: this.quiet };
+		return retry ?? { status: "idle" };
+	}
+}
 
 /** Publish the lifecycle event an engine event maps to, if any. */
 export function publishLifecycle(
 	event: AgentSessionEvent,
-	runId: string | undefined,
+	state: ShownStatus & Pick<ApplicationRuntimeState, "runId">,
+	status: SessionStatusTracker,
 	publish: (event: ApplicationEvent) => void,
 ): void {
-	const lifecycle = lifecycleEvent(event, runId);
+	const lifecycle = lifecycleEvent(event, state.runId) ?? status.next(event, state);
 	if (lifecycle) publish(lifecycle);
 }
 
-/** Translate engine lifecycle events; the application store owns their state. */
+/** Translate engine run and queue events; the application store owns their state. */
 function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEvent | undefined {
 	switch (event.type) {
 		case "agent_start":
@@ -27,21 +83,6 @@ function lifecycleEvent(event: AgentSessionEvent, runId?: string): ApplicationEv
 				steering: queuePreview([...event.steering]),
 				followUp: queuePreview([...event.followUp]),
 			};
-		case "compaction_start":
-			return { type: "session.status", status: "compacting" };
-		case "model_wait":
-			return event.idleMs > 0
-				? { type: "session.status", status: "stalled", detail: modelWaitText(event.idleMs) }
-				: { type: "session.status", status: "idle" };
-		case "auto_retry_start":
-			return {
-				type: "session.status",
-				status: "retrying",
-				detail: retryText(event.attempt, event.maxAttempts, event.delayMs),
-			};
-		case "compaction_end":
-		case "auto_retry_end":
-			return { type: "session.status", status: "idle" };
 		default:
 			return undefined;
 	}

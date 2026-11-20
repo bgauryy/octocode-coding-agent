@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import * as schemaVersion from "./queries/schema-version.ts";
+import { COORDINATION_CARRIED, type CarriedTable } from "./carry-over.ts";
 import { FTS, SCHEMA } from "./schema-sql.ts";
 
 /** A foreign file or unsupported schema. Retrying the same file cannot fix it. */
@@ -31,11 +32,13 @@ export interface FileKind {
 	name: string;
 	/**
 	 * The schema version this Octocode writes and reads. There are no upgrade steps: a file at an older version is set
-	 * aside and a new one created (`db.ts`), a newer one is refused.
+	 * aside and a new one created (`db.ts`), which takes over the `carried` tables; a newer one is refused.
 	 */
 	version: number;
 	/** Creates the newest schema in an empty file; returns whether FTS5 was available. */
 	create(db: DatabaseSync): { fts: boolean };
+	/** Tables the new file takes over from one this version retires (`carry-over.ts`); a rebuildable file has none. */
+	carried?: readonly CarriedTable[];
 }
 
 /** The coordination file (`workspaces.db`): its schema with the optional full-text index over memories. */
@@ -43,6 +46,7 @@ export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
 	version: 10,
+	carried: COORDINATION_CARRIED,
 	create: (db) => {
 		db.exec(SCHEMA);
 		try {

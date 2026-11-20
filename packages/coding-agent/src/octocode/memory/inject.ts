@@ -1,6 +1,7 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { clipText, contentText } from "../shared/util.ts";
+import { isCandidate } from "./file/candidate-tags.ts";
 import { NOTE_CHARS, pinnedBudget, totalBudget } from "./limits.ts";
 import { clearsFloor, MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
 import {
@@ -247,7 +248,8 @@ export function selectInjection(
 		words.length > 0
 			? store.search(words.join(" "), options.scope, options.topK * SEARCH_WINDOW, new Set([...options.seen, ...ids]))
 			: [];
-	const hits = found.filter((hit) => clearsFloor(hit, stems));
+	// A queued lesson candidate is checkpoint detail waiting for a pass, not a saved note (`file/candidate-tags.ts`).
+	const hits = found.filter((hit) => !isCandidate(hit) && clearsFloor(hit, stems));
 	const best = hits[0]?.score ?? 0;
 	let added = 0;
 	for (const hit of hits) {

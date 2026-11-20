@@ -1,11 +1,13 @@
 import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { constants as osConstants } from "node:os";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveBashShell, spawnShell } from "../../utils/shell.ts";
 import { RefusalWatch, sandboxDenials } from "../../utils/command-sandbox.ts";
 import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
 import { recordShellGroup } from "../shared/shell-groups.ts";
+import { recordForegroundGroup } from "./bash-groups.ts";
 import { signalTree } from "../../utils/process-tree.ts";
 import { firstLine } from "../shared/util.ts";
 import type { BashJob } from "./bash-jobs/types.ts";
@@ -47,28 +49,46 @@ const killAtExit = (): void => {
 	for (const pid of strays) if (groupAlive(pid)) signalTree(pid, "SIGTERM");
 };
 
-let listening = false;
-/** Keeps the exit hook registered exactly while there is a group to stop. */
+let unregister: (() => void) | undefined;
+/** Keeps the exit release registered exactly while there is a group to stop. */
 function syncExitHook(): void {
 	const wanted = running.size + strays.size > 0;
-	if (wanted === listening) return;
-	listening = wanted;
-	if (wanted) process.on("exit", killAtExit);
-	else process.off("exit", killAtExit);
+	if (wanted === (unregister !== undefined)) return;
+	if (wanted) unregister = processLifetime.acquire("foreground bash groups", { atExit: killAtExit });
+	else {
+		unregister?.();
+		unregister = undefined;
+	}
 }
 
-function track(pid: number): void {
-	for (const stray of strays) if (!groupAlive(stray)) strays.delete(stray);
+/** Removes each tracked group's owner record (`bash-groups.ts`) once the group is gone. */
+const ownerRecords = new Map<number, () => void>();
+
+function forget(pid: number): void {
+	ownerRecords.get(pid)?.();
+	ownerRecords.delete(pid);
+}
+
+function track(pid: number, command: string): void {
+	for (const stray of strays)
+		if (!groupAlive(stray)) {
+			strays.delete(stray);
+			forget(stray);
+		}
 	running.add(pid);
 	syncExitHook();
-	// An exit hook never runs after SIGKILL: a subagent's parent then stops the group (`shared/shell-groups.ts`).
+	// An exit hook never runs after SIGKILL: a subagent's parent then stops the group (`shared/shell-groups.ts`), and the
+	// next Octocode stops a top-level one's.
 	recordShellGroup(pid);
+	ownerRecords.set(pid, recordForegroundGroup(pid, command));
 }
 
 /** The command returned: a group with members left keeps its exit hook as a stray, unless a background job owns it now. */
 function untrack(pid: number, moved: boolean): void {
 	running.delete(pid);
 	if (!moved && process.platform !== "win32" && groupAlive(pid)) strays.add(pid);
+	// A group a background job owns now has the job's record.
+	else forget(pid);
 	syncExitHook();
 }
 
@@ -234,7 +254,7 @@ export function foregroundOperations(
 				unsandboxed,
 			});
 			const pid = child.pid;
-			if (pid) track(pid);
+			if (pid) track(pid, command);
 			let moved = false;
 			let timedOut = false;
 			// Seconds the command ran when a waiting message moved it (a deadline reports its own length).

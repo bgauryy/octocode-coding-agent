@@ -42,6 +42,27 @@ describe("resolveRetention", () => {
 	});
 });
 
+describe("historyWindows archiveAfterDays", () => {
+	it("defaults to 14 days and follows the global retention setting", () => {
+		expect(historyWindows({}, undefined).archiveAfterDays).toBe(14);
+		expect(historyWindows({}, { retention: { archiveAfterDays: 3 } })).toEqual({ archiveAfterDays: 3, keepDays: 30 });
+		expect(historyWindows({ OCTOCODE_CLEANUP_DAYS: "45" }, { retention: { archiveAfterDays: 7, days: 60 } })).toEqual({
+			archiveAfterDays: 7,
+			keepDays: 45,
+		});
+	});
+
+	it("ignores a window below 1 or not a whole number and reports it", () => {
+		for (const bad of [0, -2, 1.5, "7"]) {
+			expect(historyWindows({}, { retention: { archiveAfterDays: bad } }).archiveAfterDays).toBe(14);
+			expect(retentionProblems({ archiveAfterDays: bad })).toEqual([
+				'Setting "retention.archiveAfterDays" must be a whole number of days, 1 or more; the default 14 applies.',
+			]);
+		}
+		expect(retentionProblems({ archiveAfterDays: 1 })).toEqual([]);
+	});
+});
+
 describe("retentionProblems", () => {
 	it("reports nothing for a valid or absent value", () => {
 		expect(retentionProblems(undefined)).toEqual([]);

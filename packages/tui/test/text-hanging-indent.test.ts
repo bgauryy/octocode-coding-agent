@@ -1,8 +1,14 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Text } from "../src/components/text.ts";
+import { stripRowMarks } from "../src/utils/row-marks.ts";
 
-const plain = (lines: string[]) => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+const plain = (lines: string[]) =>
+	lines.map((line) =>
+		stripRowMarks(line)
+			.replace(/\x1b\[[0-9;]*m/g, "")
+			.trimEnd(),
+	);
 
 describe("Text hanging indent", () => {
 	it("wraps continuation rows to column 0 by default", () => {

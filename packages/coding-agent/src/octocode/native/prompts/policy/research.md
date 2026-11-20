@@ -3,15 +3,15 @@
 {{> shared/research-routes.md}}
 {{/if}}
 {{#unless research}}
-- Before you add or upgrade a dependency, check its known vulnerabilities with your tools. If no tool covers them, name that gap.
 {{#if shell}}
-- If the location is unknown, search with bash: `git ls-files | head`, `fd -e ts . src`, `rg -c` or `rg -l`, then `rg -n -C2 pat | head -60`. Read known paths with `sed -n 'A,Bp'` or `cat`.
+- Check known vulnerabilities before adding or upgrading a dependency; if no tool can, name the gap.
+- Find unknown paths with bash (`git ls-files | head`, `fd -e ts . src`, `rg -c`/`rg -l`, then `rg -n -C2 pat | head -60`); read known ones with `sed -n 'A,Bp'`.
 {{/if}}
 {{#if web}}
-- For GitHub and package registry lookups, use `web`{{#if shell}} (or the `gh` CLI in bash when available){{/if}}.
+- GitHub and package lookups: `web`{{#if shell}}, or `gh` in bash if installed{{/if}}.
 {{else}}
 {{#if shell}}
-- For GitHub lookups, use the `gh` CLI in bash when available.
+- GitHub lookups: `gh` in bash when available.
 {{else}}
 - If the evidence is not sufficient and you have no lookup tool, report the missing evidence.
 {{/if}}

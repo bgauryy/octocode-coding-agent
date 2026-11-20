@@ -31,12 +31,13 @@ describe("Responses SDK policy mapping", () => {
 		expect(mapping.providerOptions.openai).toMatchObject({
 			store: false,
 			promptCacheKey: "session",
-			promptCacheOptions: { ttl: "12h" },
 			reasoningEffort: "medium",
 
 			reasoningSummary: "auto",
 			serviceTier: "priority",
 		});
+		// Long retention goes on the instruction breakpoints; the request TTL stays at the default 30m.
+		expect(mapping.providerOptions.openai).not.toHaveProperty("promptCacheOptions");
 	});
 	it("uses model effort aliases and named tool choices", () => {
 		const mapping = responsesMapping(

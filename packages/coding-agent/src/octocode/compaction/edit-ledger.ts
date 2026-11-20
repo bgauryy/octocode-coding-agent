@@ -8,23 +8,32 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { shellMutation, shellParserReady } from "../permission/shell/mutation.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
+import { saveNamedContent } from "../shared/spill.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
+import { shortPath } from "../../utils/display-path.ts";
 import { parts } from "./images.ts";
 
 /**
  * The rest of the modified-file ledger (`addFileToolOps` in `register.ts` adds the `file` tool's changes): the files
  * this session's own `bash` calls wrote, by the same parse the edit log records them with (`team/tools/events.ts`), and
  * the files its subagents changed, from the edit log under each subagent's name. Both join `<modified-files>`, and the
- * Recovery section says whose they are, so after the compaction the model does not take its own changes for another
- * process's.
+ * Recovery section says they are this session's, with how many came through subagents and the file that lists them by
+ * subagent, so after the compaction the model does not take its own changes for another process's.
  */
 
 type Ledger = Pick<SessionBeforeCompactEvent["preparation"], "fileOps" | "messagesToSummarize" | "turnPrefixMessages">;
 
 /**
- * The paths of one subagent's changes the recovery line names: every path is in `<modified-files>` already, so the line
- * says whose they are without repeating a long list in every later summary.
+ * Writes which subagent changed which files, named by its content, and returns where, or undefined
+ * when it cannot be saved; replaced in tests. The Recovery line names only the counts and this file: every path is in
+ * `<modified-files>` already, and a line naming every subagent grew with each one.
  */
-const PATHS_PER_AGENT = 3;
+type SaveAgentEdits = (text: string) => string | undefined;
+
+const saveAgentEdits: SaveAgentEdits = (text) => {
+	const file = saveNamedContent(text, `subagent-edits-${shortHash(text)}.md`);
+	return file && shortPath(file);
+};
 
 /** A subagent's changes in the summarized span: its name and the absolute paths it changed. */
 interface AgentEdits {
@@ -129,6 +138,7 @@ export async function addLedgerEdits(
 	preparation: Ledger,
 	cwd: string,
 	changes: AgentChanges = loggedChanges(cwd),
+	save: SaveAgentEdits = saveAgentEdits,
 ): Promise<string[]> {
 	const messages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages];
 	const { edited, written } = preparation.fileOps;
@@ -147,13 +157,21 @@ export async function addLedgerEdits(
 		if (files.length > 0) agents.push({ agent, files });
 	}
 	if (edited.size + written.size === 0) return [];
-	const shown = agents.map(({ agent, files }) => {
-		const named = files.slice(0, PATHS_PER_AGENT).map((file) => relativeTo(cwd, file));
-		return files.length > PATHS_PER_AGENT
-			? `${agent}: ${files.length} files, ${named.join(", ")}, …`
-			: `${agent}: ${named.join(", ")}`;
-	});
-	return [renderPrompt("notices/recovery/modified-files.md", { agents: shown.join("; ") })];
+	if (agents.length === 0) return [renderPrompt("notices/recovery/modified-files.md", { agents: 0 })];
+	const list = agents
+		.map(
+			({ agent, files }) =>
+				`## ${agent} (${files.length})\n${files.map((file) => `- ${relativeTo(cwd, file)}`).join("\n")}`,
+		)
+		.join("\n\n");
+	const count = new Set(agents.flatMap(({ files }) => files)).size;
+	return [
+		renderPrompt("notices/recovery/modified-files.md", {
+			agents: agents.length === 1 ? "1 subagent" : `${agents.length} subagents`,
+			files: count === 1 ? "1 file" : `${count} files`,
+			list: save(`# Files changed through subagents\n\n${list}\n`) ?? "",
+		}),
+	];
 }
 
 /** `file` relative to `cwd` when it is inside it, else absolute. */

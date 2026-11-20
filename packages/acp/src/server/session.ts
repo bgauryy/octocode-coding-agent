@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
 	methods,
 	RequestError,
@@ -9,45 +8,16 @@ import {
 	type SessionConfigOption,
 } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest, AcpWorkerClient, AcpWorkerEvent } from "../host.ts";
-import { askClient } from "./ask.ts";
 import { modelConfigOptions } from "./config-options.ts";
 import { advertiseCommands } from "./commands.ts";
-import { AcpEventProjector, type CompactionText } from "./events.ts";
+import type { CompactionText } from "./events.ts";
 import { convertPrompt } from "./input.ts";
 import { closeInBackground, reportFailure } from "./failure.ts";
-import { askPermission } from "./permission.ts";
 import { AcpStartup } from "./startup.ts";
+import { createTurn, type Turn } from "./turn.ts";
+import { answerUiRequest } from "./ui-request.ts";
 
 export type AcpWorker = AcpWorkerClient & { onSessionIdentity: (listener: (id: string) => void) => () => void };
-
-interface Turn {
-	id: string;
-	controller: AbortController;
-	projector: AcpEventProjector;
-	accepted: boolean;
-	settled: boolean;
-	cancelled: boolean;
-	ending: boolean;
-	done: Promise<PromptResponse>;
-	resolve: (value: PromptResponse) => void;
-	reject: (error: Error) => void;
-}
-
-function createTurn(summaryText: CompactionText): Turn {
-	const completion = Promise.withResolvers<PromptResponse>();
-	void completion.promise.catch(() => {});
-	return {
-		...completion,
-		id: randomUUID(),
-		done: completion.promise,
-		controller: new AbortController(),
-		projector: new AcpEventProjector(summaryText),
-		accepted: false,
-		settled: false,
-		cancelled: false,
-		ending: false,
-	};
-}
 
 /** One protocol session and exactly one independently owned native process. */
 export class AcpSession {
@@ -181,7 +151,8 @@ export class AcpSession {
 			(disposition) => {
 				if (this.active !== turn) return;
 				turn.accepted = true;
-				if (disposition === "handled") turn.settled = true;
+				if (disposition === "handled" || disposition === "not-sent") turn.settled = true;
+				if (disposition === "not-sent") turn.cancelled = true; // Stopped before it was taken: nothing ran.
 				this.complete(turn);
 			},
 			(error: unknown) => {
@@ -328,47 +299,20 @@ export class AcpSession {
 		}
 	}
 
-	private async ui(request: AcpUiRequest): Promise<void> {
-		// The host forwards only dialogs; a UI notification (status, widget, title) has no one to answer it.
-		if (!["select", "confirm", "input", "editor", "ask"].includes(request.method)) return;
+	private ui(request: AcpUiRequest): Promise<void> {
 		const turn = this.observed ?? this.active;
-		if (request.method === "ask") {
-			// No turn to answer for: every question is aborted (a closed signal).
-			const signal = turn?.controller.signal ?? AbortSignal.abort();
-			const onCancelled = () => void this.cancel().catch(reportFailure("ACP permission cancellation failed"));
-			const env = {
-				client: this.client,
-				sessionId: this.id,
-				signal,
-				elicitationForm: this.elicitationForm,
-				onCancelled,
-			};
-			const replies = await askClient(env, request.questions);
-			if (!this.dead)
-				await this.worker.respondToExtensionUIRequest({ type: "extension_ui_response", id: request.id, replies });
-			return;
-		}
-		const value =
-			request.method === "select"
-				? await askPermission(
-						{
-							client: this.client,
-							sessionId: this.id,
-							signal: turn?.controller.signal,
-							output: this.output,
-							current: () => turn !== undefined && this.hasTurn(turn),
-							// Send abort before releasing the worker's dialog; awaiting completion here would deadlock it.
-							onCancelled: () => void this.cancel().catch(reportFailure("ACP permission cancellation failed")),
-						},
-						request,
-					)
-				: undefined;
-		if (!this.dead)
-			await this.worker.respondToExtensionUIRequest({
-				type: "extension_ui_response",
-				id: request.id,
-				...(value === undefined ? { cancelled: true } : { value }),
-			});
+		return answerUiRequest(request, {
+			client: this.client,
+			sessionId: this.id,
+			elicitationForm: this.elicitationForm,
+			signal: turn?.controller.signal,
+			output: this.output,
+			current: () => turn !== undefined && this.hasTurn(turn),
+			cancel: () => this.cancel(),
+			respond: async (response) => {
+				if (!this.dead) await this.worker.respondToExtensionUIRequest(response);
+			},
+		});
 	}
 
 	/** Protocol session/close cancels the current turn before releasing its worker. */

@@ -7,16 +7,27 @@ import type { AgentSessionEvent } from "../../../core/agent-session.ts";
 import { disposeComponent, disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage } from "../../../core/messages.ts";
+import { compactionUsage } from "./compaction-cost.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
+	OfflineRetryStatusIndicator,
 	RetryStatusIndicator,
 } from "../components/status-indicator.ts";
-import { modelWaitText } from "../../../core/agent-session/model-wait.ts";
+import { modelWaitText, offlineRetryText } from "../../../core/agent-session/model-wait.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { phaseKeepsJobGoing } from "./session-phase.ts";
+
+type RetryScheduledEvent = Extract<AgentSessionEvent, { type: "auto_retry_start" | "summarization_retry_scheduled" }>;
+
+/** Offline: one static row with the failure and a countdown. Otherwise the numbered retry spinner. */
+function retryIndicator(host: Pick<RunStateEventsHost, "ui">, event: RetryScheduledEvent) {
+	return event.offlineSince === undefined
+		? new RetryStatusIndicator(host.ui, event.attempt, event.maxAttempts, event.delayMs)
+		: new OfflineRetryStatusIndicator(host.ui, offlineRetryText(event.attempt, event.errorMessage), event.delayMs);
+}
 
 /** Interactive-mode members used by the run-state event handler. */
 export type RunStateEventsHost = Pick<
@@ -162,13 +173,9 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 						host.addMessageToChat(
 							createCompactionSummaryMessage(event.result.summary, event.result.tokensBefore, new Date().toISOString()),
 						);
-						if (event.result.usage) {
-							host.addCompactionCostNotice({
-								type: "compaction_cost",
-								kind: "compaction",
-								usage: event.result.usage,
-							});
-						}
+						// The saved entry names the summary attempts that paid for it; the result alone carries no usage then.
+						const usage = event.result.usage ?? compactionUsage(entries[0], (id) => host.sessionManager.getEntry(id));
+						if (usage) host.addCompactionCostNotice({ type: "compaction_cost", kind: "compaction", usage });
 					}
 				} else if (event.errorMessage) {
 					// A failed automatic compaction is drawn like a failed manual one: the same notice, not bare red text.
@@ -188,7 +195,7 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			host.defaultEditor.onEscape = () => {
 				getApplicationPort(host.session).invoke("abortRetry");
 			};
-			host.showStatusIndicator(new RetryStatusIndicator(host.ui, event.attempt, event.maxAttempts, event.delayMs));
+			host.showStatusIndicator(retryIndicator(host, event));
 			host.ui.requestRender();
 			break;
 		}
@@ -208,8 +215,8 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "summarization_retry_scheduled": {
-			host.showError(event.errorMessage);
-			host.showStatusIndicator(new RetryStatusIndicator(host.ui, event.attempt, event.maxAttempts, event.delayMs));
+			// The status row carries the failure; a transcript error per attempt is noise, and a final failure reports itself.
+			host.showStatusIndicator(retryIndicator(host, event));
 			host.ui.requestRender();
 			break;
 		}

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { fencedParts } from "../shared/fence.ts";
 import { saveNamedContent } from "../shared/spill.ts";
 
 /**
@@ -17,6 +18,17 @@ const POINTER = /\n\[Full message \(\d+ characters\): (.+)\]$/;
 /** Saves `content` under its hash and returns the path, or undefined when it could not be written. Never throws. */
 export const saveMessageFile = (content: string): string | undefined =>
 	saveNamedContent(content, `message-${sha256(content)}.txt`);
+
+/**
+ * The text of a message for the transcript: the saved file's content when `text` ends in a spill pointer and the file is
+ * intact (fence removed, as the sender wrote the words), else `text` itself.
+ */
+export function fullMessageText(text: string): string {
+	const file = POINTER.exec(text)?.[1];
+	if (file === undefined || !spillIntact(text)) return text;
+	const saved = fs.readFileSync(file, "utf8");
+	return fencedParts(saved)?.body ?? saved;
+}
 
 /** A file this recently changed may change again within the same timestamp tick, unseen by its stat: it is read every time. */
 const SETTLED_MS = 1_000;

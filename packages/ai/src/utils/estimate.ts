@@ -12,22 +12,71 @@ export interface ContextUsageEstimate {
 	lastUsageIndex: number | null;
 }
 
+/** A tokenizer family whose characters per token were measured on provider receipts. */
+type TokenFamily = "anthropic" | "openai" | "deepseek";
+
 /**
- * Characters per token for every estimate that has no tokenizer: the context, what compaction adds back and the fixed
- * request. Prose runs near four, but code, paths and JSON (most of a tool result, a restored file or a tool schema)
- * tokenize nearer three, so three biases common prose estimates upward. This is not an upper bound for every tokenizer
- * or content type. Every estimator in the workspace shares this ratio.
+ * Characters per token on provider receipts, per family (2026-11-19: 9,079 consecutive requests whose only new content
+ * was tool results, and the first requests of real sessions). Claude 5.5 reads 2.4–2.6 characters per token, OpenAI's
+ * o200k about 3.5 on tool results and up to about 4.9 on a whole first request. `estimate` is the dense end of the
+ * family's range, for an estimate that feeds a budget or a trigger, where more tokens is the safe side; `floor` is the
+ * sparse end, for a lower bound on tokens.
+ *
+ * DeepSeek is an estimate from little traffic (2026-11-19, this machine's transcripts, DeepSeek-V4-Flash only): 27
+ * tool-result steps in 12 sessions read a median 3.3 characters per token (3.1–3.7 from p10 to p90), 8 whole first
+ * requests 3.6–3.9, and one compaction's estimate at Claude's ratio came to 1.34 times the provider's count. Its floor
+ * sits just above the sparsest first request. The same method read 2.3 (tool results) and 2.55 (first requests) for
+ * Claude, 3.4 and 4.8 for GPT-6.1.
  */
-export const CHARS_PER_TOKEN = 3;
+const FAMILY_CHARS_PER_TOKEN: Readonly<Record<TokenFamily, { estimate: number; floor: number }>> = {
+	anthropic: { estimate: 2.5, floor: 2.6 },
+	openai: { estimate: 3.5, floor: 4.9 },
+	deepseek: { estimate: 3.3, floor: 4 },
+};
+
+/**
+ * Characters per token for an estimate without a known model family: the densest family measured (Claude), so a
+ * budget or trigger sized with it holds for every family. Prefer `charsPerToken(model)` where the model is known.
+ */
+export const CHARS_PER_TOKEN = FAMILY_CHARS_PER_TOKEN.anthropic.estimate;
+
+/** Characters per token for a lower bound without a known family: the sparsest family measured. */
+const FLOOR_CHARS_PER_TOKEN = Math.max(...Object.values(FAMILY_CHARS_PER_TOKEN).map((ratio) => ratio.floor));
+
+/** The part of a model its tokenizer family is read from. */
+export interface TokenModel {
+	id: string;
+	provider?: string;
+}
+
+/**
+ * The model's tokenizer family, from its id (a vendor prefix such as `anthropic/` or `us.anthropic.` is ignored), or
+ * DeepSeek's own provider.
+ */
+function tokenFamily(model: TokenModel | undefined): TokenFamily | undefined {
+	const id = model?.id.toLowerCase().split("/").at(-1) ?? "";
+	if (id.includes("claude")) return "anthropic";
+	if (/^(gpt-|chatgpt-|o\d|codex-)/.test(id)) return "openai";
+	if (id.includes("deepseek") || model?.provider?.toLowerCase() === "deepseek") return "deepseek";
+	return undefined;
+}
+
+/**
+ * Characters per token for `model`: its family's measured ratio, else the conservative default. `floor` asks for the
+ * sparse end, for a lower bound on tokens (a check that a prefix was read at least in part).
+ */
+export function charsPerToken(model?: TokenModel, bound: "estimate" | "floor" = "estimate"): number {
+	const family = tokenFamily(model);
+	if (bound === "floor") return family ? FAMILY_CHARS_PER_TOKEN[family].floor : FLOOR_CHARS_PER_TOKEN;
+	return family ? FAMILY_CHARS_PER_TOKEN[family].estimate : CHARS_PER_TOKEN;
+}
 
 /** An image counts as this many tokens. */
 export const ESTIMATED_IMAGE_TOKENS = 1200;
 
-const ESTIMATED_IMAGE_CHARS = ESTIMATED_IMAGE_TOKENS * CHARS_PER_TOKEN;
-
-/** Tokens for `chars` characters by `CHARS_PER_TOKEN`, rounded up. */
-export function charsToTokens(chars: number): number {
-	return Math.ceil(chars / CHARS_PER_TOKEN);
+/** Tokens for `chars` characters at `model`'s ratio (`charsPerToken`, the default without a model), rounded up. */
+export function charsToTokens(chars: number, model?: TokenModel): number {
+	return Math.ceil(chars / charsPerToken(model));
 }
 
 export function calculateContextTokens(usage: Usage): number {
@@ -42,38 +91,43 @@ function safeJsonStringify(value: unknown): string {
 	}
 }
 
-/** Characters of text-and-image content; every non-text block counts as an image. */
-function estimateTextAndImageContentChars(content: string | ReadonlyArray<TextContent | ImageContent>): number {
-	if (typeof content === "string") return content.length;
-
+/**
+ * Estimated tokens of user or tool-result style content: a string or text and image blocks, at `model`'s ratio (the
+ * default without one). Every non-text block counts as an image.
+ */
+export function estimateContentTokens(
+	content: string | ReadonlyArray<TextContent | ImageContent>,
+	model?: TokenModel,
+): number {
+	if (typeof content === "string") return charsToTokens(content.length, model);
 	let chars = 0;
-	for (const block of content) chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
-	return chars;
-}
-
-/** Estimated tokens of user or tool-result style content: a string or text and image blocks. */
-export function estimateContentTokens(content: string | ReadonlyArray<TextContent | ImageContent>): number {
-	return charsToTokens(estimateTextAndImageContentChars(content));
+	let images = 0;
+	for (const block of content) {
+		if (block.type === "text") chars += block.text.length;
+		else images++;
+	}
+	return charsToTokens(chars, model) + images * ESTIMATED_IMAGE_TOKENS;
 }
 
 /** Estimated tokens of serialized tool declarations. */
-function estimateToolsTokens(tools: readonly unknown[] | undefined): number {
+function estimateToolsTokens(tools: readonly unknown[] | undefined, model?: TokenModel): number {
 	if (!tools || tools.length === 0) return 0;
-	return charsToTokens(safeJsonStringify(tools).length);
+	return charsToTokens(safeJsonStringify(tools).length, model);
 }
 
-/** Estimated tokens of one standard transcript message, without provider usage. */
-export function estimateMessageTokens(message: Message): number {
+/** Estimated tokens of one standard transcript message, without provider usage, at `model`'s ratio (the default without one). */
+export function estimateMessageTokens(message: Message, model?: TokenModel): number {
 	if (message.role === "system") {
 		return (
-			charsToTokens(getSystemMessageText(message).length) +
-			estimateToolsTokens(message.toolsAdded) +
-			estimateToolsTokens(message.toolsRemoved)
+			charsToTokens(getSystemMessageText(message).length, model) +
+			estimateToolsTokens(message.toolsAdded, model) +
+			estimateToolsTokens(message.toolsRemoved, model)
 		);
 	}
-	if (message.role === "user" || message.role === "toolResult") return estimateContentTokens(message.content);
+	if (message.role === "user" || message.role === "toolResult") return estimateContentTokens(message.content, model);
 
 	let chars = 0;
+	let images = 0;
 	for (const block of message.content) {
 		if (block.type === "text") {
 			chars += block.text.length;
@@ -82,14 +136,14 @@ export function estimateMessageTokens(message: Message): number {
 		} else if (block.type === "toolCall") {
 			chars += block.name.length + safeJsonStringify(block.arguments).length;
 		} else if (block.type === "image" || block.type === "media") {
-			chars += ESTIMATED_IMAGE_CHARS;
+			images++;
 		} else if (block.type === "resource") {
 			chars += (block.text ?? block.uri).length;
 		} else {
 			chars += block.text.length;
 		}
 	}
-	return charsToTokens(chars);
+	return charsToTokens(chars, model) + images * ESTIMATED_IMAGE_TOKENS;
 }
 
 /**
@@ -165,6 +219,12 @@ export function estimateContextTokensWith<M extends { role: string; timestamp: n
 	return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
 }
 
-export function estimateContextTokens(context: TranscriptContext | readonly Message[]): ContextUsageEstimate {
-	return estimateContextTokensWith("messages" in context ? context.messages : context, estimateMessageTokens);
+/** `estimateContextTokensWith` for standard messages, estimated at `model`'s ratio (the default without one). */
+export function estimateContextTokens(
+	context: TranscriptContext | readonly Message[],
+	model?: TokenModel,
+): ContextUsageEstimate {
+	return estimateContextTokensWith("messages" in context ? context.messages : context, (message) =>
+		estimateMessageTokens(message, model),
+	);
 }

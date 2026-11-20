@@ -8,6 +8,7 @@ import type {
 } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, Model, TextContent } from "@octocodeai/octocode-ai";
 import type { CompactionResult } from "../../compaction/index.ts";
+import type { CompactionRequester } from "../../compaction/manual-options.ts";
 import type { CustomMessage } from "../../messages.ts";
 import type { ModelRegistry } from "../../model-registry.ts";
 import type { ScopedModel } from "../../model-resolver.ts";
@@ -30,6 +31,8 @@ export interface ContextUsage {
 
 export interface CompactOptions {
 	customInstructions?: string;
+	/** Default `user`; the agent's own request (its `compact` tool) says `agent`. */
+	requestedBy?: CompactionRequester;
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
 }

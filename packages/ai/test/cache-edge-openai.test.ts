@@ -337,7 +337,8 @@ describe("payload describer on the routes that set cache fields", () => {
 			["system", "developer", true],
 			["message", "user", false],
 		]);
-		expect(long?.cacheMode).toBe("key+12h+breakpoint-12h");
+		// 12h goes on the instruction breakpoints only; the request TTL stays at the default 30m.
+		expect(long?.cacheMode).toBe("key+breakpoint-12h");
 		const short = describePayloadLayers(
 			model.api,
 			await rawPayload(model, "sk-test", turn, { cacheRetention: "short", instructionCacheRetention: "short" }),
@@ -461,11 +462,11 @@ describe("every catalog model gets its longest supported cache tier by default",
 	});
 
 	it.each(explicit.map((model) => [model.id, model] as const))(
-		"OpenAI %s: explicit mode with a 12h request TTL and 12h instruction breakpoints",
+		"OpenAI %s: explicit mode with the default 30m request TTL and 12h instruction breakpoints",
 		async (_id, model) => {
 			const payload = await rawPayload(model, "sk-test", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
 			expect(payload.prompt_cache_retention).toBeUndefined();
-			expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
+			expect(payload.prompt_cache_options).toBeUndefined();
 			expect(firstBreakpoint(payload)).toEqual({ mode: "explicit", ttl: "12h" });
 			expect(payload.prompt_cache_key).toBe("edge-session");
 		},
@@ -493,9 +494,13 @@ describe("every catalog model gets its longest supported cache tier by default",
 	);
 
 	it.each(azureExtended.map((model) => [model.id, model] as const))(
-		"Azure %s: capabilities report the 24h tier the adapter sends",
+		"Azure %s: capabilities plan the 24h tier at its typical 30 minutes, up to 24h",
 		(_id, model) => {
-			expect(resolveModelCapabilities(model).cache).toEqual({ mechanism: "key", lifetimes: { long: 86_400 } });
+			expect(resolveModelCapabilities(model).cache).toEqual({
+				mechanism: "key",
+				lifetimes: { long: 1800 },
+				longUpTo: 86_400,
+			});
 		},
 	);
 
@@ -515,7 +520,11 @@ describe("every catalog model gets its longest supported cache tier by default",
 		const payload = await rawPayload(model, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
 		expect(payload.prompt_cache_retention).toBe("24h");
 		expect(payload.prompt_cache_key).toBe("edge-session");
-		expect(resolveModelCapabilities(model).cache).toEqual({ mechanism: "key", lifetimes: { long: 86_400 } });
+		expect(resolveModelCapabilities(model).cache).toEqual({
+			mechanism: "key",
+			lifetimes: { long: 1800 },
+			longUpTo: 86_400,
+		});
 		expect(describePayloadLayers(model.api, payload)?.cacheMode).toBe("key+24h");
 		const plain = await rawPayload(azureModel(), "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
 		expect(plain.prompt_cache_retention).toBeUndefined();
@@ -530,6 +539,8 @@ describe("every catalog model gets its longest supported cache tier by default",
 		const sent = await rawPayload(optedIn, "test-key", [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
 		expect(sent.prompt_cache_retention).toBe("24h");
 		expect(resolveModelCapabilities(optedIn).cache.lifetimes.long).toBe(86_400);
+		// A declared lifetime is exact: no typical planning, no upper bound.
+		expect(resolveModelCapabilities(optedIn).cache.longUpTo).toBeUndefined();
 	});
 
 	/**

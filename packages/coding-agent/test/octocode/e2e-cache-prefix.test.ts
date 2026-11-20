@@ -126,7 +126,7 @@ describe("deferred tools under the default exposure", () => {
 				}),
 			);
 			const contexts = await withEnv(baseEnv(fx), async () => {
-				const { session, faux } = await scriptedSession(fx, {});
+				const { session, faux, end } = await scriptedSession(fx, {});
 				const seen: TranscriptContext[] = [];
 				const record = (reply: ReturnType<typeof fauxAssistantMessage>) => (context: TranscriptContext) => {
 					seen.push(structuredClone(context));
@@ -147,7 +147,7 @@ describe("deferred tools under the default exposure", () => {
 					await session.prompt("first");
 					await session.prompt("second");
 				} finally {
-					session.dispose?.();
+					await end();
 				}
 				return seen;
 			});
@@ -299,7 +299,7 @@ describe("the prefix of one configuration does not depend on the process", () =>
 		try {
 			return await withEnv(baseEnv(fx), async () => {
 				approveFixtureMcp(fx.cwd, fx.agentDir);
-				const { session, faux } = await scriptedSession(fx, {});
+				const { session, faux, end } = await scriptedSession(fx, {});
 				try {
 					let captured: TranscriptContext | undefined;
 					faux.setResponses([
@@ -324,7 +324,7 @@ describe("the prefix of one configuration does not depend on the process", () =>
 						messages: [],
 					};
 				} finally {
-					session.dispose?.();
+					await end();
 				}
 			});
 		} finally {
@@ -465,8 +465,8 @@ describe("agents of different roles", () => {
 			}),
 		);
 		// The breakpoint sits on the same tool, the last before the first role-specific one (`backlog` in the main
-		// session, `memory` in a child: `archive` is on demand), in every role.
-		expect(sent.map((request) => request.boundary)).toEqual(["backlog", "memory", "memory", "memory"]);
+		// session, `agent` in a child: its `memory` and `archive` stay deferred), in every role.
+		expect(sent.map((request) => request.boundary)).toEqual(["backlog", "agent", "agent", "agent"]);
 		expect(sent.every((request) => request.marked === sent[0].marked && request.marked > 0)).toBe(true);
 		expect(new Set(sent.map((request) => request.prefix)).size).toBe(1);
 		// One instruction marker on the tools, one on the prompt: two stay for the history.

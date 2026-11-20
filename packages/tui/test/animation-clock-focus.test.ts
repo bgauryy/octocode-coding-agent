@@ -13,37 +13,38 @@ describe("animationClock focus", () => {
 		mock.timers.reset();
 	});
 
-	it("pauses decoration while unfocused, counters keep 1 s", () => {
+	it("slows decoration to about 500 ms steps while unfocused, counters keep 1 s", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
-		let decor = 0;
+		const decorAt: number[] = [];
 		let info = 0;
-		const stopDecor = animationClock.subscribe(() => decor++, { everyMs: 80, kind: "decor" });
+		const stopDecor = animationClock.subscribe((now) => decorAt.push(now), { everyMs: 80, kind: "decor" });
 		const stopInfo = animationClock.subscribe(() => info++, { everyMs: 1_000, kind: "info" });
 		animationClock.setFocused(false);
-		decor = 0;
+		decorAt.length = 0;
 		advance(2_000);
-		assert.strictEqual(decor, 0);
+		assert.ok(decorAt.length >= 3 && decorAt.length <= 4, `decor steps: ${decorAt.length}`);
+		for (let i = 1; i < decorAt.length; i++) assert.strictEqual(decorAt[i] - decorAt[i - 1], 500);
 		assert.strictEqual(info, 2);
 		stopDecor();
 		stopInfo();
 	});
 
-	it("pauses a slower decor subscriber too, and stops the timer when only decoration is left", () => {
+	it("keeps a decor subscriber slower than the unfocused step at its own rate", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let slow = 0;
-		const stop = animationClock.subscribe(() => slow++, { everyMs: 500, kind: "decor" });
+		const stop = animationClock.subscribe(() => slow++, { everyMs: 1_000, kind: "decor" });
 		animationClock.setFocused(false);
-		assert.strictEqual(animationClock.isRunning(), false);
-		advance(2_000);
-		assert.strictEqual(slow, 0);
+		advance(3_000);
+		assert.strictEqual(slow, 3);
+		assert.strictEqual(animationClock.isRunning(), true);
 		stop();
 	});
 
-	it("draws decoration where it stood when focus left until focus returns", () => {
+	it("draws decoration from real time while unfocused", () => {
 		mock.timers.enable({ apis: ["setInterval", "Date"], now: 10_000 });
 		animationClock.setFocused(false);
 		advance(3_000);
-		assert.strictEqual(animationClock.decorationTime(), 10_000);
+		assert.strictEqual(animationClock.decorationTime(), 13_000);
 		animationClock.setFocused(true);
 		assert.strictEqual(animationClock.decorationTime(), 13_000);
 	});

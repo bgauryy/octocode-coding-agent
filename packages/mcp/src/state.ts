@@ -1,13 +1,12 @@
 import { dirname, join } from "node:path";
 import type { TSchema } from "typebox";
 import { mcpServerGroup } from "./group.ts";
-import { hostPaths } from "./host.ts";
-import type { McpFeatureApi, McpContext, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
+import { hostIdentity, hostPaths } from "./host.ts";
+import type { McpFeatureApi, McpToolDefinition, McpModelRegistry } from "./host/types.ts";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import {
 	getMcpToolExposure,
-	type LoadedMcpConfig,
 	type McpExposure,
 	type McpServerConfigPatch,
 	type McpServerEntry,
@@ -19,7 +18,6 @@ import { getMcpConfigLocations } from "./inspection.ts";
 import { McpServerLog } from "./log.ts";
 import { McpOAuthCredentialStore } from "./oauth.ts";
 import type { McpServerConnection } from "./runtime.ts";
-import type { McpTransportFactory } from "./runtime/transport.ts";
 import { isEnabled, type McpServer } from "./server.ts";
 import { setMcpSessionStatus } from "./status.ts";
 import { mcpServerState, mcpServerToolCount } from "./row.ts";
@@ -29,69 +27,23 @@ import type { McpToolDetails } from "./tools.ts";
 import {
 	DEFAULT_MCP_EXPOSURE_SETTING,
 	deferRolesFromEnv,
+	type McpDeferRole,
 	defersByRecentUse,
 	defersByUsage,
-	type McpDeferRole,
+	promotionBudget,
 	recentToolKey,
+	recentToolsFromEnv,
 } from "./deferral.ts";
-import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { recentlyUsed, RecentUseRecorder } from "@octocodeai/octocode-common/recent-use";
 import { USAGE_FILE_NAME, UsageRecorder, usageGroupOf, usageSnapshot } from "@octocodeai/octocode-common/usage-counts";
-import type { McpNativeTools } from "./manage-tool.ts";
 import { isParentStopped } from "./session-servers.ts";
 import { findMcpPreset, type McpServerPreset } from "./preset.ts";
 import { expandLaunchTemplates } from "./launch-templates.ts";
 import { publishToolRoles, resolveToolRoles } from "./roles.ts";
 import { serverGeneratedDir } from "./compact/store.ts";
-import { DEFAULT_MCP_PRESENTATION, McpPresentation, type McpPresentationMode } from "./presentation/index.ts";
-
-export interface McpFeatureOptions {
-	presets?: readonly McpServerPreset[];
-	/** Defaults to reading `mcp.json` from the agent directory and the trusted project. */
-	loadConfig?: (ctx: McpContext, defaults: readonly McpServerEntry[]) => LoadedMcpConfig;
-	/** Defaults to stdio and streamable HTTP transports built from the server config. */
-	createTransport?: McpTransportFactory;
-	/** Transient launch defaults; persisted configuration remains unchanged. */
-	prepareLaunch?: (entry: McpServerEntry, cwd: string) => McpServerEntry;
-	/** Defaults to `mcp-auth.json` in the agent directory. */
-	credentials?: McpOAuthCredentialStore;
-	/** File server log messages are appended to. Defaults to `mcp.log` in the agent directory. */
-	logPath?: string;
-	/** Opens the OAuth authorization URL. Defaults to the platform browser. */
-	openUrl?: (url: string) => void;
-	/**
-	 * Saves `/mcp` changes to the server's config file: its project `override` when set, else its
-	 * `source`. Defaults to editing that `mcp.json`.
-	 */
-	updateConfig?: (entry: McpServerEntry, patch: McpServerConfigPatch) => void;
-	/**
-	 * How long the first prompt waits for servers with `direct` tools that are still connecting at
-	 * startup, in milliseconds. Their tools become available when they connect. Default: 10000.
-	 */
-	startupWaitMs?: number;
-	/** Overrides the `mcpPresentation` setting. Default: the setting, which defaults to `declared`. */
-	presentation?: McpPresentationMode;
-	/** Overrides the `mcpExposure` setting (`deferral.ts`). Default: the setting, which defaults to `usage`. */
-	exposure?: string;
-	/** Tool roles (`roles` in a server's config) whose open tools are deferred in this instance. Default: `OCTOCODE_MCP_DEFER_ROLES` in a subagent, which a profile's `mcpDefer` sets. */
-	deferRoles?: readonly McpDeferRole[];
-	/** The tools in use for `mcpExposure: "recent"` (`recentToolKey`). Default: a child's coordinator's set, else the record in the agent directory. */
-	recentTools?: ReadonlySet<string>;
-	/** The host's deferred native tools, which the `mcp` tool reads with `server: "native"`. Default: none. */
-	nativeTools?: McpNativeTools;
-}
-
-/** The set a coordinator handed its child, or undefined when it handed none or the value is not a list of names. */
-function recentToolsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> | undefined {
-	const text = env[MCP_RECENT_TOOLS_ENV];
-	if (text === undefined) return undefined;
-	try {
-		const value: unknown = JSON.parse(text);
-		return Array.isArray(value) ? new Set(value.filter((name): name is string => typeof name === "string")) : undefined;
-	} catch {
-		return undefined;
-	}
-}
+import { DEFAULT_MCP_PRESENTATION, McpPresentation } from "./presentation/index.ts";
+import type { McpFeatureOptions } from "./options.ts";
 
 const DEFAULT_STARTUP_WAIT_MS = 10_000;
 
@@ -279,7 +231,10 @@ export class McpFeatureState {
 			(envFlag(process.env, SUBAGENT_ENV) ? recentToolsFromEnv(process.env) : undefined) ??
 			this.#restored ??
 			(defersByUsage(this.exposureSetting())
-				? usageSnapshot(join(hostPaths().agentDir(), USAGE_FILE_NAME), usageGroupOf())
+				? usageSnapshot(join(hostPaths().agentDir(), USAGE_FILE_NAME), usageGroupOf(), Date.now(), {
+						version: hostIdentity().version,
+						budget: promotionBudget(this.#settings()?.mcpPromotedBytes),
+					})
 				: recentlyUsed(join(hostPaths().agentDir(), "tool-use.json"), this.sessionCwd));
 		return this.#recent;
 	}
@@ -305,14 +260,18 @@ export class McpFeatureState {
 		this.#usage.record("called", [recentToolKey(server, tool)]);
 	}
 
-	/** Counts the tools this session declares (`usage-counts.ts`), once each, whatever the setting. */
-	recordToolsDeclared(server: string, tools: Iterable<string>): void {
+	/**
+	 * Counts the tools this session declares or lists on demand (`usage-counts.ts`), once each, whatever the setting, and
+	 * the bytes promoting each listed on-demand one would add (`sizes`), which the promotion budget counts.
+	 */
+	recordToolsDeclared(server: string, tools: Iterable<string>, sizes: ReadonlyMap<string, number> = new Map()): void {
 		// The snapshot is read first, so a session's own declaration never counts toward the set it declares.
 		this.recentTools();
 		this.#usage.record(
 			"declared",
 			[...tools].map((tool) => recentToolKey(server, tool)),
 		);
+		this.#usage.recordSizes([...sizes].map(([tool, bytes]) => [recentToolKey(server, tool), bytes] as const));
 	}
 
 	/** Counts a tool whose full description the model read with the `mcp` tool. */
@@ -326,13 +285,19 @@ export class McpFeatureState {
 		this.#usage.record("called", [recentToolKey(server, tool)]);
 	}
 
-	/** The `mcpExposure` setting: the option, else the session's settings, else `DEFAULT_MCP_EXPOSURE_SETTING`. */
+	/** Set from `leanSession` at session start and on a model switch (`events.ts`). */
+	lean = false;
+
+	/** The `mcpExposure` setting: the option, else `deferred` in a lean session, else the session's settings or the default. */
 	exposureSetting(): unknown {
 		return (
 			this.options.exposure ??
-			(typeof this.api.settings.get === "function" ? this.api.settings.get() : {})?.mcpExposure ??
-			DEFAULT_MCP_EXPOSURE_SETTING
+			(this.lean ? "deferred" : (this.#settings()?.mcpExposure ?? DEFAULT_MCP_EXPOSURE_SETTING))
 		);
+	}
+
+	#settings() {
+		return typeof this.api.settings.get === "function" ? this.api.settings.get() : undefined;
 	}
 
 	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {

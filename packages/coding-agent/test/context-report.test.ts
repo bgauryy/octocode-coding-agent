@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { contextReport, renderContextReport } from "../src/core/agent-session/context-report.ts";
 import { prepareCompaction, shouldCompact } from "../src/core/compaction/compaction.ts";
+import { skillListingBudgetChars } from "../src/core/skills/listing-budget.ts";
 import { createHarness } from "./suite/harness.ts";
 
 it("attributes each effective instruction and tool once, labels unknown usage and hides prompt text", async () => {
@@ -42,6 +43,46 @@ it("attributes each effective instruction and tool once, labels unknown usage an
 		expect(renderContextReport(report)).toContain("unknown");
 		expect(renderContextReport(report)).not.toContain("private");
 		expect(request).not.toHaveBeenCalled();
+	} finally {
+		harness.cleanup();
+	}
+});
+
+it("groups declared tools by owner and warns when one MCP server's declarations pass their share", async () => {
+	const harness = await createHarness();
+	try {
+		const { session, sessionManager } = harness;
+		// A 50,000-token window: one server may declare five times the 1% instructions budget.
+		const budget = skillListingBudgetChars(50_000) * 5;
+		const schema = (size: number) => ({
+			type: "object",
+			properties: { q: { type: "string", description: "x".repeat(size) } },
+		});
+		sessionManager.appendMessage({
+			role: "system",
+			content: "base",
+			sections: {},
+			toolsAdded: [
+				{ name: "bash", description: "runs", parameters: schema(10) },
+				{ name: "mcp__big__search", description: "searches", parameters: schema(budget / 2) },
+				{ name: "mcp__big__fetch", description: "fetches", parameters: schema(budget / 2) },
+				{ name: "mcp__small__ping", description: "pings", parameters: schema(10) },
+			],
+			timestamp: 1,
+		});
+		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 50_000 });
+		const report = contextReport(session);
+		expect(report.declaredTools?.map(({ owner, tools }) => [owner, tools])).toEqual([
+			["native", 1],
+			["big", 2],
+			["small", 1],
+		]);
+		expect(report.warnings).toEqual([
+			expect.stringMatching(new RegExp(`^MCP server big tool declarations too long: \\d+ chars, budget ${budget} `)),
+		]);
+		const text = renderContextReport(report);
+		expect(text).toMatch(/Declared tools: 4 \([\d,]+ tokens\): native 1 \([\d,]+\), big 2 \([\d,]+\), small 1/);
+		expect(text).toContain("Warning: MCP server big tool declarations too long");
 	} finally {
 		harness.cleanup();
 	}
@@ -229,30 +270,32 @@ it("warns when one MCP server's instructions or the context files pass 1% of the
 	const harness = await createHarness();
 	try {
 		const { session, sessionManager } = harness;
+		// A 20,000-token window: 1% of it, in characters at the default ratio.
+		const budget = skillListingBudgetChars(20_000);
 		const block = (name: string, body: string) => `<mcp name="${name}" tools="mcp__${name}__*">\n${body}\n</mcp>`;
-		const typed = `/** ${"i".repeat(900)} */\ndeclare namespace typed {\n/** ${"d".repeat(5_000)} */\nfunction t(): void;\n}`;
+		const long = "i".repeat(budget + 100);
+		const typed = `/** ${long} */\ndeclare namespace typed {\n/** ${"d".repeat(5_000)} */\nfunction t(): void;\n}`;
 		const mcps = [
 			"Each block is one MCP server's instructions.",
-			block("big", "b".repeat(801)),
-			block("fits", "f".repeat(800)),
+			block("big", "b".repeat(budget + 1)),
+			block("fits", "f".repeat(budget)),
 			// A block with typed functions counts its instructions only.
 			block("typed", typed),
-			block("typed-small", typed.replace("i".repeat(900), "short")),
+			block("typed-small", typed.replace(long, "short")),
 		].join("\n");
-		const projectContext = "c".repeat(1_200);
+		const projectContext = "c".repeat(budget + 400);
 		sessionManager.appendMessage({
 			role: "system",
 			content: "base",
 			sections: { mcps, project_context: projectContext, policy: "p".repeat(5_000) },
 			timestamp: 1,
 		});
-		// A 20,000-token window: 1% is 200 tokens, 800 characters.
 		session.getContextUsage = () => ({ tokens: null, percent: null, contextWindow: 20_000 });
 		const report = contextReport(session);
 		expect(report.warnings).toEqual([
-			"MCP server typed instructions too long: 900 chars, budget 800 · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions",
-			"MCP server big instructions too long: 801 chars, budget 800 · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions",
-			"Context files too long: 1200 chars, budget 800 · move rarely needed rules into linked files",
+			`MCP server typed instructions too long: ${budget + 100} chars, budget ${budget} · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions`,
+			`MCP server big instructions too long: ${budget + 1} chars, budget ${budget} · fix: disable the server in /mcp, or ask its maintainer to shorten its instructions`,
+			`Context files too long: ${budget + 400} chars, budget ${budget} · move rarely needed rules into linked files`,
 		]);
 		const text = renderContextReport(report);
 		expect(text.split("\n\n")[1]).toBe(report.warnings.map((warning) => `Warning: ${warning}`).join("\n"));

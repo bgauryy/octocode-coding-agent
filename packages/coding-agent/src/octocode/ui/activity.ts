@@ -2,7 +2,6 @@ import { animationClock } from "@octocodeai/octocode-tui";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { beginRun, resetRun, settleRun } from "../../utils/run-clock.ts";
 import { dialogsWaiting, onDialogsChange, promptTitle } from "../shared/locks.ts";
-import { setRowsAnimate } from "./chrome.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { Activity } from "./activity-model.ts";
 
@@ -66,7 +65,6 @@ export function registerActivity(
 		const silence = activity.modelSilenceMs(Date.now());
 		if (working && silence !== undefined && silence >= 30_000)
 			working += ` · no model event for ${Math.floor(silence / 1000)}s`;
-		setRowsAnimate(ctx, activity.toolsRunning());
 		if (working !== shown) {
 			shown = working;
 			try {

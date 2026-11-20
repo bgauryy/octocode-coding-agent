@@ -75,16 +75,22 @@ export function registerNativeSessionLifecycle(
 		if (isSubagent) {
 			const holding = setInterval(() => undefined, MINUTE_MS);
 			try {
-				const notify = (text: string) =>
-					void api.session.sendMessage(
+				// The hold note starts no turn; it is awaited before the run continues, so a failed send reaches the bus's error report.
+				const notes: Array<Promise<void>> = [];
+				const notify = (text: string) => {
+					const sent = api.session.sendMessage(
 						{ customType: JOB_HOLD_TYPE, content: text, display: true },
 						{ triggerTurn: false },
 					);
+					notes.push(Promise.resolve(sent));
+				};
 				// After the hold note, an answer that names no outcome is still waiting; a report ends the run.
 				const answer = event.context.contextMessages.findLast((message) => message.role === "assistant");
 				const reported = answer !== undefined && reportStatus(contentText(answer.content)) !== undefined;
 				const holdMs = options.jobHoldMs ?? CHILD_JOB_HOLD_MS;
-				if (await holdForOwnJobs(jobs, warnedJobs, notify, stop, holdMs, reported)) return { continue: true };
+				const holds = await holdForOwnJobs(jobs, warnedJobs, notify, stop, holdMs, reported);
+				await Promise.all(notes);
+				if (holds) return { continue: true };
 				// The report ends the child's work: a wait it set would only wake it for a turn nobody reads.
 				if (reported) timers.endOwn();
 			} finally {

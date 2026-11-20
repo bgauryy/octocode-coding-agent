@@ -55,7 +55,18 @@ export interface ModelCapabilities {
 	thinking: { control: ThinkingControl; levels: ModelThinkingLevel[]; canDisable: boolean };
 	cache: {
 		mechanism: CacheMechanism;
+		/** Lifetimes to plan with, in seconds; `long` is the typical lifetime where it is shorter than `longUpTo`. */
 		lifetimes: { short?: number; long?: number };
+		/**
+		 * The longest a long entry may live, where the provider keeps it a typical time shorter than that (OpenAI and Azure
+		 * `24h` extended retention: "typically ... around 30 minutes", up to 24 hours). Absent where `long` is exact.
+		 */
+		longUpTo?: number;
+		/**
+		 * Set where the long tier exists only for the instruction breakpoints, so long history retention keeps the history
+		 * at the short lifetime: OpenAI explicit mode keeps the request TTL, which covers the history, at 30 minutes.
+		 */
+		longInstructionsOnly?: true;
 		/** Chat Completions only: when the request carries `prompt_cache_key`. Absent where the adapter decides otherwise. */
 		key?: PromptCacheKeyRule;
 	};
@@ -65,8 +76,13 @@ export interface ModelCapabilities {
 const MARKER_LIFETIMES = { short: 300, long: 3600 } as const;
 /** OpenAI explicit cache mode lifetimes in seconds: 30 minutes and 12 hours. */
 const EXPLICIT_LIFETIMES = { short: 1800, long: 43_200 } as const;
-/** OpenAI and Azure extended retention for implicit caching (`prompt_cache_retention: "24h"`), in seconds. */
-const EXTENDED_KEY_LIFETIME = 86_400;
+/**
+ * OpenAI and Azure extended retention for implicit caching (`prompt_cache_retention: "24h"`), in seconds. OpenAI: it
+ * "typically keeps entries available for around 30 minutes and can retain them for up to 24 hours"
+ * (https://developers.openai.com/api/docs/guides/prompt-caching, 2026-11-19), so the warmer, compaction and clearing
+ * plan with the typical lifetime and 24 hours stays the upper bound.
+ */
+const EXTENDED_KEY_LIFETIME = { typical: 1800, upTo: 86_400 } as const;
 
 export function resolveModelCapabilities(model: Model<Api>, env?: ProviderEnv): ModelCapabilities {
 	const levels = getSupportedThinkingLevels(model);
@@ -108,6 +124,11 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 		...(short !== undefined ? { short } : {}),
 		...(long && longDefault !== undefined ? { long: longDefault } : {}),
 	});
+	// The 24h tier, planned at its typical lifetime unless the model declares its own.
+	const extended = (short: number | undefined) => ({
+		lifetimes: tiers(short, declared.long ?? EXTENDED_KEY_LIFETIME.typical),
+		...(long && declared.long === undefined ? { longUpTo: EXTENDED_KEY_LIFETIME.upTo } : {}),
+	});
 	if (mechanism === "markers")
 		return {
 			mechanism,
@@ -117,15 +138,16 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 	// where it is accepted. A deployment opted in to explicit mode takes OpenAI's 30m and 12h tiers below.
 	if (model.api === "azure-openai-responses" && !azureSupportsExplicitPromptCacheMode(model)) {
 		const short = mechanism === "explicit-breakpoint" ? (declared.short ?? EXPLICIT_LIFETIMES.short) : declared.short;
-		return { mechanism, lifetimes: tiers(short, declared.long ?? EXTENDED_KEY_LIFETIME) };
+		return { mechanism, ...extended(short) };
 	}
 	if (mechanism === "explicit-breakpoint")
 		return {
 			mechanism,
 			lifetimes: tiers(declared.short ?? EXPLICIT_LIFETIMES.short, declared.long ?? EXPLICIT_LIFETIMES.long),
+			// Azure breakpoints take no `ttl`, so its request TTL (the history's) carries the long tier there.
+			...(model.api === "azure-openai-responses" || !long ? {} : { longInstructionsOnly: true as const }),
 		};
-	if (mechanism === "key" && model.api === "openai-responses")
-		return { mechanism, lifetimes: tiers(declared.short, declared.long ?? EXTENDED_KEY_LIFETIME) };
+	if (mechanism === "key" && model.api === "openai-responses") return { mechanism, ...extended(declared.short) };
 	if (model.api === "openai-completions" && mechanism === "key")
 		return {
 			mechanism,
@@ -159,10 +181,19 @@ export function replaysWithReasoningUnchanged(model: Model<Api>): boolean {
 	return REPLAY_STABLE_APIS.has(model.api);
 }
 
+/**
+ * Vercel AI Gateway serves every upstream on its Anthropic-compatible endpoint, but only Anthropic's models have
+ * Anthropic's cache entries: an OpenAI, Google or other upstream caches on its own terms.
+ */
+function servesNonAnthropicUpstream(model: Model<Api>): boolean {
+	const gateway = model.provider === "vercel-ai-gateway" || matchesHost(model.baseUrl, "ai-gateway.vercel.sh");
+	return gateway && !model.id.toLowerCase().startsWith("anthropic/");
+}
+
 function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 	switch (model.api) {
 		case "anthropic-messages":
-			return "markers";
+			return servesNonAnthropicUpstream(model) ? "implicit" : "markers";
 		case "bedrock-converse-stream": {
 			const bedrock = model as Model<"bedrock-converse-stream">;
 			return (isAnthropicClaudeModel(bedrock) || isNovaExplicitCacheModel(bedrock)) &&

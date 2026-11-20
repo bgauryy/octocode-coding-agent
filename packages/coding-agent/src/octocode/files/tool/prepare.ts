@@ -3,7 +3,8 @@ import { applyEditsToNormalizedContent, normalizeToLF } from "../../../core/tool
 import { splitBom } from "@octocodeai/octocode-common/text";
 import type { ToolContext } from "../../../core/features/index.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import { changesOnlyWorkspace, runsLater } from "../../permission/file-access.ts";
+import { protectedFileRefusal } from "./protected-files.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { workspaceRoot } from "../../../utils/git-repository.ts";
@@ -147,7 +148,7 @@ export async function inspectQueryBatch(
 		if (rejectOverlap && repeated)
 			throw new Error("Overlapping rewritten file targets require sequential preparation; no changes applied");
 		targets.add(real);
-		const state = stateFolderRefusal(real, query.path, "the file tool", ctx.cwd);
+		const state = protectedFileRefusal(real, query.path, ctx.cwd);
 		if (state) throw new Error(state);
 		const root = workspaceRoot(ctx.cwd);
 		outside ||= !root || !changesOnlyWorkspace(real, root) || runsLater(real, root);

@@ -225,12 +225,12 @@ function continueMirror(t: Transcript, stamp: FileStamp, records: readonly unkno
 	// `records[0]` is the header; the entry at stored position `p` is `records[p + 1]`.
 	if (from === 0 || from + 1 >= records.length || (records[from] as { id?: unknown }).id !== tail.lastId) return false;
 	const codec = new SessionCodec();
-	const header = JSON.stringify(codec.encode(records[0] as object));
+	const header = codec.line(records[0] as object);
 	for (let i = 0; i <= from; i++) codec.observe(records[i] as object);
 	const entries: Batch["entries"] = [];
 	for (let i = from + 1; i < records.length; i++) {
 		const record = records[i] as object;
-		entries.push({ position: i - 1, record: row(record, JSON.stringify(codec.encode(record))) });
+		entries.push({ position: i - 1, record: row(record, codec.line(record)) });
 		codec.observe(record);
 	}
 	sendContinuation(t, "append", {

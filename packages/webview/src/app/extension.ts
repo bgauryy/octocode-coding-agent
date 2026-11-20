@@ -86,6 +86,8 @@ export interface LiveExtension {
 	themePrefs: ThemePrefs;
 	/** The header's notification permission and sound controls; also raises the notifications. Inside `Provider`. */
 	Notifications: ComponentType;
+	/** The session's notices as a transient toast on any view. Inside `Provider`. */
+	SessionNotices?: ComponentType;
 	/** What waits on the user in the session; a hook, called inside `Provider`. */
 	useNeedsYou: () => NeedsYou | undefined;
 	/** The waiting dialog, answerable inline from any view. */

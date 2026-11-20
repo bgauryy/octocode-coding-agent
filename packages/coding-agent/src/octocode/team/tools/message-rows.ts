@@ -9,21 +9,17 @@ import { clip, plural } from "../../shared/text.ts";
 import { type Endpoint, mailKinds } from "@octocodeai/octocode-contracts/team";
 import { endpointMarks, endpointName } from "../endpoint.ts";
 import type { MailDetails } from "../model.ts";
+import { fullMessageText } from "../spill.ts";
 
 /**
  * Agent mail as the transcript draws it, outgoing and incoming alike: `sender → recipient`, the message number and its
- * kind (request, FYI, reply to #N, interrupt), then the body. A delivered message names its real recipient (the agent whose
+ * kind (request, FYI, reply to #N, interrupt), then the whole body. A delivered message names its real recipient (the agent whose
  * transcript this is) with role and, when `endpoints` resolves them, worktree and tmux marks; an entry without a recipient
  * (a team notice, an old entry) names the sender only.
  */
 
 /** Resolves an agent id to its endpoint at render time (live row, else the row it left); absent: ids and recorded roles only. */
 export type EndpointResolver = (id: string) => Endpoint;
-
-/** Columns of the sent text shown on the collapsed result row. */
-const PREVIEW_CHARS = 60;
-/** Body lines a collapsed delivered message shows. */
-const MAIL_PREVIEW_LINES = 3;
 
 /** Arguments are model output and details another process's data: only strings and numbers are shown. */
 const text = (value: unknown): string =>
@@ -57,19 +53,12 @@ export function sendOutcome(args: Record<string, unknown>, details: Record<strin
 	return `#${text(details.id)} ${verb}${recipients}${relayed}${departed}`;
 }
 
-/** The collapsed result line adds the start of what was sent; expanded, the body below shows all of it. */
-export function sendPreview(message: string): string {
-	const first = clip(message.trimStart(), PREVIEW_CHARS);
-	return first ? ` · "${first}"` : "";
-}
-
 const KIND_COLOR = { request: "warning", interrupt: "error", FYI: "dim" } as const;
 
-/** One delivered message: `✉ 🐙 ink(main) [worktree fix] → you(main) · #51 · request · 16:05:00`, then its body (previewed while collapsed). */
+/** One delivered message: `✉ 🐙 ink(main) [worktree fix] → you(main) · #51 · request · 16:05:00`, then its whole body. */
 function mailEntry(
 	theme: Theme,
 	entry: Record<string, unknown>,
-	expanded: boolean,
 	resolve: EndpointResolver | undefined,
 ): Component[] {
 	const from = clip(text(entry.from) || "agent", 64);
@@ -104,19 +93,10 @@ function mailEntry(
 	const to = recipient ? ` ${theme.fg("dim", "→")} ${theme.fg("toolTitle", shown(recipient))}` : "";
 	const header = `${theme.fg("accent", "✉")} ${mark}${who}${to}${dot}${meta.join(dot)}`;
 	const note = by && entry.note !== undefined ? `${by}: ${text(entry.note)}\n` : "";
-	const lines = `${note}${text(entry.text)}`.split("\n");
-	// Collapsed, the first lines and how many more; the kit shows a short body whole, so the preview is cut here.
-	const cut = !expanded && lines.length > MAIL_PREVIEW_LINES;
-	const body = (cut ? lines.slice(0, MAIL_PREVIEW_LINES) : lines).join("\n");
+	// The user reads every message whole (a spilled one from its saved file); the model's copy is separate.
+	const body = `${note}${fullMessageText(text(entry.text))}`;
 	// resultBlock sanitizes the body.
-	return [
-		new Text(header, 0, 0),
-		resultBlock(
-			theme,
-			{ expanded },
-			{ summary: "", body, error: false, max: MAIL_PREVIEW_LINES, ...(cut ? { totalLines: lines.length } : {}) },
-		),
-	];
+	return [new Text(header, 0, 0), resultBlock(theme, { expanded: true }, { summary: "", body, error: false })];
 }
 
 /** Delivered team mail: one header and body per message of the batch. */
@@ -130,7 +110,7 @@ export function mailRows(
 	// Details are another process's data: anything but a batch shows the text the model got.
 	const entries: unknown[] = Array.isArray(mail) ? mail : [{ from: "agent", text: text(message.content) }];
 	for (const entry of entries)
-		for (const row of mailEntry(theme, asRecord(entry), options.expanded === true, options.endpoints))
+		for (const row of mailEntry(theme, asRecord(entry), options.endpoints))
 			box.addChild(row);
 	return box;
 }

@@ -101,7 +101,7 @@ export function toolCatalog(state: McpToolCatalogSource, name: string): McpToolL
 			...tool,
 			exposure,
 			...(callName ? { callName } : {}),
-			...(audit ? { audit: audit(server.entry.name, tool, toolExposureState(exposure)) } : {}),
+			...(audit ? { audit: audit(server.entry.name, tool, toolExposureState(exposure), exposure === "onDemand") } : {}),
 		};
 	});
 	return sortByAudit(listed);

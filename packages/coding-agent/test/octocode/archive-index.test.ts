@@ -8,6 +8,7 @@ import { rankIndexed } from "../../src/octocode/history/index/query.ts";
 import { openIndex, syncFiles } from "../../src/octocode/history/index/sync.ts";
 import { rankHistory } from "../../src/octocode/history/rank.ts";
 import type { Scored } from "../../src/octocode/history/rank/score.ts";
+import { LineRunsBuilder } from "../../src/octocode/history/rank/line-runs.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { referenceRank } from "./archive-rank-oracle.ts";
 import { tmp } from "./helpers.ts";
@@ -100,7 +101,10 @@ const queries = [
 describe("archive index", () => {
 	it("gives the scan's exact scores from the index, from a mix of both, and with a query filter", async () => {
 		const files = corpus();
-		const filtered = new Map([[0, new Set(Array.from({ length: 400 }, (_, n) => n))]]);
+		// The first 400 lines of the first file match, as a query filter's scan reports them (`rank/line-runs.ts`).
+		const lines = new LineRunsBuilder();
+		for (let line = 0; line < 400; line++) lines.add(line);
+		const filtered = new Map([[0, lines.done()]]);
 		for (const keywords of queries)
 			for (const filter of [undefined, filtered]) {
 				const scanned = summary(await rankIndexed(open(), files, keywords, filter, none, 0));

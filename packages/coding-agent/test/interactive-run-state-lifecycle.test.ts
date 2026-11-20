@@ -129,7 +129,7 @@ describe("interactive retry lifecycle", () => {
 				elapsedMs: 65_000,
 				receivedChars: 9_600,
 			});
-			expect(line()).toContain("Auto-compacting… 1m05s · ~3.2k tokens received · ");
+			expect(line()).toContain("Auto-compacting… 1m05s · ~3.8k tokens received · ");
 			await handleRunStateEvent(host, {
 				type: "summarization_retry_scheduled",
 				attempt: 1,
@@ -145,6 +145,49 @@ describe("interactive retry lifecycle", () => {
 			});
 			expect(host.activeStatusIndicator?.kind).toBe("retry");
 			expect(line()).not.toContain("tokens received");
+		} finally {
+			host.activeStatusIndicator?.dispose();
+		}
+	});
+
+	test("an outage is one updating row with a countdown and adds nothing to the transcript per attempt", async () => {
+		const host = createFakeHost({
+			defaultEditor: { onEscape: vi.fn() },
+			retryEscapeHandler: undefined as (() => void) | undefined,
+			autoCompactionEscapeHandler: undefined as (() => void) | undefined,
+			activeStatusIndicator: undefined as StatusIndicator | undefined,
+			editor: {},
+			ui: { requestRender: vi.fn() },
+			showStatusIndicator(indicator: StatusIndicator) {
+				host.activeStatusIndicator?.dispose();
+				host.activeStatusIndicator = indicator;
+			},
+			clearStatusIndicator: vi.fn(),
+			showError: vi.fn(),
+		});
+		const line = () => stripAnsi(host.activeStatusIndicator?.render(200)[1] ?? "");
+		try {
+			for (const attempt of [1, 2, 3]) {
+				await handleRunStateEvent(host, {
+					type: "auto_retry_start",
+					attempt,
+					maxAttempts: 0,
+					delayMs: 60_000,
+					errorMessage: "fetch failed (ENOTFOUND)",
+					offlineSince: 1,
+				});
+			}
+			await handleRunStateEvent(host, {
+				type: "summarization_retry_scheduled",
+				attempt: 4,
+				maxAttempts: 0,
+				delayMs: 60_000,
+				errorMessage: "fetch failed (ENOTFOUND)",
+				offlineSince: 1,
+			});
+			expect(line()).toContain("✗ 🦈 Retry failed after 4 attempts: fetch failed (ENOTFOUND) - trying again in 60s");
+			expect(line()).toMatch(/cancel\s*$/);
+			expect(host.showError).not.toHaveBeenCalled();
 		} finally {
 			host.activeStatusIndicator?.dispose();
 		}

@@ -16,6 +16,14 @@ import { anthropicHome, traceRows } from "./cache-trace.ts";
 
 export const FLAGS = ["--mode", "json", "--no-session", "--offline", "--trust", "--model", "testkit/scripted"];
 
+/**
+ * Characters per token the agent estimates for the `scripted` model, a model of no known tokenizer family: the default
+ * ratio in octocode-agent's estimator (`CHARS_PER_TOKEN` in `packages/ai/src/utils/estimate.ts`, Claude's measured
+ * density). A gateway that counts at it reports what the agent's own estimate expects, as a real provider of that family
+ * would; the testkit imports no workspace, so the value is kept here.
+ */
+export const SCRIPTED_CHARS_PER_TOKEN = 2.5;
+
 /** `lines` lines of `width` bytes each (newline included), every one tagged with `tag` so a result can be told apart. */
 export function block(tag: string, lines: number, width = 400): string {
 	return Array.from({ length: lines }, (_, i) => `${tag} ${i} `.padEnd(width - 1, "x")).join("\n") + "\n";
@@ -90,6 +98,9 @@ export async function runFlow(
 }
 
 /** Where a main request stands: the last user turn tagged `T<n> ` and the assistant replies since. */
+/** The cache-sharing summary request's ask, its last user message (`shared-request.md`). */
+const SUMMARY_REQUEST = /write a context checkpoint summary/;
+
 export function position(request: CapturedRequest): { turn: string; replies: number } {
 	const at = request.messages.findLastIndex((m) => m.role === "user" && /^T\d /.test(textOf(m.content)));
 	const turn = at < 0 ? "" : textOf(request.messages[at].content).slice(0, 2);
@@ -98,9 +109,10 @@ export function position(request: CapturedRequest): { turn: string; replies: num
 
 /**
  * A responder scripted per turn: `steps[turn][k]` answers the k-th main request of that turn, and an unscripted turn
- * gets one text reply. Past the end of a turn's script, a request answering a tool result, or one whose user side
- * carries the scripted summary (the turn continuing after a compaction), gets the turn's closing text; any other
- * request past the script, and every request without tools, asks for a summary: it gets `summary` and is recorded.
+ * gets one text reply. A request that asks for the checkpoint (the cache-sharing summary request, which keeps the
+ * tools, after a compaction too) and every request without tools gets `summary` and is recorded. Past the end of a
+ * turn's script, a request answering a tool result, or one whose user side carries the scripted summary (the turn
+ * continuing after a compaction), gets the turn's closing text; any other request past the script gets `summary`.
  */
 export function byTurn(
 	steps: Record<string, Step[]>,
@@ -108,6 +120,11 @@ export function byTurn(
 ): { responder: Responder; summaryRequests: CapturedRequest[] } {
 	const summaryRequests: CapturedRequest[] = [];
 	const responder: Responder = ({ request }) => {
+		const asked = textOf(request.messages.findLast((m) => m.role === "user")?.content);
+		if (request.tools.length === 0 || SUMMARY_REQUEST.test(asked)) {
+			summaryRequests.push(request);
+			return { text: summary };
+		}
 		const { turn, replies } = position(request);
 		const script = steps[turn] ?? [{ text: `${turn} done` }];
 		const step = request.tools.length === 0 ? undefined : script[replies];

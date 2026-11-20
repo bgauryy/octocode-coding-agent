@@ -269,7 +269,7 @@ describe("bypass merges without asking, after the readiness check, and says so",
 		const result = await messaging.mergeBranch("feature", ctx);
 		expect(result.ok).toBe(true);
 		const notice = f.sent.find((each) => each.message.customType === "octocode-merge-notice");
-		expect(notice?.message).toMatchObject({ display: true });
+		expect(notice?.message).toMatchObject({ display: "only" });
 		expect(notice?.message.content).toMatch(/bypass/);
 		expect(notice?.message.content).toMatch(/feature/);
 		expect(notice?.message.content).toMatch(/readiness check/);

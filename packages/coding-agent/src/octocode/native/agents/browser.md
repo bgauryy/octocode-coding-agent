@@ -3,6 +3,7 @@ name: browser
 description: Use when a task needs a rendered page (interaction, login, screenshots, console or network); returns the outcome, URLs and evidence paths.
 tools: mcp__browser__*,web
 skills: []
+catalog: []
 headless: true
 readOnly: true
 linger: 900

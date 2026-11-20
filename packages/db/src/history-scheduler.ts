@@ -6,6 +6,8 @@ import { sharedDbWriter } from "./writer/client.ts";
 /** Next housekeeping time and at most one admitted pass per database in this process. */
 const due = new Map<string, number>();
 const running = new Set<string>();
+/** Admitted passes not yet settled, which `historyArchivesSettled` waits for. */
+const passes = new Set<Promise<void>>();
 
 /**
  * Schedules at most one daily history pass on the database's bounded writer. Compression, archive reads and SQLite
@@ -49,5 +51,30 @@ export function scheduleHistoryArchive(
 			running.delete(file);
 		}
 	};
-	setImmediate(() => void run()).unref();
+	const pass = new Promise<void>((resolve) => {
+		setImmediate(() => void run().finally(resolve)).unref();
+	});
+	passes.add(pass);
+	void pass.finally(() => passes.delete(pass));
+}
+
+/**
+ * Wait until every admitted history pass has settled, at most `timeoutMs`; false when one is still running. A session
+ * being disposed awaits this, so its pass does not write to the database after the session is gone. A pass still
+ * running at the bound goes on in the writer; an interrupted one leaves its rows in place for a later pass.
+ */
+export async function historyArchivesSettled(timeoutMs: number): Promise<boolean> {
+	if (passes.size === 0) return true;
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			Promise.allSettled(passes).then(() => true),
+			// Not unref'd: whoever awaits this keeps the process for its bound, as the unref'd worker alone would not.
+			new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
 }

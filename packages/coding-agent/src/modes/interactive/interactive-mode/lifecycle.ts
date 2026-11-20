@@ -1,3 +1,5 @@
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { drainDbWriters } from "../../../storage/database.ts";
 import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
 /**
@@ -17,6 +19,11 @@ import { disposeTranscript } from "./transcript-dispose.ts";
 
 /** Under the agent directory: one JSON line for each session ended because its main thread stayed blocked. */
 const STALL_LOG = "main-thread-stalls.jsonl";
+
+/** Interval of the timer that holds the event loop open during shutdown; it only has to exist, never fire. */
+const KEEP_ALIVE_MS = 60_000;
+/** How long the registered graceful releases may take after the session's own cleanup (`processLifetime.shutdown`). */
+const RELEASE_MS = 2_000;
 
 /** Interactive-mode members used by shutdown and signal handling. */
 type LifecycleHost = Pick<
@@ -72,6 +79,18 @@ export function handleCtrlD(host: LifecycleHost): void {
 export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boolean }): Promise<void> {
 	if (host.isShuttingDown) return;
 	host.isShuttingDown = true;
+	// Stopping the terminal UI releases the last handles that keep the event loop alive, while the dispose still waits on
+	// unref'd ones (the database writer worker, the session API server, job and child handles). Without a ref'd timer Node
+	// ends the process mid-dispose: exit 13 for the top-level await in `cli.ts`, and no resume hint.
+	const keepAlive = setInterval(() => undefined, KEEP_ALIVE_MS);
+	try {
+		await teardownAndExit(host, options);
+	} finally {
+		clearInterval(keepAlive);
+	}
+}
+
+async function teardownAndExit(host: LifecycleHost, options?: { fromSignal?: boolean }): Promise<void> {
 	// Keep signal handlers registered until terminal cleanup has completed.
 	// `signal-exit` checks the listener list during the same SIGTERM/SIGHUP
 	// dispatch and re-sends the signal if only its own listeners remain.
@@ -85,6 +104,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 		// which the stdout/stderr error handler turns into an exit once this
 		// dispose is done; the render loop is already idle, so this cannot hot-spin.
 		await disposeOnce(host);
+		await releaseAll();
 		host.themeController.disableAutoSync();
 		await host.ui.terminal.drainInput(1000);
 		host.stop();
@@ -103,6 +123,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 
 	host.stop();
 	await disposeOnce(host);
+	await releaseAll();
 
 	const resumeCommand = formatResumeCommand(host.sessionManager);
 	if (resumeCommand) {
@@ -112,6 +133,14 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	await host.ui.terminal.drainOutput?.();
 	await drainDbWriters();
 	process.exit(0);
+}
+
+/** The graceful releases still registered once the session is disposed; what is left runs at exit, synchronously. */
+async function releaseAll(): Promise<void> {
+	const { timedOut, failed } = await processLifetime.shutdown(RELEASE_MS);
+	for (const name of timedOut) process.stderr.write(`Octocode: ${name} was not released within ${RELEASE_MS} ms.\n`);
+	for (const { name, error } of failed)
+		process.stderr.write(`Octocode could not release ${name}: ${errorMessage(error)}\n`);
 }
 
 /** The runtime's dispose, shared by a shutdown and a dead terminal (`onDeadTerminal`): the session is torn down once. */

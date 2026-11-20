@@ -31,7 +31,10 @@ export interface HookTiming {
 interface HookNotice {
 	message: string;
 	title?: string;
-	/** Claude Code's `notification_type`: `permission_prompt`, `elicitation_dialog` or `idle_prompt`. */
+	/**
+	 * The `notification_type`: Claude Code's `permission_prompt`, `elicitation_dialog` or `idle_prompt`, or one of
+	 * Octocode's (`UserNoticeType`, `shared/user-notice.ts`).
+	 */
 	type: string;
 }
 

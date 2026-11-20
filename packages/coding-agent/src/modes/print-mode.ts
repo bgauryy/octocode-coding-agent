@@ -9,6 +9,7 @@
 import type { AssistantMessage, ImageContent } from "@octocodeai/octocode-ai";
 import type { AgentSessionEvent, RunOutcome } from "../core/agent-session.ts";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
+import { offlineRetryText } from "../core/agent-session/model-wait.ts";
 import { flushRawStdout, onRawStdoutFailure, writeRawStdout } from "../core/output-guard.ts";
 import { drainDbWriters } from "../storage/database.ts";
 import { createEventOutput, waitForEventBackpressure } from "./event-output.ts";
@@ -111,8 +112,13 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 			else if (event.type === "auto_retry_start") {
 				// Text mode prints nothing until the end, so a long provider wait would look like a hang.
 				const { attempt, maxAttempts, delayMs, errorMessage: reason } = event;
-				const why = reason.replace(/\s+/g, " ");
-				console.error(`Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt} of ${maxAttempts}): ${why}`);
+				const inSeconds = Math.ceil(delayMs / 1000);
+				if (event.offlineSince !== undefined) {
+					console.error(`Offline. ${offlineRetryText(attempt, reason)} - trying again in ${inSeconds}s`);
+				} else {
+					const why = reason.replace(/\s+/g, " ");
+					console.error(`Retrying in ${inSeconds}s (attempt ${attempt} of ${maxAttempts}): ${why}`);
+				}
 			}
 		});
 		unsubscribeBackpressure = mode === "json" ? session.agent.subscribe(waitForEventBackpressure) : undefined;

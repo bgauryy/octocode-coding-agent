@@ -151,8 +151,9 @@ describe("OpenAI Responses instruction cache boundary", () => {
 	});
 
 	it("does not split without an instruction breakpoint", async () => {
+		// A legacy short retention alone leaves the instructions to the implicit cache (a long one marks them, at 12h).
 		const { payload } = await capture(model, context(), {
-			cacheRetention: "long",
+			cacheRetention: "short",
 			instructionCacheRetention: undefined,
 			instructionCacheBoundary: "project_context",
 		});
@@ -169,9 +170,10 @@ describe("OpenAI Responses instruction cache boundary", () => {
 });
 
 describe("OpenAI Responses retention TTL", () => {
-	it("sends a 12h request TTL for long history on explicit-mode models", async () => {
+	it("keeps the default 30m request TTL for long history on explicit-mode models: 12h is for instructions", async () => {
 		const { payload } = await capture(model, context(), { cacheRetention: "long", instructionCacheRetention: "long" });
-		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
+		expect(payload.prompt_cache_options).toBeUndefined();
+		expect(JSON.stringify(payload.input)).toContain('"prompt_cache_breakpoint":{"mode":"explicit","ttl":"12h"}');
 	});
 
 	it("sends no request TTL for short history, and explicit mode for none", async () => {

@@ -7,6 +7,7 @@ interface Input {
 	editable: boolean;
 	blocks: boolean;
 	content: unknown;
+	/** A result's saved copy once cleared; for an assistant message, the calls whose `file` payload was cleared. */
 	saved?: string;
 	epoch?: number;
 	baseline?: { content: unknown; saved?: string };
@@ -19,6 +20,8 @@ interface History {
 	replaced: boolean;
 	entries: Map<string, Input>;
 	results: Map<string, Input[]>;
+	/** The assistant message that holds each tool call, by call id. */
+	calls: Map<string, Input>;
 	changed: Set<Input>;
 }
 
@@ -57,6 +60,9 @@ function noteHistory(state: History, value: unknown): void {
 		results.push(input);
 		state.results.set(message.toolCallId, results);
 	}
+	if (message?.role === "assistant" && Array.isArray(message.content))
+		for (const part of message.content)
+			if (isRecord(part) && part.type === "toolCall" && typeof part.id === "string") state.calls.set(part.id, input);
 	if (message?.role === "assistant") {
 		const usage = isRecord(message.usage) ? message.usage : undefined;
 		if (!usage || Number(usage.cacheRead) > 0 || Number(usage.cacheWrite) > 0) {
@@ -97,6 +103,17 @@ function noteHistory(state: History, value: unknown): void {
 				});
 		}
 	}
+	// A cleared `file` payload changes the assistant message that holds the call.
+	if (value.type === "custom" && value.customType === CLEARED_RESULTS_TYPE && isRecord(value.data)) {
+		const inputs = Array.isArray(value.data.inputs) ? value.data.inputs : [];
+		for (const id of inputs) {
+			const target = typeof id === "string" ? state.calls.get(id) : undefined;
+			if (target)
+				change(state, target, () => {
+					target.saved = `${target.saved ?? ""}${id}\n`;
+				});
+		}
+	}
 }
 
 const history = new BranchIndex<History>(
@@ -108,6 +125,7 @@ const history = new BranchIndex<History>(
 		replaced: false,
 		entries: new Map(),
 		results: new Map(),
+		calls: new Map(),
 		changed: new Set(),
 	}),
 	noteHistory,
@@ -121,4 +139,9 @@ const history = new BranchIndex<History>(
 export function historyPrefixRewritten(session: BranchSource): boolean {
 	const state = history.read(session);
 	return state.replaced || state.changed.size > 0;
+}
+
+/** Whether a compaction replaced the history since the last cache-using reply: the next request writes all of it again. */
+export function historyReplaced(session: BranchSource): boolean {
+	return history.read(session).replaced;
 }

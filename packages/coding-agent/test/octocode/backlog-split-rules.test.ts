@@ -225,7 +225,7 @@ describe("deferred declaration", () => {
 		};
 		// The thin declaration has no schema for an entry.
 		expect(thin.parameters.properties.items).toEqual({ type: "array" });
-		expect(thin.parameters.required).toEqual(["reason"]);
+		expect(thin.parameters.required).toEqual(["op", "reason"]);
 		// A refused call returns the declared schema with its typed entry, not the looser one calls are validated against.
 		const hint = thin.validationHint({ envelope: false, properties: ["op"] });
 		expect(hint).toContain('"enum":["add","edit","list"]');

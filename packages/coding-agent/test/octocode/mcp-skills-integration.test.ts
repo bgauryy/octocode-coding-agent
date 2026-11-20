@@ -196,7 +196,7 @@ describe("installed MCP and skills through the native SDK", () => {
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
 						expect(getCurrentSystemPrompt(context.messages)).toContain('<skill name="integration-skill"');
 						expect(getCurrentSystemPrompt(context.messages)).toContain(
-							"Use the skill tool (one call per name) to load every skill",
+							"Use the skill tool (one call per name) to load a skill when its description matches",
 						);
 						return fauxAssistantMessage(
 							[

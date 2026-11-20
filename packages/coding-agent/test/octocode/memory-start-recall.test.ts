@@ -33,7 +33,15 @@ function setup() {
 	const ctx = fakeCtx({ cwd, hasUI: true, mode: "rpc" });
 	Object.assign(ctx, { isProjectTrusted: () => true });
 	Object.assign(ctx.sessionManager, { getBranch: () => [] });
-	return { ctx, start: (prompt: string) => fake.fire("before_agent_start", { prompt }, ctx) as Promise<any> };
+	return {
+		ctx,
+		start: (prompt: string) =>
+			fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt },
+				ctx,
+			) as Promise<any>,
+	};
 }
 
 describe("start recall by the active item's goal", () => {

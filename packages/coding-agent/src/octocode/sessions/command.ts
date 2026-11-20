@@ -11,7 +11,7 @@ import { currentSessionWorkspace, sessionDir, sessionDirName, sessionsRoot, sess
 import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
 import { listingScope, quickList } from "./catalog.ts";
-import { pickerRemoval } from "./delete.ts";
+import { pickerRemoval, sharedPickerRemoval } from "./delete.ts";
 import { checkoutText } from "../../core/worktree-path.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
@@ -222,7 +222,7 @@ async function pick(
 		quickList: (scope) =>
 			index ? quickList(index, listingScope(ctx.sessionManager, ctx.cwd, scope === "all")) : Promise.resolve([]),
 		extras: (ids) => pickerExtrasOf(index, ids),
-		...(index ? { removeSessions: pickerRemoval(index, () => current) } : {}),
+		removeSessions: index ? pickerRemoval(index, () => current) : sharedPickerRemoval(() => current),
 		actions: [
 			{ label: "Details", run: (s) => say(ctx, details(row(s), current)) },
 			{ label: "Forget Octocode data", run: (s) => forget(ctx, index, row(s), current) },

@@ -143,7 +143,7 @@ export async function rankArchive(
 			type: "rank",
 			files: files.map(({ file, label }) => ({ file, label })),
 			keywords,
-			...(filtered ? { filtered: [...filtered].map(([at, lines]) => [at, [...lines]] as [number, number[]]) } : {}),
+			...(filtered ? { filtered: [...filtered] } : {}),
 			cancel,
 		}),
 		signal,

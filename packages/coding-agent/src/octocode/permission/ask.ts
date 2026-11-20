@@ -1,4 +1,3 @@
-import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
@@ -16,7 +15,6 @@ import {
 	decide,
 	kindOf,
 	PERMISSION_CYCLE,
-	PERMISSION_ID,
 	type PermissionMode,
 	parseGrants,
 	reasonAsks,
@@ -30,6 +28,7 @@ import { TurnCap } from "./ask/cap.ts";
 import { clearActionGrants } from "./ask/grants.ts";
 import { modeSummary, revertedNotice, selectAnswer, unaskedRunLine } from "./ask/text.ts";
 import { PermissionTrail } from "./ask/trail.ts";
+import { sendModeNotice } from "./ask/mode-notice.ts";
 import type {
 	ActionEvent,
 	Asker,
@@ -245,17 +244,7 @@ export class Permission {
 		this.#trail.record({ action: "mode", what: [`${from} → ${mode}`], allowed: true, via: "user" });
 		if (interactive(ctx, this.#isSubagent))
 			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, runsUnasked(mode) ? "warning" : "info");
-		// Hidden and turn-neutral: during a run Octocode appends it after the current turn's results, so the model reads it next.
-		const summary = modeSummary(mode);
-		void this.#api.session.sendMessage(
-			{
-				customType: PERMISSION_ID,
-				content: renderPrompt("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
-				display: false,
-				details: { mode },
-			},
-			{ triggerTurn: false },
-		);
+		sendModeNotice(this.#api, mode, modeSummary(mode));
 	}
 
 	/** The editor shortcut: the next mode in `PERMISSION_CYCLE`, wrapping to the first, through `chooseMode`. */

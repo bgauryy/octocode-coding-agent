@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { globalPaths } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 
@@ -48,10 +49,30 @@ export function ensurePrivateDir(dir: string): void {
 export function writeRecord(dir: string, record: InstanceRecord): void {
 	ensurePrivateDir(dir);
 	atomicWriteFileSync(recordFile(dir, record.id), JSON.stringify(record, null, 2), { mode: 0o600, durability: "none" });
+	if (record.pid === process.pid && !removedAtExit.has(record.id))
+		removedAtExit.set(record.id, removeAtExit(dir, record));
 }
 
 export function removeRecord(dir: string, id: string): void {
+	removedAtExit.get(id)?.();
+	removedAtExit.delete(id);
 	fs.rmSync(recordFile(dir, id), { force: true });
+}
+
+/** Unregisters the exit release of each record this process wrote for itself. */
+const removedAtExit = new Map<string, () => void>();
+
+/**
+ * A process that exits without stopping its API (a crash, `process.exit` past the shutdown) removes its record and
+ * socket anyway; only SIGKILL leaves them, for the next start's sweep (`listInstances`, `sweepSocketFolders`).
+ */
+function removeAtExit(dir: string, record: InstanceRecord): () => void {
+	return processLifetime.acquire("API record and socket", {
+		atExit: () => {
+			fs.rmSync(recordFile(dir, record.id), { force: true });
+			if (record.socket) removeSocket(record.socket);
+		},
+	});
 }
 
 /** A live record and the name of the file it was read from (`<id>.json` for a record its instance wrote). */

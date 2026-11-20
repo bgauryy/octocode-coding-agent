@@ -8,6 +8,7 @@ import {
 	isTerminalApplicationPhase,
 	parseApplicationTool,
 } from "../src/application.ts";
+import { APPLICATION_NOTICE_KIND, applicationNotice } from "../src/application-notice.ts";
 it("validates model input capabilities and clearing a model in stream events", () => {
 	const frame = { protocolVersion: 1, cursor: { sessionId: "s", epoch: "e", sequence: 1 }, at: 1, type: "event" };
 	const model = { provider: "custom", id: "vision", name: "Vision", input: ["text", "image"] };
@@ -246,4 +247,15 @@ it("carries the session phase in events and snapshots; terminal and pending phas
 	expect(isTerminalApplicationPhase(waiting)).toBe(false);
 	expect(isPendingApplicationPhase({ state: "working" })).toBe(false);
 	expect(isTerminalApplicationPhase({ state: "blocked", title: "q" })).toBe(false);
+});
+
+it("reads a notice activity's level, defaulting to info, and nothing from other activities", () => {
+	const base = { id: "n", at: 1, source: "live" as const, text: "Cache warmed" };
+	expect(applicationNotice({ ...base, kind: APPLICATION_NOTICE_KIND, data: { level: "warning" } })).toEqual({
+		text: "Cache warmed",
+		level: "warning",
+	});
+	expect(applicationNotice({ ...base, kind: APPLICATION_NOTICE_KIND, data: { level: "loud" } })?.level).toBe("info");
+	expect(applicationNotice({ ...base, kind: APPLICATION_NOTICE_KIND })?.level).toBe("info");
+	expect(applicationNotice({ ...base, kind: "turn_start" })).toBeUndefined();
 });

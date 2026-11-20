@@ -15,10 +15,11 @@
 | communication | session | keep | policy | `policy/communication.md` | the policy renderer |
 | lean | session | keep | lean | `lean/lean.md` | the lean renderer |
 | project_context | session | keep | - | - | system/project-context.md and the project's AGENTS.md files |
+| memory | session | keep | - | - | notices/memory-file-header.md and the global and workspace MEMORY.md files, read at session start and again after a compaction that finds them changed |
 | skills | session | keep | - | - | the skills this agent can load |
 | hooks | session | keep | - | - | sections/hooks.md and the hooks configured for this session |
 | role | session | keep | - | - | agents/<profile>.md and its skills |
-| harnesses | session | keep | - | - | system/harnesses.md and system/harness.md, for the harnesses Octocode reads, on or off (`core/discovery/vendors/prompt.ts`); the main session only |
+| harnesses | session | keep | - | - | system/harnesses.md and system/harness.md, for the harnesses that are on and supply something (`core/discovery/vendors/prompt.ts`); none when no harness does; the main session only |
 | cwd | volatile | keep | - | - | the working directory |
 | environment | volatile | keep | - | - | system/environment.md |
 | planning | volatile | keep | - | - | workflows/planning.md |

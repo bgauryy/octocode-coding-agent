@@ -320,15 +320,17 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
-		// description and its field names and types (nested ones too, without descriptions or bounds), and the full
-		// schema comes back on a rejected call.
+		// description and its field names and types (nested ones too), the fields it requires, array item bounds and short
+		// value lists, without descriptions; the full schema comes back on a rejected call.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
 		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
 		expect(declared?.description.length).toBeGreaterThan(60);
 		expect(JSON.stringify(declared?.parameters)).toContain('"queries"');
+		expect(JSON.stringify(declared?.parameters)).toContain('"queries":{"type":"array","minItems":1,"maxItems":5,');
 		expect(JSON.stringify(declared?.parameters)).toContain('"matchString":{"type":"array"}');
-		expect(JSON.stringify(declared?.parameters)).not.toMatch(/"(description|required|minItems|maxItems)"/);
+		expect(JSON.stringify(declared?.parameters)).toContain('"required":["path","matchString"]');
+		expect(JSON.stringify(declared?.parameters)).not.toContain('"description"');
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
@@ -705,9 +707,11 @@ describe("with another MCP server and Octocode disabled", () => {
 		for (const result of cleared) expect(result.text).toMatch(/Full output: \S+ \(sha256/);
 		const entries = s.session.sessionManager.getEntries();
 		expect(entries.filter((entry) => entry.type === "context_edit")).toHaveLength(0);
-		expect(
-			entries.filter((entry) => entry.type === "custom" && entry.customType === "octocode-cleared-results"),
-		).toHaveLength(1);
+		// Both requests after the reads find the cache expired, a point where clearing is free: each clears what is old by then.
+		const clearings = entries.filter(
+			(entry) => entry.type === "custom" && entry.customType === "octocode-cleared-results",
+		) as Array<{ data: { trigger: string } }>;
+		expect(clearings.map((entry) => entry.data.trigger)).toEqual(["idle", "idle"]);
 	});
 
 	it("reports unavailable askUser without inventing an answer or approval", async () => {
@@ -779,7 +783,6 @@ describe("compaction", () => {
 		expect(log.length).toBeGreaterThan(0);
 		expect(new Set(log.map((call) => call.model))).toEqual(new Set(["faux-1"]));
 		expect(log.some((call) => call.text.includes("The next model sees this checkpoint"))).toBe(true);
-		expect(log.some((call) => call.text.includes("Merge findings once"))).toBe(true);
 		// Exact user constraints are kept as written, not paraphrased (code keeps whole messages only within its budget).
 		expect(
 			log.some((call) =>

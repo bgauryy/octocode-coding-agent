@@ -95,9 +95,7 @@ describe("skills loaded before a compaction", () => {
 		const out = await summarize([skillResult("review"), skillResult("rfc")]);
 		const { summary, details } = out!.compaction!;
 		const recovery = summary.slice(summary.indexOf("## Recovery"));
-		expect(recovery).toContain(
-			"- Skills loaded before this summary (load again if the work still needs them): review (/skills/review/SKILL.md), rfc (/skills/rfc/SKILL.md).",
-		);
+		expect(recovery).toContain("- Loaded skills (load again with `skill` when needed): review, rfc.");
 		expect(summary).not.toContain(BODY);
 		expect((details as Record<string, unknown>)[LOADED_SKILLS_DETAILS]).toEqual([
 			{ name: "review", location: "/skills/review/SKILL.md" },
@@ -111,14 +109,14 @@ describe("skills loaded before a compaction", () => {
 		const split = splitSummary(summary);
 		expect(split.body).toBe("## Goal\nwork");
 		expect(split.messages).toEqual(["go"]);
-		expect(compactionSummaryText(summary, 10)).not.toContain("Skills loaded");
+		expect(compactionSummaryText(summary, 10)).not.toContain("Loaded skills");
 	});
 
 	it("keeps listing a skill recorded by an earlier compaction, and adds later ones once", async () => {
 		const first = await summarize([skillResult("review")]);
 		const branch = [compaction("c1", first!.compaction!.details)];
 		const second = await summarize([{ role: "user", content: "go on" }], branch, first!.compaction!.summary);
-		expect(second!.compaction!.summary).toContain("review (/skills/review/SKILL.md)");
+		expect(second!.compaction!.summary).toContain("Loaded skills (load again with `skill` when needed): review.");
 		const third = await summarize(
 			[skillResult("rfc"), skillResult("review", "/moved/SKILL.md")],
 			[...branch, compaction("c2", second!.compaction!.details)],
@@ -128,7 +126,7 @@ describe("skills loaded before a compaction", () => {
 			{ name: "review", location: "/moved/SKILL.md" },
 			{ name: "rfc", location: "/skills/rfc/SKILL.md" },
 		]);
-		expect(third!.compaction!.summary.match(/Skills loaded before this summary/g)).toHaveLength(1);
+		expect(third!.compaction!.summary.match(/Loaded skills \(/g)).toHaveLength(1);
 	});
 
 	it("finds the skills a compaction without a record summarized (the default summary)", () => {

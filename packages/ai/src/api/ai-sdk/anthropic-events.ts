@@ -22,8 +22,20 @@ interface Usage {
 	cache_read_input_tokens?: number;
 	output_tokens_details?: { thinking_tokens?: number };
 	cache_creation_input_tokens?: number;
-	cache_creation?: { ephemeral_1h_input_tokens?: number } | null;
+	cache_creation?: { ephemeral_1h_input_tokens?: number; ephemeral_5m_input_tokens?: number } | null;
 }
+/**
+ * The start's per-TTL write split scaled to a total that `message_delta` revised (a proxy that finalizes the count late),
+ * so a layered 1h and 5m write keeps its proportions; undefined when the start reported no split or no writes.
+ */
+function scaledCacheCreation(usage: Usage, revised: number): Usage["cache_creation"] | undefined {
+	const total = usage.cache_creation_input_tokens ?? 0;
+	const long = usage.cache_creation?.ephemeral_1h_input_tokens;
+	if (!usage.cache_creation || long === undefined || total <= 0) return undefined;
+	const scaled = Math.min(revised, Math.round((long * revised) / total));
+	return { ephemeral_1h_input_tokens: scaled, ephemeral_5m_input_tokens: revised - scaled };
+}
+
 interface Raw {
 	type: string;
 	index: number;
@@ -117,11 +129,12 @@ export function anthropicSdkEvents(
 					const next = { ...raw.usage };
 					for (const key of ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"] as const)
 						if (next[key] === 0 && (usage[key] ?? 0) > 0) delete next[key];
-					if (
-						next.cache_creation_input_tokens != null &&
-						next.cache_creation_input_tokens !== usage.cache_creation_input_tokens
-					)
-						delete usage.cache_creation;
+					const revised = next.cache_creation_input_tokens;
+					if (revised != null && revised !== usage.cache_creation_input_tokens && next.cache_creation == null) {
+						const split = scaledCacheCreation(usage, revised);
+						if (split) next.cache_creation = split;
+						else delete usage.cache_creation;
+					}
 					usage = { ...usage, ...next };
 				}
 				rawStop = raw.delta.stop_reason;

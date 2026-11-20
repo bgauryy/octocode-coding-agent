@@ -74,6 +74,8 @@ export const MOTION = {
 	flashMs: 450,
 	/** Frame interval of breathe and flash: smooth enough, a tenth of the spinner's wakeups. */
 	glowFrameMs: 100,
+	/** Step of decoration while the terminal is unfocused: it keeps moving, slowly, so a background session still looks alive. */
+	unfocusedDecorMs: 500,
 	/** Elapsed-time counters. */
 	tickMs: 1_000,
 } as const;

@@ -14,7 +14,16 @@ import { currentSessionId } from "../shared/home.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { expandHint, plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { addUsage, contentText, emptyUsage, type Spend, modelLookup, spendOf, unpricedModel } from "../shared/util.ts";
+import {
+	addUsage,
+	contentText,
+	emptyUsage,
+	isStaleSessionError,
+	type Spend,
+	modelLookup,
+	spendOf,
+	unpricedModel,
+} from "../shared/util.ts";
 import {
 	type BriefInput,
 	latestRequest,
@@ -97,7 +106,7 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 		const lines = [...ongoing, ...held, ...(reply ? [reply] : []), ...(request ? [request] : [])];
 		const content = renderPrompt("notices/compaction/session-state.md", { lines: lines.join("\n") });
 		try {
-			void api.session.sendMessage(
+			await api.session.sendMessage(
 				{
 					customType: RUNNING_WORK_TYPE,
 					content,
@@ -106,8 +115,9 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 				},
 				{ triggerTurn: false, deliverAs: "followUp" },
 			);
-		} catch {
-			// The session was replaced.
+		} catch (error) {
+			// The session was replaced; anything else reaches the bus's error report.
+			if (!isStaleSessionError(error)) throw error;
 		}
 	});
 }

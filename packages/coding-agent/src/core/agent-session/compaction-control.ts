@@ -19,8 +19,10 @@ import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, runCompaction } from "../session-compaction.ts";
 import type { SessionInternals } from "./host.ts";
 import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
-import { CompactionPrewarm } from "./compaction-prewarm.ts";
+import { markCompactionCancelled } from "./compaction-check.ts";
+import { CompactionPrewarm, type DetachedPlan } from "./compaction-prewarm.ts";
 import { summaryRequestPolicy } from "./compaction-summary-request.ts";
+import { emitCompactFailed, reportRecoveryNotStarted } from "./compaction-failed.ts";
 import { recordRunFailure } from "./run-outcome.ts";
 
 /** A manual compaction had nothing to summarize. The message stays the SDK/RPC error text; interactive mode shows it as a status. */
@@ -82,37 +84,12 @@ export class SessionCompaction {
 	}
 
 	async emitSessionCompactFailed(event: Omit<SessionCompactFailedEvent, "type">): Promise<void> {
-		const runner = this.host.session.featureHost;
-		if (runner.hasHandlers("session_compact_failed")) {
-			await runner.emit({
-				type: "session_compact_failed",
-				...event,
-			});
-		}
+		await emitCompactFailed(this.host.session.featureHost, event);
 	}
 
-	/**
-	 * Overflow recovery hid the failed attempt and then could not compact: report it, as a failed recovery would be,
-	 * instead of ending the run without an explanation.
-	 */
+	/** Overflow recovery hid the failed attempt and then could not compact (`compaction-failed.ts`). */
 	private async _recoveryNotStarted(cause: string): Promise<void> {
-		const errorMessage = `Context overflow recovery failed: ${cause}. Try reducing context or switching to a larger-context model.`;
-		recordRunFailure(this.host.run.outcome, errorMessage);
-		this.host.emit({
-			type: "compaction_end",
-			reason: "overflow",
-			result: undefined,
-			aborted: false,
-			willRetry: false,
-			errorMessage,
-		});
-		await this.emitSessionCompactFailed({
-			reason: "overflow",
-			errorMessage,
-			aborted: false,
-			willRetry: false,
-			fromFeature: false,
-		});
+		await reportRecoveryNotStarted(this.host, cause);
 	}
 
 	private _clearManualCompactionState(): void {
@@ -122,6 +99,21 @@ export class SessionCompaction {
 
 	async compact(options?: ManualCompactionOptions): Promise<CompactionResult> {
 		const customInstructions = validateCompactionInstructions(options?.customInstructions);
+		// The agent's own request (its `compact` tool, at a task boundary) runs the plan made ahead of the threshold, whose
+		// summary is ready or being written: taken out before the abort, which drops plans, and ended once this is done.
+		const held = options?.requestedBy === "agent" ? this._prewarm.detach() : undefined;
+		try {
+			return await this._compactManually(customInstructions, options?.requestedBy, held);
+		} finally {
+			held?.release();
+		}
+	}
+
+	private async _compactManually(
+		customInstructions: string | undefined,
+		requestedBy: ManualCompactionOptions["requestedBy"],
+		held: DetachedPlan | undefined,
+	): Promise<CompactionResult> {
 		const { session } = this.host;
 		await session.abort("internal");
 		this._prewarm.drop();
@@ -134,7 +126,17 @@ export class SessionCompaction {
 				)
 			: undefined;
 		const pathEntries = session.sessionManager.getBranch();
-		const preparation = settings && prepareCompaction(pathEntries, settings);
+		const planned =
+			model && settings
+				? held?.preparationFor(
+						pathEntries,
+						session.sessionManager.getSessionId(),
+						model,
+						settings,
+						this.host.forcedSystemPrompt(),
+					)
+				: undefined;
+		const preparation = planned ?? (settings && prepareCompaction(pathEntries, settings));
 		if (settings && !preparation) {
 			if (pathEntries[pathEntries.length - 1]?.type === "compaction") {
 				throw new NothingToCompactError("Already compacted", "Already compacted");
@@ -159,6 +161,7 @@ export class SessionCompaction {
 			compactionResult = await runCompaction(this._compactionHost(), {
 				reason: "manual",
 				customInstructions,
+				...(requestedBy ? { requestedBy } : {}),
 				willRetry: false,
 				model,
 				contextWindow: session.model?.contextWindow ?? model.contextWindow,
@@ -221,7 +224,7 @@ export class SessionCompaction {
 			thinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 		);
 		const forced = this.host.forcedSystemPrompt();
-		this._prewarm.dropIfStale(model, settings, forced);
+		this._prewarm.dropIfStale(model, settings, forced, session.sessionManager);
 		if (!this._prewarm.due(tokens, model, settings)) return;
 		this._prewarm.start(session.sessionManager, session.featureHost, model, settings, {
 			forceSystemPrompt: forced,
@@ -247,6 +250,7 @@ export class SessionCompaction {
 	 * @param reason Automatic trigger selected by `_checkCompaction()`
 	 * @param willRetry Whether to continue the interrupted turn after overflow compaction
 	 * @param targetThinking The thinking level of the request being prepared, when routing chose it
+	 * @param incomingTokens Estimated tokens of a prompt that waits for this compaction and is not on the branch yet
 	 * @returns Whether the post-run loop should call `agent.continue()`
 	 */
 	async runAuto(
@@ -254,6 +258,7 @@ export class SessionCompaction {
 		willRetry: boolean,
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
+		incomingTokens?: number,
 	): Promise<boolean> {
 		const { session } = this.host;
 		const model = targetModel ?? session.model;
@@ -329,6 +334,7 @@ export class SessionCompaction {
 				reserveTokens: settings.reserveTokens,
 				preparation,
 				branchEntries: pathEntries,
+				incomingTokens,
 				signal,
 				checkAbort: () => signal.throwIfAborted(),
 				outcome,
@@ -355,6 +361,8 @@ export class SessionCompaction {
 			this._prewarm.drop();
 			if (error instanceof CompactionFitError) this.host.run.windowUnfit = message;
 			const aborted = abortController?.signal.aborted === true || outcome.cancelledByFeature;
+			// A cancel (Esc, abort) holds for the request it was for: no automatic compaction runs again until a reply.
+			if (abortController?.signal.aborted === true) markCompactionCancelled(this.host.run, session.sessionManager);
 			if (!aborted && started) this._autoCompactionLimit.failed();
 			if (started) {
 				const errorMessage = aborted

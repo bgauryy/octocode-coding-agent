@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import { EntityFields } from "@octocodeai/octocode-contracts/backlogs";
 import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,9 +8,14 @@ import { loadProfiles, profileExcludes } from "../../src/octocode/subagents/prof
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
-import { captureAll, type AgentContext } from "./agent-context/capture.ts";
+import { captureAll, captureMain, type AgentContext } from "./agent-context/capture.ts";
 import { isMcpTool } from "./agent-context/analyze.ts";
+import { type Layers, measureLayers, measureLoads } from "./agent-context/layers.ts";
 import { systemText } from "./agent-context/render.ts";
+import { MEMORY_SECTION } from "../../src/octocode/memory/file/section.ts";
+import { MEMORY_FILE_MAX_BYTES, MEMORY_SECTIONS } from "../../src/octocode/memory/file/format.ts";
+import { ensureMemoryDir } from "../../src/octocode/memory/file/paths.ts";
+import { globalMemoryFile, workspaceMemoryFile } from "../../src/octocode/permission/memory-files.ts";
 
 // Measured as shipped: the research CLI resolves and agent shells run it, whatever this host has.
 vi.mock("../../src/octocode/cli/shim.ts", async (original) => ({
@@ -53,6 +60,8 @@ interface Size {
 	total: number;
 	prompt: number;
 	perTool: Record<string, number>;
+	/** The `memory` section (the MEMORY.md files): user data, measured apart from the policy and tools. */
+	memory: number;
 }
 
 /**
@@ -66,17 +75,20 @@ async function promptSize(options: {
 	readOnly?: boolean;
 	/** The backlog item a child's task names: without one a child does not declare `backlog`. */
 	item?: string;
+	/** The session's folder; default a new empty one. */
+	cwd?: string;
 }): Promise<Size> {
 	delete process.env[BACKLOG_ITEM_ENV];
 	delete process.env.OCTOCODE_SUBAGENT;
 	if (options.item) process.env[BACKLOG_ITEM_ENV] = options.item;
 	if (options.subagent) process.env.OCTOCODE_SUBAGENT = "1";
 	if (options.readOnly) process.env.OCTOCODE_READ_ONLY = "1";
-	// Every tool declared in full, as once used in this folder: the deferred declaration (`mcpExposure: "recent"`) is smaller.
+	// Every tool declared in full (`mcpExposure: "direct"`), as when the promotion snapshot names it: the thin declaration of
+	// a tool it does not name (`usage`, the default) is smaller.
 	const fake = fakeHost({ mcpExposure: "direct" });
 	Object.assign(fake.api.session, { getName: () => undefined });
 	await octocode(fake.api);
-	const ctx = fakeCtx({ cwd: tmp(), hasUI: !options.subagent });
+	const ctx = fakeCtx({ cwd: options.cwd ?? tmp(), hasUI: !options.subagent });
 	Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 	await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 	const active = fake.api.tools.getActive().filter((name) => !options.exclude?.includes(name));
@@ -120,6 +132,7 @@ async function promptSize(options: {
 		total: Object.values(perTool).reduce((sum, size) => sum + size, prompt),
 		prompt,
 		perTool,
+		memory: (sections[MEMORY_SECTION] ?? "").length,
 	};
 }
 
@@ -159,16 +172,131 @@ const MAIN_CEILING = 33_200;
  */
 const SPECIALIST_CEILING = 22_200;
 
-/**
- * Measured 29,890 (main: MCP 22,267 + skills 7,623); 1.9% over. Octocode MCP declares every tool by default (gh, clone,
- * package, security), whose text Octocode may not rewrite.
+/*
+ * MCP declarations plus skill catalogs on a fresh install, each at most 5% over its reading. Raised (from 19,000 and
+ * 13,000) when thin declarations started carrying each field's allowed values, item bounds and required fields (MCP
+ * 11,375 → 13,386 bytes), which they left out before; the octocode-mcp text is the sibling's and drifts with its builds.
+ * Raised again (user decision) when every Octocode tool is declared by default (local, GitHub, package, security):
+ * MCP 26,634 bytes.
  */
-const MCP_SKILLS_MAIN = 30_450;
+/** Main: MCP 26,634 + the whole catalog 7,874. */
+const MCP_SKILLS_MAIN = 36_250;
+/** A child without a role, and the implementer: MCP 26,634 + a 9-skill catalog 2,663. */
+const MCP_SKILLS_GENERAL = 30_800;
+/** The researcher (MCP 26,634 + skills 1,430) and the reviewer (skills 1,529). */
+const MCP_SKILLS_FILTERED = 29_600;
 /**
- * Measured 23,728 at most (researcher: MCP 22,267 + skills 1,461; reviewer 23,545); 2% over. Octocode MCP declares every
- * tool by default (gh, clone, package, security), whose text Octocode may not rewrite.
+ * The browser child: the browser server's tools and every Octocode tool (26,370), and an empty skill catalog (261).
+ * The browser preset leaves its 12 rarely used tools on demand.
  */
-const MCP_SKILLS_FILTERED = 24_200;
+const MCP_SKILLS_BROWSER = 28_000;
+
+/**
+ * Bytes per layer of each agent's first request with no usage data (`measureLayers`), and `loads`: how many tools it
+ * declares thin or leaves on demand, each a load on first use. Each ceiling is the measured value plus about 5%.
+ */
+const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads: number }> = {
+	main: {
+		system: 14_350,
+		mcpInstructions: 6_600,
+		// skills: the octocode-code-review core skill (user request) measured 7,874. Octocode declares every tool:
+		// mcpTools measured 26,634, total 70,228 (the same mcpTools in every child below except browser).
+		skills: 8_300,
+		nativeTools: 18_100,
+		mcpTools: 28_000,
+		total: 73_750,
+		loads: 22,
+	},
+	general: {
+		system: 11_650,
+		mcpInstructions: 6_600,
+		skills: 2_800,
+		nativeTools: 9_950,
+		mcpTools: 28_000,
+		total: 56_800,
+		loads: 20,
+	},
+	researcher: {
+		// system measured 9,067 after the merged prompt rewrite; total 50,948.
+		system: 9_550,
+		mcpInstructions: 6_600,
+		skills: 1_550,
+		nativeTools: 9_950,
+		mcpTools: 28_000,
+		total: 53_500,
+		loads: 20,
+	},
+	implementer: {
+		system: 12_000,
+		mcpInstructions: 6_600,
+		skills: 2_800,
+		nativeTools: 9_950,
+		mcpTools: 28_000,
+		total: 57_200,
+		loads: 20,
+	},
+	reviewer: {
+		// system measured 10,071; skills 1,529 (octocode-code-review, its working method); total 52,051.
+		system: 10_600,
+		mcpInstructions: 6_600,
+		skills: 1_650,
+		nativeTools: 9_950,
+		mcpTools: 28_000,
+		total: 54_700,
+		loads: 20,
+	},
+	// The browser preset's on-demand tools (12 of them) moved about 12 KB out of `mcpTools` and into `mcpInstructions`:
+	// the `- name: trigger` index line for each, whose trigger is the browser server's own first sentence, and the
+	// section's one line on loading such a tool (measured 6,433). The other layers are lowered to match.
+	browser: {
+		system: 10_450,
+		mcpInstructions: 6_750,
+		// Every Octocode tool plus the browser floor: mcpTools measured 26,370, total 52,422, 37 loads.
+		skills: 300,
+		nativeTools: 9_950,
+		mcpTools: 27_700,
+		total: 55_050,
+		loads: 39,
+	},
+	lean: { system: 4_350, mcpInstructions: 0, skills: 0, nativeTools: 6_550, mcpTools: 0, total: 10_850, loads: 0 },
+};
+
+/**
+ * The lean main session's first request on a fresh install (a 32k-window model, default settings), each layer about 5%
+ * over its reading: system 4,717, mcpInstructions 4,855, nativeTools 17,350, mcpTools 26,634 (every Octocode tool, thin),
+ * total 53,556 bytes, and 21 tools a first use loads. It lists no skills.
+ */
+const LEAN_MAIN_CEILINGS: Omit<Layers, "freellama"> & { loads: number } = {
+	system: 4_750,
+	mcpInstructions: 6_850,
+	skills: 0,
+	nativeTools: 18_200,
+	mcpTools: 28_000,
+	total: 56_250,
+	loads: 22,
+};
+
+/**
+ * The `memory` section of a main session whose global and workspace MEMORY.md are both full: 30 non-blank lines each
+ * (six headings, four lines under each), within the 4 KB file cap. It is the user's curated data, so it has its own
+ * ceiling instead of moving MAIN_CEILING, and a full file neither hides nor excuses growth in the shipped text. Measured
+ * 8,612: two files of 4,088 bytes, the header, and a label per file naming its path (a temporary folder's here).
+ */
+const MEMORY_SECTION_CEILING = 8_750;
+
+/** A MEMORY.md at the line cap: every section with four lines, each as long as the 4 KB file cap allows. */
+function fullMemoryFile(scope: string): string {
+	const day = "2026-11-19";
+	const text = (section: string, n: number, length: number) =>
+		`${scope} ${section.toLowerCase()} rule ${n}; why it holds and how to apply it `.padEnd(length, "x");
+	let length = 200;
+	let file = "";
+	for (; length > 20; length--) {
+		file = `${MEMORY_SECTIONS.map((section) => [`## ${section}`, ...[1, 2, 3, 4].map((n) => `- ${text(section, n, length)} (agent ${day})`)].join("\n")).join("\n")}\n`;
+		if (Buffer.byteLength(file) <= MEMORY_FILE_MAX_BYTES) break;
+	}
+	return file;
+}
 
 describe("prompt size", () => {
 	it("main session", async () => {
@@ -221,6 +349,30 @@ describe("prompt size", () => {
 		expect(main.perTool.backlogPlan).toBeGreaterThan(0);
 	});
 
+	it("the memory section of two full MEMORY.md files stays under its own ceiling, outside the main one", async () => {
+		const cwd = fs.realpathSync(tmp());
+		execFileSync("git", ["init", "-q", cwd], { stdio: "pipe" });
+		const without = await promptSize({ subagent: false, cwd });
+		expect(without.memory).toBe(0);
+		for (const [ref, scope] of [
+			[globalMemoryFile(), "global"],
+			[workspaceMemoryFile(cwd), "workspace"],
+		] as const) {
+			const text = fullMemoryFile(scope);
+			// The fixture sits at the cap: 30 non-blank lines, every one of them loadable.
+			expect(text.split("\n").filter(Boolean)).toHaveLength(30);
+			ensureMemoryDir(ref);
+			fs.writeFileSync(ref.path, text);
+		}
+		const full = await promptSize({ subagent: false, cwd });
+		// Every line of both files reached the prompt: none was left out for the cap.
+		expect(full.memory).toBeGreaterThan(2 * (MEMORY_FILE_MAX_BYTES - 200));
+		expect(full.memory).toBeLessThan(MEMORY_SECTION_CEILING);
+		// The policy that MAIN_CEILING measures does not move with the user's notes.
+		expect(full.prompt).toBe(without.prompt);
+		expect(full.total).toBe(without.total);
+	});
+
 	it.each(["implementer", "reviewer"])("%s keeps its working tools", async (name) => {
 		const profile = loadProfiles(tmp(), tmp(), false, {}).get(name)!;
 		const exclude = profileExcludes(profile.excludeTools);
@@ -232,10 +384,13 @@ describe("prompt size", () => {
 });
 
 /*
- * The shipped heads, captured from real sessions on a scripted model (the same capture `generate:prompts` writes). Server
- * text is the sibling's, so this caps what a role pays for it on every request instead of trimming it.
+ * The first request of every agent on a fresh install: captured from real sessions on a scripted model (the same capture
+ * `generate:prompts` writes) with no usage data, so nothing is promoted: each MCP tool and each deferrable native tool
+ * is declared thin or left on demand, and every one of them costs a load on first use. `served-first-request.test.ts`
+ * measures a warm user's request, where the promoted tools are declared in full. Server text is the sibling's, so these
+ * cap what a role pays for it on every request instead of trimming it.
  */
-describe("declared MCP tools and skills catalog", () => {
+describe("first request with no usage data", () => {
 	let contexts: AgentContext[] = [];
 	beforeAll(async () => {
 		contexts = await captureAll();
@@ -254,24 +409,60 @@ describe("declared MCP tools and skills catalog", () => {
 		return { mcp, skills: catalogs.reduce((sum, size) => sum + size, 0) };
 	};
 
-	// Each ceiling is at most 5% over its measured reading; a role with a smaller catalog (B503) gets a lower one.
+	// Each ceiling is at most 5% over its measured reading; a role with a smaller catalog gets a lower one. A lean
+	// child runs without MCP and lists no skills.
 	const CEILINGS: Record<string, number> = {
 		main: MCP_SKILLS_MAIN,
-		general: MCP_SKILLS_MAIN,
-		implementer: MCP_SKILLS_MAIN,
+		general: MCP_SKILLS_GENERAL,
+		implementer: MCP_SKILLS_GENERAL,
 		researcher: MCP_SKILLS_FILTERED,
 		reviewer: MCP_SKILLS_FILTERED,
+		browser: MCP_SKILLS_BROWSER,
+		lean: 0,
 	};
 	it.each(Object.keys(CEILINGS))("%s stays under its MCP plus skills ceiling", (name) => {
 		const { mcp, skills } = mcpAndSkills(named(name));
 		console.log(`${name}: mcp ${mcp}, skills ${skills}`);
-		expect(mcp).toBeGreaterThan(0);
-		expect(skills).toBeGreaterThan(0);
+		if (name !== "lean") {
+			expect(mcp).toBeGreaterThan(0);
+			expect(skills).toBeGreaterThan(0);
+		}
 		expect(mcp + skills, `MCP declarations ${mcp} + skills catalog ${skills}`).toBeLessThanOrEqual(CEILINGS[name]);
 	});
 
+	it.each(Object.keys(FIRST_REQUEST_CEILINGS))("%s stays under its per-layer ceilings and load count", (name) => {
+		const layers = measureLayers(named(name));
+		const loads = measureLoads(named(name));
+		const { loads: maxLoads, ...ceilings } = FIRST_REQUEST_CEILINGS[name];
+		for (const [layer, ceiling] of Object.entries(ceilings))
+			expect(layers[layer as keyof typeof ceilings], `${name} ${layer}`).toBeLessThanOrEqual(ceiling);
+		expect(
+			loads.deferred + loads.onDemand,
+			`${name} tools a first use loads: ${JSON.stringify(loads)}`,
+		).toBeLessThanOrEqual(maxLoads);
+	});
+
+	it("counts what a fresh install defers: thin declarations and on-demand tools, with their full size", () => {
+		const loads = measureLoads(named("main"));
+		// Not vacuous: with no usage data the research tools are thin, and the GitHub tools wait for a first call.
+		expect(loads.deferred).toBeGreaterThan(0);
+		expect(loads.onDemand).toBeGreaterThan(0);
+		expect(named("main").deferred?.map((tool) => tool.name)).toContain("mcp__octocode__localSearch");
+		const thin = named("main").tools.find((tool) => tool.name === "mcp__octocode__localSearch")!;
+		const full = named("main").deferred!.find((tool) => tool.name === "mcp__octocode__localSearch")!;
+		expect(full.fullBytes).toBeGreaterThan(bytes(thin.name + thin.description + JSON.stringify(thin.parameters)));
+		expect(measureLoads(named("lean"))).toMatchObject({ deferred: 0, fullBytes: 0 });
+	});
+
+	it("lists no skills to the browser child, whose catalog is empty", () => {
+		const text = systemText(named("browser"));
+		expect(text).not.toContain("<skill ");
+		// The rest stay loadable by name, and the prompt says how many there are.
+		expect(text).toMatch(/\b\d+ more skills are not listed here/);
+	});
+
 	// Every role declares the shared core; what it does not use stays on demand (listed in `<tools>`, declared when used).
-	const CORE = ["bash", "file", "mcp", "wait", "memory", "agent", "skill"];
+	const CORE = ["bash", "file", "mcp", "wait", "agent", "skill"];
 	const ON_DEMAND = ["archive", "models", "browser", "graphQuery", "graphBuild"];
 	it.each(["general", "implementer", "researcher", "reviewer"])(
 		"%s declares its core tools and leaves the rest on demand",
@@ -280,6 +471,9 @@ describe("declared MCP tools and skills catalog", () => {
 			for (const tool of CORE) expect(declared).toContain(tool);
 			for (const tool of ON_DEMAND) expect(declared).not.toContain(tool);
 			expect(declared.some(isMcpTool)).toBe(true);
+			// A child rarely reads memories: the tool stays callable, declared thin or on demand.
+			const memory = named(name).deferred?.find((tool) => tool.name === "memory");
+			expect(memory, `${name} memory`).toBeDefined();
 		},
 	);
 
@@ -320,9 +514,53 @@ describe("declared MCP tools and skills catalog", () => {
 		expect(lean.some((tool) => tool.startsWith("mcp__"))).toBe(false);
 	});
 
+	it("declares the coordinator's planning tool to no child", () => {
+		for (const context of contexts.filter((each) => each.kind === "child"))
+			expect(
+				context.tools.map((tool) => tool.name),
+				context.name,
+			).not.toContain("backlogPlan");
+	});
+
 	it("the main session adds the coordinator tools to the same core", () => {
 		const declared = named("main").tools.map((tool) => tool.name);
-		for (const tool of [...CORE, "backlog", "backlogPlan", "askUser"]) expect(declared).toContain(tool);
+		for (const tool of [...CORE, "memory", "backlog", "backlogPlan", "askUser"]) expect(declared).toContain(tool);
 		for (const tool of ON_DEMAND) expect(declared).not.toContain(tool);
+	});
+});
+
+/**
+ * A main session on a 32k-window model picks the lean main policy (`core/lean-main.ts`): the lean rules instead of
+ * the work, delegation and communication sections, no skill list, and every open MCP tool declared thin whatever
+ * `mcpExposure` says, so no MCP tool sends its full schema in the first request.
+ */
+describe("lean main session (32k window)", () => {
+	let lean: AgentContext;
+	let full: AgentContext;
+	let fresh: AgentContext;
+	beforeAll(async () => {
+		// `direct` declares every open tool in full; only the lean choice defers them.
+		lean = await captureMain({ mcpExposure: "direct" }, false, 32_768);
+		full = await captureMain({ mcpExposure: "direct" });
+		// A fresh install's lean main, with the default settings, for the ceilings.
+		fresh = await captureMain(undefined, false, 32_768);
+	}, 600_000);
+	const mcpTools = (context: AgentContext) => context.tools.filter((tool) => isMcpTool(tool.name));
+	const thin = (context: AgentContext) =>
+		new Set((context.deferred ?? []).filter((tool) => tool.state === "deferred").map((tool) => tool.name));
+
+	it("declares no MCP tool with its full schema, where a large window declares them in full", () => {
+		expect(mcpTools(lean).length).toBeGreaterThan(0);
+		for (const tool of mcpTools(lean)) expect(thin(lean), tool.name).toContain(tool.name);
+		expect(mcpTools(full).some((tool) => !thin(full).has(tool.name))).toBe(true);
+	});
+
+	it("stays under the lean main ceilings on a fresh install", () => {
+		const layers = measureLayers(fresh);
+		const loads = measureLoads(fresh);
+		const { loads: maxLoads, ...ceilings } = LEAN_MAIN_CEILINGS;
+		for (const [layer, ceiling] of Object.entries(ceilings))
+			expect(layers[layer as keyof typeof ceilings], `lean main ${layer}`).toBeLessThanOrEqual(ceiling);
+		expect(loads.deferred + loads.onDemand, `lean main loads: ${JSON.stringify(loads)}`).toBeLessThanOrEqual(maxLoads);
 	});
 });

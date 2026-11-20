@@ -1,4 +1,5 @@
 import { HISTORY_BYTES, matchTexts } from "../history/search.ts";
+import { storeUnavailable } from "./errors.ts";
 import { parseMemoryId } from "./query.ts";
 import { compileQuery, searchable } from "./safe-pattern.ts";
 import { describeMemory, type Memory, type MemoryStore, memoryToolLine, noMemory, type ScopeFilter } from "./store.ts";
@@ -49,12 +50,12 @@ function positionOf(cursor: string | undefined): Position | undefined {
 	return at;
 }
 
-/** Counts memories as used; a rejected writer (queue full, closed, busy) loses only the mark, never the read. */
+/** Counts memories as used; a writer that cannot serve now (queue full, closed, busy) loses only the mark, never the read. */
 async function markUsedQuietly(store: MemoryStore, ids: number[]): Promise<void> {
 	try {
 		await store.markUsed(ids);
-	} catch {
-		// Same as the recall hook: a busy or closed writer never blocks a turn.
+	} catch (error) {
+		if (!storeUnavailable(error)) throw error;
 	}
 }
 

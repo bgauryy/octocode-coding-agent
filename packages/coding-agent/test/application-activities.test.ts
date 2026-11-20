@@ -379,3 +379,55 @@ it("assigns distinct native execution IDs to concurrent anonymous shells", async
 		harness.cleanup();
 	}
 });
+
+it("lists a memory pass by the line it told the user, a failed one as a failure, and an older pass as feature state", async () => {
+	const pass = (id: string, data: unknown) => ({
+		...base,
+		id,
+		type: "custom",
+		customType: "octocode-memory-pass",
+		data,
+	});
+	const f = fixture([
+		pass("m1", { pass: "reflection", trigger: "end", files: [{ diff: "private" }], text: "Memory reflection: +1 −0." }),
+		pass("m2", { pass: "consolidation", error: "the model call failed", text: "Memory consolidation: failed." }),
+		pass("m3", { pass: "reflection", files: [] }),
+	]);
+	const activities = (await snapshot(f.service)).activities ?? [];
+	expect(activities.map(({ text, outcome, data }) => ({ text, outcome, data }))).toEqual([
+		{
+			text: "Memory reflection: +1 −0.",
+			outcome: undefined,
+			data: { customType: "octocode-memory-pass", pass: "reflection", trigger: "end" },
+		},
+		{
+			text: "Memory consolidation: failed.",
+			outcome: "failed",
+			data: { customType: "octocode-memory-pass", pass: "consolidation" },
+		},
+		{
+			text: "Feature state: octocode-memory-pass",
+			outcome: undefined,
+			data: { customType: "octocode-memory-pass", privateDataStored: true },
+		},
+	]);
+});
+
+it("sends a UI notice as a live activity once within the repeat window, and forgets it on reset", async () => {
+	const f = fixture();
+	f.service.publishNotice("Cache warmed: $0.02", "info");
+	f.service.publishNotice("Cache warmed: $0.02", "info");
+	f.service.publishNotice("Cache warmed: $0.02", "warning");
+	const notices = f.events.filter((event) => event.type === "session.activity");
+	expect(notices).toHaveLength(2);
+	expect(notices[0]).toMatchObject({
+		activity: { kind: "notice", source: "live", text: "Cache warmed: $0.02", data: { level: "info" } },
+	});
+	expect((await snapshot(f.service)).activities).toHaveLength(2);
+	const activities = new ApplicationActivities(new ApplicationAssets(), createApplicationState("s"));
+	expect(activities.notice("Bad hook", "error", 0)).toMatchObject({ outcome: "failed" });
+	expect(activities.notice("Bad hook", "error", 9_999)).toBeUndefined();
+	expect(activities.notice("Bad hook", "error", 10_000)).toBeDefined();
+	activities.clear();
+	expect(activities.notice("Bad hook", "error", 10_001)).toBeDefined();
+});

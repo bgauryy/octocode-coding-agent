@@ -45,7 +45,7 @@ const context = (cwd: string, trusted = true) => ({
 	cwd,
 	hasUI: false,
 	isProjectTrusted: () => trusted,
-	sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => undefined },
+	sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => undefined, getBranch: () => [] },
 	ui: { notify: () => undefined },
 });
 const command = (text: string, matcher = "") => [{ matcher, hooks: [{ type: "command", command: text }] }];
@@ -564,7 +564,8 @@ describe("registerHooks", () => {
 		expect(JSON.parse(fs.readFileSync(path.join(cwd, "compact.json"), "utf8"))).toMatchObject({
 			hook_event_name: "PreCompact",
 			trigger: "manual",
-			custom_instructions: "",
+			custom_instructions: "keep tests",
+			custom_instructions_source: "user",
 		});
 	});
 

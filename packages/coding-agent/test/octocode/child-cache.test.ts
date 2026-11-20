@@ -37,11 +37,19 @@ describe("child cache retention", () => {
 		expect(childEnv({}, "short")).toMatchObject({ history: "short", instructions: "long" });
 	});
 
-	it("the child's pair is the session policy unchanged for a long task, and whenever the user configured a retention", () => {
-		for (const settings of [{}, { cacheRetention: "short" }, { instructionCacheRetention: "short" }] as const) {
-			const policy = resolveConfiguredCache(model, undefined, {}, [{ source: "parent settings", values: settings }]);
-			expect(childCachePreferences(policy, "long")).toEqual(policy.options);
-		}
+	it("a long task sets the history tier over the default, and the session policy stands whenever the user configured a retention", () => {
+		const resolved = (values: Record<string, string>) =>
+			resolveConfiguredCache(model, undefined, {}, [{ source: "parent settings", values }]);
+		expect(childCachePreferences(resolved({}), "long")).toEqual({
+			cacheRetention: "long",
+			instructionCacheRetention: "long",
+		});
+		expect(childCachePreferences(resolved({ instructionCacheRetention: "short" }), "long")).toEqual({
+			cacheRetention: "long",
+			instructionCacheRetention: "short",
+		});
+		const configured = resolved({ cacheRetention: "short" });
+		expect(childCachePreferences(configured, "long")).toEqual(configured.options);
 		for (const settings of [
 			{ cacheRetention: "long" },
 			{ cacheRetention: "short" },

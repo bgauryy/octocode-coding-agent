@@ -10,25 +10,28 @@ import {
 	estimateContentTokens,
 	estimateContextTokensWith,
 	estimateMessageTokens,
+	type TokenModel,
 } from "@octocodeai/octocode-ai/utils/estimate";
 import type { ReadonlySessionManager, ReadonlySessionProjection, SessionEntry } from "../session-manager.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 
 /**
  * Estimate context tokens from messages, using the last valid assistant usage and estimating what follows it with
- * `estimateTokens`. Session structure owns staleness here: `estimateProjectedContextTokens` and the compaction check
- * drop usage captured before a later compaction or context edit, so timestamps are not consulted.
+ * `estimateTokens` at `model`'s ratio (the default without one). Session structure owns staleness here:
+ * `estimateProjectedContextTokens` and the compaction check drop usage captured before a later compaction or context
+ * edit, so timestamps are not consulted.
  */
-export function estimateContextTokens(messages: readonly AgentMessage[]): ContextUsageEstimate {
-	return estimateContextTokensWith(messages, estimateTokens, { staleUsage: "none" });
+export function estimateContextTokens(messages: readonly AgentMessage[], model?: TokenModel): ContextUsageEstimate {
+	return estimateContextTokensWith(messages, (message) => estimateTokens(message, model), { staleUsage: "none" });
 }
 
 /** Estimate projected context without trusting usage captured before a later edit or compaction. */
 export function estimateProjectedContextTokens(
 	projection: ReadonlySessionProjection,
 	branchEntries: SessionEntry[],
+	model?: TokenModel,
 ): ContextUsageEstimate {
-	return estimateWithBranch(projection, () => newestFirst(branchEntries));
+	return estimateWithBranch(projection, () => newestFirst(branchEntries), model);
 }
 
 /**
@@ -39,8 +42,9 @@ export function estimateProjectedContextTokens(
 export function estimateLeafContextTokens(
 	projection: ReadonlySessionProjection,
 	session: Pick<ReadonlySessionManager, "getLeafEntry" | "getEntry">,
+	model?: TokenModel,
 ): ContextUsageEstimate {
-	return estimateWithBranch(projection, () => ancestors(session.getLeafEntry(), (id) => session.getEntry(id)));
+	return estimateWithBranch(projection, () => ancestors(session.getLeafEntry(), (id) => session.getEntry(id)), model);
 }
 
 function* newestFirst(entries: readonly SessionEntry[]): Generator<SessionEntry, void, undefined> {
@@ -50,8 +54,9 @@ function* newestFirst(entries: readonly SessionEntry[]): Generator<SessionEntry,
 function estimateWithBranch(
 	projection: ReadonlySessionProjection,
 	branchNewestFirst: () => Iterable<SessionEntry>,
+	model: TokenModel | undefined,
 ): ContextUsageEstimate {
-	const estimate = estimateContextTokens(projection.messages);
+	const estimate = estimateContextTokens(projection.messages, model);
 	if (estimate.lastUsageIndex !== null) {
 		let projectedMessageIndex = 0;
 		let usageEntryId: string | undefined;
@@ -74,32 +79,33 @@ function estimateWithBranch(
 	}
 
 	const currentSystem = getCurrentSystemMessage(projection.messages);
-	let tokens = currentSystem ? estimateTokens(currentSystem) : 0;
+	let tokens = currentSystem ? estimateTokens(currentSystem, model) : 0;
 	for (const message of projection.messages) {
-		if (message.role !== "system") tokens += estimateTokens(message);
+		if (message.role !== "system") tokens += estimateTokens(message, model);
 	}
 	return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
 }
 
 /**
  * Estimate token count for a message. Standard roles use ai's shared estimator; the roles only the coding agent
- * defines (custom, bash execution, summaries) are sized here by the same `CHARS_PER_TOKEN` ratio.
- * This heuristic can under- or overestimate provider token counts.
+ * defines (custom, bash execution, summaries) are sized here by the same ratio: `model`'s tokenizer family
+ * (`charsPerToken`), or the conservative default without a model. This heuristic can under- or overestimate provider
+ * token counts.
  */
-export function estimateTokens(message: AgentMessage): number {
+export function estimateTokens(message: AgentMessage, model?: TokenModel): number {
 	switch (message.role) {
 		case "system":
 		case "user":
 		case "assistant":
 		case "toolResult":
-			return estimateMessageTokens(message);
+			return estimateMessageTokens(message, model);
 		case "custom":
-			return estimateContentTokens(message.content);
+			return estimateContentTokens(message.content, model);
 		case "bashExecution":
-			return charsToTokens(message.command.length + message.output.length + (message.header?.length ?? 0));
+			return charsToTokens(message.command.length + message.output.length + (message.header?.length ?? 0), model);
 		case "branchSummary":
 		case "compactionSummary":
-			return charsToTokens(message.summary.length);
+			return charsToTokens(message.summary.length, model);
 	}
 
 	return 0;
@@ -152,6 +158,7 @@ export function estimateUndeclaredToolTokens(
 		constrainedSampling?: Tool["constrainedSampling"];
 	}>,
 	hidden: ReadonlySet<string> = new Set(),
+	model?: TokenModel,
 ): number {
 	const serialize = serializedTool;
 	const declared = new Map(getCurrentTools(messages).map((tool) => [tool.name, serialize(tool)]));
@@ -161,5 +168,5 @@ export function estimateUndeclaredToolTokens(
 		const declaration = serialize(tool);
 		if (declared.get(tool.name) !== declaration) chars += declaration.length;
 	}
-	return charsToTokens(chars);
+	return charsToTokens(chars, model);
 }

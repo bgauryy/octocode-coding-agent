@@ -1,6 +1,6 @@
 /** The decision whether a finished response triggers automatic compaction, and which kind. */
 
-import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import type { AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import {
 	type AssistantMessage,
 	isContextOverflow,
@@ -12,19 +12,31 @@ import {
 	estimateContextTokens,
 	estimateLeafContextTokens,
 	estimateTokens,
+	exceedsContextWindow,
 	shouldCompact,
 } from "../compaction/index.ts";
 import type { SessionCompactFailedEvent } from "../features/index.ts";
-import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
+import type {
+	ContextEditEntry,
+	ReadonlySessionManager,
+	ReadonlySessionProjection,
+	SessionEntry,
+} from "../session-manager.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
-import type { SessionInternals } from "./host.ts";
+import type { SessionInternals, SessionRunState } from "./host.ts";
 
 export interface CompactionCheckHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	modelForMessage(message: AssistantMessage): Model<any> | undefined;
 	findPersistedMessageEntryId(message: AgentMessage): string | undefined;
 	omitRecoveryAttempt(message: AssistantMessage): void;
-	/** The session's `_runAutoCompaction`. */
-	runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean, targetModel?: Model<any>): Promise<boolean>;
+	/** The session's `_runAutoCompaction`; `incomingTokens` is a prompt that waits for the compaction. */
+	runAutoCompaction(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		targetModel?: Model<any>,
+		targetThinking?: ThinkingLevel,
+		incomingTokens?: number,
+	): Promise<boolean>;
 	emitSessionCompactFailed(event: Omit<SessionCompactFailedEvent, "type">): Promise<void>;
 }
 
@@ -73,7 +85,18 @@ export async function checkCompaction(
 	// shouldn't trigger compaction for the new model. Under a virtual selection, the
 	// physical model that produced the message supplies the limits.
 	const sameModel = messageModel !== undefined;
-	const contextWindow = (messageModel ?? session.model)?.contextWindow ?? 0;
+	const limitsModel = messageModel ?? session.model;
+	const contextWindow = limitsModel?.contextWindow ?? 0;
+	// New content is estimated at the model's tokenizer ratio, as every threshold check counts it.
+	let incomingTokens = 0;
+	for (const message of incoming) incomingTokens += estimateTokens(message, limitsModel);
+	// A threshold compaction before a prompt makes room for it; the user's cancel holds for the request it was for.
+	const compactForThreshold = () => {
+		if (compactionCancelledForRequest(run, session.sessionManager)) return Promise.resolve(false);
+		return incomingTokens > 0
+			? host.runAutoCompaction("threshold", false, messageModel, undefined, incomingTokens)
+			: host.runAutoCompaction("threshold", false, messageModel);
+	};
 
 	// Skip compaction checks if this assistant message is older than the latest
 	// compaction boundary. This prevents a stale pre-compaction usage/error
@@ -89,13 +112,11 @@ export async function checkCompaction(
 	const assistantIsFromBeforeCompaction =
 		compactionEntry !== null && assistantMessage.timestamp <= new Date(compactionEntry.timestamp).getTime();
 	if (assistantIsFromBeforeCompaction) {
-		// The old response's usage and errors are stale, but input added since the checkpoint is not.
+		// The old response's usage and errors are stale, but input added since the checkpoint is not. That compaction is
+		// the coming request's one: another runs only when the request would not fit the window at all.
 		if (!skipAbortedCheck) {
-			let tokens = estimateLeafContextTokens(currentProjection, sessionManager).tokens;
-			for (const message of incoming) tokens += estimateTokens(message);
-			if (shouldCompact(tokens, contextWindow, settings)) {
-				return host.runAutoCompaction("threshold", false, messageModel);
-			}
+			const tokens = estimateLeafContextTokens(currentProjection, sessionManager, limitsModel).tokens + incomingTokens;
+			if (exceedsContextWindow(tokens, contextWindow, settings, limitsModel?.maxTokens)) return compactForThreshold();
 		}
 		return false;
 	}
@@ -130,14 +151,7 @@ export async function checkCompaction(
 		sameModel &&
 		assistantIsProjected &&
 		isRecoverableLength(assistantMessage, messageModel.maxTokens) &&
-		lengthStopNearWindow(
-			assistantMessage,
-			currentProjection,
-			sessionManager,
-			contextWindow,
-			messageModel.maxTokens,
-			settings,
-		);
+		lengthStopNearWindow(assistantMessage, currentProjection, sessionManager, messageModel, settings);
 	if (contextOverflow || recoverableLength) {
 		const willRetry = assistantMessage.stopReason !== "stop";
 
@@ -187,10 +201,10 @@ export async function checkCompaction(
 	const hasContextEdits = projection.entries.some((entry) => entry.sourceEntry.type === "context_edit");
 	const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
 	if (hasContextEdits) {
-		contextTokens = estimateLeafContextTokens(projection, sessionManager).tokens;
+		contextTokens = estimateLeafContextTokens(projection, sessionManager, limitsModel).tokens;
 	} else if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
 		const messages = session.agent.state.messages;
-		const estimate = estimateContextTokens(messages);
+		const estimate = estimateContextTokens(messages, limitsModel);
 		// Without provider usage, estimate.tokens is the pure message-size estimate.
 		// Only usage-backed estimates need the stale pre-compaction check.
 		if (estimate.lastUsageIndex !== null) {
@@ -201,7 +215,9 @@ export async function checkCompaction(
 				compactionEntry &&
 				usageMsg.role === "assistant" &&
 				usageMsg.timestamp <= new Date(compactionEntry.timestamp).getTime();
-			contextTokens = usageIsStale ? estimateLeafContextTokens(projection, sessionManager).tokens : estimate.tokens;
+			contextTokens = usageIsStale
+				? estimateLeafContextTokens(projection, sessionManager, limitsModel).tokens
+				: estimate.tokens;
 		} else {
 			contextTokens = estimate.tokens;
 		}
@@ -211,36 +227,88 @@ export async function checkCompaction(
 		// After a run, the messages that follow are its own tool results; a terminating tool's large result must
 		// not compact straight after the run, and the next prompt's check counts it.
 		contextTokens = directContextTokens;
-		if (!skipAbortedCheck) contextTokens += estimateTrailingTokens(session.agent.state.messages, assistantMessage);
+		if (!skipAbortedCheck)
+			contextTokens += estimateTrailingTokens(session.agent.state.messages, assistantMessage, limitsModel);
 	}
-	for (const message of incoming) contextTokens += estimateTokens(message);
-	if (shouldCompact(contextTokens, contextWindow, settings)) {
-		return host.runAutoCompaction("threshold", false, messageModel);
+	contextTokens += incomingTokens;
+	return shouldCompact(contextTokens, contextWindow, settings) ? compactForThreshold() : false;
+}
+
+/**
+ * Whether the branch compacted since its latest response, so the request about to be sent already had its compaction
+ * (before the prompt, after the last run, or between turns). One compaction per request: another runs only when the
+ * request would not fit the window at all (`exceedsContextWindow`), not at the threshold.
+ */
+export function compactedSinceLastResponse(
+	projection: ReadonlySessionProjection,
+	sessionManager: Pick<ReadonlySessionManager, "getLeafEntry" | "getEntry">,
+): boolean {
+	// The branch's latest compaction leads the projection; the walk back from the leaf stops at it.
+	const head = projection.entries[0]?.sourceEntry;
+	if (head?.type !== "compaction") return false;
+	for (const entry of ancestors(sessionManager.getLeafEntry(), (id) => sessionManager.getEntry(id))) {
+		if (entry.id === head.id) return true;
+		if (entry.type === "message" && entry.message.role === "assistant") return false;
 	}
 	return false;
 }
 
+/**
+ * Records that the user cancelled an automatic compaction while the run goes on: none runs again for the request it was
+ * for. A cancel that ends the run does not hold: the next prompt is a new request.
+ */
+export function markCompactionCancelled(
+	run: SessionRunState,
+	sessionManager: Pick<ReadonlySessionManager, "getLeafEntry">,
+): void {
+	if (!run.agentRunAbortRequested) run.compactionCancelledAt = sessionManager.getLeafEntry()?.id;
+}
+
+/**
+ * Whether the user cancelled an automatic compaction for the request about to be sent: no reply follows the branch's
+ * leaf at the cancel. A reply, or a branch that no longer holds that entry, ends the hold.
+ */
+export function compactionCancelledForRequest(
+	run: SessionRunState,
+	sessionManager: Pick<ReadonlySessionManager, "getLeafEntry" | "getEntry">,
+): boolean {
+	const at = run.compactionCancelledAt;
+	if (at === undefined) return false;
+	for (const entry of ancestors(sessionManager.getLeafEntry(), (id) => sessionManager.getEntry(id))) {
+		if (entry.id === at) return true;
+		if (entry.type === "message" && entry.message.role === "assistant") break;
+	}
+	run.compactionCancelledAt = undefined;
+	return false;
+}
+
 /** Estimated tokens of the messages after `assistantMessage`, whose provider usage does not include them. */
-function estimateTrailingTokens(messages: readonly AgentMessage[], assistantMessage: AssistantMessage): number {
+function estimateTrailingTokens(
+	messages: readonly AgentMessage[],
+	assistantMessage: AssistantMessage,
+	model: Model<any> | undefined,
+): number {
 	const index = messages.lastIndexOf(assistantMessage);
 	if (index < 0) return 0;
 	let tokens = 0;
-	for (let i = index + 1; i < messages.length; i++) tokens += estimateTokens(messages[i]);
+	for (let i = index + 1; i < messages.length; i++) tokens += estimateTokens(messages[i], model);
 	return tokens;
 }
 
-/** Whether the context at a length stop is close enough to the window to explain the cut-off as overflow. */
+/**
+ * Whether the context at a length stop is close enough to `model`'s window to explain the cut-off as overflow: past the
+ * threshold, or too close to the window for the model's desired output.
+ */
 function lengthStopNearWindow(
 	message: AssistantMessage,
-	projection: ReturnType<SessionInternals["session"]["sessionManager"]["readSessionProjection"]>,
+	projection: ReadonlySessionProjection,
 	sessionManager: Parameters<typeof estimateLeafContextTokens>[1],
-	contextWindow: number,
-	desiredMaxOutput: number,
+	model: Model<any>,
 	settings: Parameters<typeof shouldCompact>[2],
 ): boolean {
 	const direct = calculateContextTokens(message.usage);
-	const tokens = direct > 0 ? direct : estimateLeafContextTokens(projection, sessionManager).tokens;
-	return shouldCompact(tokens, contextWindow, settings) || tokens + desiredMaxOutput > contextWindow;
+	const tokens = direct > 0 ? direct : estimateLeafContextTokens(projection, sessionManager, model).tokens;
+	return shouldCompact(tokens, model.contextWindow, settings) || tokens + model.maxTokens > model.contextWindow;
 }
 
 /** The entries after `entryId` on the branch that ends at `leaf`, root first; empty when it is not on that branch. */

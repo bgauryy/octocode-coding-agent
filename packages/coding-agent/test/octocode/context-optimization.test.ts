@@ -7,6 +7,7 @@ import { serverGeneratedDir } from "../../../mcp/src/compact/store.ts";
 import { getNativeSkillsDir } from "../../src/config.ts";
 import type { FeatureSetup } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
+import { skillListingBudgetChars } from "../../src/core/skills/listing-budget.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { runContextCommand } from "../../src/octocode/context-optimization/command.ts";
 import { registerSkillDescriptions } from "../../src/octocode/context-optimization/skills.ts";
@@ -296,7 +297,9 @@ describe("context optimization", () => {
 			fs.writeFileSync(path.join(project, "AGENTS.md"), agents);
 			const loud = await run("check", "--overrides", file);
 			expect(loud.code).toBe(0);
-			expect(loud.out).toContain(`Warning: Context files too long: ${agents.length} chars, budget 8000`);
+			expect(loud.out).toContain(
+				`Warning: Context files too long: ${agents.length} chars, budget ${skillListingBudgetChars()}`,
+			);
 			expect(fs.readFileSync(path.join(project, "AGENTS.md"), "utf8")).toBe(agents);
 		});
 

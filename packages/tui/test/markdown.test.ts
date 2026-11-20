@@ -7,6 +7,7 @@ import { Markdown } from "../src/components/markdown.ts";
 import { resetCapabilitiesCache, setCapabilities } from "../src/terminal-image/capabilities.ts";
 import type { Component, TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
+import { stripRowMarks } from "../src/utils/row-marks.ts";
 import { defaultMarkdownTheme } from "./test-themes.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
@@ -659,7 +660,11 @@ describe("Markdown component", () => {
 			const width = 30;
 			const lines = markdown.render(width);
 			resetCapabilitiesCache();
-			const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+			const plainLines = lines.map((line) =>
+				stripRowMarks(line)
+					.replace(/\x1b\[[0-9;]*m/g, "")
+					.trimEnd(),
+			);
 
 			for (const line of plainLines) {
 				assert.ok(line.length <= width, `Line exceeds width ${width}: "${line}" (length: ${line.length})`);
@@ -695,7 +700,11 @@ describe("Markdown component", () => {
 			const joinedOutput = lines.join("\n");
 			assert.ok(joinedOutput.includes("\x1b[33m"), "Inline code should be styled (yellow)");
 
-			const plainLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+			const plainLines = lines.map((line) =>
+				stripRowMarks(line)
+					.replace(/\x1b\[[0-9;]*m/g, "")
+					.trimEnd(),
+			);
 			for (const line of plainLines) {
 				assert.ok(line.length <= width, `Line exceeds width ${width}: "${line}" (length: ${line.length})`);
 			}

@@ -4,6 +4,7 @@ import { openAgentDb } from "../../src/storage/database.ts";
 import { MemoryStore } from "../../src/octocode/memory/store.ts";
 import { writeMemory } from "../../src/octocode/memory/write.ts";
 import { memoryTemplate, registerMemoryCommand } from "../../src/octocode/memory/command.ts";
+import { memorySettings } from "../../src/octocode/memory/file/settings.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -73,7 +74,11 @@ describe("memory mutation revision", () => {
 					b = new MemoryStore(second, "repo");
 				const original = a.set({ title: "Repository rule", body: "Original body", author: "user" }).memory;
 				const commands = new Subcommands();
-				registerMemoryCommand(commands, { store: () => a, autoEnv: () => true });
+				registerMemoryCommand(commands, {
+					store: () => a,
+					autoEnv: () => true,
+					sync: { settings: () => memorySettings(undefined), repeats: () => undefined },
+				});
 				const ctx = fakeCtx({ cwd: tmp(), mode: "rpc" });
 				let calls = 0;
 				let latest = original;

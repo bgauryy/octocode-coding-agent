@@ -1,6 +1,11 @@
 import { renderPrompt } from "../../../core/prompt-template.ts";
 
-export const REPORT_MAX_BYTES = 8 * 1024;
+/**
+ * The most of a child's report the parent's context gets inline (`subagents/report.ts`); a longer report is saved whole
+ * in the child's scratch folder and the preview ends with its path. Every later request of the parent sends the preview
+ * again, so it holds the outcome and the lines the contract asks to keep within it, and long evidence goes to a file.
+ */
+export const REPORT_MAX_BYTES = 4 * 1024;
 
 /** The outcome a subagent leads its final report with; the task tells it so, and the parent reads it back. */
 export const REPORT_STATUSES = ["done", "partial", "blocked", "failed"] as const;

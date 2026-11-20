@@ -1,7 +1,7 @@
 /**
  * Tells the user a model request is quiet: a request that sends nothing can sit in the provider's idle timeout for
  * minutes, and its retry only starts after that. `model_wait` carries how long the model has been silent; the terminal,
- * the web view and RPC clients all show it from that one event.
+ * the web view and RPC clients all show it from that one event. Features hear of it once per request (`model_stall`).
  */
 
 import type { AgentEvent } from "@octocodeai/octocode-agent-core";
@@ -21,32 +21,67 @@ export function modelWaitText(idleMs: number): string {
 	return `Model not answering for ${seconds(idleMs)}`;
 }
 
-/** The line that says when the next attempt starts. */
-export function retryText(attempt: number, maxAttempts: number, delayMs: number): string {
-	return `Retry ${attempt} of ${maxAttempts} in ${seconds(delayMs)}`;
+/** The line that names the retry; when it starts travels beside it, so a client can count down. */
+export function retryText(attempt: number, maxAttempts: number): string {
+	return maxAttempts > 0 ? `Retry ${attempt} of ${maxAttempts}` : `Retry ${attempt}`;
 }
 
+const SYSTEM_ERROR_CODE = /\b(E[A-Z]{2,}(?:_[A-Z]+)*)\b/;
+const SHORT_FAILURE_MAX_CHARS = 60;
+
+/** A failure in a few words: its first clause, plus the system error code when the clause lacks it (`fetch failed (ENOTFOUND)`). */
+function shortFailureText(errorMessage: string): string {
+	const firstLine = errorMessage.trim().split("\n")[0] ?? "";
+	const clause = (firstLine.split(/:\s/)[0] ?? firstLine).replace(/[.\s]+$/, "");
+	const head =
+		clause.length > SHORT_FAILURE_MAX_CHARS ? `${clause.slice(0, SHORT_FAILURE_MAX_CHARS - 1).trimEnd()}…` : clause;
+	const code = SYSTEM_ERROR_CODE.exec(errorMessage)?.[1];
+	if (!head) return code ?? "Unknown error";
+	return code && !head.includes(code) ? `${head} (${code})` : head;
+}
+
+/** The one line an outage shows; the client appends its countdown (` - trying again in 42s`). */
+export function offlineRetryText(failedAttempts: number, errorMessage: string): string {
+	return `Retry failed after ${failedAttempts} attempt${failedAttempts === 1 ? "" : "s"}: ${shortFailureText(errorMessage)}`;
+}
+
+/**
+ * Counts the silence of the request in flight. It starts when the request goes out (`requestSent`), not at the turn's
+ * start, so the work that prepares a request (a compaction, input hooks) never counts as the model's silence. A streamed
+ * event only moves the last-activity time; one timer reads it.
+ */
 export class ModelWaitWatch {
 	private timer: ReturnType<typeof setTimeout> | undefined;
-	private quietSince = 0;
+	/** When the request went out or last streamed; 0 while no request is out. */
+	private lastActivity = 0;
 	private shown = false;
+	/** The request out now was already reported as stalled: a later silence of the same request is not news. */
+	private stallReported = false;
 
 	/** `emit` receives the quiet time in ms, and 0 once the quiet ends. */
 	private readonly emit: (idleMs: number) => void;
+	/** `stalled` receives the quiet time the first time a request's silence is shown, at most once per request. */
+	private readonly stalled: ((idleMs: number) => void) | undefined;
 
-	constructor(emit: (idleMs: number) => void) {
+	constructor(emit: (idleMs: number) => void, stalled?: (idleMs: number) => void) {
 		this.emit = emit;
+		this.stalled = stalled;
 	}
 
-	/** A request goes out at `turn_start`; any stream event proves it is answering; a finished message, turn or run ends the wait. */
+	/** The provider request went out: its silence counts from now. */
+	requestSent(): void {
+		this.stallReported = false;
+		this.active();
+		if (!this.timer) this.schedule(MODEL_WAIT_AFTER_MS);
+	}
+
+	/** A stream event of the request proves it is answering; a finished message, turn or run ends the wait. */
 	observe(event: AgentEvent): void {
 		switch (event.type) {
-			case "turn_start":
-				this.arm();
-				break;
 			case "message_start":
 			case "message_update":
-				if (event.message.role === "assistant") this.arm();
+				// A delta delivered after its run ended finds no request out and starts nothing.
+				if (event.message.role === "assistant" && this.lastActivity > 0) this.active();
 				break;
 			case "message_end":
 				if (event.message.role === "assistant") this.stop();
@@ -63,28 +98,38 @@ export class ModelWaitWatch {
 	stop(): void {
 		clearTimeout(this.timer);
 		this.timer = undefined;
-		if (this.shown) {
-			this.shown = false;
-			this.emit(0);
-		}
+		this.lastActivity = 0;
+		this.unshow();
 	}
 
-	private arm(): void {
-		clearTimeout(this.timer);
-		if (this.shown) {
-			this.shown = false;
-			this.emit(0);
-		}
-		this.quietSince = Date.now();
-		this.schedule(MODEL_WAIT_AFTER_MS);
+	private active(): void {
+		this.lastActivity = Date.now();
+		this.unshow();
+	}
+
+	private unshow(): void {
+		if (!this.shown) return;
+		this.shown = false;
+		this.emit(0);
 	}
 
 	private schedule(delayMs: number): void {
-		this.timer = setTimeout(() => {
-			this.shown = true;
-			this.emit(Math.max(1, Date.now() - this.quietSince));
-			this.schedule(MODEL_WAIT_REFRESH_MS);
-		}, delayMs);
+		this.timer = setTimeout(() => this.check(), delayMs);
 		this.timer.unref();
+	}
+
+	/** Shows the silence once it is long enough, and looks again when it next could be. */
+	private check(): void {
+		this.timer = undefined;
+		if (this.lastActivity === 0) return;
+		const idleMs = Date.now() - this.lastActivity;
+		if (idleMs < MODEL_WAIT_AFTER_MS) return this.schedule(MODEL_WAIT_AFTER_MS - idleMs);
+		this.shown = true;
+		this.emit(idleMs);
+		if (!this.stallReported) {
+			this.stallReported = true;
+			this.stalled?.(idleMs);
+		}
+		this.schedule(MODEL_WAIT_REFRESH_MS);
 	}
 }

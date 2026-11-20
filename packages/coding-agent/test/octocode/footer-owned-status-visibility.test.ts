@@ -6,7 +6,7 @@ const theme = { fg: (_color: string, text: string) => text, bold: (text: string)
 const state: FooterState = {
 	model: "model-x",
 	thinking: "high",
-	context: { percent: 42, limit: 200_000 },
+	context: { percent: 42, window: 200_000 },
 	usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
 	cwd: "/work/project",
 };

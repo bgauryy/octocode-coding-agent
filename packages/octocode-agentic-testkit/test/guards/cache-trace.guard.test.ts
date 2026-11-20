@@ -18,8 +18,9 @@ import { requireBundle } from "./support.ts";
 const CEILING = {
 	/** Every tool declared at the top level; an MCP server connecting mid-span is declared at the next span (compaction). */
 	none: {
-		/** Request 1: tool definitions, system prompt. */
-		toolsBytes: 42_200,
+		/** Request 1: tool definitions, system prompt. Thin MCP declarations keep short enums, `maxItems` and `required`
+		 * (review CK-013, user decision): tools re-pinned at 43,626 B measured plus 5%. */
+		toolsBytes: 45_800,
 		systemBytes: 31_600,
 		/** The MCP server's tool definition, appended after the compaction, and the connect's message-borne `mcps` delta. */
 		mcpToolDeltaBytes: 250,
@@ -29,8 +30,9 @@ const CEILING = {
 	},
 	/** Rare native tools listed, not declared; the connect adds an in-place tool block. */
 	changes: {
-		/** Every bundled Octocode MCP tool is declared up front (user decision), GitHub and package tools included. */
-		toolsBytes: 39_600,
+		/** Every bundled Octocode MCP tool is declared up front (user decision), GitHub and package tools included; richer
+		 * thin declarations (CK-013) re-pinned at 42,259 B measured plus 5%. */
+		toolsBytes: 44_400,
 		systemBytes: 33_000,
 		mcpToolDeltaBytes: 320,
 		mcpMessageDeltaBytes: 6_600,
@@ -45,14 +47,16 @@ const MAX_MARKERS = 4;
 const FLAGS = ["--mode", "json", "--no-session", "--offline", "--trust", "--model", "testkit/scripted"];
 const notes = (lines: number) =>
 	Array.from({ length: lines }, (_, i) => `note ${i}: the quick brown fox jumps over the lazy dog`).join("\n");
-/** About 28k estimated tokens. */
+/** About 44k estimated tokens (the agent counts 2.5 characters per token for the scripted model). */
 const FILLER = notes(2000);
 /**
- * About 36k estimated tokens: with T1's filler it overflows the 96k window whatever the prompt's size, so the agent
- * compacts on its own, and the full window leaves no room for a summary inside the session's request: it is written
- * by the standalone compactor these checks read.
+ * About 44k estimated tokens: with T1's filler it overflows the 96k window (86,400 usable) whatever the prompt's size, so
+ * the agent compacts on its own, and the full window leaves no room for a summary inside the session's request: it is
+ * written by the standalone compactor these checks read. The system prompt, tools and this turn alone stay about 4k
+ * under the reply reserve, which leaves the compactor room for a summary; a larger turn (2,600 lines) leaves none and
+ * the turn fails.
  */
-const OVERFLOW = notes(2600);
+const OVERFLOW = notes(2000);
 const TURNS = [
 	`T1 read a.txt\n${FILLER}`,
 	"T2 connect docs and search it",
@@ -190,6 +194,102 @@ describe("cache trace (scripted gateway, real bundle, Anthropic wire)", () => {
 		},
 	);
 });
+
+describe("cache trace: the summary request shares the session's cached prefix", () => {
+	it(
+		"a compaction the agent requests is written inside the session's own request, after its cached prefix",
+		{ timeout: 150_000 },
+		async (ctx) => {
+			requireBundle(ctx);
+			const { main, shared, standalone } = await sharedSummaryScenario();
+			expect(standalone, "no standalone summary request").toEqual([]);
+			expect(shared.length, "a summary request inside the session's request").toBeGreaterThanOrEqual(1);
+			for (const summary of shared) {
+				const live = main.findLast((r) => r.index < summary.index);
+				expect(live, "a session request precedes the summary").toBeDefined();
+				// The same tools and system prompt as the session's last request, and its messages extended, not rewritten:
+				// the summary request reads the whole live prefix from cache.
+				const [first, row] = traceRows([live!, summary]);
+				expect(row.hash.tools, `summary ${summary.index}: tools hash`).toBe(first.hash.tools);
+				expect(row.hash.system, `summary ${summary.index}: system hash`).toBe(first.hash.system);
+				expect(row.change.messages.kind, `summary ${summary.index}: messages`).toBe("append");
+				expect(row.markers).toBeLessThanOrEqual(MAX_MARKERS);
+				expect(view([live!, summary])).toKeepStablePrefix({ raw: true });
+				// Gateway estimate (chars / 4, rounded up): the summary request reads every token of the live request.
+				expect(row.cachedTokens ?? 0).toBeGreaterThanOrEqual((first.promptTokens ?? 0) - 1);
+			}
+			// The session's next request keeps the tools and system bytes and replaces the summarized history.
+			const last = shared.at(-1)!;
+			const next = main.find((r) => r.index > last.index);
+			expect(next, "the session goes on after the summary").toBeDefined();
+			expectCompaction(traceRows([main.findLast((r) => r.index < last.index)!, next!])[1]);
+		},
+	);
+});
+
+const SUMMARY_REQUEST = /context checkpoint summary/;
+const lastUserText = (request: CapturedRequest): string =>
+	textOf(request.messages.findLast((m) => m.role === "user")?.content ?? "");
+
+/**
+ * T0 a medium message; T1 a large message and a bash round, more than the recent part a compaction keeps; T2 the model
+ * calls `compact`, which the agent runs when the reply ends, summarizing T0, and then resumes. The context stays below
+ * the automatic threshold, so the window leaves room for the summary inside the session's own request.
+ */
+async function sharedSummaryScenario(): Promise<{
+	main: CapturedRequest[];
+	shared: CapturedRequest[];
+	standalone: CapturedRequest[];
+}> {
+	const responder: Responder = ({ request, trace }) => {
+		if (request.tools.length === 0 || SUMMARY_REQUEST.test(lastUserText(request))) {
+			trace.record({ kind: "compaction", agent: request.agent, span: request.span });
+			return { text: "## Summary\nT0 kept notes; T1 read a.txt." };
+		}
+		const { turn, replies } = position(request);
+		if (turn === "T1" && replies === 0)
+			return { toolCalls: [{ name: "bash", args: { command: "cat a.txt", reason: "read" } }] };
+		if (turn === "T2" && replies === 0) return { toolCalls: [{ name: "compact", args: { focus: "finish T2" } }] };
+		if (turn === "T2" && replies === 1) return { text: "T2 compacting" };
+		return { text: turn === "T2" ? "resumed" : `${turn} done` };
+	};
+	const gw = await gateway({ responder });
+	const home = anthropicHome({ gatewayUrl: gw.url, contextWindow: 96_000 });
+	let run: Awaited<ReturnType<typeof runOctocodeAgent>>;
+	try {
+		run = await runOctocodeAgent({
+			gatewayUrl: gw.url,
+			args: [...FLAGS, `T0 keep these notes\n${notes(600)}`, `T1 read a.txt\n${notes(1700)}`],
+			prompt: "T2 compact now",
+			files: { "a.txt": "AAA\n" },
+			env: { OCTOCODE_HOME: home.home },
+			timeoutMs: 120_000,
+		});
+	} finally {
+		home.close();
+	}
+	expect(run.exitCode, run.stderr.slice(-2000)).toBe(0);
+	expect(gw.errors).toEqual([]);
+	const all = gw.trace.requests;
+	const shared = all.filter((r) => r.tools.length > 0 && SUMMARY_REQUEST.test(lastUserText(r)));
+	const standalone = all.filter((r) => r.tools.length === 0);
+	const main = all.filter((r) => !shared.includes(r) && !standalone.includes(r));
+	const file = writeTrace(process.env.TESTKIT_REPORT_DIR ?? ".octocode/tmp", "shared-summary", {
+		scenario: [
+			"T0: medium user message",
+			"T1: large user message, one bash tool round",
+			"T2: the compact tool; the agent compacts when the reply ends and resumes",
+		],
+		wire: "anthropic-messages (scripted gateway; markers are the agent's own)",
+		contextWindow: 96_000,
+		main: traceRows(main),
+		shared: traceRows(shared),
+	});
+	console.info(`[guard:cache-trace] ${file}`);
+	expect(gw.trace).toHaveCalledTool("compact");
+	expect(gw.trace).toHaveCompacted();
+	return { main, shared, standalone };
+}
 
 const dateDelta = (rows: TraceRow[], i: number): number => rows[i].bytes.messages - rows[i - 1].bytes.messages;
 

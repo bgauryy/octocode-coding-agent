@@ -5,11 +5,13 @@ import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
 import { OSC133_PROMPT_START } from "../terminal/sequences.ts";
 import { PAGE_SCROLL_OVERLAP } from "./constants.ts";
+import type { ArrowBurstScroll } from "./arrow-burst.ts";
 import type { AltScreenSearchController } from "./search-controller.ts";
 
 /** Alternate-screen viewport operations the keyboard bindings call. */
 export interface AltScreenViewportKeysHost {
 	readonly search: AltScreenSearchController;
+	readonly arrowBurst: ArrowBurstScroll;
 	getCurrentLayout(): LayoutFrame | undefined;
 	getPrimaryScrollView(): ScrollView;
 	shouldDeferViewportInputToOverlay(): boolean;
@@ -57,6 +59,7 @@ export function handleViewportKeys(host: AltScreenViewportKeysHost, data: string
 		}
 	}
 	if (host.shouldDeferViewportInputToOverlay()) return undefined;
+	if (host.arrowBurst.handle(data)) return { consume: true };
 	if (keybindings.matches(data, "tui.altScreen.pageUp")) {
 		if (!isRelease) {
 			host.scrollBy(-Math.max(1, host.getPrimaryScrollView().viewportHeight - PAGE_SCROLL_OVERLAP));

@@ -3,10 +3,10 @@ import { isCacheTtlControllable } from "@octocodeai/octocode-ai/utils/cache-poli
 import {
 	CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS,
 	getCacheWarmingDelayMs,
-	idleContinuationProbability,
 	idleWarmingLimitMs,
 	price,
 } from "./economics.ts";
+import { IdleContinuationPool } from "./idle-pool.ts";
 import { formatTtl } from "./usage-record.ts";
 
 /**
@@ -20,9 +20,10 @@ import { formatTtl } from "./usage-record.ts";
  * | miss               | `(w_tier − r) × P × b`                                            |
  *
  * A reply gap shorter than the lifetime costs nothing. A longer one costs the refreshes the warmer would send (one per
- * 90% of the lifetime, while the idle warming limit lasts, and only when its expected saving at the role's idle
- * probability clears the warmer's minimum) and, past that limit or without refreshes, one miss. Only the tiers the
- * adapter resolved count, so a host without a long tier never gets a long price.
+ * 90% of the lifetime, while the idle warming limit lasts, and only when its expected saving at the tier's idle
+ * probability at its first refresh clears the warmer's minimum) and, past that limit or without refreshes, one miss.
+ * Only the tiers the adapter resolved for the history count, so a host without a long history tier never gets a long
+ * price.
  */
 export interface RetentionInput {
 	model: Model<Api>;
@@ -33,8 +34,8 @@ export interface RetentionInput {
 	turnTokens: number;
 	/** Reply gaps of one span, in milliseconds; the span has one more turn than gaps. */
 	gapsMs: readonly number[];
-	/** Agent role, for its idle probability (`idleContinuationProbability`). */
-	role?: string;
+	/** Pooled idle gaps for each tier's chance of use (`idle-pool.ts`); default: the measured seed. */
+	idle?: IdleContinuationPool;
 }
 
 export interface RetentionPlan {
@@ -70,9 +71,17 @@ function gapCost(gapMs: number, tier: TierPrices, probability: number): number {
 /** The tier to write a span at, among those the adapter resolved for `input.model`. */
 export function planRetention(input: RetentionInput): RetentionPlan {
 	const { model, prefixTokens: prefix, turnTokens: turn } = input;
-	const { mechanism, lifetimes } = resolveModelCapabilities(model, input.env).cache;
+	const cache = resolveModelCapabilities(model, input.env).cache;
+	// The history tiers: where the long tier is for instruction breakpoints only, long history stays short.
+	const lifetimes: { short?: number; long?: number } = cache.longInstructionsOnly
+		? cache.lifetimes.short !== undefined
+			? { short: cache.lifetimes.short }
+			: {}
+		: cache.lifetimes;
+	const mechanism = cache.mechanism;
 	const shortTtl = lifetimes.short !== undefined ? formatTtl(lifetimes.short) : undefined;
-	const longTtl = lifetimes.long !== undefined ? formatTtl(lifetimes.long) : undefined;
+	// Named as the request asks for it (`24h`); planned at the lifetime the provider typically keeps (`lifetimes.long`).
+	const longTtl = lifetimes.long !== undefined ? formatTtl(cache.longUpTo ?? lifetimes.long) : undefined;
 	const named = { ...(shortTtl ? { shortTtl } : {}), ...(longTtl ? { longTtl } : {}) };
 	if (lifetimes.long === undefined && (!isCacheTtlControllable(mechanism) || lifetimes.short === undefined))
 		return { choice: "provider", ...named, costs: {} };
@@ -84,9 +93,12 @@ export function planRetention(input: RetentionInput): RetentionPlan {
 	const longField = (lifetimes.long ?? 0) >= 12 * 3600 ? "cacheWrite12h" : "cacheWrite1h";
 	const longWrite = (tokens: number) =>
 		price(model, premium ? { cacheWrite: tokens, [longField]: tokens } : { input: tokens });
-	const probability = idleContinuationProbability(input.role);
-	const spanCost = (tier: TierPrices, extra: number) =>
-		input.gapsMs.reduce((sum, gap) => sum + gapCost(gap, tier, probability), extra);
+	const idle = input.idle ?? new IdleContinuationPool();
+	// The chance of use at the tier's first idle refresh (90% of its lifetime).
+	const spanCost = (tier: TierPrices, extra: number) => {
+		const probability = idle.probability(tier.ttlMs * 0.9, tier.ttlMs);
+		return input.gapsMs.reduce((sum, gap) => sum + gapCost(gap, tier, probability), extra);
+	};
 
 	const costs: RetentionPlan["costs"] = {};
 	if (lifetimes.short !== undefined) {

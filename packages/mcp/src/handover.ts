@@ -13,7 +13,8 @@ import { isDeepStrictEqual } from "node:util";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerConnection } from "./runtime.ts";
 import { isEnabled, type McpServer } from "./server.ts";
-import type { McpFeatureOptions, McpFeatureState } from "./state.ts";
+import type { McpFeatureOptions } from "./options.ts";
+import type { McpFeatureState } from "./state.ts";
 
 /** The session a connection reports to. A handed connection is rebound to the session that takes it. */
 export interface ConnectionOwner {

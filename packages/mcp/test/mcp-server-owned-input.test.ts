@@ -48,6 +48,39 @@ describe("server-owned MCP input", () => {
 		expect(sent).toEqual([args]);
 	});
 
+	it("drops a native-style reason the server's closed schema neither declares nor accepts, before validation", async () => {
+		const { tool, sent, validate } = define({
+			type: "object",
+			properties: { key: { type: "string" } },
+			required: ["key"],
+			additionalProperties: false,
+		});
+		const prepared = tool.prepareArguments?.({ key: "item", reason: "why I look it up" }) as JsonObject;
+		expect(prepared).toEqual({ key: "item" });
+		await tool.execute("c", validate(prepared), undefined, undefined, {} as never);
+		expect(sent).toEqual([{ key: "item" }]);
+		// A reason that is not the native string, or a closed root alternative's own reason, stays for validation to judge.
+		expect(tool.prepareArguments?.({ key: "item", reason: 3 })).toEqual({ key: "item", reason: 3 });
+		const alternatives = define({
+			anyOf: [
+				{ properties: { reason: { type: "string" } }, additionalProperties: false },
+				{ properties: { key: { type: "string" } }, additionalProperties: false },
+			],
+		});
+		expect(alternatives.tool.prepareArguments).toBeUndefined();
+	});
+
+	it("never drops a reason the server declares, or one an open schema accepts", () => {
+		const declared = define({
+			type: "object",
+			properties: { reason: { type: "string" } },
+			additionalProperties: false,
+		});
+		const open = define({ type: "object", properties: { key: { type: "string" } } });
+		expect(declared.tool.prepareArguments).toBeUndefined();
+		expect(open.tool.prepareArguments).toBeUndefined();
+	});
+
 	it("requires reason only when the server's schema requires it", () => {
 		const { validate } = define({ type: "object", properties: { reason: { type: "string" } }, required: ["reason"] });
 		expect(() => validate({})).toThrow(/reason/);

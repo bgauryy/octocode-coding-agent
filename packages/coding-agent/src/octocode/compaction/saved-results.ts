@@ -30,7 +30,7 @@ import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 export const SAVED_RESULTS_DETAILS = "savedResults";
 
 /**
- * The most characters of paths listed in the summary itself (about 750 tokens, some 25 paths): a longer list is written
+ * The most characters of paths listed in the summary itself (about 1.2k tokens, some 25 paths): a longer list is written
  * whole to a file and the summary names that file, so a long session's summary does not refill the context it frees.
  */
 export const SAVED_RESULTS_INLINE_CHARS = 3_000;

@@ -56,16 +56,14 @@ describe("child cache monitoring and affinity", () => {
 		);
 		expect(base).not.toContain("+file");
 	});
-	it("groups sibling prefixes within their parent without exposing task or session identifiers", () => {
+	it("groups children by prefix, across parents, without exposing task or session identifiers", () => {
 		const prefix = prefixKey("researcher", "openai/model", { inTask: true, inline: false });
-		const key = childPromptCacheKey("parent-a", prefix);
+		const key = childPromptCacheKey(prefix);
 		expect(key).toHaveLength(63);
-		expect(key).not.toContain("parent-a");
-		expect(childPromptCacheKey("parent-a", prefix)).toBe(key);
-		expect(childPromptCacheKey("parent-b", prefix)).not.toBe(key);
-		expect(
-			childPromptCacheKey("parent-a", prefixKey("coder", "openai/model", { inTask: true, inline: false })),
-		).not.toBe(key);
+		expect(key).not.toContain("researcher");
+		// One prefix is one group whichever session launched the child: a new parent's children read what earlier ones wrote.
+		expect(childPromptCacheKey(prefix)).toBe(key);
+		expect(childPromptCacheKey(prefixKey("coder", "openai/model", { inTask: true, inline: false }))).not.toBe(key);
 		const env = { OCTOCODE_PROMPT_CACHE_KEY: "old" };
 		expect(subagentProcessEnv(undefined, env, { id: "child-a", promptCacheKey: key }).OCTOCODE_PROMPT_CACHE_KEY).toBe(
 			key,

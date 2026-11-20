@@ -176,6 +176,59 @@ it("reports a nested send's preflight rejection even when the extension API cons
 	}
 });
 
+it("answers a prompt cancelled before it was accepted as not sent, never with the earlier run's outcome", async () => {
+	const entered = Promise.withResolvers<void>();
+	const release = Promise.withResolvers<void>();
+	const h = await createHarness({
+		settings: { retry: { enabled: false } },
+		features: testFeatures([
+			(api) => {
+				api.commands.register("nothing", { handler: async () => {} });
+				api.bus.on("input", async (event) => {
+					if (event.text === "hold") {
+						entered.resolve();
+						await release.promise;
+					}
+				});
+			},
+		]),
+	});
+	const responses: object[] = [];
+	const outcomeOf = (response: object | undefined) => (response as { data?: { outcome?: unknown } }).data?.outcome;
+	try {
+		await h.session.bindFeatures({});
+		h.setResponses([fauxAssistantMessage("", { stopReason: "aborted", errorMessage: "stopped by the user" })]);
+		await h.session.prompt("first");
+		const earlier = h.session.lastRunOutcome;
+		expect(earlier?.status).toBe("aborted");
+
+		handlePrompt(h.session, { type: "prompt", message: "/nothing", waitForCompletion: true }, (value) =>
+			responses.push(value),
+		);
+		await vi.waitFor(() => expect(responses).toHaveLength(1));
+		// A command that ran no model has no run to report: the earlier run's usage is not repeated.
+		expect(responses[0]).toMatchObject({ success: true, data: { disposition: "handled" } });
+		expect(outcomeOf(responses[0])).toBeUndefined();
+
+		handlePrompt(h.session, { type: "prompt", message: "hold", waitForCompletion: true }, (value) =>
+			responses.push(value),
+		);
+		await entered.promise;
+		await h.session.abort();
+		release.resolve();
+		await vi.waitFor(() => expect(responses).toHaveLength(2));
+		expect(responses[1]).toMatchObject({
+			success: true,
+			data: { disposition: "not-sent", outcome: { status: "aborted", usage: { input: 0, output: 0 } } },
+		});
+		expect(outcomeOf(responses[1])).not.toBe(earlier);
+		expect(h.session.lastRunOutcome).toBe(earlier);
+	} finally {
+		release.resolve();
+		h.cleanup();
+	}
+});
+
 it("cancels pending preflight before it can start a model run and preserves the next dispatch", async () => {
 	const entered = Promise.withResolvers<void>();
 	const release = Promise.withResolvers<void>();

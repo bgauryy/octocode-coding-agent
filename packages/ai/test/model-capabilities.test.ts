@@ -96,7 +96,7 @@ describe("model capabilities", () => {
 				model("openai-responses", { id: "gpt-4.1", provider: "openai", baseUrl: "https://api.openai.com/v1" }),
 			),
 			"key",
-			{ long: 86_400 },
+			{ long: 1800 },
 		],
 		[
 			"OpenRouter Claude over Completions",
@@ -104,9 +104,70 @@ describe("model capabilities", () => {
 			"markers",
 			{ short: 300, long: 3600 },
 		],
+		[
+			"OpenRouter Claude over Messages",
+			model("anthropic-messages", {
+				provider: "openrouter",
+				baseUrl: "https://openrouter.ai/api",
+				id: "anthropic/claude-sonnet-5.5",
+			}),
+			"markers",
+			{ short: 300, long: 3600 },
+		],
+		[
+			"OpenRouter non-Claude over Messages",
+			model("anthropic-messages", { provider: "openrouter", baseUrl: "https://openrouter.ai/api", id: "z-ai/glm-5" }),
+			"markers",
+			{ short: 300 },
+		],
+		[
+			"Vercel AI Gateway Claude",
+			model("anthropic-messages", {
+				provider: "vercel-ai-gateway",
+				baseUrl: "https://ai-gateway.vercel.sh",
+				id: "anthropic/claude-sonnet-5.5",
+			}),
+			"markers",
+			{ short: 300 },
+		],
+		[
+			"Vercel AI Gateway OpenAI upstream",
+			model("anthropic-messages", {
+				provider: "vercel-ai-gateway",
+				baseUrl: "https://ai-gateway.vercel.sh",
+				id: "openai/gpt-5",
+			}),
+			"implicit",
+			{},
+		],
 		["Gemini", model("google-generative-ai"), "implicit", {}],
 	] as const)("derives the %s cache mechanism", (_name, input, mechanism, lifetimes) => {
-		expect(resolveModelCapabilities(input).cache).toEqual({ mechanism, lifetimes });
+		const cache = resolveModelCapabilities(input).cache;
+		expect(cache.mechanism).toBe(mechanism);
+		expect(cache.lifetimes).toEqual(lifetimes);
+	});
+
+	it("keeps OpenAI explicit-mode history at the request's 30m: the 12h tier is for instruction breakpoints", () => {
+		const explicit = model("openai-responses", {
+			provider: "openai",
+			compat: { supportsExplicitPromptCacheMode: true },
+		});
+		expect(resolveModelCapabilities(explicit).cache.longInstructionsOnly).toBe(true);
+		// Azure breakpoints take no ttl, so its request TTL carries the long tier for the history too.
+		const azure = model("azure-openai-responses", { compat: { supportsExplicitPromptCacheMode: true } });
+		expect(resolveModelCapabilities(azure).cache.longInstructionsOnly).toBeUndefined();
+		expect(resolveModelCapabilities(model("anthropic-messages")).cache.longInstructionsOnly).toBeUndefined();
+	});
+
+	it("plans 24h extended retention at its typical 30 minutes, with 24h as the upper bound", () => {
+		const extended = withCacheCapabilities(
+			model("openai-responses", { id: "gpt-4.1", provider: "openai", baseUrl: "https://api.openai.com/v1" }),
+		);
+		expect(resolveModelCapabilities(extended).cache).toEqual({
+			mechanism: "key",
+			lifetimes: { long: 1800 },
+			longUpTo: 86_400,
+		});
 	});
 
 	it("uses declared lifetimes, with a long tier only where the endpoint accepts it", () => {

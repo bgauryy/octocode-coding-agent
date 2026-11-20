@@ -63,8 +63,8 @@ export async function fetchSdkResponse(
 		const deadline = new AbortController();
 		const combined = combineAbortSignals([init?.signal ?? options.signal, deadline.signal]);
 		const mistral = model.api === "mistral-conversations";
-		// Chat completions and Mistral bound only the wait for response headers; the body may stream longer.
-		const headersOnly = model.api === "openai-completions" || mistral;
+		// The deadline bounds the wait for response headers. Once a body streams, only silence ends it (the idle bound below):
+		// a reasoning model may stream a long, healthy reply well past the deadline.
 		const timeoutMs = options.timeoutMs ?? (model.api.startsWith("google-") ? undefined : mistral ? 60_000 : 600_000);
 		const timeoutMessage = mistral
 			? `Mistral response headers timed out after ${timeoutMs}ms`
@@ -91,7 +91,7 @@ export async function fetchSdkResponse(
 				() => {},
 			);
 			response = await raceWithAbortSignal(pending, combined.signal);
-			if (response.ok && headersOnly) clearTimeout(timer);
+			if (response.ok) clearTimeout(timer);
 			try {
 				await raceWithAbortSignal(
 					Promise.resolve(

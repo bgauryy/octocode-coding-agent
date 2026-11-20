@@ -17,7 +17,6 @@ import { SessionLoads, type SessionsLoader } from "./session-selector/loads.ts";
 import { type ActionsMenu, actionsMenuFor, renamePanel } from "./session-selector/panels.ts";
 import { SessionList } from "./session-selector/session-list.ts";
 import type { SessionPickerPorts, SessionRemoval, SessionScope } from "./session-selector/types.ts";
-import { deleteSessionFile } from "./session-selector/utils.ts";
 import type { NameFilter, SortMode } from "./session-selector-search.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -218,7 +217,7 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.loads.cancel();
 	}
 
-	/** Deletes the confirmed sessions through the host's removal when it has one, else file by file, and reports the outcome. */
+	/** Deletes the confirmed sessions through the host's removal (a picker without one refuses) and reports the outcome. */
 	private async deleteSessions(paths: string[]): Promise<void> {
 		if (this.disposed || this.mutating) return;
 		const known = new Map(
@@ -236,7 +235,8 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		this.startMutation(sessions.length === 1 ? "Deleting session" : `Deleting ${sessions.length} sessions`);
 		let outcome: SessionRemoval;
 		try {
-			outcome = await (this.ports.removeSessions ? this.ports.removeSessions(sessions) : this.removeFiles(sessions));
+			if (!this.ports.removeSessions) throw new Error("this picker has no session removal; nothing was deleted");
+			outcome = await this.ports.removeSessions(sessions);
 		} catch (err) {
 			if (this.disposed) return;
 			this.mutating = false;
@@ -275,19 +275,6 @@ export class SessionSelectorComponent extends Container implements Focusable {
 		});
 		this.buildBaseLayout(this.sessionList);
 		this.requestRender();
-	}
-
-	/** Without a host removal: each transcript to the trash, else unlinked. */
-	private async removeFiles(sessions: readonly SessionInfo[]): Promise<SessionRemoval> {
-		const outcome: SessionRemoval = { removed: [], problems: [] };
-		for (const session of sessions) {
-			const result = await deleteSessionFile(session.path);
-			if (result.ok) {
-				outcome.removed.push(session.path);
-				outcome.method = result.method;
-			} else outcome.problems.push(`${session.name ?? session.id}: ${result.error ?? "unknown error"}`);
-		}
-		return outcome;
 	}
 
 	private enterRenameMode(sessionPath: string, currentName: string | undefined): void {

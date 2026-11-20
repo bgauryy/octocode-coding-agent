@@ -64,7 +64,8 @@ function layout(left: string, center: string, right: string, width: number): str
  * Fits the zones' parts into `width` columns in one pass over all of them: steps are taken lowest priority first until the
  * line fits, then the parts still too wide are cut, then every step is undone, highest priority first, where the room
  * allows. A dropped part thus returns when shortening a higher one freed room, and a lower part never takes room a
- * higher one could use. `detailsHidden` says a `details` part is not shown in full.
+ * higher one could use. `detailsHidden` says a `details` part is not shown in full; `partlyHidden` says one is shown
+ * shortened or cut, and `dropped` lists those out of the line whole.
  */
 export function fitFooterZones(zones: FooterZones, theme: FooterPaint, width: number) {
 	const dot = theme.fg("dim", " · ");
@@ -125,10 +126,12 @@ export function fitFooterZones(zones: FooterZones, theme: FooterPaint, width: nu
 		if (over() > 0) at.set(part, step + 1);
 	}
 	const line = truncateToWidth(render(), Math.max(0, width), theme.fg("dim", "…"));
-	const detailsHidden = all.some(
+	const hidden = all.filter(
 		(part) => part.details && (at.get(part) !== 0 || cut.has(part) || !line.includes(part.text)),
 	);
-	return { line, detailsHidden };
+	/** `details` parts out of the line whole, which another line may show instead. */
+	const dropped = hidden.filter((part) => shown(part) === undefined);
+	return { line, detailsHidden: hidden.length > 0, partlyHidden: hidden.length > dropped.length, dropped };
 }
 
 /** A two-zone line: `left` from column 0, `right` ending at the last column. */

@@ -412,9 +412,10 @@ describe("Cache Retention (OCTOCODE_CACHE_RETENTION)", () => {
 		it.each([
 			["gpt-4.1", "24h", undefined],
 			["gpt-4o-mini", undefined, undefined],
-			["gpt-6-astra", undefined, { ttl: "12h" }],
-			["gpt-6-sol", undefined, { ttl: "12h" }],
-			["gpt-6-luna", undefined, { ttl: "12h" }],
+			// Explicit-mode models put the long tier on the instruction breakpoints; the request TTL stays at 30m.
+			["gpt-6-astra", undefined, undefined],
+			["gpt-6-sol", undefined, undefined],
+			["gpt-6-luna", undefined, undefined],
 		] as const)("should use the supported long cache field for %s", async (modelId, retention, cacheOptions) => {
 			const model = getBuiltinModel("openai", modelId);
 			let capturedPayload: OpenAIResponsesCachePayload | undefined;

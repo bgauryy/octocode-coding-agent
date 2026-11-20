@@ -24,6 +24,7 @@
 			"@octocodeai/octocode-tui-ink": ["./packages/tui-ink/src/index.ts"],
 			"@octocodeai/octocode-contracts": ["./packages/contracts/src/index.ts"],
 			"@octocodeai/octocode-contracts/*": ["./packages/contracts/src/*.ts"],
+			"@octocodeai/octocode-projections": ["./packages/projections/src/index.ts"],
 			"@octocodeai/octocode-webview": ["./packages/webview/src/index.ts"],
 			"@octocodeai/octocode-webview/*": ["./packages/webview/src/*.ts"],
 			"@octocodeai/octocode-agent/mcp": ["./packages/mcp/src/client/index.ts"],

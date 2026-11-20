@@ -4,6 +4,7 @@ import { RELATIVE_AFTER_CD } from "../bash-cwd.ts";
 import type { BashFileTarget } from "../bash-types.ts";
 import { DYNAMIC_TARGET, homeSpelling, shellPath, shellTargetPath, stateFolderRefusal } from "../file-access.ts";
 import { getOctocodeHome } from "../../../config.ts";
+import { memoryFileRefusal } from "../memory-files.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { shellMutation } from "./mutation.ts";
@@ -11,8 +12,9 @@ import { shellMutation } from "./mutation.ts";
 type ShellTarget = BashFileTarget & { allowed: boolean };
 
 /**
- * The first word of `command` (an operand, or the value a variable is set to) in Octocode's state folder, for a write the
- * parse could not place: `H=~/.octocode; echo x > $H/a` is unresolved, but what it is reaching for is on the line.
+ * The first word of `command` (an operand, or the value a variable is set to) in Octocode's state folder or naming a
+ * curated MEMORY.md file, for a write the parse could not place: `H=~/.octocode; echo x > $H/a` is unresolved, but what
+ * it is reaching for is on the line.
  */
 function stateFolderWord(command: string, cwd: string): string | undefined {
 	// By its text, not the parse: a variable set on its own (`H=…; …`) belongs to no command.
@@ -22,7 +24,7 @@ function stateFolderWord(command: string, cwd: string): string | undefined {
 	for (const word of words) {
 		if (!/[\\/]/.test(word)) continue;
 		const place = canonicalPath(shellPath(cwd, word));
-		if (stateFolderRefusal(place, word, "Bash", cwd)) return word;
+		if (memoryFileRefusal(place, word, "Bash", cwd) ?? stateFolderRefusal(place, word, "Bash", cwd)) return word;
 		// A folder on the way to it (`~/.octocode`), though not the home folder, which holds everything.
 		if (place !== home && isWithin(place, home) && isWithin(state, place)) return state;
 	}

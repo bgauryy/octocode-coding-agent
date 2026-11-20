@@ -20,6 +20,14 @@ export const RetentionSettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.retention.sessionDays,
 			}),
 		),
+		archiveAfterDays: Type.Optional(
+			Type.Integer({
+				minimum: 1,
+				description:
+					"Days after which backlog audit, configuration audit and workspace command history rows move from the database to gzip archive files; archived rows older than `days` are dropped. A window longer than `days` is cut to it.",
+				default: SETTINGS_DEFAULTS.retention.archiveAfterDays,
+			}),
+		),
 	},
 	{
 		description:

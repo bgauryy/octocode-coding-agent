@@ -103,11 +103,14 @@ describe("running work note after a compaction", () => {
 		// The request is at the first kept entry: the model still reads it whole after the summary.
 		expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId: "u1" })).toEqual([]);
 		expect(await compacted([request, reply, later], undefined, { details: {}, firstKeptEntryId: "a1" })).toEqual([]);
-		// The request was summarized away (the tail starts after it), or the kept entry is not on the branch.
-		for (const firstKeptEntryId of ["a1", "missing"])
-			expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId })).toEqual([
-				'[After compaction] Latest user request: "Ship the thing"',
-			]);
+		// The request was summarized away (the tail starts after it); the reply after it is kept, so only the request is named.
+		expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId: "a1" })).toEqual([
+			'[After compaction] Latest user request: "Ship the thing"',
+		]);
+		// The kept entry is not on the branch: the reply was summarized too, so its lead comes before the request.
+		expect(await compacted([request, reply], undefined, { details: {}, firstKeptEntryId: "missing" })).toEqual([
+			'[After compaction] Your last reply before the compaction: "On it"\nLatest user request: "Ship the thing"',
+		]);
 	});
 
 	it("names the paths this agent reserved and the questions still waiting for its reply", async () => {

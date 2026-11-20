@@ -5,13 +5,13 @@ import {
 	estimateInstructionPrefixTokens,
 	getCacheWarmingDelayMs,
 	getPromptCacheLifetime,
-	IDLE_CONTINUATION_PROBABILITY,
 	isReplayable,
 	lastPromptTokens,
 	idleWarmingLimitMs,
 	MAX_WARMING_AGE_MS,
 	price,
 } from "./cache-warmer/economics.ts";
+import { IdleContinuationPool } from "./cache-warmer/idle-pool.ts";
 import type {
 	ActiveRun,
 	CacheWarmingAction,
@@ -40,6 +40,14 @@ export type {
 	CacheWarmRequest,
 } from "./cache-warmer/types.ts";
 
+/** Where an idle refresh's chance of use comes from, and whether this session's idle gaps join it. */
+export interface CacheWarmerIdleOptions {
+	/** Pooled q(t) per lifetime (`idle-pool.ts`); default: the measured seed and this process's gaps. */
+	pool?: IdleContinuationPool;
+	/** Add this session's idle gaps to the pool: a main session's, not a subagent's, whose waits follow its coordinator. */
+	recordGaps?: boolean;
+}
+
 /**
  * Keeps one prompt cache entry alive by re-sending its request with a
  * one-token output cap before the entry expires. `start` replaces any
@@ -55,17 +63,24 @@ export class CacheWarmer {
 	private readonly decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction>;
 	/** Called with the persisted usage entry after each successful refresh. */
 	onWarmed?: (entry: UsageEntry) => void;
+	private readonly idle: IdleContinuationPool;
+	private readonly recordGaps: boolean;
+	/** When the run that settled last finished with its final reply (an idle gap's start), until the next request. */
+	private finishedAt: number | undefined;
 
 	constructor(
 		models: Pick<ModelRuntime, "streamSimple">,
 		sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">,
 		getMode: () => CacheWarmingMode,
 		decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction> = async (event) => event.action,
+		idle: CacheWarmerIdleOptions = {},
 	) {
 		this.models = models;
 		this.sessionManager = sessionManager;
 		this.getMode = getMode;
 		this.decide = decide;
+		this.idle = idle.pool ?? new IdleContinuationPool();
+		this.recordGaps = idle.recordGaps === true;
 		this.inactive = { state: "inactive", reason: "waiting for first request" };
 	}
 
@@ -89,6 +104,9 @@ export class CacheWarmer {
 
 	/** Keep the prompt cache entry written by `request` warm while `isCurrent` holds. */
 	start(request: CacheWarmRequest, isCurrent: () => boolean): void {
+		// The request that ends an idle gap: the gap joins the pool of q(t) estimates.
+		if (this.finishedAt !== undefined && this.recordGaps) this.idle.record(Date.now() - this.finishedAt);
+		this.finishedAt = undefined;
 		this.clearRun();
 		const mode = this.getMode();
 		if (mode === "off") {
@@ -111,7 +129,7 @@ export class CacheWarmer {
 			);
 			return;
 		}
-		const { ttlMs, layered } = lifetime;
+		const { ttlMs, layered, history: historyTier } = lifetime;
 		const delayMs = getCacheWarmingDelayMs(ttlMs);
 		if (delayMs === undefined) {
 			this.stop("cache lifetime unavailable");
@@ -122,7 +140,8 @@ export class CacheWarmer {
 			options,
 			isCurrent,
 			ttlMs,
-			instructionTokens: layered ? estimateInstructionPrefixTokens(request.context) : 0,
+			historyTier,
+			instructionTokens: layered ? estimateInstructionPrefixTokens(request.context, request.model) : 0,
 			delayMs,
 			refreshDeadlineAt: 0,
 			startedAt: Date.now(),
@@ -135,6 +154,7 @@ export class CacheWarmer {
 	}
 
 	onAgentSettled(): void {
+		this.finishedAt = finishedReplyAt(this.sessionManager.getBranch());
 		const run = this.run;
 		if (!run) return;
 		if (this.getMode() === "streaming") {
@@ -249,9 +269,10 @@ export class CacheWarmer {
 				message.usage.cost.total,
 			].some((value) => value > 0);
 			if (succeeded || hasUsage) {
-				const note =
-					[featureOverride ? "feature override" : "", succeeded ? "" : message.stopReason].filter(Boolean).join(", ") ||
-					undefined;
+				// The phase says whether the refresh bridged a tool call (streaming) or a wait for the next prompt (idle).
+				const note = [run.phase, featureOverride ? "feature override" : "", succeeded ? "" : message.stopReason]
+					.filter(Boolean)
+					.join(", ");
 				const entry = appendUsage(
 					"cache_warm",
 					message.provider,
@@ -307,13 +328,13 @@ export class CacheWarmer {
 		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
 		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
 		const cacheHitCost = price(model, { cacheRead: expiringTokens });
-		// A miss rewrites the expiring history at the tier the request wrote it at (long history behind short
-		// instructions is sent at the short tier by the adapters that place both markers).
-		const history = resolveCacheRetention(run.options.cacheRetention, run.options.env);
-		const longHistory = history === "long" && resolveInstructionCacheRetention(run.options) !== "short";
-		const rewrite = longHistory
-			? { cacheWrite: expiringTokens, cacheWrite1h: expiringTokens }
-			: { cacheWrite: expiringTokens };
+		// A miss rewrites the expiring history at the tier the request wrote it at (`getPromptCacheLifetime`: long history
+		// behind short instructions, or on a lifetime kept for instruction breakpoints, goes out at the short tier).
+		const longField = run.ttlMs >= 12 * 3_600_000 ? "cacheWrite12h" : "cacheWrite1h";
+		const rewrite =
+			run.historyTier === "long"
+				? { cacheWrite: expiringTokens, [longField]: expiringTokens }
+				: { cacheWrite: expiringTokens };
 		const cacheMissCost = price(model, rates.cacheWrite > 0 ? rewrite : { input: expiringTokens });
 		const warmCost = price(model, {
 			cacheRead: promptTokens,
@@ -321,7 +342,8 @@ export class CacheWarmer {
 			output: 1,
 		});
 		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
-		const continuationProbability = run.phase === "idle" ? IDLE_CONTINUATION_PROBABILITY : 1;
+		const continuationProbability =
+			run.phase === "idle" ? this.idle.probability(Date.now() - run.startedAt, run.ttlMs) : 1;
 		// Pricing is known when either rate applies; a layered prompt with no expiring history still has known economics.
 		const economicsAvailable =
 			promptTokens > 0 &&
@@ -338,4 +360,17 @@ export class CacheWarmer {
 			action: expectedSavings >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop",
 		};
 	}
+}
+
+/**
+ * When the branch's last reply finished its run (`stopReason: "stop"`), the start of an idle gap as
+ * `octocode/compaction/cache.ts` counts it; undefined when the run ended otherwise (aborted, failed).
+ */
+function finishedReplyAt(entries: ReturnType<SessionManager["getBranch"]>): number | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+		return entry.message.stopReason === "stop" ? entry.message.timestamp : undefined;
+	}
+	return undefined;
 }

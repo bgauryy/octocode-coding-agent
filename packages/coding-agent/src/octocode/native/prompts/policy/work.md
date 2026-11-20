@@ -31,7 +31,7 @@
 ## Finish
 
 - After edits, review the diff and read runner summaries. Before a heavy build or suite, check what already runs; run only checks your edits affect. Report failures, skips and blocks, and which were there before you. Measure gains before you claim them.
-- When work is done or moot, release all you started (jobs and their process groups, servers, browsers, worktrees{{#if main}}, children{{/if}}).{{#if main}} Leave no half-applied edit. If the user leaves, keep jobs running and name them.{{/if}}
+- When work is done or moot, release all you started (jobs and their process groups, servers, browsers, worktrees{{#if main}}, children{{/if}}).{{#if main}} Leave no half-applied edit. If the user leaves, keep jobs running{{#if backlog}}, name them and leave their items open (`done` refuses while they run){{else}} and name them{{/if}}.{{/if}}
 {{#unless main}}
 - Explain non-obvious steps (deletions, costly runs, plan changes) in one report line each.
 {{/unless}}

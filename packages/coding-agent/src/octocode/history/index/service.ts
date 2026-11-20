@@ -2,6 +2,7 @@ import { setImmediate as yieldTurn } from "node:timers/promises";
 import type { ArchiveIndexDb } from "../../../../../db/src/api.ts";
 import type { Scored } from "../rank/score.ts";
 import type { RankFile } from "../rank/scan.ts";
+import type { LineRuns } from "../rank/line-runs.ts";
 import { rankIndexed } from "./query.ts";
 import { openIndex, pruneMissing, syncFiles } from "./sync.ts";
 
@@ -16,7 +17,7 @@ export type IndexRequest =
 			type: "rank";
 			files: RankFile[];
 			keywords: string;
-			filtered?: Array<[number, number[]]>;
+			filtered?: Array<[number, LineRuns]>;
 			/** Set to nonzero by the caller to cancel. */
 			cancel: SharedArrayBuffer;
 	  }
@@ -63,9 +64,7 @@ export class IndexService {
 		if (Atomics.load(flag, 0) !== 0) throw new IndexCancelled();
 		this.index ??= openIndex(this.file);
 		if (rank) {
-			const filtered = request.filtered
-				? new Map(request.filtered.map(([at, lines]) => [at, new Set(lines)]))
-				: undefined;
+			const filtered = request.filtered ? new Map(request.filtered) : undefined;
 			return rankIndexed(this.index, request.files, request.keywords, filtered, check);
 		}
 		if (!this.index.fts) return undefined;

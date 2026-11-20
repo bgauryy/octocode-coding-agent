@@ -50,6 +50,19 @@ describe("built-in slash commands", () => {
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
+	it("/find opens transcript search in fullscreen mode and says it needs fullscreen otherwise", async () => {
+		const instance = mode();
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		instance.ui = { [Symbol.for("@octocodeai/octocode-tui/viewport")]: true, openSearch: vi.fn() };
+		await instance.defaultEditor.onSubmit("/find");
+		expect(instance.ui.openSearch).toHaveBeenCalledTimes(1);
+		expect(instance.showWarning).not.toHaveBeenCalled();
+		instance.ui = { openSearch: vi.fn() };
+		await instance.defaultEditor.onSubmit("/find");
+		expect(instance.ui.openSearch).not.toHaveBeenCalled();
+		expect(instance.showWarning.mock.calls[0][0]).toContain("needs fullscreen");
+	});
+
 	it("runs Claude Code aliases as their Octocode command", async () => {
 		const instance = mode();
 		const effects: string[] = [];

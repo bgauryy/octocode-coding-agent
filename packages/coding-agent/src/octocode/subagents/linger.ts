@@ -4,9 +4,9 @@ import type { Permission } from "../permission/ask.ts";
 import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { USER_SENDER } from "../shared/messages.ts";
-import { messageText } from "../team/routing.ts";
 import type { ResumeRequest } from "../team/session/send.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
+import { followUpText } from "./follow-up.ts";
 import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
 import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
 import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
@@ -105,6 +105,11 @@ export class Lingering {
 		this.launchSignal = launchSignal;
 		this.start = start;
 		this.profiles = profiles;
+	}
+
+	/** The open session's context (set on reopen, cleared on close). */
+	get context(): FeatureContext | undefined {
+		return this.notifier;
 	}
 
 	/** A session reopen restores addresses only; no worker executes until a direct authorized follow-up. */
@@ -323,16 +328,7 @@ export class Lingering {
 			// Retire the parked address before launching. A crash here never auto-replays uncertain execution.
 			this.forget(id);
 			try {
-				this.start(run, ctx, {
-					text,
-					message: request
-						? messageText(request.message, {
-								parentId: last.identity.parentId,
-								// The user's own message, created in this process for this resume; a relayed or forwarded one never is.
-								fromUser: from === USER_SENDER && request.message.from === USER_SENDER && !request.message.forwardedBy,
-							})
-						: `Follow-up from ${from === USER_SENDER ? "the user" : "your coordinator"}:\n${text}`,
-				});
+				this.start(run, ctx, { text, message: followUpText(text, from, last.identity.parentId, request) });
 			} catch (error) {
 				// A launch that threw started nothing: the parked run stays reachable for another resume.
 				this.hold(prior);

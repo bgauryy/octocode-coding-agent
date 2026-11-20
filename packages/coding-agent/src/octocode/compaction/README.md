@@ -8,7 +8,8 @@ Two kinds of code live here.
 handler that calls `requestView` (`request-view.ts`), which returns copies of the messages with:
 
 - untrusted results fenced as data (`untrusted-results.ts`, `fenceUntrustedResults`);
-- cleared results replaced by their placeholders (`clearing.ts`);
+- cleared results replaced by their placeholders, and cleared `file` payloads by their size and hash (`clearing-view.ts`;
+  `clearing.ts` decides what to clear, from `clearing-candidates.ts` and `clearing-cost.ts`);
 - thinking that a summary or a cleared result made stale dropped (`thinking.ts`, `requestMessages`).
 
 `requestMessages` in `thinking.ts` is the single projection entry point; the cache-sharing summary request builds its

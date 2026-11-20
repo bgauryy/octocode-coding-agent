@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import { applicationNotice, type ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { stripTerminalSequences } from "@octocodeai/octocode-common/ansi";
@@ -83,12 +83,14 @@ export function activityCard(event: FeedEvent): ActivityCard {
 	const [firstLine, ...rest] = event.type.startsWith("tool.") ? toolHeadline(event) : event.text.split("\n");
 	const hint = event.type.startsWith("tool.") ? hintOf(event) : "";
 	const ui = cardState(event, { failed, notRun, stopped });
+	// A notice the terminal showed (`ui.notify`): a warning reads as one.
+	const notice = event.type === "session.activity" && event.activity ? applicationNotice(event.activity) : undefined;
 	return {
 		failed,
 		...(ui ? { ui } : {}),
 		tone: failed
 			? "danger"
-			: stopped
+			: stopped || notice?.level === "warning"
 				? "warning"
 				: notRun
 					? "neutral"
@@ -99,7 +101,17 @@ export function activityCard(event: FeedEvent): ActivityCard {
 							: event.type.startsWith("agent.")
 								? "agent"
 								: "neutral",
-		label: failed ? "Needs attention" : notRun ? "Not run" : stopped ? "Stopped" : (LABELS[event.type] ?? event.type),
+		label: failed
+			? "Needs attention"
+			: notRun
+				? "Not run"
+				: stopped
+					? "Stopped"
+					: notice
+						? notice.level === "warning"
+							? "Warning"
+							: "Notice"
+						: (LABELS[event.type] ?? event.type),
 		status: notRun ? "not run" : scalarText(details.status),
 		title: prose
 			? event.type === "message"
@@ -214,7 +226,8 @@ export type RunPhase =
 	| { kind: "writing" }
 	| { kind: "tool"; name: string }
 	| { kind: "compacting" }
-	| { kind: "retrying"; detail?: string }
+	/** `until` is when the attempt starts (ms since the epoch), for a countdown. */
+	| { kind: "retrying"; detail?: string; until?: number }
 	/** A model request has sent nothing for a while; `detail` says for how long. */
 	| { kind: "stalled"; detail?: string }
 	| { kind: "waiting"; awaiting: NonNullable<ApplicationSnapshot["awaiting"]> }
@@ -228,8 +241,14 @@ export type RunPhase =
 export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 	if (snapshot?.awaiting) return { kind: "waiting", awaiting: snapshot.awaiting };
 	if (snapshot?.status === "compacting") return { kind: "compacting" };
-	if (snapshot?.status === "retrying" || snapshot?.status === "stalled")
-		return { kind: snapshot.status, ...(snapshot.statusDetail ? { detail: snapshot.statusDetail } : {}) };
+	if (snapshot?.status === "retrying")
+		return {
+			kind: "retrying",
+			...(snapshot.statusDetail ? { detail: snapshot.statusDetail } : {}),
+			...(snapshot.statusUntil === undefined ? {} : { until: snapshot.statusUntil }),
+		};
+	if (snapshot?.status === "stalled")
+		return { kind: "stalled", ...(snapshot.statusDetail ? { detail: snapshot.statusDetail } : {}) };
 	if (!snapshot?.streaming) {
 		// The run settled but the host says the job did not end: not idle, and not finished.
 		const job = jobPhaseOf(snapshot?.phase);

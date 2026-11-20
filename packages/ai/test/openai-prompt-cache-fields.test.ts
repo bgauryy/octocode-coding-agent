@@ -11,20 +11,10 @@ describe("resolveOpenAIResponsesCacheFields", () => {
 	it.each([
 		// [compat, history, instructions, expected fields]
 		[explicit, "short", "long", { prompt_cache_key: sessionId, instructionCacheTtl: "12h" }],
-		[
-			explicit,
-			"long",
-			"long",
-			{ prompt_cache_key: sessionId, prompt_cache_options: { ttl: "12h" }, instructionCacheTtl: "12h" },
-		],
+		// The request TTL covers every turn's new tail: it stays at 30m, and 12h goes only on the instruction breakpoints.
+		[explicit, "long", "long", { prompt_cache_key: sessionId, instructionCacheTtl: "12h" }],
 		[explicit, "short", "short", { prompt_cache_key: sessionId, instructionCacheTtl: "30m" }],
-		// A 12h breakpoint may follow a 30m one, unlike Anthropic's ordering rule.
-		[
-			explicit,
-			"long",
-			"short",
-			{ prompt_cache_key: sessionId, prompt_cache_options: { ttl: "12h" }, instructionCacheTtl: "30m" },
-		],
+		[explicit, "long", "short", { prompt_cache_key: sessionId, instructionCacheTtl: "30m" }],
 		[explicit, "short", undefined, { prompt_cache_key: sessionId }],
 		[explicit, "none", "long", { prompt_cache_key: undefined, prompt_cache_options: { mode: "explicit" } }],
 		[
@@ -34,7 +24,9 @@ describe("resolveOpenAIResponsesCacheFields", () => {
 			{ prompt_cache_key: sessionId, instructionCacheTtl: "30m" },
 		],
 		[legacy, "long", undefined, { prompt_cache_key: sessionId, prompt_cache_retention: "24h" }],
-		[legacy, "short", "long", { prompt_cache_key: sessionId }],
+		// Earlier models have one request-level retention and no write charge: long instructions ask for it.
+		[legacy, "short", "long", { prompt_cache_key: sessionId, prompt_cache_retention: "24h" }],
+		[legacy, "short", "short", { prompt_cache_key: sessionId }],
 		[legacy, "none", undefined, { prompt_cache_key: undefined }],
 		[{ ...legacy, supportsLongCacheRetention: false }, "long", undefined, { prompt_cache_key: sessionId }],
 	] as const)("maps %o history=%s instructions=%s", (compat, history, instructions, expected) => {
@@ -45,6 +37,15 @@ describe("resolveOpenAIResponsesCacheFields", () => {
 				false,
 			),
 		).toEqual(expected);
+	});
+
+	it("keeps long history on the request TTL where breakpoints take no ttl of their own (Azure)", () => {
+		const options = { cacheRetention: "long", instructionCacheRetention: "long", sessionId } as const;
+		expect(resolveOpenAIResponsesCacheFields(explicit, options, false, false)).toEqual({
+			prompt_cache_key: sessionId,
+			prompt_cache_options: { ttl: "12h" },
+			instructionCacheTtl: "12h",
+		});
 	});
 
 	it("keeps only the key for credentials that reject the cache parameters", () => {

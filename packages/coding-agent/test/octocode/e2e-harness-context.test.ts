@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { enableHarnesses } from "./e2e-helpers/harness-toggles.ts";
-import { GENERAL_CATALOG } from "../../src/octocode/subagents/profiles.ts";
+import { GENERAL_CATALOG } from "../../src/octocode/subagents/general-defaults.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -19,7 +19,7 @@ import {
 /**
  * What the agent receives in its first model request when harnesses and instruction files are present: project
  * instructions follow AGENTS.override.md > AGENTS.md and never CLAUDE.md; skills come from `.agents` and, only once the
- * Claude Code harness is switched on, from `.claude`; the `Harnesses:` line names every harness with its state; a
+ * Claude Code harness is switched on, from `.claude`; the `Harnesses:` line names the harnesses that are on and found something; a
  * subagent started without a role lists the user's own skills and its bundled catalog, and no `Harnesses:` line. Real processes on the scripted model, a temporary home and project (trusted by `--trust`).
  */
 let endpoint: Endpoint;
@@ -78,20 +78,10 @@ const COORDINATOR_ONLY = fs.readdirSync(NATIVE_SKILLS).filter((name) => {
 });
 const harnessesLine = (prompt: string): string => /^Harnesses: .*$/m.exec(prompt)?.[0] ?? "";
 
-/** `Label on` / `Label off` as the line states it; a trailing count in parentheses is allowed after `off`. */
+/** `Label on` / `Label off` as the line states it; undefined when the line leaves the harness out. */
 const stateOf = (line: string, label: string): "on" | "off" | undefined => {
 	const found = new RegExp(`(?:^Harnesses: |\\u00b7 )${label.replace(/\./g, "\\.")} (on|off)\\b`).exec(line);
 	return found?.[1] as "on" | "off" | undefined;
-};
-
-const DEFAULTS: Record<string, "on" | "off"> = {
-	Octocode: "on",
-	".agents": "on",
-	"root .mcp.json": "on",
-	Pi: "on",
-	"Claude Code": "off",
-	Codex: "off",
-	Cursor: "off",
 };
 
 describe("harness context in the first model request", () => {
@@ -112,7 +102,7 @@ describe("harness context in the first model request", () => {
 		expect(system, "CLAUDE.md is not read").not.toContain("CLAUDE-MD-MARKER");
 	});
 
-	it("2: a .agents skill is listed by name (the skill tool loads it); a .claude skill only once harness:claude is on (global toggle); the Harnesses line names every harness and flips with the toggle", async () => {
+	it("2: a .agents skill is listed by name (the skill tool loads it); a .claude skill only once harness:claude is on (global toggle); the Harnesses line names a harness once it is on and found something", async () => {
 		const box = sandbox(endpoint);
 		const agentsSkill = skillFile(box, ".agents", "agents-demo");
 		skillFile(box, ".claude", "claude-demo");
@@ -125,9 +115,10 @@ describe("harness context in the first model request", () => {
 		expect(off.system, "a skill body loads on demand").not.toContain("BODY-agents-demo");
 		const before = harnessesLine(off.system);
 		expect(before, "the prompt has a Harnesses: line").not.toBe("");
-		for (const [label, state] of Object.entries(DEFAULTS)) {
-			expect(stateOf(before, label), `${label} in: ${before}`).toBe(state);
-		}
+		expect(stateOf(before, ".agents"), before).toBe("on");
+		// Off harnesses (Claude Code holds a skill) and empty ones are left out: nothing in them reaches the session.
+		for (const label of ["Claude Code", "Codex", "Cursor"]) expect(stateOf(before, label), before).toBeUndefined();
+		expect(before).not.toMatch(/\boff\b|nothing found/);
 
 		enableHarnesses(box, "claude", "cursor");
 		const on = await firstRequest(box);
@@ -136,10 +127,10 @@ describe("harness context in the first model request", () => {
 		expect(onSkills, "Claude skill listed once harness:claude is on").toContain("claude-demo");
 		const after = harnessesLine(on.system);
 		expect(stateOf(after, "Claude Code"), after).toBe("on");
-		expect(stateOf(after, "Cursor"), after).toBe("on");
-		expect(stateOf(after, "Codex"), after).toBe("off");
+		// Cursor is on but its folders are empty; Codex stays off.
+		expect(stateOf(after, "Cursor"), after).toBeUndefined();
+		expect(stateOf(after, "Codex"), after).toBeUndefined();
 		expect(stateOf(after, ".agents"), after).toBe("on");
-		expect(stateOf(after, "Pi"), after).toBe("on");
 	});
 
 	it("2b: the base file is used when there is no override, CLAUDE.md is ignored, and a project-level harness:claude toggle in .octocode/settings.json lists the project's .claude skill", async () => {
@@ -191,7 +182,7 @@ describe("harness context in the first model request", () => {
 		expect(section(kid!.system, "skills")).toContain("agents-demo");
 		expect(kid!.system).not.toContain("claude-demo");
 		// Only the main session can run /harness, so only its prompt names the harnesses (src/octocode/turn.ts).
-		expect(stateOf(harnessesLine(parent!.system), "Codex")).toBe("on");
+		expect(stateOf(harnessesLine(parent!.system), ".agents")).toBe("on");
 		expect(harnessesLine(kid!.system), "a child's prompt has no Harnesses: line").toBe("");
 		expect(kid!.system).not.toContain("/harness");
 	});

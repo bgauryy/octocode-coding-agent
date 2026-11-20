@@ -47,6 +47,7 @@ export interface BusSubscriber {
 	): () => void;
 	on(event: "session_start", handler: FeatureHandler<SessionEvents.SessionStartEvent>): () => void;
 	on(event: "session_info_changed", handler: FeatureHandler<SessionEvents.SessionInfoChangedEvent>): () => void;
+	on(event: "session_context_changed", handler: FeatureHandler<SessionEvents.SessionContextChangedEvent>): () => void;
 	on(
 		event: "session_before_switch",
 		handler: FeatureHandler<SessionEvents.SessionBeforeSwitchEvent, SessionBeforeSwitchResult>,
@@ -93,6 +94,8 @@ export interface BusSubscriber {
 	on(event: "agent_settle_end", handler: FeatureHandler<AgentEvents.AgentSettleEndEvent>): () => void;
 	on(event: "ui_prompt_start", handler: FeatureHandler<AgentEvents.UIPromptStartEvent>): () => void;
 	on(event: "ui_prompt_end", handler: FeatureHandler<AgentEvents.UIPromptEndEvent>): () => void;
+	on(event: "ui_notice", handler: FeatureHandler<AgentEvents.UINoticeEvent>): () => void;
+	on(event: "model_stall", handler: FeatureHandler<AgentEvents.ModelStallEvent>): () => void;
 	on(event: "turn_start", handler: FeatureHandler<AgentEvents.TurnStartEvent>): () => void;
 	on(event: "turn_prompt", handler: FeatureHandler<AgentEvents.TurnPromptEvent>): () => void;
 	on(event: "turn_end", handler: FeatureHandler<AgentEvents.TurnEndEvent, AgentEvents.BoundaryResult>): () => void;
@@ -167,6 +170,12 @@ interface McpServerRegistrar {
 
 /** The session a feature writes to: messages, entries, name and labels. */
 interface SessionPort {
+	/**
+	 * Delivers a custom message. The promise rejects when the session cannot take it (a failed session write, a run that
+	 * cannot start), so every call needs an owner. With `triggerTurn: false`, `nextTurn` or during a run it settles once
+	 * the message is queued or written: await it. A `triggerTurn` send while idle settles when the turn it starts ends,
+	 * so a caller that cannot wait that long `.catch`es it into a log instead.
+	 */
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },

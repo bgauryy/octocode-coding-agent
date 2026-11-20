@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import crossSpawn from "cross-spawn";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { serializeMessage, type JSONRPCMessage } from "@modelcontextprotocol/client";
 import { DEFAULT_INHERITED_ENV_VARS } from "@modelcontextprotocol/client/stdio";
 export { DEFAULT_INHERITED_ENV_VARS };
@@ -43,9 +44,8 @@ export function getDefaultEnvironment(source: NodeJS.ProcessEnv = process.env): 
 	return env;
 }
 
-/** Process groups of running servers, killed if the host exits without closing them. */
+/** Process groups of running servers; each gets SIGTERM if the host exits without closing it (`processLifetime`). */
 const liveProcessGroups = new Set<number>();
-let exitHookInstalled = false;
 
 /** Pids of the stdio servers this process has running (each leads its own process group); empty on Windows. */
 export function liveStdioServerPids(): number[] {
@@ -75,20 +75,6 @@ function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
 	} catch {
 		// The child already exited, so there is nothing left to signal.
 	}
-}
-
-function installExitHook(): void {
-	if (exitHookInstalled) return;
-	exitHookInstalled = true;
-	process.once("exit", () => {
-		for (const pid of liveProcessGroups) {
-			try {
-				process.kill(-pid, "SIGTERM");
-			} catch {
-				// The group already exited; the remaining groups still need their signal while the process exits.
-			}
-		}
-	});
 }
 
 /** How much of an oversized message is searched for its top-level `id`. */
@@ -179,8 +165,8 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		this.child = child;
 		const pid = child.pid;
 		if (USE_PROCESS_GROUPS && pid !== undefined) {
-			installExitHook();
 			liveProcessGroups.add(pid);
+			const atExit = processLifetime.acquireGroup(`MCP server ${this.options.command}`, pid, "SIGTERM");
 			// Until "close", a launcher's children may still hold the pipes and belong to the group.
 			const release = recordStdioGroup(
 				pid,
@@ -188,6 +174,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 			);
 			child.once("close", () => {
 				liveProcessGroups.delete(pid);
+				atExit();
 				void release();
 			});
 		}

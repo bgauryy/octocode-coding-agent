@@ -60,11 +60,15 @@ describe("OpenAI Responses 24h extended retention", () => {
 	);
 
 	it.each(["gpt-4.1", "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.4", "gpt-5.5", "gpt-5.5-pro"] as const)(
-		"%s: on the documented list, 24h retention and a 24h lifetime",
+		"%s: on the documented list, 24h retention planned at its typical 30 minutes",
 		async (id) => {
 			const model = getBuiltinModel("openai", id);
 			expect((await responsesPayload(model)).prompt_cache_retention).toBe("24h");
-			expect(resolveModelCapabilities(model).cache).toEqual({ mechanism: "key", lifetimes: { long: 86_400 } });
+			expect(resolveModelCapabilities(model).cache).toEqual({
+				mechanism: "key",
+				lifetimes: { long: 1800 },
+				longUpTo: 86_400,
+			});
 		},
 	);
 
@@ -74,11 +78,11 @@ describe("OpenAI Responses 24h extended retention", () => {
 		expect((await responsesPayload(model)).prompt_cache_retention).toBe("24h");
 	});
 
-	it("keeps the 12h explicit mode for GPT-5.6 and later", async () => {
+	it("keeps explicit mode for GPT-5.6 and later, with the default 30m request TTL", async () => {
 		const model = getBuiltinModel("openai", "gpt-5.6-sol");
 		const payload = await responsesPayload(model);
 		expect(payload.prompt_cache_retention).toBeUndefined();
-		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
+		expect(payload.prompt_cache_options).toBeUndefined();
 	});
 });
 

@@ -1,3 +1,4 @@
+import { charsPerToken } from "@octocodeai/octocode-ai/utils/estimate";
 import type { ProfileFinding } from "@octocodeai/octocode-contracts/profiler";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import { cacheLifetimeMs } from "./cache-lifetime.ts";
@@ -11,11 +12,6 @@ const REWRITE_MIN_TOKENS = 5_000;
 const REWRITE_HIGH_TOKENS = 50_000;
 const COLD_START_MIN_TOKENS = 10_000;
 const MAX_REWRITE_FINDINGS = 40;
-/**
- * Characters per token for the tools and system prefix: chars / 4 undercounts tool schemas, so it is a floor, and a read
- * below it means the prefix was rewritten too.
- */
-const CHARS_PER_TOKEN = 4;
 
 /** Entries that change what the provider matches by design; the rewrite after one is expected. */
 const EXPECTED_CAUSES: Record<string, string> = {
@@ -68,11 +64,16 @@ function outlived(prepared: Prepared, k: number, before: number, reason: string)
 	return lifetime !== undefined && startedAt(prepared, k) - startedAt(prepared, before) >= lifetime;
 }
 
-/** Whether request `k` read at least its tools and system prefix (estimated at the floor `CHARS_PER_TOKEN` gives). */
+/**
+ * Whether request `k` read at least its tools and system prefix, estimated at the sparse end of its model family's
+ * measured characters per token (`charsPerToken(model, "floor")`): a read below that floor means the prefix was
+ * rewritten too.
+ */
 function readItsPrefix(prepared: Prepared, k: number, cacheRead: number): boolean {
 	const layers = requestLayers(prepared, prepared.requests[k]);
 	const chars = layers.drafts.slice(0, layers.historyStart).reduce((sum, draft) => sum + draft.chars, 0);
-	return cacheRead > 0 && cacheRead >= chars / CHARS_PER_TOKEN;
+	const model = { id: str(messageAt(prepared, k).model, "") };
+	return cacheRead > 0 && cacheRead >= chars / charsPerToken(model, "floor");
 }
 
 function rewriteFindings(lane: Lane, prepared: Prepared): ProfileFinding[] {

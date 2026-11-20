@@ -7,6 +7,7 @@
 import type { Agent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CompactionResult } from "../compaction/index.ts";
+import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 import type { ContextUsage, FeatureHost, ToolInfo } from "../features/index.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
@@ -38,6 +39,11 @@ export interface SessionRunState {
 	 * whole window is then not sent. Cleared when the next automatic compaction starts.
 	 */
 	windowUnfit: string | undefined;
+	/**
+	 * The branch's leaf when the user cancelled an automatic compaction (Esc) while the run went on: no automatic
+	 * compaction runs again for the request it was for, until a reply follows that entry (`compactionCancelledForRequest`).
+	 */
+	compactionCancelledAt: string | undefined;
 	/** Responses cut off at the output limit that the session recovered by compacting and retrying. */
 	lengthRecoveries: number;
 	/** Replies cut off at the output limit this run asked the model to continue; reset when a run starts. */
@@ -69,6 +75,7 @@ export function createRunState(): SessionRunState {
 		failedResponse: undefined,
 		overflowRecoveryAttempted: false,
 		windowUnfit: undefined,
+		compactionCancelledAt: undefined,
 		lengthRecoveries: 0,
 		lengthContinuations: 0,
 		truncatedToolTurns: 0,
@@ -121,7 +128,7 @@ export interface SessionPublic {
 		options?: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean },
 	): Promise<void>;
 	abort(reason?: AbortReason): Promise<void>;
-	compact(options?: { customInstructions?: string }): Promise<CompactionResult>;
+	compact(options?: ManualCompactionOptions): Promise<CompactionResult>;
 	abortRetry(): void;
 	abortCompaction(): void;
 	abortBranchSummary(): void;

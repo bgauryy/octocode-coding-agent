@@ -1,6 +1,6 @@
 import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { expect, it } from "vitest";
-import { ApplicationStream } from "../src/application-stream.ts";
+import { ApplicationStream } from "@octocodeai/octocode-projections";
 import { requestHistory, retainEvicted } from "../src/app/live/history-window.ts";
 
 const snapshot: ApplicationSnapshot = {

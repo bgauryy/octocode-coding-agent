@@ -150,6 +150,8 @@ Hooks are paused while plan mode is on, so `permission_mode` never reports `plan
 - **Source-profile input** adds host metadata ([hook-events](hook-events.md#host-metadata-in-the-input)): the active model ID when known (Claude on `SessionStart`; Codex on most events), `permission_mode`, Codex `turn_id` (kept through tool iterations, steering, retry, automatic compaction and Stop continuation; a follow-up batch starts a new one; an idle manual compaction has none), and `agent_id` and `agent_type` inside an opted-in child. Codex gets `null` when no transcript exists. `pi_tool_name` is omitted.
 - **Permission labels** are coarse: `full` maps to `bypassPermissions`; `manual` and `workspace` map to `default` (native `workspace` permits shell actions and is not `acceptEdits`). The label grants nothing. Codex SessionEnd, PreCompact and PostCompact omit it.
 - **SessionStart source:** startup and reload send `startup`; new sends `clear`; resume `resume`; fork `fork` (native keeps `resume`); compaction `compact`. Start context is delivered as hidden data on a later prompt, with bounded waiting; do not assume upstream developer-message priority.
+- **SessionStart resume fields:** a resumed or forked session whose transcript holds a reply also sends Claude Code's `seconds_since_last_response`, `context_tokens` (what the first request re-sends: the context estimate, else the last reply's prompt and output), `prompt_cache_likely_expired` (the last reply is older than the cache lifetime your cache settings give the model, a later compaction replaced the conversation, or no lifetime is known) and `estimated_cache_write_usd` (writing `context_tokens` to the cache at the model's prices; its input price where cache writes cost nothing extra). Every profile gets them.
+- **Stop background work:** `Stop` also sends `background_tasks`, what still works after the turn: `{ id, type, status, description }` per background subagent (`type: "subagent"`, `status` `running`, `queued` or `held`), background bash job (`shell`, with `command`), timer (`timer`, `status: "scheduled"`) and external prompt (`external`). Text fields are capped at 1,000 characters with a `… [+N chars]` marker. It is `[]` when nothing runs; `session_crons` is not sent (Octocode has no cron wakeups).
 - **Stop aggregation:** explicit `continue: false` wins over `decision: "block"`, within one output or across commands. Exit 2 and block decisions otherwise request continuation, capped at eight continuations (reset on a new prompt or tool execution). Claude Stop `hookSpecificOutput.additionalContext` continues the run as feedback.
 - **Environment:** `CLAUDE_PROJECT_DIR` is added and the launching environment inherited; there is no `CLAUDE_ENV_FILE` mechanism.
 
@@ -311,7 +313,37 @@ Both expose `prompt` and ignore the matcher. Exit 2 or a JSON block prevents sub
 
 ### Compaction
 
-`PreCompact` and `PostCompact`: native `PreCompact` is observational and native rejects `PostCompact`. Source-profile `PreCompact` blocks cancel compaction (Claude failure policies apply; the cancellation signal reaches the hook's processes); Claude ignores `continue` (use `decision: "block"` or exit 2), Codex keeps `continue: false`. `PostCompact` runs after the summary is saved with `trigger` (`manual` or `auto`) and `compact_summary`: Claude observes; Codex `continue: false` stops the operation, so automatic retry and queued continuation do not proceed (a later explicit operation may still consume queued messages).
+`PreCompact` and `PostCompact`: native `PreCompact` is observational and native rejects `PostCompact`. Source-profile `PreCompact` blocks cancel compaction (Claude failure policies apply; the cancellation signal reaches the hook's processes); Claude ignores `continue` (use `decision: "block"` or exit 2), Codex keeps `continue: false`. `PostCompact` runs after the summary is saved: Claude observes; Codex `continue: false` stops the operation, so automatic retry and queued continuation do not proceed (a later explicit operation may still consume queued messages).
+
+`trigger` and the matcher keep the hosts' two values: `manual` for `/compact` and for the agent's own `compact` tool, `auto` for the context threshold and overflow recovery. Octocode adds fields after the hosts' own; a script that reads only the hosts' fields is unaffected.
+
+| Field                        | Events        | Meaning                                                                                                                                                                            |
+| ---------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trigger`                    | both          | `manual` or `auto`                                                                                                                                                                 |
+| `custom_instructions`        | `PreCompact`  | The focus a manual compaction was given: your `/compact` text or the agent's own `compact` focus; `""` without one and for an automatic compaction                                 |
+| `custom_instructions_source` | `PreCompact`  | Whose `custom_instructions` are: `user` or `agent`; absent when there are none                                                                                                     |
+| `compact_summary`            | `PostCompact` | The saved summary                                                                                                                                                                  |
+| `trigger_source`             | both          | Who or what asked: `user`, `agent`, `threshold` or `overflow`                                                                                                                      |
+| `tokens_before`              | both          | Context tokens when the compaction started, or `null`                                                                                                                              |
+| `tokens_after`               | `PostCompact` | The context the next request sends, **estimated** from characters when the summary was saved, or `null`; it can be well off the provider's count, most on models other than Claude |
+| `focus_source`               | `PostCompact` | Who wrote the focus the summary was given (`user` or `agent`), or `null` without one                                                                                               |
+| `lifted`                     | `PostCompact` | The standing rules (`C…`) and decisions (`D…`) earlier summaries carried that this summary dropped, as `{ id, text, reason }`; often `[]`                                          |
+
+### Notifications
+
+`Notification` runs in the background and cannot block (native and Claude profiles; Codex has no such event). The input adds `message`, `title` and `notification_type` to the common fields, and the matcher tests `notification_type`. Claude Code's types keep their meaning; the others are Octocode's, so a matcher written for Claude Code (`permission_prompt|idle_prompt`) does not see them, while a hook without a matcher does.
+
+| `notification_type`  | When                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permission_prompt`  | An approval dialog opens                                                                                                                          |
+| `elicitation_dialog` | Another question from the agent opens                                                                                                             |
+| `idle_prompt`        | An answer has waited a minute with no input from you                                                                                              |
+| `compaction_lifted`  | A compaction dropped carried rules or decisions; `message` names them (the transcript and the web view show the same line)                        |
+| `memory_update`      | A memory pass changed a memory file; `message` is the line you are shown, such as `Memory reflection: workspace MEMORY.md +2 −1 lines, 1 merged.` |
+| `model_stalled`      | The model has been silent on a request for 20 seconds, once per request; `message` names the quiet time and the model                             |
+| `spend_limit`        | `subagents.maxCost` or `subagents.maxChildren` refused a new subagent, once per session for each limit and value; `message` names the limit       |
+
+Each fires once per occurrence, never per turn.
 
 ### Hooks in subagents
 

@@ -180,6 +180,15 @@ describe("feed shaping", () => {
 		const idle = { ...application, streaming: false };
 		expect(runPhase({ ...idle, status: "compacting" })).toEqual({ kind: "compacting" });
 		expect(runPhase({ ...idle, status: "retrying" })).toEqual({ kind: "retrying" });
+		expect(runPhase({ ...idle, status: "retrying", statusDetail: "Retry 1 of 3", statusUntil: 9_000 })).toEqual({
+			kind: "retrying",
+			detail: "Retry 1 of 3",
+			until: 9_000,
+		});
+		expect(runPhase({ ...idle, status: "stalled", statusDetail: "Model not answering for 25s" })).toEqual({
+			kind: "stalled",
+			detail: "Model not answering for 25s",
+		});
 		expect(runPhase({ ...idle, status: "idle" })).toEqual({ kind: "idle" });
 		const awaiting = { kind: "approval", title: "Run bash?" } as const;
 		expect(runPhase({ ...application, awaiting })).toEqual({ kind: "waiting", awaiting });

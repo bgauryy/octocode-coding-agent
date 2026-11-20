@@ -32,6 +32,8 @@ export interface McpNativeTools {
 	deferred(): string[];
 	/** One of them in full: the description and input JSON schema it declares when direct. Undefined for any other name. */
 	schema(name: string): { description: string; parameters: unknown } | undefined;
+	/** A native tool the session already declares in full: its declaration. Undefined for a deferred or unknown name. */
+	declared?(name: string): { description: string; parameters: unknown } | undefined;
 	/** The model read the tool's full schema: the host declares it in full where its transport can add it in place. */
 	loaded?(name: string): void;
 }
@@ -127,9 +129,20 @@ function readNative(
 		};
 	}
 	const schema = native.schema(name);
+	// Already declared in full: reading its schema again is a plain read, not a load.
+	const declared = schema ? undefined : native.declared?.(name);
+	if (declared) {
+		const tool = {
+			name,
+			description: declared.description,
+			inputSchema: declared.parameters as McpToolListing["inputSchema"],
+			exposure: "direct" as const,
+		};
+		return { text: formatMcpTool(tool, true), details: { server: NATIVE_SERVER, tool } };
+	}
 	if (!schema)
 		throw new Error(
-			`No deferred native tool named "${name}". A native tool that is not deferred has its full schema in the tool list. ${
+			`No native tool named "${name}" in this session. ${
 				deferred.length > 0 ? `Deferred now: ${deferred.join(", ")}.` : "No native tool is deferred in this session."
 			}`,
 		);
@@ -149,6 +162,8 @@ function readNative(
  */
 export function createMcpManageTool(operations: McpManageOperations): McpToolDefinition<typeof ManageSchema> {
 	const lastRestart = new Map<string, number>();
+	/** Servers whose instructions a one-tool read already carried, because the prompt does not hold them. */
+	const instructed = new Set<string>();
 	const find = (name: string | undefined): ManagedMcpServer => {
 		const servers = operations.servers();
 		const server = name ? servers.find((candidate) => candidate.name === name) : undefined;
@@ -169,8 +184,7 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		name: MCP_MANAGE_TOOL_NAME,
 		label: "MCP",
 		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
-		description:
-			"Manage this session's MCP servers; configuration files stay unchanged. list: state, tool count, group, purpose, last error (with server: that one, plus where it is defined). tools: the catalog; with tool: that tool's full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri, as resources lists it. restart: start a stopped or failed server or reconnect a running one (a second restart within 10s is refused). stop: end a server for this session.",
+		description: `Manage this session's MCP servers; configuration files stay unchanged. list: state, tool count, group, purpose, last error (with server: that one, plus where it is defined). tools: the catalog; with tool: that tool's full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri, as resources lists it. restart: start a stopped or failed server or reconnect a running one (a connected server restarted again within ${MCP_RESTART_COOLDOWN_MS / 1000}s is refused). stop: end a server for this session.`,
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {
@@ -214,7 +228,17 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 							);
 						if (!tool) throw new Error(`No available tool named "${params.tool}" on MCP server "${server.name}".`);
 						operations.loaded?.(server.name, tool.name);
-						return reply(formatMcpTool(tool, true), { server: server.name, tool });
+						// A server that keeps its instructions out of the prompt (`instructionsOnDemand`) sends them with its first read.
+						const instructions = operations.instructionsInPrompt?.(server.name)
+							? undefined
+							: operations.instructions?.(server.name);
+						const first = instructions !== undefined && !instructed.has(server.name);
+						if (first) instructed.add(server.name);
+						const schema = formatMcpTool(tool, true);
+						return reply(first ? `Instructions:\n${instructions}\n\nTool:\n${schema}` : schema, {
+							server: server.name,
+							tool,
+						});
 					}
 					const instructions = server.connected ? operations.instructions?.(server.name) : undefined;
 					const catalog = tools.length

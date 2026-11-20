@@ -6,88 +6,33 @@ import {
 	type MemoryFilter,
 	type MemoryScope,
 	memories,
-	meta,
-	type Row,
 	type ScopeFilter,
 } from "../../../../db/src/api.ts";
 import { agentDbWriter, sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 export type { MemoryFilter, ScopeFilter };
-import { storedSecret, storedText } from "@octocodeai/octocode-common/sanitize";
-import { clipText, DAY_MS, stringOrEmpty } from "../shared/util.ts";
-import { ftsQuery, jaccard, MAX_QUERY_TERMS, memoryLabel, normalizeTitle, stem, terms } from "./query.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
+import { clipText, DAY_MS } from "../shared/util.ts";
+import { jaccard, memoryLabel, normalizeTitle, terms } from "./query.ts";
 import { checkRevision, MemoryError, noMemory } from "./errors.ts";
+import { isCandidate } from "./file/candidate-tags.ts";
+import { type Memory, type MemoryHit, type MemoryInput, refuseMemorySecrets, toMemory } from "./record.ts";
+import { searchMemories, searchMemoryPage } from "./search.ts";
 export { MemoryError, noMemory } from "./errors.ts";
+export {
+	isMemoryKind,
+	type Memory,
+	type MemoryInput,
+	type MemoryKind,
+	MEMORY_KINDS,
+	refuseMemorySecrets,
+} from "./record.ts";
 
-/** `reference`: a pointer to something outside the repository (a URL, dashboard or ticket). */
-export const MEMORY_KINDS = ["preference", "fact", "decision", "gotcha", "procedure", "reference"] as const;
-export type MemoryKind = (typeof MEMORY_KINDS)[number];
-export const isMemoryKind = (value: unknown): value is MemoryKind => MEMORY_KINDS.some((kind) => kind === value);
-export interface Memory {
-	id: number;
-	scope: MemoryScope;
-	repoKey: string | null;
-	kind: MemoryKind;
-	title: string;
-	body: string;
-	keywords: string;
-	pinned: boolean;
-	author: string;
-	sourceSession: string | null;
-	createdAt: number;
-	updatedAt: number;
-	lastUsed: number | null;
-	useCount: number;
-}
-
-/** A search hit: `score` is higher-is-better (negated BM25, or the LIKE fallback's IDF-weighted column match). */
-interface MemoryHit extends Memory {
-	score: number;
-}
-
-export interface MemoryInput {
-	scope?: MemoryScope;
-	kind?: MemoryKind;
-	title?: string;
-	body?: string;
-	keywords?: string;
-	pinned?: boolean;
-}
-
-/** Refuses title, body or keywords that look like a secret. Checked on the sanitized text, the form that is stored: an invisible character must not split a token past it. */
-export function refuseMemorySecrets(input: Pick<MemoryInput, "title" | "body" | "keywords">): void {
-	const found = storedSecret({ title: input.title, body: input.body, keywords: input.keywords });
-	if (found)
-		throw new MemoryError(`Refused: this looks like a secret (${found.problem}). Never store credentials in memory.`);
-}
-
-/** A project hit ranks this much above an equally good global one. */
-const PROJECT_BOOST = 1.15;
 /** Token overlap (title + keywords + body) at which a new memory counts as a duplicate of an existing one. */
 const DUPLICATE_JACCARD = 0.6;
 /** Full-text matches checked per query when looking for a duplicate. */
 const DUPLICATE_CANDIDATES = 25;
-/** Rows the LIKE fallback scores in memory (newest first); far more than a person keeps. */
-const LIKE_SCAN_LIMIT = 2000;
-const SETTING_AUTO = "memory_auto";
-
-function toMemory(row: Row): Memory {
-	return {
-		id: Number(row.id),
-		scope: row.scope as MemoryScope,
-		repoKey: (row.repo_key as string | null) ?? null,
-		kind: row.kind as MemoryKind,
-		title: stringOrEmpty(row.title),
-		body: stringOrEmpty(row.body),
-		keywords: stringOrEmpty(row.keywords),
-		pinned: Number(row.pinned) === 1,
-		author: stringOrEmpty(row.author),
-		sourceSession: (row.source_session as string | null) ?? null,
-		createdAt: Number(row.created_at),
-		updatedAt: Number(row.updated_at),
-		lastUsed: row.last_used == null ? null : Number(row.last_used),
-		useCount: Number(row.use_count ?? 0),
-	};
-}
+/** The words a duplicate is judged on: every word but stopwords, so `phase 1` and `phase 2` stay apart. */
+const identityTerms = (text: string): string[] => terms(text, Number.POSITIVE_INFINITY, 1);
 
 /**
  * Memories of one repository (`repoKey`) plus the global ones, in the shared agent DB. Every method is one statement or
@@ -152,10 +97,7 @@ export class MemoryStore {
 		return memories.forReview(this.db, this.context, scope, now - days * DAY_MS, limit).map(toMemory);
 	}
 
-	/**
-	 * Best matches for the words of `query`, best first. With FTS5: BM25 over title, keywords and body (weighted 5/3/1).
-	 * Without it: the same column weights times each term's inverse document frequency. Project hits get a small boost either way.
-	 */
+	/** Best matches for the words of `query`, best first (`search.ts`). */
 	search(
 		query: string,
 		scope: ScopeFilter = "all",
@@ -163,58 +105,12 @@ export class MemoryStore {
 		exclude: ReadonlySet<number> = new Set(),
 		now = Date.now(),
 	): MemoryHit[] {
-		const match = ftsQuery(query);
-		if (!match) return [];
-		const hits = this.agentDb.fts
-			? this.searchFts(match, scope, limit * 3, exclude)
-			: this.searchLike([...new Set(terms(query, MAX_QUERY_TERMS).map(stem))], scope);
-		return hits
-			.filter((hit) => !exclude.has(hit.id))
-			.map((hit) => (hit.scope !== "global" ? { ...hit, score: hit.score * PROJECT_BOOST } : hit))
-			.map((hit) => (unusedForLong(hit, now) ? { ...hit, score: hit.score * UNUSED_DISCOUNT } : hit))
-			.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
-			.slice(0, limit);
+		return searchMemories(this.agentDb, this.context, query, { scope, limit, exclude, now });
 	}
 
 	/** The `memory` tool pages ranked matches from the existing full-text index; absent FTS uses its bounded scan. */
 	searchPage(query: string, scope: ScopeFilter, offset: number, limit: number): MemoryHit[] | undefined {
-		if (!this.agentDb.fts) return undefined;
-		const match = ftsQuery(query);
-		if (!match) return [];
-		return memories
-			.searchFts(this.db, this.context, match, scope, new Set(), limit, offset)
-			.map((row) => ({ ...toMemory(row), score: -Number(row.bm25_score) }));
-	}
-
-	private searchFts(match: string, scope: ScopeFilter, limit: number, exclude: ReadonlySet<number>): MemoryHit[] {
-		const rows = memories.searchFts(this.db, this.context, match, scope, exclude, limit);
-		// bm25() is lower-is-better and negative for matches; negate so every score reads higher-is-better.
-		return rows.map((row) => ({ ...toMemory(row), score: -Number(row.bm25_score) }));
-	}
-
-	/** BM25-like without FTS5: per-column weights (5/3/1) times each term's inverse document frequency; `words` are stems. */
-	private searchLike(words: string[], scope: ScopeFilter): MemoryHit[] {
-		const docs = memories.newest(this.db, this.context, scope, LIKE_SCAN_LIMIT).map((row) => {
-			const memory = toMemory(row);
-			const stems = (text: string) => new Set(terms(text).map(stem));
-			return { memory, title: stems(memory.title), keywords: stems(memory.keywords), body: stems(memory.body) };
-		});
-		const idf = new Map(
-			words.map((word) => {
-				const df = docs.filter((doc) => doc.title.has(word) || doc.keywords.has(word) || doc.body.has(word)).length;
-				return [word, Math.log(1 + (docs.length - df + 0.5) / (df + 0.5))];
-			}),
-		);
-		return docs.flatMap((doc) => {
-			const score = words.reduce(
-				(sum, word) =>
-					sum +
-					idf.get(word)! *
-						((doc.title.has(word) ? 5 : 0) + (doc.keywords.has(word) ? 3 : 0) + (doc.body.has(word) ? 1 : 0)),
-				0,
-			);
-			return score > 0 ? [{ ...doc.memory, score }] : [];
-		});
+		return searchMemoryPage(this.agentDb, this.context, query, { scope, offset, limit });
 	}
 
 	/**
@@ -300,19 +196,21 @@ export class MemoryStore {
 
 	/**
 	 * An existing memory in any visible scope (a workspace memory repeating a global one is redundant too) with the same
-	 * normalized title, or whose title, keyword and body words (`text`) mostly match, among the full-text matches.
+	 * normalized title, or whose title, keyword and body words (`text`) mostly match, among the full-text matches. A
+	 * queued lesson candidate (`file/candidate-tags.ts`) is no saved note: a save never yields to one.
 	 */
 	private duplicateOf(text: string, title: string): Memory | undefined {
 		const normalized = normalizeTitle(title);
-		const words = terms(text);
-		const candidates = [
+		const words = identityTerms(text);
+		const matches = [
 			...this.search(text, "all", DUPLICATE_CANDIDATES),
 			...this.search(title, "all", DUPLICATE_CANDIDATES),
 		];
-		return candidates.find(
+		return matches.find(
 			(memory) =>
-				(normalized !== "" && normalizeTitle(memory.title) === normalized) ||
-				jaccard(words, terms(`${memory.title} ${memory.keywords} ${memory.body}`)) >= DUPLICATE_JACCARD,
+				!isCandidate(memory) &&
+				((normalized !== "" && normalizeTitle(memory.title) === normalized) ||
+					jaccard(words, identityTerms(`${memory.title} ${memory.keywords} ${memory.body}`)) >= DUPLICATE_JACCARD),
 		);
 	}
 
@@ -331,22 +229,7 @@ export class MemoryStore {
 		if (ids.length === 0) return;
 		await this.writer().post({ kind: "memory-used", context: this.context, ids: [...ids], now });
 	}
-
-	/** `/memory auto on|off`, shared by every session (the environment can still turn it off). */
-	autoSetting(): boolean {
-		return meta.read(this.db, SETTING_AUTO) !== "off";
-	}
-
-	setAutoSetting(on: boolean): void {
-		meta.write(this.db, SETTING_AUTO, on ? "on" : "off");
-	}
 }
-
-/** A memory nobody used for this long ranks lower in a search; nothing expires, and a pinned one stays where it is. */
-const UNUSED_DAYS = 90;
-const UNUSED_DISCOUNT = 0.75;
-const unusedForLong = (memory: Memory, now: number): boolean =>
-	!memory.pinned && now - (memory.lastUsed ?? memory.updatedAt) > UNUSED_DAYS * DAY_MS;
 
 /** `12d`: whole days since the memory was last updated, the staleness signal on every line the model reads. */
 export const memoryAge = (memory: Pick<Memory, "updatedAt">, now = Date.now()): string =>

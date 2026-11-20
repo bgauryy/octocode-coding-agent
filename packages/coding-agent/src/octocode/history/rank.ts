@@ -4,6 +4,8 @@ import { scanHistory, type ScanPosition } from "./search.ts";
 import { fileStamp, renderRanking, type RankPages } from "./rank/render.ts";
 import { archiveIndexFallback, rankArchive } from "./index/client.ts";
 import { parseKeywords } from "./rank/terms.ts";
+import { LineRunsBuilder } from "./rank/line-runs.ts";
+import type { Filtered } from "./rank/scan.ts";
 
 export { parseKeywords, stem, wordTerms } from "./rank/terms.ts";
 
@@ -56,15 +58,12 @@ const FILTER_SCAN_MATCHES = 200_000;
 /**
  * The lines `filter` matches in each file, by file index. The expression comes from the model, so it runs where a query
  * search runs it: in the archive-search worker, which stops it after 5 seconds; each scan is bounded by matches and
- * time, and the next one resumes where it stopped, so the corpus size is no limit.
+ * time, and the next one resumes where it stopped, so the corpus size is no limit. What a scan found is kept only as
+ * runs of consecutive lines (`rank/line-runs.ts`), so a broad filter costs a few bytes a file, not a set entry a line.
  */
-async function filterMatches(
-	files: readonly HistoryFile[],
-	filter: RegExp,
-	signal?: AbortSignal,
-): Promise<Map<number, Set<number>>> {
+async function filterMatches(files: readonly HistoryFile[], filter: RegExp, signal?: AbortSignal): Promise<Filtered> {
 	const paths = files.map(({ file }) => file);
-	const found = new Map<number, Set<number>>();
+	const found = new Map<number, LineRunsBuilder>();
 	let start: ScanPosition | undefined;
 	do {
 		signal?.throwIfAborted();
@@ -73,13 +72,13 @@ async function filterMatches(
 			maxMatches: FILTER_SCAN_MATCHES,
 		});
 		for (const { index, matched } of scan.results) {
-			const lines = found.get(index) ?? new Set<number>();
+			let lines = found.get(index);
+			if (!lines) found.set(index, (lines = new LineRunsBuilder()));
 			for (const line of matched) lines.add(line);
-			found.set(index, lines);
 		}
 		start = scan.next;
 	} while (start);
-	return found;
+	return new Map([...found].map(([index, lines]) => [index, lines.done()]));
 }
 
 /**

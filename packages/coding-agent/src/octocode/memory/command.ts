@@ -3,6 +3,8 @@ import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { migrateMemories, migrationReport } from "./file/migrate.ts";
+import { type MemoryFileSync, repeatsOf, syncDeletedMemory, syncSavedMemory } from "./file/sync.ts";
 import { lastInjection } from "./inject.ts";
 import { ADD_ROW, memoryDetailPage, memoryListPage, sectionOf } from "./page.ts";
 import { memoryLabel } from "./query.ts";
@@ -96,14 +98,38 @@ function textList(memories: readonly Memory[], title: string): string {
 	return lines.join("\n");
 }
 
+/** What `/memory` reads beside the store: the recall switch of the environment, and the MEMORY.md files' settings. */
+interface MemoryCommandDeps {
+	store: (ctx: CommandContext) => MemoryStore;
+	autoEnv: () => boolean;
+	sync: MemoryFileSync;
+}
+
 /**
- * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto on|off`, `last`, `review [days]`. The TUI picks
- * with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
+ * A user's change reaches the MEMORY.md files too (a user command needs no approval): what changed there, as lines to
+ * end the command's message with ("" when nothing did).
  */
-export function registerMemoryCommand(
-	commands: Subcommands,
-	deps: { store: (ctx: CommandContext) => MemoryStore; autoEnv: () => boolean },
-): void {
+async function fileNote(
+	ctx: CommandContext,
+	store: MemoryStore,
+	deps: MemoryCommandDeps,
+	before: Memory | undefined,
+	after: Memory | undefined,
+): Promise<string> {
+	const change = { store, cwd: ctx.cwd, approved: true };
+	const note = after
+		? await syncSavedMemory(deps.sync, { ...change, before, saved: after })
+		: before
+			? await syncDeletedMemory(deps.sync, { ...change, removed: before })
+			: "";
+	return note ? `\n${note}` : "";
+}
+
+/**
+ * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto`, `last`, `review [days]`,
+ * `migrate [--dry-run]`. The TUI picks with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
+ */
+export function registerMemoryCommand(commands: Subcommands, deps: MemoryCommandDeps): void {
 	commands.add("memory", {
 		description: "Browse and edit durable memories",
 		complete: (prefix) =>
@@ -111,16 +137,16 @@ export function registerMemoryCommand(
 				[
 					["search ", "find memories"],
 					["add", "write a memory"],
-					["auto on", "inject relevant memories"],
-					["auto off", "stop injecting"],
+					["auto", "automatic recall status"],
 					["last", "what was injected last"],
 					["review", "unused or stale memories"],
+					["migrate", "write notes to MEMORY.md"],
 				],
 				prefix,
 			),
 		handler: async (args, ctx) => {
 			try {
-				await run(args, ctx, deps.store(ctx), deps.autoEnv);
+				await run(args, ctx, deps.store(ctx), deps);
 			} catch (error) {
 				say(ctx, `memory: ${errorMessage(error)}`, error instanceof MemoryError ? "warning" : "error");
 			}
@@ -128,50 +154,56 @@ export function registerMemoryCommand(
 	});
 }
 
-async function run(args: string, ctx: CommandContext, store: MemoryStore, autoEnv: () => boolean): Promise<void> {
+async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: MemoryCommandDeps): Promise<void> {
 	const [verb = "", ...restWords] = args.trim().split(/\s+/);
 	const rest = restWords.join(" ").trim();
-	if (verb === "auto") {
-		if (rest !== "on" && rest !== "off")
-			return say(
-				ctx,
-				`Automatic memory injection is ${autoStatus(store, autoEnv)}. Usage: /memory auto on|off`,
-				"info",
-			);
-		store.setAutoSetting(rest === "on");
+	if (verb === "auto")
 		return say(
 			ctx,
-			`Automatic memory injection ${rest === "on" ? "on" : "off"} for every session.${rest === "on" && !autoEnv() ? " (Still off here: OCTOCODE_MEMORY_AUTO=0.)" : ""}`,
+			`Automatic recall is ${autoStatus(deps)}. Change it with /configuration set memory.recall off|main|all (add --local for this project).`,
 			"info",
 		);
-	}
+	if (verb === "migrate") return migrate(ctx, store, rest, deps);
 	if (verb === "last") {
 		const last = lastInjection(ctx.sessionManager.getBranch());
 		return say(ctx, last ?? "No memories were injected on this branch yet.", "info");
 	}
-	if (verb === "add") return add(ctx, store, rest);
-	if (verb === "review") return review(ctx, store, rest);
+	if (verb === "add") return add(ctx, store, rest, deps);
+	if (verb === "review") return review(ctx, store, rest, deps);
 	if (verb === "search") {
 		if (!rest) return say(ctx, "Usage: /memory search <words>", "warning");
-		return browse(ctx, store, store.search(rest, "all", 20), `Memories matching "${rest}"`);
+		return browse(ctx, store, store.search(rest, "all", 20), `Memories matching "${rest}"`, deps);
 	}
 	if (verb === "" || verb === "list")
-		return browse(ctx, store, store.list("all", LIST_LIMIT), `Memories (auto ${autoStatus(store, autoEnv)})`);
-	return say(ctx, "Usage: /memory [search <q>|add|auto on|off|last|review [days]]", "warning");
+		return browse(ctx, store, store.list("all", LIST_LIMIT), `Memories (recall ${autoStatus(deps)})`, deps);
+	return say(ctx, "Usage: /memory [search <q>|add|auto|last|review [days]|migrate [--dry-run]]", "warning");
+}
+
+/** `/memory migrate [--dry-run]` (`file/migrate.ts`): the dry run prints the diff and writes nothing. */
+async function migrate(ctx: CommandContext, store: MemoryStore, rest: string, deps: MemoryCommandDeps): Promise<void> {
+	if (rest !== "" && rest !== "--dry-run") return say(ctx, "Usage: /memory migrate [--dry-run]", "warning");
+	if (!deps.sync.settings().file) return say(ctx, "memory.file is off, so there is no MEMORY.md to write.", "warning");
+	const dryRun = rest === "--dry-run";
+	const results = await migrateMemories(store, ctx.cwd, {
+		dryRun,
+		repeats: repeatsOf(ctx.getSystemPromptOptions().contextFiles ?? []),
+		...(deps.sync.env ? { env: deps.sync.env } : {}),
+	});
+	return say(ctx, migrationReport(results, dryRun), "info");
 }
 
 /**
  * `/memory review [days]`: memories never injected, or not updated in `days` (default 30), oldest first. The TUI opens
  * them in the browser, whose Edit and Delete act on one; headless, each line says why it is listed.
  */
-async function review(ctx: CommandContext, store: MemoryStore, rest: string): Promise<void> {
+async function review(ctx: CommandContext, store: MemoryStore, rest: string, deps: MemoryCommandDeps): Promise<void> {
 	const days = rest ? Number(rest) : REVIEW_DAYS;
 	if (!Number.isInteger(days) || days < 1) return say(ctx, "Usage: /memory review [days]", "warning");
 	const now = Date.now();
 	const due = store.review(days, "all", LIST_LIMIT, now);
 	const title = `Memories never used or not updated in ${days} days`;
 	if (due.length === 0) return say(ctx, `${title}: none.`, "info");
-	if (ctx.hasUI) return browse(ctx, store, due, `${title} (pick one to edit or delete)`);
+	if (ctx.hasUI) return browse(ctx, store, due, `${title} (pick one to edit or delete)`, deps);
 	const why = (memory: Memory) =>
 		[...(memory.useCount === 0 ? ["never used"] : []), `updated ${memoryAge(memory, now)} ago`].join(", ");
 	return say(
@@ -185,16 +217,17 @@ async function review(ctx: CommandContext, store: MemoryStore, rest: string): Pr
 	);
 }
 
-const autoStatus = (store: MemoryStore, autoEnv: () => boolean) =>
-	!autoEnv() ? "off (OCTOCODE_MEMORY_AUTO=0)" : store.autoSetting() ? "on" : "off";
+/** `memory.recall`, unless the environment turned recall off for the process. */
+const autoStatus = (deps: Pick<MemoryCommandDeps, "autoEnv" | "sync">) =>
+	!deps.autoEnv() ? "off (OCTOCODE_MEMORY_AUTO=0)" : deps.sync.settings().recall;
 
-async function add(ctx: CommandContext, store: MemoryStore, text: string): Promise<void> {
+async function add(ctx: CommandContext, store: MemoryStore, text: string, deps: MemoryCommandDeps): Promise<void> {
 	const sourceSession = ctx.sessionManager.getSessionId();
 	if (!ctx.hasUI) {
 		if (!text) return say(ctx, "Usage: /memory add <title> [— body]", "warning");
 		const [title = "", ...body] = text.split(/\s+[—-]{1,2}\s+/);
 		const { memory } = store.set({ title, body: body.join(" — "), author: USER_AUTHOR, sourceSession });
-		return say(ctx, `Saved ${memoryLine(memory, 60)}`, "info");
+		return say(ctx, `Saved ${memoryLine(memory, 60)}${await fileNote(ctx, store, deps, undefined, memory)}`, "info");
 	}
 	const saved = await editUntilValid(
 		ctx,
@@ -202,7 +235,7 @@ async function add(ctx: CommandContext, store: MemoryStore, text: string): Promi
 		memoryTemplate({ title: text, kind: "fact", keywords: "", scope: "workspace", body: "", pinned: false }),
 		(edited) => store.set({ ...parseTemplate(edited), author: USER_AUTHOR, sourceSession }).memory,
 	);
-	if (saved) say(ctx, `Saved ${memoryLine(saved, 60)}`, "info");
+	if (saved) say(ctx, `Saved ${memoryLine(saved, 60)}${await fileNote(ctx, store, deps, undefined, saved)}`, "info");
 }
 
 /** Reopens the editor with the user's own text and the reason when it does not validate, so an edit is never lost. */
@@ -230,7 +263,13 @@ async function editUntilValid<T>(
 	}
 }
 
-async function browse(ctx: CommandContext, store: MemoryStore, memories: Memory[], title: string): Promise<void> {
+async function browse(
+	ctx: CommandContext,
+	store: MemoryStore,
+	memories: Memory[],
+	title: string,
+	deps: MemoryCommandDeps,
+): Promise<void> {
 	if (!ctx.hasUI) return say(ctx, textList(memories, title), "info");
 	let list = grouped(memories);
 	let selected: string | undefined;
@@ -239,18 +278,18 @@ async function browse(ctx: CommandContext, store: MemoryStore, memories: Memory[
 		if (ctx.mode === "tui") {
 			const id = await memoryListPage(ctx, list, title, selected);
 			if (id === undefined) return;
-			if (id === ADD_ROW) return add(ctx, store, "");
+			if (id === ADD_ROW) return add(ctx, store, "", deps);
 			selected = id;
 			picked = list.find((memory) => String(memory.id) === id);
 		} else {
 			const options = [...list.map(optionOf), ADD];
 			const choice = await ctx.ui.select(title, options);
 			if (choice === undefined) return;
-			if (choice === ADD) return add(ctx, store, "");
+			if (choice === ADD) return add(ctx, store, "", deps);
 			picked = list[options.indexOf(choice)];
 		}
 		if (!picked) return;
-		const changed = await act(ctx, store, picked);
+		const changed = await act(ctx, store, picked, deps);
 		if (changed === "closed") return;
 		// Show the list again with the change applied (a deleted memory drops out).
 		list = grouped(list.flatMap((memory) => (memory.id !== picked.id ? [memory] : changed ? [changed] : [])));
@@ -258,7 +297,12 @@ async function browse(ctx: CommandContext, store: MemoryStore, memories: Memory[
 }
 
 /** One memory's actions. Returns the updated memory, undefined when it was deleted, or 'closed' when dismissed. */
-async function act(ctx: CommandContext, store: MemoryStore, memory: Memory): Promise<Memory | undefined | "closed"> {
+async function act(
+	ctx: CommandContext,
+	store: MemoryStore,
+	memory: Memory,
+	deps: MemoryCommandDeps,
+): Promise<Memory | undefined | "closed"> {
 	const label = memoryLabel(memory.id);
 	const actions = [
 		"Edit",
@@ -280,7 +324,8 @@ async function act(ctx: CommandContext, store: MemoryStore, memory: Memory): Pro
 		const question = `Delete ${label}?\n${memory.title}`;
 		if (!(await confirmAction((title, options) => ctx.ui.select(title, options), question, ["Delete"]))) return memory;
 		store.delete(memory.id, memory.updatedAt);
-		say(ctx, successNotice("Deleted", label, "Other memories are unchanged."), "info");
+		const note = await fileNote(ctx, store, deps, memory, undefined);
+		say(ctx, `${successNotice("Deleted", label, "Other memories are unchanged.")}${note}`, "info");
 		return undefined;
 	}
 	let updated: Memory | undefined;
@@ -300,6 +345,6 @@ async function act(ctx: CommandContext, store: MemoryStore, memory: Memory): Pro
 				: { scope: memory.scope !== "global" ? "global" : "workspace" };
 		updated = store.set({ ...input, id: memory.id, author: USER_AUTHOR }, undefined, memory.updatedAt).memory;
 	}
-	say(ctx, `Updated ${memoryLine(updated, 60)}`, "info");
+	say(ctx, `Updated ${memoryLine(updated, 60)}${await fileNote(ctx, store, deps, memory, updated)}`, "info");
 	return updated;
 }

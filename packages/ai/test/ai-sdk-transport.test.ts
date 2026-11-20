@@ -72,12 +72,32 @@ describe("SDK transport policy", () => {
 		expect(fetch).toHaveBeenCalledOnce();
 	});
 
-	it("cancels a stalled response body at its deadline", async () => {
+	it("cancels a stalled response body at its idle bound", async () => {
 		const cancel = vi.fn();
 		const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(new ReadableStream({ cancel })));
-		const response = await fetchSdkResponse(model, { fetch, timeoutMs: 10 }, url);
+		const response = await fetchSdkResponse(model, { fetch, timeoutMs: 10_000, streamIdleTimeoutMs: 10 }, url);
 		await expect(response.text()).rejects.toThrow("timed out");
 		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("keeps a streaming body alive past the header deadline while data keeps arriving", async () => {
+		const anthropic = getBuiltinModel("anthropic", "claude-sonnet-4-5");
+		let sent = 0;
+		const fetch = vi.fn<typeof globalThis.fetch>(
+			async () =>
+				new Response(
+					new ReadableStream({
+						async pull(controller) {
+							await new Promise((resolve) => setTimeout(resolve, 10));
+							if (sent++ < 8) controller.enqueue(new TextEncoder().encode("x"));
+							else controller.close();
+						},
+					}),
+				),
+		);
+		// 8 chunks 10ms apart outlast the 30ms header deadline; each chunk resets the 50ms idle bound.
+		const response = await fetchSdkResponse(anthropic, { fetch, timeoutMs: 30, streamIdleTimeoutMs: 50 }, url);
+		expect(await response.text()).toBe("xxxxxxxx");
 	});
 
 	it("keeps completion streams alive after their header deadline", async () => {

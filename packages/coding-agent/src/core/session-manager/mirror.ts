@@ -26,6 +26,8 @@ import {
 	transcriptOf,
 } from "./mirror-writes.ts";
 import { continueOpenedMirror } from "./mirror-open.ts";
+import { strictJsonLine } from "./json-line.ts";
+import { mirrorsSessionFile } from "./mirror-scope.ts";
 
 /**
  * The session's database mirror: header and entries copied to the agent database after the session file, by the
@@ -75,7 +77,9 @@ export async function sessionMirrorSettled(timeoutMs = 5_000): Promise<boolean> 
  * workspace checked there.
  */
 export function mirrorOpened(state: SessionState, sessionFile: string): void {
-	const t = transcriptOf(state, canonicalPath(sessionFile));
+	const file = canonicalPath(sessionFile);
+	if (!mirrorsSessionFile(file, state)) return;
+	const t = transcriptOf(state, file);
 	try {
 		const stamp = getFileStamp(t.file);
 		if (!mirrorLevel(t.sessionId, t.file, stamp)) {
@@ -121,7 +125,8 @@ export function mirrorReplaced(
 	stamp: FileStamp,
 	lines?: readonly string[],
 ): void {
-	save(transcriptOf(state, canonicalPath(sessionFile)), "replace", stamp, state.fileEntries, lines);
+	const file = canonicalPath(sessionFile);
+	if (mirrorsSessionFile(file, state)) save(transcriptOf(state, file), "replace", stamp, state.fileEntries, lines);
 }
 
 /**
@@ -137,8 +142,9 @@ export function mirrorAppended(
 	written: readonly { entry: SessionEntry; line: string }[],
 	stamp: FileStamp,
 ): void {
-	if (written.length === 0) return;
-	const t = transcriptOf(state, canonicalPath(sessionFile));
+	const file = canonicalPath(sessionFile);
+	if (written.length === 0 || !mirrorsSessionFile(file, state)) return;
+	const t = transcriptOf(state, file);
 	// Its index among the entries, past the header (not always the last: held entries are written in a row).
 	const rows = written.map(({ entry, line }) => ({
 		position: state.fileEntries.lastIndexOf(entry) - 1,
@@ -157,7 +163,7 @@ export function mirrorAppended(
 	}
 	if (batch) flushAll();
 	const wasEmpty = batches.size === 0;
-	batches.set(t, { header: JSON.stringify(state.fileEntries[0]), previous, stamp, entries: rows });
+	batches.set(t, { header: strictJsonLine(state.fileEntries[0]), previous, stamp, entries: rows });
 	if (wasEmpty) queueMicrotask(flushAll);
 }
 

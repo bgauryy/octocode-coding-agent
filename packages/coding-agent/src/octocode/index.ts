@@ -1,4 +1,5 @@
 import { registerArchiveLifecycle } from "./archive/lifecycle.ts";
+import { callSmallModel, smallModelLabel } from "./subagents/small-call.ts";
 import { registerRunGuards } from "./run-guards.ts";
 import { registerNativeSessionLifecycle } from "./session-lifecycle.ts";
 import { registerHarnessCommand } from "./harness/command.ts";
@@ -7,6 +8,8 @@ import { withNativePermissionOwners } from "./permission/native-tools.ts";
 import { registerDeferredSchemaRestore } from "./compaction/deferred-schemas.ts";
 import { AGENT_GOAL_ENV } from "./team/store/env.ts";
 import { FileGuard } from "./files/tool/guard.ts";
+import type { FileReplacementOwner } from "./files/tool/queries.ts";
+import { attachmentContent, attachmentTexts } from "./team/attachment-source.ts";
 import { setShellPathEntries } from "../utils/shell.ts";
 import { registerOctocodeCli } from "./cli/command.ts";
 import { octocodeShimDir } from "./cli/shim.ts";
@@ -158,15 +161,16 @@ export default function octocode(host: FeatureSetup): void {
 	registerNestedContext(api);
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	api.bus.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
-	recordChildReports(api, provenance, permission, isSubagent);
+	recordChildReports(api, provenance, permission, isSubagent, attachmentTexts);
 	guard.reservedBy = (file) => team.reservation(file, file);
 	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
 	const checkpoints = new Checkpoints();
-	registerFileTool(api, guard, permission, checkpoints, {
+	const fileHooks: FileReplacementOwner = {
 		enabled: (input, cwd) => later.get("hooks").hasFilePermissionRequest(input, cwd),
 		committed: (id, input, cwd) => later.get("hooks").fileInputCommitted(id, input, cwd),
 		refresh: (ctx) => later.get("sourcePolicy").refresh(ctx),
-	});
+	};
+	registerFileTool(api, guard, permission, checkpoints, fileHooks, attachmentContent);
 	// Octocode's bash with a foreground deadline and background jobs.
 	const jobs = registerBashTool(api, commands);
 	// `octocode-<role>-<id>` process title, periodic memory samples, and `/processes`.
@@ -194,7 +198,13 @@ export default function octocode(host: FeatureSetup): void {
 		completing: (info, ctx, signal) => later.get("hooks").taskCompleted(info, ctx, signal),
 		serving: () => agents?.serving() ?? new Map(),
 	});
-	registerMemory(api, { commands, isSubagent, permission, goal: process.env[AGENT_GOAL_ENV] });
+	registerMemory(api, {
+		commands,
+		isSubagent,
+		permission,
+		goal: process.env[AGENT_GOAL_ENV],
+		small: { call: callSmallModel, label: smallModelLabel },
+	});
 	commands.add(
 		"status",
 		statusCommand(api, permission, () =>

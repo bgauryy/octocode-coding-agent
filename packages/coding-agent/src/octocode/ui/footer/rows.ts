@@ -37,6 +37,9 @@ const OWN = {
 } as const;
 /** Commands worth knowing, shown last and only when the line has room. */
 const HINTS = "/providers · /model · /resume";
+const HINTS_PRIORITY = 2;
+/** Line-1 details moved to line 2 rank just above the hints, below every detail of line 2's own. */
+const MOVED = HINTS_PRIORITY + 1;
 
 const isAlert = (entry: StatusEntry | undefined) => entry?.tone === "error" || entry?.tone === "warning";
 
@@ -151,15 +154,25 @@ export function footerLines(
 			details: true,
 		})),
 		// The first part to give way: it only helps while the line has room.
-		{ text: theme.fg("dim", HINTS), priority: 2 },
+		{ text: theme.fg("dim", HINTS), priority: HINTS_PRIORITY },
 	];
-	let bottom = fitFooterLine(identity, details, theme, width);
-	const detailsHidden = top.detailsHidden || bottom.detailsHidden;
+	// A detail line 1 dropped whole moves to line 2 into room only the hints held; only what neither line shows needs
+	// /status.
+	const moved = top.dropped.map((part): FooterPart => ({
+		...part,
+		priority: MOVED,
+		later: MOVED,
+		floor: undefined,
+		keep: false,
+		spills: false,
+	}));
+	let bottom = fitFooterLine(identity, [...moved, ...details], theme, width);
+	const detailsHidden = top.partlyHidden || bottom.detailsHidden;
 	const detailsRoute = width < 9 ? "/status" : "… /status";
 	if (detailsHidden) {
 		bottom = fitFooterLine(
 			identity,
-			[...details, { text: theme.fg("dim", detailsRoute), priority: 101, keep: true }],
+			[...moved, ...details, { text: theme.fg("dim", detailsRoute), priority: 101, keep: true }],
 			theme,
 			width,
 		);

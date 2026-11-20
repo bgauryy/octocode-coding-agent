@@ -4,6 +4,8 @@
 	"enabledByDefault": false,
 	"description": "Local Ollama models: pick one that fits this machine, run or delegate tasks to it, and manage models.",
 	"command": "freellama-mcp-server",
+	"exposure": "onDemand",
+	"instructionsOnDemand": true,
 	"inheritEnv": true,
 	"install": { "npm": "@octocodeai/freellama-mcp-server", "version": "0.12.0", "bin": "freellama-mcp-server" }
 }

@@ -16,7 +16,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 /** Saves a text and returns where, or undefined when it could not be saved. */
 type SaveText = (text: string) => string | undefined;
 
-/** The user's own messages kept after the summary, newest first, up to about 15k to 20k tokens in all, at 4 to 3 characters per token (their words are the one record the summary cannot rebuild)... */
+/** The user's own messages kept after the summary, newest first, up to about 24k tokens in all at `CHARS_PER_TOKEN` (their words are the one record the summary cannot rebuild)... */
 export const USER_MESSAGES_CHARS = 60_000;
 /** A larger message moves whole to its own persisted reference, in its own position, instead of being cut (inline when the session has no file: cut with a marker). */
 export const USER_MESSAGE_CHARS = 6_000;

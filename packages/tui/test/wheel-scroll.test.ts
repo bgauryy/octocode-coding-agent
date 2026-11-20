@@ -157,4 +157,57 @@ describe("WheelScrollAccelerator", () => {
 			).every((count) => count === 10),
 		);
 	});
+
+	it("carries lines beyond the frame cap to following frames instead of dropping them", () => {
+		for (const accelerate of [false, true]) {
+			const accelerator = new WheelScrollAccelerator("auto", accelerate);
+			const piled = scroll(
+				accelerator,
+				Array.from({ length: 60 }, (_, index) => 900 + index * 0.01),
+			);
+			const sameFrame = piled.reduce((sum, count) => sum + count, 0);
+			assert.ok(sameFrame <= 24, `accelerate ${accelerate}: ${sameFrame}`);
+			let moved = sameFrame;
+			for (let frame = 1; frame < 20; frame++) moved += accelerator.takePending(900 + frame * 17).lines;
+			// Every line the 60 events asked for arrives: 1 line each past the first notch is at least 62.
+			assert.ok(moved >= 60, `accelerate ${accelerate}: ${moved} lines moved in all`);
+			assert.strictEqual(accelerator.takePending(5000).lines, 0);
+		}
+	});
+
+	it("moves held-back lines in the direction of the events and drops them on a reversal", () => {
+		const accelerator = new WheelScrollAccelerator("auto", false);
+		scroll(
+			accelerator,
+			Array.from({ length: 60 }, (_, index) => 900 + index * 0.01),
+			-1,
+		);
+		assert.deepStrictEqual(
+			{ direction: accelerator.takePending(920).direction, more: accelerator.takePending(940).lines > 0 },
+			{ direction: -1, more: true },
+		);
+		accelerator.next(1, 2000);
+		assert.strictEqual(accelerator.takePending(2100).lines, 0);
+	});
+
+	it("drains held-back lines on a timer that clearPending cancels", async () => {
+		const accelerator = new WheelScrollAccelerator("auto", false);
+		scroll(
+			accelerator,
+			Array.from({ length: 80 }, (_, index) => performance.now() + index * 0.01),
+		);
+		const drained: number[] = [];
+		accelerator.drainPending((_direction, lines) => drained.push(lines));
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		assert.ok(drained.length > 0 && drained.every((lines) => lines > 0 && lines <= 24), drained.join(","));
+		scroll(
+			accelerator,
+			Array.from({ length: 80 }, (_, index) => performance.now() + 1000 + index * 0.01),
+		);
+		const before = drained.length;
+		accelerator.drainPending((_direction, lines) => drained.push(lines));
+		accelerator.clearPending();
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		assert.strictEqual(drained.length, before);
+	});
 });

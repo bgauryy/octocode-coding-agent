@@ -21,6 +21,7 @@ import {
 	readNotes,
 	saveNote,
 } from "../../../memory/session-notes-tool.ts";
+import type { MemoryFileSync } from "../../../memory/file/sync.ts";
 import { getMemory, readMemories } from "../../../memory/reads.ts";
 import { MEMORY_KINDS, type MemoryStore } from "../../../memory/store.ts";
 import { type MemoryWriteParams, writeMemory } from "../../../memory/write.ts";
@@ -67,7 +68,7 @@ function callSummary(args: Record<string, unknown> | undefined): string {
  */
 export function createMemoryTool(
 	storeFor: (ctx: FeatureContext) => MemoryStore,
-	options: { isSubagent: boolean; permission: Permission; appendEntry?: AppendEntry },
+	options: { isSubagent: boolean; permission: Permission; appendEntry?: AppendEntry; files?: MemoryFileSync },
 ) {
 	const subagent = options.isSubagent;
 	const ops = subagent ? (["search", "get", "list"] as const) : (["search", "get", "list", "set", "delete"] as const);
@@ -118,7 +119,7 @@ export function createMemoryTool(
 				: {
 						title: Type.Optional(
 							Type.String({
-								description: "set: one-line rule, not a pointer; recall may cut the body",
+								description: "set: one-line rule and why (its MEMORY.md line); recall may cut the body",
 							}),
 						),
 						body: Type.Optional(
@@ -184,6 +185,7 @@ export function createMemoryTool(
 								permission: options.permission,
 								ctx,
 								signal,
+								files: options.files,
 							});
 							deleteNote(ctx, options.appendEntry, note);
 							return textResult<MemoryDetails>(
@@ -211,6 +213,7 @@ export function createMemoryTool(
 						permission: options.permission,
 						ctx,
 						signal,
+						files: options.files,
 					});
 				}
 				case "get": {

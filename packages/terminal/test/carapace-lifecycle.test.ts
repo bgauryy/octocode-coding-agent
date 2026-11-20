@@ -31,9 +31,15 @@ setInterval(() => {}, 1000);
 	let pid: number | undefined;
 	const completion = carapaceComplete(binary, ["git", ""], { cwd: dir, env: process.env, signal: abort.signal });
 	try {
-		await vi.waitFor(() => {
-			pid = Number(readFileSync(pidFile, "utf8"));
-		});
+		// A cold Node child can take over a second to start under load; carapace's own stall kill comes later (8 s).
+		await vi.waitFor(
+			() => {
+				const read = Number(readFileSync(pidFile, "utf8"));
+				if (!Number.isInteger(read) || read <= 0) throw new Error("pid file not written yet");
+				pid = read;
+			},
+			{ timeout: 5_000 },
+		);
 		abort.abort();
 		expect(await completion).toBeUndefined();
 		await vi.waitFor(() => {

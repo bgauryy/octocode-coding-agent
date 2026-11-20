@@ -35,6 +35,8 @@ describe("the browser role's Octocode tools", () => {
 		];
 		expect(octocode.config.roles?.readOnly).toEqual(expect.arrayContaining(dropped));
 		for (const tool of dropped) expect(matchesTool(allowed, `mcp__octocode__${tool}`)).toBe(false);
+		// The Octocode server leaves every tool declared (none on demand), so the role's local tools are its floor.
+		expect(octocode.config.toolExposure).toBeUndefined();
 		expect(matchesTool(allowed, "mcp__browser__open")).toBe(true);
 	});
 });

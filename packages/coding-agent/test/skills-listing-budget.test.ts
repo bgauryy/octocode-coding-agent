@@ -22,11 +22,14 @@ function skill(name: string, description: string, disableModelInvocation = false
 const long = (n: number) => skill(`long-${n}`, `Use when ${"x".repeat(900)} ${n}`);
 
 describe("skill listing budget", () => {
-	it("budgets 1% of the window at four chars per token, 200k tokens when unknown", () => {
-		expect(skillListingBudgetChars(200_000)).toBe(8_000);
-		expect(skillListingBudgetChars(1_000_000)).toBe(40_000);
-		expect(skillListingBudgetChars(undefined)).toBe(8_000);
-		expect(skillListingBudgetChars(0)).toBe(8_000);
+	it("budgets 1% of the window at the model family's chars per token, 200k tokens when unknown", () => {
+		// Without a model: the densest family measured (Claude, 2.5 characters per token).
+		expect(skillListingBudgetChars(200_000)).toBe(5_000);
+		expect(skillListingBudgetChars(1_000_000)).toBe(25_000);
+		expect(skillListingBudgetChars(undefined)).toBe(5_000);
+		expect(skillListingBudgetChars(0)).toBe(5_000);
+		expect(skillListingBudgetChars(200_000, { id: "claude-opus-5-5" })).toBe(5_000);
+		expect(skillListingBudgetChars(200_000, { id: "gpt-6.1-sol" })).toBe(7_000);
 	});
 
 	it("warns once with count, size, budget and remedies when over budget", () => {
@@ -34,7 +37,7 @@ describe("skill listing budget", () => {
 		const listing = formatSkillsForPrompt(skills, "skill").trim();
 		const warning = skillListingBudgetWarning({ skills, listing, contextWindow: 200_000 });
 		expect(warning?.type).toBe("warning");
-		expect(warning?.message).toContain(`${listing.length} chars, budget 8000`);
+		expect(warning?.message).toContain(`${listing.length} chars, budget 5000`);
 		expect(warning?.message).toContain("octocode context check");
 		expect(warning?.message).toContain("/harness");
 	});
@@ -43,7 +46,7 @@ describe("skill listing budget", () => {
 		const skills = Array.from({ length: 12 }, (_, i) => long(i));
 		const listing = formatSkillsForPrompt(skills, "skill").trim();
 		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 1_000_000 })).toBeUndefined();
-		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 100_000 })?.message).toContain("budget 4000");
+		expect(skillListingBudgetWarning({ skills, listing, contextWindow: 100_000 })?.message).toContain("budget 2500");
 	});
 
 	it("is silent under budget", () => {

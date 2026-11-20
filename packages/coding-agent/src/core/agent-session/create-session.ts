@@ -1,13 +1,16 @@
 import { existsSync } from "node:fs";
 import { Agent, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import type { ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
+import type { Context, ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel, type Model, streamSimple } from "@octocodeai/octocode-ai/compat";
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { createToolNameMatcher } from "@octocodeai/octocode-common/mcp-names";
 import { AgentSession } from "../agent-session.ts";
 import type { AgentSessionServices } from "../agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "../auth-guidance.ts";
+import { sessionPromptCacheKey } from "../cache-key-group.ts";
 import { CacheWarmer } from "../cache-warmer.ts";
-import { forkPromptCacheKey } from "../session-manager/cache-key.ts";
+import { IdleContinuationPool } from "../cache-warmer/idle-pool.ts";
+import { agentDbIdleGapStore } from "../cache-warmer/idle-pool-store.ts";
 import { DEFAULT_THINKING_LEVEL } from "../defaults.ts";
 import type { FeatureHost, LoadedFeatures, SessionStartEvent, ToolDefinition } from "../features/index.ts";
 import { findInitialModel } from "../model-resolver.ts";
@@ -186,23 +189,26 @@ export async function createSessionFromServices(
 	const convertToLlmWithBlockImages = createConvertToLlmWithBlockImages(settingsManager);
 
 	const featureHostRef: { current?: FeatureHost } = {};
+	// A main session's idle gaps join the pool every session's warmer reads; a subagent's follow its coordinator.
+	const subagent = envFlag(process.env, SUBAGENT_ENV);
+	const idleGaps = new IdleContinuationPool(agentDbIdleGapStore(), (error) =>
+		listenerErrorReporter(() => featureHostRef.current, "agent")(
+			`Idle-gap statistics unavailable: ${error instanceof Error ? error.message : String(error)}`,
+			error,
+		),
+	);
 	const cacheWarmer = new CacheWarmer(
 		modelRuntime,
 		sessionManager,
 		() => settingsManager.getCacheWarmingMode(),
 		async (event) => featureHostRef.current?.emitCacheWarmingDecision(event) ?? event.action,
+		{ pool: idleGaps, recordGaps: !subagent },
 	);
-	// Resolved once per session id: walking the fork chain reads parent headers from disk.
-	let forkKey: { sessionId: string; key: string | undefined } | undefined;
-	const sessionPromptCacheKey = (requestSessionId: string | undefined) => {
-		if (requestSessionId === undefined || requestSessionId !== sessionManager.getSessionId()) return undefined;
-		if (forkKey?.sessionId !== requestSessionId)
-			forkKey = { sessionId: requestSessionId, key: forkPromptCacheKey(sessionManager.getHeader()) };
-		return forkKey.key;
-	};
+	const promptCacheKey = sessionPromptCacheKey(sessionManager, cwd);
 	const buildRequestOptions = (
 		requestModel: Model<any>,
 		options: ModelsSimpleStreamOptions = {},
+		context?: Context,
 	): RuntimeSimpleStreamOptions => {
 		const providerRetrySettings = settingsManager.getProviderRetrySettings();
 		const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();
@@ -212,7 +218,7 @@ export async function createSessionFromServices(
 		return {
 			...options,
 			roleVariantTools: new Set(agent.state.tools.filter((tool) => tool.roleVariant).map((tool) => tool.name)),
-			promptCacheKey: options.promptCacheKey ?? sessionPromptCacheKey(options.sessionId),
+			promptCacheKey: options.promptCacheKey ?? promptCacheKey(requestModel, options.sessionId, context),
 			// A virtual model's request is resolved for the model it routes to.
 			...(isVirtualModel(requestModel) ? { resolveCache } : resolveCache(requestModel)),
 			timeoutMs: options.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs,
@@ -263,7 +269,7 @@ export async function createSessionFromServices(
 		},
 		convertToLlm: convertToLlmWithBlockImages,
 		streamFn: async (model, context, options) => {
-			const requestOptions = buildRequestOptions(model, options);
+			const requestOptions = buildRequestOptions(model, options, context);
 			// Compaction and summaries use their own routing ids; only session requests
 			// replace the cache entry, so warming restarts from them. Keep warming while
 			// the current transcript still extends the request's prefix. Agent state may

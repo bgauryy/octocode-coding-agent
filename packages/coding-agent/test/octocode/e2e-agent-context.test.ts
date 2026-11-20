@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AGENTS, captureAll, type AgentContext } from "./agent-context/capture.ts";
 import { isMcpTool } from "./agent-context/analyze.ts";
 import { renderMessages, renderSystem, renderTools, systemText } from "./agent-context/render.ts";
+import { loadProfiles, profileSelectsTool } from "../../src/octocode/subagents/profiles.ts";
 
 /**
  * The full context each agent receives with its first model request, captured from real sessions on a scripted model:
@@ -26,6 +28,16 @@ const named = (name: string): AgentContext => {
 };
 
 const sectionNames = (context: AgentContext): string[] => context.sections.map((section) => section.name);
+
+/** The bundled roles (an empty folder adds no project or home profile). */
+const bundledProfiles = loadProfiles(os.tmpdir(), os.tmpdir(), false, {});
+
+/** Whether an agent's tool selection admits the Octocode MCP server's tools, which every agent gets by default. */
+const admitsOctocode = (role: string | undefined): boolean => {
+	if (role === undefined) return true;
+	const probe = "mcp__octocode__localSearch";
+	return profileSelectsTool(bundledProfiles.get(role), probe, [probe]);
+};
 
 it("shares complete native and research-tool declarations before role-specific tools", () => {
 	const main = named("main");
@@ -94,6 +106,12 @@ describe.each(AGENTS)("$name context", (agent) => {
 			expect(names.filter(isMcpTool)).toEqual([]);
 			return;
 		}
+		if (!admitsOctocode(agent.role)) {
+			// A role whose tools leave out the research server (the browser) gets neither its tools nor its block.
+			expect(names.filter((name) => name.startsWith("mcp__octocode__"))).toEqual([]);
+			expect(sectionNames(context())).not.toContain("mcps:octocode");
+			return;
+		}
 		expect(sectionNames(context())).toContain("mcps");
 		expect(names).toContain("mcp__octocode__localSearch");
 		expect(names).toContain("mcp__octocode__localFetch");
@@ -124,85 +142,15 @@ describe.each(AGENTS)("$name context", (agent) => {
 });
 
 describe("the real assembled prefix of a main session", () => {
-	// What a main session in this repository sends before the user's first word: the captured system text, each tool's name,
-	// description and compact parameter JSON (what the provider receives, not the pretty-printed Markdown of the prompt
-	// files), plus this repository's AGENTS.md, for which the capture uses a stand-in. The tools and `mcps` block are
-	// declared up front by decision, so this does not ask for a cut: it makes growth a decision too.
-	// Measured 111,408 bytes from the baseline capture (system
-	// 70,237, tools 27,092, AGENTS.md 14,079), plus 7.3% for what lands with it. The earlier metric (renderSystem + renderTools
-	// + AGENTS.md, with schemas pretty-printed inside fences) read 121,193 for that same capture, so this count is stricter
-	// by construction: it drops about 9.7 KB of formatting nobody receives and the ceiling is set from the new reading.
-	// 122,191: plus 2,650 for the bash description's CLI guide with the probed host (2,569 measured),
-	// requested by the user.
-	// 122,601 (requested by the user): plus 410 measured in main's capture for the `octocode` CLI: the
-	// research line (318), its place in the fallback (25) and the CLI guide's Scope clause (67).
-	// 125_500 (measured 124,028: system 24,462, tools 85,079, AGENTS.md 14,487; MCP declared mode, requested by the
-	// user): every MCP tool is declared with the server's own description and full JSON Schema, as Claude Code and Codex send
-	// them, and the system prompt keeps only each server's instructions. The same server text moves from system (68,532 before)
-	// to tools (39,517 before), and the schema as sent is longer than the typed notation it replaced. Server text is not
-	// ours to trim (M14); our own text keeps its cap in `e2e.test.ts` and `prompt-size.test.ts`.
-	// 131_500 (measured 131,414: system 24,915, tools 91,918, AGENTS.md 14,581): the sibling server added its
-	// `securityCheck` tool (3,497 declared bytes, server text), our itemized growth (+2,726, capped in
-	// `e2e.test.ts`), and about 1,160 from other server and AGENTS.md text.
-	// 132_624 (measured 132,538: system 24,970, tools 92,987, AGENTS.md 14,581): the timer tool's closed
-	// `until` list, +953 in tools (`prompt-size.test.ts` itemizes it); the other +171 since 131,414 came from concurrent
-	// edits. Slack over the measurement is 86, as before.
-	// 118_033 (measured 117,947: system 30,157, tools 80,117, AGENTS.md 7,673): the
-	// shorter AGENTS.md, `reason` described once in policy, the policy tables and the other wave-1 prompt changes (skill
-	// listing, edit digest, MCP exposure). Slack stays 86.
-	// 118_443 (measured 118,357: system 30,567, tools 80,117, AGENTS.md 7,673): the user-requested rules for output form
-	// by data shape, brevity, established solutions, comments and docs (+410 in system, net of offsetting cuts).
-	// Slack stays 86.
-	// 119_282 (measured 119,196: system 30,808, tools 80,715, AGENTS.md 7,673): the user-requested challenge and
-	// numbers rules (+241 in system) and the rebuilt sibling server's tool text (+598 in tools). Slack stays 86.
-	// 119_938 (119,196 + 656): the user-requested rule for messaging an outside CLI session through a one-shot proxy
-	// of its own CLI (+656 in system). Slack stays 86.
-	// 119_938 was the last ceiling over the whole prefix, server text included.
-	// From here the ceiling caps only the text Octocode owns: the system prompt without its `mcps` section (each server's
-	// instructions, verbatim), the native tool declarations and AGENTS.md. MCP server text (the `mcps` section and every
-	// `mcp__*` declaration) is the server's own, never rewritten (M14), and changed whenever the sibling server was rebuilt,
-	// which broke this check on text we cannot trim. It is reported in the message, not capped; our own wording around it
-	// keeps its itemized caps in `e2e.test.ts` and `prompt-size.test.ts`.
-	// 57_603 (measured 57,517: system without `mcps` 24,868, native tools 24,794, AGENTS.md 7,855; server text then 4,214
-	// instructions and 61,570 declared). Slack stays 86.
-	// 57_952 (57,603 + 349): AGENTS.md's owner table names the session codec, `composedLater`, the `@` file index, mcp's
-	// `api.ts`, the telemetry recorder and the theme UI kit, and the MCP boundary check (requested by the user). Slack stays 86.
-	// 58_019 (57,952 + 67): AGENTS.md names the web daemon as `/web` and the per-session server as its fallback only.
-	// 53_730 (measured 53,644: system without `mcps` 25,101, native tools 20,272, AGENTS.md 8,271; server text 4,792
-	// instructions and 12,242 declared): lowered to the reading. The bundled `octocode` server follows the deferred
-	// default, so the tool list no longer names it, and native tools and AGENTS.md shrank since. Slack stays 86.
-	// 48_625 (measured 48,539: system without `mcps` and `<octocode_skills>` 19,996, native tools 20,272, AGENTS.md 8,271):
-	// the bundled Octocode skills' names and descriptions come verbatim from the sibling release and grew with its rebuild
-	// (+1,347 for `octocode-graph` and reworded descriptions), which broke this check on text this repository does not
-	// write. They are now reported with the server text, not capped (6,452 at this reading); Octocode's own text is
-	// unchanged. Slack stays 86.
-	// Shared policy, tool guidance and native skill descriptions now leave less headroom for regrowth.
-	// 48_203 (measured 48,117: system 20,077, native tools 19,785, AGENTS.md 8,255): user-requested delegation, tmux
-	// and backlog-grooming rules, compressed to +547 bytes. Slack stays 86.
-	// 46_367 (measured 46,281: system 20,342, native tools 18,021, AGENTS.md 7,918): `web`, `archive` and `models` are on
-	// demand on the capture's transport, listed in `<tools>` and declared only once used. Slack stays 86.
-	// 46_589 (measured 46,503: system 20,564): one `<tools>` line says the undeclared on-demand tools are callable by
-	// name (+222); without it, a judged Haiku run never called undeclared `web`. Slack stays 86.
-	// 47_613 (measured 47,527: system 20,561, native tools 18,567, AGENTS.md 8,399): `web` leaves the on-demand tier and
-	// is declared deferred (+546), since a Haiku asked for live content without naming a tool used curl 3 of 3 times
-	// while undeclared and `web` 3 of 3 once declared; AGENTS.md gained the testkit row and package-graph link (+481).
-	// Slack stays 86.
-	// 46_819 (measured 46_733: system 20,561, native tools 17,773 (-794), AGENTS.md 8,399): the `agent` tool's task-field
-	// descriptions were shortened (-794), checked by a Sonnet judge over Haiku delegating one of two file jobs. Slack stays 86.
-	// 42_099 (measured 42_013: system 15,723 (-4,838), native tools 17,858 (+85), AGENTS.md 8,432 (+33)): the policy is
-	// built from shared chunks, situational rules load as skills (backlog, delegation, memory, output), one tag wraps each
-	// section family, and owned prose is reworded more concisely; the `wait` check field names the free command filter.
-	// Slack stays 86.
-	// 42_334 (measured 42_248: system 15,958 (+235)): the octocode-backlog description regains the grooming pass's
-	// checks, which folding octocode-backlog-grooming into it had cut (skill descriptions keep all their content), and
-	// the profiles line again says to match the child's output. Slack stays 86.
-	// 42_656 (measured 42_570: system 16,062 (+104), native tools 17,857, AGENTS.md 8,651 (+219)): AGENTS.md says that one
-	// full suite or `check` runs at a time under the host lock, after parallel full runs froze the machine. Slack stays 86.
-	// 43_900 (user-approved; measured 43_849: system 16,662 (+600), native tools 18,368 (+511), AGENTS.md 8,819 (+168)):
-	// the user's coding rules (modular code for parallel work, clean architecture and code, strict lint, condensing
-	// scripts, waves, closing and stopping) in the work policy and AGENTS.md, plus other tools' growth.
-	// 45_600 (user-approved; measured 45_487: system 18,013 (+1,351), native tools 18,655 (+287)): the user's testing rule,
-	// other sessions' policy and notice text, `wait`'s cron fields and `bash`'s `sandbox` parameter.
+	// What a main session in this repository sends before the user's first word, counting the text Octocode owns: the
+	// captured system text without its `mcps` section (each server's instructions, verbatim) and without the bundled
+	// Octocode skills' names and descriptions (verbatim from the sibling release), each native tool's name, description and
+	// compact parameter JSON as the provider receives it, and this repository's AGENTS.md (the capture uses a stand-in).
+	// MCP server text is the server's own and never rewritten (M14), so it is reported in the message, not capped here;
+	// `prompt-size.test.ts` and `served-first-request.test.ts` cap what each role pays for it. The tools and `mcps` block
+	// are declared up front by decision, so this does not ask for a cut: it makes growth a decision too. The ceiling sits
+	// just above its reading (45,487: system 18,013, native tools 18,655, AGENTS.md 8,819); raise it only for growth worth
+	// paying on every request, and say why.
 	const OWN_PREFIX_CEILING = 45_600;
 
 	it("stays under its ceiling", () => {

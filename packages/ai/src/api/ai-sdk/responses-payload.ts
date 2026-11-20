@@ -24,8 +24,8 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 			delete body.temperature;
 			delete body.max_output_tokens;
 		}
-		const cache = resolveOpenAIResponsesCacheFields(getCompat(model), options, signIn);
 		const azure = model.api === "azure-openai-responses";
+		const cache = resolveOpenAIResponsesCacheFields(getCompat(model), options, signIn, !azure);
 		if (azure && context.messages.length === 0) body.input = [];
 		if (azure && Array.isArray(body.tools)) {
 			for (const tool of body.tools) if (tool.strict === false) delete tool.strict;

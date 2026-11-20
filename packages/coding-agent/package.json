@@ -107,6 +107,7 @@
 		"@octocodeai/octocode-acp": "workspace:*",
 		"@octocodeai/octocode-db": "workspace:*",
 		"@octocodeai/octocode-mcp": "workspace:*",
+		"@octocodeai/octocode-projections": "1.3.0",
 		"@octocodeai/octocode-terminal": "workspace:*",
 		"@types/cross-spawn": "6.0.6",
 		"@types/hosted-git-info": "3.0.5",

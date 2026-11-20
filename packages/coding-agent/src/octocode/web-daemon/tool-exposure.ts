@@ -8,6 +8,7 @@
 
 import path from "node:path";
 import {
+	NATIVE_ON_DEMAND_TOOLS,
 	NATIVE_PINNABLE_TOOLS,
 	NATIVE_USAGE_ONLY_TOOLS,
 	ToolExposureRowSchema,
@@ -22,7 +23,7 @@ import { recentlyUsed } from "@octocodeai/octocode-common/recent-use";
 import { hasUsageData, readUsageAudit, sortByAudit, toolAudit } from "@octocodeai/octocode-common/tool-audit";
 import { USAGE_FILE_NAME, usageSnapshot } from "@octocodeai/octocode-common/usage-counts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
-import { isEnabled, currentMcpToolStates, toolExposureState } from "../../../../mcp/src/api.ts";
+import { isEnabled, currentMcpToolStates, promotionBudget, toolExposureState } from "../../../../mcp/src/api.ts";
 import { loadMcpServers } from "../../configuration/adapters/mcp.ts";
 import { writeSettingsKey } from "../../configuration/settings-write.ts";
 import type { ConfigContext } from "../../configuration/types.ts";
@@ -79,21 +80,29 @@ function open(options: ToolExposureOptions) {
 	return { trusted, settings, ctx };
 }
 
+/** The native tools a session leaves on demand when it would declare them deferred; a pin opts one out. */
+const ON_DEMAND: ReadonlySet<string> = new Set(NATIVE_ON_DEMAND_TOOLS);
+
 /** A row whose name the page could not send back (a control character) is left out, so one odd tool does not hide the panel. */
 const valid = (rows: ToolExposureRow[]): ToolExposureRow[] =>
 	rows.filter((row) => Value.Check(ToolExposureRowSchema, row)).slice(0, 2000);
 
 /**
  * The native tools. A deferrable one shows what the session declared when it registered the tool; without a session,
- * what a new one would declare: its pin, else deferred under `mcpExposure: "recent"` unless the workspace called it in
- * the last 24 hours (the record a session reads, under the key `native/<tool>`).
+ * what a new one would declare (`nativeToolDeferred`): its pin, else deferred under `mcpExposure: "usage"`, and under
+ * `"recent"` unless the workspace called it in the last 24 hours (the record a session reads, under the key
+ * `native/<tool>`). Under `"usage"` the promotion snapshot changes only the on-demand ones (`NATIVE_ON_DEMAND_TOOLS`):
+ * one it holds is declared thin from the start, which its audit names (`promoted`).
  */
 function nativeGroup(ctx: ConfigContext, setting: string, live: NativeToolsLive | undefined): ToolExposureGroup {
-	const pins: Record<string, unknown> = ctx.settings.getSettings().nativeToolExposure ?? {};
+	const settings = ctx.settings.getSettings();
+	const pins: Record<string, unknown> = settings.nativeToolExposure ?? {};
 	const usage = setting === "usage";
 	const recent = setting === "recent" || usage;
 	const inUse = usage
-		? usageSnapshot(path.join(ctx.agentDir, USAGE_FILE_NAME), "main")
+		? usageSnapshot(path.join(ctx.agentDir, USAGE_FILE_NAME), "main", Date.now(), {
+				budget: promotionBudget(settings.mcpPromotedBytes),
+			})
 		: recent
 			? recentlyUsed(path.join(ctx.agentDir, "tool-use.json"), ctx.cwd)
 			: new Set<string>();
@@ -113,7 +122,7 @@ function nativeGroup(ctx: ConfigContext, setting: string, live: NativeToolsLive 
 		const saved = pins[name];
 		const pin = saved === "direct" || saved === "deferred" ? saved : undefined;
 		const declared = live?.declared.get(name);
-		const predicted = pin ?? (recent && !inUse.has(`native/${name}`) ? "deferred" : "direct");
+		const predicted = pin ?? (usage || (recent && !inUse.has(`native/${name}`)) ? "deferred" : "direct");
 		const state = declared === undefined ? predicted : declared ? "deferred" : "direct";
 		const bytes = live?.saved?.get(name);
 		return {
@@ -125,7 +134,12 @@ function nativeGroup(ctx: ConfigContext, setting: string, live: NativeToolsLive 
 				? {
 						audit: toolAudit(record, `native/${name}`, state, {
 							...(bytes !== undefined ? { saved: bytes } : {}),
-							...(usage ? { promoted: inUse.has(`native/${name}`) } : {}),
+							...(usage
+								? {
+										promoted: inUse.has(`native/${name}`),
+										onDemand: !pin && ON_DEMAND.has(name),
+									}
+								: {}),
 						}),
 					}
 				: {}),

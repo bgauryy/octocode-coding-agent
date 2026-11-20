@@ -4,7 +4,6 @@ import type { CompactionEntry } from "../../core/session-manager.ts";
 import { GOAL_HEADING, summarySection as section, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import {
 	archiveFolder,
-	archiveSearch,
 	LIBRARY_FILE,
 	readSegments,
 	segmentFile,
@@ -15,6 +14,7 @@ import {
 import { isStaleSessionError, stringList } from "../shared/util.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { shownLine } from "../sessions/store.ts";
 
 /**
  * The archive of compacted history (`history/archive.ts` owns where and how it is filed). Octocode's JSONL holds the summarized
@@ -153,16 +153,18 @@ export function fullTextIn(segment: number | undefined, earlier = false): string
 }
 
 /** How many of the newest earlier segments the pointer names; the library has the rest. */
-export const POINTER_SEGMENTS = 3;
+export const POINTER_SEGMENTS = 2;
+/** Characters kept of each named segment's TL;DR: the line points at the file, which holds the rest. */
+const POINTER_TLDR_CHARS = 80;
 
 /**
  * The archive as the lines of the summary's Recovery section (and of the message that carries them after a default
- * summary): the action first (search it before answering about the past, never guess), what it is against today's
- * repository, how to search it, then where: the folder, segment `current` (this compaction's; its file is named by an
- * entry Octocode has not appended yet, so `<n>-*.md`) and the newest earlier segments, each by file name with its TL;DR, and
- * `+N earlier` for the rest. A forked session's history before the fork is in the archives of the sessions it was
- * forked from (`sessionLineage`): a line names each, since a carried "segment N" note may mean one of theirs. Each line
- * is one line of text.
+ * summary), kept short because every request until the next compaction re-sends them: one line with the action (search
+ * it before answering about the past, never guess), how to search it, the folder and segment `current` (this
+ * compaction's; its file is named by an entry Octocode has not appended yet, so `<n>-*.md`) in the words the summary
+ * view reads back (`core/compaction/summary-view.ts`), and how many older segments only the library lists, then the newest earlier segments, each by file name with the start of its TL;DR. A forked
+ * session's history before the fork is in the archives of the sessions it was forked from (`sessionLineage`): a line
+ * names each, since a carried "segment N" note may mean one of theirs. Each line is one line of text.
  */
 export function archivePointer(current: number): string[] {
 	const folder = archiveFolder();
@@ -182,23 +184,16 @@ export function archivePointer(current: number): string[] {
 		}
 	});
 	return [
-		renderPrompt("notices/recovery/archive-first.md"),
-		archiveSearch(),
-		renderPrompt("notices/recovery/archive-folder.md", {
+		renderPrompt("notices/recovery/archive-line.md", {
 			folder,
 			library: LIBRARY_FILE,
 			current,
+			more: earlier.length - recent.length,
 			earlier: recent.length > 0,
 		}),
-		...recent.map((segment) => `${segmentFile(segment.n, segment.entry)} · ${segmentTldr(segment)}`),
-		...(earlier.length > recent.length
-			? [
-					renderPrompt("notices/recovery/archive-more.md", {
-						count: earlier.length - recent.length,
-						library: LIBRARY_FILE,
-					}),
-				]
-			: []),
+		...recent.map(
+			(segment) => `${segmentFile(segment.n, segment.entry)} · ${shownLine(segmentTldr(segment), POINTER_TLDR_CHARS)}`,
+		),
 		...forks,
 	];
 }
@@ -211,9 +206,9 @@ export const ARCHIVE_POINTER_TYPE = "octocode-archive";
  * and so has no pointer in its Recovery section: one hidden message after the compaction, which no turn waits for. It
  * rides at the end of the new context, behind the summary and the kept messages, so no cached prefix changes.
  */
-export function deliverArchivePointer(api: SetupPick<"session", "sendMessage">, current: number): void {
+export async function deliverArchivePointer(api: SetupPick<"session", "sendMessage">, current: number): Promise<void> {
 	try {
-		void api.session.sendMessage(
+		await api.session.sendMessage(
 			{
 				customType: ARCHIVE_POINTER_TYPE,
 				content: renderPrompt("notices/compaction/archive-pointer.md", {

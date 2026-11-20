@@ -27,26 +27,11 @@ const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
 export function idleWarmingLimitMs(ttlMs: number): number {
 	return Math.max(MAX_IDLE_WARMING_AGE_MS, ttlMs);
 }
-/** A refresh is sent only when it is expected to save at least this many dollars. */
+/**
+ * A refresh is sent only when it is expected to save at least this many dollars. The chance that an idle refresh is
+ * used comes from measured idle gaps (`idle-pool.ts`), pooled across sessions, not from a constant.
+ */
 export const CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS = 0.05;
-/**
- * Chance that a real request arrives before the cache entry expires while the
- * agent sits idle. Measured from our own usage; per-session estimates were not
- * better than this constant.
- */
-export const IDLE_CONTINUATION_PROBABILITY = 0.15;
-/**
- * Idle continuation probability per agent role, where a role's own reply gaps have been measured; a role without an
- * entry uses {@link IDLE_CONTINUATION_PROBABILITY}, the value measured from coding sessions.
- */
-const IDLE_CONTINUATION_PROBABILITY_BY_ROLE: Readonly<Record<string, number>> = { main: IDLE_CONTINUATION_PROBABILITY };
-
-/** The idle continuation probability for `role`; see {@link IDLE_CONTINUATION_PROBABILITY_BY_ROLE}. */
-export function idleContinuationProbability(role?: string): number {
-	return role !== undefined && Object.hasOwn(IDLE_CONTINUATION_PROBABILITY_BY_ROLE, role)
-		? IDLE_CONTINUATION_PROBABILITY_BY_ROLE[role]
-		: IDLE_CONTINUATION_PROBABILITY;
-}
 
 /** Refresh at 90% of the TTL while preserving at least ten seconds of margin. */
 export function getCacheWarmingDelayMs(ttlMs: number): number | undefined {
@@ -65,6 +50,8 @@ interface PromptCacheLifetime {
 	 * expires, the instruction prefix is still read from its own entry, so only the history is rewritten.
 	 */
 	layered: boolean;
+	/** The tier the history is written at, which prices its rewrite. */
+	history: "short" | "long";
 }
 
 /**
@@ -82,17 +69,22 @@ export function getPromptCacheLifetime(
 	const instructions = resolveInstructionCacheRetention(options);
 	// Adapters with Anthropic-style markers send long history behind short instructions at the short lifetime; that is
 	// the safe lifetime to plan with for any provider.
-	const { mechanism, lifetimes } = resolveModelCapabilities(model, options?.env).cache;
-	// A marker adapter also sends long history at the short lifetime where the endpoint has no long tier.
+	const { mechanism, lifetimes, longInstructionsOnly } = resolveModelCapabilities(model, options?.env).cache;
+	// A marker adapter also sends long history at the short lifetime where the endpoint has no long tier, and OpenAI
+	// explicit mode keeps the history on the request's short TTL (its long tier is for instruction breakpoints).
 	const history =
-		(instructions === "short" && retention === "long") || (mechanism === "markers" && lifetimes.long === undefined)
+		(instructions === "short" && retention === "long") ||
+		(mechanism === "markers" && lifetimes.long === undefined) ||
+		longInstructionsOnly
 			? "short"
 			: retention;
 	const seconds = lifetimes[history];
 	if (!validSeconds(seconds)) return undefined;
+	// Legacy options leave the instructions to follow a long history; explicit mode then marks them at the long tier.
+	const instructionTier = instructions ?? (longInstructionsOnly ? retention : undefined);
 	const layered =
-		instructions === "long" && history === "short" && validSeconds(lifetimes.long) && lifetimes.long > seconds;
-	return { ttlMs: seconds * 1000, layered };
+		instructionTier === "long" && history === "short" && validSeconds(lifetimes.long) && lifetimes.long > seconds;
+	return { ttlMs: seconds * 1000, layered, history };
 }
 
 /** Lifetime of the history entry, the first one a request's cache loses. See {@link getPromptCacheLifetime}. */
@@ -101,15 +93,16 @@ export function getPromptCacheTtlMs(model: Model<Api>, options: SimpleStreamOpti
 }
 
 /**
- * Upper-bound token estimate of the instruction prefix (current system prompt and tool declarations) that an
- * instruction cache breakpoint covers. Over-estimating it under-estimates the history a miss would rewrite, so
- * layered warming errs toward not refreshing.
+ * Token estimate of the instruction prefix (current system prompt and tool declarations) that an instruction cache
+ * breakpoint covers, at the dense end of the model family's measured ratio (`charsPerToken`). Over-estimating it
+ * under-estimates the history a miss would rewrite, so layered warming errs toward not refreshing.
  */
-export function estimateInstructionPrefixTokens(context: Context): number {
+export function estimateInstructionPrefixTokens(context: Context, model?: Pick<Model<Api>, "id">): number {
 	const system = getCurrentSystemMessage(normalizeContext(context).messages);
 	if (!system) return 0;
 	return charsToTokens(
 		getSystemMessageText(system).length + (system.toolsAdded?.length ? JSON.stringify(system.toolsAdded).length : 0),
+		model,
 	);
 }
 
@@ -137,7 +130,7 @@ export function lastPromptTokens(entries: SessionEntry[]): { cached: number; inp
 
 export function price(
 	model: Model<Api>,
-	tokens: Partial<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h">>,
+	tokens: Partial<Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite" | "cacheWrite1h" | "cacheWrite12h">>,
 ): number {
 	const usage: Usage = { ...createEmptyUsage(), ...tokens };
 	return calculateCost(model, usage).total;

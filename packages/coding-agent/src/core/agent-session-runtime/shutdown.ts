@@ -1,3 +1,4 @@
+import { historyArchivesSettled } from "../../../../db/src/api.ts";
 import type { AgentSession } from "../agent-session.ts";
 import type { AgentSessionServices } from "../agent-session-services.ts";
 import type { SessionShutdownEvent } from "../features/index.ts";
@@ -57,8 +58,9 @@ export async function shutdownSession(
 			errors.push(error);
 		}
 		try {
-			// Bound final mirror draining; an interrupted mirror is repaired on the next open.
-			await sessionMirrorSettled(1_500);
+			// Bound final mirror draining and the history pass the session started, together; an interrupted mirror is
+			// repaired on the next open, an interrupted pass retried.
+			await Promise.all([sessionMirrorSettled(1_500), historyArchivesSettled(1_500)]);
 		} catch (error) {
 			errors.push(error);
 		}

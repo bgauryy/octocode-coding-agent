@@ -46,11 +46,12 @@ function usage(row: ToolExposureRow): string {
 function reason(row: ToolExposureRow): string {
 	switch (row.decidedBy) {
 		case "usage":
+			// `usage` declares every tool thin; use only declares an on-demand tool from the start (`promoted`).
 			return row.audit?.reason === "promoted"
-				? "Promoted by use"
+				? "Used often: declared from the start"
 				: row.audit?.reason === "unused"
 					? "Not used in 7 days"
-					: "Below the promotion rate";
+					: "The usage setting";
 		case "pin":
 			return "Pinned";
 		case "pattern":

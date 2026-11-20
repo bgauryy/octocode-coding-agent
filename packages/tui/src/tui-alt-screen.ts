@@ -31,12 +31,12 @@ import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt
 import { type AltScreenPointerHost, handlePointerInput } from "./tui-alt-screen/pointer-input.ts";
 import { AltScreenScrollbar, type AltScreenScrollbarHost } from "./tui-alt-screen/scrollbar-controller.ts";
 import { TrimmedRowsMemo } from "./tui-alt-screen/scroll-shift.ts";
-import { applySearchHighlights, applySearchTextHighlight } from "./tui-alt-screen/search.ts";
 import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-screen/search-controller.ts";
 import { AltScreenSelection, type AltScreenSelectionHost } from "./tui-alt-screen/selection-controller.ts";
 import { AltScreenTerminalModes } from "./tui-alt-screen/terminal-modes.ts";
 import type { ScrollToEndIndicatorRect, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 import { type AltScreenViewportKeysHost, handleViewportKeys } from "./tui-alt-screen/viewport-keys.ts";
+import { ArrowBurstScroll } from "./tui-alt-screen/arrow-burst.ts";
 import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
 /** Alternate-screen TUI with a scrollable, application-owned viewport. */
@@ -68,8 +68,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly wheelScroll: WheelScrollAccelerator;
 	private readonly mouseEnabled: boolean;
 	private readonly modes: AltScreenTerminalModes;
-	private readonly searchMatchStyle: (text: string) => string;
-	private readonly searchCurrentMatchStyle: (text: string) => string;
 	private readonly scrollToEndIndicator?: (rowsBelow: number, percent: number) => string;
 	private copyOnSelect: boolean;
 
@@ -96,8 +94,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			isActive: () => !this.stopped && this.altScreenActive,
 			mouse: this.mouseEnabled,
 		});
-		this.searchMatchStyle = options.searchMatchStyle ?? ((text) => `\x1b[4m${text}\x1b[24m`);
-		this.searchCurrentMatchStyle = options.searchCurrentMatchStyle ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
 		this.scrollToEndIndicator = options.scrollToEndIndicator;
 		this.copyOnSelect = options.copyOnSelect ?? true;
 		const host: AltScreenSearchHost & AltScreenMouseGestureHost & AltScreenSelectionHost & AltScreenScrollbarHost = {
@@ -119,19 +115,25 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			openUrl: options.openUrl,
 			createMouseEvent: (type, button, x, y, extra) => this.mouse.createMouseEvent(type, button, x, y, extra),
 			dispatchMouseToOverlay: (event) => this.dispatchMouseToOverlay(event),
-			dispatchMouseToLayout: (event) => this.mouse.dispatchMouseToLayout(event),
+			dispatchMouseToLayout: (event, hits) => this.mouse.dispatchMouseToLayout(event, hits),
+			hitLayoutAt: (x, y) => this.mouse.hitLayoutAt(x, y),
 			applyMouseDispatchResult: (event, result) => this.mouse.applyMouseDispatchResult(event, result),
 			resetTextSelection: () => {
 				this.selection.clearTextSelection();
 				this.selection.lastClick = undefined;
 			},
 		};
-		this.search = new AltScreenSearchController(host, options.searchNavigationButtonStyle ?? ((text) => text));
+		this.search = new AltScreenSearchController(host, {
+			navigationButton: options.searchNavigationButtonStyle,
+			match: options.searchMatchStyle,
+			currentMatch: options.searchCurrentMatchStyle,
+		});
 		this.mouse = new AltScreenMouseGesture(host);
 		this.selection = new AltScreenSelection(host);
 		this.scrollbar = new AltScreenScrollbar(host);
 		this.viewport = {
 			search: this.search,
+			arrowBurst: new ArrowBurstScroll(this.wheelScroll, this.scrollBy.bind(this), this.deliverInput.bind(this)),
 			selection: this.selection,
 			scrollbar: this.scrollbar,
 			mouse: this.mouse,
@@ -196,6 +198,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		return this.previousScreen;
 	}
 
+	openSearch(): void {
+		this.search.openSearch();
+	}
+
 	setLayoutRoot(component: Component | undefined): void {
 		if (this.layoutRoot === component) return;
 		detachScrollViews(this.layoutRoot ?? this.implicitScrollView, ...this.children);
@@ -247,6 +253,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	/** End selection auto-scroll, presses, scrollbar hover and drags, component gestures and flashes. */
 	private stopPointerGestures(): void {
 		this.selection.stopSelectionAutoScroll();
+		this.wheelScroll.clearPending();
+		this.viewport.arrowBurst.cancel();
 		this.selection.selectionPressActive = false;
 		this.scrollbar.stopScrollbarHover();
 		this.scrollbar.stopScrollbarDrag();
@@ -345,14 +353,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 		// Resolve fake cursors before highlighting and compositing, which only track SGR codes
 		let screen = this.resolveFakeCursors(nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, "")));
-		screen = applySearchHighlights(
-			screen,
-			nextLayout,
-			this.search.activeSearch,
-			this.implicitScrollView,
-			width,
-			(text, current) => applySearchTextHighlight(text, current ? this.searchCurrentMatchStyle : this.searchMatchStyle),
-		);
+		screen = this.search.highlight(screen, nextLayout, width);
 		const indicator = compositeScrollToEndIndicator(
 			screen,
 			nextLayout,

@@ -70,7 +70,8 @@ export function rowMark(theme: MarkTheme, context: RenderContext, state: ToolRow
 		state.marking = ui;
 		state.unmark = animationClock.subscribe(() => invalidate(), {
 			kind: "decor",
-			everyMs: markFrameMs(ui, { light: true }),
+			// A foreground row only runs while the working line's spinner already ticks every `MOTION.spinnerMs`.
+			everyMs: ui === "running" ? MOTION.spinnerMs : markFrameMs(ui, { light: true }),
 		});
 		subscribed.add(state);
 	}

@@ -339,7 +339,7 @@ export abstract class TuiBase extends Container implements TUI {
 		return withoutFocusReport(this.inputListeners.filter(received));
 	}
 
-	private deliverInput(data: string): void {
+	protected deliverInput(data: string): void {
 		// The focused component gets all input, including Ctrl+C, and decides how to handle it.
 		const focused = this.focus.focusedComponent;
 		if (focused?.handleInput) {

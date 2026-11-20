@@ -16,7 +16,9 @@ it.each(cases)(
 		const compacting = Promise.withResolvers<void>();
 		const compactionReleased = Promise.withResolvers<void>();
 		const order: string[] = [];
-		const large = `large-content:${"x".repeat(6900)}`;
+		// About 2,300 tokens at the default 2.5 characters per token: over the threshold with the history, within the
+		// window after a compaction.
+		const large = `large-content:${"x".repeat(5750)}`;
 		const pauseCompaction = kind === "during" || kind === "selected";
 		let refreshSection = false;
 		let tokensBeforeCompaction = 0;

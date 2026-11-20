@@ -7,7 +7,7 @@ const paint = { fg: (_tone: string, text: string) => text, bold: (text: string) 
 describe("footer column allocation", () => {
 	it("uses the whole row when the only surviving part is on the right", () => {
 		const fitted = fitFooterLine([], [{ text: "≈$1.25", priority: 40, details: true }], paint, 6);
-		expect(fitted).toEqual({ line: "≈$1.25", detailsHidden: false });
+		expect(fitted).toEqual({ line: "≈$1.25", detailsHidden: false, partlyHidden: false, dropped: [] });
 	});
 
 	it("keeps a right-side alert after dropping lower priority left text", () => {
@@ -17,7 +17,7 @@ describe("footer column allocation", () => {
 			paint,
 			4,
 		);
-		expect(fitted).toEqual({ line: "失败", detailsHidden: false });
+		expect(fitted).toEqual({ line: "失败", detailsHidden: false, partlyHidden: false, dropped: [] });
 		expect(visibleWidth(fitted.line)).toBe(4);
 	});
 

@@ -43,6 +43,13 @@ export interface BashExecutionMessage {
 }
 
 /**
+ * Where a custom message goes: `true` shows it in the transcript and sends it to the model, `false` sends it to the model
+ * only, `"only"` shows it in the transcript and never sends it (`convertToLlm` skips it). Sessions written before `"only"`
+ * hold booleans and load unchanged.
+ */
+export type MessageDisplay = boolean | "only";
+
+/**
  * Message type for feature-injected messages via sendMessage().
  * These are custom messages that features can inject into the conversation.
  */
@@ -50,7 +57,7 @@ export interface CustomMessage<T = unknown> {
 	role: "custom";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
-	display: boolean;
+	display: MessageDisplay;
 	details?: T;
 	timestamp: number;
 }
@@ -135,7 +142,7 @@ export function compactionSummaryDisplay(message: Pick<CompactionSummaryMessage,
 export function createCustomMessage(
 	customType: string,
 	content: string | (TextContent | ImageContent)[],
-	display: boolean,
+	display: MessageDisplay,
 	details: unknown,
 	timestamp: string,
 ): CustomMessage {
@@ -172,6 +179,8 @@ export function convertToLlm(messages: readonly AgentMessage[]): Message[] {
 						timestamp: m.timestamp,
 					};
 				case "custom": {
+					// Shown to the user, never to the model.
+					if (m.display === "only") return undefined;
 					const content = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
 					return {
 						role: "user",

@@ -1,5 +1,6 @@
 import { activeRates, type Api, type Model } from "@octocodeai/octocode-ai";
 import { price } from "../../core/cache-warmer/economics.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
  * When clearing old tool results pays for itself while the prompt cache is still warm (`clearing.ts`).
@@ -85,6 +86,38 @@ export function expectedRemainingRequests(
 	const growthPerRequest = (contextTokens - Math.min(startTokens, contextTokens)) / requests;
 	if (growthPerRequest <= 0) return requests;
 	return Math.max(0, Math.min(requests, (contextWindow - contextTokens) / growthPerRequest));
+}
+
+/** A session whose earlier clearings realized fewer requests than predicted expects this share of the prediction at least. */
+const CALIBRATION_FLOOR = 0.25;
+
+/**
+ * How many of the requests predicted for this session's earlier clearings came (`remainingRequests` recorded beside each
+ * on `branch`, against the replies between it and the compaction that ended its old results), as one ratio of the
+ * totals; undefined until a compaction ended one. Never above 1: across sessions the realized count runs above the
+ * prediction (median 1.4 times, 102 warm clearings measured on 2026-11-19), so a session is only held to the prediction
+ * it fell short of, between `CALIBRATION_FLOOR` and 1. `clearing.ts` scales the next prediction by it.
+ */
+export function realizedRequestsRatio(branch: readonly unknown[], customType: string): number | undefined {
+	let predicted = 0;
+	let realized = 0;
+	const open: Array<{ predicted: number; replies: number }> = [];
+	for (const entry of branch) {
+		if (!isRecord(entry)) continue;
+		if (entry.type === "custom" && entry.customType === customType && isRecord(entry.data)) {
+			const expected = entry.data.remainingRequests;
+			if (typeof expected === "number" && expected > 0) open.push({ predicted: expected, replies: 0 });
+		} else if (entry.type === "message" && isRecord(entry.message) && entry.message.role === "assistant") {
+			for (const event of open) event.replies++;
+		} else if (entry.type === "compaction") {
+			for (const event of open.splice(0)) {
+				predicted += event.predicted;
+				realized += event.replies;
+			}
+		}
+	}
+	if (predicted <= 0) return undefined;
+	return Math.min(1, Math.max(CALIBRATION_FLOOR, realized / predicted));
 }
 
 /** The inputs of `clearingPays`, in tokens and the prices of `cachePrices`. */

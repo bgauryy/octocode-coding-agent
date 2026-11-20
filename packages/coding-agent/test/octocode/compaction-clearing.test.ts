@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CLEAR_AT_LEAST_TOKENS, KEEP_RECENT_RESULTS } from "../../src/octocode/compaction/clearing.ts";
+import {
+	CLEAR_AT_FREE_POINT_TOKENS,
+	CLEAR_AT_LEAST_TOKENS,
+	KEEP_RECENT_RESULTS,
+} from "../../src/octocode/compaction/clearing.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
@@ -328,8 +332,10 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		expect(s.entries).toHaveLength(1);
 	});
 
-	it("clears only when the older results total at least 20,000 tokens", async () => {
-		const perResult = Math.ceil((CLEAR_AT_LEAST_TOKENS * CHARS_PER_TOKEN) / 4) - 100;
+	it("where the cache is rewritten anyway, clears only when the older results total at least the free-point floor", async () => {
+		// The warm floor (`CLEAR_AT_LEAST_TOKENS`) is the higher one: there each clearing also pays a cache write.
+		expect(CLEAR_AT_FREE_POINT_TOKENS).toBeLessThan(CLEAR_AT_LEAST_TOKENS);
+		const perResult = Math.ceil((CLEAR_AT_FREE_POINT_TOKENS * CHARS_PER_TOKEN) / 4) - 100;
 		const below = setup(idleMessages(reads(KEEP_RECENT_RESULTS + 4, perResult)));
 		await below.start(T0 + 100 + HOUR + 1_000);
 		expect(below.entries).toEqual([]);

@@ -246,3 +246,31 @@ describe("incremental transcript search", () => {
 		}
 	});
 });
+
+describe("transcript search text", () => {
+	const find = (lines: string[], query: string) => new AltScreenSearchIndex().search(lines, query).matches;
+
+	it("does not index a box border at a row's edge, so words of neighbouring bordered rows are adjacent", () => {
+		assert.equal(find(["│ foo │", "│ bar │"], "foo bar").length, 1);
+		assert.equal(find(["┃ foo ┃", "┃ bar ┃"], "foo bar").length, 1);
+		assert.equal(find(["│ foo │"], "│").length, 0);
+	});
+
+	it("keeps a border inside a row searchable, with unchanged columns", () => {
+		const [match] = find(["│ a │ b │"], "a │ b");
+		assert.equal(match.segments[0].startCol, 2);
+		assert.equal(match.segments[match.segments.length - 1].endCol, 7);
+	});
+
+	it("matches a query and a row in either Unicode normalization form, with the drawn columns", () => {
+		const composed = "caf\u00e9 x";
+		const decomposed = "cafe\u0301 x";
+		for (const line of [composed, decomposed]) {
+			for (const query of ["caf\u00e9", "cafe\u0301"]) {
+				const matches = find([line], query);
+				assert.equal(matches.length, 1, `${JSON.stringify(line)} / ${JSON.stringify(query)}`);
+				assert.deepEqual(matches[0].segments, [{ row: 0, startCol: 0, endCol: 4 }]);
+			}
+		}
+	});
+});

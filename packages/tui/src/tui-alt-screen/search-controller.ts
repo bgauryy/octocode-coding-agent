@@ -8,7 +8,7 @@ import type { ScrollView } from "../components/scroll-view.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox } from "../layout.ts";
 import type { Component, OverlayHandle, OverlayOptions } from "../tui.ts";
-import { pickSearchSelection } from "./search.ts";
+import { applySearchHighlights, applySearchTextHighlight, pickSearchSelection } from "./search.ts";
 import type { ActiveSearch, SgrMouseEvent } from "./types.ts";
 
 /** Time a frame spends indexing and matching; the rest runs between frames, in slices that yield to input. */
@@ -16,6 +16,13 @@ const FRAME_SEARCH_BUDGET_MS = 10;
 const SLICE_MS = 8;
 /** While a long search runs between frames, its progress is repainted at most this often. */
 const PROGRESS_REPAINT_MS = 100;
+
+/** How search draws its navigation buttons and its matches; each has a default. */
+export interface AltScreenSearchStyles {
+	navigationButton?: (text: string, hovered: boolean) => string;
+	match?: (text: string) => string;
+	currentMatch?: (text: string) => string;
+}
 
 /** Alternate-screen state and operations the transcript search reads live. */
 export interface AltScreenSearchHost {
@@ -34,10 +41,32 @@ export class AltScreenSearchController {
 	/** A query without a selected match starts from the viewport once its row positions are exact. */
 	private pendingAnchor: ActiveSearch | undefined;
 	private readonly searchNavigationButtonStyle: (text: string, hovered: boolean) => string;
+	private readonly matchStyle: (text: string) => string;
+	private readonly currentMatchStyle: (text: string) => string;
 
-	constructor(host: AltScreenSearchHost, searchNavigationButtonStyle: (text: string, hovered: boolean) => string) {
+	constructor(host: AltScreenSearchHost, styles: AltScreenSearchStyles = {}) {
 		this.host = host;
-		this.searchNavigationButtonStyle = searchNavigationButtonStyle;
+		this.searchNavigationButtonStyle = styles.navigationButton ?? ((text) => text);
+		this.matchStyle = styles.match ?? ((text) => `\x1b[4m${text}\x1b[24m`);
+		this.currentMatchStyle = styles.currentMatch ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
+	}
+
+	/** Mark the active search's matches on a composed frame; the selected match takes the current-match style. */
+	highlight(screen: string[], layout: LayoutFrame, width: number): string[] {
+		return applySearchHighlights(
+			screen,
+			layout,
+			this.activeSearch,
+			this.host.implicitScrollView,
+			width,
+			(text, current) => applySearchTextHighlight(text, current ? this.currentMatchStyle : this.matchStyle),
+		);
+	}
+
+	/** Open transcript search, or return focus to the open one. */
+	openSearch(): void {
+		if (this.activeSearch) this.activeSearch.overlay?.focus();
+		else this.toggleSearch();
 	}
 
 	toggleSearch(): void {
@@ -146,8 +175,8 @@ export class AltScreenSearchController {
 		const box = getScrollViewBox(layout, scrollView);
 		if (search.query.trim() && !scrollView.isContentSettled) {
 			// Layout already measures hidden rows in yielding slices and requests a frame when their positions are exact.
-			search.matches = [];
-			search.component.setSearching(0);
+			// The last complete matches stay highlighted until then.
+			search.component.setSearching("pending");
 			return false;
 		}
 		// Reading virtual scrollContentLines materializes every row, even when there is no query to search.
@@ -168,9 +197,9 @@ export class AltScreenSearchController {
 		const shouldRevealSelection = search.selectionMode !== "retain";
 		const result = search.index.search(lines, search.query, FRAME_SEARCH_BUDGET_MS);
 		if (!result.complete) {
-			// No highlights until every match is known: matches of the rows indexed so far would sit at rows that a later
-			// change may move. The selection and its mode stay, so the finished search selects and reveals as asked.
-			search.matches = [];
+			// The last complete matches stay highlighted until every match is known: matches of the rows indexed so far
+			// would sit at rows that a later change may move. The selection and its mode stay, so the finished search
+			// selects and reveals as asked.
 			search.component.setSearching(result.progress);
 			this.indexBetweenFrames(search);
 			return false;
@@ -189,7 +218,7 @@ export class AltScreenSearchController {
 		search.selectedIndex = selectedIndex;
 		search.selectedKey = selectedIndex >= 0 ? getAltScreenSearchMatchKey(matches[selectedIndex]) : undefined;
 		search.selectionMode = "retain";
-		search.component.setResult(selectedIndex, matches.length);
+		search.component.setResult(selectedIndex, matches.length, result.folded);
 		if (!shouldRevealSelection) return false;
 
 		const selected = matches[selectedIndex];
@@ -198,9 +227,18 @@ export class AltScreenSearchController {
 		if (!box || !firstSegment || !lastSegment || scrollView.viewportHeight <= 0) return false;
 		const before = scrollView.scrollTop;
 		const visibleBottom = before + scrollView.viewportHeight - 1;
+		// Viewport rows the overlay covers: a match drawn there is not visible, and the match is placed below them.
+		const bounds = search.overlay?.getBounds();
+		const coveredStart = bounds ? Math.max(0, bounds.row - box.rect.y) : 0;
+		const coveredEnd = bounds ? Math.max(0, bounds.row + bounds.height - box.rect.y) : 0;
+		const underOverlay = (row: number): boolean => row - before >= coveredStart && row - before < coveredEnd;
 		let target = before;
-		if (firstSegment.row < before || lastSegment.row > visibleBottom) {
-			target = firstSegment.row - Math.floor(scrollView.viewportHeight / 3);
+		if (
+			firstSegment.row < before ||
+			lastSegment.row > visibleBottom ||
+			selected.segments.some((segment) => underOverlay(segment.row))
+		) {
+			target = firstSegment.row - Math.max(Math.floor(scrollView.viewportHeight / 3), coveredEnd);
 		}
 		scrollView.scrollTo(target, { disableFollow: true });
 		return scrollView.scrollTop !== before;

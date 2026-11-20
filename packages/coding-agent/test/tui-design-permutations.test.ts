@@ -105,7 +105,7 @@ describe("production TUI terminal permutations", () => {
 			expect(shell).toContain("⎿  exit 0 · 4 lines · 24 B");
 			if (config.width === 40) {
 				for (const line of ["agent", "ai", "coding-agent", "tui"]) expect(rows).toContain(line);
-				expect(rows).toContain("[compaction] 123k tokens → 8-token");
+				expect(rows).toContain("[compaction] 123k tokens → 10-token");
 			}
 			expect(text).toContain("[compaction] 123k tokens → ");
 			expect(text).toContain("[skill] octocode-research · 3 lines");

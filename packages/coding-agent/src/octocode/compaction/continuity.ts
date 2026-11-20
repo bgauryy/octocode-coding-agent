@@ -128,14 +128,14 @@ export class FallbackContinuity {
 	/**
 	 * After a compaction is saved: sends the held sections when `entry` is the default summary they were built for
 	 * (Octocode's own summary and another feature's have `fromHook`). Returns whether it sent them; the sections already
-	 * hold the archive pointer, so no separate pointer is needed then.
+	 * hold the archive pointer, so no separate pointer is needed then. Settles once the message is sent.
 	 */
-	deliver(api: SetupPick<"session", "sendMessage">, entry: CompactionEntry): boolean {
+	async deliver(api: SetupPick<"session", "sendMessage">, entry: CompactionEntry): Promise<boolean> {
 		const pending = this.#pending;
 		this.#pending = undefined;
 		if (!pending || entry.fromHook || entry.firstKeptEntryId !== pending.firstKeptEntryId) return false;
 		try {
-			void api.session.sendMessage(
+			await api.session.sendMessage(
 				{
 					customType: CONTINUITY_TYPE,
 					content: `${renderPrompt("notices/compaction/default-summary.md")}${pending.text}`,

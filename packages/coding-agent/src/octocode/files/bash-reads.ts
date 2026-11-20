@@ -205,3 +205,16 @@ export function bashReads(command: string, shellCwd: string, truncated = false):
 	}
 	return reads;
 }
+
+/**
+ * The one file `command` printed whole and nothing besides it, or undefined: a lone `cat FILE` (its flags allowed), after
+ * literal `cd` steps only. Its output is that file, so a note can stand for the output without losing anything else.
+ */
+export function soleWholeRead(command: string, shellCwd: string): string | undefined {
+	const parts = chain(command.trim());
+	const steps = parts?.segments.map((segment) => literalWords(segment));
+	if (!steps || steps.at(-1)?.[0] !== "cat" || steps.slice(0, -1).some((words) => words?.[0] !== "cd"))
+		return undefined;
+	const reads = bashReads(command, shellCwd);
+	return reads.length === 1 && reads[0].whole ? reads[0].file : undefined;
+}

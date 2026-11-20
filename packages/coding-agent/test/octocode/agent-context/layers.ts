@@ -47,3 +47,22 @@ export function measureLayers(context: AgentContext): Layers {
 		freellama,
 	};
 }
+
+/** What a first use must still load (`AgentContext.deferred`): how many tools, and the bytes their full declarations add. */
+export interface Loads {
+	/** Tools declared thin: the full schema arrives with a refused call or an `mcp` read. */
+	deferred: number;
+	/** Tools left undeclared until their first call or a load. */
+	onDemand: number;
+	/** Bytes the full declarations of all of them take once loaded (the thin ones' declared bytes are in `Layers`). */
+	fullBytes: number;
+}
+
+export function measureLoads(context: AgentContext): Loads {
+	const tools = context.deferred ?? [];
+	return {
+		deferred: tools.filter((tool) => tool.state === "deferred").length,
+		onDemand: tools.filter((tool) => tool.state === "onDemand").length,
+		fullBytes: tools.reduce((sum, tool) => sum + tool.fullBytes, 0),
+	};
+}

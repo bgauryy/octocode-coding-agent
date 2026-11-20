@@ -128,8 +128,9 @@ function compacted(withTrace: boolean): Transcript {
 	t.add({ type: "usage", kind: "compaction", usage: { input: 30_000, output: 900 } });
 	t.add({ type: "compaction", summary: "s".repeat(6000), firstKeptEntryId: kept, tokensBefore: 31_000 });
 	t.add({ type: "custom_message", customType: "octocode-restored-files", content: "files", display: false });
-	// Tools and system stay cached; the summary and the kept history are new and written.
-	t.assistant({ input: 4, cacheRead: 8_000, cacheWrite: 20_000 }, withTrace ? trace({}, ["sum", "mk", "n1"]) : {});
+	// Tools and system stay cached; the summary and the kept history are new and written. The read covers the prefix
+	// at Claude's measured 2.4-2.6 characters per token, also where the trace's layers count up to 24k characters as it.
+	t.assistant({ input: 4, cacheRead: 10_000, cacheWrite: 18_000 }, withTrace ? trace({}, ["sum", "mk", "n1"]) : {});
 	return t;
 }
 

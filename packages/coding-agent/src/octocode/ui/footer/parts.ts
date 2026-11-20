@@ -2,6 +2,7 @@ import path from "node:path";
 import { truncateToWidth } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText, styledLine } from "@octocodeai/octocode-common/sanitize";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
+import { usageCells, usagePercent } from "../../../core/agent-session/usage-gauge.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import { CHIPS, type ChipParts, chipLabel, chipShortLabel } from "../../permission/mode.ts";
 import { cachedPercent, formatCost, formatTokens, newPromptTokens } from "../../shared/format.ts";
@@ -21,6 +22,7 @@ export const PRIORITY = {
 	runningCollapse: 40,
 	team: 44,
 	breakdown: 50,
+	whereElide: 51,
 	chipWord: 52,
 	ctxWindow: 54,
 	chipKey: 56,
@@ -29,7 +31,6 @@ export const PRIORITY = {
 	ctxBarHalf: 69,
 	tokens: 62,
 	cached: 66,
-	whereElide: 80,
 	whereBasename: 88,
 	/**
 	 * Floors, in the order the last pass cuts them on a very narrow row: zone A's work marks first, then the plan mark, the
@@ -44,7 +45,7 @@ export const PRIORITY = {
 	whereFloor: 95,
 	sigma: 97,
 	chipFloor: 98,
-	/** Over 80% the context gauge holds its bar and percent through every other step. */
+	/** Past the alarm point (80% of the auto-compact point) the context gauge holds its bar and percent through every other step. */
 	ctxAlarm: 99,
 } as const;
 
@@ -53,14 +54,21 @@ export const plainRow = (text: string) => styledLine(sanitizeTerminalText(text))
 
 const BAR_CELLS = 8;
 
-/** An 8-cell gauge and its colour: green under half, yellow to 80%, red above, judged on the rounded percent the label shows. Any use fills at least one cell. */
-export function contextBar(percent: number): { bar: string; color: Color } {
+/** Where the gauge turns red: 80% of the auto-compact point, as a percent of the window (80% of the window without one). */
+function alarmPercent(context: { window: number; compactAt?: number }): number {
+	return context.compactAt ? ((context.compactAt * 0.8) / context.window) * 100 : 80;
+}
+
+/**
+ * An 8-cell gauge of the window and its colour: green under half of the window, yellow after, red above `alarmAt`
+ * (a percent of the window), judged on the rounded percent the label shows. Any use fills at least one cell.
+ */
+export function contextBar(percent: number, alarmAt = 80): { bar: string; color: Color } {
 	const shown = Math.round(percent);
-	const cells = Math.round((shown / 100) * BAR_CELLS);
-	const filled = Math.min(BAR_CELLS, Math.max(percent > 0 ? 1 : 0, cells));
+	const filled = usageCells(percent, BAR_CELLS);
 	return {
 		bar: "▰".repeat(filled) + "▱".repeat(BAR_CELLS - filled),
-		color: shown > 80 ? "error" : shown >= 50 ? "warning" : "success",
+		color: shown > alarmAt ? "error" : shown >= 50 ? "warning" : "success",
 	};
 }
 
@@ -112,21 +120,22 @@ export function healthParts(state: FooterState, theme: FooterPaint): FooterPart[
 	let ctx: FooterPart = { text: "", priority: PRIORITY.ctxWindow, floor: PRIORITY.ctxFloor, keep: true, whole: true };
 	if (context) {
 		const label = theme.fg("muted", "ctx");
-		const window = theme.fg("dim", `of ${formatTokens(context.limit)}`);
+		const window = theme.fg("dim", `of ${formatTokens(context.window)}`);
 		if (context.percent === null)
 			// Right after compaction, until the next reply: unknown, never `0%`.
 			ctx = { ...ctx, text: `${label} ${theme.fg("dim", "?")} ${window}`, short: `${label} ${theme.fg("dim", "?")}` };
 		else {
 			const shown = Math.round(context.percent);
-			const { bar, color } = contextBar(context.percent);
-			const gauge = `${label} ${theme.fg(color, bar)} ${theme.fg(color, `${shown}%`)}`;
+			const { bar, color } = contextBar(context.percent, alarmPercent(context));
+			const figure = theme.fg(color, usagePercent(context.percent));
+			const gauge = `${label} ${theme.fg(color, bar)} ${figure}`;
 			ctx = {
 				...ctx,
 				text: `${gauge} ${window}`,
 				middle: gauge,
-				short: `${label} ${theme.fg(color, `${shown}%`)}`,
-				later: shown > 80 ? PRIORITY.ctxAlarm : shown >= 50 ? PRIORITY.ctxBarHalf : PRIORITY.ctxBar,
-				...(shown > 80 ? { floor: PRIORITY.ctxAlarm } : {}),
+				short: `${label} ${figure}`,
+				later: color === "error" ? PRIORITY.ctxAlarm : shown >= 50 ? PRIORITY.ctxBarHalf : PRIORITY.ctxBar,
+				...(color === "error" ? { floor: PRIORITY.ctxAlarm } : {}),
 			};
 		}
 	}

@@ -106,7 +106,7 @@ describe("thinking-sized compaction reserve", () => {
 	] as const)("leaves the thinking budget and answer room at the trigger for %i at %s", (window, level) => {
 		const reserveTokens = reserve(window, level);
 		const contextTokens = window - reserveTokens;
-		const model = { contextWindow: window, maxTokens: 64_000 } as Model<Api>;
+		const model = { provider: "p", id: "m", contextWindow: window, maxTokens: 64_000 } as Model<Api>;
 		// A context the shared estimator (which both the compaction trigger and the request clamp use) counts as exactly
 		// `contextTokens`.
 		const context = {

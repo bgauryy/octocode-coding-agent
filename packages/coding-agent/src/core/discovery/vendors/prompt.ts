@@ -42,21 +42,17 @@ export function foundSummary(status: HarnessStatus): string {
 }
 
 /**
- * The main session's one line on every harness Octocode reads, on or off, so it knows what exists and that the user
- * decides (`native/prompts/system/harnesses.md`, one `system/harness.md` part per harness). A harness that is off names
- * what it holds; one that is on needs no count, its items are in the prompt and tools, unless a switchable one found
- * nothing at all (a root `.mcp.json` that does not exist): "on" alone would claim it supplies something.
+ * The main session's one line on the harnesses that supply something now: on, with items in their folders
+ * (`native/prompts/system/harnesses.md`, one `system/harness.md` part each), so it knows where its skills, hooks and
+ * servers come from and that the user switches them. A harness that is off, or on with nothing found (a root
+ * `.mcp.json` that does not exist), gives the model nothing to act on and is left out; `/harness` lists every one. No
+ * line when none qualifies.
  */
 export function formatHarnessesForPrompt(statuses: readonly HarnessStatus[]): string {
-	if (statuses.length === 0) return "";
-	const parts = statuses.map((status) =>
-		renderPrompt("system/harness.md", {
-			label: status.label,
-			on: status.on,
-			projectOnly: status.projectOnly === true,
-			empty: status.on && status.switchable && !Object.values(status.found).some(Boolean),
-			found: status.on ? "" : foundSummary(status),
-		}),
+	const supplying = statuses.filter((status) => status.on && Object.values(status.found).some(Boolean));
+	if (supplying.length === 0) return "";
+	const parts = supplying.map((status) =>
+		renderPrompt("system/harness.md", { label: status.label, projectOnly: status.projectOnly === true }),
 	);
 	return renderPrompt("system/harnesses.md", { harnesses: parts.join(" \u00b7 ") });
 }

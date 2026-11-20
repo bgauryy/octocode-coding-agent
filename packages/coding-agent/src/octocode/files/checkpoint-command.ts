@@ -193,7 +193,7 @@ export function registerCheckpoints(
 			const result = await apply(turns, ctx);
 			// The model still believes its edits are in place: tell it on its next turn (never triggers one itself).
 			if (result.restored.length + result.partly.length > 0) {
-				void api.session.sendMessage(
+				await api.session.sendMessage(
 					{
 						customType: "octocode-rewind",
 						content: renderPrompt("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),

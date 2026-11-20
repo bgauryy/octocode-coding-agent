@@ -38,7 +38,8 @@ interface AcpCustomMessage {
 	role: "custom";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
-	display: boolean;
+	/** `"only"`: shown, never sent to the model. */
+	display: boolean | "only";
 	timestamp: number;
 	/** What the feature recorded with it; an external message's facts are at `external`. */
 	details?: unknown;
@@ -124,8 +125,9 @@ export interface AcpWorkerClient {
 	getState(): Promise<AcpWorkerState>;
 	persistSession(): Promise<void>;
 	/**
-	 * Resolves with the host's disposition of the prompt; `handled` means a command consumed it. A prompt refused because
-	 * the worker has no usable provider credentials rejects with an error whose `authRequired` is true.
+	 * Resolves with the host's disposition of the prompt; `handled` means a command consumed it, `not-sent` that its
+	 * dispatch was cancelled before the prompt was accepted. A prompt refused because the worker has no usable provider
+	 * credentials rejects with an error whose `authRequired` is true.
 	 */
 	prompt(
 		message: string,

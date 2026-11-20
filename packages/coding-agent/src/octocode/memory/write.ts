@@ -1,6 +1,7 @@
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
 import { textResult } from "../shared/util.ts";
+import { type MemoryFileSync, precheckFileLine, syncDeletedMemory, syncSavedMemory } from "./file/sync.ts";
 import { NOTE_WARN_CHARS } from "./limits.ts";
 import { memoryLabel } from "./query.ts";
 import {
@@ -53,6 +54,8 @@ interface WriteCall {
 	permission: Permission;
 	ctx: FeatureContext;
 	signal: AbortSignal | undefined;
+	/** The MEMORY.md files a workspace or global note is also written to; absent, the database alone. */
+	files?: MemoryFileSync | undefined;
 }
 
 /** Saves, updates or deletes one memory. Refusals the store would raise come before any question to the user. */
@@ -64,6 +67,7 @@ export async function writeMemory({
 	permission,
 	ctx,
 	signal,
+	files,
 }: WriteCall): Promise<ReturnType<typeof textResult<MemoryWriteDetails>>> {
 	signal?.throwIfAborted();
 	/** Asks the user before a change that reaches every later session; a denial or no one to ask refuses it. A save asks in every mode: `full` runs a `file.outside` change, and this text would steer every later session. */
@@ -87,9 +91,10 @@ export async function writeMemory({
 	const current = id === undefined ? undefined : store.get(id);
 	if (id !== undefined && !current) throw noMemory(id);
 	if (params.op === "delete") {
+		const wide = current !== undefined && (current.scope === "global" || current.pinned);
 		if (current) {
 			await confirmWide(
-				current.scope === "global" || current.pinned,
+				wide,
 				"Delete this shared memory?",
 				[`${memoryLabel(current.id)} (${memoryTags(current)}) ${current.title}`],
 				"removes a memory every later session receives",
@@ -98,7 +103,14 @@ export async function writeMemory({
 		if (id === undefined) throw new Error("delete needs id.");
 		signal?.throwIfAborted();
 		const removed = store.delete(id, current?.updatedAt);
-		return textResult(`Deleted ${memoryLine(removed)}`, { ids: [removed.id] });
+		const file = await syncDeletedMemory(files, {
+			store,
+			cwd: ctx.cwd,
+			removed,
+			approved: wide,
+			...(signal ? { signal } : {}),
+		});
+		return textResult(`Deleted ${memoryLine(removed)}${file ? `\n${file}` : ""}`, { ids: [removed.id] });
 	}
 	if (params.scope === "all") throw new Error("set scope is workspace, project or global.");
 	const global = (params.scope ?? current?.scope) === "global";
@@ -106,13 +118,25 @@ export async function writeMemory({
 	// Refusals the store would raise come first, so the user is never asked about a save that then fails.
 	refuseMemorySecrets(params);
 	if (!current && !params.title?.trim()) throw new MemoryError("A new memory needs a title.");
+	const scope = params.scope ?? current?.scope ?? (store.workspaceId ? "workspace" : "project");
+	precheckFileLine(
+		files,
+		{
+			title: params.title ?? current?.title ?? "",
+			kind: params.kind ?? current?.kind ?? "fact",
+			pinned,
+			author: "agent",
+			scope,
+		},
+		current?.title,
+	);
 	const body = params.body ?? current?.body ?? "";
 	// Only what reaches every session after the change asks: unpinning or moving into the project narrows it.
 	await confirmWide(
 		global || pinned,
 		current ? "Change this shared memory?" : "Save this shared memory?",
 		[
-			`${current ? `${memoryLabel(current.id)} ` : ""}(${global ? "global" : (params.scope ?? current?.scope ?? (store.workspaceId ? "workspace" : "project"))}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
+			`${current ? `${memoryLabel(current.id)} ` : ""}(${scope}${pinned ? ", pinned" : ""}) ${params.title ?? current?.title ?? ""}`,
 			...(body ? [body] : []),
 		],
 		`${current ? "changes" : "saves"} a memory every later session receives`,
@@ -143,8 +167,16 @@ export async function writeMemory({
 		.search(`${memory.title} ${memory.keywords} ${memory.body}`, "all", RELATED_COUNT, new Set([memory.id]))
 		.map((hit) => `${memoryLabel(hit.id)} ${hit.title.replace(/\s+/g, " ")}`);
 	const neighbours = related.length > 0 ? `\nRelated: ${related.join("; ")}` : "";
+	const file = await syncSavedMemory(files, {
+		store,
+		cwd: ctx.cwd,
+		before: current,
+		saved: memory,
+		approved: global || pinned,
+		...(signal ? { signal } : {}),
+	});
 	return textResult(
-		`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}`,
+		`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}${file ? `\n${file}` : ""}`,
 		{ ids: [memory.id], updated: [memory.updatedAt] },
 	);
 }

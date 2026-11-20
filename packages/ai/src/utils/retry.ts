@@ -1,8 +1,10 @@
 import type { AssistantMessage } from "../types.ts";
 import { createAbortError, sleepUnlessAborted } from "./abort.ts";
-import { clearsWithWaiting, isOfflineText, isRetryableAssistantError } from "./retry-classes.ts";
+import { isMachineOffline } from "./connectivity.ts";
+import { clearsWithWaiting, isNetworkFailureText, isOfflineText, isRetryableAssistantError } from "./retry-classes.ts";
 
 export {
+	isNetworkFailureText,
 	isOfflineText,
 	isRateLimitedText,
 	isRetryableAssistantError,
@@ -11,6 +13,7 @@ export {
 	isUsageLimitError,
 } from "./retry-classes.ts";
 export { isCredentialError } from "./credential-errors.ts";
+export { isMachineOffline } from "./connectivity.ts";
 
 /** A failure that clears by waiting gets at least this many retries, because a token bucket refills meanwhile and an outage ends. */
 export const RATE_LIMIT_MIN_RETRIES = 6;
@@ -112,6 +115,46 @@ export interface RetryPolicy {
 	baseDelayMs: number;
 	/** Optional cap for agent-level retry delays in ms. Defaults to 60 seconds. */
 	maxAgentDelayMs?: number;
+	/** Wait between retries while the machine is offline. Defaults to {@link DEFAULT_OFFLINE_INTERVAL_MS}. */
+	offlineIntervalMs?: number;
+	/** How long an outage may last before the request fails; 0 or unset waits until the network returns. */
+	offlineMaxMs?: number;
+}
+
+/** Wait between retries while the machine is offline: a returning connection is noticed within it. */
+export const DEFAULT_OFFLINE_INTERVAL_MS = 60_000;
+
+/**
+ * What to do about a failure while the machine may be offline. `online`: the network works, so the ordinary policy
+ * decides. `wait`: offline since `since`; retry after `delayMs`, with no attempt cap. `stop`: offline past `offlineMaxMs`.
+ */
+export type OfflineRetryPlan =
+	| { kind: "online" }
+	| { kind: "wait"; since: number; delayMs: number }
+	| { kind: "stop"; since: number };
+
+/** Whether a retry may still run `offlineMs` into an outage. */
+export function mayRetryOffline(policy: Pick<RetryPolicy, "offlineMaxMs">, offlineMs: number): boolean {
+	const maxMs = policy.offlineMaxMs ?? 0;
+	return maxMs <= 0 || offlineMs < maxMs;
+}
+
+/**
+ * Plans the retry of a failure that a lost network could explain, asking the network whether it is gone. `since` is when
+ * the outage began (the first failure of the series); `now` the current time.
+ */
+export async function planOfflineRetry(
+	policy: Pick<RetryPolicy, "offlineIntervalMs" | "offlineMaxMs">,
+	errorText: string,
+	since: number,
+	now: number = Date.now(),
+): Promise<OfflineRetryPlan> {
+	if (!isNetworkFailureText(errorText) || !(await isMachineOffline())) return { kind: "online" };
+	const offlineMs = Math.max(0, now - since);
+	if (!mayRetryOffline(policy, offlineMs)) return { kind: "stop", since };
+	const intervalMs = policy.offlineIntervalMs ?? DEFAULT_OFFLINE_INTERVAL_MS;
+	const maxMs = policy.offlineMaxMs ?? 0;
+	return { kind: "wait", since, delayMs: maxMs > 0 ? Math.min(intervalMs, maxMs - offlineMs) : intervalMs };
 }
 
 /** Longest retry delay any layer waits: the agent backoff cap and the longest `Retry-After` a provider request accepts. */
@@ -178,12 +221,16 @@ export function validateRetryDelayMs(
 
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
 export interface RetryCallbacks {
-	/** Emitted before the backoff sleep of each retry attempt (1-indexed). */
+	/**
+	 * Emitted before the backoff sleep of each retry attempt (1-indexed). While the machine is offline `maxAttempts` is 0
+	 * (no cap) and `offlineSince` says when the outage began.
+	 */
 	onRetryScheduled?: (
 		attempt: number,
 		maxAttempts: number,
 		delayMs: number,
 		errorMessage: string,
+		offlineSince?: number,
 	) => void | Promise<void>;
 	/** Emitted after the backoff sleep, immediately before the retried call starts. */
 	onRetryAttemptStart?: () => void | Promise<void>;
@@ -220,6 +267,8 @@ export async function retryAssistantCall(
 	let attempt = 0;
 	const startedAt = Date.now();
 	let firstFailureAt: number | undefined;
+	/** When the machine went offline, while it still is. */
+	let offlineSince: number | undefined;
 	let lastRetry: { attempt: number; errorMessage: string } | undefined;
 	for (;;) {
 		const response = await produce();
@@ -238,10 +287,21 @@ export async function retryAssistantCall(
 
 		// Non-retryable, or budget exhausted: return the final error message.
 		const errorText = response.errorMessage ?? "";
+		const retryable = maxRetries > 0 && isRetryableAssistantError(response);
+		const offline = retryable
+			? await planOfflineRetry(policy!, errorText, offlineSince ?? firstFailureAt ?? Date.now())
+			: undefined;
+		if (offline?.kind === "online" && offlineSince !== undefined) {
+			// The network is back and a different failure took over: it gets the ordinary budget from the start.
+			offlineSince = undefined;
+			attempt = 0;
+			firstFailureAt = undefined;
+		}
 		const elapsedMs = firstFailureAt === undefined ? 0 : Date.now() - firstFailureAt;
 		if (
-			!isRetryableAssistantError(response) ||
-			!mayRetry(attempt + 1, maxRetries, errorText, elapsedMs, Date.now() - startedAt)
+			!retryable ||
+			offline?.kind === "stop" ||
+			(offline?.kind !== "wait" && !mayRetry(attempt + 1, maxRetries, errorText, elapsedMs, Date.now() - startedAt))
 		) {
 			if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
 			return response;
@@ -250,8 +310,10 @@ export async function retryAssistantCall(
 		attempt++;
 		firstFailureAt ??= Date.now();
 		lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
-		const delayMs = retryDelayFor(policy!, attempt, response, elapsedMs);
-		await callbacks?.onRetryScheduled?.(attempt, retryBudget(maxRetries, errorText), delayMs, lastRetry.errorMessage);
+		if (offline?.kind === "wait") offlineSince = offline.since;
+		const delayMs = offline?.kind === "wait" ? offline.delayMs : retryDelayFor(policy!, attempt, response, elapsedMs);
+		const maxAttempts = offline?.kind === "wait" ? 0 : retryBudget(maxRetries, errorText);
+		await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage, offlineSince);
 
 		// Normalize aborts during retry backoff to the same AssistantMessage shape as
 		// provider stream aborts, so callers do not need to care when cancellation happened.

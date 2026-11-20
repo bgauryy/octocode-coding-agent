@@ -33,6 +33,11 @@ function untrustedOrigin(toolName: string, input: unknown, details: unknown): st
 	return untrustedResultOrigin(toolName, input, details);
 }
 
+/** Whether a result of `toolName` came from outside the user's workspace (`untrustedOrigin`): a request fences it. */
+export function untrustedResult(toolName: string, input: unknown, details: unknown): boolean {
+	return untrustedOrigin(toolName, input, details) !== undefined;
+}
+
 const fenceText = (origin: string, text: string): string =>
 	fenceUntrusted(`Result of ${headerText(origin)}`, text, {
 		marker: `untrusted-${sha256(text).slice(0, 16)}`,

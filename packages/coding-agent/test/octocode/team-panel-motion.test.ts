@@ -183,6 +183,7 @@ describe("AgentsView motion", () => {
 			get view() {
 				return { members: members.map((entry) => ({ ...entry, updatedAt: Date.now() })), traffic: [] };
 			},
+			poll: () => undefined,
 			watch(listener: () => void) {
 				const timer = setInterval(listener, 1_000);
 				listener();
@@ -221,6 +222,7 @@ describe("AgentsView motion", () => {
 			get view() {
 				return { members: members.map((entry) => ({ ...entry, updatedAt: Date.now() })), traffic: [] };
 			},
+			poll: () => undefined,
 			watch(listener: () => void) {
 				const timer = setInterval(listener, 1_000);
 				listener();

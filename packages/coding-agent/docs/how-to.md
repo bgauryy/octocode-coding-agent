@@ -75,7 +75,7 @@ Details: [MCP quick setup](mcp.md#quick-setup), [MCP precedence](configuration.m
 ## Give the agent a durable rule for this repository
 
 - `/memory add <title>` opens an editor for a workspace memory, or tell the agent "remember that ..." and it saves one with `memory` (`op: set`). Add `keywords` you would type when the rule matters. Pin it (`/memory`, pick it, **Pin**) to inject it before every prompt.
-- It may not appear later when injection is off (`/memory auto`), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows the latest injection.
+- It may not appear later when automatic recall is off (the `memory.recall` setting: `off`, `main` by default, or `all` for subagents too; `/memory auto` shows it), the prompt shares too few words with it, or it was already injected on this branch. `/memory last` shows the latest injection.
 
 Details: [memory](memory.md).
 

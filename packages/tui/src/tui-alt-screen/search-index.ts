@@ -9,7 +9,7 @@ import { type AltScreenSearchMatch, SearchMatcher } from "./search-matches.ts";
 export type { AltScreenSearchMatch } from "./search-matches.ts";
 
 function normalizeQuery(query: string): string {
-	return query.replace(/\s+/gu, " ").trim();
+	return query.normalize("NFC").replace(/\s+/gu, " ").trim();
 }
 
 interface AltScreenSearchResult {
@@ -20,7 +20,12 @@ interface AltScreenSearchResult {
 	complete: boolean;
 	/** How much of the work is done, from 0 to 1. */
 	progress: number;
+	/** Some rows stand for collapsed content, whose text is not in the rows and so was not searched. */
+	folded: boolean;
 }
+
+/** The empty result when collapsed blocks hold text the rows do not; shown only where the input keeps half the room. */
+const NO_MATCHES_FOLDED = "No matches · collapsed blocks not searched";
 
 /** Rows indexed between two clock reads. */
 const ROWS_PER_CLOCK_READ = 64;
@@ -57,11 +62,12 @@ export class AltScreenSearchIndex {
 	}
 
 	private result(complete: boolean): AltScreenSearchResult {
-		if (!complete) return { matches: [], changed: false, complete, progress: this.progress() };
+		const folded = this.corpus.folds > 0;
+		if (!complete) return { matches: [], changed: false, complete, progress: this.progress(), folded };
 		const changed = this.stale;
 		if (changed) this.matches = this.matcher?.matches ?? [];
 		this.stale = false;
-		return { matches: this.matches, changed, complete, progress: 1 };
+		return { matches: this.matches, changed, complete, progress: 1, folded };
 	}
 
 	private progress(): number {
@@ -115,8 +121,10 @@ export class AltScreenSearchComponent implements Component, Focusable {
 	private readonly navigationButtonStyle: (text: string, hovered: boolean) => string;
 	private resultCount = 0;
 	private resultIndex = -1;
-	/** Indexing a long transcript: how far it got, from 0 to 1. */
-	private searching: number | undefined;
+	/** The transcript has collapsed blocks, so a search without matches says their text was not searched. */
+	private resultFolded = false;
+	/** Indexing a long transcript: how far it got, from 0 to 1, or "pending" while the layout has no exact rows yet. */
+	private searching: number | "pending" | undefined;
 	private previousButtonStart = -1;
 	private previousButtonEnd = -1;
 	private nextButtonStart = -1;
@@ -141,14 +149,15 @@ export class AltScreenSearchComponent implements Component, Focusable {
 		this.input.focused = value;
 	}
 
-	setResult(index: number, count: number): void {
+	setResult(index: number, count: number, folded = false): void {
 		this.resultIndex = index;
 		this.resultCount = count;
+		this.resultFolded = folded;
 		this.searching = undefined;
 	}
 
 	/** Show that the search is still running, `progress` from 0 to 1, instead of a result. */
-	setSearching(progress: number): void {
+	setSearching(progress: number | "pending"): void {
 		this.searching = progress;
 	}
 
@@ -193,12 +202,16 @@ export class AltScreenSearchComponent implements Component, Focusable {
 		const previousKey = formatKey(keybindings.getKeys("tui.altScreen.searchPrevious")[0]);
 		const nextKey = formatKey(keybindings.getKeys("tui.altScreen.searchNext")[0]);
 		const query = this.input.getValue();
-		const result = !query
+		const result = !query.trim()
 			? ""
 			: this.searching !== undefined
-				? `Searching ${Math.floor(this.searching * 100)}%`
+				? this.searching === "pending"
+					? "Searching…"
+					: `Searching ${Math.floor(this.searching * 100)}%`
 				: this.resultCount === 0
-					? "No matches"
+					? this.resultFolded && visibleWidth(NO_MATCHES_FOLDED) + 2 <= innerWidth / 2
+						? NO_MATCHES_FOLDED
+						: "No matches"
 					: `${this.resultIndex + 1}/${this.resultCount}`;
 		const resultSpace = Math.max(0, innerWidth - 3);
 		const visibleResult = truncateToWidth(result, resultSpace, "");

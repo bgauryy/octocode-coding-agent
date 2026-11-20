@@ -19,6 +19,7 @@ describe("noticeDisabledProvider", () => {
 		noticeDisabledProvider(s);
 		const [message, options] = s.sendCustomMessage.mock.calls[0];
 		expect(options).toEqual({ deliverAs: "nextTurn" });
+		expect(message.display).toBe("only");
 		expect(message.content).toContain("Anthropic (anthropic)");
 		expect(message.content).toContain("/model");
 		expect(message.content).toContain("/providers");

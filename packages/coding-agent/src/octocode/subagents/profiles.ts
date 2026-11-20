@@ -72,25 +72,12 @@ export interface AgentProfile {
 	lean?: true;
 	/** Skills the child gets when the task names none (`skills:` front matter): inlined in its role prompt, or its task when lean (`task-skills.ts`). */
 	skills?: string[];
-	/** Skills the child's prompt lists (`catalog:` front matter); the rest stay loadable by name and the prompt counts them. Absent: all are listed. */
+	/** Skills the child's prompt lists (`catalog:` front matter); the rest stay loadable by name and the prompt counts them. Absent: all are listed; empty (`catalog: []`): none. */
 	catalog?: string[];
 }
 
 /** The role of a subagent started without a profile. */
 export const GENERAL_PROFILE = "general";
-
-/** The skills a subagent started without a role lists in its prompt (a role's `catalog:` replaces it); the rest stay loadable by name. */
-export const GENERAL_CATALOG: readonly string[] = [
-	"octocode-research",
-	"octocode-local-research",
-	"octocode-github-research",
-	"octocode-clasify",
-	"octocode-debugging",
-	"octocode-engineer",
-	"octocode-test-plan",
-	"octocode-clean-agentic-code",
-	"octocode-documentation",
-];
 
 export { CORE_TOOLS, DEFAULT_CHILD_TOOLS, MCP_ACCESS_TOOLS, SHELL_TOOLS };
 
@@ -205,7 +192,7 @@ export function parseProfile(
 		...(lean ? { lean: true as const, tools: leanTools(name, tools) } : {}),
 		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
 		...(skills ? { skills } : {}),
-		...(catalog?.length ? { catalog } : {}),
+		...(catalog ? { catalog } : {}),
 		...(excludeTools ? { excludeTools } : {}),
 		...(mcpDefer ? { mcpDefer } : {}),
 		...(model ? { model } : {}),

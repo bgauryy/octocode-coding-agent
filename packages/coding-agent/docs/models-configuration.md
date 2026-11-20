@@ -12,8 +12,8 @@ Each key under `providers` is a provider ID. A built-in provider ID changes that
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention. Without a separate instruction preference, applies to both layers. |
-| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
+| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers. |
+| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more. |
 | `name` | string |  | Display name. |
 | `baseUrl` | string |  | API base URL. Also applies to the provider's built-in models. |
 | `apiKey` | string |  | Literal key, "$NAME" environment interpolation, or "!command" output (the command runs on first use, not at startup). |
@@ -30,8 +30,8 @@ Each `models` entry adds a model to the provider. An entry whose `id` names a kn
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention. Without a separate instruction preference, applies to both layers. |
-| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
+| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers. |
+| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more. |
 | `id` | string |  | Required. Model ID sent to the API. |
 | `name` | string |  | Display name, also matched by --model patterns. |
 | `api` | string |  | Overrides the provider api. |
@@ -77,8 +77,8 @@ Each `modelOverrides` key is the ID of a built-in model. Unknown IDs are ignored
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention. Without a separate instruction preference, applies to both layers. |
-| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities. Long writes can cost more. |
+| `cacheRetention` | `"none" \| "short" \| "long"` |  | Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers. |
+| `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more. |
 | `name` | string |  | Display name, also matched by --model patterns. |
 | `reasoning` | boolean |  | Whether the model supports thinking. |
 | `thinkingLevelMap` | object |  | Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported. |

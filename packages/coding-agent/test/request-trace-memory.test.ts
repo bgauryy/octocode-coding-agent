@@ -85,29 +85,40 @@ async function liveSession(requests: Record<string, unknown>[]): Promise<Assista
 const entries = (messages: AssistantMessage[]) =>
 	messages.map((message, i) => ({ type: "message", id: `e${i}`, parentId: i ? `e${i - 1}` : null, message }));
 
-/** Collects garbage once nothing of the current job holds a weak reference's target. */
+/**
+ * Collects garbage once nothing of the current job holds a weak reference's target. A second collection finishes what
+ * the first left to sweep, which `heapUsed` would otherwise still count: the bytes an earlier build dropped.
+ */
 async function collect(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	gc();
+	for (let pass = 0; pass < 2; pass++) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		gc();
+	}
 }
 
+/** How many conversations `withRequestTrace` keeps (its `MEMO_CONVERSATIONS`), each with its last trace and memo. */
+const KEPT_CONVERSATIONS = 8;
+
 /**
- * Fills the bounded cache of rebuilt layer arrays with short ones, so what a measured build reads (or what an earlier
- * one left there) is not counted.
+ * Fills the bounded caches with small entries, so what a measured build leaves there (or an earlier one left) is not
+ * counted: the conversations `withRequestTrace` keeps with one-request sessions, whose ids are new each time, and the
+ * cache of rebuilt layer arrays with short ones. Otherwise an earlier session's chain, still kept by its conversation
+ * when a measurement starts, is freed during it.
  */
 let short: AssistantMessage[] | undefined;
-async function flushRebuiltArrays(): Promise<void> {
+async function flushCaches(): Promise<void> {
+	for (let session = 0; session < KEPT_CONVERSATIONS; session++) await liveSession(payloads(1));
 	short ??= await liveSession(payloads(40));
 	for (const message of short) expect(message.requestTrace!.layers.length).toBeGreaterThan(0);
 }
 
 /** Heap bytes `build` leaves reachable from what it returns, after collecting garbage. */
 async function retained(build: () => Promise<unknown>): Promise<number> {
-	await flushRebuiltArrays();
+	await flushCaches();
 	await collect();
 	const before = process.memoryUsage().heapUsed;
 	const kept = await build();
-	await flushRebuiltArrays();
+	await flushCaches();
 	await collect();
 	const after = process.memoryUsage().heapUsed;
 	expect(kept).toBeDefined();

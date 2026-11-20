@@ -9,6 +9,7 @@ import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { runningWorkOf, type WorkRow } from "../../../shared/running-work.ts";
 import { contentText, wholeSeconds } from "../../../shared/util.ts";
 import { BashJobs } from "../../../files/bash-jobs.ts";
+import { reapForegroundGroups } from "../../../files/bash-groups.ts";
 import { createReadHint } from "../../../files/read-hint.ts";
 import { BASH_ABORT_GRACE_MS, foregroundOperations, type HandoffReason, strayNote } from "../../../files/bash-run.ts";
 import { foregroundPlan, timeLeft } from "../../../files/bash/auto.ts";
@@ -148,8 +149,11 @@ export function registerBashTool(
 		if (reloaded.length > 0) say(ctx, reloadNotice(reloaded), "warning");
 		// Subagents leave this to the top-level Octocode.
 		if (envFlag(process.env, SUBAGENT_ENV)) return;
-		const orphans = await reapOrphanJobs(jobs.recordDirs());
+		const [orphans, groups] = await Promise.all([reapOrphanJobs(jobs.recordDirs()), reapForegroundGroups()]);
 		if (orphans.length > 0) say(ctx, orphanNotice(orphans), "warning");
+		const stopped = groups.filter((group) => group.stopped).map((group) => group.label);
+		if (stopped.length > 0)
+			say(ctx, `Stopped commands an ended Octocode left running: ${stopped.join("; ")}`, "warning");
 	});
 	api.bus.on("session_shutdown", async (event) => {
 		closing = true;

@@ -154,6 +154,23 @@ describe("ListView", () => {
 		assert.deepStrictEqual(events, ["cancel"]);
 	});
 
+	it("turns pasted line breaks and tabs into spaces and drops the paste markers", () => {
+		const view = new ListView<string>({ items: ["a b"], row: (i) => i, maxRows: 5, theme, search: { text: (i) => i } });
+		view.handleInput("\x1b[200~a\nb\tc\r\nd\x1b[201~");
+		assert.strictEqual(view.getQuery(), "a b c d");
+	});
+
+	it("backspace deletes one grapheme, not one code point", () => {
+		const view = new ListView<string>({ items: ["x"], row: (i) => i, maxRows: 5, theme, search: { text: (i) => i } });
+		view.handleInput("a");
+		view.handleInput("e\u0301");
+		view.handleInput("👍🏽");
+		view.handleInput("\x7f");
+		assert.strictEqual(view.getQuery(), "ae\u0301");
+		view.handleInput("\x7f");
+		assert.strictEqual(view.getQuery(), "a");
+	});
+
 	it("counts the search line when it maps a click to an item", () => {
 		const view = new ListView<string>({
 			items: names(3),

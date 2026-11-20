@@ -23,6 +23,7 @@ import {
 	restoreRefused,
 } from "./refused-input.ts";
 import { interruptKey } from "../../../theme/theme-tui-helpers.ts";
+import { isViewportTUI } from "@octocodeai/octocode-tui";
 import { showFooterStatusReport } from "./footer-status-report.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
@@ -232,6 +233,11 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "keys":
 			host.handleHotkeysCommand();
+			return;
+		case "find":
+			if (isViewportTUI(host.ui)) host.ui.openSearch();
+			else
+				host.showWarning("Transcript search needs fullscreen mode (/configuration, or start with fullscreen enabled).");
 			return;
 		case "fork":
 			if (args.trim()) await handleForkLaunchCommand(host, args);

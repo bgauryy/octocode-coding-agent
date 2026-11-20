@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ApplicationFrame } from "@octocodeai/octocode-contracts";
+import type { ApplicationFrame, ApplicationPort } from "@octocodeai/octocode-contracts";
 import { byAttention, SessionWatch } from "../../src/octocode/web-daemon/session-state.ts";
 import { fakeSession } from "./web-daemon-fixture.ts";
 
@@ -37,6 +37,40 @@ describe("session watch", () => {
 		session.push(snapshot(true));
 		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
 		watch.close();
+	});
+
+	it("waits longer after each failed attempt, reports a repeated failure once, and starts over after a good stream", async () => {
+		vi.useFakeTimers({ now: 0 });
+		try {
+			const unreadable = { ...at(1), type: "snapshot" } as unknown as ApplicationFrame;
+			// Attempts 1 to 4 meet a frame that cannot be read, attempt 5 a good stream that ends, then unreadable again.
+			const connects: number[] = [];
+			const port = {
+				connect: () => {
+					connects.push(Date.now());
+					const frames = connects.length === 5 ? [snapshot(false)] : [unreadable];
+					return {
+						async *[Symbol.asyncIterator]() {
+							yield* frames;
+						},
+						execute: async () => ({ id: "x", status: "accepted" }),
+						close: () => {},
+					};
+				},
+			} as unknown as ApplicationPort;
+			const report = vi.fn();
+			const watch = new SessionWatch(port, "s", () => {}, report);
+			await vi.advanceTimersByTimeAsync(20_000);
+			watch.close();
+			// Doubling waits while attempts fail, the short wait after a stream that ended normally, then doubling again.
+			expect(connects.slice(0, 7).map((time, i) => time - (connects[i - 1] ?? 0))).toEqual([
+				0, 1000, 2000, 4000, 8000, 1000, 1000,
+			]);
+			expect(connects[7] - connects[6]).toBe(2000);
+			expect(report).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("knows nothing until the first snapshot, then follows runs and the dialog they block on", async () => {

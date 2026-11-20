@@ -157,7 +157,7 @@ describe("a deferred native tool after it is loaded", () => {
 		const next = await payloadOf(changes, later);
 		expect(JSON.stringify(next.tools)).toBe(JSON.stringify(sent.tools));
 		expect(JSON.stringify(next.system)).toBe(JSON.stringify(sent.system));
-		expect(sent.tools?.find((tool) => tool.name === "web")?.input_schema?.required ?? []).toEqual(["reason"]);
+		expect(sent.tools?.find((tool) => tool.name === "web")?.input_schema).toMatchObject({ additionalProperties: true });
 		expect(additions(sent)).toEqual([]);
 		const added = additions(next);
 		expect(added).toHaveLength(1);
@@ -199,7 +199,7 @@ describe("schemas of deferred natives after a compaction", () => {
 				buildSessionProjection: () => ({ entries: [{ sourceEntry: { id: "e" }, messages: [tail] }] }),
 			},
 		} as never;
-		expect(restoreDeferredSchemas(api as never, ctx)).toEqual([]);
+		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual([]);
 		expect(sent).toEqual([]);
 	});
 });

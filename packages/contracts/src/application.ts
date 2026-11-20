@@ -280,6 +280,8 @@ export const ApplicationSnapshotSchema = Type.Object({
 	tools: Type.Optional(Type.Array(ApplicationToolSchema)),
 	status: Type.Optional(SessionStatusSchema),
 	statusDetail: Type.Optional(Type.String()),
+	/** When `status` ends on its own (ms since the epoch): a retry's start. */
+	statusUntil: Type.Optional(Type.Number()),
 	awaiting: Type.Optional(AwaitingSchema),
 	/** Absent until the host publishes one (an older host never does). */
 	phase: Type.Optional(ApplicationPhaseSchema),

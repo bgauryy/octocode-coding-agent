@@ -35,7 +35,7 @@ describe("stacked message blocks", () => {
 			[
 				...SHELL,
 				"",
-				" [compaction] 123k tokens → 8-token",
+				" [compaction] 123k tokens → 10-token",
 				" summary",
 				" (ctrl+o to expand)",
 				"",
@@ -52,7 +52,7 @@ describe("stacked message blocks", () => {
 			[
 				...SHELL,
 				"",
-				" [compaction] 123k tokens → 8-token summary (ctrl+o to expand)",
+				" [compaction] 123k tokens → 10-token summary (ctrl+o to expand)",
 				"",
 				" [skill] octocode-research · 3 lines",
 				" /synthetic/skills/octocode-research/SKILL.md",
@@ -66,7 +66,7 @@ describe("stacked message blocks", () => {
 			[
 				...SHELL,
 				"",
-				" [compaction] 123k tokens → 8-token summary (ctrl+o to expand)",
+				" [compaction] 123k tokens → 10-token summary (ctrl+o to expand)",
 				"",
 				" [skill] octocode-research · 3 lines · /synthetic/skills/octocode-research/SKILL.md (ctrl+o to expand)",
 				"",

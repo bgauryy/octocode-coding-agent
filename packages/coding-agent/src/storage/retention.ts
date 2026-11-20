@@ -12,15 +12,27 @@ export interface Retention {
 	sessionDays: number;
 }
 
-export const RETENTION_DEFAULTS: Readonly<Retention> = { days: 30, sessionDays: 90 };
+/** The `retention` setting with every default filled in: the two retention classes and the history archive window. */
+export interface RetentionSettings extends Retention {
+	/** Days after which history rows (audits, workspace commands) move from the database to the archive; at least 1. */
+	archiveAfterDays: number;
+}
+
+export const RETENTION_DEFAULTS: Readonly<RetentionSettings> = { days: 30, sessionDays: 90, archiveAfterDays: 14 };
 
 const FIELDS = [
-	{ key: "days", env: CLEANUP_DAYS_ENV },
-	{ key: "sessionDays", env: SESSION_RETENTION_DAYS_ENV },
+	{ key: "days", env: CLEANUP_DAYS_ENV, min: 0, rule: "a whole number of days, 0 or more (0 keeps everything)" },
+	{
+		key: "sessionDays",
+		env: SESSION_RETENTION_DAYS_ENV,
+		min: 0,
+		rule: "a whole number of days, 0 or more (0 keeps everything)",
+	},
+	{ key: "archiveAfterDays", env: undefined, min: 1, rule: "a whole number of days, 1 or more" },
 ] as const;
 
-const isDays = (value: unknown): value is number =>
-	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const isDays = (value: unknown, min: number): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= min;
 /**
  * What is wrong with a settings file's `retention` value, one sentence each (none when it is absent or valid). The
  * settings loader queues these as warnings; `resolveRetention` ignores a bad value and uses the default.
@@ -28,15 +40,15 @@ const isDays = (value: unknown): value is number =>
 export function retentionProblems(value: unknown): string[] {
 	if (value === undefined) return [];
 	if (!isRecord(value))
-		return ['Setting "retention" must be an object like { "days": 30, "sessionDays": 90 }, so it does nothing.'];
+		return [
+			'Setting "retention" must be an object like { "days": 30, "sessionDays": 90, "archiveAfterDays": 14 }, so it does nothing.',
+		];
 	const problems = Object.keys(value)
 		.filter((key) => !FIELDS.some((field) => field.key === key))
 		.map((key) => `Setting "retention.${key}" is not a known setting, so it does nothing.`);
-	for (const { key } of FIELDS) {
-		if (value[key] !== undefined && !isDays(value[key]))
-			problems.push(
-				`Setting "retention.${key}" must be a whole number of days, 0 or more (0 keeps everything); the default ${RETENTION_DEFAULTS[key]} applies.`,
-			);
+	for (const { key, min, rule } of FIELDS) {
+		if (value[key] !== undefined && !isDays(value[key], min))
+			problems.push(`Setting "retention.${key}" must be ${rule}; the default ${RETENTION_DEFAULTS[key]} applies.`);
 	}
 	return problems;
 }
@@ -55,6 +67,11 @@ function globalSettings(): { retention?: unknown } | undefined {
 	}
 }
 
+/** The global `retention` object, or none when the file has no valid one. */
+function configuredRetention(settings: { retention?: unknown } | undefined): Record<string, unknown> {
+	return isRecord(settings?.retention) ? settings.retention : {};
+}
+
 /**
  * The one retention policy. Per field: the environment (`OCTOCODE_CLEANUP_DAYS` for `days`,
  * `OCTOCODE_SESSION_RETENTION_DAYS` for `sessionDays`; a non-negative integer, else ignored), then the global
@@ -65,20 +82,29 @@ export function resolveRetention(
 	env: NodeJS.ProcessEnv = process.env,
 	settings: { retention?: unknown } | undefined = globalSettings(),
 ): Retention {
-	const configured = isRecord(settings?.retention) ? settings.retention : {};
-	const pick = ({ key, env: name }: (typeof FIELDS)[number]): number => {
+	const configured = configuredRetention(settings);
+	const pick = ({ key, env: name, min }: (typeof FIELDS)[0 | 1]): number => {
 		const fromEnv = env[name]?.trim() ?? "";
 		if (/^\d+$/.test(fromEnv) && Number.isSafeInteger(Number(fromEnv))) return Number(fromEnv);
 		const fromSettings = configured[key];
-		return isDays(fromSettings) ? fromSettings : RETENTION_DEFAULTS[key];
+		return isDays(fromSettings, min) ? fromSettings : RETENTION_DEFAULTS[key];
 	};
 	return { days: pick(FIELDS[0]), sessionDays: pick(FIELDS[1]) };
 }
 
 /**
- * The windows of the database's history housekeeping and of the archive readers: rows move to the archive after 14
- * days and are dropped after `days` (`0` keeps them). Both the scheduler and `archivedAudits` take this one value.
+ * The windows of the database's history housekeeping and of the archive readers: rows move to the archive after the
+ * `retention.archiveAfterDays` setting (default 14, a whole number of 1 or more) and are dropped after `days` (`0` keeps
+ * them). Both the scheduler and `archivedAudits` take this one value.
  */
-export function historyWindows(env: NodeJS.ProcessEnv = process.env): { archiveAfterDays: number; keepDays: number } {
-	return { archiveAfterDays: 14, keepDays: resolveRetention(env).days };
+export function historyWindows(
+	env: NodeJS.ProcessEnv = process.env,
+	settings: { retention?: unknown } | undefined = globalSettings(),
+): { archiveAfterDays: number; keepDays: number } {
+	const { key, min } = FIELDS[2];
+	const configured = configuredRetention(settings)[key];
+	return {
+		archiveAfterDays: isDays(configured, min) ? configured : RETENTION_DEFAULTS.archiveAfterDays,
+		keepDays: resolveRetention(env, settings).days,
+	};
 }

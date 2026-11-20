@@ -6,7 +6,7 @@ export interface ProviderNoticeSession {
 	readonly model: Pick<Model<any>, "provider" | "id"> | undefined;
 	readonly modelRuntime: Pick<ModelRuntime, "isProviderDisabled" | "getProvider">;
 	sendCustomMessage(
-		message: { customType: string; content: string; display: boolean },
+		message: { customType: string; content: string; display: "only" },
 		options: { deliverAs: "nextTurn" },
 	): Promise<void>;
 }
@@ -16,7 +16,7 @@ const PROVIDER_NOTICE_TYPE = "provider-disabled";
 const noticed = new WeakMap<object, string>();
 
 /**
- * Tell a session, at its next turn, that its model's provider is disabled: when it was restored on one, and when the
+ * Tell a session's user, at its next turn and in the transcript only (never to the model), that its model's provider is disabled: when it was restored on one, and when the
  * user disables one it is using. Says it once per provider until the session is on an enabled one again.
  */
 export function noticeDisabledProvider(session: ProviderNoticeSession): void {
@@ -32,7 +32,7 @@ export function noticeDisabledProvider(session: ProviderNoticeSession): void {
 		{
 			customType: PROVIDER_NOTICE_TYPE,
 			content: `The provider ${name} (${model.provider}) is disabled, but this session uses ${model.provider}/${model.id}. Requests may still fail or be refused. Switch with /model, or turn the provider back on in /providers.`,
-			display: true,
+			display: "only",
 		},
 		{ deliverAs: "nextTurn" },
 	);

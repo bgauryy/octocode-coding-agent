@@ -143,7 +143,8 @@ export function computeContextUsage(
 		if (!hasPostCompactionUsage) return { tokens: null, contextWindow, percent: null };
 	}
 
-	const estimate = estimateLeafContextTokens(projection, sessionManager);
+	// At the model's tokenizer ratio, as the compaction trigger counts.
+	const estimate = estimateLeafContextTokens(projection, sessionManager, model);
 	const percent = (estimate.tokens / contextWindow) * 100;
 
 	return {

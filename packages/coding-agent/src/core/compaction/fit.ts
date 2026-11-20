@@ -5,9 +5,11 @@
  * retained context leaves room for a summary, or the compaction fails here with what the user can do.
  */
 
+import type { TokenModel } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry } from "../session-manager.ts";
 import { inlineSummaryTokens, projectAfterCompaction, summaryTargetTokens } from "./checkpoint.ts";
 import { type CompactionPreparation, prepareCompaction } from "./compaction.ts";
+import { replyFloorTokens } from "./settings.ts";
 
 /** The compaction cannot fit the target window whatever it keeps; raised before any model call. */
 export class CompactionFitError extends Error {}
@@ -27,28 +29,49 @@ function summaryRoomTokens(reserveTokens: number, available: number): number {
 	return Math.max(1, Math.min(MIN_SUMMARY_TOKENS, target, Math.floor(available / 2)));
 }
 
+/** What the request after the compaction holds besides what the compaction keeps, and how its tokens are estimated. */
+export interface FitTarget {
+	/** Estimated tokens of input waiting for this compaction (a prompt not yet on the branch). */
+	incomingTokens?: number;
+	/** The model the next request goes to: its tokenizer family and output limit (`replyFloorTokens`). */
+	model?: TokenModel & { maxTokens?: number };
+	/** Summarize a newest turn that already failed when it alone fills the window; not while that turn is being retried. */
+	summarizeFailedTurn?: boolean;
+}
+
 /**
  * `preparation`, or one that keeps a shorter tail of `branchEntries` when what it keeps leaves no room at all for a
- * summary in `contextWindow` less the reserve. A shorter tail is sized to leave a checkpoint's least room; a tail that
- * leaves some room already is kept as it is. An unknown window (0 or less) changes nothing. Throws
- * {@link CompactionFitError} when even the newest turn with the prompt and tools leaves no room. A newest turn that
- * already ended in an error is not kept: it is summarized too, so a session whose prompts fill the window recovers.
+ * summary in `contextWindow` less the reserve, or when the kept part and `target.incomingTokens` would not fit the
+ * window with the reply's floor and the summary (`exceedsContextWindow`): the request that waits for the compaction
+ * must not need a second one. A shorter tail is sized to leave a checkpoint's least room; a tail that fits already is
+ * kept as it is. An unknown window (0 or less) changes nothing. Throws {@link CompactionFitError} when even the newest
+ * turn with the prompt and tools leaves no room; input that waits alone too large is the request's to report, not this.
+ * With `target.summarizeFailedTurn`, a newest turn that already ended in an error is not kept: it is summarized too, so
+ * a session whose prompts fill the window recovers.
  */
 export function fitCompactionToWindow(
 	branchEntries: SessionEntry[],
 	preparation: CompactionPreparation,
 	contextWindow: number,
-	/** Summarize a newest turn that already failed when it alone fills the window; not while that turn is being retried. */
-	summarizeFailedTurn = false,
+	target: FitTarget = {},
 ): CompactionPreparation {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return preparation;
 	const { settings } = preparation;
 	const available = contextWindow - settings.reserveTokens;
 	const retainedBy = (candidate: CompactionPreparation) =>
-		projectAfterCompaction(branchEntries, candidate.firstKeptEntryId)("");
+		projectAfterCompaction(branchEntries, candidate.firstKeptEntryId, 0, target.model)("");
+	const room = summaryRoomTokens(settings.reserveTokens, available);
+	// With input waiting, the most the kept part may take beside it, the reply's floor and the summary the compaction
+	// adds (the size an updated summary is asked to stay under).
+	const incoming = Math.max(0, target.incomingTokens ?? 0);
+	const checkpoint = Math.max(room, summaryTargetTokens(inlineSummaryTokens(settings.reserveTokens)));
+	const besideIncoming =
+		incoming > 0
+			? contextWindow - replyFloorTokens(settings.reserveTokens, target.model?.maxTokens) - incoming - checkpoint
+			: Number.POSITIVE_INFINITY;
 	let retained = retainedBy(preparation);
-	if (retained < available) return preparation;
-	const limit = available - summaryRoomTokens(settings.reserveTokens, available);
+	if (retained < available && retained <= besideIncoming) return preparation;
+	const limit = Math.min(available - room, besideIncoming);
 	let fitted = preparation;
 	let keep = settings.keepRecentTokens;
 	for (let step = 0; retained > limit && keep > 0; step++) {
@@ -60,7 +83,7 @@ export function fitCompactionToWindow(
 		fitted = { ...next, settings };
 		retained = retainedBy(fitted);
 	}
-	if (retained >= available && summarizeFailedTurn && endsWithFailedTurn(branchEntries)) {
+	if (retained >= available && target.summarizeFailedTurn === true && endsWithFailedTurn(branchEntries)) {
 		// The newest turn is oversized and already failed: nothing waits on it whole, so it is summarized with the rest.
 		const all = prepareCompaction(branchEntries, settings, { summarizeAll: true });
 		if (all) {

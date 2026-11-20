@@ -6,7 +6,8 @@ import { FileLockReleaseError, withFileWriteLock } from "@octocodeai/octocode-co
 import type { ToolContext } from "../../../core/features/index.ts";
 import { withFileMutationQueue } from "../../../core/tools/file-mutation-queue.ts";
 import type { Permission } from "../../permission/ask.ts";
-import { changesOnlyWorkspace, runsLater, stateFolderRefusal } from "../../permission/file-access.ts";
+import { changesOnlyWorkspace, runsLater } from "../../permission/file-access.ts";
+import { protectedFileRefusal } from "./protected-files.ts";
 import {
 	atomicWriteFile,
 	ChangedOnDiskError,
@@ -352,7 +353,7 @@ function recordChange(
 }
 
 /**
- * Why `file` may not be changed for its place: inside Octocode's state folder (always refused, in every mode), or
+ * Why `file` may not be changed for its place: a curated memory file or Octocode's state folder (always refused), or
  * outside the repository and the `file.outside` ask was not allowed. Undefined when the change may go ahead.
  */
 export async function workspaceRefusal(
@@ -365,7 +366,7 @@ export async function workspaceRefusal(
 	approvedTarget?: string,
 ): Promise<string | undefined> {
 	const real = canonicalPath(file);
-	const home = stateFolderRefusal(real, query.path, "the file tool", ctx.cwd);
+	const home = protectedFileRefusal(real, query.path, ctx.cwd);
 	if (home) {
 		permission.refused([`${query.type} ${real}`], home, "file");
 		return home;

@@ -61,11 +61,19 @@ function summary(value: unknown): Record<string, unknown> {
 		...(asRecord(value).details !== undefined ? { privateDetailsStored: true } : {}),
 	};
 }
-/** A compaction's data with its summary as a person reads it, not as written for the model. */
+/**
+ * A compaction's data with its summary as a person reads it, not as written for the model. A saved entry keeps its
+ * outcome in `details` (`compaction/outcome.ts`); of that, only the estimated context after it and the number of carried
+ * rules it lifted cross, so a reloaded view says what the live one did.
+ */
 function compaction(value: unknown): Record<string, unknown> {
-	const { summary: text, tokensBefore } = asRecord(value);
+	const { summary: text, tokensBefore, estimatedTokensAfter } = asRecord(value);
+	const details = asRecord(asRecord(value).details);
+	const after = estimatedTokensAfter ?? details.estimatedTokensAfter;
 	return {
 		...summary(value),
+		...(typeof after === "number" ? { estimatedTokensAfter: after } : {}),
+		...(Array.isArray(details.lifted) && details.lifted.length > 0 ? { liftedCount: details.lifted.length } : {}),
 		...(typeof text === "string"
 			? {
 					summary: compactionSummaryDisplay({
@@ -135,6 +143,21 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 					text: note.text,
 					data: { customType: entry.customType, ...pick(note, ["ref", "change"]) },
 				};
+			// A once-only session note (`core/notice-line.ts`): lifted rules, the lean prompt on, a refused subagent.
+			if (entry.customType === "octocode-notice-line" && typeof note.text === "string" && note.text.trim())
+				return {
+					kind: entry.type,
+					text: note.text,
+					data: { customType: entry.customType, ...pick(note, ["kind", "model"]) },
+				};
+			// A memory pass (`octocode/memory/file/passes.ts`): the line the user was told; a failed pass is a failure.
+			if (entry.customType === "octocode-memory-pass" && typeof note.text === "string" && note.text.trim())
+				return {
+					kind: entry.type,
+					text: note.text,
+					data: { customType: entry.customType, ...pick(note, ["pass", "trigger"]) },
+					...(typeof note.error === "string" ? { failed: true } : {}),
+				};
 			return {
 				kind: entry.type,
 				text: `Feature state: ${entry.customType}`,
@@ -193,14 +216,17 @@ export function nativeActivity(event: AgentSessionEvent): ActivityData | undefin
 		case "summarization_retry_scheduled":
 			return {
 				kind: event.type,
-				text: `Retry ${event.attempt}/${event.maxAttempts} scheduled`,
-				data: pick(event, ["attempt", "maxAttempts", "delayMs", "errorMessage"]),
+				text:
+					event.offlineSince === undefined
+						? `Retry ${event.attempt}/${event.maxAttempts} scheduled`
+						: `Offline: retry ${event.attempt} scheduled`,
+				data: pick(event, ["attempt", "maxAttempts", "delayMs", "errorMessage", "offlineSince"]),
 			};
 		case "auto_retry_end":
 			return {
 				kind: event.type,
 				text: event.success ? "Retry succeeded" : "Retry failed",
-				data: pick(event, ["success", "attempt", "finalError"]),
+				data: pick(event, ["success", "attempt", "finalError", "offlineMs"]),
 			};
 		case "summarization_retry_attempt_start":
 			return { kind: event.type, text: "Summary retry started", data: pick(event, ["source", "reason"]) };

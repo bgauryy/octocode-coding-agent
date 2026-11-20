@@ -83,7 +83,8 @@ describe("durable workspace transcripts", () => {
 		const original = records(id);
 		const renamed = join(cwd, "moved.jsonl");
 		renameSync(session.getSessionFile()!, renamed);
-		SessionManager.open(renamed);
+		// Both files are in temporary folders: only a session folder the caller names is indexed there (`mirror-scope.ts`).
+		SessionManager.open(renamed, cwd);
 		await settle();
 		expect(transcripts.stamp(sharedAgentDb().mirror.db, id)?.file).toBe(realpathSync(renamed));
 		const forged = join(scratch, "forged.jsonl");
@@ -91,7 +92,7 @@ describe("durable workspace transcripts", () => {
 		rmSync(renamed);
 		const log = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		try {
-			SessionManager.open(forged).appendMessage(message("spoofed conversation"));
+			SessionManager.open(forged, scratch).appendMessage(message("spoofed conversation"));
 			await settle();
 			expect(records(id)).toEqual(original);
 			expect(log.mock.calls.some(([line]) => String(line).includes("Another transcript"))).toBe(true);

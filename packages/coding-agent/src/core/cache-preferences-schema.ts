@@ -9,9 +9,13 @@ const retention = (description: string) =>
 
 export const CachePreferenceProperties = {
 	cacheRetention: Type.Optional(
-		retention("Conversation cache retention. Without a separate instruction preference, applies to both layers."),
+		retention(
+			"Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers.",
+		),
 	),
 	instructionCacheRetention: Type.Optional(
-		retention("Instruction cache retention, limited by endpoint capabilities. Long writes can cost more."),
+		retention(
+			"Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more.",
+		),
 	),
 };

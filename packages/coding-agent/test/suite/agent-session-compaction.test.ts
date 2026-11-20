@@ -11,11 +11,15 @@ import {
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
+import { CHARS_PER_TOKEN, charsPerToken } from "@octocodeai/octocode-ai/utils/estimate";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "../../src/core/compaction/index.ts";
 import { createHarness, getUserTexts, type Harness } from "./harness.ts";
 import { testFeatures } from "../helpers/features.ts";
+
+/** Characters for a length these fixtures size at three characters per token, at the estimator's ratio: the token sizes stay. */
+const sized = (chars: number) => Math.round((chars * CHARS_PER_TOKEN) / 3);
 
 type SessionWithCompactionInternals = {
 	_checkCompaction: (assistantMessage: AssistantMessage, skipAbortedCheck?: boolean) => Promise<boolean>;
@@ -282,6 +286,40 @@ describe("AgentSession compaction characterization", () => {
 		expect(statsAfter.cost).toBe(statsBefore.cost + summaryUsage.cost.total);
 		expect(harness.session.messages[0]?.role).toBe("system");
 		expect(harness.session.messages[1]?.role).toBe("compactionSummary");
+	});
+
+	it("estimates the context a compaction leaves at the next model's own characters per token", async () => {
+		// A GPT model's tokenizer reads about 3.5 characters per token, not the denser default the shared estimate uses.
+		const harness = await createHarness({
+			models: [{ id: "gpt-6.1-sol", contextWindow: 200_000 }],
+			compactionPolicy: { keepRecentTokens: 1 },
+			builtinCompactionFactories: [
+				(api) => {
+					api.bus.on("session_before_compact", async (event) => ({
+						compaction: {
+							summary: `summary ${"s".repeat(3_000)}`,
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+						},
+					}));
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.prompt(`one ${"o".repeat(2_000)}`);
+		await harness.session.prompt(`two ${"t".repeat(2_000)}`);
+
+		const result = await harness.session.compact();
+		const atDefault = harness.session.messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+		const model = harness.getModel();
+		// Each message is estimated at the model's ratio (`charsPerToken`).
+		expect(charsPerToken(model)).toBeGreaterThan(CHARS_PER_TOKEN);
+		expect(result.estimatedTokensAfter).toBe(
+			harness.session.messages.reduce((sum, message) => sum + estimateTokens(message, model), 0),
+		);
+		expect(result.estimatedTokensAfter).toBeLessThan(atDefault);
+		const entry = harness.sessionManager.getEntries().find((candidate) => candidate.type === "compaction");
+		expect(entry?.details).toMatchObject({ estimatedTokensAfter: result.estimatedTokensAfter });
 	});
 
 	it("checkpoints the summarized system state and replays retained system patches in place", async () => {
@@ -606,11 +644,11 @@ describe("AgentSession compaction characterization", () => {
 
 	// An oversized trailing tool result must still produce a cut point.
 	it("compacts after an oversized tool result in the same run", async () => {
-		// About 2,300 estimated tokens at three characters per token: over the kept-tail budget, but it fits the window.
+		// About 2,300 estimated tokens (`sized`): over the kept-tail budget, but it fits the window.
 		// The previous request's usage (about 690 tokens, mostly system prompt and tool declarations, whose size depends on
 		// the checkout path and temp folder) plus this result lands near 3,000 tokens: about 200 over the 2,800-token
 		// threshold (3,200 window less the 400-token reserve) and under the window. Prompt changes move it, so keep margin.
-		const toolResult = `large-tool-result:${"x".repeat(6900)}`;
+		const toolResult = `large-tool-result:${"x".repeat(sized(6900))}`;
 		const largeTool: AgentTool = {
 			name: "large_result",
 			label: "Large result",
@@ -644,8 +682,8 @@ describe("AgentSession compaction characterization", () => {
 		harnesses.push(harness);
 		let resumedRequest = "";
 		harness.setResponses([
-			fauxAssistantMessage(`old-history:${"a".repeat(800)}`),
-			fauxAssistantMessage(`recent-history:${"b".repeat(800)}`),
+			fauxAssistantMessage(`old-history:${"a".repeat(sized(800))}`),
+			fauxAssistantMessage(`recent-history:${"b".repeat(sized(800))}`),
 			fauxAssistantMessage(fauxToolCall("large_result", {}), { stopReason: "toolUse" }),
 			(context) => {
 				order.push("provider");
@@ -678,7 +716,7 @@ describe("AgentSession compaction characterization", () => {
 			description: "Returns enough content to cross the compaction threshold",
 			parameters: Type.Object({}),
 			execute: async () => ({
-				content: [{ type: "text", text: `large-tool-result:${"x".repeat(6800)}` }],
+				content: [{ type: "text", text: `large-tool-result:${"x".repeat(sized(6800))}` }],
 				details: {},
 			}),
 		};
@@ -715,8 +753,8 @@ describe("AgentSession compaction characterization", () => {
 		harnesses.push(harness);
 		let resumedRequest = "";
 		harness.setResponses([
-			fauxAssistantMessage(`old-history:${"a".repeat(800)}`),
-			fauxAssistantMessage(`recent-history:${"b".repeat(800)}`),
+			fauxAssistantMessage(`old-history:${"a".repeat(sized(800))}`),
+			fauxAssistantMessage(`recent-history:${"b".repeat(sized(800))}`),
 			fauxAssistantMessage(fauxToolCall("large_result", {}), { stopReason: "toolUse" }),
 			(context) => {
 				resumedRequest = JSON.stringify(context.messages);
@@ -744,7 +782,7 @@ describe("AgentSession compaction characterization", () => {
 			description: "Returns enough content to cross the compaction threshold, then terminates",
 			parameters: Type.Object({}),
 			execute: async () => ({
-				content: [{ type: "text", text: `large-tool-result:${"x".repeat(6800)}` }],
+				content: [{ type: "text", text: `large-tool-result:${"x".repeat(sized(6800))}` }],
 				details: {},
 				terminate: true,
 			}),
@@ -768,8 +806,8 @@ describe("AgentSession compaction characterization", () => {
 		});
 		harnesses.push(harness);
 		harness.setResponses([
-			fauxAssistantMessage(`old-history:${"a".repeat(800)}`),
-			fauxAssistantMessage(`recent-history:${"b".repeat(800)}`),
+			fauxAssistantMessage(`old-history:${"a".repeat(sized(800))}`),
+			fauxAssistantMessage(`recent-history:${"b".repeat(sized(800))}`),
 			fauxAssistantMessage(fauxToolCall("terminate_with_large_result", {}), { stopReason: "toolUse" }),
 		]);
 
@@ -801,8 +839,12 @@ describe("AgentSession compaction characterization", () => {
 	});
 
 	it("stops after one compact-and-retry when a second response is also truncated", async () => {
+		// A length stop counts as overflow when the request plus the desired output passes the window. The retried request
+		// after compaction holds little more than the system prompt and tools (a few hundred tokens, whatever their exact
+		// size), so the desired output leaves room for 100 tokens: the second stop is overflow too, by a wide margin.
+		const window = 1300;
 		const harness = await createHarness({
-			models: [{ id: "faux-1", contextWindow: 1300, maxTokens: 800 }],
+			models: [{ id: "faux-1", contextWindow: window, maxTokens: window - 100 }],
 			compactionPolicy: { keepRecentTokens: 1, reserveTokens: 100 },
 			builtinCompactionFactories: [
 				(api) => {

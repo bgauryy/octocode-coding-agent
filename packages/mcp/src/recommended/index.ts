@@ -1,9 +1,10 @@
 /**
  * Recommended servers: configuration data only (`<name>.json`, one server entry plus `name`, an optional `enabledEnv`,
  * the environment flag that turns it off or on, an optional `enabledByDefault`, false for a server the user turns on
- * with that flag or a configuration entry, and optional `envDefaults`, launch env values added only when the user's own
- * environment leaves that variable unset). They register as `scope: "default"` entries, which a user or project entry of
- * the same name replaces; a saved switch (`/harness`, `/configuration`) is a control-only override and wins over both.
+ * with that flag or a configuration entry, optional `envDefaults`, launch env values added only when the user's own
+ * environment leaves that variable unset, and an optional `instructionsOnDemand`, `McpServerPreset.instructionsOnDemand`).
+ * They register as `scope: "default"` entries, which a user or project entry of the same name replaces; a saved switch
+ * (`/harness`, `/configuration`) is a control-only override and wins over both.
  * Nothing server-specific lives in TypeScript.
  */
 
@@ -23,7 +24,7 @@ const DATA: readonly unknown[] = [octocode, freellama];
  */
 export function recommendedPreset(data: unknown, env: NodeJS.ProcessEnv = process.env): McpServerPreset {
 	if (!isRecord(data) || typeof data.name !== "string") throw new Error("recommended server data needs a name");
-	const { name, enabledEnv, enabledByDefault, envDefaults, ...rest } = data;
+	const { name, enabledEnv, enabledByDefault, envDefaults, instructionsOnDemand, ...rest } = data;
 	if (enabledEnv !== undefined && typeof enabledEnv !== "string") {
 		throw new Error(`recommended server "${name}": enabledEnv must be a string`);
 	}
@@ -32,6 +33,9 @@ export function recommendedPreset(data: unknown, env: NodeJS.ProcessEnv = proces
 	}
 	if (envDefaults !== undefined && !isStringRecord(envDefaults)) {
 		throw new Error(`recommended server "${name}": envDefaults must map names to strings`);
+	}
+	if (instructionsOnDemand !== undefined && typeof instructionsOnDemand !== "boolean") {
+		throw new Error(`recommended server "${name}": instructionsOnDemand must be a boolean`);
 	}
 	const launchEnv = { ...unsetIn(env, envDefaults), ...(isRecord(rest.env) ? rest.env : {}) };
 	const byDefault = enabledByDefault !== false;
@@ -42,7 +46,7 @@ export function recommendedPreset(data: unknown, env: NodeJS.ProcessEnv = proces
 		...(gated ? { enabled: enabledEnv ? envFlag(env, enabledEnv, byDefault) : byDefault } : {}),
 	});
 	if (typeof config === "string") throw new Error(`recommended server data: ${config}`);
-	return { name, config };
+	return { name, config, ...(instructionsOnDemand ? { instructionsOnDemand } : {}) };
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

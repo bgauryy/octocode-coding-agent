@@ -5,7 +5,7 @@ import { once } from "node:events";
 import type { ApplicationCommand, ApplicationFrame } from "@octocodeai/octocode-contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
-import { ApplicationStream } from "../../../webview/src/application-stream.ts";
+import { ApplicationStream } from "@octocodeai/octocode-projections";
 import { workspaceAgent } from "./fixtures/workspace-agent.ts";
 
 const cleanup: (() => unknown)[] = [];

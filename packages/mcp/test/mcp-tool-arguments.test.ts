@@ -39,12 +39,15 @@ const OCTOCODE = {
 	$defs: { query: ITEM },
 };
 
-// The server owns its input (by design): nothing is added, dropped, moved, converted or parsed, and a
-// call its schema rejects fails instead of being repaired.
+// The server owns its input (by design): nothing is added, moved, converted or parsed, and a call its schema
+// rejects fails instead of being repaired. The one field dropped is a top-level string `reason` that a closed schema
+// neither declares nor accepts, carried over from native tools.
 describe("MCP tool arguments", () => {
-	it("declares no argument preparation and opts out of validator coercion", () => {
+	it("prepares only by dropping a leaked top-level reason and opts out of validator coercion", () => {
 		const tool = define(OCTOCODE);
-		expect(tool.prepareArguments).toBeUndefined();
+		const args = { queries: [{ path: "a", reasoning: "why" }], responseChars: 4000 };
+		expect(tool.prepareArguments?.({ ...args, reason: "copied from a native tool" })).toEqual(args);
+		expect(tool.prepareArguments?.(args)).toBe(args);
 		expect(tool.coerceArguments).toBe(false);
 	});
 

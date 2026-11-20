@@ -64,6 +64,8 @@ export const SessionStatusSchema = Type.Union([
 export const SessionStatusEventSchema = Type.Object({
 	type: Type.Literal("session.status"),
 	status: SessionStatusSchema,
-	/** One line on why the status is not idle: how long the model has been quiet, or when the retry starts. */
+	/** One line on why the status is not idle: how long the model has been quiet, or which retry comes. */
 	detail: Type.Optional(Type.String()),
+	/** When the status ends on its own (ms since the epoch): the start of a retry's attempt, for a countdown. */
+	until: Type.Optional(Type.Number()),
 });

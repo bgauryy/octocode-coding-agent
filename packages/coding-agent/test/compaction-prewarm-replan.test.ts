@@ -1,6 +1,8 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompactionPrewarm } from "../src/core/agent-session/compaction-prewarm.ts";
+import { estimateProjectedContextTokens } from "../src/core/compaction/index.ts";
 import type { SessionCompactPrewarmEvent } from "../src/core/features/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { createHarness, type Harness } from "./suite/harness.ts";
@@ -60,10 +62,28 @@ describe("a prewarm plan that was dropped", () => {
 		expect(events[0].signal.aborted).toBe(false);
 		expect(prewarm.due(nearThreshold, model, settings)).toBe(false);
 	});
+
+	it("stays while the branch only grew past it, and ends once the session leaves that branch (a /tree jump)", () => {
+		const { manager, prewarm, events } = planned();
+		const planLeaf = manager.getLeafId();
+		manager.appendMessage({ role: "user", content: [{ type: "text", text: "grown" }], timestamp: 0 });
+		prewarm.dropIfStale(model, settings, undefined, manager);
+		expect(events[0].signal.aborted).toBe(false);
+
+		// Back to an entry before the plan's: the plan's summary is of a branch the session no longer shows.
+		const earlier = manager.getBranch().find((entry) => entry.type === "message")!.id;
+		expect(earlier).not.toBe(planLeaf);
+		manager.branch(earlier);
+		prewarm.dropIfStale(model, settings, undefined, manager);
+		expect(events[0].signal.aborted).toBe(true);
+		expect(prewarm.due(nearThreshold, model, settings)).toBe(true);
+	});
 });
 
-/** About `tokens` of context: the estimate counts three characters a token. */
-const filler = (tokens: number, label: string) => `${label} ${"x".repeat(tokens * 3)}`;
+/** About `tokens` of context, at the estimator's characters per token. */
+const filler = (tokens: number, label: string) => `${label} ${"x".repeat(Math.round(tokens * CHARS_PER_TOKEN))}`;
+/** Halfway into the prewarm lead of a 200k window with a 1,000-token reserve (threshold 199,000, lead 20,000). */
+const IN_THE_LEAD = 199_000 - 10_000;
 
 describe("the session's prewarm", () => {
 	const harnesses: Harness[] = [];
@@ -101,9 +121,14 @@ describe("the session's prewarm", () => {
 		return { harness, plans };
 	}
 
-	/** The faux provider reports usage below the request estimate: the next request is back inside the lead after this. */
+	/**
+	 * The faux provider reports usage at four characters per token, below the request estimate (`CHARS_PER_TOKEN`): grow
+	 * from the measured usage-backed baseline, so the next request is back halfway inside the lead.
+	 */
 	const growIntoTheLead = (harness: Harness) => {
-		harness.sessionManager.appendMessage({ role: "user", content: filler(40_000, "growth"), timestamp: 0 });
+		const manager = harness.sessionManager;
+		const current = estimateProjectedContextTokens(manager.buildSessionProjection(), manager.getBranch()).tokens;
+		manager.appendMessage({ role: "user", content: filler(IN_THE_LEAD - current, "growth"), timestamp: 0 });
 		harness.session.refreshContext();
 	};
 

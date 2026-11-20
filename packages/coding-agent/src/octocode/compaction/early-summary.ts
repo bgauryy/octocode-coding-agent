@@ -1,6 +1,8 @@
 /**
  * The compaction summary requested ahead of the threshold (`session_compact_prewarm`), so the compaction that follows
- * does not hold the turn while the model writes it.
+ * does not hold the turn while the model writes it. The threshold compaction takes it, and so does the agent's own
+ * request (its `compact` tool at a task boundary), which runs the same plan: its focus then reaches the agent after the
+ * compaction instead of a new summary being paid for.
  *
  * Only the cache-sharing request is sent early (`shared-summary.ts`): it reads the session's cached prefix, as the
  * compaction's own request would. When it cannot be used, nothing is kept and the compaction requests its summary as
@@ -8,20 +10,27 @@
  * and thinking level). The file lists are rebuilt then, since the run may have touched files in between.
  *
  * Each step leaves a note in the session (`record.ts`, kind `early-summary`): requested, ready, why it cannot be used,
- * and, when the compaction does not take it, that it was discarded and whether its request had finished (billed) or was
- * still running, so speculative spend that bought nothing can be counted. The compaction entry says in its `details`
- * that its summary was requested early and how long it waited.
+ * and, when the compaction does not take it or a newer plan replaces it, that it was discarded and whether its request
+ * had finished (billed) or was still running, so speculative spend that bought nothing can be counted. The compaction
+ * entry says in its `details` that its summary was requested early, how long it waited, and which usage entries paid
+ * for it.
  */
 
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionPreparation, CompactionResult } from "../../core/compaction/index.ts";
+import { ATTEMPT_IDS_DETAILS, compactionAttemptIds } from "../../core/compaction/outcome.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
-import type { FeatureContext, SessionCompactPrewarmEvent } from "../../core/features/index.ts";
+import type {
+	FeatureContext,
+	SessionBeforeCompactEvent,
+	SessionCompactPrewarmEvent,
+	SetupPick,
+} from "../../core/features/index.ts";
 import { type PrewarmWatch, prewarmWatchOf } from "../monitor/attention/prewarm.ts";
 import { recordCompactionNote } from "./record.ts";
 import { sharedSummary, type SummaryApi } from "./shared-summary.ts";
-import { SHARED_IMAGE_FOCUS, SUMMARY_FOCUS } from "./summary-text.ts";
 
 interface EarlySummary {
 	plan: string;
@@ -50,13 +59,15 @@ function discarded(entry: EarlySummary, reason: string, note: DiscardNote | unde
 }
 
 /** Why a compaction does not take the early summary, for its discard note. */
-export function skipReason(
+function skipReason(
 	paidAlready: boolean,
 	downshift: boolean,
-	event: { reason: string; customInstructions?: string },
+	event: { reason: string; customInstructions?: string; requestedBy?: string },
 ): string {
 	if (paidAlready) return "a summary of the same input was already paid for";
 	if (downshift) return "the compaction summarizes on the model before a downshift";
+	if (event.reason === "manual" && event.requestedBy !== "agent")
+		return event.customInstructions ? "the user's compaction has its own focus" : "the user asked for this compaction";
 	if (event.customInstructions) return "the compaction has its own instructions";
 	return `the compaction is ${event.reason}, not at the threshold`;
 }
@@ -109,7 +120,7 @@ const fileLists = (preparation: CompactionPreparation) => {
 export function startEarlySummary(
 	api: SummaryApi,
 	event: SessionCompactPrewarmEvent,
-	ctx: Pick<FeatureContext, "model" | "modelRegistry" | "sessionManager">,
+	ctx: Pick<FeatureContext, "cwd" | "model" | "modelRegistry" | "sessionManager">,
 	cold: boolean,
 ): void {
 	const model = ctx.model;
@@ -134,7 +145,8 @@ export function startEarlySummary(
 		{ ...event, signal: own.signal },
 		ctx,
 		model,
-		`${SUMMARY_FOCUS} ${SHARED_IMAGE_FOCUS}`,
+		// No focus: the plan's compaction may be the threshold's or the agent's, whose focus follows the summary.
+		"",
 		(reason) => {
 			unusable = reason;
 		},
@@ -171,6 +183,11 @@ export function startEarlySummary(
 	if (replaced) {
 		replaced.cancel();
 		replaced.watch.wasted("replaced");
+		note(
+			replaced.settled
+				? "the early summary was replaced by a newer plan's after its request finished (billed, not used)"
+				: "the early summary was replaced by a newer plan's while its request was running",
+		);
 	}
 	early.set(ctx.sessionManager, entry);
 }
@@ -231,8 +248,49 @@ export async function takeEarlySummary(
 			...written.result,
 			summary: `${text}${now.text}`,
 			tokensBefore: preparation.tokensBefore,
-			details: now.lists,
+			details: { ...asRecord(written.result.details), ...now.lists },
 		},
 		early: { requestedAt: new Date(entry.requestedAt).toISOString(), waitedMs },
+	};
+}
+
+/**
+ * The early summary a compaction can take: the threshold's without a focus of its own, or the agent's own request
+ * (`compact`), never one written on another model or one already paid for. Otherwise the early summary is discarded,
+ * with a note saying why. A taken summary names the usage entries that paid for it before this compaction started.
+ */
+export async function earlySummaryFor(
+	api: SetupPick<"models", "getThinkingLevel"> & SetupPick<"session", "appendEntry">,
+	event: Pick<
+		SessionBeforeCompactEvent,
+		"reason" | "requestedBy" | "customInstructions" | "preparation" | "signal" | "branchEntries"
+	>,
+	ctx: Pick<FeatureContext, "sessionManager">,
+	model: Model<Api>,
+	options: { paidAlready: boolean; downshift: boolean; forced?: string },
+): Promise<{ result: CompactionResult; early: { requestedAt: string; waitedMs: number } } | undefined> {
+	const note = (text: string) => recordCompactionNote(api, "early-summary", text);
+	const agent = event.reason === "manual" && event.requestedBy === "agent";
+	const eligible =
+		!options.paidAlready && !options.downshift && (event.reason === "threshold" ? !event.customInstructions : agent);
+	if (!eligible) {
+		discardEarlySummary(ctx.sessionManager, skipReason(options.paidAlready, options.downshift, event), note);
+		return undefined;
+	}
+	const thinking = api.models.getThinkingLevel();
+	const taken = await takeEarlySummary(
+		ctx.sessionManager,
+		model,
+		event.preparation,
+		thinking,
+		event.signal,
+		options.forced,
+		note,
+	);
+	if (!taken) return undefined;
+	const attemptIds = compactionAttemptIds(event.branchEntries, taken.early.requestedAt);
+	return {
+		...taken,
+		result: { ...taken.result, details: { ...asRecord(taken.result.details), [ATTEMPT_IDS_DETAILS]: attemptIds } },
 	};
 }

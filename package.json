@@ -9,7 +9,7 @@
 		"start": "node --import ./packages/coding-agent/scripts/source-resolver.ts ./packages/coding-agent/src/cli.ts",
 		"clean": "yarn workspaces foreach --all --exclude @octocodeai/octocode-monorepo run clean",
 		"build": "yarn run generate:models && yarn run build:offline",
-		"build:offline": "yarn workspaces foreach --all --topological-dev --parallel --exclude @octocodeai/octocode-monorepo run build && yarn workspace @octocodeai/octocode-agent run generate:prompts --fail-open",
+		"build:offline": "node scripts/build-offline.mjs",
 		"build:native:darwin": "yarn workspace @octocodeai/octocode-tui run build:native:darwin",
 		"build:native:linux": "yarn workspace @octocodeai/octocode-tui run build:native:linux",
 		"build:native:win32": "yarn workspace @octocodeai/octocode-tui run build:native:win32",

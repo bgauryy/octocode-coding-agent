@@ -11,6 +11,7 @@ import * as agentEvents from "./queries/agent-events.ts";
 import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
 import * as archiveIndex from "./queries/archive-index.ts";
 import { createMirrorSchema, MIRROR_APPLICATION_ID } from "./schema-mirror.ts";
+import { carryRetired } from "./carry-over.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
 export type Db = DatabaseSync;
@@ -164,8 +165,9 @@ interface Connection {
  * One connection on `target`, with the schema of a file of `kind`. A file at an older schema version is renamed to
  * `<file>.v<version>.retired` (with its `-wal` and `-shm`; a name already taken gets a timestamp and counter, so an
  * earlier retired file is never replaced), so nothing in it is lost, and a new file is created in its place: Octocode has
- * no upgrade steps. The rename runs under `<file>.lock` and re-reads the file first: another process may have retired
- * it already, and a fresh file it created must not be renamed away.
+ * no upgrade steps, but the new file takes over the kind's `carried` tables (`carry-over.ts`). The rename runs under
+ * `<file>.lock` and re-reads the file first: another process may have retired it already, and a fresh file it created
+ * must not be renamed away.
  */
 function openConnection(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {
 	try {
@@ -181,8 +183,10 @@ function openConnection(target: string, privateParent: boolean, kind: FileKind, 
 			} catch (error) {
 				if (!(error instanceof AgentDbRetiredError)) throw error;
 				refuseIfInUse(target, error.version);
-				retire(target, error.version);
-				return connect(target, privateParent, kind, waitMs);
+				const retired = retire(target, error.version);
+				const connection = connect(target, privateParent, kind, waitMs);
+				if (kind.carried) carryRetired(connection, retired, error.version, kind.carried);
+				return connection;
 			}
 		},
 		{ attempts: RETIRE_LOCK_ATTEMPTS },
@@ -192,14 +196,15 @@ function openConnection(target: string, privateParent: boolean, kind: FileKind, 
 /** About two seconds of waiting for another process that is retiring or creating the same file. */
 const RETIRE_LOCK_ATTEMPTS = 100;
 
-/** Moves `target` and its `-wal` and `-shm` to a retired name no file uses yet. Call it holding the file's lock. */
-function retire(target: string, version: number): void {
+/** Moves `target` and its `-wal` and `-shm` to a retired name no file uses yet, and returns that name. Hold the file's lock. */
+function retire(target: string, version: number): string {
 	const parts = ["", "-wal", "-shm"];
 	const free = (base: string) => parts.every((suffix) => !fs.existsSync(`${base}${suffix}`));
 	let base = `${target}.v${version}.retired`;
 	for (let n = 0; !free(base); n++) base = `${target}.v${version}.retired.${Date.now()}${n > 0 ? `-${n}` : ""}`;
 	for (const suffix of parts)
 		if (fs.existsSync(`${target}${suffix}`)) fs.renameSync(`${target}${suffix}`, `${base}${suffix}`);
+	return base;
 }
 
 function connect(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {

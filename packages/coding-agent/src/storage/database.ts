@@ -11,9 +11,11 @@ import {
 } from "../../../db/src/api.ts";
 /** Waits (bounded) for queued database writes: call before `process.exit`, which skips the exit drain. */
 export { drainDbWriters } from "../../../db/src/api.ts";
-import { agentDbPath, globalPaths, transcriptDbPath } from "./state-paths.ts";
+import { agentDbPath, checkedAgentDbPath, globalPaths, transcriptDbPath } from "./state-paths.ts";
 
+/** Where the database at `file` keeps its parts; a test that names the real home's file directly is refused too. */
 function locations(file: string, env: NodeJS.ProcessEnv) {
+	checkedAgentDbPath(file, env);
 	const paths = globalPaths(env);
 	return {
 		file,

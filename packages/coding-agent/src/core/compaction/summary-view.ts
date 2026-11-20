@@ -1,5 +1,6 @@
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
+import { renderPrompt } from "../prompt-template.ts";
 
 /**
  * Reading a compaction summary back. Octocode's compaction writes the summary (`octocode/compaction/summary.ts`) as the
@@ -75,7 +76,15 @@ interface SummaryView {
 
 const ARCHIVE = /Folder (.+?) \([^)]*indexes every segment\)\. This compaction is segment (\d+)/;
 const TRANSCRIPT = /the full transcript (?:before this summary )?is (.+?) \(JSONL/;
-const CHECKPOINT = /The complete context checkpoint is saved at (.+?)\. Search it/;
+
+/** What stays in the context of a summary saved to `file`, before what of it still fits (`checkpoint.ts`). */
+export function checkpointReference(file: string): string {
+	return renderPrompt("workflows/compaction/checkpoint-reference.md", { file });
+}
+
+/** The reference's text around the file, so the reader matches what the writer renders. */
+const [REFERENCE_BEFORE, REFERENCE_AFTER = ""] = checkpointReference("\u0000").split("\u0000");
+const CHECKPOINT = new RegExp(`${escapeRegExp(REFERENCE_BEFORE)}(.+?)${escapeRegExp(REFERENCE_AFTER.slice(0, 10))}`);
 
 export function viewSummary(summary: string): SummaryView {
 	const { body, messages, omitted } = splitSummary(summary);

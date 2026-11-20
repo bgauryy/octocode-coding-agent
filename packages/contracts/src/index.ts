@@ -5,6 +5,7 @@ export * from "./workspace.ts";
 export * from "./protocol.ts";
 export * from "./profiler.ts";
 export * from "./application.ts";
+export * from "./application-notice.ts";
 export * from "./content.ts";
 export * from "./stream.ts";
 export * from "./tool-progress.ts";

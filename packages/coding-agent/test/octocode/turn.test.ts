@@ -218,3 +218,61 @@ describe("registerTurnSetup", () => {
 		expect(first.prompt).not.toContain("researcher-1a2b");
 	});
 });
+
+describe("the lean main policy", () => {
+	useResearchRoles();
+	beforeEach(() => vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp()));
+	afterEach(() => vi.unstubAllEnvs());
+	const TOOLS = ["read", "bash", "file", "agent"];
+	/** A faux model: only what the policy choice reads. */
+	const model = (id: string, contextWindow: number) => ({ provider: "faux", id, contextWindow });
+	const ctxFor = (current: ReturnType<typeof model>) => ({
+		model: current,
+		modelRegistry: { getAvailable: () => [], getProviderKind: () => "API key" },
+	});
+	/** One request's sections and skill list for a main session on `current`, then the next request after an `agent` call. */
+	const request = async (current: ReturnType<typeof model>, settings: Record<string, unknown> = {}) => {
+		const fake = fakeHost(settings);
+		for (const name of TOOLS) fake.tools.set(name, { name });
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		const options = {
+			sections: {} as Record<string, string>,
+			baseSections: {} as Record<string, string>,
+			selectedTools: TOOLS,
+			skills: [{ name: "octocode-research", description: "Research code." }] as unknown[],
+		};
+		const ctx = ctxFor(current);
+		await fake.emit("before_agent_start", { systemPromptOptions: options }, ctx);
+		const first = { ...options.sections };
+		await fake.emit("tool_call", { toolName: "agent", input: { type: "run", task: "look" } }, ctx);
+		await fake.emit("turn_prompt", { systemPromptOptions: options }, ctx);
+		return { first, after: options.sections, skills: options.skills };
+	};
+	const filled = (sections: Record<string, string>) =>
+		Object.keys(sections).filter((name) => sections[name].trim() !== "");
+
+	it("is chosen for a 32k-window model: the lean rules for the user's session, no delegation, children or skill list", async () => {
+		const { first, after, skills } = await request(model("tiny-32k", 32_768));
+		expect(filled(first)).toEqual(["lean"]);
+		expect(first.lean).toContain("Work on the user's request yourself");
+		expect(first.lean).not.toMatch(/You are a subagent|coordinator|reserved for you/);
+		expect(after.children ?? "").toBe("");
+		expect(skills).toEqual([]);
+	});
+
+	it("is chosen for the model subagents.models.small names, whatever its window", async () => {
+		const { first } = await request(model("mini", 400_000), { subagents: { models: { small: "faux/mini:low" } } });
+		expect(filled(first)).toEqual(["lean"]);
+	});
+
+	it("leaves a large-window model the full policy, and the setting overrides the choice either way", async () => {
+		const full = await request(model("big", 400_000));
+		expect(filled(full.first)).toContain("delegation");
+		expect(full.first.lean ?? "").toBe("");
+		expect(full.skills).toHaveLength(1);
+		const off = await request(model("tiny-32k", 32_768), { leanPrompt: "off" });
+		expect(filled(off.first)).toContain("delegation");
+		const on = await request(model("big", 400_000), { leanPrompt: "on" });
+		expect(filled(on.first)).toEqual(["lean"]);
+	});
+});

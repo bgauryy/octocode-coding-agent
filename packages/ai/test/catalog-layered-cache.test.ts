@@ -62,7 +62,9 @@ describe.each(providers)("Catalog cache policy: %s", (provider) => {
 				expect(JSON.stringify(payload?.input)).not.toContain("prompt_cache_breakpoint");
 				expect(payload?.prompt_cache_options).toBeUndefined();
 			}
-			expect(payload?.prompt_cache_retention).toBeUndefined();
+			// Before GPT-5.6 the one request-level retention keeps long instructions, at no write charge.
+			const extended = !explicit && compat?.supportsLongCacheRetention === true;
+			expect(payload?.prompt_cache_retention).toBe(extended ? "24h" : undefined);
 		} else if (model.api === "anthropic-messages") {
 			const compat = (model as Model<"anthropic-messages">).compat;
 			expect(payload?.system?.[0].cache_control).toEqual({

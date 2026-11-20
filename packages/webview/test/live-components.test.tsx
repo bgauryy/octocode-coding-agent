@@ -60,6 +60,15 @@ describe("run indicator", () => {
 		expect(screen.queryByText(/Running|Thinking|Writing/)).not.toBeInTheDocument();
 	});
 
+	it("counts a retry down to its attempt, then names the retry alone", () => {
+		render(<RunIndicator phase={{ kind: "retrying", detail: "Retry 1 of 3", until: 14_500 }} startedAt={10_000} />);
+		expect(screen.getByText("Retry 1 of 3 in 5s")).toBeInTheDocument();
+		act(() => vi.advanceTimersByTime(3_000));
+		expect(screen.getByText("Retry 1 of 3 in 2s")).toBeInTheDocument();
+		act(() => vi.advanceTimersByTime(2_000));
+		expect(screen.getByText("Retry 1 of 3")).toBeInTheDocument();
+	});
+
 	it("summarizes thinking time on the answer", () => {
 		render(<ThoughtFor ms={12_400} />);
 		expect(screen.getByText("Thought for 12s")).toBeInTheDocument();

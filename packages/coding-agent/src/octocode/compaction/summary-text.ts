@@ -6,23 +6,50 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SKILL_BLOCK } from "./loaded-skills.ts";
 
 /**
- * Sent with every summary request as its "Additional focus": how to judge what to keep. The sections are the checkpoint
- * format the request already carries, and what code appends after the summary (the user's messages, file lists, saved
- * results, recovery pointers) is not asked for.
+ * The most characters the Recovery bullets take together: every request until the next compaction re-sends them, and
+ * a section that grows each cycle competes with the task for attention, while the archive it points to is seldom opened.
+ * Only lines that must stay (`RecoveryLine.must`) take it past this, when the tools report more live state than fits.
  */
-export const SUMMARY_FOCUS = renderPrompt("workflows/compaction/focus.md");
+export const RECOVERY_CHARS = 800;
 
-/** The cache-sharing request sends the session's images (`shared-summary.ts`), and the next model will not have them. */
-export const SHARED_IMAGE_FOCUS = renderPrompt("workflows/compaction/focus-images-shared.md");
+interface RecoveryLine {
+	text: string;
+	/** Lower ranks are kept first. */
+	rank: number;
+	/** Always kept, whole: the archive's pointer and what the tools report, each bounded where it is written. */
+	must: boolean;
+}
 
-/** The standalone request serializes the conversation as text (`serializeConversation`), which leaves images out. */
-export const STANDALONE_IMAGE_FOCUS = renderPrompt("workflows/compaction/focus-images-standalone.md");
+/** `lines` in their order: every line that must stay, then by rank those that fit what is left of `RECOVERY_CHARS`. */
+function fitted(lines: readonly RecoveryLine[]): string[] {
+	const kept = new Set<number>();
+	// "- " before each line and the newline after it.
+	const cost = (line: RecoveryLine) => line.text.length + 3;
+	let left = RECOVERY_CHARS;
+	for (const [at, line] of lines.entries())
+		if (line.must) {
+			kept.add(at);
+			left -= cost(line);
+		}
+	const ranked = [...lines.entries()]
+		.filter(([, line]) => !line.must)
+		.sort(([a, x], [b, y]) => x.rank - y.rank || a - b);
+	for (const [at, line] of ranked)
+		if (cost(line) <= left) {
+			kept.add(at);
+			left -= cost(line);
+		}
+	return lines.flatMap((line, at) => (kept.has(at) ? [line.text] : []));
+}
 
 /**
- * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed: the
- * archive's lines first (`archivePointer`; none when this session cannot archive), the session's transcript (the
- * archive's fallback, or the whole answer when there is no archive), the backlog and any `extra` lines. Every line is
- * one `- ` bullet: `splitSummary` removes the section by that shape when the summary is rewritten.
+ * Where the summarized messages stay verbatim, appended to the summary so exact details are read, not guessed, within
+ * `RECOVERY_CHARS`: the archive's lines first (`archivePointer`; none when this session cannot archive), the session's
+ * transcript (the archive's fallback, or the whole answer when there is no archive), the backlog and any `extra` lines
+ * (what the tools report: whose the changed files are, live state, the skills loaded). The archive's first line, the
+ * transcript without an archive, and the `extra` lines always stay, whole; the earlier segments, then the transcript
+ * beside the archive, then the backlog line fill what is left. Every line is one `- ` bullet: `splitSummary` removes the
+ * section by that shape when the summary is rewritten.
  */
 export function transcriptNote(
 	sessionFile: string | undefined,
@@ -31,14 +58,21 @@ export function transcriptNote(
 	extra: readonly string[] = [],
 ): string {
 	const transcript = sessionFile ? homeTilde(sessionFile) : undefined;
-	const lines = [
-		...archive,
+	const archived = archive.length > 0;
+	const lines = fitted([
+		...archive.map((text, at) => ({ text, rank: at === 0 ? 0 : 2, must: at === 0 })),
 		...(transcript
-			? [renderPrompt("notices/recovery/transcript.md", { archive: archive.length > 0, transcript })]
+			? [
+					{
+						text: renderPrompt("notices/recovery/transcript.md", { archive: archived, transcript }),
+						rank: archived ? 3 : 0,
+						must: !archived,
+					},
+				]
 			: []),
-		...(backlog ? [renderPrompt("notices/recovery/backlog.md")] : []),
-		...extra,
-	];
+		...(backlog ? [{ text: renderPrompt("notices/recovery/backlog.md"), rank: 4, must: false }] : []),
+		...extra.map((text) => ({ text, rank: 1, must: true })),
+	]);
 	return lines.length > 0 ? `\n\n${RECOVERY_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
 }
 

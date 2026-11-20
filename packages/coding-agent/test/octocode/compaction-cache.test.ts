@@ -297,6 +297,12 @@ describe("granted tier and warming", () => {
 		// An hour-long entry outlives every pause without a refresh this early: the expected return is before 0.1τ.
 		expect(warmingDecision({ ...idle, action: "warm" }, ctx, 60 * minute, now)).toEqual({ action: "stop" });
 		expect(warmingDecision({ ...idle, continuationProbability: 1 }, ctx, 5 * minute, now)).toBeUndefined();
+		// The warmer's $0.05 floor holds here too: q × miss beats the refresh, but by less than the floor.
+		const small = { ...idle, action: "warm" as const, missCost: 0.06, warmCost: 0.02 };
+		expect(warmingDecision(small, ctx, 5 * minute, now)).toEqual({ action: "stop" });
+		// A wait that expects a wake keeps the floor as well.
+		expect(warmingDecision(small, ctx, 5 * minute, now, false, true)).toEqual({ action: "stop" });
+		expect(warmingDecision({ ...small, missCost: 0.5 }, ctx, 5 * minute, now, false, true)).toBeUndefined();
 		expect(
 			warmingDecision(
 				{ ...idle, action: "warm" },

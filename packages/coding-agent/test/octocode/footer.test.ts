@@ -29,7 +29,7 @@ const recording = {
 const state: FooterState = {
 	model: "claude-opus-5-5",
 	thinking: "high",
-	context: { percent: 42, limit: 200_000 },
+	context: { percent: 42, window: 200_000 },
 	usage: { input: 12_400, cacheRead: 0, output: 3_100, cost: 0.84, unpriced: false },
 	cwd: "/Users/me/code/app",
 	home: "/Users/me",
@@ -131,8 +131,11 @@ describe("footer", () => {
 		expect(contextBar(49.4).color).toBe("success");
 		expect(contextBar(80.4).color).toBe("warning");
 		expect(contextBar(80.6).color).toBe("error");
+		// The alarm point moves with the auto-compact point (a percent of the window).
+		expect(contextBar(70, 68).color).toBe("error");
+		expect(contextBar(60, 68).color).toBe("warning");
 		painted.length = 0;
-		footerLines({ ...state, context: { percent: 91, limit: 200_000 } }, "main", statuses, recording, 160);
+		footerLines({ ...state, context: { percent: 91, window: 200_000 } }, "main", statuses, recording, 160);
 		expect(painted.some(([color, text]) => color === "error" && text.includes("91%"))).toBe(true);
 	});
 
@@ -222,7 +225,7 @@ describe("footer", () => {
 			{
 				...state,
 				thinking: undefined,
-				context: { percent: null, limit: 200_000 },
+				context: { percent: null, window: 200_000 },
 				usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
 				sessionName: undefined,
 				chip: undefined,
@@ -417,8 +420,8 @@ describe("footer bottom line: team totals, GitHub token, hints", () => {
 
 describe("footer wiring", () => {
 	it.each([
-		["session context-window override", 60_000, 25_000, "50k"],
-		["physical route with a different window", 120_000, 52_500, "105k"],
+		["session context-window override", 60_000, 30_000, "60k"],
+		["physical route with a different window", 120_000, 60_000, "120k"],
 	] as const)("uses the effective window for a %s", async (_reason, window, tokens, limit) => {
 		const fake = importedModule1.fakeHost();
 		importedModule2.registerFooter(fake.api);
@@ -437,15 +440,15 @@ describe("footer wiring", () => {
 		}
 	});
 
-	it("prefers the core threshold to the selected model's thinking reserve", async () => {
+	it("gauges the window and takes the alarm point from the core threshold, not the selected model's thinking reserve", async () => {
 		const fake = importedModule1.fakeHost();
 		importedModule2.registerFooter(fake.api);
 		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		ctx.model = { provider: "router", id: "auto", reasoning: false, contextWindow: 120_000 };
 		ctx.getContextUsage = () => ({
-			tokens: 50_000,
+			tokens: 75_000,
 			contextWindow: 120_000,
-			percent: 41.67,
+			percent: 62.5,
 			compactionThreshold: 100_000,
 		});
 		await fake.emit("session_start", {}, ctx);
@@ -454,7 +457,29 @@ describe("footer wiring", () => {
 			getFeatureStatuses: () => new Map(),
 		});
 		try {
-			expect(component.render(160)[0]).toContain("ctx ▰▰▰▰▱▱▱▱ 50% of 100k");
+			expect(component.render(160)[0]).toContain("ctx ▰▰▰▰▰▱▱▱ 63% of 120k");
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("shows the new limit after session_context_changed", async () => {
+		const fake = importedModule1.fakeHost();
+		importedModule2.registerFooter(fake.api);
+		const ctx = importedModule1.fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
+		let window = 200_000;
+		ctx.model = { provider: "test", id: "selected", reasoning: false, contextWindow: 200_000 };
+		ctx.getContextUsage = () => ({ tokens: 20_000, contextWindow: window, percent: (20_000 / window) * 100 });
+		await fake.emit("session_start", {}, ctx);
+		const component = ctx.ui.footer({ requestRender: vi.fn() }, theme, {
+			getGitBranch: () => null,
+			getFeatureStatuses: () => new Map(),
+		});
+		try {
+			expect(component.render(160)[0]).toContain("10% of 200k");
+			window = 50_000;
+			await fake.emit("session_context_changed", { type: "session_context_changed" }, ctx);
+			expect(component.render(160)[0]).toContain("40% of 50k");
 		} finally {
 			component.dispose();
 		}
@@ -504,7 +529,7 @@ describe("footer wiring", () => {
 		const [initialTop, bottom] = component.render(120) as string[];
 		// ↑ is the new prompt tokens (uncached and cache writes); cache reads show only as the share of the whole prompt: 3k of 4.5k.
 		expect(initialTop).toBe(
-			zones("/work/app ⎇ main", "ctx ▰▱▱▱▱▱▱▱ 12% of 83.3k · 1.8k tok (↑1.5k ↓250) · 67% cached", "Σ ≈$0.15", 120),
+			zones("/work/app ⎇ main", "ctx ▰▱▱▱▱▱▱▱ 10% of 100k · 1.8k tok (↑1.5k ↓250) · 67% cached", "Σ ≈$0.15", 120),
 		);
 		expect(bottom).toBe(ends("model-x:medium · API key", "✓ GitHub · mcp 1/1 · /providers · /model · /resume", 120));
 		percent = 64;
@@ -515,8 +540,8 @@ describe("footer wiring", () => {
 		);
 		expect(renders).toBe(1);
 		const [top] = component.render(120) as string[];
-		// 64k of the 83.3k limit: medium thinking enlarges the compaction reserve to a sixth of the 100k window.
-		expect(top).toContain("77%");
+		// 64k of the 100k window, whatever the compaction reserve.
+		expect(top).toContain("64%");
 		expect(top).toContain("≈$0.16");
 		// A rename (/name, or the automatic title) shows at once.
 		const name = "auth flow";
@@ -589,12 +614,12 @@ describe("footer wiring", () => {
 		percent = 42;
 		await fake.emit("session_tree", {}, ctx);
 		expect(samples).toBe(counted + 1);
-		expect((component.render(120) as string[])[0]).toContain("48%");
+		expect((component.render(120) as string[])[0]).toContain("42%");
 		component.invalidate();
 		expect(component.render(120)).not.toBe(first);
 	});
 
-	it("reads the gauge against the auto-compaction point and counts background subagent reports in the cost", async () => {
+	it("reads the gauge against the window, not the compaction point, and counts background subagent reports in the cost", async () => {
 		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
 		const { registerFooter } = await Promise.resolve(importedModule2);
 		const fake = fakeHost();
@@ -623,7 +648,7 @@ describe("footer wiring", () => {
 		};
 		const component = ctx.ui.footer({ requestRender: () => undefined }, theme, data);
 		let [top] = component.render(120) as string[];
-		expect(top).toContain("15% of 984k");
+		expect(top).toContain("15% of 1M");
 		expect(top).toContain("≈$1.50");
 		expect(top).toContain("1.1k tok (↑1k ↓100) · 90% cached");
 		await fake.emit(

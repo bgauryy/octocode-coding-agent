@@ -1,7 +1,11 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { stripRowMarks, WRAP_JOIN_MARK } from "../src/utils/row-marks.ts";
 import { wrapTextWithAnsi } from "../src/utils/wrap.ts";
 import { visibleWidth } from "../src/utils/width.ts";
+
+/** Rows without their zero-width row marks: what the terminal draws. */
+const unmarked = (lines: string[]): string[] => lines.map(stripRowMarks);
 
 describe("wrapTextWithAnsi", () => {
 	it("splits a single grapheme wider than the line instead of overflowing it", () => {
@@ -9,12 +13,13 @@ describe("wrapTextWithAnsi", () => {
 		const cluster = `\u0915${"\u093e".repeat(100)}`;
 		const lines = wrapTextWithAnsi(cluster, 80);
 		assert.ok(lines.every((line) => visibleWidth(line) <= 80));
-		assert.strictEqual(lines.join(""), cluster);
+		assert.strictEqual(unmarked(lines).join(""), cluster);
+		assert.ok(lines.slice(1).every((line) => line.startsWith(WRAP_JOIN_MARK)));
 	});
 
 	it("puts a wide character wider than the width on its own row without empty rows", () => {
-		assert.deepStrictEqual(wrapTextWithAnsi("日本", 1), ["日", "本"]);
-		assert.deepStrictEqual(wrapTextWithAnsi("a日b", 1), ["a", "日", "b"]);
+		assert.deepStrictEqual(wrapTextWithAnsi("日本", 1), ["日", `${WRAP_JOIN_MARK}本`]);
+		assert.deepStrictEqual(unmarked(wrapTextWithAnsi("a日b", 1)), ["a", "日", "b"]);
 	});
 
 	it("does not emit an empty row before a wide character when only style codes are active", () => {
@@ -152,7 +157,10 @@ describe("wrapTextWithAnsi", () => {
 			const text = "This is an example 中文汉字测试段落内容中文汉字测试段落内容.";
 			const wrapped = wrapTextWithAnsi(text, 40);
 
-			assert.deepStrictEqual(wrapped, ["This is an example 中文汉字测试段落内容", "中文汉字测试段落内容."]);
+			assert.deepStrictEqual(wrapped, [
+				"This is an example 中文汉字测试段落内容",
+				`${WRAP_JOIN_MARK}中文汉字测试段落内容.`,
+			]);
 			for (const line of wrapped) {
 				assert.ok(visibleWidth(line) <= 40);
 			}
@@ -166,7 +174,7 @@ describe("wrapTextWithAnsi", () => {
 
 			assert.strictEqual(wrapped.length, 2);
 			assert.strictEqual(wrapped[0], `${red}This is an example 中文汉字测试段落内容`);
-			assert.strictEqual(wrapped[1], `${red}中文汉字测试段落内容.${reset}`);
+			assert.strictEqual(wrapped[1], `${WRAP_JOIN_MARK}${red}中文汉字测试段落内容.${reset}`);
 			for (const line of wrapped) {
 				assert.ok(visibleWidth(line) <= 40);
 			}

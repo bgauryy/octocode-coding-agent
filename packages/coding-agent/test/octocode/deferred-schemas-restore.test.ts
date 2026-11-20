@@ -96,7 +96,7 @@ describe("schemas of deferred tools after a compaction", () => {
 		expect(restoredSchemas(declared, active, called, 50)).toBeUndefined();
 	});
 
-	it("sends one hidden message after a compaction and does not repeat schemas the kept context still shows", () => {
+	it("sends one hidden message after a compaction and does not repeat schemas the kept context still shows", async () => {
 		const web = withNativeDeferral(settings(DEFERRED), nativeTool("web") as never);
 		const search = mcpTool("mcp__octocode__localSearch", true);
 		const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
@@ -116,7 +116,7 @@ describe("schemas of deferred tools after a compaction", () => {
 				}),
 			},
 		} as never;
-		expect(restoreDeferredSchemas(api as never, ctx)).toEqual(["mcp__octocode__localSearch", "web"]);
+		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual(["mcp__octocode__localSearch", "web"]);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({
 			customType: RESTORED_SCHEMAS_TYPE,
@@ -126,16 +126,16 @@ describe("schemas of deferred tools after a compaction", () => {
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		// The next compaction kept that message in its tail: nothing is sent again until another deferred tool is called.
 		context.push({ role: "custom", ...sent[0].message });
-		expect(restoreDeferredSchemas(api as never, ctx)).toEqual([]);
+		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual([]);
 		expect(sent).toHaveLength(1);
 		// A session that called no deferred tool gets no message.
 		branch.splice(0, branch.length, call("bash"));
 		context.length = 0;
-		expect(restoreDeferredSchemas(api as never, ctx)).toEqual([]);
+		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual([]);
 		// A small window lowers the budget: a schema that no longer fits is not cut.
 		branch.splice(0, branch.length, call("web"));
 		expect(
-			restoreDeferredSchemas(api as never, { ...(ctx as object), model: { contextWindow: 1000 } } as never),
+			await restoreDeferredSchemas(api as never, { ...(ctx as object), model: { contextWindow: 1000 } } as never),
 		).toEqual([]);
 		expect(sent).toHaveLength(1);
 	});

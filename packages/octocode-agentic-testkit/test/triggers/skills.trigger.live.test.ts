@@ -15,11 +15,10 @@ import { PROMPTS, UNRELATED } from "./matrix.ts";
 const TMP = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../.octocode/tmp");
 const resolved = resolveTier();
 
-/** Mirrors the bundled skill policy, with the inproc agent's `load_skill` as the tool. */
+/** Mirrors the bundled skills intro (`system/skills-intro.md`), with the inproc agent's `load_skill` as the tool. */
 const SYSTEM =
-	"You are a coding assistant. Before other work, call load_skill for every listed skill whose description matches the task; " +
-	"a skill matches the work its description names, even a small part; a shared word is insufficient. " +
-	"If no skill matches, answer directly without calling load_skill.";
+	"You are a coding assistant. Call load_skill (one call per name) to load a skill when its description matches the work at hand " +
+	"(a shared word is not a match); several can apply. If no skill matches, answer directly without calling load_skill.";
 
 interface Spend {
 	input: number;

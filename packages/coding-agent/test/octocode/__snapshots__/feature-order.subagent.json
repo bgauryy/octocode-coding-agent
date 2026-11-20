@@ -35,6 +35,7 @@
 		"before_agent_start": [
 			"registerPlanning@octocode/plan/register.ts",
 			"registerTaskEvents@octocode/backlog/task-events.ts",
+			"registerMemorySection@octocode/memory/file/section.ts",
 			"registerMemory@octocode/memory/register.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
 			"registerTurnSetup@octocode/turn.ts",
@@ -106,6 +107,7 @@
 		"session_compact": [
 			"registerPlanning@octocode/plan/register.ts",
 			"registerRunningWork@octocode/sessions/register.ts",
+			"registerMemorySection@octocode/memory/file/section.ts",
 			"registerMemory@octocode/memory/register.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerRecordedSpend@octocode/team/tools/spend.ts",

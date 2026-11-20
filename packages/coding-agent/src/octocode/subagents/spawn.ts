@@ -37,7 +37,7 @@ import type { Runners } from "./runner-port.ts";
 import { runnerPlan } from "./runner-task.ts";
 import { reportInFlight, runForeground, startBackground } from "./run-execution.ts";
 import type { RunDetails } from "./run-types.ts";
-import { spawnRefusal } from "./spawn-limits.ts";
+import { refuseOverLimit } from "./spawn-limits.ts";
 import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts";
 import { childTaskInput, taskReferences } from "./task-text.ts";
 import { withItems } from "./task-items.ts";
@@ -68,7 +68,8 @@ type AgentParams = Static<ReturnType<typeof agentToolSpec>["parameters"]>;
 /**
  * One `agent` task call. A foreground call past the limit waits for a slot, its row saying so. A background call past it
  * returns its id at once and takes the slot detached, tied to the session rather than this turn: the batch that fanned it
- * out would otherwise hold the parent deaf to reports and questions until all but the last few had launched.
+ * out would otherwise hold the parent deaf to reports and questions until all but the last few had launched. `mail`: the
+ * resume's `task` is a delivered message that names its sender, so it goes without the coordinator's follow-up header.
  */
 export async function spawnAgent(
 	env: SpawnEnv,
@@ -77,6 +78,7 @@ export async function spawnAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: AgentUpdate | undefined,
 	ctx: FeatureContext,
+	mail = false,
 ): Promise<AgentToolResult<RunDetails>> {
 	const { api, runs, permission, lingering } = env;
 	const { team } = runs;
@@ -94,11 +96,7 @@ export async function spawnAgent(
 	const resumed = params.resume ? resumeChild(ctx, params.resume, runs) : undefined;
 	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
-	const refuseOverSpend = () => {
-		const { subagents } = api.settings.get();
-		const refusal = spawnRefusal(subagents, ctx.sessionManager.getEntries(), runs, resumed?.child.id);
-		if (refusal) throw new Error(refusal);
-	};
+	const refuseOverSpend = () => refuseOverLimit(api, ctx, runs, resumed?.child.id);
 	refuseOverSpend();
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
@@ -250,7 +248,7 @@ export async function spawnAgent(
 		const isolated = params.isolate === true || resumed?.worktree !== undefined;
 		const lingers = !runner && params.background === true && !isolated;
 		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
-		const prefix = childCacheGroup(run, skillPlan, ctx.sessionManager.getSessionId());
+		const prefix = childCacheGroup(run, skillPlan);
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
 		const begin = async (beginSignal: AbortSignal) => {
@@ -263,7 +261,7 @@ export async function spawnAgent(
 			const skillText = told.prefix || !skillPlan.inTask ? "" : taskSkillText(skillResources, skillPlan.inline);
 			const parts = { referenced, browserMode: run.profile?.headless, skillText, resultContract };
 			const assigned = { ...run.identity, background: params.background === true, why: params.reason };
-			const task = withIdentity(`${told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
+			const task = withIdentity(`${mail ? "" : told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
 			run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
 			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, turn: StaggerTurn) => {
 				const tracked = track(update);

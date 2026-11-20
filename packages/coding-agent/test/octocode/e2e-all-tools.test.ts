@@ -359,6 +359,8 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("agent", { type: "coordinate", action: "changes" }), "bash-effect.txt", "w.txt"),
 			answers(call("agent", { type: "coordinate", action: "leave" }), "Left the team"),
 			answers(call("agent", { type: "coordinate", action: "join" }), "(you)"),
+			// The parent's message to its finished child resumes it with that message.
+			answers(call("agent", { type: "message", to: "{{CHILD}}", message: "one more" }), "with your message"),
 		],
 		fail: [
 			answers(call("agent", { type: "task", goal: "no task field" }), "Invalid agent task call", "task"),
@@ -380,10 +382,6 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(
 				call("agent", { type: "coordinate", action: "stop", subagent: "no-such" }),
 				'No background subagent "no-such"',
-			),
-			answers(
-				call("agent", { type: "message", to: "{{CHILD}}", message: "too late" }),
-				"has finished and takes no more messages",
 			),
 			answers(
 				call("agent", { type: "message", to: "no-such-agent", message: "hello?" }),

@@ -90,7 +90,7 @@ export async function runChild(
 	const env = subagentProcessEnv(profile, baseEnv(fx), identity);
 	return withEnv(env, async () => {
 		const manager = reopen ? SessionManager.open(reopen, sessionDir) : SessionManager.create(fx.cwd, sessionDir);
-		const { session, faux } = await scriptedSession(
+		const { session, faux, end } = await scriptedSession(
 			fx,
 			{ noMcp: parsed.noMcp, noSkills: parsed.noSkills, tools: parsed.tools, excludeTools: parsed.excludeTools },
 			manager,
@@ -145,7 +145,7 @@ export async function runChild(
 			};
 		} finally {
 			unsubscribe?.();
-			session.dispose?.();
+			await end();
 		}
 	});
 }

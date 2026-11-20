@@ -2,6 +2,8 @@ import { accessSync, constants } from "node:fs";
 import { delimiter, join, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { getAgentDir, getBinDir, getLegacyProviderDirs } from "../config.ts";
 import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
@@ -315,21 +317,30 @@ export function sanitizeBinaryOutput(str: string): string {
  */
 const trackedDetachedChildPids = new Set<number>();
 const gracefulDetachedChildPids = new Set<number>();
-let exitHookInstalled = false;
+/** What the owner of a child also stops once the child is killed: processes the child started outside its group. */
+const afterKills = new Map<number, () => void>();
+let registered = false;
 
-export function trackDetachedChildPid(pid: number, options?: { graceful?: boolean }): void {
+/**
+ * `afterKill` runs synchronously right after the last-resort kill (never after a normal stop): a subagent's bash commands
+ * lead groups of their own, which its killed process can no longer stop and whose asynchronous cleanup an exiting
+ * process never reaches.
+ */
+export function trackDetachedChildPid(pid: number, options?: { graceful?: boolean; afterKill?: () => void }): void {
 	trackedDetachedChildPids.add(pid);
 	if (options?.graceful) gracefulDetachedChildPids.add(pid);
-	if (!exitHookInstalled) {
-		exitHookInstalled = true;
+	if (options?.afterKill) afterKills.set(pid, options.afterKill);
+	if (!registered) {
+		registered = true;
 		// Synchronous, so it runs on every `process.exit`, where a pending SIGKILL timer would be lost.
-		process.on("exit", () => killTrackedDetachedChildren());
+		processLifetime.acquire("detached children", { atExit: () => killTrackedDetachedChildren() });
 	}
 }
 
 export function untrackDetachedChildPid(pid: number): void {
 	trackedDetachedChildPids.delete(pid);
 	gracefulDetachedChildPids.delete(pid);
+	afterKills.delete(pid);
 }
 
 export function killTrackedDetachedChildren(options?: { sparingGraceful?: boolean }): void {
@@ -344,6 +355,13 @@ export function killTrackedDetachedChildren(options?: { sparingGraceful?: boolea
 				// The group is gone; never fall back to a possibly unrelated positive PID.
 			}
 		}
+		const afterKill = afterKills.get(pid);
 		untrackDetachedChildPid(pid);
+		try {
+			afterKill?.();
+		} catch (error) {
+			// The exit still kills the remaining children; the failure is shown, not swallowed.
+			process.stderr.write(`Octocode could not stop what child ${pid} left running: ${errorMessage(error)}\n`);
+		}
 	}
 }

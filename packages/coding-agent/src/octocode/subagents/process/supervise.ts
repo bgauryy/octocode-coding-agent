@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { adoptTree } from "../../../utils/process-tree.ts";
 import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
-import { SHELL_GROUPS_FILE_ENV, stopShellGroups } from "../../shared/shell-groups.ts";
+import { killShellGroupsNow, SHELL_GROUPS_FILE_ENV, stopShellGroups } from "../../shared/shell-groups.ts";
 import { type ChildEffect, newChildState, parseEvent, reduceEvent } from "../events.ts";
 import { RequestBudget } from "../budget.ts";
 import { heartbeatDue, SETTLED_EXIT_MS } from "../liveness.ts";
@@ -82,7 +82,8 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		adoptTree(child.pid);
 		// The group dies with this process on a crash or an emergency exit (`killTrackedDetachedChildren`), until it exits.
 		const trackedPid = child.pid;
-		if (trackedPid) trackDetachedChildPid(trackedPid, { graceful: true });
+		if (trackedPid)
+			trackDetachedChildPid(trackedPid, { graceful: true, afterKill: () => killShellGroupsNow(shellGroups) });
 		const state = newChildState();
 		const phase = new RunPhase();
 		const report = new ReportTracker(outputDir, identity.resultContract);

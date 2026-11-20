@@ -50,6 +50,9 @@ import {
 } from "./startup.ts";
 import { folderTrustAsker, gateStartup, prepareAcpTrust } from "./trust-startup.ts";
 
+/** How long an outage may hold a print-mode run when `retry.offlineMaxMs` is unset. */
+const PRINT_OFFLINE_MAX_MS = 30 * 60_000;
+
 interface SessionRunContext {
 	/** The folder the session starts in (after `--worktree` and the like). */
 	cwd: string;
@@ -206,6 +209,10 @@ export async function runSession(
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
 	const { settingsManager, modelRuntime } = services;
+	// A print run has no one to press Esc: an outage holds it only so long, unless the user set a limit.
+	if (appMode !== "interactive" && appMode !== "rpc" && settingsManager.getRetrySettings().offlineMaxMs === undefined) {
+		settingsManager.applyOverrides({ retry: { offlineMaxMs: PRINT_OFFLINE_MAX_MS } });
+	}
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());

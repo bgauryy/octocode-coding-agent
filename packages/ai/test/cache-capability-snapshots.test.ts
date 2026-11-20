@@ -38,7 +38,7 @@ describe("dated snapshot ids resolve like their base", () => {
 		expect(azureAcceptsExtendedRetention(azure("unlisted-2026-01-01"))).toBe(false);
 	});
 
-	it("keeps the compat override ahead of the id lists", () => {
+	it("keeps the compat override ahead of the flag table", () => {
 		const dated = withCacheCapabilities(model({ id: "gpt-5.5-2026-11-08" }));
 		expect(getCompat(dated).supportsLongCacheRetention).toBe(true);
 		expect(getCompat({ ...dated, compat: { supportsLongCacheRetention: false } }).supportsLongCacheRetention).toBe(

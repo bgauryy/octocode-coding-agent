@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,12 +17,17 @@ export const PACKAGE_POLICY = {
 	"coding-agent": ["agent", "ai", "common", "contracts", "tui", "tui-ink", "webview"],
 	contracts: [],
 	"octocode-agentic-testkit": [],
+	projections: ["contracts"],
 	telemetry: [],
 	terminal: ["common"],
 	tui: ["common"],
 	"tui-ink": ["common", "tui"],
-	webview: ["common", "contracts"],
+	webview: ["common", "contracts", "projections"],
 };
+
+// Packages every interface runs (browser, terminal, editor): they import only their policy workspaces, never Node
+// built-ins or another npm package, so no DOM, React, terminal library or host code can reach them.
+export const PORTABLE_PACKAGES = new Set(["projections"]);
 
 // Hosted workspaces that still reach a sibling workspace compiled into the same host by relative path. The list only shrinks: every
 // other package imports its siblings through their declared package names.
@@ -31,7 +37,13 @@ const RELATIVE_SIBLING_BASELINE = new Set(["db", "mcp"]);
 // worker runs db source on plain Node, where a package specifier would load a possibly stale `dist/` of common.
 const RELATIVE_PACKAGE_IMPORT_EXCEPTIONS = { db: new Set(["common"]) };
 
-export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLICY, layerRules = LAYER_RULES) {
+export function checkPackageBoundaries(
+	packages,
+	sources,
+	policy = PACKAGE_POLICY,
+	layerRules = LAYER_RULES,
+	portable = PORTABLE_PACKAGES,
+) {
 	const { hosts, issues } = sourceWorkspaceGroups(packages);
 	const unit = (name) => hosts.get(name) ?? name;
 	const names = new Map(Object.entries(packages).map(([dir, manifest]) => [manifest.name, dir]));
@@ -57,6 +69,10 @@ export function checkPackageBoundaries(packages, sources, policy = PACKAGE_POLIC
 			let target = names.get(
 				specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0],
 			);
+			if (portable.has(source.package) && !target && !specifier.startsWith("."))
+				issues.push(
+					`${isBuiltin(specifier) ? "Node built-in" : "external package"} in portable package: ${source.package}/${source.path} -> ${specifier}`,
+				);
 			let reached = specifier;
 			if (specifier.startsWith(".")) {
 				reached = path.posix.normalize(path.posix.join(source.package, path.posix.dirname(source.path), specifier));

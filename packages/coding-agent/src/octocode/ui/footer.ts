@@ -29,7 +29,7 @@ const isCompaction = (entry: unknown): boolean =>
 
 /**
  * Mounts the footer, `footerLines`, in the host's footer slot. The state is sampled on events (session start, each finished message,
- * model and thinking changes, compaction, tree moves), never inside render: context usage walks the whole session.
+ * model, thinking and context-size changes, compaction, tree moves), never inside render: context usage walks the whole session.
  * The state lives in a store and the footer is a `Connected` view of it, the permission chip, the live agents the panel
  * publishes (for `Σ`), the git branch and the statuses: a frame whose selection is unchanged reuses its lines. It also
  * warns once when a reply's model has no pricing, and when the model declares no reasoning that a built-in twin declares.
@@ -106,22 +106,23 @@ export function registerFooter(api: FeatureSetup): void {
 	const sample = (ctx: FeatureContext) => {
 		const model = ctx.model;
 		const usage = ctx.getContextUsage();
-		// Usage carries the effective window (including overrides and the latest physical route).
-		const limit =
+		// Usage carries the effective window (including overrides and the latest physical route): the gauge is of that.
+		const window = usage?.contextWindow ?? model?.contextWindow;
+		const compactAt =
 			usage?.compactionThreshold ??
-			(model
-				? autoCompactAt(
-						{ ...model, contextWindow: usage?.contextWindow ?? model.contextWindow },
-						compactionThinking(api),
-					)
-				: usage?.contextWindow);
+			(model && window ? autoCompactAt({ ...model, contextWindow: window }, compactionThinking(api)) : undefined);
 		set({
 			model: model?.id,
 			kind: model ? ctx.modelRegistry.getProviderKind(model.provider) : undefined,
 			thinking: model?.reasoning ? api.models.getThinkingLevel() : undefined,
-			context: limit
-				? { percent: typeof usage?.tokens === "number" ? (usage.tokens / limit) * 100 : null, limit }
-				: undefined,
+			context:
+				window && window > 0
+					? {
+							percent: typeof usage?.tokens === "number" ? (usage.tokens / window) * 100 : null,
+							window,
+							...(compactAt && compactAt > 0 ? { compactAt } : {}),
+						}
+					: undefined,
 			cwd: ctx.cwd,
 			sessionName: ctx.sessionManager.getSessionName?.(),
 			githubToken: githubTokenPresent(),
@@ -235,4 +236,6 @@ export function registerFooter(api: FeatureSetup): void {
 		await refresh(event, ctx);
 	});
 	api.bus.on("session_info_changed", refresh);
+	// /context <size>, a reset or an observed capacity change the window without a reply.
+	api.bus.on("session_context_changed", refresh);
 }

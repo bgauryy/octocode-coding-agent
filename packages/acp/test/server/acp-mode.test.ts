@@ -272,6 +272,14 @@ describe("inbound ACP protocol", () => {
 		await expect(h.prompt(sessionId, "/extension-command")).resolves.toMatchObject({ stopReason: "end_turn" });
 	});
 
+	it("ends a prompt the worker stopped before taking it as cancelled, without waiting for a run", async () => {
+		const h = harness();
+		await h.initialize();
+		const { sessionId } = await h.newSession();
+		h.workers[0].prompt.mockResolvedValueOnce("not-sent");
+		await expect(h.prompt(sessionId)).resolves.toMatchObject({ stopReason: "cancelled" });
+	});
+
 	it("waits for prompt acceptance even if execution settles before the RPC response arrives", async () => {
 		const h = harness();
 		await h.initialize();

@@ -183,7 +183,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 					aborted: false,
 					willRetry: retry && !stop,
 					result: expect.objectContaining({
-						summary: "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\ncompacted",
+						summary: "No prior history.\n\n## Turn Context (split turn)\n\ncompacted",
 					}),
 				}),
 			);

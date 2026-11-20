@@ -174,6 +174,8 @@ After a database upgrade, older builds can still read the backlog but their writ
 
 History present when the page connects, reconnects and re-renders raise nothing. A click focuses the window and opens Activity or Agents for that session. If permission is denied or the browser has no notifications, the button says so and stays disabled. The **Sound** toggle plays a chime made in the page; it is stored as `web.sound` in the global settings, because each launch has an empty browser profile.
 
+The notices the terminal shows (a memory pass's summary, a cache warming cost, a hook diagnostic, a model that has been silent for 20 seconds) also reach the page while it is open: each appears as a toast at the bottom of any view (an error stays until you dismiss it) and as a **Notice** or **Warning** line in Activity. They are not saved with the session, so a reload shows only those from this run of the session that Activity still holds, without toasting them again. An identical notice repeated within 10 seconds appears once.
+
 ## Docs tab
 
 The board's **Docs** tab (`#docs`) lists every Markdown file under the workspace's `.octocode/` folder (symbolic links skipped): RFCs, research, plans, reviews, the exported `backlog.md` and, when temporary files are enabled, handoffs under `.octocode/code/temp/`. Each row shows the title (first heading), a kind from its top-level folder (`rfc`, `research`, `brainstorm`, `review`, `audit`, `plan`, `contract`, else `report`), the modified date, and `status` and `question` from flat front matter. Filter by kind, folder, title, path or status; `tmp/` appears only with **Include tmp/**, and `skills/` never. At most 1,000 documents are indexed; files over 512 KiB, dot-folders, `view/` and `node_modules/` are skipped.

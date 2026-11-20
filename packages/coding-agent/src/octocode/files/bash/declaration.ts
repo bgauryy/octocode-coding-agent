@@ -16,8 +16,12 @@ const BACKGROUND_OUTPUT = Type.Object({
 	verification: Type.Optional(verificationSchema),
 });
 
+/**
+ * The thresholds are the defaults, said as such: the description is declared once, ahead of the cached prompt, while
+ * `bashBackgroundAfterSeconds` and `bash.longCommandAfterSeconds` are read per call (`settingsFor`).
+ */
 export function bashDescription(): string {
-	return `Run commands in the working directory. Builds, full test suites, servers and work over a minute go in background: job id, pid and log path now, a completion message later. Foreground returns combined output; it moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds, servers) or on a user message. A timeout does not undo effects: inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
+	return `Run commands in the working directory. Builds, full test suites, servers and work over a minute go in background: job id, pid and log path now, a completion message later. Foreground returns combined output; it moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s by default (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds, servers) or on a user message. A timeout does not undo effects: inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */

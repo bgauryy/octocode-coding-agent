@@ -1,7 +1,8 @@
 /**
  * How agent mail draws in the transcript: an outgoing `agent` message call (header and result row) and delivered
- * mail. Both name sender → recipient, the kind and the message number; the body previews collapsed and shows whole expanded.
+ * mail. Both name sender → recipient, the kind and the message number; the body shows whole.
  */
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
@@ -9,6 +10,7 @@ import { ENTITY } from "../../src/octocode/shared/entity.ts";
 import { registerMessageRenderer, registerSendMessageTool } from "../../src/octocode/team/tools/messages.ts";
 import type { Team } from "../../src/octocode/team/session.ts";
 import type { Endpoint } from "@octocodeai/octocode-contracts/team";
+import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
 import { mailRows } from "../../src/octocode/team/tools/message-rows.ts";
 import { rendered, theme } from "./fake-host.ts";
 
@@ -58,20 +60,16 @@ describe("outgoing agent message rows", () => {
 		expect(call({ to: "eel", forward: 17 })).toBe("⏺ Send(you → eel · forward #17)");
 	});
 
-	it("shows the number and resolved recipients, the body previewed collapsed and whole expanded", () => {
+	it("shows the number and resolved recipients, with the whole body even collapsed", () => {
 		const args = { to: "parent", message: BODY };
-		expect(result(args, { id: 42, to: ["kraken"] }, false)).toBe(
-			'  ⎿  #42 queued for kraken · "one" (ctrl+o to expand)',
-		);
-		expect(result(args, { id: 42, to: ["kraken"] }, true)).toBe(
-			"  ⎿  #42 queued for kraken\n     one\n     two\n     three\n     four\n     five",
-		);
-		// A recipient the header already names is not repeated.
-		expect(result({ to: "ink", message: "hi" }, { id: 43, to: ["ink"] }, false)).toBe(
-			'  ⎿  #43 queued · "hi" (ctrl+o to expand)',
-		);
+		const whole = "  ⎿  #42 queued for kraken\n     one\n     two\n     three\n     four\n     five";
+		expect(result(args, { id: 42, to: ["kraken"] }, false)).toBe(whole);
+		expect(result(args, { id: 42, to: ["kraken"] }, true)).toBe(whole);
+		// A recipient the header already names is not repeated; the text is never clipped to a preview.
+		const long = "x".repeat(200);
+		expect(result({ to: "ink", message: long }, { id: 43, to: ["ink"] }, false)).toContain(`#43 queued\n     ${long}`);
 		expect(result({ to: "all", message: "hi" }, { id: 47, to: ["a", "b", "c"] }, false)).toMatch(
-			/^ {2}⎿ {2}#47 queued for 3 agents · "hi"/,
+			/^ {2}⎿ {2}#47 queued for 3 agents\n\s+hi/,
 		);
 		expect(result({ to: "eel", forward: 17 }, { id: 17, to: ["eel"], forwarded: true }, false)).toBe(
 			"  ⎿  #17 forwarded",
@@ -125,10 +123,23 @@ describe("delivered agent mail rows", () => {
 		expect(header).not.toContain("→ you");
 	});
 
-	it("previews the body collapsed and shows it whole expanded", () => {
-		const collapsed = row({ id: 51, from: "ink" }, false);
-		expect(collapsed).toMatch(/⎿ {2}one\n\s+two\n\s+three\n\s+… \+2 lines/);
-		expect(collapsed).not.toContain("five");
-		expect(row({ id: 51, from: "ink" }, true)).toMatch(/one\n\s+two\n\s+three\n\s+four\n\s+five$/);
+	it("shows the whole body collapsed or expanded", () => {
+		for (const expanded of [false, true]) {
+			expect(row({ id: 51, from: "ink" }, expanded)).toMatch(/one\n\s+two\n\s+three\n\s+four\n\s+five$/);
+		}
+	});
+
+	it("shows a spilled message whole from its saved file", () => {
+		const full = `${"a long line of the message\n".repeat(600)}the very end`;
+		const spilled = spilledMessage(full, "ink");
+		expect(typeof spilled).toBe("string");
+		expect(spilled).not.toContain("the very end");
+		const shown = row({ id: 55, from: "ink", text: spilled }, false);
+		expect(shown).toContain("the very end");
+		expect(shown).not.toContain("Full message (");
+		// A file that no longer matches its hash leaves the delivered head and pointer.
+		const file = /: (\S+)\]$/.exec(spilled as string)![1];
+		fs.writeFileSync(file, "tampered");
+		expect(row({ id: 56, from: "ink", text: spilled }, false)).toContain("Full message (");
 	});
 });

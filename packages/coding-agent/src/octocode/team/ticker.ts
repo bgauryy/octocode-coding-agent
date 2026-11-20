@@ -5,6 +5,9 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 /** A tick this long after the previous one means the machine slept (or this process stalled): peers could not heartbeat either. */
 const SUSPEND_GAP_MS = 15_000;
 
+/** `poll` looks at the database file at most this often. */
+const POLL_MS = 250;
+
 /** What watchers (the agents panel) render: live agents, recent traffic, or why the team is off. */
 export interface TeamView {
 	members: Member[];
@@ -46,6 +49,7 @@ export class TeamTicker {
 	/** The file stamp the follower last saw: `changed` runs when it moves. */
 	private followed: string | undefined;
 	private readAt = 0;
+	private polledAt = 0;
 	/** Wall time of the previous tick while the timer runs; 0 when it is stopped. */
 	private tickedAt = 0;
 
@@ -68,6 +72,20 @@ export class TeamTicker {
 			this.watchers.delete(listener);
 			this.sync();
 		};
+	}
+
+	/**
+	 * Between ticks: when a write moved the database file, refreshes the view and calls the watchers now, so a panel whose
+	 * own clock runs (an agent works) follows a child's row within a fraction of a second. It starts no timer: the caller's
+	 * clock drives it, and a stamp check is one stat at most every `POLL_MS`.
+	 */
+	poll(now: number = Date.now()): void {
+		if (this.watchers.size === 0 || now - this.polledAt < POLL_MS) return;
+		this.polledAt = now;
+		const file = this.source.dbFile();
+		if (!file || dbStamp(file) === this.stamp) return;
+		this.refresh();
+		for (const listener of this.watchers) listener();
 	}
 
 	/** Start or stop the timer to match whether there is any work. */

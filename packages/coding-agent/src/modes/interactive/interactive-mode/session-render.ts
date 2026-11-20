@@ -23,6 +23,7 @@ import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { toolContent } from "../components/application-content.ts";
 import { theme } from "../../../theme/theme.ts";
+import { compactionUsage } from "./compaction-cost.ts";
 import { noticeLine } from "./display.ts";
 import { isCustomSessionEntry, isCompactionCostNotice, isUsageSessionEntry } from "./helpers.ts";
 import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
@@ -191,8 +192,9 @@ export function renderSessionEntries(
 			return [entry];
 		}
 		const messages = sessionEntryToContextMessages(entry);
-		if ((entry.type === "compaction" || entry.type === "branch_summary") && entry.usage && messages.length > 0) {
-			return [...messages, { type: "compaction_cost", kind: entry.type, usage: entry.usage }];
+		if ((entry.type === "compaction" || entry.type === "branch_summary") && messages.length > 0) {
+			const usage = compactionUsage(entry, (id) => host.sessionManager.getEntry(id));
+			if (usage) return [...messages, { type: "compaction_cost", kind: entry.type, usage }];
 		}
 		return messages;
 	});

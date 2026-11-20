@@ -156,6 +156,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "changelog", description: "Show what's new" },
 	{ name: "keys", description: "Show keyboard shortcuts" },
+	{ name: "find", description: "Search the transcript (fullscreen mode)" },
 	{
 		name: "fork",
 		description: "Start a new session from an earlier message",
@@ -242,6 +243,7 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"mcp",
 	"trust",
 	"keys",
+	"find",
 	"optimize",
 	"reload",
 	"web",

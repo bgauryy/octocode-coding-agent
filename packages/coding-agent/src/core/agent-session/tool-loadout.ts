@@ -339,7 +339,6 @@ export class SessionToolLoadout {
 			[...this._toolRegistry.keys()].filter((name) => this._isActivatedOnRegistration(name)),
 		);
 		const previousActiveToolNames = this.host.session.getActiveToolNames();
-		const allowedTools = this._allowedTools;
 		const registeredTools = this.host.session.featureHost.getAllRegisteredTools();
 		// Only native and base tools may name companions: a feature tool's companions never get past `--tools`.
 		this._companionFloor = companionFloor(
@@ -367,10 +366,10 @@ export class SessionToolLoadout {
 				? [...options.activeToolNames]
 				: [...(this._toolPolicy ? this._policyRequestedTools : previousActiveToolNames)]
 		).filter((name) => this._isAllowedTool(name));
-
 		nextActiveToolNames.push(
 			...toolsToActivate({
-				allowedTools,
+				allowedTools: this._allowedTools,
+				allowedEntries: this._allowedEntries,
 				explicitActiveNames: options?.activeToolNames !== undefined,
 				includeAllFeatureTools: options?.includeAllFeatureTools === true,
 				registered: this._toolRegistry.keys(),
@@ -378,6 +377,7 @@ export class SessionToolLoadout {
 				previousActivated: previousActivatedOnRegistration,
 				deselected: this._deselectedToolNames,
 				isDeclarable: (name) => this._isDeclarable(name),
+				isOnDemand: (name) => this._toolDefinitions.get(name)?.definition.onDemand === true,
 				isActivatedOnRegistration: (name) => this._isActivatedOnRegistration(name),
 			}),
 		);

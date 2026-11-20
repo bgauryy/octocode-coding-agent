@@ -43,8 +43,8 @@ export interface SessionPickerPorts {
 	/** Host actions behind the one key `app.session.actions`; each runs after the picker has closed. */
 	actions?: readonly SessionAction[];
 	/**
-	 * Removes the sessions the user deleted (Ctrl+D on one row or on the rows marked with Ctrl+X) after one confirmation.
-	 * Without it the picker moves each transcript to the trash or unlinks it, and knows nothing of liveness.
+	 * Removes the sessions the user deleted (Ctrl+D on one row or on the rows marked with Ctrl+X) after one confirmation:
+	 * transcript, session folders and database rows together. Every host supplies it; a picker without one refuses to delete.
 	 */
 	removeSessions?(sessions: readonly SessionInfo[]): Promise<SessionRemoval>;
 	/** Terminal rows the picker may fill; defaults to the terminal height. */

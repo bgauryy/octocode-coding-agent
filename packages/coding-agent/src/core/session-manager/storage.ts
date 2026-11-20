@@ -207,6 +207,8 @@ export function writeNewSessionFile(
 export interface OpenedSessionTarget {
 	cwd: string;
 	dir: string;
+	/** `dir` is the file's own folder because no session directory was given. */
+	dirFromFile: boolean;
 	resolvedPath: string;
 	preloadedFileEntries: FileEntry[] | undefined;
 }
@@ -238,7 +240,7 @@ export function resolveOpenedSession(
 	const parent = resolve(resolvedPath, "..");
 	const legacy = parent === legacySessionDirectoryPath(cwd);
 	const dir = sessionDir ? normalizePath(sessionDir) : legacy ? getDefaultSessionDirPath(cwd) : parent;
-	return { cwd, dir, resolvedPath, preloadedFileEntries };
+	return { cwd, dir, dirFromFile: !sessionDir && !legacy, resolvedPath, preloadedFileEntries };
 }
 
 /**

@@ -1,6 +1,13 @@
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
-import { compact, inlineSummaryTokens, persistCheckpointText, spillFileLists } from "../../core/compaction/index.ts";
+import {
+	compact,
+	inlineSummaryTokens,
+	persistCheckpointText,
+	spillFileLists,
+	SummaryOutputLimitError,
+} from "../../core/compaction/index.ts";
+import { focusBlock, type SummaryFocus } from "../../core/compaction/summary-focus.ts";
 import type { SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { clearedResults } from "../files/reads.ts";
@@ -20,7 +27,7 @@ import {
 } from "./checkpoint-text.ts";
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { carriedUserMessages, type FallbackContinuity, persistenceFailure } from "./continuity.ts";
-import { discardEarlySummary, skipReason, takeEarlySummary } from "./early-summary.ts";
+import { earlySummaryFor } from "./early-summary.ts";
 import { keptWordsOf } from "./kept-words.ts";
 import { carriedLoadedSkills, LOADED_SKILLS_DETAILS, loadedSkills, loadedSkillsLines } from "./loaded-skills.ts";
 import { recordCompactionNote } from "./record.ts";
@@ -36,13 +43,15 @@ import { previousFileLists } from "./previous-file-lists.ts";
 import { noGainReason } from "./summary-gain.ts";
 import { keepPaidSummary, paidSummaryOf } from "./paid-summary.ts";
 import { paidSummaryKey } from "./summary-cache.ts";
-import { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText } from "./summary-text.ts";
+import { transcriptNote, userText } from "./summary-text.ts";
 
 export { SUMMARIZER_RESULT_CHARS, summarizerView, USER_MESSAGE_CHARS, USER_MESSAGES_CHARS, userMessagesSection };
-export { SHARED_IMAGE_FOCUS, STANDALONE_IMAGE_FOCUS, SUMMARY_FOCUS, transcriptNote, userText };
+export { transcriptNote, userText };
 
 /**
- * The compaction summary. The model writes the checkpoint (`core/compaction/summary-format.ts`) with the focus below:
+ * The compaction summary. The model writes the checkpoint (`core/compaction/summary-format.ts`) under the required
+ * preservation rules, with the compaction's focus labelled by who wrote it, the user or the agent's `compact` tool
+ * (`core/compaction/summary-focus.ts`), and code carries its standing constraints and decisions (`ledger.ts`):
  * on the session's own model as one more request of the session, which the prompt cache holds (`shared-summary.ts`),
  * else (an overflow, a downshift, blocked images, any failure) through the exported `compact()` over the serialized
  * conversation (same cut point, split-turn handling, iterative update of the previous summary and file lists), routed
@@ -166,7 +175,7 @@ function codeSections(
 export async function writeSummary(
 	api: SummaryApi,
 	event: SessionBeforeCompactEvent,
-	ctx: Pick<FeatureContext, "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
+	ctx: Pick<FeatureContext, "cwd" | "model" | "modelRegistry" | "sessionManager" | "hasUI" | "ui">,
 	summaryModel?: Model<Api>,
 	fallback?: FallbackContinuity,
 	/** The agent that started this one, when it is a subagent: its mail to this agent is kept word for word. */
@@ -212,8 +221,10 @@ export async function writeSummary(
 			response.result = () => result;
 			return response;
 		};
-		const instructions = (images: string) =>
-			`${SUMMARY_FOCUS} ${images}${event.customInstructions ? `\n\nAdditional user focus:\n${event.customInstructions}` : ""}`;
+		// The agent's own focus is its notes on what it needs next, never the user's words.
+		const focus: SummaryFocus | undefined = event.customInstructions
+			? { text: event.customInstructions, source: event.requestedBy === "agent" ? "agent" : "user" }
+			: undefined;
 		// The standalone request's view of the messages: long tool results are saved whole and shown as references. Only
 		// that request reads it (the shared one reads the session's own messages), so it is built only when it is sent.
 		const standalonePreparation = () => ({
@@ -224,28 +235,19 @@ export async function writeSummary(
 		});
 		const forced = event.summaryRequest?.forceSystemPrompt;
 		const level = api.models.getThinkingLevel();
-		const key = paidSummaryKey(model, event.preparation, event.customInstructions, level, forced);
+		const key = paidSummaryKey(model, event.preparation, focusBlock(focus) || undefined, level, forced);
 		let paidSummary = paidSummaryOf(ctx.sessionManager);
 		// The summary requested ahead of the threshold (`early-summary.ts`): ready, or waited for what is left of it.
-		const earlyNote = (text: string) => recordCompactionNote(api, "early-summary", text);
-		if (paidSummary?.key !== key && !summaryModel && event.reason === "threshold" && !event.customInstructions) {
-			const thinking = api.models.getThinkingLevel();
-			const taken = await takeEarlySummary(
-				ctx.sessionManager,
-				model,
-				event.preparation,
-				thinking,
-				event.signal,
-				forced,
-				earlyNote,
-			);
-			if (event.signal.aborted) return undefined;
-			if (taken) {
-				paidSummary = { key, result: taken.result, method: { method: "cache-shared", early: taken.early } };
-				keepPaidSummary(ctx.sessionManager, paidSummary);
-			}
-		} else
-			discardEarlySummary(ctx.sessionManager, skipReason(paidSummary?.key === key, !!summaryModel, event), earlyNote);
+		const taken = await earlySummaryFor(api, event, ctx, model, {
+			paidAlready: paidSummary?.key === key,
+			downshift: summaryModel !== undefined,
+			forced,
+		});
+		if (event.signal.aborted) return undefined;
+		if (taken) {
+			paidSummary = { key, result: taken.result, method: { method: "cache-shared", early: taken.early } };
+			keepPaidSummary(ctx.sessionManager, paidSummary);
+		}
 		if (paidSummary?.key !== key) {
 			// An automatic compaction whose appended sections alone (unsaved) are as large as what the summary replaces cannot
 			// free anything, so the model is not paid to write it.
@@ -270,7 +272,7 @@ export async function writeSummary(
 						event,
 						ctx,
 						model,
-						instructions(SHARED_IMAGE_FOCUS),
+						focusBlock(focus),
 						(reason, userChoice) => {
 							fallback = reason;
 							if (!userChoice) notifyStandalone(ctx, reason);
@@ -291,7 +293,7 @@ export async function writeSummary(
 					model,
 					undefined,
 					undefined,
-					instructions(STANDALONE_IMAGE_FOCUS),
+					focus,
 					event.signal,
 					api.models.getThinkingLevel(),
 					stream,
@@ -332,6 +334,8 @@ export async function writeSummary(
 			...(saved.length > 0 ? { [SAVED_RESULTS_DETAILS]: saved } : {}),
 			...(skills.length > 0 ? { [LOADED_SKILLS_DETAILS]: skills } : {}),
 			[SUMMARY_METHOD_DETAILS]: { ...method, ms: Date.now() - startedAt },
+			// An early summary was written without this focus: the agent gets it back after the compaction (`compact` tool).
+			...(focus ? { focus: { delivery: method.early ? "follow-up" : "summary" } } : {}),
 		};
 		return {
 			compaction: {
@@ -345,6 +349,8 @@ export async function writeSummary(
 		const failed = persistenceFailure(api, ctx, error);
 		if (failed) return failed;
 		if (event.signal.aborted) return undefined;
+		// The same model cannot write the summary: Octocode's default summary would send the same request once more.
+		if (error instanceof SummaryOutputLimitError) return { cancel: true, failure: error.message };
 		// Octocode's default summary has none of what code appends: built now, from the same inputs and budgets, it follows
 		// that summary as one message (`continuity.ts`). Saving its long texts can fail like Octocode's summary does.
 		if (fallback) {

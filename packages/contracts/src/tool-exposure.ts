@@ -41,7 +41,10 @@ export const NATIVE_ON_DEMAND_TOOLS = ["archive", "models"] as const;
  */
 export const TOOL_DECIDED_BY = ["pin", "pattern", "server", "recent", "usage", "setting", "default", "core"] as const;
 
-/** Why `mcpExposure: "usage"` left a tool as it is: direct by the snapshot, or deferred with no use in the kept days. */
+/**
+ * Why `mcpExposure: "usage"` left a tool as it is: `promoted`, a tool the configuration leaves on demand that the
+ * snapshot declares (thin) from the session's start; `unused`, deferred with no use in the kept days.
+ */
 export const TOOL_AUDIT_REASONS = ["promoted", "unused"] as const;
 
 /**
@@ -140,7 +143,8 @@ export const ToolPinCommandSchema = Type.Union([
 	Type.Object(
 		{
 			kind: Type.Literal("native"),
-			tool: StringEnum(NATIVE_PINNABLE_TOOLS),
+			// The panel lists the usage-only tools too, so a pin can fix them as well.
+			tool: StringEnum([...NATIVE_PINNABLE_TOOLS, ...NATIVE_USAGE_ONLY_TOOLS]),
 			pin: Type.Union([StringEnum(["direct", "deferred"] as const), Type.Null()]),
 			...PinTargetProperties,
 		},

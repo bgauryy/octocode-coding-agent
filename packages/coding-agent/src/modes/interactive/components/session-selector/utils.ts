@@ -84,5 +84,3 @@ export function formatSessionTime(created: Date, modified: Date, now: Date = new
 	const span = formatDuration(modified.getTime() - created.getTime());
 	return span ? `${formatStart(created, now)} (${span})` : formatStart(created, now);
 }
-
-export { deleteSessionFile } from "../../../../core/session-manager/delete-file.ts";

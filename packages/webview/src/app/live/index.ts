@@ -14,6 +14,7 @@ import { NeedsYouAnswer, useNeedsYou } from "./NeedsYou.tsx";
 import { Notifications } from "./Notifications.tsx";
 import { ProfilerView } from "./ProfilerView.tsx";
 import { ConnectionStatus, LiveProvider } from "./session.tsx";
+import { SessionNotices } from "./SessionNotices.tsx";
 import { SessionUnavailable } from "./SessionUnavailable.tsx";
 import { SettingsView } from "./SettingsView.tsx";
 import { themePrefs } from "./web-prefs.ts";
@@ -34,6 +35,7 @@ export const live: LiveExtension | null = {
 	Unavailable: SessionUnavailable,
 	themePrefs,
 	Notifications,
+	SessionNotices,
 	useNeedsYou,
 	NeedsYouAnswer,
 	ItemActions,

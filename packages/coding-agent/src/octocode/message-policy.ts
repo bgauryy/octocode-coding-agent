@@ -183,11 +183,12 @@ export function messagePolicy({
 			});
 			if (result.ok && result.merged && bypassed) {
 				const content = renderPrompt("notices/landing/bypass-merged.md", { merged: result.text });
-				void api.session.sendMessage(
-					{ customType: "octocode-merge-notice", content, display: true },
+				notify(ctx.ui, content, "warning");
+				// Display-only: the transcript records it, the model is not sent it. It starts no turn, so it settles at once; a session that cannot take it fails the merge call loudly.
+				await api.session.sendMessage(
+					{ customType: "octocode-merge-notice", content, display: "only" },
 					{ triggerTurn: false },
 				);
-				notify(ctx.ui, content, "warning");
 			}
 			return result;
 		},

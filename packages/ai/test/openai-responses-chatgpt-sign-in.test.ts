@@ -58,7 +58,9 @@ describe("OpenAI Responses with Sign in with ChatGPT", () => {
 		const apiKeyPayload = await capturePayload("sk-proj-test", explicitCacheModel);
 
 		expect(signInPayload.prompt_cache_options).toBeUndefined();
-		expect(apiKeyPayload.prompt_cache_options).toEqual({ ttl: "12h" });
+		// Long retention goes on the instruction breakpoints; the request TTL stays at the default 30m.
+		expect(apiKeyPayload.prompt_cache_options).toBeUndefined();
+		expect(signInPayload.prompt_cache_key).toBe(apiKeyPayload.prompt_cache_key);
 	});
 
 	it.each([

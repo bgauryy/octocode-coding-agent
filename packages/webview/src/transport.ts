@@ -11,7 +11,7 @@ import {
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { bearer } from "./access.ts";
 import { isProfileUpdate } from "./profiler-guards.ts";
-import { ApplicationStream } from "./application-stream.ts";
+import { ApplicationStream } from "@octocodeai/octocode-projections";
 import { requestJson } from "./request.ts";
 import { scopedRoute } from "./scope.ts";
 

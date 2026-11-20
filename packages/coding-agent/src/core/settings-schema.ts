@@ -4,6 +4,7 @@ import { BashSettingsProperties } from "./settings-schema/bash.ts";
 import { SandboxSettingsProperties } from "./settings-schema/sandbox.ts";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
+import { LeanPromptSchema } from "./settings-schema/lean-prompt.ts";
 import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-availability.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
@@ -13,6 +14,7 @@ import { MonitorSettingsProperties } from "./settings-schema/monitor.ts";
 import { FullscreenSettingsProperties } from "./settings-schema/fullscreen.ts";
 import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
+import { MemorySettingsProperties } from "./settings-schema/memory.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import {
 	BranchSummarySettingsSchema,
@@ -345,6 +347,7 @@ export const SettingsSchema = Type.Object(
 		),
 		...TimerSettingsProperties,
 		...MonitorSettingsProperties,
+		...MemorySettingsProperties,
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:
@@ -355,6 +358,7 @@ export const SettingsSchema = Type.Object(
 		retention: Type.Optional(RetentionSettingsSchema),
 		subagents: Type.Optional(SubagentSettingsSchema),
 		optimizePrompts: Type.Optional(OptimizePromptsSchema),
+		leanPrompt: Type.Optional(LeanPromptSchema),
 		tuiMode: Type.Optional(
 			Type.Union([Type.Literal("regular"), Type.Literal("fullscreen")], {
 				default: SETTINGS_DEFAULTS.tuiMode,

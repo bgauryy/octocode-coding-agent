@@ -391,10 +391,10 @@ const FIVE_MINUTE_ONLY_BEDROCK_IDS = [
 ];
 
 /**
- * Anthropic Messages hosts whose documentation verifies the one-hour TTL: Anthropic's own API and OpenCode. Other
- * Anthropic-protocol gateways (OpenRouter, Vercel, Cloudflare, Copilot, MiniMax) default to five minutes.
+ * Anthropic Messages hosts whose documentation verifies the one-hour TTL: Anthropic's own API, OpenCode, and OpenRouter
+ * for its Claude models. Other Anthropic-protocol gateways (Vercel, Cloudflare, Copilot, MiniMax) default to five minutes.
  */
-const ONE_HOUR_ANTHROPIC_HOSTS = ["api.anthropic.com", "opencode.ai"];
+const ONE_HOUR_ANTHROPIC_HOSTS = ["api.anthropic.com", "opencode.ai", "openrouter.ai"];
 
 /**
  * The TTL the route sends by default: one hour, except Bedrock models that accept only five minutes and Anthropic

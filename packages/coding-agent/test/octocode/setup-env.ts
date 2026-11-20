@@ -18,6 +18,8 @@ const userHome =
 	process.env.VITEST_TEST_USER_HOME ?? fs.mkdtempSync(path.join(path.dirname(os.tmpdir()), "octocode-test-userhome-"));
 process.env.HOME = userHome;
 process.env.USERPROFILE = userHome;
+// The offline check after a network failure would send DNS lookups: tests answer it as online unless they set it.
+process.env.OCTOCODE_NETWORK_PROBE ??= "online";
 delete process.env.CLAUDE_CONFIG_DIR;
 delete process.env.CODEX_HOME;
 // Tests that "restore" OCTOCODE_HOME/OCTOCODE_AGENT_DB restore these per-worker temporary paths, so late async work stays sandboxed.

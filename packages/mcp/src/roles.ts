@@ -5,6 +5,7 @@
  */
 
 import type { McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
+import { configuredMcpToolExposure } from "./servers.ts";
 import { createMcpToolName } from "./tool-names.ts";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
@@ -16,6 +17,8 @@ export interface ResolvedRoles {
 	judges: ReadonlySet<string>;
 	/** readers ∪ searches ∪ judges ∪ readOnly. */
 	readOnly: ReadonlySet<string>;
+	/** The tools above that the server's configuration leaves on demand (`toolExposure: "onDemand"`). */
+	onDemand: ReadonlySet<string>;
 	/** The first server, in name order, with both a reader and a search role: the one the research policy names. */
 	research?: {
 		server: string;
@@ -35,13 +38,20 @@ export interface RoleEntry {
 	trusted?: boolean;
 }
 
-const EMPTY: ResolvedRoles = { readers: new Set(), searches: new Set(), judges: new Set(), readOnly: new Set() };
+const EMPTY: ResolvedRoles = {
+	readers: new Set(),
+	searches: new Set(),
+	judges: new Set(),
+	readOnly: new Set(),
+	onDemand: new Set(),
+};
 
 export function resolveToolRoles(entries: readonly RoleEntry[]): ResolvedRoles {
 	const readers = new Set<string>();
 	const searches = new Set<string>();
 	const judges = new Set<string>();
 	const readOnly = new Set<string>();
+	const onDemand = new Set<string>();
 	let research: ResolvedRoles["research"];
 	const counted = entries
 		.filter((entry) => entry.config.roles && (entry.scope !== "project" || entry.trusted === true))
@@ -56,6 +66,8 @@ export function resolveToolRoles(entries: readonly RoleEntry[]): ResolvedRoles {
 		const judge = (roles.judge ?? []).map(full);
 		for (const tool of judge) judges.add(tool);
 		for (const tool of [...reader, ...search, ...judge, ...(roles.readOnly ?? []).map(full)]) readOnly.add(tool);
+		for (const tool of [roles.reader, roles.search, roles.judge, roles.readOnly].flatMap((tools) => tools ?? []))
+			if (configuredMcpToolExposure(config, tool) === "onDemand") onDemand.add(full(tool));
 		if (!research && reader.length > 0 && search.length > 0) {
 			research = {
 				server: name,
@@ -67,7 +79,7 @@ export function resolveToolRoles(entries: readonly RoleEntry[]): ResolvedRoles {
 			};
 		}
 	}
-	return { readers, searches, judges, readOnly, ...(research ? { research } : {}) };
+	return { readers, searches, judges, readOnly, onDemand, ...(research ? { research } : {}) };
 }
 
 let current: ResolvedRoles = EMPTY;

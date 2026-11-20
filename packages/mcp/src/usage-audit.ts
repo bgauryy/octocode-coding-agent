@@ -32,6 +32,25 @@ function deferralSavings(tool: Pick<Tool, "name" | "title" | "description" | "in
 	);
 }
 
+const thinBytes = new WeakMap<object, number>();
+
+/**
+ * Bytes a tool's thin declaration takes in the tool list (the whole description and the thin parameters): what
+ * promoting a tool the configuration leaves on demand adds to each request (`sizes` in `usage-counts.ts`).
+ */
+export function thinDeclarationBytes(tool: Pick<Tool, "name" | "title" | "description" | "inputSchema">): number {
+	const known = thinBytes.get(tool);
+	if (known !== undefined) return known;
+	const description = tool.description?.trim() || tool.title || tool.name;
+	const measured = bytes({
+		name: tool.name,
+		description,
+		parameters: thinParameters(toParameters(tool.inputSchema ?? {})),
+	});
+	thinBytes.set(tool, measured);
+	return measured;
+}
+
 /** The session's own record (agent directory, role group); undefined where no host paths exist. */
 export function sessionUsage(): UsageAuditSource | undefined {
 	try {
@@ -42,21 +61,22 @@ export function sessionUsage(): UsageAuditSource | undefined {
 }
 
 /**
- * Builds a tool's audit from the record. Under `mcpExposure: "usage"` the audit is always given and names the reason a
- * tool is direct (`promoted`) or deferred (`unused`); under another setting only once the record holds data.
+ * Builds a tool's audit from the record. Under `mcpExposure: "usage"` the audit is always given and names the reason
+ * when there is one: an on-demand tool (`onDemand`, its configured exposure) the snapshot declares from the start
+ * (`promoted`), or a deferred one never used (`unused`); under another setting only once the record holds data.
  */
 export function auditReader(
 	usage: UsageAuditSource | undefined,
 	setting: unknown,
 	recent: ReadonlySet<string> | undefined,
-): ((server: string, tool: Tool, state: ToolExposureState) => ToolAudit) | undefined {
+): ((server: string, tool: Tool, state: ToolExposureState, onDemand?: boolean) => ToolAudit) | undefined {
 	const byUsage = defersByUsage(setting);
 	if (!usage || (!byUsage && !hasUsageData(usage))) return undefined;
-	return (server, tool, state) => {
+	return (server, tool, state, onDemand = false) => {
 		const key = recentToolKey(server, tool.name);
 		return toolAudit(usage, key, state, {
 			saved: deferralSavings(tool),
-			...(byUsage ? { promoted: recent?.has(key) === true } : {}),
+			...(byUsage ? { promoted: recent?.has(key) === true, onDemand } : {}),
 		});
 	};
 }

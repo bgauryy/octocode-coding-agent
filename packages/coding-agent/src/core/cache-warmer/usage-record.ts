@@ -45,11 +45,13 @@ export function formatTtl(seconds: number): string {
 
 /** The tiers the adapter sends for `model` (`resolveModelCapabilities`). */
 function resolveCacheTier(model: Model<Api>, env?: ProviderEnv): ResolvedCacheTier {
-	const { mechanism, lifetimes } = resolveModelCapabilities(model, env).cache;
+	const { mechanism, lifetimes, longUpTo } = resolveModelCapabilities(model, env).cache;
+	// The tier as the request names it (`24h`), not the shorter lifetime planning assumes for it.
+	const long = longUpTo ?? lifetimes.long;
 	return {
 		mechanism,
 		...(lifetimes.short !== undefined ? { short: formatTtl(lifetimes.short) } : {}),
-		...(lifetimes.long !== undefined ? { long: formatTtl(lifetimes.long) } : {}),
+		...(long !== undefined ? { long: formatTtl(long) } : {}),
 		controllable: isCacheTtlControllable(mechanism),
 	};
 }

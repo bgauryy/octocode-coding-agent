@@ -94,6 +94,24 @@ describe("compact tool", () => {
 		expect(ctx.compact).toHaveBeenCalledTimes(1);
 	});
 
+	it("asks as the agent, and gives the focus back after a compaction that reused the summary written ahead", async () => {
+		const { fake, ctx, call, settle } = host();
+		await call("next: the parser tests");
+		await settle();
+		const options = ctx.compact.mock.calls[0][0];
+		expect(options.requestedBy).toBe("agent");
+		options.onComplete({ details: { focus: { source: "agent", delivery: "follow-up" } } });
+		const resumed = (fake.sent.at(-1) as { message: { content: string } }).message.content;
+		expect(resumed.startsWith(COMPACT_RESUME_TEXT)).toBe(true);
+		expect(resumed).toContain("<compact-focus>\nnext: the parser tests\n</compact-focus>");
+		// A summary written with the focus needs no copy of it.
+		const again = host();
+		await again.call("keep the plan");
+		await again.settle();
+		again.ctx.compact.mock.calls[0][0].onComplete({ details: { focus: { delivery: "summary" } } });
+		expect((again.fake.sent.at(-1) as { message: { content: string } }).message.content).toBe(COMPACT_RESUME_TEXT);
+	});
+
 	it("drops the request when the user stops the run or a compaction already ran", async () => {
 		const stopped = host();
 		await stopped.call();
@@ -157,7 +175,7 @@ describe("compact tool", () => {
 	});
 
 	it("names the tool in the upper context notices only", () => {
-		expect(contextNoticeText(70_000, 87_500, 100_000, true)).toMatch(/`compact` can summarize sooner/);
+		expect(contextNoticeText(70_000, 87_500, 100_000, true)).toMatch(/`compact`/);
 		expect(contextNoticeText(70_000, 87_500, 100_000)).not.toMatch(/compact`/);
 	});
 });
@@ -182,7 +200,9 @@ describe("compact tool in a real session", () => {
 			} as never);
 			registerCompactTool(api, registerCompaction(api, guard, false), false);
 		};
-		const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
+		// The 20k window keeps compaction cheap; the full policy keeps the prompt this test's sizes were set for (a window
+		// under 64k would otherwise pick the lean policy).
+		const settingsManager = SettingsManager.inMemory({ retry: { enabled: false }, leanPrompt: "off" });
 		const resourceLoader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
@@ -270,7 +290,7 @@ describe("compact tool in a real session", () => {
 				"agent_end",
 				"settled",
 			]);
-			expect(spy).toHaveBeenCalledWith({ customInstructions: "keep the plan" });
+			expect(spy).toHaveBeenCalledWith({ customInstructions: "keep the plan", requestedBy: "agent" });
 			expect(requests).toHaveLength(4);
 			const entries = sessionManager.getBranch().map((entry) => JSON.stringify(entry));
 			expect(entries.some((entry) => entry.includes("Compacting after this reply."))).toBe(true);

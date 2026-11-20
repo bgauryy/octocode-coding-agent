@@ -104,7 +104,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Wait",
 		promptSnippet: renderPrompt("tools/wait/snippet.md"),
 		description:
-			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list also shows what wakes you unasked. check.result runs a command: `test -e path`.",
+			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list also shows what wakes you unasked. Free: on check.result with filter.command (`test -e path`) wakes at exit 0. Paid: check, a question a small model judges.",
 		parameters,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();

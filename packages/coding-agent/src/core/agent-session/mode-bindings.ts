@@ -287,7 +287,10 @@ export class ModeBindings {
 				compact: (options) => {
 					const work = (async () => {
 						try {
-							const result = await session.compact({ customInstructions: options?.customInstructions });
+							const result = await session.compact({
+								customInstructions: options?.customInstructions,
+								...(options?.requestedBy ? { requestedBy: options.requestedBy } : {}),
+							});
 							options?.onComplete?.(result);
 						} catch (error) {
 							const err = error instanceof Error ? error : new Error(String(error));

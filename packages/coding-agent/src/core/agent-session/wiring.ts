@@ -64,6 +64,7 @@ export interface SessionSeams {
 		willRetry: boolean,
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
+		incomingTokens?: number,
 	): Promise<boolean>;
 	emitFeatureEvent: AgentEventsHost["emitFeatureEvent"];
 	waitForIdle(): Promise<void>;
@@ -108,6 +109,9 @@ export function createSessionCollaborators(
 		...base,
 		modelForMessage: (message) => models.modelForMessage(message),
 		omitRecoveryAttempt: (message) => boundaries.omitRecoveryAttempt(message),
+		// Mid-stream, an append would land between a tool call and its result: deliver at the turn's end instead.
+		deliverContextNote: (note) =>
+			session.isStreaming ? inputs.addPendingCustomMessage(note) : inputs.appendCustomMessage(note),
 	});
 	const toolCalls = new SessionToolCalls({
 		...base,
@@ -218,7 +222,10 @@ export function createSessionCollaborators(
 			...base,
 			inputs,
 			retry,
-			modelWait: new ModelWaitWatch((idleMs) => base.emit({ type: "model_wait", idleMs })),
+			modelWait: new ModelWaitWatch(
+				(idleMs) => base.emit({ type: "model_wait", idleMs }),
+				(idleMs) => emitModelStall(base.session.featureHost, idleMs),
+			),
 			boundaries,
 			toolCalls,
 			emitFeatureEvent: seams.emitFeatureEvent,
@@ -235,6 +242,13 @@ export function createSessionCollaborators(
 	};
 }
 
+/** Tells features a request went quiet (`model_stall`), when any listens; nothing waits for them. */
+function emitModelStall(runner: FeatureHost, idleMs: number): void {
+	if (!runner.hasHandlers("model_stall")) return;
+	// Handler failures are already reported through emitError; the timer that saw the silence awaits nothing.
+	void runner.emit({ type: "model_stall", idleMs }).catch(() => undefined);
+}
+
 /** Install the session's hooks on its Agent, in the order each wraps the previous one. */
 export function installSessionAgentHooks(c: SessionCollaborators): void {
 	c.toolCalls.install();
@@ -243,4 +257,19 @@ export function installSessionAgentHooks(c: SessionCollaborators): void {
 	c.boundaries.installFinishTurn();
 	installHiddenDeclarationsProjection(c.hooks);
 	installForcedPromptProjection(c.hooks);
+	installRequestSentWatch(c);
+}
+
+/**
+ * The agent loop transforms each request's context last, after `prepareRequest` (where a compaction can run) and right
+ * before it calls the stream function: when the outermost transform returns, the request goes out and its silence counts.
+ */
+function installRequestSentWatch(c: SessionCollaborators): void {
+	const agent = c.hooks.session.agent;
+	const previousTransformContext = agent.transformContext;
+	agent.transformContext = async (messages, signal) => {
+		const transformed = previousTransformContext ? await previousTransformContext(messages, signal) : messages;
+		c.agentEvents.modelWait.requestSent();
+		return transformed;
+	};
 }

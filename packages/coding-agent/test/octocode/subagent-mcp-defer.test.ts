@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { childInUseTools } from "../../src/octocode/subagents/core-tools.ts";
 import { parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 
@@ -26,5 +27,53 @@ describe("mcpDefer profile key", () => {
 
 	it("refuses an unknown role", () => {
 		expect(() => parseProfile("impl", "---\nmcpDefer: everything\n---\nTask")).toThrow(/unknown role everything/);
+	});
+
+	it("defers the read-only tools of a child started without a role", () => {
+		expect(subagentProcessEnv(undefined, {}).OCTOCODE_MCP_DEFER_ROLES).toBe("readOnly");
+		// A role decides for itself, `none` included: the general default never reaches it.
+		expect(
+			subagentProcessEnv(parseProfile("r", "---\nmcpDefer: none\n---\nTask"), {}).OCTOCODE_MCP_DEFER_ROLES,
+		).toBeUndefined();
+	});
+});
+
+describe("the in-use set a child takes from its coordinator", () => {
+	const parent = [
+		"octocode/localFetch",
+		"octocode/ghSearchCode",
+		"native/web",
+		"native/wait",
+		"native/memory",
+		"native/archive",
+		"native/models",
+		"native/backlogPlan",
+	];
+
+	it("keeps what the shared tool prefix declares and drops the role-dependent native tools", () => {
+		expect(childInUseTools(parent)).toEqual([
+			"octocode/localFetch",
+			"octocode/ghSearchCode",
+			"native/web",
+			"native/wait",
+		]);
+	});
+
+	it("reaches the child as the set it declares by", () => {
+		const env = subagentProcessEnv(undefined, {}, { id: "c", mcpRecent: childInUseTools(parent) });
+		const handed = JSON.parse(env.OCTOCODE_MCP_RECENT_TOOLS ?? "[]") as string[];
+		expect(handed).toContain("native/wait");
+		expect(handed).not.toContain("native/memory");
+		expect(handed).not.toContain("native/backlogPlan");
+	});
+});
+
+describe("a role's skill catalog in the child's environment", () => {
+	it("hands an empty catalog on as an empty value, and an absent one not at all", () => {
+		const empty = parseProfile("b", "---\ncatalog: []\n---\nTask");
+		expect(empty.catalog).toEqual([]);
+		expect(subagentProcessEnv(empty, {}).OCTOCODE_SKILL_CATALOG).toBe("");
+		expect(subagentProcessEnv(parseProfile("b", "---\n---\nTask"), {}).OCTOCODE_SKILL_CATALOG).toBeUndefined();
+		expect(subagentProcessEnv(undefined, {}).OCTOCODE_SKILL_CATALOG).toContain("octocode-research");
 	});
 });

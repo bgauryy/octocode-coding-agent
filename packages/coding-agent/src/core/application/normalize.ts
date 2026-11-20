@@ -308,7 +308,7 @@ export function applyMessageFields(source: Record<string, unknown>, message: App
 			Object.fromEntries(detailKeys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]])),
 		);
 	if (source.role === "custom" || source.role === "system")
-		message.display = source.role === "custom" && source.display === true;
+		message.display = source.role === "custom" && (source.display === true || source.display === "only");
 }
 
 /** Keep structured output readable without putting unbounded JSON in every streamed frame. */

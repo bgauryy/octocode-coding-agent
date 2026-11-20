@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { gitQuiet } from "../../utils/git-run.ts";
 import { listTmuxPanes, type TmuxPane } from "../terminal-launch/tmux.ts";
+import { type ForeignCli, foreignClis } from "./foreign-clis.ts";
 import { agentLabel, innermostWorktree, paneLabel, placeOccupants } from "./occupants.ts";
 import type { OpenDependencies } from "./open.ts";
 import { openerLabel, tmuxOpenings, worktreeOpenings } from "./openings.ts";
@@ -15,7 +16,12 @@ export interface SummaryDependencies extends Pick<OpenDependencies, "env" | "tmu
 	self?: string | undefined;
 	/** The database that keeps openers (tests; the default is the shared agent database). */
 	openings?: OpenDependencies["openings"];
+	/** Other vendors' agent CLIs on this machine (tests; the default reads the process table). */
+	foreign?: (ownRoots: readonly number[]) => Promise<ForeignCli[]>;
 }
+
+/** `Claude Code pid 123; Codex pid 456`. */
+const foreignText = (clis: readonly ForeignCli[]): string => clis.map((cli) => `${cli.name} pid ${cli.pid}`).join("; ");
 
 /** Line breaks in a path or git message, shown as `\n` and `\r` so each worktree stays on its own line. */
 const oneLine = (text: string): string => text.replace(/\r|\n/gu, (brk) => (brk === "\r" ? "\\r" : "\\n"));
@@ -65,6 +71,9 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 	const { main, statuses } = await worktreeStatuses(cwd);
 	const roots = statuses.filter((status) => !status.entry.prunable).map((status) => status.entry.path);
 	const { members, panes, byRoot, unplaced } = await whoIsWhere(roots, deps);
+	const ownRoots = [process.pid, ...members.map((member) => member.pid)];
+	const foreign = await (deps.foreign ?? ((own) => foreignClis({ ownRoots: own })))(ownRoots);
+	const foreignAt = (root: string) => foreign.filter((cli) => innermostWorktree(roots, cli.cwd) === root);
 	// Linked worktrees sit inside the main one, so the session's worktree is the innermost holding its directory.
 	const current = innermostWorktree(roots, cwd);
 	const scope = { env: deps.env, db: deps.openings };
@@ -88,10 +97,23 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 		if (here?.agents.length)
 			lines.push(`      agents: ${here.agents.map((member) => agentLabel(member, panes)).join("; ")}`);
 		if (here?.panes.length) lines.push(`      tmux: ${here.panes.map(paneText).join("; ")}`);
+		const clis = foreignAt(status.entry.path);
+		if (clis.length > 0) {
+			occupied.add(status.entry.path);
+			lines.push(`      other agent CLIs: ${foreignText(clis)}`);
+		}
 	}
 	if (unplaced.length > 0)
 		lines.push(`  Agents in no listed worktree: ${unplaced.map((member) => agentLabel(member, panes)).join("; ")}`);
-	return { main, statuses, members, lines, occupied, opened };
+	return {
+		main,
+		statuses,
+		members,
+		lines,
+		occupied,
+		opened,
+		foreign: foreign.some((cli) => innermostWorktree(roots, cli.cwd) !== undefined),
+	};
 }
 
 /**
@@ -101,15 +123,20 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 export async function describeWorktrees(cwd: string, deps: SummaryDependencies): Promise<string | undefined> {
 	// Outside a git checkout (or in a bare repository) there are no worktrees to show.
 	if (!(await gitQuiet(cwd, ["rev-parse", "--show-toplevel"]))) return undefined;
-	const { statuses, lines, occupied, opened } = await worktreeLines(cwd, deps);
-	if (!statuses.some((status) => !status.main) && !inTmux(deps)) return undefined;
+	const { statuses, lines, occupied, opened, foreign } = await worktreeLines(cwd, deps);
+	if (!statuses.some((status) => !status.main) && !inTmux(deps) && !foreign) return undefined;
 	const idle = statuses
 		.filter((status) => !status.main && status.name && !status.error && !status.entry.prunable)
 		.filter((status) => status.dirty + status.untracked + status.unmerged === 0)
 		.filter((status) => !occupied.has(status.entry.path))
 		.filter((status) => deps.self !== undefined && opened.get(status.entry.path)?.opener === deps.self)
 		.map((status) => status.name);
+	const reach = foreign
+		? [
+				"  Other agent CLIs get no `message`: avoid their files, read their work with the resume-external-harness skill, or ask the user to relay.",
+			]
+		: [];
 	const close =
 		idle.length > 0 ? [`  yours, clean, no agents: close with /worktree remove <name>: ${idle.join(", ")}`] : [];
-	return ["Worktrees:", ...lines, ...close].join("\n");
+	return ["Worktrees:", ...lines, ...reach, ...close].join("\n");
 }

@@ -1,6 +1,6 @@
 import type { CacheControlEphemeral } from "./shapes.ts";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
-import { ANTHROPIC_LONG_CACHE_HOSTS } from "../../utils/cache-capability-data.ts";
+import { ANTHROPIC_LONG_CACHE_HOSTS, OPENROUTER_LONG_CACHE_MODEL_PREFIX } from "../../utils/cache-capability-data.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
 import { isOpenRouterModel, matchesHost } from "../../utils/provider-host.ts";
 
@@ -41,7 +41,8 @@ export function getLayeredCacheControl(
 /**
  * The 1h tier follows `compat.supportsLongCacheRetention` when a model sets it (catalog entries for hosts that differ
  * from the default, or a custom provider). Otherwise it is host-bound, not model-bound: the hosts in
- * `ANTHROPIC_LONG_CACHE_HOSTS` verify it, so a model moved to another baseUrl falls back to the 5-minute tier.
+ * `ANTHROPIC_LONG_CACHE_HOSTS` verify it, and OpenRouter for its Claude models, so a model moved to another baseUrl falls
+ * back to the 5-minute tier.
  */
 export function getAnthropicCompat(model: Model<"anthropic-messages">) {
 	const isOpenRouter = isOpenRouterModel(model);
@@ -49,7 +50,8 @@ export function getAnthropicCompat(model: Model<"anthropic-messages">) {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention:
 			model.compat?.supportsLongCacheRetention ??
-			ANTHROPIC_LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)),
+			(ANTHROPIC_LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)) ||
+				(isOpenRouter && model.id.startsWith(OPENROUTER_LONG_CACHE_MODEL_PREFIX))),
 		sendSessionAffinityHeaders: model.compat?.sendSessionAffinityHeaders ?? isOpenRouter,
 		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? (isOpenRouter ? "openrouter" : undefined),
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? true,

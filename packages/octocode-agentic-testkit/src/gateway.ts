@@ -19,17 +19,9 @@ import { capReason, checkCaps, costOf, recordReply, type Caps } from "./policy.t
 import type { Reply } from "./reply.ts";
 import { responsesMessages, sendResponsesJson, sendResponsesSse } from "./responses.ts";
 import { StepFailure, type Responder, type Step } from "./script.ts";
+import { DEFAULT_CHARS_PER_TOKEN, simulateUsage } from "./simulated-usage.ts";
 import { harnessToolErrors } from "./tool-errors.ts";
-import {
-	cacheForm,
-	canonicalize,
-	hashOf,
-	mcpToolName,
-	Trace,
-	type CapturedRequest,
-	type ChatMessage,
-	type Usage,
-} from "./trace.ts";
+import { canonicalize, hashOf, mcpToolName, Trace, type CapturedRequest, type ChatMessage } from "./trace.ts";
 import type { Forward } from "./upstream.ts";
 
 export {
@@ -54,6 +46,11 @@ export interface GatewayOptions {
 	roots?: string[];
 	/** Estimate prompt-cache reads from the shared canonical prefix (default true). */
 	simulateCache?: boolean;
+	/**
+	 * Characters per token of scripted usage (default 4, the kit's usual estimate). Set the harness's own ratio for the
+	 * model it serves when a test depends on the harness's provider counts and its own estimates agreeing.
+	 */
+	charsPerToken?: number;
 	/** Per-run bearer token; requests without it get 401. */
 	token?: string;
 	/**
@@ -85,39 +82,12 @@ export interface Gateway {
 }
 
 const DEFAULT_AGENT = "main";
-const est = (chars: number): number => Math.ceil(chars / 4);
-
 function toolNames(tools: unknown): string[] {
 	if (!Array.isArray(tools)) return [];
 	return tools.map((t) => {
 		const o = t as { function?: { name?: string }; name?: string };
 		return o.function?.name ?? o.name ?? "?";
 	});
-}
-
-function simulateUsage(trace: Trace, req: CapturedRequest, rawTools: unknown, completion: string): Usage {
-	// Unmasked, like a provider cache: a changing timestamp in the prefix is a cache miss.
-	const raw = { raw: true };
-	const toolsCanon = canonicalize(rawTools ?? [], raw);
-	const canon = req.messages.map((m) => canonicalize(cacheForm(m), raw));
-	const total = toolsCanon.length + canon.reduce((n, c) => n + c.length, 0);
-	let best = 0;
-	for (const prev of trace.requests) {
-		if (prev === req || prev.index >= req.index || prev.agent !== req.agent || prev.model !== req.model) continue;
-		if (canonicalize((prev.raw as { tools?: unknown }).tools ?? [], raw) !== toolsCanon) continue;
-		let chars = 0;
-		for (let k = 0; k < prev.messages.length && k < canon.length; k++) {
-			if (canonicalize(cacheForm(prev.messages[k]), raw) !== canon[k]) break;
-			chars += canon[k].length;
-		}
-		best = Math.max(best, chars > 0 ? chars + toolsCanon.length : 0);
-	}
-	return {
-		promptTokens: est(total),
-		cachedTokens: est(best),
-		completionTokens: est(completion.length),
-		estimated: true,
-	};
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -224,6 +194,10 @@ export async function startGateway(opts: GatewayOptions = {}): Promise<Gateway> 
 	const lineage = opts.agents === "header" ? undefined : new Lineage(trace);
 	const errors: string[] = [];
 	const simulate = opts.simulateCache !== false;
+	const charsPerToken =
+		opts.charsPerToken !== undefined && Number.isFinite(opts.charsPerToken) && opts.charsPerToken > 0
+			? opts.charsPerToken
+			: DEFAULT_CHARS_PER_TOKEN;
 	const reportedErrors = new Set<string>();
 	let callSeq = 0;
 	const cassette = Cassette.open(opts.cassette, opts.forward?.baseUrl, {
@@ -325,7 +299,7 @@ export async function startGateway(opts: GatewayOptions = {}): Promise<Gateway> 
 				reply = {
 					text: capped.text,
 					toolCalls: [],
-					usage: simulateUsage(trace, captured, body.tools, capped.text),
+					usage: simulateUsage(trace, captured, body.tools, capped.text, charsPerToken),
 				};
 			} else {
 				const t0 = performance.now();
@@ -352,7 +326,7 @@ export async function startGateway(opts: GatewayOptions = {}): Promise<Gateway> 
 					reply = {
 						text,
 						toolCalls,
-						usage: { ...simulateUsage(trace, captured, body.tools, text), ...step.usage },
+						usage: { ...simulateUsage(trace, captured, body.tools, text, charsPerToken), ...step.usage },
 						...(step.stop ? { stop: step.stop } : {}),
 					};
 				}

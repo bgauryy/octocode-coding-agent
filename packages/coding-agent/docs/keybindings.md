@@ -2,7 +2,7 @@
 
 Octocode exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Octocode's user configuration.
 
-Run `/keys`, or type `?` in an empty editor, to see the active shortcuts for the main editor and application.
+Run `/keys`, or type `?` in an empty editor, to see the active shortcuts for the main editor and application. In fullscreen mode, `/find` opens transcript search from the editor, for terminals that report `ctrl+shift+f` as `ctrl+f`.
 
 ## Assign keybindings
 

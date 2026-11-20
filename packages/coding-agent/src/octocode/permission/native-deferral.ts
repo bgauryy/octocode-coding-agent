@@ -1,11 +1,12 @@
 /**
- * Deferred native tools. Under `mcpExposure: "usage"` (the default) a secondary native tool outside the promotion snapshot
- * (`common/src/usage-counts.ts`), and under `"recent"` one of `DEFERRABLE_NATIVE_TOOLS` that this working directory has not
- * called in the last 24 hours
- * (`common/src/usage-counts.ts`), is declared with its description and its top-level field
- * names only; `reason` stays required. It stays callable, a call its schema rejects returns the schema, and each call
- * is recorded in the same file MCP tools use (`tool-use.json`), so a subagent, which takes its parent's in-use set,
- * defers the same tools. `nativeToolExposure` pins a tool either way. Core tools are never deferred.
+ * Deferred native tools. Under `mcpExposure: "usage"` (the default) every secondary native tool, and under `"recent"`
+ * one of `DEFERRABLE_NATIVE_TOOLS` that this working directory has not called in the last 24 hours, is declared thin:
+ * its description and its top-level fields with their types, the few values a field allows and the fields it requires
+ * (`reason` among them). Usage promotion (`common/src/usage-counts.ts`) never declares a full schema: it only decides
+ * whether an on-demand tool is declared at the session's start. A thin tool stays callable, a call its schema rejects
+ * returns the schema, and each call is recorded in the same files MCP tools use (`tool-use.json`, `tool-usage.json`), so
+ * a subagent, which takes its parent's in-use set, declares the same tools. `nativeToolExposure` pins a tool either
+ * way. Core tools are never deferred.
  *
  * The decision is taken when the tool is registered and settled when the session starts (`settleNativeDeferral`): a pin
  * or a setting other than `recent` and `usage` decides; else a session that declared the tool before (resume, reload, fork) declares
@@ -36,11 +37,14 @@ import type { TSchema } from "typebox";
 import { envFlag, MCP_RECENT_TOOLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { recentlyUsed, RecentUseRecorder } from "@octocodeai/octocode-common/recent-use";
 import { USAGE_FILE_NAME, UsageRecorder, usageGroupOf, usageSnapshot } from "@octocodeai/octocode-common/usage-counts";
-import { deferredParameters, type McpNativeTools, redeclaresInPlace, thinParameters } from "../../../../mcp/src/api.ts";
-import { getAgentDir } from "../../config.ts";
+import { deferredParameters, promotionBudget, redeclaresInPlace, thinParameters } from "../../../../mcp/src/api.ts";
+import { getAgentDir, VERSION } from "../../config.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
-import type { SetupPick, FeatureContext, ToolDefinition } from "../../core/features/index.ts";
+import type { SetupPick, FeatureContext, FeatureSetup, ToolDefinition } from "../../core/features/index.ts";
 import { addsInPlace, type Forms, type OnDemandApi, onDemandForm, undeclared } from "./native-forms.ts";
+import { coreDeclarations, formsByName, loadedNatives, markLoaded } from "./native-port.ts";
+
+export { nativeToolsPort } from "./native-port.ts";
 
 /** The native tools deferred under `recent` and `usage`: the contracts list a pin can name. */
 export const DEFERRABLE_NATIVE_TOOLS: ReadonlySet<string> = new Set(NATIVE_PINNABLE_TOOLS);
@@ -48,6 +52,9 @@ export const DEFERRABLE_NATIVE_TOOLS: ReadonlySet<string> = new Set(NATIVE_PINNA
 const DEFERRABLE_ANY: ReadonlySet<string> = new Set([...NATIVE_PINNABLE_TOOLS, ...NATIVE_USAGE_ONLY_TOOLS]);
 const USAGE_ONLY: ReadonlySet<string> = new Set(NATIVE_USAGE_ONLY_TOOLS);
 const ON_DEMAND: ReadonlySet<string> = new Set(NATIVE_ON_DEMAND_TOOLS);
+/** Whether `name` can be left on demand: the contracts list, and `memory` in a subagent, which seldom calls it. */
+const onDemandTool = (name: string): boolean =>
+	ON_DEMAND.has(name) || (name === "memory" && envFlag(process.env, SUBAGENT_ENV));
 
 const useFile = () => path.join(getAgentDir(), "tool-use.json");
 const uses = new RecentUseRecorder(useFile);
@@ -69,11 +76,14 @@ function recentTools(env: NodeJS.ProcessEnv, settings: ExposureSettings): Readon
 		}
 	}
 	if (exposureSetting(settings) === "usage")
-		return usageSnapshot(path.join(getAgentDir(), USAGE_FILE_NAME), usageGroupOf(env));
+		return usageSnapshot(path.join(getAgentDir(), USAGE_FILE_NAME), usageGroupOf(env), Date.now(), {
+			version: VERSION,
+			budget: promotionBudget(settings?.mcpPromotedBytes),
+		});
 	return recentlyUsed(useFile(), process.cwd());
 }
 
-type ExposureSettings = { mcpExposure?: unknown; nativeToolExposure?: unknown } | undefined;
+type ExposureSettings = { mcpExposure?: unknown; nativeToolExposure?: unknown; mcpPromotedBytes?: unknown } | undefined;
 
 const exposureSetting = (settings: ExposureSettings): unknown => settings?.mcpExposure ?? SETTINGS_DEFAULTS.mcpExposure;
 
@@ -87,25 +97,30 @@ function chosenExposure(name: string, settings: ExposureSettings): boolean | und
 	return setting === "recent" || setting === "usage" ? undefined : false;
 }
 
-/** Whether `name` is declared deferred in this session: a pin first, then recent use under `mcpExposure: "recent"`. */
+/**
+ * Whether `name` is declared deferred (thin) in this session: a pin first; then under `mcpExposure: "usage"` always
+ * (promotion decides only on-demand tools, `leftOnDemand`), under `"recent"` unless this folder called it lately.
+ */
 export function nativeToolDeferred(
 	name: string,
 	settings: ExposureSettings,
 	env: NodeJS.ProcessEnv = process.env,
 ): boolean {
 	if (!DEFERRABLE_ANY.has(name)) return false;
-	return chosenExposure(name, settings) ?? !recentTools(env, settings).has(keyOf(name));
+	const chosen = chosenExposure(name, settings);
+	if (chosen !== undefined) return chosen;
+	return exposureSetting(settings) === "usage" || !recentTools(env, settings).has(keyOf(name));
 }
 
+/** Whether an unpinned on-demand tool that would be deferred stays undeclared at the start: not in the in-use set. */
+const leftOnDemand = (name: string, settings: ExposureSettings): boolean =>
+	!recentTools(process.env, settings).has(keyOf(name));
+
 /**
- * The thin parameters of a deferred native tool: each top-level field with its JSON type, and the required `reason`.
- * No nested names: the tool's own description names the fields a call needs.
+ * The thin parameters of a deferred native tool: each top-level field with its JSON type and the few values it
+ * allows, and the fields it requires (`reason` among them). No nested names: the tool's own description names them.
  */
-function thinNativeParameters(parameters: TSchema): TSchema {
-	const required = (parameters as { required?: unknown }).required;
-	const keepsReason = Array.isArray(required) && required.includes("reason");
-	return { ...thinParameters(parameters, { nested: false }), ...(keepsReason ? { required: ["reason"] } : {}) };
-}
+const thinNativeParameters = (parameters: TSchema): TSchema => thinParameters(parameters, { nested: false });
 
 /**
  * `tool` declared deferred: thin parameters, validation as before, and the schema it declares when direct in a refusal
@@ -140,42 +155,6 @@ export const nativeToolsSaved = (): ReadonlyMap<string, number> => saved;
 
 const declarationBytes = (tool: { description: string; parameters: unknown }): number =>
 	Buffer.byteLength(JSON.stringify({ description: tool.description, parameters: tool.parameters }));
-
-/** The latest forms of each deferrable tool by name, across feature loads: what the `mcp` tool reads. */
-const formsByName = new Map<string, Forms>();
-/** The deferred tools read in full this session that are not yet declared in full (`redeclareLoadedNatives`). */
-const loadedNatives = new Set<string>();
-
-function markLoaded(name: string): void {
-	const forms = formsByName.get(name);
-	if (forms?.isDeferred) loadedNatives.add(name);
-	// Reading an undeclared on-demand tool declares it from the next request on.
-	if (forms && undeclared(name, forms)) {
-		const active = forms.onDemand!.tools.getActive();
-		forms.onDemand!.tools.setActive([...active, name]);
-	}
-}
-
-/**
- * The deferred native tools as the `mcp` tool reads them: their names, and the description and input schema each
- * declares when direct. Reading one counts as a load and queues its full declaration (`redeclareLoadedNatives`).
- */
-export function nativeToolsPort(): McpNativeTools {
-	return {
-		deferred: () =>
-			[...formsByName]
-				.filter(([name, forms]) => forms.isDeferred || undeclared(name, forms))
-				.map(([name]) => name)
-				.sort(),
-		schema: (name) => {
-			const forms = formsByName.get(name);
-			return forms && (forms.isDeferred || undeclared(name, forms))
-				? { description: forms.direct.description, parameters: forms.direct.parameters }
-				: undefined;
-		},
-		loaded: markLoaded,
-	};
-}
 
 /**
  * After a tool call ends, declares each loaded deferred tool in full, once, where the model's transport adds a
@@ -216,7 +195,10 @@ export function withNativeDeferral<P extends TSchema, D, S>(
 	api: SetupPick<"settings", "get">,
 	tool: ToolDefinition<P, D, S>,
 ): ToolDefinition<P, D, S> {
-	if (!DEFERRABLE_ANY.has(tool.name)) return tool;
+	if (!DEFERRABLE_ANY.has(tool.name)) {
+		coreDeclarations.set(tool.name, { description: tool.description, parameters: tool.parameters });
+		return tool;
+	}
 	const recorded: ToolDefinition<P, D, S> = {
 		...tool,
 		execute: (id, params, ...rest) => {
@@ -265,8 +247,25 @@ export function settleNativeDeferral(
 	usage.reset();
 	loadedNatives.clear();
 	if (!registered || registered.size === 0) return;
-	usage.record("declared", [...registered.keys()].map(keyOf));
 	applyNativeDeclarations(api, ctx);
+	// Counted after the snapshot was read: the tools the session declares, and the on-demand ones it lists (its tool
+	// selection would declare them), never one registered outside its selection.
+	const tools = api.tools as Partial<Pick<FeatureSetup["tools"], "getActive" | "selects">>;
+	const active = typeof tools.getActive === "function" ? new Set(tools.getActive()) : undefined;
+	const offered = [...registered].filter(
+		([name, forms]) =>
+			!active || active.has(name) || (forms.onDemand !== undefined && tools.selects?.(name, true) !== false),
+	);
+	usage.record(
+		"declared",
+		offered.map(([name]) => keyOf(name)),
+	);
+	// What promoting an on-demand tool adds to the tool list: its thin declaration (`usage-counts.ts` budgets it).
+	usage.recordSizes(
+		offered.flatMap(([name, forms]) =>
+			onDemandTool(name) ? [[keyOf(name), declarationBytes(forms.deferred)] as const] : [],
+		),
+	);
 }
 
 /** Declare each deferrable tool as `settleNativeDeferral` describes, for the session's model now. */
@@ -311,7 +310,8 @@ function applyNativeDeclarations(
 		forms.onDemand = undefined;
 		// On demand: a new session leaves it undeclared; a resumed one that loaded it declares it in full as it did.
 		const loaded = transcript === false && !headTools.has(name);
-		if (tierApplies && ON_DEMAND.has(name) && chosen === undefined && ((fresh && transcript === undefined) || loaded)) {
+		const startsOnDemand = fresh && transcript === undefined && leftOnDemand(name, settings);
+		if (tierApplies && onDemandTool(name) && chosen === undefined && (startsOnDemand || loaded)) {
 			try {
 				api.tools.register(onDemandForm(forms, loaded));
 			} catch {

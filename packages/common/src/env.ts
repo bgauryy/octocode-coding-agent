@@ -66,7 +66,7 @@ export const OPERATOR_NO_MCP_ENV = "OCTOCODE_OPERATOR_NO_MCP";
 export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
 /**
  * Comma-separated skill names a subagent's prompt lists (its profile's `catalog:`); the others stay loadable by name and
- * the prompt counts them. Unset: the whole catalog is listed.
+ * the prompt counts them. Unset: the whole catalog is listed; empty: none is.
  */
 export const SKILL_CATALOG_ENV = "OCTOCODE_SKILL_CATALOG";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */

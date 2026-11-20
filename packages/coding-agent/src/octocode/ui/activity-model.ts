@@ -269,11 +269,6 @@ export class Activity {
 		return "Waiting for model";
 	}
 
-	/** Whether a tool call is running: its row animates a spinner of its own. */
-	toolsRunning(): boolean {
-		return this.tools.size > 0;
-	}
-
 	/** Silence is not a failure or the run's total duration; tools and approvals have their own progress. */
 	modelSilenceMs(now: number): number | undefined {
 		return this.phase === "idle" || this.prompt || this.tools.size > 0

@@ -1,14 +1,14 @@
 // Request projection, not compaction-only: `requestMessages` runs on every request (see README.md).
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { fenceUntrustedResults } from "./untrusted-results.ts";
-import { applyClearedResults } from "./clearing.ts";
+import { applyClearedInputs, applyClearedResults } from "./clearing-view.ts";
 
 /**
  * Thinking that a summary or a cleared result made stale (Anthropic's preserved thinking).
  *
  * Newer Claude models bind each thinking block to the exact prefix it was produced after: system prompt, tools and every
  * earlier message. A compaction Octocode writes on the client puts a summary in front of the turns it keeps, and clearing
- * a cold result (`clearing.ts`) replaces a message that every later turn was produced after, so the thinking in those
+ * an old result or a `file` payload (`clearing.ts`) replaces a message that every later turn was produced after, so the thinking in those
  * turns no longer matches its prefix. octocode-ai asks the API to drop such a block instead of failing
  * (`prefix_mismatch_behavior: "drop_block"`), so every request until the next compaction carried the same dead blocks and
  * Octocode showed "Anthropic dropped N thinking blocks". Anthropic's fix for keep-tail compaction with a summary written on
@@ -81,16 +81,27 @@ function stripThinkingOlderThan<T>(
 
 /**
  * What Octocode's `context` handler changes in every request to `model`: web and MCP results inside a fence that marks them as
- * data (`fenceUntrustedResults`), the results in `cleared` (the session branch's, `sessionCleared`) as their placeholders, and
- * no stale thinking: none a summary made stale, none a clearing (`clearedAt`, `sessionClearedAt`) made stale. The
- * cache-shared summary replays it, so its prefix is the one the cache holds. The same list when nothing changes.
+ * data (`fenceUntrustedResults`), the results in `cleared` (the session branch's, `sessionCleared`) as their placeholders
+ * with the digests `view` recorded, the `file` calls whose payload `view` cleared (`sessionClearedView`) with their payload
+ * replaced, and no stale thinking: none a summary made stale, none a clearing (`clearedAt`, `sessionClearedAt`, and when
+ * each payload was cleared) made stale. The cache-shared summary replays it, so its prefix is the one the cache holds.
+ * The same list when nothing changes.
  */
 export function requestMessages<T>(
 	messages: T[],
 	model: unknown,
 	cleared: ReadonlyMap<string, string>,
 	clearedAt: ReadonlyMap<string, number> = new Map(),
+	view: { inputs: ReadonlyMap<string, number>; digests: ReadonlyMap<string, string> } = {
+		inputs: new Map(),
+		digests: new Map(),
+	},
 ): T[] {
-	const replaced = applyClearedResults(fenceUntrustedResults(messages, cleared), cleared);
-	return bindsThinkingToPrefix(model) ? stripThinkingBeforeClearing(stripStaleThinking(replaced), clearedAt) : replaced;
+	const replaced = applyClearedInputs(
+		applyClearedResults(fenceUntrustedResults(messages, cleared), cleared, view.digests),
+		view.inputs,
+	);
+	if (!bindsThinkingToPrefix(model)) return replaced;
+	const changedAt = view.inputs.size === 0 ? clearedAt : new Map([...clearedAt, ...view.inputs]);
+	return stripThinkingBeforeClearing(stripStaleThinking(replaced), changedAt);
 }

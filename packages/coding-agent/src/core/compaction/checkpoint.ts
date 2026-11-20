@@ -2,13 +2,19 @@ import { renderPrompt } from "../prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
+import { CHARS_PER_TOKEN, charsToTokens, type TokenModel } from "@octocodeai/octocode-ai/utils/estimate";
 import type { CompactionEntry, SessionEntry } from "../session-manager.ts";
 import { buildPathProjection, getCompactionBoundarySystem } from "../session-manager/context.ts";
 import type { CompactionResult } from "./types.ts";
 import { clipWithMarker } from "./inline.ts";
-import { GOAL_HEADING, summarySection, TLDR_HEADING } from "./summary-format.ts";
-import { RECOVERY_HEADING, splitSummary, USER_HEADING } from "./summary-view.ts";
+import {
+	CONSTRAINTS_HEADING,
+	DECISIONS_HEADING,
+	GOAL_HEADING,
+	summarySection,
+	TLDR_HEADING,
+} from "./summary-format.ts";
+import { checkpointReference, RECOVERY_HEADING, splitSummary, USER_HEADING } from "./summary-view.ts";
 import { estimateProjectedContextTokens } from "./tokens.ts";
 
 export class CheckpointPersistenceError extends Error {}
@@ -30,7 +36,7 @@ export function summaryTargetTokens(capTokens: number): number {
 }
 
 /**
- * The most characters of one file list kept in a summary (about 750 tokens, some 25 paths). The lists are a union over
+ * The most characters of one file list kept in a summary (about 1.2k tokens, some 25 paths). The lists are a union over
  * every compaction, so they only grow; a longer one goes to a checkpoint file and the summary names that file.
  */
 const FILE_LIST_INLINE_CHARS = 3_000;
@@ -88,22 +94,26 @@ function recoverySection(summary: string): string {
 
 /**
  * What stays in the context when a summary goes to a file: the reference, then as much of what the next model must not
- * have to go looking for as `fits`. In order of what goes first: the Recovery section, the goal, the TL;DR and the newest
- * user messages, each whole or not at all, since the file holds the complete text. Everything here is also in the file.
+ * have to go looking for as `fits`. In order of what goes first: the Recovery section, the goal, the TL;DR, the standing
+ * constraints and key decisions (the ledger, `ledger.ts`, which grows over repeated compactions) and the newest user
+ * messages, each whole or not at all, since the file holds the complete text. Before all of them comes the count of user
+ * messages left out, even when none fits, so the next model knows to look. Everything here is also in the file.
  */
 function archivedView(summary: string, file: string, fits: (text: string) => boolean): string {
-	const reference = `The complete context checkpoint is saved at ${file}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.`;
+	const reference = checkpointReference(file);
 	const { body, messages, omitted } = splitSummary(summary);
 	const section = (heading: string): string => {
 		const lines = summarySection(body, heading);
 		return lines.length > 0 ? `\n\n${heading}\n${lines.join("\n")}` : "";
 	};
-	const view = { goal: "", tldr: "", recovery: "", newest: [] as string[] };
-	const render = ({ goal, tldr, recovery, newest }: typeof view): string => {
+	const view = { goal: "", tldr: "", constraints: "", decisions: "", recovery: "", newest: [] as string[] };
+	const render = ({ goal, tldr, constraints, decisions, recovery, newest }: typeof view): string => {
 		const left = omitted + messages.length - newest.length;
 		const note = left > 0 ? `\nEarlier user messages not kept here: ${left} (the checkpoint file has them).` : "";
 		const kept = newest.map((text) => `<user-message>\n${text}\n</user-message>`).join("\n");
-		return `${reference}${goal}${tldr}${newest.length > 0 ? `\n\n${USER_HEADING}${note}\n${kept}` : ""}${recovery}`;
+		// The heading and note stay when no message fits, so the next model knows the file holds the user's words.
+		const users = newest.length > 0 || left > 0 ? `\n\n${USER_HEADING}${note}${kept ? `\n${kept}` : ""}` : "";
+		return `${reference}${goal}${tldr}${constraints}${decisions}${users}${recovery}`;
 	};
 	const add = (change: Partial<typeof view>): boolean => {
 		if (!fits(render({ ...view, ...change }))) return false;
@@ -113,6 +123,8 @@ function archivedView(summary: string, file: string, fits: (text: string) => boo
 	add({ recovery: recoverySection(summary) });
 	add({ goal: section(GOAL_HEADING) });
 	add({ tldr: section(TLDR_HEADING) });
+	add({ constraints: section(CONSTRAINTS_HEADING) });
+	add({ decisions: section(DECISIONS_HEADING) });
 	for (const message of [...messages].reverse()) if (!add({ newest: [message, ...view.newest] })) break;
 	return render(view);
 }
@@ -120,13 +132,30 @@ function archivedView(summary: string, file: string, fits: (text: string) => boo
 /**
  * The estimated context after a compaction that keeps entries from `firstKeptEntryId`, as a function of its summary.
  * The boundary carries the prompt and tool state the saved entry will (`appendCompaction`), so the estimate counts the
- * same context the next request sends.
+ * same context the next request sends, at `model`'s ratio (the default without one).
  */
 export function projectAfterCompaction(
 	branchEntries: SessionEntry[],
 	firstKeptEntryId: string,
 	tokensBefore = 0,
+	model?: TokenModel,
 ): (summary: string) => number {
+	const project = projectionAfterCompaction(branchEntries, firstKeptEntryId, tokensBefore);
+	return (summary: string) => {
+		const { projection, entries } = project(summary);
+		return estimateProjectedContextTokens(projection, entries, model).tokens;
+	};
+}
+
+/**
+ * The branch and its projection once a compaction that keeps entries from `firstKeptEntryId` is saved with a summary,
+ * before it is: what the next request sends, so its size can be recorded in the entry itself.
+ */
+export function projectionAfterCompaction(
+	branchEntries: SessionEntry[],
+	firstKeptEntryId: string,
+	tokensBefore = 0,
+): (summary: string) => { projection: ReturnType<typeof buildPathProjection>; entries: SessionEntry[] } {
 	const timestamp = new Date();
 	const boundary: CompactionEntry = {
 		type: "compaction",
@@ -140,7 +169,7 @@ export function projectAfterCompaction(
 	};
 	return (summary: string) => {
 		const entries = [...branchEntries, { ...boundary, summary }];
-		return estimateProjectedContextTokens(buildPathProjection(entries), entries).tokens;
+		return { projection: buildPathProjection(entries), entries };
 	};
 }
 

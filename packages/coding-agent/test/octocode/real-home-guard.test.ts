@@ -10,6 +10,7 @@ import {
 	TEST_PROTECTED_HOMES_ENV,
 	transcriptDbPath,
 } from "../../src/storage/state-paths.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { daemonSpawnOptions } from "../../src/octocode/web-daemon/spawn-env.ts";
 import { tmp } from "./helpers.ts";
 
@@ -92,6 +93,21 @@ describe("the real agent database under a test runner", () => {
 });
 
 describe("the transcript mirror's file", () => {
+	it("is refused with its coordination file when a test names the real home's database directly", () => {
+		// A stand-in for the developer's home, protected like the account's; nothing is created under it.
+		const fakeHome = tmp("fake-real-home-");
+		const record = path.join(tmp(), "opens.log");
+		const env = { ...process.env, [TEST_GUARD_FILE_ENV]: record, [TEST_PROTECTED_HOMES_ENV]: fakeHome };
+		const real = path.join(fakeHome, ".octocode", "octocodecode", "agent", "workspaces.db");
+		expect(() => openAgentDb(real, env)).toThrow(/A test resolved the real agent database/);
+		expect(fs.readFileSync(record, "utf8")).toContain(real);
+		expect(fs.existsSync(path.join(fakeHome, ".octocode"))).toBe(false);
+		// The mirror beside a test's own file is that test's.
+		const own = path.join(tmp(), "agent.db");
+		openAgentDb(own, env).close();
+		expect(fs.existsSync(own)).toBe(true);
+	});
+
 	it("sits beside the coordination file, named after it unless it is the default `workspaces.db`", () => {
 		expect(transcriptDbPath("/h/agent/workspaces.db")).toBe("/h/agent/transcripts.db");
 		expect(transcriptDbPath("/x/lifecycle.db")).toBe("/x/lifecycle.transcripts.db");

@@ -78,11 +78,12 @@ describe("compact MCP presentation", () => {
 		await h.start();
 		await h.prompt();
 		const shout = h.tools.get("mcp__octocode__shout");
-		// Top-level field types only: without them models send arrays and objects as JSON strings (S4 eval).
+		// Top-level field types and required fields: without the types models send arrays and objects as JSON strings (S4 eval).
 		expect(shout.parameters).toEqual({
 			type: "object",
 			properties: { text: { type: "string" } },
 			additionalProperties: true,
+			required: ["text"],
 		});
 		expect(shout.description).toBe("Uppercase the given text");
 		expect(shout.validationParameters).toMatchObject({ properties: { text: { type: "string" } }, required: ["text"] });
@@ -122,6 +123,7 @@ describe("compact MCP presentation", () => {
 			type: "object",
 			properties: { text: { type: "string" } },
 			additionalProperties: true,
+			required: ["text"],
 		});
 		expect(shout.validationParameters).toMatchObject({ properties: { text: { type: "string" } }, required: ["text"] });
 		expect(existsSync(join(dir, "octocode.txt"))).toBe(false);

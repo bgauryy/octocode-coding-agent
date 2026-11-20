@@ -1,15 +1,11 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-	promotedTools,
-	SNAPSHOT_MAX_AGE_MS,
-	usageCounts,
-	UsageRecorder,
-	usageSnapshot,
-	type UsageGroup,
-} from "../src/usage-counts.ts";
+import { promotedTools, usageCounts, UsageRecorder, usageSnapshot, type UsageGroup } from "../src/usage-counts.ts";
+import { load, update } from "../src/usage-file.ts";
 
 const file = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "usage-counts-")), "tool-usage.json");
 const DAY = 24 * 60 * 60 * 1000;
@@ -98,14 +94,110 @@ describe("usage counts", () => {
 		expect(Object.keys(usageCounts(at, "main", NOW)).sort()).toEqual(["edge", "new"]);
 	});
 
-	it("starts cold, saves the snapshot for an hour, then computes it again", () => {
+	it("starts cold and keeps the snapshot for the UTC day and the install, not for an hour", () => {
 		const at = file();
-		expect(usageSnapshot(at, "main", NOW).size).toBe(0);
+		const install = { version: "1.0.0" };
+		expect(usageSnapshot(at, "main", NOW, install).size).toBe(0);
 		sessions(at, "main", "t", 20, 20);
-		expect(usageSnapshot(at, "main", NOW + SNAPSHOT_MAX_AGE_MS - 1).size).toBe(0);
-		expect([...usageSnapshot(at, "main", NOW + SNAPSHOT_MAX_AGE_MS)]).toEqual(["t"]);
+		// Later the same day (NOW is 12:00 UTC) the saved snapshot holds, so the tool list stays the same.
+		expect(usageSnapshot(at, "main", NOW + 11 * 60 * 60 * 1000, install).size).toBe(0);
+		// Another install, or the next day, computes it again.
+		expect([...usageSnapshot(at, "main", NOW + 60 * 1000, { version: "1.0.1" })]).toEqual(["t"]);
+		expect([...usageSnapshot(at, "main", NOW + 12 * 60 * 60 * 1000, install)]).toEqual(["t"]);
 		fs.rmSync(at);
-		expect(usageSnapshot(at, "main", NOW + SNAPSHOT_MAX_AGE_MS + 1)).toEqual(new Set());
+		expect(usageSnapshot(at, "main", NOW + DAY, install)).toEqual(new Set());
+	});
+
+	it("only reads the snapshot for a caller that names no install (a settings view)", () => {
+		const at = file();
+		sessions(at, "main", "t", 20, 20);
+		expect([...usageSnapshot(at, "main", NOW)]).toEqual(["t"]);
+		expect(JSON.parse(fs.readFileSync(at, "utf8")).snapshots).toEqual({});
+	});
+
+	it("keeps the most used promoted tools while their sizes fit the budget", () => {
+		const at = file();
+		sessions(at, "main", "big", 20, 20);
+		sessions(at, "main", "mid", 20, 10);
+		sessions(at, "main", "small", 20, 4);
+		sessions(at, "main", "open", 20, 2);
+		new UsageRecorder(
+			() => at,
+			() => "main",
+		).recordSizes(
+			[
+				["big", 900],
+				["mid", 600],
+				["small", 300],
+			],
+			NOW,
+		);
+		// `open` has no size (promoting it adds nothing), so it always fits; `mid` does not fit after `big`.
+		expect([...usageSnapshot(at, "main", NOW, { version: "1", budget: 1200 })]).toEqual(["big", "open", "small"]);
+		// A different budget computes the snapshot again.
+		expect([...usageSnapshot(at, "main", NOW, { version: "1", budget: 2000 })]).toEqual([
+			"big",
+			"mid",
+			"open",
+			"small",
+		]);
+	});
+
+	it("reads the renamed native/timer key as native/wait", () => {
+		const at = file();
+		const counts = (declared: number, called: number) => ({ declared, called, used: called });
+		fs.writeFileSync(
+			at,
+			JSON.stringify({
+				days: { "2026-11-15": { main: { "native/timer": counts(12, 2), "native/wait": counts(9, 1) } } },
+				snapshots: { main: { at: NOW, tools: ["native/timer", "native/wait", "docs/pick"] } },
+			}),
+		);
+		expect(usageCounts(at, "main", NOW)).toEqual({
+			"native/wait": { declared: 21, called: 3, loaded: 0, calledUndeclared: 0, refused: 0, used: 3 },
+		});
+		expect([...usageSnapshot(at, "main", NOW, { version: "1" })]).toEqual(["docs/pick", "native/wait"]);
+		new UsageRecorder(
+			() => at,
+			() => "main",
+		).record("called", ["native/wait"], NOW);
+		expect(Object.keys(JSON.parse(fs.readFileSync(at, "utf8")).days["2026-11-15"].main)).toEqual(["native/wait"]);
+	});
+
+	it("keeps bumps it could not write and adds them to the next update", () => {
+		const at = file();
+		let blocked = true;
+		const recorder = new UsageRecorder(
+			() => (blocked ? path.join(at, "under-a-missing-folder", "x.json") : at),
+			() => "main",
+		);
+		recorder.record("declared", ["t"], NOW);
+		blocked = false;
+		recorder.record("called", ["t"], NOW);
+		expect(usageCounts(at, "main", NOW).t).toMatchObject({ declared: 1, called: 1, used: 1 });
+	});
+
+	it("loses no bump when processes write at once", async () => {
+		const at = file();
+		const module = new URL("../src/usage-counts.ts", import.meta.url).href;
+		const script = `
+			const { UsageRecorder } = await import(${JSON.stringify(module)});
+			const recorder = new UsageRecorder(() => process.argv[1], () => "subagent");
+			for (let i = 0; i < 25; i++) {
+				recorder.reset();
+				recorder.record("declared", ["docs/a", "docs/b"]);
+				recorder.record("called", ["docs/a"]);
+			}`;
+		const children = Array.from({ length: 6 }, () =>
+			spawn(process.execPath, ["--conditions=source", "--input-type=module", "-e", script, at], {
+				stdio: ["ignore", "ignore", "pipe"],
+			}),
+		);
+		const codes = await Promise.all(children.map(async (child) => (await once(child, "close"))[0] as number));
+		expect(codes).toEqual([0, 0, 0, 0, 0, 0]);
+		const counts = usageCounts(at, "subagent");
+		expect(counts["docs/a"]).toMatchObject({ declared: 150, called: 150, used: 150 });
+		expect(counts["docs/b"]).toMatchObject({ declared: 150, called: 0 });
 	});
 
 	it("reads a malformed file as no data and never throws", () => {
@@ -120,5 +212,25 @@ describe("usage counts", () => {
 				() => "main",
 			).record("called", ["t"]),
 		).not.toThrow();
+	});
+});
+
+describe("usage file updates", () => {
+	it.skipIf(process.getuid?.() === 0)("throws on a file it cannot read instead of replacing it with new counts", () => {
+		const at = file();
+		new UsageRecorder(
+			() => at,
+			() => "main",
+		).record("called", ["octocode/localSearch"], Date.now());
+		const before = fs.readFileSync(at, "utf8");
+		fs.chmodSync(at, 0o000);
+		try {
+			expect(() => update(at, Date.now(), (usage) => void (usage.days = {}))).toThrow();
+			// A reader still gets no data rather than an error.
+			expect(load(at).days).toEqual({});
+		} finally {
+			fs.chmodSync(at, 0o600);
+		}
+		expect(fs.readFileSync(at, "utf8")).toBe(before);
 	});
 });

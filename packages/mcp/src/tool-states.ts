@@ -13,9 +13,9 @@ import { auditReader, sessionUsage } from "./usage-audit.ts";
 
 /**
  * What decided a tool's state: its own `toolExposure` entry (`pin`), a `toolExposure` pattern, the server's `exposure`,
- * recent use under `mcpExposure: "recent"`, the promotion snapshot under `"usage"` (the row's `audit.reason` says
- * `promoted` or `unused`), another deferral of the session (the `mcpExposure` setting or a deferred
- * role), or nothing (`default`).
+ * recent use under `mcpExposure: "recent"`, the `"usage"` setting (the row's `audit.reason` says `promoted` for an
+ * on-demand tool the promotion snapshot declares from the start, or `unused`), another deferral of the session (the
+ * `mcpExposure` setting or a deferred role), or nothing (`default`).
  */
 /** What the Tools panel shows of an exposure: an on-demand tool reads as `deferred` there (listed, not in full). */
 export const toolExposureState = (exposure: McpExposure): Exclude<McpExposure, "onDemand"> =>
@@ -74,13 +74,14 @@ export function mcpToolStates(source: McpToolStateSource): McpServerToolStates[]
 			connected,
 			saved: entry.scope !== "feature",
 			tools: (connected ? connection.tools : []).map((tool) => {
-				const state = toolExposureState(source.toolExposure(entry, tool.name));
+				const exposure = source.toolExposure(entry, tool.name);
+				const state = toolExposureState(exposure);
 				const decidedBy = decisionOf(entry, tool.name, state, setting);
 				return {
 					name: tool.name,
 					state,
 					decidedBy,
-					...(audit ? { audit: audit(entry.name, tool, state) } : {}),
+					...(audit ? { audit: audit(entry.name, tool, state, exposure === "onDemand") } : {}),
 				};
 			}),
 		};

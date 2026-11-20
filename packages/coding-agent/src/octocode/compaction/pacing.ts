@@ -90,10 +90,11 @@ export function toolDefinitionChars(api: SetupPick<"tools", "getActive" | "getAl
  * The context's size in tokens: Octocode's count, else (Octocode has none after a compaction until the next reply) an estimate of
  * what the next request carries: every message in the context by core's per-message estimate, which already counts the
  * system message's prompt and declared tools. Only what the transcript does not hold is added: the system prompt when no
- * system message is there, and the active tool definitions (`toolChars`) when none are declared.
+ * system message is there, and the active tool definitions (`toolChars`) when none are declared. The estimate is at the
+ * session model's tokenizer ratio, as the compaction trigger counts.
  */
 export function contextTokens(
-	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager" | "model">,
 	toolChars = 0,
 ): number | undefined {
 	const tokens = ctx.getContextUsage()?.tokens;
@@ -102,8 +103,11 @@ export function contextTokens(
 		const messages = ctx.sessionManager.buildSessionProjection().entries.flatMap((entry) => entry.messages);
 		const system = messages.find((message) => message.role === "system");
 		const declaresTools = system?.role === "system" && (system.toolsAdded?.length ?? 0) > 0;
-		const fixed = charsToTokens((system ? 0 : ctx.getSystemPrompt().length) + (declaresTools ? 0 : toolChars));
-		return fixed + messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+		const fixed = charsToTokens(
+			(system ? 0 : ctx.getSystemPrompt().length) + (declaresTools ? 0 : toolChars),
+			ctx.model,
+		);
+		return fixed + messages.reduce((sum, message) => sum + estimateTokens(message, ctx.model), 0);
 	} catch {
 		// Unknown size: `needsDownshiftCompaction` then starts no compaction, and the model switch goes on.
 		return undefined;
@@ -112,7 +116,7 @@ export function contextTokens(
 
 /** Whether the context (by `contextTokens`) is known to fit the session's context window, so the next request can be sent. */
 export function fitsWindow(
-	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+	ctx: Pick<FeatureContext, "getContextUsage" | "getSystemPrompt" | "sessionManager" | "model">,
 	toolChars = 0,
 ): boolean {
 	const window = ctx.getContextUsage()?.contextWindow ?? 0;

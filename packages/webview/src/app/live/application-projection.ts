@@ -1,8 +1,9 @@
-import type {
-	ApplicationActivity,
-	ApplicationMessage,
-	ApplicationSnapshot,
-	ApplicationTool,
+import {
+	APPLICATION_NOTICE_KIND,
+	type ApplicationActivity,
+	type ApplicationMessage,
+	type ApplicationSnapshot,
+	type ApplicationTool,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceEvent } from "@octocodeai/octocode-contracts/workspace";
 
@@ -144,7 +145,12 @@ export class ApplicationProjection {
 			);
 		}
 		const activities = new Map<string, FeedEvent>();
+		// A notice that repeats a saved line (a memory pass says what it changed, and records it) is that line once.
+		const saved = new Set(
+			(snapshot?.activities ?? []).flatMap((activity) => (activity.source === "session" ? [activity.text] : [])),
+		);
 		for (const activity of snapshot?.activities ?? []) {
+			if (activity.source === "live" && activity.kind === APPLICATION_NOTICE_KIND && saved.has(activity.text)) continue;
 			const previous = this.activities.get(activity.id);
 			activities.set(
 				activity.id,

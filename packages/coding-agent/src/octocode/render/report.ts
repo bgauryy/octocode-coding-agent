@@ -3,12 +3,9 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { getMarkdownTheme, type Theme } from "../../theme/theme.ts";
 import { expandHint, INDENT, plural } from "../shared/text.ts";
 
-/** Rendered report lines shown before folding: a report is the deliverable, so only a long one folds. */
-const REPORT_LINES = 24;
-
 /**
  * A subagent's report under its result row, rendered as Markdown like an assistant answer. The text is untrusted, so
- * it is sanitized first. Collapsed, a report longer than `REPORT_LINES` rendered lines folds with an expand hint.
+ * it is sanitized first. The whole report is drawn, collapsed or not: it is the deliverable, so it never folds.
  */
 export class ReportView implements Component {
 	private readonly markdown: Markdown;
@@ -35,17 +32,10 @@ export class ReportView implements Component {
 		if (this.cache?.width === width) return this.cache.lines;
 		const body = this.markdown.render(Math.max(1, width - visibleWidth(INDENT))).map((line) => `${INDENT}${line}`);
 		while (body.length > 0 && body.at(-1)!.trim() === "") body.pop();
-		const hidden = this.expanded ? 0 : body.length - REPORT_LINES;
-		const more = this.more && !this.expanded ? ` · ${this.more}` : "";
+		const more = this.more !== undefined && !this.expanded;
 		const hint = (text: string) => `${INDENT}${this.theme.fg("dim", [text, expandHint()].filter(Boolean).join(" "))}`;
 		const earlier = this.earlier > 0 ? [hint(`+${plural(this.earlier, "earlier report")}`)] : [];
-		const lines = earlier.concat(
-			hidden > 0
-				? [...body.slice(0, REPORT_LINES), hint(`… +${plural(hidden, "line")}${more}`)]
-				: more
-					? [...body, hint(`… ${this.more}`)]
-					: body,
-		);
+		const lines = earlier.concat(more ? [...body, hint(`… ${this.more}`)] : body);
 		this.cache = { width, lines };
 		return lines;
 	}

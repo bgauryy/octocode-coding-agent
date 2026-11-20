@@ -12,7 +12,7 @@ import type {
 import type { Question } from "@octocodeai/octocode-contracts";
 import type { AskView } from "./ui.ts";
 import type { RunOutcome } from "../../agent-session/run-outcome.ts";
-import type { CustomMessage } from "../../messages.ts";
+import type { CustomMessage, MessageDisplay } from "../../messages.ts";
 import type { ContextEditEntry, ReadonlyProjectedSessionEntry } from "../../session-manager.ts";
 import type { NormalizedBuildSystemPromptOptions } from "../../system-prompt.ts";
 
@@ -84,7 +84,7 @@ interface CustomMessageEntryDraft {
 	type: "custom_message";
 	customType: string;
 	content: string | (TextContent | ImageContent)[];
-	display: boolean;
+	display: MessageDisplay;
 	details?: unknown;
 }
 
@@ -182,6 +182,26 @@ export interface UIPromptEndEvent {
 	title?: string;
 	id?: string;
 	nested?: boolean;
+}
+
+/**
+ * Fired after each `ui.notify` the session's UI shows, with what it said, so a client other than the mode's own UI
+ * (the web view) can show it too. Fire and forget: the notice was already shown.
+ */
+export interface UINoticeEvent {
+	type: "ui_notice";
+	message: string;
+	level: "info" | "warning" | "error";
+}
+
+/**
+ * Fired once per model request that has been quiet long enough to tell the user (`MODEL_WAIT_AFTER_MS`), when its
+ * silence is first shown. The quiet time itself reaches the terminal, the web view and RPC clients as `model_wait`.
+ */
+export interface ModelStallEvent {
+	type: "model_stall";
+	/** How long the request had sent nothing, in ms. */
+	idleMs: number;
 }
 
 export interface TurnStartEvent {

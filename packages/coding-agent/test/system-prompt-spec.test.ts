@@ -30,6 +30,7 @@ describe("system prompt section spec", () => {
 			"communication:session:keep",
 			"lean:session:keep",
 			"project_context:session:keep",
+			"memory:session:keep",
 			"skills:session:keep",
 			"hooks:session:keep",
 			"role:session:keep",

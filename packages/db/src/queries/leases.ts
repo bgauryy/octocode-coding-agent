@@ -18,6 +18,14 @@ export function anyLiveOfOthers(db: DatabaseSync, self: string, now: number): bo
 }
 
 /**
+ * The first unexpired lease on `key` in any checkout, whoever holds it: for a key that names one resource on the machine
+ * (a memory file's consolidation pass, `memory:<path>`), which no checkout's path key can equal.
+ */
+export function liveOnKey(db: DatabaseSync, key: string, now: number): Row | undefined {
+	return db.prepare("SELECT * FROM leases WHERE path_key = ? AND expires_at > ? ORDER BY id LIMIT 1").get(key, now);
+}
+
+/**
  * The unexpired leases held by the agents of `team`, whatever checkout they lock in, oldest first. Each path is relative
  * to the protected workspace's root, so these are for showing, never for conflict checks (`conflicting`).
  */

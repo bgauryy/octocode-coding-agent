@@ -284,6 +284,7 @@ describe("typed counts and the footer", () => {
 			id: "main-aaaaaa",
 			view: state,
 			approvals: undefined,
+			poll: () => undefined,
 			watch: (cb: () => void) => {
 				tick = cb;
 				return () => undefined;
@@ -320,6 +321,7 @@ describe("typed counts and the footer", () => {
 			id: "main-aaaaaa",
 			view: state,
 			approvals: undefined,
+			poll: () => undefined,
 			watch: (cb: () => void) => {
 				tick = cb;
 				return () => undefined;
@@ -613,6 +615,7 @@ describe("the panel's live agents", () => {
 			id: "main-aaaaaa",
 			view: state,
 			approvals: undefined,
+			poll: () => undefined,
 			watch: (cb: () => void) => {
 				tick = cb;
 				return () => undefined;

@@ -25,14 +25,14 @@ export const SubagentSettingsSchema = Type.Object(
 			Type.Integer({
 				minimum: 1,
 				description:
-					"Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running.",
+					"Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value.",
 			}),
 		),
 		maxCost: Type.Optional(
 			Type.Number({
 				exclusiveMinimum: 0,
 				description:
-					"US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running.",
+					"US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value.",
 			}),
 		),
 		queuedStarts: Type.Optional(

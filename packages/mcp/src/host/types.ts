@@ -189,7 +189,7 @@ export interface McpFeatureApi {
 	};
 	commands: { register(name: string, options: McpRegisteredCommand): void };
 	renderers: { tool(resolver: McpToolRendererResolver): void };
-	settings: { get?(): { mcpPresentation?: McpPresentationMode; mcpExposure?: string } };
+	settings: { get?(): { mcpPresentation?: McpPresentationMode; mcpExposure?: string; mcpPromotedBytes?: number } };
 	resources: { getSkillDirectories(): string[] };
 	mcpServers: {
 		register(name: string, config: McpServerConfig, options?: { inherited?: boolean }): void;

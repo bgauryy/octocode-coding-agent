@@ -4,6 +4,7 @@ import { loadSkills } from "../../src/core/skills.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
@@ -145,10 +146,17 @@ function setup(cwd = tmp("octocode-agent-cwd-"), hasUI = true) {
 	return { ...f, team, ctx, agent, run, cwd, control };
 }
 
-const reportOf = (text: string) =>
+const reportJson = (text: string) =>
 	JSON.parse(
 		text.slice(text.indexOf("{"), text.indexOf("}\n") >= 0 ? text.indexOf("}\n") + 1 : text.lastIndexOf("}") + 1),
 	);
+/** The fake child's report as JSON: read from the saved whole report when the inline preview was cut at its byte cap. */
+const reportOf = (text: string) => {
+	const pointer = /Full (?:partial )?report: (.+?) \(read only the parts you need\)/.exec(text)?.[1];
+	if (!pointer) return reportJson(text);
+	const file = pointer.startsWith("~") ? path.join(os.homedir(), pointer.slice(1)) : path.resolve(pointer);
+	return reportJson(fs.readFileSync(file, "utf8"));
+};
 
 describe("subagent scratch sweep", () => {
 	it("keeps old folders whose owning Octocode process is alive (another session's background subagent) and removes the rest", async () => {
@@ -822,6 +830,40 @@ describe("agent tool with a scripted child", () => {
 					},
 				] as never;
 			await expect(s.run({ task: "report" })).rejects.toThrow(/spent \$0\.75, and subagents\.maxCost is \$0\.50/);
+		});
+
+		it("tells the user once per limit and value, as a notice line and a spend_limit notice", async () => {
+			const notices: unknown[] = [];
+			s.flat.events = {
+				on: () => () => undefined,
+				emit: (name: string, data: unknown) => void (name === "octocode:user-notice" && notices.push(data)),
+			};
+			const entries: unknown[] = [
+				{
+					type: "message",
+					message: {
+						role: "assistant",
+						provider: "faux",
+						model: "model",
+						usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.75 } },
+					},
+				},
+			];
+			s.ctx.sessionManager.getEntries = () => entries as never;
+			const lines = () => s.entries.filter((entry) => entry.customType === "octocode-notice-line");
+			limit({ maxCost: 0.5 });
+			await expect(s.run({ task: "report" })).rejects.toThrow(/subagents\.maxCost is \$0\.50/);
+			await expect(s.run({ task: "report" })).rejects.toThrow(/subagents\.maxCost is \$0\.50/);
+			const line =
+				"Subagent refused: this session has spent $0.75, past the subagents.maxCost limit ($0.50). Raise it to start more.";
+			expect(lines().map((entry) => entry.data)).toEqual([{ kind: "spend_limit", key: "maxCost=0.5", text: line }]);
+			expect(notices).toEqual([{ type: "spend_limit", title: "Octocode: subagent limit reached", message: line }]);
+			// A resumed session reads its own line and stays quiet; a raised limit that is reached again is news.
+			entries.push({ type: "custom", customType: "octocode-notice-line", data: lines()[0].data });
+			limit({ maxCost: 0.7 });
+			await expect(s.run({ task: "report" })).rejects.toThrow(/subagents\.maxCost is \$0\.70/);
+			expect(lines()).toHaveLength(2);
+			expect(notices).toHaveLength(2);
 		});
 	});
 
@@ -2088,5 +2130,96 @@ describe("a child bound to a backlog item", () => {
 		expect(s.ctx.ui.notes.at(-1)).toMatchObject({ type: "info" });
 		expect(s.ctx.ui.notes.at(-1)!.message).toContain("Noted on B1.");
 		expect(notes().at(-1)!.text).toMatch(new RegExp(`^The isolated change on ${ref} was merged into \\S+\\.$`));
+	}, 30_000);
+});
+
+describe("a message to a finished subagent", () => {
+	/** The `agent` task call and result a session records (what `resume` and a message-started resume read). */
+	const recorded = (input: Record<string, unknown>, details: Record<string, unknown>): unknown[] => [
+		{
+			type: "message",
+			message: {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "call-1", name: "agent", arguments: { type: "task", input } }],
+			},
+		},
+		{
+			type: "message",
+			message: {
+				role: "toolResult",
+				toolCallId: "call-1",
+				toolName: "agent",
+				details: { ...details, agentType: "task" },
+			},
+		},
+	];
+	const lingerReports = (s: ReturnType<typeof setup>) =>
+		s.sent.map((entry) => String(entry.message.content)).filter((text) => text.includes("LINGER"));
+
+	/** A parent session whose foreground child ran to its end (no linger window) and whose entries record that run as `input`. */
+	async function finishedChild(input: Record<string, unknown> = {}) {
+		const s = setup();
+		const entries: unknown[] = [];
+		Object.assign((s.ctx as { sessionManager: object }).sessionManager, { getEntries: () => entries });
+		await s.fire("session_start", { type: "session_start" }, s.ctx);
+		const first = await s.run({ task: "linger first" });
+		expect(first.isError).toBeUndefined();
+		await s.control.settle();
+		entries.push(...recorded({ goal: "check things", task: "linger first", ...input }, structuredClone(first.details)));
+		return { s, id: first.details.id as string, session: first.details.session as { id: string; file: string } };
+	}
+
+	it("resumes its saved conversation in the background with the stored message, when the parent sends", async () => {
+		const { s, id, session } = await finishedChild();
+		try {
+			const result = await s.team.send(id, "linger again with the fix");
+			expect(result).toMatchObject({
+				sent: [id],
+				resumed: expect.stringContaining(`Resumed ${id} with your message.`),
+			});
+			const messageId = (result as { id: number }).id;
+			await s.control.settle();
+			const report = lingerReports(s).at(-1)!;
+			expect(report).toContain(`--session-id ${session.id}`);
+			// Delivered as mail from its coordinator, naming the stored message a reply can answer.
+			expect(report).toContain(`Message #${messageId} from your coordinator`);
+			expect(report).toContain("linger again with the fix");
+			expect(report).not.toContain("Follow-up from your coordinator:");
+			const store = TeamStore.open(s.cwd, process.env.OCTOCODE_AGENT_DB);
+			try {
+				expect(store.refs.read(messageId)).toMatchObject({ text: "linger again with the fix" });
+			} finally {
+				store.close();
+			}
+			// A resume that cannot start (its transcript is gone) says why and leaves no stored message behind.
+			fs.rmSync(session.file);
+			await expect(s.team.send(id, "linger once more")).rejects.toThrow("is gone");
+			const after = TeamStore.open(s.cwd, process.env.OCTOCODE_AGENT_DB);
+			try {
+				const rows = Array.from({ length: 20 }, (_, n) => after.refs.read(messageId + 1 + n));
+				expect(rows.filter((row) => typeof row === "object" && row.text === "linger once more")).toEqual([]);
+			} finally {
+				after.close();
+			}
+		} finally {
+			await s.control.stopAll();
+			s.team.stop();
+		}
+	}, 30_000);
+
+	it("keeps refusing an isolated child and a vendor runner's child", async () => {
+		for (const input of [{ isolate: true }, { runner: "codex" }]) {
+			const { s, id } = await finishedChild(input);
+			try {
+				const before = lingerReports(s).length;
+				const refused = await s.team.send(id, "linger again");
+				expect(refused).toEqual({ error: expect.stringContaining(`${id} has finished and takes no more messages`) });
+				await s.control.settle();
+				expect(lingerReports(s)).toHaveLength(before);
+			} finally {
+				await s.control.stopAll();
+				s.team.stop();
+			}
+		}
 	}, 30_000);
 });

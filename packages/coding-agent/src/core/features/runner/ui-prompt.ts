@@ -1,6 +1,7 @@
 /**
  * Tracking of UI dialogs, reported to features as `ui_prompt_start` and `ui_prompt_end`, and the broker that lets a
- * client other than the mode's own UI answer them.
+ * client other than the mode's own UI answer them. Each notice the UI shows (`notify`) is reported as `ui_notice`, so
+ * such a client can show it too.
  *
  * Every tracked dialog gets an id. The mode's dialog (terminal, RPC host) and a remote answer race: the first answer
  * wins, and the loser is closed through the abort signal every dialog implementation honors. A remote `choice` must
@@ -14,7 +15,7 @@ import { checkedReplies, type Question } from "@octocodeai/octocode-contracts";
 import type { AskView, SessionUI, DialogOptions, UIPromptKind } from "../types.ts";
 import type { RunnerEmitEvent } from "./types.ts";
 
-type UIPromptEvent = Extract<RunnerEmitEvent, { type: "ui_prompt_start" | "ui_prompt_end" }>;
+type UIPromptEvent = Extract<RunnerEmitEvent, { type: "ui_prompt_start" | "ui_prompt_end" | "ui_notice" }>;
 
 /** What a client sends to answer a dialog: one of its options, or text where it accepts text. */
 export interface DialogAnswer {
@@ -65,6 +66,10 @@ export class UIPromptTracker {
 		const hostAsk = ui.ask?.bind(ui);
 		return {
 			...ui,
+			notify: (message, type) => {
+				ui.notify(message, type);
+				this.emitUIPromptEvent({ type: "ui_notice", message, level: type ?? "info" });
+			},
 			// A host that draws questions itself: tracked so a remote client sees them and answers by reply.
 			...(hostAsk
 				? {

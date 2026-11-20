@@ -41,6 +41,7 @@ function handlePointerFocusOut(host: AltScreenPointerHost): void {
 	host.scrollbar.stopScrollbarHover();
 	if (host.search.activeSearch?.component.setHoveredNavigationDirection(undefined)) host.requestRender();
 	host.scrollbar.stopScrollbarDrag();
+	host.wheelScroll.clearPending();
 	selection.pressedUrl = undefined;
 	selection.selectionDragged = false;
 	host.mouse.clearComponentMouseGesture();
@@ -65,8 +66,14 @@ const SCROLL_DECORATION_HOLD_MS = 300;
 function handleWheelInput(host: AltScreenPointerHost, wheelEvent: WheelEvent): void {
 	animationClock.holdDecoration(SCROLL_DECORATION_HOLD_MS);
 	const lines = host.wheelScroll.next(wheelEvent.direction, performance.now());
-	// The events of this frame already moved as far as one frame may.
-	if (lines === 0) return;
+	// The events of this frame already moved as far as one frame may; the rest follows in the next frames.
+	if (lines > 0) applyWheel(host, wheelEvent, lines);
+	host.wheelScroll.drainPending((direction, pendingLines) =>
+		applyWheel(host, { ...wheelEvent, direction }, pendingLines),
+	);
+}
+
+function applyWheel(host: AltScreenPointerHost, wheelEvent: WheelEvent, lines: number): void {
 	// SGR mouse button codes use bit 3 (value 8) for the Alt modifier.
 	const wheelDelta =
 		wheelEvent.direction * ((wheelEvent.button & 8) !== 0 ? lines * ALT_WHEEL_SCROLL_MULTIPLIER : lines);
@@ -78,6 +85,13 @@ function handleWheelInput(host: AltScreenPointerHost, wheelEvent: WheelEvent): v
 		return;
 	}
 	routeWheel(host, wheelEvent, wheelDelta);
+}
+
+/** End a scrollbar drag, text-selection press and component gesture whose release was lost. */
+function endStrandedPress(host: AltScreenPointerHost): void {
+	host.scrollbar.stopScrollbarDrag();
+	host.selection.endSelectionPress();
+	host.mouse.clearComponentMouseGesture();
 }
 
 /**
@@ -94,6 +108,9 @@ function handleMouseEvent(host: AltScreenPointerHost, raw: SgrMouseEvent): void 
 				: "drag"
 			: "press";
 	const event = host.mouse.createMouseEvent(type, raw.button, raw.x, raw.y);
+
+	// Motion with no button held: the release of an earlier press never arrived, so its gesture is over.
+	if (type === "move") endStrandedPress(host);
 
 	if (host.mouse.handleComponentMouseGesture(raw, event)) return;
 

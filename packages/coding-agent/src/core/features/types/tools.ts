@@ -239,7 +239,8 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	/**
 	 * Registered but left undeclared until first use (with `defaultActive: false`): a model call to it activates it, the
 	 * call runs as usual, and the next request declares it after the cached prefix. Without it, a call to an inactive
-	 * tool is refused.
+	 * tool is refused. A `--tools` entry activates such a tool only when it is its exact name; a pattern leaves it
+	 * undeclared.
 	 */
 	onDemand?: boolean;
 

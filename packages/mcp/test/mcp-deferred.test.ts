@@ -202,13 +202,18 @@ describe("mcpExposure auto threshold", () => {
 		direct.api.settings.get = () => ({ mcpExposure: "direct" });
 		await direct.start();
 		expect(blockOf((await direct.prompt()).mcps, "docs")).toContain("function shout(");
-		// Without a setting, `recent`: a tool this working directory used in the last 24 hours is direct, the rest deferred.
-		const plain = host([entry("docs")], { recentTools: new Set(["docs/shout"]) });
-		await plain.start();
-		const block = blockOf((await plain.prompt()).mcps, "docs");
+		// `recent`: a tool this working directory used in the last 24 hours is direct, the rest deferred.
+		const recent = host([entry("docs")], { recentTools: new Set(["docs/shout"]) });
+		recent.api.settings.get = () => ({ mcpExposure: "recent" });
+		await recent.start();
+		const block = blockOf((await recent.prompt()).mcps, "docs");
 		expect(block).toContain("function shout(");
 		expect(block).not.toContain("function pick(");
 		expect(block).toContain("\n- pick: Echo union queries back (stand-in for Octocode operation branches)\n");
+		// Without a setting, `usage`: even a tool in use is deferred, since promotion never sends a full schema.
+		const plain = host([entry("docs")], { recentTools: new Set(["docs/shout"]) });
+		await plain.start();
+		expect(blockOf((await plain.prompt()).mcps, "docs")).toContain("\n- shout: Uppercase the given text\n");
 	});
 });
 

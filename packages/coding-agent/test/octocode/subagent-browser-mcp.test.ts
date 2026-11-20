@@ -1,11 +1,67 @@
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { MCP_BROWSER_ENV } from "@octocodeai/octocode-common/env";
+import type { FeatureRegister } from "../../src/core/features/index.ts";
+import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
+import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles, profileTools } from "../../src/octocode/subagents/profiles.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { createTestSession } from "../helpers/session.ts";
 import { tmp } from "./helpers.ts";
 
 const profiles = () => loadProfiles(tmp(), tmp(), false, {});
+
+/** Stand-ins for the browser server's tools: one it declares, and one its configuration leaves on demand. */
+const OPEN = "mcp__browser__open";
+const RARE = "mcp__browser__har_pager";
+const browserServer: FeatureRegister = (api) => {
+	for (const [name, onDemand] of [
+		[OPEN, false],
+		[RARE, true],
+	] as const)
+		api.tools.register({
+			name,
+			label: name,
+			description: `Browser tool ${name}`,
+			parameters: Type.Object({}),
+			execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+			// The server is off by default; its rare tools are registered undeclared until first use.
+			defaultActive: false,
+			...(onDemand ? { onDemand: true } : {}),
+		});
+};
+
+/** The tools a session with `tools` as its `--tools` list declares, beside the stand-in browser server. */
+async function declaredWith(tools: string[]): Promise<string[]> {
+	const cwd = tmp();
+	const agentDir = tmp();
+	const settingsManager = SettingsManager.inMemory();
+	const resourceLoader = new DefaultResourceLoader({
+		cwd,
+		agentDir,
+		settingsManager,
+		features: testFeatures([browserServer]),
+	});
+	await resourceLoader.reload();
+	const { session } = await createTestSession({
+		cwd,
+		agentDir,
+		model: getBuiltinModel("anthropic", "claude-sonnet-4-5"),
+		settingsManager,
+		sessionManager: SessionManager.inMemory(cwd),
+		resourceLoader,
+		tools,
+	});
+	try {
+		return session.getActiveToolNames();
+	} finally {
+		session.dispose();
+	}
+}
 
 describe("browser MCP server in a subagent", () => {
 	it("is selected by the browser role's tools and by no other bundled role", () => {
@@ -14,6 +70,15 @@ describe("browser MCP server in a subagent", () => {
 		expect(profileTools(roles.get("browser"))).toContain("mcp__browser__*");
 		for (const name of ["implementer", "researcher", "reviewer"])
 			expect(profileTools(roles.get(name)), name).not.toContain("mcp__browser__");
+	});
+
+	it("declares the server's on-demand tools only when the role's list names one exactly, never through its pattern", async () => {
+		const role = profileTools(profiles().get("browser")).split(",");
+		expect(role).toContain("mcp__browser__*");
+		const declared = await declaredWith(role);
+		expect(declared).toContain(OPEN);
+		expect(declared).not.toContain(RARE);
+		expect(await declaredWith([...role, RARE])).toEqual(expect.arrayContaining([OPEN, RARE]));
 	});
 
 	it("passes only a value the user set for the whole process", () => {

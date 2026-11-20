@@ -538,7 +538,13 @@ describe("AgentSession MCP integration", () => {
 			description: "Search the docs.",
 			parameters: { type: "object", properties: { query: { type: "string" } }, additionalProperties: true },
 		});
-		expect(JSON.stringify(declaredTool(harness, "mcp__docs__search")?.parameters)).not.toContain("required");
+		// Open, with the server's types and required fields only: the result schema stays in the block.
+		expect(declaredTool(harness, "mcp__docs__search")?.parameters).toEqual({
+			type: "object",
+			properties: { query: { type: "string" } },
+			additionalProperties: true,
+			required: ["query"],
+		});
 	});
 
 	it("places the `mcps` section in the base sections, ahead of the session's own sections", async () => {

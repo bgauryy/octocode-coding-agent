@@ -86,10 +86,16 @@ describe("layered provider caching", () => {
 		expect(payload.prompt_cache_retention).toBeUndefined();
 		expect(payload.prompt_cache_key).toBe("session-1");
 	});
-	it("keeps legacy cache options working without adding a long instruction write", async () => {
+	it("puts a legacy long retention on the instruction breakpoint, not on the request TTL", async () => {
 		const payload = await capture(model, { instructionCacheRetention: undefined, cacheRetention: "long" });
-		expect(payload.prompt_cache_options).toEqual({ ttl: "12h" });
-		expect(payload.input[0].content).toBe("Stable agent instructions");
+		expect(payload.prompt_cache_options).toBeUndefined();
+		expect(payload.input[0].content).toEqual([
+			{
+				type: "input_text",
+				text: "Stable agent instructions",
+				prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
+			},
+		]);
 	});
 	it("honors none even when instructions request long retention", async () => {
 		const payload = await capture(model, { cacheRetention: "none" });
@@ -285,11 +291,13 @@ describe("Responses HTTP transport", () => {
 		expect(incomplete.stopReason).toBe("error");
 		expect(attempts).toBe(1);
 	});
-	it("times out and cancels an idle response body", async () => {
+	it("times out and cancels an idle response body at its idle bound", async () => {
 		let cancelled = false;
 		const result = await stream(model, context, {
 			...options,
-			timeoutMs: 10,
+			// The request deadline bounds only the wait for headers; a body that goes silent ends at the idle bound.
+			timeoutMs: 10_000,
+			streamIdleTimeoutMs: 10,
 			fetch: async () =>
 				new Response(
 					new ReadableStream({

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 import { validPid } from "../../utils/process-id.ts";
-import { groupAlive, groupStartTimes, processMatch, processStartTime, stopTree } from "./process.ts";
+import { groupAlive, groupStartTimes, processMatch, processStartTime, signalTree, stopTree } from "./process.ts";
 
 /**
  * The shell process groups a subagent starts, for its parent. Each `bash` command (foreground or background) runs as the
@@ -70,6 +70,19 @@ async function stillTheChilds(group: ShellGroup): Promise<boolean> {
 		members.length > 0 &&
 		members.every((member) => Number(member.started) >= Number(group.started))
 	);
+}
+
+/**
+ * Parent side, as this process exits right after killing the child (a crash, an emergency exit, an exit hook): SIGKILLs
+ * every recorded group whose leader is still the recorded process, without waiting for anything, since nothing
+ * asynchronous runs after it. A group whose leader already left is not proven here and is left to `stopShellGroups`.
+ */
+export function killShellGroupsNow(file: string | undefined): void {
+	if (!file || process.platform === "win32") return;
+	for (const group of readGroups(file)) {
+		// The leader is still the recorded process, so even the fallback to its own pid cannot reach another process.
+		if (processStartTime(group.pid) === group.started) signalTree(group.pid, "SIGKILL");
+	}
 }
 
 /**

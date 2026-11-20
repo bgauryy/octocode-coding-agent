@@ -9,6 +9,7 @@ import {
 	closeSharedAgentDb,
 	configAudits,
 	history,
+	historyArchivesSettled,
 	openDatabase,
 	scheduleHistoryArchive,
 	sharedDbWriter,
@@ -109,6 +110,27 @@ it("retains source history when the destination archive is locked and archives b
 	await scheduled(NOW + HOUR_MS);
 	expect(gunzipSync(fs.readFileSync(file)).toString()).toContain('"target":"fixture"');
 	expect(history.rowsBefore(agent.db, "config_audits", NOW, 10)).toHaveLength(0);
+});
+
+it("lets a disposing session wait for the admitted pass, within its bound", async () => {
+	expect(await historyArchivesSettled(10)).toBe(true);
+	let complete!: (result: { archived: number; deleted: number }) => void;
+	vi.spyOn(DbWriter.prototype, "archive").mockReturnValue(
+		new Promise((resolve) => {
+			complete = resolve;
+		}),
+	);
+	scheduleHistoryArchive(
+		() => agent,
+		undefined,
+		() => NOW,
+	);
+	// Admitted but not yet started (it runs on the next turn of the event loop): still awaited.
+	expect(await historyArchivesSettled(20)).toBe(false);
+	const settled = historyArchivesSettled(5000);
+	complete({ archived: 0, deleted: 0 });
+	expect(await settled).toBe(true);
+	expect(await historyArchivesSettled(10)).toBe(true);
 });
 
 it("admits only one maintenance pass while a previous day is still running", async () => {

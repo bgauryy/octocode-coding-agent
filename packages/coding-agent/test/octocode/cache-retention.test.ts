@@ -2,7 +2,7 @@ import type { Api, AssistantMessage, Model, RequestLayer, RequestTrace, Usage } 
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { describe, expect, it } from "vitest";
 import { compactionCost } from "../../src/core/cache-warmer/compaction-cost.ts";
-import { getPromptCacheTtlMs, idleContinuationProbability } from "../../src/core/cache-warmer/economics.ts";
+import { getPromptCacheTtlMs } from "../../src/core/cache-warmer/economics.ts";
 import { firstChangedArea, formatLayerChange } from "../../src/core/cache-warmer/first-change.ts";
 import { planRetention } from "../../src/core/cache-warmer/retention.ts";
 import { turnCosts } from "../../src/core/cache-warmer/turn-costs.ts";
@@ -149,6 +149,49 @@ describe("$/turn", () => {
 		});
 		expect(turns[1].cost).toBeCloseTo(0.35, 10);
 	});
+	it("counts subagent runs and summaries in the turn they landed, so the turns add up to the session total", () => {
+		const spent = (total: number) => usage({ cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total } });
+		const toolResult = {
+			type: "message",
+			id: "tr",
+			parentId: null,
+			timestamp: "",
+			message: { role: "toolResult", toolCallId: "c", toolName: "agent", content: [], usage: spent(0.4), timestamp: 0 },
+		} as unknown as SessionEntry;
+		const report = {
+			type: "custom_message",
+			id: "cm",
+			parentId: null,
+			timestamp: "",
+			customType: "octocode-agent-report",
+			content: "",
+			display: false,
+			details: { usage: { ...spent(0.25), lowerBound: true } },
+		} as unknown as SessionEntry;
+		const compaction = {
+			type: "compaction",
+			id: "c1",
+			parentId: null,
+			timestamp: "",
+			summary: "s",
+			firstKeptEntryId: "e1",
+			tokensBefore: 1,
+			usage: spent(0.05),
+		} as unknown as SessionEntry;
+		const turns = turnCosts([
+			user(),
+			entry(assistant(0.1)),
+			toolResult,
+			entry(assistant(0.1)),
+			user(),
+			report,
+			compaction,
+			entry(assistant(0.2)),
+		]);
+		expect(turns.map((turn) => turn.cost)).toEqual([expect.closeTo(0.6, 10), expect.closeTo(0.5, 10)]);
+		expect(turns.map((turn) => turn.lowerBound)).toEqual([false, true]);
+		expect(turns.map((turn) => turn.requests)).toEqual([2, 1]);
+	});
 	it("shows $/turn and the first changed area in the /session report", () => {
 		const stats = {
 			sessionId: "s",
@@ -214,12 +257,18 @@ describe("retention calculator", () => {
 			expect(getPromptCacheTtlMs(model, {})).toBeUndefined();
 		}
 	});
-	it("refreshes only when the role's idle probability makes a refresh pay", () => {
-		expect(idleContinuationProbability("main")).toBe(0.15);
-		expect(idleContinuationProbability("constructor")).toBe(0.15);
-		// A small prefix: p × miss stays under the warmer's $0.05 minimum, so a gap past 5m is a miss.
+	it("refreshes only when the measured idle probability makes a refresh pay", () => {
+		// A small prefix: q × miss (q at the seed's 41% for 5m) stays under the warmer's $0.05 minimum, so a gap past
+		// 5m is a miss.
 		const small = planRetention({ ...span, prefixTokens: 10_000, gapsMs: [20 * MIN] });
 		expect(small.costs.short).toBeCloseTo(0.048, 6);
+	});
+	it("plans OpenAI explicit-mode history at its 30m request TTL: the 12h tier is for instructions", () => {
+		const explicit = getBuiltinModel("openai", "gpt-6.1-sol");
+		const plan = planRetention({ ...span, model: explicit, gapsMs: [40 * MIN] });
+		expect(plan.longTtl).toBeUndefined();
+		expect(plan.costs.long).toBeUndefined();
+		expect(plan.shortTtl).toBe("30m");
 	});
 });
 

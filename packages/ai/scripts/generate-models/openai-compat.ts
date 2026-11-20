@@ -1,5 +1,6 @@
 import type { Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
-import { withCacheCapabilities } from "../../src/utils/cache-capabilities.ts";
+import { withCacheFlags } from "../../src/utils/cache-capabilities.ts";
+import { buildCacheFlagTable } from "./cache-flags.ts";
 import {
 	OPENAI_ADDITIONAL_TOOLS_MODEL_IDS,
 	OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS,
@@ -268,8 +269,11 @@ export function applyOpenAIResponsesTranscriptMetadata(model: Model<Api>): void 
 	};
 }
 
+const CACHE_FLAG_TABLE = buildCacheFlagTable();
+
+/** Stamps the documented cache flags (explicit mode, 24h retention, breakpoints, markers) into the model's compat. */
 export function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void {
-	model.compat = withCacheCapabilities(model).compat;
+	model.compat = withCacheFlags(model, CACHE_FLAG_TABLE).compat;
 }
 
 // GPT-6 models accept `configuration_update` input items that change the reasoning effort

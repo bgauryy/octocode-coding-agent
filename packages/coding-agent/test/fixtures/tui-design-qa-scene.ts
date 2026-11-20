@@ -36,7 +36,7 @@ function syntheticFooter(config: QaConfig): Component {
 			: { text: "Session saved", tone: "success" };
 	const state: FooterState = {
 		model: "qa-model", kind: "local", thinking: "high",
-		context: { percent: config.state === "error" ? 92 : config.state === "warning" ? 65 : 12.5, limit: 200_000 },
+		context: { percent: config.state === "error" ? 92 : config.state === "warning" ? 65 : 12.5, window: 200_000 },
 		usage: { input: 20_000, cacheRead: 8_000, cacheWrite: 2_000, output: 1_250, cost: 0.042, unpriced: false },
 		running: config.state === "running", compactions: 2, cwd: "/synthetic/project", sessionName: "TUI visual audit",
 		chip: { icon: "", mode: "workspace", counters: "", key: "shift+tab" },

@@ -230,14 +230,12 @@ function buildRules(
 }
 
 /**
- * Whether the policy's `research` section routes code search to the research MCP server (the first server whose entry
- * gives tools a reader and a search role): it names that server's tools by their namespace. The base prompt leaves its
- * own bash search rule out while it does, so only one of the two shows, whether or not the server's tools are declared yet.
+ * Whether the policy's `research` section owns code search: it routes search to the research MCP server (the first
+ * server whose entry gives tools a reader and a search role) by that server's namespace, or, without one, names the
+ * bash commands to search with. The base prompt leaves its own bash search rule out while it does, so only one of the
+ * two shows, whether or not the server's tools are declared yet.
  */
-function routesSearchToResearch(sections: Record<string, string | undefined>): boolean {
-	const research = currentToolRoles().research;
-	return research !== undefined && sections.research?.includes(`\`${research.prefix}*\``) === true;
-}
+const policyOwnsSearch = (sections: Record<string, string | undefined>): boolean => sections.research !== undefined;
 
 /** The skill hint's file reader: the skill tool, then bash; `indirect` when only an MCP reader or another tool reaches files. */
 function skillReader(selectedTools: string[], declaredTools: string[]): Parameters<typeof formatSkillsForPrompt>[1] {
@@ -304,10 +302,11 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 			.map(([namespace, purpose]) => `- ${namespace}__*: ${purpose}`),
 	].join("\n");
-	// One predicate decides who owns code search: an MCP server, when a tool with a search role is declared or the
-	// policy's research section already routes search to it (a server still connecting); otherwise bash, when declared.
+	// One predicate decides who owns code search: an MCP server, when a tool with a search role is declared; the policy's
+	// research section, when present (it routes search to the research server, one still connecting too, or to bash);
+	// otherwise the base bash rule, when bash is declared.
 	const { searches } = currentToolRoles();
-	const researchSearch = declaredTools.some((name) => searches.has(name)) || routesSearchToResearch(customSections);
+	const researchSearch = declaredTools.some((name) => searches.has(name)) || policyOwnsSearch(customSections);
 	contents.rules = buildRules(
 		declaredTools,
 		toolGuidelines,

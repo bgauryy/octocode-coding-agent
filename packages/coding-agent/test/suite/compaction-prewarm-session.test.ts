@@ -1,12 +1,22 @@
 import { fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { expect, it } from "vitest";
 import { type CompactionPreparation, estimateProjectedContextTokens } from "../../src/core/compaction/index.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { createHarness } from "./harness.ts";
 
-/** About `tokens` of context: the estimate counts three characters a token. */
-const filler = (tokens: number, label: string) => `${label} ${"x".repeat(tokens * 3)}`;
+/** About `tokens` of context, at the estimator's characters per token. */
+const filler = (tokens: number, label: string) => `${label} ${"x".repeat(Math.round(tokens * CHARS_PER_TOKEN))}`;
+/** The threshold of a 200k window with a 1,000-token reserve, and the prewarm lead before it. */
+const THRESHOLD = 199_000;
+const LEAD = 20_000;
+/**
+ * Tokens for each of `count` messages that bring the context from `current` to `target`. The faux provider reports
+ * usage at four characters per token, below the estimate (`CHARS_PER_TOKEN`), so the usage-backed baseline after a reply
+ * is measured, not assumed.
+ */
+const share = (target: number, current: number, count: number) => Math.ceil((target - current) / count);
 
 it("plans the threshold compaction ahead, beside the run, and that compaction runs the same plan", async () => {
 	const manager = SessionManager.inMemory();
@@ -52,24 +62,28 @@ it("plans the threshold compaction ahead, beside the run, and that compaction ru
 		await harness.session.prompt("first");
 		expect(seen).toEqual([]);
 
-		// Inside the lead (the threshold is 199,000 tokens, the lead 20,000): the plan is made and the run goes on.
+		// Inside the lead (the threshold is 199,000 tokens, the lead 20,000), halfway in: the plan is made and the run goes on.
+		const more = share(THRESHOLD - LEAD / 2, contextTokens(), 5);
 		for (let i = 0; i < 5; i++) {
-			manager.appendMessage({ role: "user", content: filler(31_000, `more ${i}`), timestamp: 0 });
+			manager.appendMessage({ role: "user", content: filler(more, `more ${i}`), timestamp: 0 });
 			manager.appendMessage(fauxAssistantMessage(`answer more ${i}`));
 		}
-		expect(contextTokens()).toBeGreaterThan(179_000);
-		expect(contextTokens()).toBeLessThan(199_000);
+		expect(contextTokens()).toBeGreaterThan(THRESHOLD - LEAD);
+		expect(contextTokens()).toBeLessThan(THRESHOLD);
 		harness.session.refreshContext();
 		harness.setResponses([fauxAssistantMessage("near the threshold")]);
 		await harness.session.prompt("second");
 		expect(seen).toEqual(["prewarm"]);
 		expect(harness.eventsOfType("compaction_start")).toHaveLength(0);
 
-		// The faux provider reports usage at four characters per token, below the three-character estimate used before
-		// the request. Add enough new context to cross the threshold from that usage-backed baseline.
-		manager.appendMessage({ role: "user", content: filler(60_000, "over"), timestamp: 0 });
+		// Add enough new context to cross the threshold, by 10,000 tokens, from the usage-backed baseline after that reply.
+		manager.appendMessage({
+			role: "user",
+			content: filler(share(THRESHOLD + 10_000, contextTokens(), 1), "over"),
+			timestamp: 0,
+		});
 		manager.appendMessage(fauxAssistantMessage("answer over"));
-		expect(contextTokens()).toBeGreaterThan(199_000);
+		expect(contextTokens()).toBeGreaterThan(THRESHOLD);
 		harness.session.refreshContext();
 		harness.setResponses([fauxAssistantMessage("after the compaction")]);
 		await harness.session.prompt("third");
@@ -124,10 +138,15 @@ it("passes the last successful forced system prefix into the real near-threshold
 		await harness.session.prompt("first");
 		const live = requests[0];
 		expect(live.messages[0]).toMatchObject({ role: "system", content: "Use this exact transient prompt." });
+		const contextTokens = () =>
+			estimateProjectedContextTokens(manager.buildSessionProjection(), manager.getBranch()).tokens;
+		const more = share(THRESHOLD - LEAD / 2, contextTokens(), 5);
 		for (let i = 0; i < 5; i++) {
-			manager.appendMessage({ role: "user", content: filler(31_000, `more ${i}`), timestamp: 0 });
+			manager.appendMessage({ role: "user", content: filler(more, `more ${i}`), timestamp: 0 });
 			manager.appendMessage(fauxAssistantMessage(`answer more ${i}`));
 		}
+		expect(contextTokens()).toBeGreaterThan(THRESHOLD - LEAD);
+		expect(contextTokens()).toBeLessThan(THRESHOLD);
 		harness.session.refreshContext();
 		harness.setResponses([capture, capture]);
 		await harness.session.prompt("second");

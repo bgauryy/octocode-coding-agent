@@ -10,6 +10,8 @@ export interface SessionState {
 	sessionId: string;
 	sessionFile: string | undefined;
 	readonly sessionDir: string;
+	/** `sessionDir` is only the opened file's own folder: no caller chose it (`mirror-scope.ts` reads this). */
+	readonly sessionDirFromFile: boolean;
 	readonly cwd: string;
 	readonly persist: boolean;
 	flushed: boolean;
@@ -42,11 +44,17 @@ export interface FailedWrite {
 	entry?: SessionEntry;
 }
 
-export function createSessionState(cwd: string, sessionDir: string, persist: boolean): SessionState {
+export function createSessionState(
+	cwd: string,
+	sessionDir: string,
+	persist: boolean,
+	sessionDirFromFile = false,
+): SessionState {
 	return {
 		sessionId: "",
 		sessionFile: undefined,
 		sessionDir,
+		sessionDirFromFile,
 		cwd,
 		persist,
 		flushed: false,

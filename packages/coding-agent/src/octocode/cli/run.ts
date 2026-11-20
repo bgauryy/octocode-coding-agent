@@ -4,6 +4,7 @@ import type { CommandContext } from "../../core/features/index.ts";
 import { holdTerminalForChild } from "../../utils/foreground-child.ts";
 import { getShellEnv } from "../../utils/shell.ts";
 import { spawnProcess, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
+import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { cliRuntime } from "./resolve.ts";
 
 /** What a captured run printed: stdout and stderr interleaved in `output`, stdout alone in `stdout`, each bounded. */
@@ -64,7 +65,7 @@ export async function captureCli(
 	if (options.signal.aborted) stop();
 	else options.signal.addEventListener("abort", stop, { once: true });
 	// A session that ends (quit, a shutdown signal) must not leave the CLI running.
-	process.once("exit", stop);
+	const atExit = processLifetime.acquire("octocode CLI run", { atExit: stop });
 	try {
 		const code = await waitForChildProcess(child, options.signal);
 		return {
@@ -76,7 +77,7 @@ export async function captureCli(
 		};
 	} finally {
 		options.signal.removeEventListener("abort", stop);
-		process.removeListener("exit", stop);
+		atExit();
 	}
 }
 
@@ -133,13 +134,13 @@ export async function runCliInTerminal(
 			if (child && child.exitCode === null && child.signalCode === null) child.kill();
 		};
 		ctx.signal?.addEventListener("abort", stop, { once: true });
-		process.once("exit", stop);
+		const atExit = processLifetime.acquire("octocode CLI in the terminal", { atExit: stop });
 		let finished = false;
 		const finish = async (exit: number | null) => {
 			if (finished) return;
 			finished = true;
 			ctx.signal?.removeEventListener("abort", stop);
-			process.removeListener("exit", stop);
+			atExit();
 			process.stdout.write(`\n${label} exited with ${exit ?? "an error"}. Press any key to return to Octocode.`);
 			try {
 				await waitForKey(ctx.signal);

@@ -1,6 +1,7 @@
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import type { Usage } from "@octocodeai/octocode-ai";
 import type { FeatureContext } from "../../core/features/index.ts";
+import type { SmallModel as SmallModelOf } from "../shared/small-model.ts";
 import type { JudgeOutcome, JudgeRequest } from "./conditions/types.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 
@@ -22,15 +23,7 @@ export const CHECK_CAPS = {
  * The model route a judgment uses, injected by the host (`session-lifecycle.ts` passes the `small` purpose route that
  * `subagents/` owns): the layering keeps `timer/` from importing it.
  */
-export interface SmallModel {
-	/** One tool-less call to the cheaper model; never rejects (an `error` names the cause). */
-	call(
-		ctx: FeatureContext,
-		options: { text: string; signal: AbortSignal; maxTokens: number },
-	): Promise<{ text: string; model: string; provider: string; modelId: string; usage: Usage } | { error: string }>;
-	/** The `provider/id` the route resolves to for this session, or undefined when no cheaper model exists. */
-	label(ctx: FeatureContext): string | undefined;
-}
+export type SmallModel = SmallModelOf<FeatureContext>;
 
 export interface JudgeHost {
 	ctx(): FeatureContext | undefined;

@@ -16,7 +16,8 @@ import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../
 import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 import { summaryMaxTokens } from "./settings.ts";
-import { completeBounded, getSummarizationFailure } from "./summarization.ts";
+import { completeBounded } from "./summarization.ts";
+import { getSummarizationFailure } from "./summary-failure.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
 import { SUMMARY_CHECKPOINT_FORMAT } from "./summary-format.ts";
 import {

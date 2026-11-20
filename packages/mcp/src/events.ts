@@ -96,6 +96,7 @@ export function registerSessionEvents(state: McpFeatureState): void {
 		state.declaredBefore = declaredParameters(ctx);
 		forgetOnDemandLoads(state);
 		setOnDemandModel(state, ctx.model);
+		state.lean = options.leanSession?.(ctx.model) === true;
 		const load = () => (options.loadConfig ?? defaultLoadConfig)(ctx, presetEntries(options.presets ?? []));
 		const loaded = load();
 		state.configErrors = loaded.errors;
@@ -230,6 +231,7 @@ export function registerSessionEvents(state: McpFeatureState): void {
 	// cold anyway. A switch the other way never takes a declaration back.
 	api.bus.on("model_select", (_event, ctx) => {
 		setOnDemandModel(state, ctx.model);
+		state.lean = options.leanSession?.(ctx.model) === true;
 		state.presentation.rebuild();
 		for (const connection of state.connections())
 			if (connection.state === "connected") registerTools(state, connection);

@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { type AgentDb, openDatabase } from "../src/db.ts";
 import { COORDINATION_FILE, type FileKind } from "../src/schema.ts";
+import { CARRY_META_KEY } from "../src/carry-over.ts";
 import { loadSqlite } from "../src/sqlite.ts";
 import { tmp } from "./helpers.ts";
 
@@ -103,9 +104,9 @@ console.log(JSON.stringify(renames.filter((from) => from === file).length));
 		await new Promise((resolve) => setTimeout(resolve, 500));
 		fs.writeFileSync(gate, "");
 		const renames = await Promise.all(runs);
-		// One opener moved the old file; the others found the new one and kept it.
+		// One opener moved the old file; the others found the new one and kept it. The mover recorded what it carried over.
 		expect(renames.reduce((sum, count) => sum + count, 0)).toBe(1);
-		expect(keys(file)).toEqual(names);
+		expect(keys(file)).toEqual([...names, CARRY_META_KEY].sort());
 		const retired = retiredFiles(file);
 		expect(retired).toHaveLength(1);
 		expect(keys(path.join(dir, retired[0]))).toEqual(["old"]);

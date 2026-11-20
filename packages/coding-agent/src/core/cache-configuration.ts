@@ -122,12 +122,18 @@ function describeOpenAIResponses(model: Model<Api>, policy: Policy, subscription
 				? `Explicit mode: only instructions are cached (${instruction}); history is not.`
 				: "Explicit mode with no breakpoints: no caching at all, not even the provider's automatic cache.";
 		}
-		return `Instructions ${instruction ?? "no explicit write"}; history ${history === "long" && long ? "12h" : "30m"}. Implicit history caching can also cover instructions.`;
+		const historyTtl =
+			history === "long" && long && !cache.longInstructionsOnly
+				? "12h"
+				: history === "long" && long
+					? "30m (the 12h tier goes on instruction breakpoints only)"
+					: "30m";
+		return `Instructions ${instruction ?? "no explicit write"}; history ${historyTtl}. Implicit history caching can also cover instructions.`;
 	}
 	if (history === "none") return "No cache key is sent; the provider may still cache automatically.";
 	const retention =
-		history === "long" && long
-			? "24h extended retention requested"
+		(history === "long" || instructions === "long") && long
+			? "24h extended retention requested (typically about 30 minutes, planned as such)"
 			: `provider-managed retention (${NO_CONFIGURABLE_RETENTION})`;
 	return `Implicit caching with a session cache key; ${retention}; separate instruction lifetime is unsupported.`;
 }

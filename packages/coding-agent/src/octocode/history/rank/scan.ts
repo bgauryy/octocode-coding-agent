@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import { scanLines, type ScanQuery } from "./analyze.ts";
 import { addFile, type FirstPass } from "./score.ts";
+import { type LineRuns, matchesWithin } from "./line-runs.ts";
 
 /** A file to rank: its path and the label its header boost reads. */
 export interface RankFile {
@@ -10,13 +11,7 @@ export interface RankFile {
 }
 
 /** The lines a `query` filter matched, by file index. */
-export type Filtered = ReadonlyMap<number, ReadonlySet<number>>;
-
-function matchesWithin(matched: ReadonlySet<number> | undefined, start: number, end: number): boolean {
-	if (!matched) return false;
-	for (let at = start; at <= end; at++) if (matched.has(at)) return true;
-	return false;
-}
+export type Filtered = ReadonlyMap<number, LineRuns>;
 
 /** `file` as text with its stamp (size, mtime, inode), or undefined when it is gone, not a regular file or a link. */
 async function readText(file: string): Promise<{ text: string; stamp: string } | undefined> {

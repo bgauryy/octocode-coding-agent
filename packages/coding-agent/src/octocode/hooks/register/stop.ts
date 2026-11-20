@@ -3,9 +3,11 @@ import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultBlock } from "../../render/tool.ts";
+import { runningWorkOf } from "../../shared/running-work.ts";
 import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
 import { hookLabel } from "../config.ts";
+import { backgroundTasks } from "./background-tasks.ts";
 import { type Dispatch, type HookSession, STOP_CONTINUE_CAP, STOP_PREFIX, STOP_TYPE } from "./types.ts";
 import { commandsFor } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
@@ -45,6 +47,7 @@ function hooksLabel(event: HookEvent, hooks: HookHandler[]): string {
 }
 
 export function registerStopHook(api: FeatureSetup, session: HookSession, dispatch: Dispatch, child = false): void {
+	const work = runningWorkOf(api);
 	/** Stop-hook continuations in a row (reset by a prompt or a tool call). */
 	let stopContinues = 0;
 	api.bus.on("before_agent_start", async () => {
@@ -79,6 +82,7 @@ export function registerStopHook(api: FeatureSetup, session: HookSession, dispat
 			dispatch(ctx, "Stop", [], () => ({
 				stop_hook_active: stopContinues > 0,
 				last_assistant_message: last ? contentText(last.content) : "",
+				background_tasks: backgroundTasks(work),
 			})),
 		);
 		const feedback = [verdict.block, verdict.continueReason].filter(Boolean).join("\n\n");

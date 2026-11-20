@@ -10,6 +10,7 @@ import { STATUS } from "../shared/status.ts";
 import { type BannerPaint, bannerLines } from "./banner.ts";
 import { registerFooter } from "./footer.ts";
 import { registerAwaiting } from "./awaiting.ts";
+import { registerWebNotices } from "./web-notices.ts";
 import { backlogOpenItems, registerPhaseFeed } from "./phase-feed.ts";
 import { registerPhaseLine } from "./phase-line.ts";
 import { registerTurnLine } from "./turn-line.ts";
@@ -117,6 +118,7 @@ export function registerUi(api: FeatureSetup, isSubagent: boolean): void {
 	registerWakeRow(api);
 	registerBacklogLine(api);
 	registerAwaiting(api);
+	registerWebNotices(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
 	api.bus.on("session_start", async (_event, ctx) => {
@@ -153,20 +155,10 @@ function decorate(ctx: FeatureContext): void {
 	paintIndicators(ctx);
 }
 
-/** A running tool row animates its own spinner: the working line then keeps its first frame, so two never spin at once. */
-let rowsAnimate = false;
-
 function paintIndicators(ctx: FeatureContext): void {
-	const frames = spinnerFrames(ctx.ui.theme);
-	// Octocode's loader steps every 80 ms when no interval is given; one frame is a still mark with no shimmer.
-	ctx.ui.setWorkingIndicator({ frames: rowsAnimate ? frames.slice(0, 1) : frames });
-}
-
-/** Hold (`true`) or restore the working line's own spinner; a no-op when it is already so. */
-export function setRowsAnimate(ctx: FeatureContext, animate: boolean): void {
-	if (rowsAnimate === animate) return;
-	rowsAnimate = animate;
-	paintIndicators(ctx);
+	// Octocode's loader steps every 80 ms when no interval is given; tool rows draw a still-shaped light mark, so the
+	// working line always keeps its spinner.
+	ctx.ui.setWorkingIndicator({ frames: spinnerFrames(ctx.ui.theme) });
 }
 
 /** Streaming shorter than this is mostly one network chunk: a reply of a few tokens would read as thousands per second. */

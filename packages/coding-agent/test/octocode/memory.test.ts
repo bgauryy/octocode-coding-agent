@@ -212,6 +212,13 @@ describe("MemoryStore", () => {
 		expect(add(store, { title: "Vitest runs the tests", body: "yarn test" }).id).toBeGreaterThan(first.id);
 	});
 
+	it("tells titles apart by their one-letter words", () => {
+		const store = new MemoryStore(freshDb(), "repo-a");
+		const first = add(store, { title: "Deploy phase 1" });
+		expect(add(store, { title: "Deploy phase 2" }).id).toBeGreaterThan(first.id);
+		expect(() => add(store, { title: "deploy PHASE 1" })).toThrow(`Similar memory M${first.id} exists`);
+	});
+
 	it("updates by id, moves scope, pins, and sanitizes text without cutting it", () => {
 		const store = new MemoryStore(freshDb(), "repo-a");
 		const memory = add(store, { title: "Title \u001b[31mred\u001b[0m", body: "x".repeat(2000), kind: "gotcha" }, 1000);
@@ -277,17 +284,12 @@ describe("MemoryStore", () => {
 		expect(() => add(store, { title: "widget FACTORY" })).toThrow(/Similar memory/);
 	});
 
-	it("marks usage and keeps the auto setting in meta", async () => {
+	it("marks usage", async () => {
 		const store = new MemoryStore(freshDb(), "repo-a");
 		const memory = add(store, { title: "Used one" });
 		await store.markUsed([memory.id], 5000);
 		await store.markUsed([]);
 		expect(store.get(memory.id)).toMatchObject({ useCount: 1, lastUsed: 5000 });
-		expect(store.autoSetting()).toBe(true);
-		store.setAutoSetting(false);
-		expect(store.autoSetting()).toBe(false);
-		store.setAutoSetting(true);
-		expect(store.autoSetting()).toBe(true);
 	});
 });
 
@@ -506,7 +508,7 @@ describe("memory tool", () => {
 		expect(subcommands.get("memory")).toBeUndefined();
 	});
 
-	it("keeps its prompt lean: at most 4 short guidelines (1 in a subagent), every field described or an enum", () => {
+	it("keeps its prompt lean: at most 4 short guidelines (1 in a subagent), every field described", () => {
 		for (const [subagent, max] of [
 			[false, 4],
 			[true, 1],
@@ -516,9 +518,11 @@ describe("memory tool", () => {
 			for (const line of tool.promptGuidelines as string[]) expect(line.length, line).toBeLessThanOrEqual(230);
 			for (const [name, schema] of Object.entries(
 				tool.parameters.properties as Record<string, { description?: string; enum?: string[] }>,
-			))
-				// An enum whose values alone say what it does needs no description.
-				expect(schema.description || schema.enum?.length, name).toBeTruthy();
+			)) {
+				// The one exception: a subagent's `op` (search, get, list) says what it does by its values.
+				if (subagent && name === "op") expect(schema.enum?.length, name).toBeTruthy();
+				else expect(schema.description, name).toBeTruthy();
+			}
 		}
 	});
 
@@ -609,15 +613,16 @@ describe("memory lines the model reads", () => {
 			/^Updated M1 .* — now short$/,
 		);
 		await run(tool, { op: "set", id: "M1", title: "Gadgets", body: long });
+		// The deleted note's line leaves the workspace MEMORY.md too.
 		expect(text(await run(tool, { op: "delete", id: "M1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toBe(
-			`Deleted M1 (workspace, fact) Gadgets — ${long}`,
+			`Deleted M1 (workspace, fact) Gadgets — ${long}\nworkspace MEMORY.md: 0/30 lines.`,
 		);
 	});
 });
 
 describe("memory auto-injection", () => {
-	const setup = (isSubagent = false) => {
-		const fake = fakeHost();
+	const setup = (isSubagent = false, settings: Record<string, unknown> = {}) => {
+		const fake = fakeHost(settings);
 		registerMemory(fake.api, { commands: new Subcommands(), isSubagent, permission: fakePermission() });
 		return fake;
 	};
@@ -632,7 +637,11 @@ describe("memory auto-injection", () => {
 		const fake = setup();
 		const { store, project, global } = seed();
 		const { ctx, branch } = ctxFor();
-		const result = (await fake.fire("before_agent_start", { prompt: "fix the rewind checkpoints bug" }, ctx)) as any;
+		const result = (await fake.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "fix the rewind checkpoints bug" },
+			ctx,
+		)) as any;
 		expect(result.message).toMatchObject({ customType: MEMORY_MESSAGE_TYPE, display: false });
 		expect(result.message.details.ids.sort((x: number, y: number) => x - y)).toEqual(
 			[project.id, global.id].sort((x, y) => x - y),
@@ -644,31 +653,59 @@ describe("memory auto-injection", () => {
 		expect(store.get(project.id)?.useCount).toBe(1);
 		expect(store.get(global.id)?.useCount).toBe(1);
 		branch.push({ type: "custom_message", ...result.message });
-		expect(await fake.fire("before_agent_start", { prompt: "checkpoints again" }, ctx)).toBeUndefined();
+		expect(
+			await fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "checkpoints again" },
+				ctx,
+			),
+		).toBeUndefined();
 	});
 
-	it("is off with OCTOCODE_MEMORY_AUTO=0 or the stored setting, and survives a broken DB", async () => {
+	it("is off with OCTOCODE_MEMORY_AUTO=0 or memory.recall off, and survives a broken DB", async () => {
 		const fake = setup();
-		const { store } = seed();
+		seed();
 		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "0");
-		expect(await fake.fire("before_agent_start", { prompt: "rewind" }, ctxFor().ctx)).toBeUndefined();
+		expect(
+			await fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind" },
+				ctxFor().ctx,
+			),
+		).toBeUndefined();
 		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "");
-		store.setAutoSetting(false);
-		expect(await fake.fire("before_agent_start", { prompt: "rewind" }, ctxFor().ctx)).toBeUndefined();
+		const off = setup(false, { memory: { recall: "off" } });
+		expect(
+			await off.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind" },
+				ctxFor().ctx,
+			),
+		).toBeUndefined();
 		closeSharedAgentDb();
 		const foreign = path.join(root, "foreign.db");
 		fs.writeFileSync(foreign, "not a database");
 		vi.stubEnv("OCTOCODE_AGENT_DB", foreign);
-		expect(await fake.fire("before_agent_start", { prompt: "rewind" }, ctxFor().ctx)).toBeUndefined();
+		expect(
+			await fake.fire(
+				"before_agent_start",
+				{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind" },
+				ctxFor().ctx,
+			),
+		).toBeUndefined();
 	});
 
 	it("gives a subagent at most 3 hits and no pinned fact (only pinned preferences reach it)", async () => {
-		const fake = setup(true);
+		const fake = setup(true, { memory: { recall: "all" } });
 		const store = memoryStore(cwd);
 		const pinned = add(store, { title: "Always on", body: "unrelated", pinned: true });
 		for (let i = 0; i < 6; i++)
 			add(store, { title: `Parser ${WORDS[i]}`, body: `parser ${WORDS[i + 10]} ${WORDS[i + 20]}` });
-		const result = (await fake.fire("before_agent_start", { prompt: "parser" }, ctxFor().ctx)) as any;
+		const result = (await fake.fire(
+			"before_agent_start",
+			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "parser" },
+			ctxFor().ctx,
+		)) as any;
 		expect(result.message.details.ids).toHaveLength(3);
 		expect(result.message.details.ids).not.toContain(pinned.id);
 	});
@@ -711,18 +748,20 @@ describe("/memory", () => {
 		expect(parseTemplate("title: only")).toEqual({ title: "only", body: "" });
 	});
 
-	it("prints grouped text headless, adds, searches, and toggles auto", async () => {
+	it("prints grouped text headless, adds, searches, and reports recall", async () => {
 		const { command, commands } = setup();
 		const { ctx } = ctxFor({ hasUI: false });
 		await command.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toBe("Memories (auto on): none.");
+		expect(ctx.ui.notes.at(-1)!.message).toBe("Memories (recall main): none.");
 		await command.handler("add Deploy with care — run the smoke tests first", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Saved M1 \(workspace, fact\) Deploy with care — run the smoke/);
+		// A user's workspace note is also the repository MEMORY.md line, marked as the user's.
+		expect(ctx.ui.notes.at(-1)!.message).toContain("workspace MEMORY.md: 2/30 lines.");
 		memoryStore(cwd).set({ title: "Global pin", scope: "global", pinned: true, author: "user" });
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toBe(
 			[
-				"Memories (auto on):",
+				"Memories (recall main):",
 				"Pinned:",
 				"  M2 (global, fact, pinned) Global pin",
 				"Workspace:",
@@ -740,16 +779,16 @@ describe("/memory", () => {
 			type: "warning",
 			message: expect.stringContaining("Similar memory M1"),
 		});
-		await command.handler("auto off", ctx);
-		expect(memoryStore(cwd).autoSetting()).toBe(false);
 		await command.handler("auto", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("is off");
+		expect(ctx.ui.notes.at(-1)!.message).toContain(
+			"Automatic recall is main. Change it with /configuration set memory.recall",
+		);
 		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "off");
-		await command.handler("auto on", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("Still off here");
+		await command.handler("auto", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain("off (OCTOCODE_MEMORY_AUTO=0)");
 		await command.handler("bogus", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Usage/);
-		expect(commands.complete("memory au")?.map((item) => item.value)).toEqual(["memory auto on", "memory auto off"]);
+		expect(commands.complete("memory au")?.map((item) => item.value)).toEqual(["memory auto"]);
 	});
 
 	it("shows the last injection on this branch", async () => {
@@ -819,7 +858,10 @@ describe("/memory", () => {
 		);
 		await command.handler("", ctx);
 		expect(store.get(1)).toBeUndefined();
-		expect(ctx.ui.notes.at(-1)!.message).toBe("Deleted M1. Other memories are unchanged.");
+		// The note was global by then: deleting it takes its line out of the global MEMORY.md.
+		expect(ctx.ui.notes.at(-1)!.message).toBe(
+			"Deleted M1. Other memories are unchanged.\nglobal MEMORY.md: 0/30 lines.",
+		);
 	});
 });
 

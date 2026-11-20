@@ -336,6 +336,7 @@ describe("permission gate", () => {
 			".octocode/SYSTEM.md",
 			".octocode/APPEND_SYSTEM.md",
 			".octocode/AGENTS.md",
+			".octocode/CLAUDE.md",
 			".octocode/lsp-servers.json",
 			".octocode/worktrees/w/src/a.ts",
 			".octocode/code/backlog.md",

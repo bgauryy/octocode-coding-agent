@@ -63,6 +63,7 @@ flowchart LR
 | Browser cookies          | Ask in every mode; dialog offers "Allow all browser cookie access for this session"       |
 | Destructive shell        | Asks outside `full`; always takes a restore point. Applies to `!` commands you type       |
 | Octocode state folder    | Known writes into the Octocode home are refused                                           |
+| MEMORY.md files          | `file` and known shell writes refuse the global and workspace files; `memory` writes them |
 | Reservations             | Another agent's reserved paths are refused ([below](#reservations-and-the-shell))         |
 | Provider keys            | `bash` starts without them; `bash.inheritProviderKeys` (global settings) keeps them       |
 
@@ -159,10 +160,10 @@ At startup, a loose-permission or in-git-work-tree warning also covers each `aut
 
 While the shell sandbox is on (`sandbox.mode`), a sandboxed command cannot read these, in any permission mode and for read-only subagents too:
 
-| Denied                                 | Where it comes from                                                              |
-| -------------------------------------- | -------------------------------------------------------------------------------- |
-| `auth.json`                            | the agent directory (`OCTOCODE_CODING_AGENT_DIR`, else the Octocode home)        |
-| `.ssh`, `.aws`, `.gnupg` and their contents | your home folder (`HOME`)                                                   |
+| Denied                                      | Where it comes from                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------- |
+| `auth.json`                                 | the agent directory (`OCTOCODE_CODING_AGENT_DIR`, else the Octocode home) |
+| `.ssh`, `.aws`, `.gnupg` and their contents | your home folder (`HOME`)                                                 |
 
 The read fails inside the command and the result names the refused path. A command that really needs one (for example `git push` over SSH) runs outside the sandbox only through the usual `shell.unsandboxed` approval: the agent retries it with `sandbox: false` and you are asked. With the sandbox off, or in `bypass` mode with `sandbox.mode` at `auto`, this list does not apply.
 
@@ -225,10 +226,11 @@ A tripwire for prompt injection: text from an untrusted source that reappears in
 | Every MCP result, network program output (`curl`, `wget`, `ssh`…), a subagent's report      | Untrusted                                                                                                                                                                            |
 | Tools a trusted entry declares `reader` or `search`: text from workspace paths              | Trusted; a path outside the workspace makes it private (a later web request or network command repeating it is a hit); a cursor page takes its origin from the page that returned it |
 | A shell read of a file outside the workspace (`cat ~/.ssh/config`)                          | Private                                                                                                                                                                              |
+| Team mail from another agent, and the text of each attachment it references                 | Untrusted; a `fromAttachment` write of that attachment into a consequential path is a hit even unread; a message you typed is trusted                                                |
 | A subagent whose harness reports it read nothing untrusted (signed with the child's secret) | Clean; its report is trusted                                                                                                                                                         |
 | `gh`, `git clone`/`fetch`, package managers, `docker pull`, `python -c`, `node -e` output   | Not untrusted (a known limit of a text tripwire, not a safety claim)                                                                                                                 |
 
-Consequential: every MCP call's arguments, an `agent` call (a `message` as a `task`), a subagent's task, and text written into an instruction file a later session loads (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`). Echoes of supplied arguments, an existing workspace path, the working folder, a model id, or what the task itself said are no hit. Output a background `bash` job delivers is indexed like a foreground result (only the tail the report carries). A provenance ask from one subagent offers **Allow text from `<agent>` for this session**, revoked with other grants.
+Consequential: every MCP call's arguments, an `agent` call (a `message` as a `task`), a subagent's task, and text written into an instruction file a later session loads (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`). Echoes of supplied arguments, an existing workspace path, the working folder, a model id, or what the task itself said are no hit. Output a background `bash` job delivers is indexed like a foreground result (only the tail the report carries). A provenance ask from one subagent offers **Allow text from `<agent>` for this session**, revoked with other grants.
 
 ### Hook-initiated MCP calls
 
@@ -240,7 +242,7 @@ A subagent whose profile sets `readOnly: true` (bundled `reviewer`, `researcher`
 
 | Tool                    | The role may                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `file`, `edit`, `write` | Change only its scratch folder, `.octocode/code/temp/`, `.octocode/<topic>/tmp/` and Markdown under `.octocode/`, except files a later session loads (`skills/`, `agents/`, `prompts/`, `hooks.json`, `settings.json`, `mcp.json`, `SYSTEM.md`, `AGENTS.md`) and `.octocode/code/` outside `temp/`                                                              |
+| `file`, `edit`, `write` | Change only its scratch folder, `.octocode/code/temp/`, `.octocode/<topic>/tmp/` and Markdown under `.octocode/`, except files a later session loads (`skills/`, `agents/`, `prompts/`, `hooks.json`, `settings.json`, `mcp.json`, `SYSTEM.md`, `AGENTS.md`, `CLAUDE.md`) and `.octocode/code/` outside `temp/`                                                 |
 | `bash`                  | Run commands that write nothing outside those places; refused when a write is seen or cannot be placed (`sqlite3` open for writing, awk with its own output or `system()`), or when a variable may swap the program run (`PATH=/tmp/x cat f`, `export X=1`, `[[ -v 'a[$(cmd)]' ]]`, as in the reservation table below)                                          |
 | `git`                   | Read only: `status`, `log`, `diff`, `show`, `blame`, `grep`, `ls-files`, `ls-tree`, `rev-parse`, `rev-list`, `describe`, `shortlog`, `cat-file`, `show-ref`, `format-patch --stdout`; `branch`, `tag`, `remote`, `stash`, `worktree`, `notes` only to list. No `-c`, `--git-dir`, `--work-tree`, program-setting variables, or words that may expand to options |
 | `octocode`              | Nothing: any run is refused (plan mode too)                                                                                                                                                                                                                                                                                                                     |

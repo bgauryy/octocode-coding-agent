@@ -4,7 +4,10 @@ import { GLYPH } from "../tokens/design.ts";
 import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { CURSOR_MARKER } from "../tui/cursor.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
-import { visibleWidth } from "../utils/width.ts";
+import { graphemeSegments, visibleWidth } from "../utils/width.ts";
+
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
 
 /** The glyph that starts the search line. */
 export const SEARCH_GLYPH = "⌕";
@@ -282,9 +285,16 @@ export class ListView<T> implements Component, Focusable {
 	}
 
 	private typeInSearch(data: string): void {
-		if (data === "\x7f" || data === "\b") return this.setQuery(Array.from(this.query).slice(0, -1).join(""));
-		// Printable text only: control and escape sequences are keys this list does not take.
-		if (/^[^\x00-\x1f\x7f]+$/u.test(data) && !data.startsWith("\x1b")) this.setQuery(this.query + data);
+		if (data === "\x7f" || data === "\b") {
+			const graphemes = [...graphemeSegments(this.query)];
+			return this.setQuery(graphemes.slice(0, -1).join(""));
+		}
+		const pasted = data.includes(PASTE_START);
+		const text = pasted ? data.replace(PASTE_START, "").replace(PASTE_END, "") : data;
+		// A paste is one line of search text: line breaks and tabs become spaces. Typed control and escape sequences
+		// are keys this list does not take.
+		const line = pasted || text.length > 1 ? text.replace(/\r\n|[\r\n\t]/g, " ") : text;
+		if (/^[^\x00-\x1f\x7f]+$/u.test(line) && !line.startsWith("\x1b")) this.setQuery(this.query + line);
 	}
 
 	private applyFilter(): void {

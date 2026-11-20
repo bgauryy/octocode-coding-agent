@@ -8,7 +8,13 @@ import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
 
-/** Set to `on` to ask the Anthropic API why a request could not reuse the previous request's cached prefix. */
+/**
+ * Asks the Anthropic API why a request could not reuse the previous request's cached prefix; on unless set to `off`
+ * (`0`, `false`). The API documents no charge and no effect on the request ("Diagnostics never blocks or fails your
+ * request"), and stores only "a fingerprint of cryptographic hashes and token-count estimates", briefly, never prompt
+ * text; the feature is ZDR-eligible (qualified) but not HIPAA-eligible, which is the reason to turn it off.
+ * https://platform.claude.com/docs/en/build-with-claude/cache-diagnostics (2026-11-19)
+ */
 const CACHE_DIAGNOSTICS_ENV = "OCTOCODE_CACHE_DIAGNOSTICS";
 
 /** Assistant-message diagnostic type that carries the API's miss reason in `details.reason`. */
@@ -28,8 +34,8 @@ function isDirectAnthropic(model: Model<"anthropic-messages">): boolean {
 }
 
 function enabled(env?: ProviderEnv): boolean {
-	const value = getProviderEnvValue(CACHE_DIAGNOSTICS_ENV, env)?.toLowerCase();
-	return value === "on" || value === "1" || value === "true";
+	const value = getProviderEnvValue(CACHE_DIAGNOSTICS_ENV, env)?.trim().toLowerCase();
+	return value === undefined || value === "" || value === "on" || value === "1" || value === "true";
 }
 
 /**

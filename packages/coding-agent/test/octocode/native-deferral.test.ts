@@ -51,7 +51,7 @@ describe("native tool deferral", () => {
 		expect(nativeToolDeferred("file", {})).toBe(false);
 	});
 
-	it("declares a deferred tool with its description, field names and the required reason, and validates in full", () => {
+	it("declares a deferred tool with its description, field types, allowed values and required fields, and validates in full", () => {
 		agentDir();
 		const full = tool("web");
 		const thin = withNativeDeferral(api({ mcpExposure: "recent" }), full as never) as never as typeof full & {
@@ -61,9 +61,13 @@ describe("native tool deferral", () => {
 		expect(thin.description).toBe(full.description);
 		expect(thin.parameters).toEqual({
 			type: "object",
-			properties: { reason: { type: "string" }, op: { type: "string" }, queries: { type: "array" } },
+			properties: {
+				reason: { type: "string" },
+				op: { type: "string", enum: ["search", "fetch"] },
+				queries: { type: "array" },
+			},
 			additionalProperties: true,
-			required: ["reason"],
+			required: ["reason", "op"],
 		});
 		expect(thin.validationParameters).toBe(full.parameters);
 		expect(thin.validationHint({ envelope: false, properties: ["op"] })).toContain('"op"');

@@ -10,6 +10,7 @@ import { publishLiveAgents } from "../shared/team-spend.ts";
 import { needsYou } from "./panel/attention.ts";
 import { FINISHED_MS, safe } from "./panel/compact.ts";
 import { FinishedTracker } from "./panel/finished.ts";
+import { ActivityHold } from "./panel/hold.ts";
 import { widgetLines, widgetRows } from "./panel/layout.ts";
 import { type Moving, PanelMotion } from "./panel/motion.ts";
 import { nextMinuteDelay } from "./panel/work.ts";
@@ -38,6 +39,8 @@ export class AgentsView {
 	private members: Member[] = [];
 	private traffic: Traffic[] = [];
 	private readonly finished: FinishedTracker;
+	/** The activity lines as drawn: a thought held briefly, a running bash command kept until the next tool. */
+	private readonly hold = new ActivityHold();
 	/** Says a team database failure and its recovery in the messages list; the footer keeps only the short state. */
 	private readonly outage = new TeamOutage();
 	private shown = false;
@@ -59,7 +62,11 @@ export class AgentsView {
 				.filter((row) => !row.mark)
 				.map((): Moving => ({ state: "running" })),
 		],
-		() => this.render?.(),
+		() => {
+			// While a mark moves the panel's own clock runs: it also looks for a child's new row, so lines follow within a fraction of a second.
+			this.team.poll();
+			this.render?.();
+		},
 		// With no mark moving, still-running work repaints once a minute, on the oldest row's boundary.
 		(now) => nextMinuteDelay(this.workItems(), now),
 	);
@@ -235,6 +242,7 @@ export class AgentsView {
 		this.members = [];
 		this.traffic = [];
 		this.finished.clear();
+		this.hold.clear();
 		this.expanded.clear();
 		this.waitSeen.clear();
 		this.owners = [];
@@ -270,10 +278,11 @@ export class AgentsView {
 				this.render = () => tui.requestRender();
 				return {
 					render: (width: number) => {
+						const now = Date.now();
 						const drawn = widgetRows(
-							this.members,
+							this.hold.apply(this.members, now),
 							this.team.id,
-							Date.now(),
+							now,
 							theme,
 							width,
 							this.traffic,

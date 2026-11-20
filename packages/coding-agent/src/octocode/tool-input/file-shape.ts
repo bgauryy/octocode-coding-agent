@@ -4,7 +4,7 @@
  * its parameters as text inside `reason` (`<parameter name="type">edit`) gets them read back out of that text.
  */
 
-const CHANGE_FIELDS = ["type", "path", "edits", "content"] as const;
+const CHANGE_FIELDS = ["type", "path", "edits", "content", "fromAttachment"] as const;
 const FORMS =
 	"file takes either queries (an array, one object per change: {type, path, edits|content}) or patch (a Codex apply_patch string), not both";
 const ECHO_STRING_LIMIT = 200;

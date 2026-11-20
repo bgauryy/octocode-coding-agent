@@ -145,7 +145,8 @@ describe("tool definitions in the estimate", () => {
 		).toBe(0);
 	});
 	it("shares one characters-per-token constant with the restore budget", () => {
-		expect(CHARS_PER_TOKEN).toBe(3);
+		// Without a model: the densest family measured (Claude, 2.5 characters per token).
+		expect(CHARS_PER_TOKEN).toBe(2.5);
 	});
 });
 

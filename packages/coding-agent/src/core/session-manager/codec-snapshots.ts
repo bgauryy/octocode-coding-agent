@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
+import { strictJsonText } from "./json-line.ts";
 
 /**
  * A system prompt and its tool declarations are stored by the system message that sets them, and again by every
  * compaction (`systemMessage`, `systemBase`) and by a later update that repeats them. On disk each distinct part (the
  * prompt text, one section, one tool declaration) is written once per file: a later copy is `{ "$ref": <hash> }`, the
  * hash of the part's JSON, resolved against the copy written earlier in the same file. The file stays self-contained.
+ * The JSON is the strict form a line stores (`json-line.ts`), so a part hashes the same in memory and read back.
  */
 interface SnapshotRef {
 	$ref: string;
@@ -63,13 +65,20 @@ function holdsSnapshots(entry: Record<string, unknown>): boolean {
 export class SnapshotIndex {
 	private readonly parts = new Map<string, string>();
 
+	/** Holds a part written in full. A file written before the strict form refers to it by the hash of `JSON.stringify`. */
+	private remember(value: unknown): void {
+		const raw = JSON.stringify(value) as string | undefined;
+		if (raw === undefined || raw.length < MIN_PART_CHARS) return;
+		const json = strictJsonText(raw);
+		this.parts.set(hashOf(json), json);
+		if (raw !== json) this.parts.set(hashOf(raw), json);
+	}
+
 	/** Remember the parts of an entry the file now holds. */
 	add(entry: Record<string, unknown>): void {
 		if (!holdsSnapshots(entry)) return;
 		mapEntrySnapshots(entry, (value) => {
-			if (value === undefined || isSnapshotRef(value)) return value;
-			const json = JSON.stringify(value);
-			if (json !== undefined && json.length >= MIN_PART_CHARS) this.parts.set(hashOf(json), json);
+			if (value !== undefined && !isSnapshotRef(value)) this.remember(value);
 			return value;
 		});
 	}
@@ -80,8 +89,9 @@ export class SnapshotIndex {
 		const added = new Map<string, string>();
 		return mapEntrySnapshots(entry, (value) => {
 			if (value === undefined || isSnapshotRef(value)) return value;
-			const json = JSON.stringify(value);
-			if (json === undefined || json.length < MIN_PART_CHARS) return value;
+			const raw = JSON.stringify(value) as string | undefined;
+			if (raw === undefined || raw.length < MIN_PART_CHARS) return value;
+			const json = strictJsonText(raw);
 			const hash = hashOf(json);
 			// The same part twice in one entry (a compaction's base and folded state) is written once, at its first place.
 			if (this.parts.get(hash) === json || added.get(hash) === json) return { $ref: hash };
@@ -96,10 +106,7 @@ export class SnapshotIndex {
 		// Parts defined earlier in the same entry resolve later references in it, in the order `encode` wrote them.
 		return mapEntrySnapshots(entry, (value) => {
 			if (!isSnapshotRef(value)) {
-				if (value !== undefined) {
-					const json = JSON.stringify(value);
-					if (json !== undefined && json.length >= MIN_PART_CHARS) this.parts.set(hashOf(json), json);
-				}
+				if (value !== undefined) this.remember(value);
 				return value;
 			}
 			const json = this.parts.get(value.$ref);

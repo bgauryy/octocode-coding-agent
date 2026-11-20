@@ -8,6 +8,7 @@ import {
 	InMemoryModelsStore,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
+import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import { ModelRuntime } from "../../src/core/model-runtime.ts";
@@ -31,7 +32,8 @@ function forkOfConversation(): { fork: SessionManager; parentId: string } {
 	for (let i = 0; i < 4; i++) {
 		parent.appendMessage({
 			role: "user",
-			content: [{ type: "text", text: `question ${i} ${"x".repeat(20_000)}` }],
+			// About 6.7k tokens a question at the estimator's ratio, so four turns leave an earlier one to summarize.
+			content: [{ type: "text", text: `question ${i} ${"x".repeat(Math.round((20_000 * CHARS_PER_TOKEN) / 3))}` }],
 			timestamp: i,
 		});
 		parent.appendMessage(fauxAssistantMessage(`answer ${i}`));

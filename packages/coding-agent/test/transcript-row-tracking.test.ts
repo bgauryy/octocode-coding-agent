@@ -9,6 +9,7 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 	getKeybindings,
+	markFolded,
 	setKeybindings,
 	setPointerClicksActive as setTranscriptRowsClickable,
 } from "@octocodeai/octocode-tui";
@@ -201,19 +202,20 @@ describe("expand hint wording", () => {
 
 	test("names the click only where the mouse is reported and the row toggles on it", () => {
 		setTranscriptRowsClickable(false);
-		expect(expandHint("expand", "ctrl+o")).toBe("(ctrl+o to expand)");
+		expect(expandHint("expand", "ctrl+o")).toBe(markFolded("(ctrl+o to expand)"));
 		expect(expandHint("expand", "unbound")).toBe("");
 		setTranscriptRowsClickable(true);
-		expect(expandHint("expand", "ctrl+o")).toBe("(ctrl+o or click to expand)");
-		expect(expandHint("expand", "ctrl+t")).toBe("(ctrl+t or click to expand)");
-		expect(expandHint("expand", "")).toBe("(click to expand)");
-		expect(expandHint("expand", "ctrl+o", false)).toBe("(ctrl+o to expand)");
+		expect(expandHint("expand", "ctrl+o")).toBe(markFolded("(ctrl+o or click to expand)"));
+		expect(expandHint("expand", "ctrl+t")).toBe(markFolded("(ctrl+t or click to expand)"));
+		expect(expandHint("expand", "")).toBe(markFolded("(click to expand)"));
+		expect(expandHint("expand", "ctrl+o", false)).toBe(markFolded("(ctrl+o to expand)"));
+		expect(expandHint("collapse", "ctrl+o", false)).toBe("(ctrl+o to collapse)");
 		expect(expandHint("expand", "unbound", false)).toBe("");
 	});
 
 	test("follows the shared flag for the thinking key and an unbound key", () => {
 		setKeybindings(new KeybindingsManager({ "app.thinking.toggle": [] }));
 		setTranscriptRowsClickable(true);
-		expect(expandHint("expand", "")).toBe("(click to expand)");
+		expect(expandHint("expand", "")).toBe(markFolded("(click to expand)"));
 	});
 });

@@ -4,6 +4,7 @@ import { restoreBashResult, storeBashResult } from "../tools/bash/stored-result.
 import { redactEntry } from "./codec-redact.ts";
 import { SnapshotIndex } from "./codec-snapshots.ts";
 import { isTraceDelta, TraceIndex } from "./codec-trace.ts";
+import { strictJsonLine } from "./json-line.ts";
 
 /**
  * How entries are stored in a session file. In memory an entry is whole; on disk it leaves out what an earlier line of
@@ -50,6 +51,11 @@ export class SessionCodec {
 		return this.snapshots.encode(stored) as T;
 	}
 
+	/** The line that stores `entry` (`encode`, serialized as strict JSON: `json-line.ts`), without its newline. */
+	line(entry: object): string {
+		return strictJsonLine(this.encode(entry));
+	}
+
 	/** Remember a whole entry the file now holds, so later lines can refer to it. */
 	observe(entry: object): void {
 		const record = entry as Record_;
@@ -90,7 +96,7 @@ export class SessionCodec {
 export function encodeSessionLines(entries: readonly object[]): { lines: string[]; codec: SessionCodec } {
 	const codec = new SessionCodec();
 	const lines = entries.map((entry) => {
-		const line = JSON.stringify(codec.encode(entry));
+		const line = codec.line(entry);
 		codec.observe(entry);
 		return line;
 	});

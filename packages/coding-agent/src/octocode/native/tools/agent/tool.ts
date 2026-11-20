@@ -27,7 +27,7 @@ const LINES: Record<Mode, string> = {
 	coordinate:
 		"List teammates; reserve files in this worktree against other agents' edits and bash writes (not scripts or other editors).",
 	message:
-		"Queue steering, questions or evidence to teammates; a message resumes only reachable non-isolated background children.",
+		"Queue steering, questions or evidence to teammates; a message resumes your finished non-isolated child (not a runner's) or a lingering one.",
 };
 
 /** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */

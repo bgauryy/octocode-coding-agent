@@ -9,6 +9,7 @@ import {
 	type SummaryRequestPolicy,
 } from "../compaction/index.ts";
 import { splitSummary } from "../compaction/summary-view.ts";
+import type { SummaryFocus } from "../compaction/summary-focus.ts";
 import type { CompactionReason } from "../session-compaction.ts";
 import { createSessionUsageRecorder } from "../usage-totals.ts";
 import type { SessionPublic } from "./host.ts";
@@ -33,7 +34,8 @@ export async function runDefaultCompaction(
 	model: Model<any>,
 	signal: AbortSignal,
 	reason: CompactionReason,
-	customInstructions?: string,
+	/** The focus, labelled by who wrote it (`summary-focus.ts`). */
+	customInstructions?: string | SummaryFocus,
 	summaryRequest?: SummaryRequestPolicy,
 ): Promise<CompactionResult> {
 	const { session } = host;

@@ -1,1 +1,1 @@
-Live state, read from the backlog when this summary was written. Backlog items this session holds: none.
+Live state from the backlog at this summary: this session holds no items.

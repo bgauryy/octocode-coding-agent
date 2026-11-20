@@ -1,4 +1,5 @@
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { prewarmLeadTokens } from "../../../core/agent-session/compaction-prewarm.ts";
 import type { CompactionThinking } from "../../../core/compaction/settings.ts";
 import type { FeatureContext, SetupPick } from "../../../core/features/index.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
@@ -39,8 +40,19 @@ export function noticeBand(
 
 const kilo = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
-/** From half the room on, an agent with the `compact` tool is told it can compact at a task boundary, as the tool's own description says ("over half full"). */
-const COMPACT_HINT_BAND = 0.5;
+/**
+ * Only from nine tenths of the room on, and once the context is inside the prewarm lead (`prewarmLeadTokens`), is an
+ * agent with the `compact` tool told it may compact at a task boundary: by then automatic compaction is a few turns
+ * away and its summary is being written ahead (`early-summary.ts`), so compacting at the boundary moves that
+ * compaction there instead of adding one. An earlier hint made agents compact long before the threshold, paying for
+ * more lossy summaries. In a window past about 320k tokens nine tenths comes before the lead (which stops at 32k), so
+ * the hint waits for the lead: a compaction there would pay for a summary of its own.
+ */
+const COMPACT_HINT_BAND = 0.9;
+
+/** Whether the notice for `band` at `tokens` offers `compact` (see above). */
+const compactHintDue = (band: number, tokens: number, limit: number, window: number): boolean =>
+	band >= COMPACT_HINT_BAND && tokens > limit - prewarmLeadTokens(window);
 
 /** Octocode always compacts automatically at the limit (`getCompactionEnabled`). */
 export function contextNoticeText(tokens: number, limit: number, window: number, compactHint = false): string {
@@ -85,9 +97,13 @@ export function noticeContextUsage(
 	bands: readonly number[] = MONITOR_DEFAULTS.contextBands,
 ): Promise<boolean> | undefined {
 	const model = ctx.model;
-	const tokens = ctx.getContextUsage()?.tokens;
-	if (!model || model.contextWindow <= 0 || typeof tokens !== "number") return undefined;
-	const limit = autoCompactAt(model, thinking);
+	const usage = ctx.getContextUsage();
+	const tokens = usage?.tokens;
+	// The window and threshold are the ones the footer and `/context` show (overrides, routed and virtual models).
+	const window = usage?.contextWindow ?? model?.contextWindow;
+	if (!model || !window || window <= 0 || typeof tokens !== "number") return undefined;
+	const limit = usage?.compactionThreshold ?? autoCompactAt({ ...model, contextWindow: window }, thinking);
+	if (limit <= 0) return undefined;
 	const band = noticeBand(tokens, limit, bands);
 	if (band === undefined) return undefined;
 	const last = lastNoticedBand(messages, compactionId);
@@ -97,7 +113,7 @@ export function noticeContextUsage(
 		{ rule: "context", value: Math.round((tokens / limit) * 100), threshold: Math.round(band * 100) },
 		{
 			customType: CONTEXT_NOTICE_TYPE,
-			content: contextNoticeText(tokens, limit, model.contextWindow, compactTool && band >= COMPACT_HINT_BAND),
+			content: contextNoticeText(tokens, limit, window, compactTool && compactHintDue(band, tokens, limit, window)),
 			details: { band, tokens, limit, compactionId: compactionId ?? null },
 		},
 		{ how: "note" },

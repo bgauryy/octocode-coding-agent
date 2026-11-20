@@ -3,8 +3,8 @@ Use these headings in order:
 {{goalHeading}}
 [Current goals and reasons; earlier goals only while still relevant]
 
-## Constraints & Preferences
-- [The user's constraints, preferences or requirements, or "(none)"]
+{{constraintsHeading}}
+- [Standing rules from the user: limits, prohibitions, preferences, requirements and approvals in force with their scope; or "(none)"]
 
 ## Progress
 ### Done
@@ -16,13 +16,13 @@ Use these headings in order:
 ### Blocked
 - [What prevents progress, if anything; for a step you asked the user to take, whether it was done]
 
-## Key Decisions
+{{decisionsHeading}}
 - **[Decision]**: [Brief rationale, evidence and unverified assumptions]
 
-## Errors & Fixes
+{{errorsHeading}}
 - [Unresolved errors; for resolved failures, one-line lesson and evidence. Keep user corrections.]
 
-## Where We Stopped
+{{stoppedHeading}}
 - [The latest request, exact file paths, last action and next step within that request. Exclude this summary request; never start tangential work.]
 
 ## Critical Context
