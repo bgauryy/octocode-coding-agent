@@ -30,6 +30,7 @@ if (spawnSync("cua-driver", ["--version"]).status !== 0) {
 	process.exit(2);
 }
 
+const startedAt = Date.now();
 const home = mkdtempSync(path.join(tmpdir(), "desktop-acp-check-"));
 const env = { ...process.env, OCTOCODE_AGENT_DB: path.join(home, "agent.db") };
 const run = (...cliArgs) => spawnSync("node", [cli, ...cliArgs], { cwd: repo, env, encoding: "utf8" });
@@ -111,8 +112,14 @@ async function main() {
 		`a prompt that was not about the desktop was refused: ${JSON.stringify(asks)}`,
 	);
 	check(/\b42\b/.test(reply), "the reply does not report 42");
-	const shot = reply.match(/(\/[^\s`'")]+\.png)/)?.[1];
+	// An absolute path, or one relative to the repository (the agent may name either).
+	const named = reply.match(/((?:\/|\.\/|\.octocode\/)[^\s`'")]+\.png)/)?.[1];
+	const shot = named ? path.resolve(repo, named) : undefined;
 	check(Boolean(shot && existsSync(shot)), `the reported screenshot does not exist: ${shot}`);
+	check(
+		Boolean(shot && existsSync(shot) && statSync(shot).mtimeMs >= startedAt),
+		"the reported screenshot is older than this run (a stale file proves nothing)",
+	);
 	check(
 		spawnSync("pgrep", ["-x", "Calculator"]).status !== 0,
 		"Calculator is still running (the agent said it closed it)",
@@ -128,7 +135,18 @@ async function main() {
 function finish(failures, facts = {}) {
 	clearTimeout(timeout);
 	child.kill();
-	console.log(JSON.stringify({ ok: failures.length === 0, failures, ...facts }, null, 2));
+	console.log(
+		JSON.stringify(
+			{
+				ok: failures.length === 0,
+				failures,
+				...facts,
+				...(failures.length > 0 ? { reply: reply.slice(0, 1500) } : {}),
+			},
+			null,
+			2,
+		),
+	);
 	process.exit(failures.length === 0 ? 0 : 1);
 }
 

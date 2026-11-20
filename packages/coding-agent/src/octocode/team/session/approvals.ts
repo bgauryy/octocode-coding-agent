@@ -54,6 +54,14 @@ export class WaitingApprovals {
 		if (at !== undefined) this.noteOutput(id, at);
 	}
 
+	/**
+	 * The process of subagent `id` is over: whatever its run still does (merging its worktree, building its report) is the
+	 * parent's own work, so there is no silence left to measure.
+	 */
+	noteExited(id: string): void {
+		this.output.delete(id);
+	}
+
 	/** When subagent `id` last wrote output, if this host saw any. */
 	lastOutput(id: string): number | undefined {
 		return this.output.get(id);

@@ -78,6 +78,11 @@ interface McpStdioServerConfig extends McpServerConfigBase {
 	inheritEnv?: boolean;
 	/** Relative paths resolve against the session working directory. */
 	cwd?: string;
+	/**
+	 * Run the server inside the host's command sandbox, as the agent's shell commands run, whatever `sandbox.mode` says.
+	 * A host without one, or a sandbox that cannot start, refuses to start the server. Default: false.
+	 */
+	sandbox?: boolean;
 	/** Install this package before the first launch; the launch then runs its bin with node, followed by `args`. */
 	install?: McpInstallConfig;
 }

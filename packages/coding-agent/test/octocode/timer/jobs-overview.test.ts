@@ -14,7 +14,7 @@ let root: string;
 const closers: Array<() => Promise<unknown>> = [];
 
 beforeEach(() => {
-	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: T0 });
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: T0 });
 	root = tmp();
 });
 afterEach(async () => {

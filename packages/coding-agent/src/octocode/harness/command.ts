@@ -20,6 +20,9 @@ import { HarnessPicker } from "./picker.ts";
 import { HARNESS_SECTIONS, type HarnessSection, sectionOf } from "./sections.ts";
 import { switchHarness, switchOnPreview } from "./vendor-items.ts";
 
+/** Rows `/harness list` prints before it points at its filters. */
+const LIST_ROWS = 40;
+
 /** `/harness list <section>` filters: each names the rows it keeps. */
 const SECTIONS: Record<string, (item: InventoryItem) => boolean> = {
 	plugins: (item) => item.kind === "plugin",
@@ -367,14 +370,14 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 			if (action === "list") {
 				const { inventory } = await load(ctx);
 				const filter = words.join(" ").toLowerCase();
-				if (!filter) return say(ctx, renderInventory(inventory));
+				if (!filter) return say(ctx, renderInventory(inventory, undefined, LIST_ROWS));
 				const section = SECTIONS[filter];
 				const rows = inventory.items.filter((item) =>
 					section
 						? section(item)
 						: [item.label, item.id, item.detail].some((text) => text.toLowerCase().includes(filter)),
 				);
-				return say(ctx, renderInventory(inventory, rows));
+				return say(ctx, renderInventory(inventory, rows, LIST_ROWS));
 			}
 			const section = PICKER_SECTIONS.includes(action) && !words.length ? (action as HarnessSection) : undefined;
 			if (action && !section) return say(ctx, USAGE, "warning");

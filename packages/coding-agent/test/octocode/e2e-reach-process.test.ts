@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { killPrivateTmuxServer } from "../../../tui/test/helpers/real-tmux.ts";
 import { apiDir, listInstances, type InstanceRecord } from "../../src/octocode/api/registry.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { acpClient, initialize } from "./e2e-acp-client.ts";
@@ -437,7 +438,7 @@ describe("an external message", () => {
 			expect(shown).toContain("another process, not you");
 			expect(shown).toContain(`pid `);
 		} finally {
-			call("kill-server");
+			killPrivateTmuxServer(socket);
 		}
 	});
 

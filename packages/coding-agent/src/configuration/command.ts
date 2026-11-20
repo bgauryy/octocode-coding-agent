@@ -73,8 +73,10 @@ const stateText = (entry: ConfigEntry): string => {
 };
 
 /** The entries grouped by kind: id, state, the scope that set it, when a change applies. */
-function formatEntries(entries: readonly ConfigEntry[]): string[] {
-	if (entries.length === 0) return ["Nothing matches."];
+function formatEntries(all: readonly ConfigEntry[], limit: number, filtered: boolean): string[] {
+	if (all.length === 0) return ["Nothing matches."];
+	const hidden = Math.max(all.length - limit, 0);
+	const entries = all.slice(0, all.length - hidden);
 	const lines: string[] = [];
 	let kind = "";
 	const width = Math.min(48, Math.max(...entries.map((entry) => entry.id.length)));
@@ -88,6 +90,11 @@ function formatEntries(entries: readonly ConfigEntry[]): string[] {
 			`  ${entry.id.padEnd(width)}  ${stateText(entry).padEnd(8)}  ${entry.setBy.padEnd(8)}  ${entry.appliesWhen}${locked}`,
 		);
 	}
+	if (hidden)
+		lines.push(
+			"",
+			`… ${hidden} more entries. ${filtered ? "Narrow it: /configuration list <kind> <text>" : "Filter: /configuration list <kind>|<text>"} (--json lists all)`,
+		);
 	return lines.slice(1);
 }
 
@@ -123,6 +130,7 @@ export async function runConfigWords(
 	catalog: ConfigCatalog,
 	tokens: readonly string[],
 	usageName: string,
+	limits: { listRows: number } = { listRows: Number.POSITIVE_INFINITY },
 ): Promise<ConfigCommandOutcome> {
 	const { words, local, force } = parseConfigWords(tokens);
 	const scope: ConfigScope = local ? "project" : "global";
@@ -150,7 +158,7 @@ export async function runConfigWords(
 						? { text: args.join(" ") }
 						: {},
 			);
-			return { ok: true, lines: formatEntries(entries), json: entries };
+			return { ok: true, lines: formatEntries(entries, limits.listRows, args.length > 0), json: entries };
 		}
 		case "get": {
 			if (args.length !== 1) return bad(...usage);

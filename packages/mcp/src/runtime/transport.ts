@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { type AuthProvider, type McpTransport, StdioTransport, StreamableHttpTransport } from "../client/index.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import type { McpServerEntry } from "../config.ts";
+import { hostSandbox } from "../host.ts";
+import type { StdioLaunchWrapper } from "../client/transports/stdio-launch.ts";
 
 export type McpTransportFactory = (
 	entry: McpServerEntry,
@@ -19,6 +21,18 @@ function expandHome(value: string): string {
 		return join(homedir(), value.slice(2));
 	}
 	return value;
+}
+
+/** The sandbox an opted-in server (`sandbox: true`) starts in: the host's, or a refusal when the host has none. */
+function sandboxFor(name: string): StdioLaunchWrapper {
+	return (launch) => {
+		const sandbox = hostSandbox();
+		if (!sandbox)
+			return Promise.reject(
+				new Error(`MCP server "${name}" sets sandbox: true, but this host has no command sandbox; it was not started.`),
+			);
+		return sandbox.wrapStdio(launch);
+	};
 }
 
 export function createDefaultTransport(
@@ -48,5 +62,6 @@ export function createDefaultTransport(
 		env,
 		inheritEnv: config.inheritEnv,
 		stderr: "pipe",
+		...(config.sandbox === true ? { wrapLaunch: sandboxFor(name) } : {}),
 	});
 }

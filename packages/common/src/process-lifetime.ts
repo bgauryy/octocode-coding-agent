@@ -10,6 +10,11 @@ import path from "node:path";
  * of the event loop) then runs the synchronous last-resort releases, also in reverse order, from a single `exit`
  * listener of the default instance. SIGKILL runs nothing: owners that must survive it keep owner records
  * (`process-group-records.ts`) for the next start to reap. Host-free, so every package may register here.
+ *
+ * Exit hooks that release nothing stay with their owners: the last flush of pending data (session file fsync, deferred
+ * settings writes, usage counts) holds no process, path or socket, so it adds nothing to what a closed process leaves;
+ * terminal restores (the TUI's exit-restore and focus reporting) keep their own order, so the terminal is back before
+ * any later message; and the database writers' drain needs a live event loop, which only `beforeExit` has.
  */
 
 export interface Release {

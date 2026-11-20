@@ -118,6 +118,8 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 		if (value.inheritEnv !== undefined && typeof value.inheritEnv !== "boolean")
 			return `server "${name}": inheritEnv must be a boolean`;
 		if (value.cwd !== undefined && typeof value.cwd !== "string") return `server "${name}": cwd must be a string`;
+		if (value.sandbox !== undefined && typeof value.sandbox !== "boolean")
+			return `server "${name}": sandbox must be a boolean`;
 		const installError = validateInstall(value.install);
 		if (installError) return `server "${name}": ${installError}`;
 		return value as unknown as Exclude<McpServerConfig, McpHttpServerConfig>;

@@ -1,3 +1,4 @@
+import type * as PageModule from "../../src/octocode/shared/page.ts";
 import { describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
@@ -5,6 +6,12 @@ import { registerPermissionCommand } from "../../src/octocode/permission/command
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { registerEditor } from "../../src/octocode/ui/editor.ts";
+const page = vi.hoisted(() => ({ show: vi.fn(async (): Promise<{ id: string } | undefined> => undefined) }));
+vi.mock("../../src/octocode/shared/page.ts", async (original) => ({
+	...(await original<typeof PageModule>()),
+	showCommandPage: page.show,
+}));
+
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -60,6 +67,34 @@ function setup(options: { trusted?: boolean; env?: NodeJS.ProcessEnv; confirms?:
 }
 
 describe("/permissions and editor shortcut", () => {
+	it("opens a list page with the modes and the views; leaving it changes nothing", async () => {
+		const { permission, run } = setup();
+		page.show.mockClear();
+		await run("");
+		const options = (
+			page.show.mock.calls[0] as unknown as [unknown, { sections: Array<{ rows: Array<{ id: string }> }> }]
+		)[1];
+		expect(options.sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
+			"mode:manual",
+			"mode:workspace",
+			"mode:full",
+			"open:status",
+			"open:grants",
+			"open:log",
+		]);
+		expect(permission.mode).toBe("workspace");
+	});
+
+	it("applies the mode picked on the page and shows the view picked on it", async () => {
+		const { permission, run, ctx } = setup();
+		page.show.mockResolvedValueOnce({ id: "mode:manual" });
+		await run("");
+		expect(permission.mode).toBe("manual");
+		page.show.mockResolvedValueOnce({ id: "open:grants" });
+		await run("");
+		expect(ctx.ui.notes.at(-1)!.message).toBe("Session grants: none");
+	});
+
 	it("starts in full; the editor shortcut cycles full → workspace → manual → full", async () => {
 		const { permission, cycle, ctx } = setup({ env: {} });
 		expect(permission.mode).toBe("full");
@@ -93,7 +128,7 @@ describe("/permissions and editor shortcut", () => {
 
 	it("shows the mode, what it asks for, the grants and the provenance index", async () => {
 		const { run, ctx } = setup();
-		await run("");
+		await run("status");
 		const shown = ctx.ui.notes.at(-1)!.message;
 		expect(shown).toMatch(/^Permission mode: workspace/);
 		expect(shown).toContain("file.outside: ask");

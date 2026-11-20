@@ -74,12 +74,53 @@ export async function rejectChangedFilters(worktree: string): Promise<void> {
  * worktree is kept.
  */
 export async function rejectNestedRepositories(repo: string, from: string, head: string): Promise<void> {
-	const fields = (await git(repo, ["diff-tree", "-r", "--no-renames", "-z", from, head], { raw: true })).split("\0");
-	const nested: string[] = [];
-	for (let at = 0; at + 1 < fields.length; at += 2)
-		if (fields[at].split(" ")[1] === "160000") nested.push(fields[at + 1]);
+	const nested = (await changedEntries(repo, from, head)).filter((entry) => entry.mode === "160000");
 	if (nested.length)
-		throw new Error(`Saving refuses nested repositories, whose commits only this worktree holds: ${nested.join(", ")}`);
+		throw new Error(
+			`Saving refuses nested repositories, whose commits only this worktree holds: ${nested.map((entry) => entry.path).join(", ")}`,
+		);
+}
+
+/** The paths `from..head` adds or changes (deletions too, with mode `000000`), each with its new mode and object. */
+async function changedEntries(
+	repo: string,
+	from: string,
+	head: string,
+): Promise<Array<{ mode: string; object: string; path: string }>> {
+	const fields = (await git(repo, ["diff-tree", "-r", "--no-renames", "-z", from, head], { raw: true })).split("\0");
+	const entries: Array<{ mode: string; object: string; path: string }> = [];
+	for (let at = 0; at + 1 < fields.length; at += 2) {
+		// `:<old mode> <new mode> <old object> <new object> <status>`
+		const [, mode = "", , object = ""] = fields[at].split(" ");
+		entries.push({ mode, object, path: fields[at + 1] });
+	}
+	return entries;
+}
+
+/** True when the link at `file` (a repository path) with `target` resolves outside the repository root: absolute, or `..` past it. */
+function leavesTree(file: string, target: string): boolean {
+	const spelled = target.replaceAll("\\", "/");
+	if (path.posix.isAbsolute(spelled) || path.win32.isAbsolute(target)) return true;
+	const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), spelled));
+	return resolved === ".." || resolved.startsWith("../");
+}
+
+/**
+ * A symbolic link the child added or changed that points outside its worktree (an absolute target, or `..` past its
+ * root) means something else once merged: a link to the main tree's own dependency or data folder would replace that
+ * folder with a link. Refuses such a change, naming each link and its target, so the worktree is kept.
+ */
+export async function rejectOutsideLinks(repo: string, from: string, head: string): Promise<void> {
+	const outside: string[] = [];
+	for (const entry of await changedEntries(repo, from, head)) {
+		if (entry.mode !== "120000") continue;
+		const target = await git(repo, ["cat-file", "blob", entry.object], { raw: true });
+		if (leavesTree(entry.path, target)) outside.push(`${entry.path} -> ${target}`);
+	}
+	if (outside.length)
+		throw new Error(
+			`Saving refuses symbolic links that point outside the worktree; replace each with the files it names or remove it: ${outside.join(", ")}`,
+		);
 }
 
 /** Capture tracked and non-ignored untracked files as a private commit, without touching the parent's index. */

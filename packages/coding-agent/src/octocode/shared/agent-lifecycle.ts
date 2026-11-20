@@ -17,6 +17,7 @@ export interface AgentLifecycleNotice {
 	time: string;
 	/** `off` only: one of completed, failed, stopped-user, stopped-parent, parent-gone, crashed, left. */
 	reason?: string;
+	/** `off`: why the row went; `state`: the cause (`silent` for a stalled episode, whose `data` holds `activity`, `model` and whole `minutes` of silence). */
 	detail?: string;
 	/** `off` only: the row's final numbers (`toolCalls`, `input`, `cacheRead`, `output`, `cost`, `startedAt`, `joinedAt`, `pid`, …). */
 	stats?: Record<string, unknown>;

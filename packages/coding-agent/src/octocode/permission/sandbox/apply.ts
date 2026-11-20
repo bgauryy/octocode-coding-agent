@@ -4,6 +4,7 @@ import { setCommandSandbox } from "../../../utils/command-sandbox.ts";
 import type { FeatureContext } from "../../../core/features/index.ts";
 import type { Permission } from "../ask.ts";
 import type { PermissionMode } from "../mode.ts";
+import { setOptInSandboxSession } from "./opt-in.ts";
 import { sandboxPolicy } from "./policy.ts";
 import { sandboxPrompts } from "./prompts.ts";
 import { type SandboxPrompts, SrtCommandSandbox } from "./srt.ts";
@@ -33,7 +34,12 @@ export function applyCommandSandboxSetting(
 	);
 }
 
-/** The session's sandbox: its policy follows `permission`'s mode, and its questions are asked in `ctx`. */
+/**
+ * The session's sandbox, for its shell commands and its opted-in hooks and MCP servers: the policy follows `permission`'s mode,
+ * and its questions are asked in `ctx`.
+ */
 export function applySessionSandbox(permission: Permission, ctx: FeatureContext): void {
-	applyCommandSandboxSetting(() => permission.mode, getAgentDir(), process.env, sandboxPrompts(permission, ctx));
+	const prompts = sandboxPrompts(permission, ctx);
+	applyCommandSandboxSetting(() => permission.mode, getAgentDir(), process.env, prompts);
+	setOptInSandboxSession(() => permission.mode, prompts);
 }

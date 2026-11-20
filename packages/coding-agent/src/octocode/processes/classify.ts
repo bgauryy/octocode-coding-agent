@@ -64,6 +64,8 @@ export interface ProcessEntry {
 	rssKb: number;
 	ageMs: number;
 	ownerPid: number | null;
+	/** The working folder it last sampled in; null when no sample recorded one. */
+	cwd: string | null;
 	/** Whether the Octocode that started this process still runs; undefined for a process nobody owns (a main session). */
 	ownerAlive: boolean | undefined;
 	children: ChildEntry[];
@@ -122,7 +124,7 @@ export function classifyProcesses({ table, samples, now, selfPid, apiIds }: Clas
 	// The live Octocode processes: recorded ones that still run, and processes whose title says they are one.
 	const identities = new Map<
 		number,
-		Pick<ProcessEntry, "role" | "id" | "title" | "sessionId" | "ownerPid"> & { record?: ProcessSample }
+		Pick<ProcessEntry, "role" | "id" | "title" | "sessionId" | "ownerPid" | "cwd"> & { record?: ProcessSample }
 	>();
 	for (const row of table) {
 		const record = latest.get(key(row.pid, row.started));
@@ -133,13 +135,20 @@ export function classifyProcesses({ table, samples, now, selfPid, apiIds }: Clas
 				title: record.title,
 				sessionId: record.sessionId,
 				ownerPid: record.ownerPid,
+				cwd: record.cwd,
 				record,
 			});
 			continue;
 		}
 		const named = isProcessTitle(row.command) ? parseTitle(row.command) : undefined;
 		if (named)
-			identities.set(row.pid, { ...named, title: row.command.split(/\s/, 1)[0], sessionId: null, ownerPid: null });
+			identities.set(row.pid, {
+				...named,
+				title: row.command.split(/\s/, 1)[0],
+				sessionId: null,
+				ownerPid: null,
+				cwd: null,
+			});
 	}
 
 	const childrenOf = (
@@ -198,6 +207,7 @@ export function classifyProcesses({ table, samples, now, selfPid, apiIds }: Clas
 			rssKb: row.rssKb,
 			ageMs: now - Number(row.started) * 1000,
 			ownerPid: identity.ownerPid,
+			cwd: identity.cwd,
 			ownerAlive:
 				identity.ownerPid === null
 					? undefined

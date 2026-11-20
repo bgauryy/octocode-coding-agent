@@ -246,8 +246,8 @@ export function agentsCommand(
 				const found = team.audit.resolve(line);
 				return found ? say(ctx, agentDetailText(found)) : say(ctx, `${live.error}\n${AGENTS_USAGE}`, "warning");
 			}
-			// The picker lists this session's own subagents; without any, the listing (this session, recent runs) says more.
-			if (ctx.hasUI && team.members().some((member) => member.parentId === team.id)) return pickAgent(team, ctx);
+			// The picker lists every agent of this repository; alone, the listing (this session, recent runs) says more.
+			if (ctx.hasUI && team.members().some((member) => member.id !== team.id)) return pickAgent(team, ctx);
 			const { members, error } = team.snapshot();
 			// The same inputs as `coordinate list`: one renderer, so both views show the item, why and log lines.
 			const listing = describeMembers(

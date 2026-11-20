@@ -302,17 +302,26 @@ export async function buildInventory(options: {
  * The inventory as text, grouped by heading, one ID per row. `items` narrows the
  * rows (`/harness list skills`); stale switches, ignored keys and diagnostics show only in the full listing.
  */
-export function renderInventory(inventory: Inventory, items: readonly InventoryItem[] = inventory.items): string {
+export function renderInventory(
+	inventory: Inventory,
+	items: readonly InventoryItem[] = inventory.items,
+	limit = Number.POSITIVE_INFINITY,
+): string {
 	const full = items === inventory.items;
 	const lines: string[] = [];
+	let room = limit;
 	for (const host of Object.keys(HOST_TITLES) as InventoryHost[]) {
 		const rows = items.filter((item) => item.host === host);
 		if (!rows.length) continue;
 		lines.push(HOST_TITLES[host]);
-		for (const item of rows)
+		const shown = rows.slice(0, Math.max(room, 0));
+		room -= shown.length;
+		for (const item of shown)
 			lines.push(
 				`${"  ".repeat(item.depth + 1)}[${item.locked ? "-" : item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
 			);
+		if (shown.length < rows.length)
+			lines.push(`  … ${rows.length - shown.length} more: /harness list ${host === "mcp" ? "mcp" : "<section or text>"}`);
 	}
 	if (!lines.length) lines.push(full ? EMPTY_INVENTORY : "No items match.");
 	if (full && inventory.stale.length)

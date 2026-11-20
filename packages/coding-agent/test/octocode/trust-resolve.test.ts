@@ -347,7 +347,7 @@ describe("failures", () => {
 		try {
 			const verdict = acpServerHost.folderTrust(cwd);
 			expect(verdict).toMatchObject({ trusted: false, message: expect.stringContaining(bad) });
-			expect(verdict.trusted === false && verdict.command).toBeUndefined();
+			expect(verdict.trusted ? "trusted" : verdict.command).toBeUndefined();
 		} finally {
 			if (before === undefined) delete process.env.OCTOCODE_AGENT_DB;
 			else process.env.OCTOCODE_AGENT_DB = before;

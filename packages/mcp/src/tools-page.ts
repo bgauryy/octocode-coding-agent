@@ -6,7 +6,6 @@
  */
 
 import type { EventBus } from "@octocodeai/octocode-agent-core";
-import { firstLine } from "@octocodeai/octocode-common/clip";
 import { formatAudit } from "@octocodeai/octocode-common/tool-audit";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
@@ -20,7 +19,7 @@ import {
 	type McpToolWriteScope,
 	type McpVendorPlace,
 } from "./host.ts";
-import { formatMcpTool, toolCatalog } from "./inspection.ts";
+import { formatMcpTool, toolCatalog, toolSummary } from "./inspection.ts";
 import { MCP_EXPOSURES } from "./servers.ts";
 import type { McpFeatureState } from "./state.ts";
 import { type McpMenu, type McpMenuItem, type McpUi, showMcpManager } from "./ui.ts";
@@ -80,7 +79,7 @@ function toolNote(row: McpToolSwitchRow, description: string | undefined): strin
 		row.pin ? "pinned" : "",
 		row.live !== undefined && row.live !== row.state ? "from the next session" : "",
 		row.audit ? `${formatAudit(row.audit)}${row.audit.reason ? ` · ${row.audit.reason}` : ""}` : "",
-		firstLine(description ?? ""),
+		toolSummary(description),
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -100,7 +99,7 @@ function toolsMenu(state: McpFeatureState, name: string, sw: ServerSwitch | unde
 			items: catalog.map((tool) => ({
 				value: tool.name,
 				label: tool.name,
-				description: firstLine(tool.description ?? ""),
+				description: toolSummary(tool.description),
 				badge: tool.exposure,
 				tone: tone(tool.exposure),
 			})),

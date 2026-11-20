@@ -540,6 +540,8 @@ function fakeTeam(read: () => { members: never[]; traffic: never[]; error?: stri
 		get view() {
 			return read();
 		},
+		/** The panel asks for a fresh read on each animation tick; the stand-in's view is always current. */
+		poll() {},
 		watch(listener: () => void) {
 			const timer = setInterval(listener, 1_000);
 			listener();

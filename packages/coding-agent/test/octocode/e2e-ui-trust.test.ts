@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { killPrivateTmuxServer } from "../../../tui/test/helpers/real-tmux.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -34,7 +35,7 @@ afterAll(async () => {
 const sockets: string[] = [];
 afterEach(async (context) => {
 	if (context.task.result?.state === "fail") console.error(outputOfRuns());
-	for (const socket of sockets.splice(0)) spawnSync("tmux", ["-L", socket, "kill-server"]);
+	for (const socket of sockets.splice(0)) killPrivateTmuxServer(socket);
 	await killEverything();
 	endpoint.requests.length = 0;
 });
@@ -123,7 +124,7 @@ describe.skipIf(!tmuxAvailable)("folder trust prompt", () => {
 		await term.until((s) => !s.includes("Do you trust this folder?") && FOOTER.test(s), "session started");
 		expect(await trustList(box)).toContain(box.project);
 		// The next start in the same folder does not ask again.
-		spawnSync("tmux", ["-L", sockets[0], "kill-server"]);
+		killPrivateTmuxServer(sockets[0]);
 		const again = terminal(box);
 		await again.until((s) => FOOTER.test(s), "second start");
 		expect(again.screen()).not.toContain("Do you trust this folder?");

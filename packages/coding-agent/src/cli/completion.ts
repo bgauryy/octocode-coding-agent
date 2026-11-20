@@ -23,6 +23,7 @@ const commands: Record<string, readonly string[]> = {
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	trust: ["list", "add", "remove"],
+	security: [],
 	backlog: ["get", "list", "export", "groom", "graph"],
 	profile: [],
 	marketplace: ["add", "list", "update", "remove"],
@@ -36,6 +37,8 @@ const commands: Record<string, readonly string[]> = {
 	native: [],
 	completion: ["bash", "zsh", "fish"],
 };
+/** Every top-level command name: the one list completion, the parser and the unknown-command error read. */
+export const CLI_COMMAND_NAMES: readonly string[] = Object.keys(commands);
 /** True when `args` run a subcommand (`install`, `mcp`, …) rather than a session. */
 export const isSubcommand = (args: readonly string[]): boolean =>
 	args[0] !== undefined && Object.hasOwn(commands, args[0]);

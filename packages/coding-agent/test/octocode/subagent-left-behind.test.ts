@@ -42,3 +42,18 @@ describe.skipIf(process.platform === "win32")("what an exited child left in its 
 		expect(groupStartTimes).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("Windows, where a job outlives its root", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it("always reports the job for cleanup and never probes a process group", async () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(await leftBehind(4242)).toBe(true);
+		expect(groupStartTimes).not.toHaveBeenCalled();
+	});
+
+	it("has nothing to clean without a pid", async () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(await leftBehind(undefined)).toBe(false);
+	});
+});

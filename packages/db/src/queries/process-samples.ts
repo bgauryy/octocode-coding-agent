@@ -4,7 +4,8 @@ import type { DatabaseSync } from "node:sqlite";
  * Periodic memory samples of Octocode processes (main sessions, subagents, RPC hosts) and the child processes each
  * owned when it sampled. Every process writes its own rows; any process reads all of them, which is how a session finds
  * the children another session left behind. The table is created on first use (`IF NOT EXISTS`) instead of with the
- * schema, so the schema version is unchanged and an Octocode of another version sharing the file keeps working.
+ * schema, so the schema version is unchanged and an Octocode of another version sharing the file keeps working. `cwd` was added
+ * later as a nullable column, added to a table that lacks it the same way.
  */
 
 /** A process an Octocode process owns (an MCP server, a bash job, anything below them), named by pid plus start time. */
@@ -35,6 +36,8 @@ export interface ProcessSample {
 	/** The Octocode process that started this one (a subagent's parent), when there is one. */
 	ownerPid: number | null;
 	ownerStarted: string | null;
+	/** The working folder of the process when it sampled; null in samples an older Octocode wrote. */
+	cwd: string | null;
 	/** Bytes. */
 	rss: number;
 	heapUsed: number;
@@ -55,6 +58,8 @@ CREATE TABLE IF NOT EXISTS process_samples (
   ended INTEGER NOT NULL DEFAULT 0, children TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (pid, started, at));
 CREATE INDEX IF NOT EXISTS process_samples_at ON process_samples(at);`);
+	if (!db.prepare("SELECT 1 FROM pragma_table_info('process_samples') WHERE name = 'cwd'").get())
+		db.exec("ALTER TABLE process_samples ADD COLUMN cwd TEXT");
 	created.add(db);
 }
 
@@ -63,8 +68,8 @@ export function record(db: DatabaseSync, sample: ProcessSample): void {
 	ensure(db);
 	db.prepare(
 		`INSERT OR REPLACE INTO process_samples
-		 (at, pid, started, ppid, role, title, id, session_id, agent_id, owner_pid, owner_started, rss, heap_used, ended, children)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (at, pid, started, ppid, role, title, id, session_id, agent_id, owner_pid, owner_started, rss, heap_used, ended, children, cwd)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	).run(
 		sample.at,
 		sample.pid,
@@ -81,6 +86,7 @@ export function record(db: DatabaseSync, sample: ProcessSample): void {
 		sample.heapUsed,
 		sample.ended ? 1 : 0,
 		JSON.stringify(sample.children),
+		sample.cwd,
 	);
 }
 
@@ -100,6 +106,7 @@ interface SampleRow {
 	heap_used: number;
 	ended: number;
 	children: string;
+	cwd: string | null;
 }
 
 function parseChildren(text: string): OwnedChild[] {
@@ -132,6 +139,7 @@ export function since(db: DatabaseSync, at: number): ProcessSample[] {
 		rss: row.rss,
 		heapUsed: row.heap_used,
 		ended: row.ended === 1,
+		cwd: row.cwd,
 		children: parseChildren(row.children),
 	}));
 }

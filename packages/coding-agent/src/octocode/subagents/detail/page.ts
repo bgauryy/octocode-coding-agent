@@ -6,6 +6,7 @@ import { showCommandPage } from "../../shared/page.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { Team } from "../../team/session.ts";
 import { type AgentDetail, agentDetail, agentDetailPageText } from "./content.ts";
+import { recentCalls } from "./recent-calls.ts";
 import { findMember } from "./lookup.ts";
 
 /** The page of one live agent, read fresh from the team. */
@@ -13,11 +14,13 @@ function read(team: Team, member: Member): AgentDetail {
 	const { members, traffic } = team.snapshot();
 	const live = members.find((candidate) => candidate.id === member.id) ?? member;
 	const self = members.find((candidate) => candidate.id === team.id);
+	const details = team.audit.details([live]).get(live.id);
 	return agentDetail({
+		calls: details?.transcripts && live.sessionId ? recentCalls(details.transcripts, live.sessionId) : undefined,
 		member: live,
 		here: self?.checkout,
 		now: Date.now(),
-		details: team.audit.details([live]).get(live.id),
+		details,
 		traffic,
 		reportPath: team.audit.recent(1, live.id)[0]?.reportPath,
 	});

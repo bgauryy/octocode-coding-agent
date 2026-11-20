@@ -48,6 +48,7 @@ export interface SettingsConfig {
 	clearOnShrink: boolean;
 	showTerminalProgress: boolean;
 	reduceMotion: boolean | "auto";
+	emojiMarks: boolean;
 	tuiMode: TuiMode;
 	fullscreenExitOutput: FullscreenExitOutput;
 	fullscreenScrollbar: ScrollViewScrollbar;
@@ -90,6 +91,7 @@ export interface SettingsCallbacks {
 	onClearOnShrinkChange: (enabled: boolean) => void;
 	onShowTerminalProgressChange: (enabled: boolean) => void;
 	onReduceMotionChange: (value: boolean | "auto") => void;
+	onEmojiMarksChange: (enabled: boolean) => void;
 	onTuiModeChange: (mode: TuiMode) => void;
 	onFullscreenExitOutputChange: (output: FullscreenExitOutput) => void;
 	onFullscreenScrollbarChange: (mode: ScrollViewScrollbar) => void;

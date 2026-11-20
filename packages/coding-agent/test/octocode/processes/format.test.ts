@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { visibleWidth } from "@octocodeai/octocode-tui";
 import type { ProcessEntry, ProcessReport } from "../../../src/octocode/processes/classify.ts";
 import { formatReport } from "../../../src/octocode/processes/format.ts";
-import { scopeToSession } from "../../../src/octocode/processes/scope.ts";
+import { scopeToWorkspace } from "../../../src/octocode/processes/scope.ts";
 
 const entry = (pid: number, extra: Partial<ProcessEntry> = {}): ProcessEntry => ({
 	pid,
@@ -15,6 +15,7 @@ const entry = (pid: number, extra: Partial<ProcessEntry> = {}): ProcessEntry => 
 	rssKb: 460 * 1024,
 	ageMs: 60_000,
 	ownerPid: null,
+	cwd: null,
 	ownerAlive: undefined,
 	children: [],
 	self: false,
@@ -87,26 +88,29 @@ describe("/processes layout", () => {
 	});
 
 	it("says how many processes of other sessions the listing leaves out", () => {
-		expect(formatReport(report, { hidden: 3 })).toContain("3 processes of other sessions not shown: /processes all");
+		expect(formatReport(report, { hidden: 3 })).toContain("3 processes outside this folder not shown: /processes all");
 		expect(formatReport(report)).not.toContain("not shown");
 	});
 });
 
 describe("/processes scope", () => {
-	it("keeps this session and the subagents it started, however deep, and hides other sessions", () => {
+	it("keeps processes under this folder, this process and the subagents of either, and hides the rest", () => {
 		const all: ProcessReport = {
 			processes: [
 				entry(1, { self: true }),
-				entry(2, { role: "implementer", ownerPid: 1 }),
+				entry(2, { role: "implementer", ownerPid: 1, cwd: "/worktrees/elsewhere" }),
 				entry(3, { role: "researcher", ownerPid: 2 }),
-				entry(4),
-				entry(5, { role: "implementer", ownerPid: 4 }),
+				entry(4, { cwd: "/work/app/packages/x" }),
+				entry(5, { cwd: "/work/application" }),
+				entry(6, { cwd: "/other" }),
+				entry(7, { role: "implementer", ownerPid: 6 }),
+				entry(8),
 			],
 			orphans: report.orphans,
 		};
-		const scoped = scopeToSession(all, 1);
-		expect(scoped.report.processes.map((each) => each.pid)).toEqual([1, 2, 3]);
-		expect(scoped.hidden).toBe(2);
+		const scoped = scopeToWorkspace(all, "/work/app", 1);
+		expect(scoped.report.processes.map((each) => each.pid)).toEqual([1, 2, 3, 4]);
+		expect(scoped.hidden).toBe(4);
 		expect(scoped.report.orphans).toEqual(report.orphans);
 	});
 
@@ -115,6 +119,14 @@ describe("/processes scope", () => {
 			processes: [entry(1, { ownerPid: 2 }), entry(2, { ownerPid: 1 })],
 			orphans: [],
 		};
-		expect(scopeToSession(cyclic, 9).report.processes).toEqual([]);
+		expect(scopeToWorkspace(cyclic, "/w", 9).report.processes).toEqual([]);
+	});
+
+	it("cuts plain-text cells without escape codes", () => {
+		const lines = formatReport(
+			{ processes: [entry(1, { title: "octocode-agent-main-" + "x".repeat(80) })], orphans: [] },
+			{ width: 40 },
+		);
+		expect(lines).not.toContain("\x1b");
 	});
 });

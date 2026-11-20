@@ -8,6 +8,7 @@ import {
 	makeRunDir,
 	stopRunProcesses,
 	sweepStaleRunDirs,
+	sweepStaleTmuxSockets,
 } from "./test-isolation.ts";
 
 /**
@@ -20,12 +21,13 @@ import {
  * the run for a web daemon that outlived it or a refusal in the guard file, then removes the run's folders. Vitest stops
  * its workers without running their `process.on("exit")` handlers, so cleanup registered inside a test process does not
  * happen. A run that was killed before its teardown leaves its folders, which the next run removes once their owner is
- * gone. The run's home (`VITEST_TEST_USER_HOME`) sits beside the temporary directory, never inside it: the folder trust
+ * gone; so are the e2e suites' tmux sockets whose test process is gone, at both ends of a run. The run's home (`VITEST_TEST_USER_HOME`) sits beside the temporary directory, never inside it: the folder trust
  * gate ignores a trusted subtree that contains the home folder, and tests trust the temporary directory.
  */
 export default function setup(): () => Promise<void> {
 	const parent = tmpdir();
 	sweepStaleRunDirs(parent);
+	sweepStaleTmuxSockets();
 	const dir = makeRunDir(parent);
 	const userHome = makeRunDir(parent);
 	isolateHome(process.env, () => userHome);
@@ -39,6 +41,7 @@ export default function setup(): () => Promise<void> {
 		const { daemons, others } = await stopRunProcesses(`${GUARD_FILE_ENV}=${guardFile}`);
 		const opened = guardRecords(guardFile);
 		for (const each of [dir, userHome]) rmSync(each, { recursive: true, force: true, maxRetries: 3 });
+		sweepStaleTmuxSockets();
 		if (others.length > 0)
 			process.stderr.write(
 				["Stopped processes the tests left running (pid, command):", ...others.map(describe), ""].join("\n"),

@@ -38,6 +38,8 @@ export interface HookBase {
 export interface HookCommand extends HookBase {
 	type?: "command";
 	command: string;
+	/** Opt-in (`"sandbox": true`): runs inside the command sandbox, or is not started where it cannot. */
+	sandbox?: true;
 	args?: string[];
 	/** Claude `shell`: the shell that runs `command`; ignored when `args` is set. Bash is the default. */
 	shell?: "bash" | "powershell";

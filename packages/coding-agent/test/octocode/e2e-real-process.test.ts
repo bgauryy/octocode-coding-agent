@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -237,6 +238,33 @@ describe("what a script reads from a headless run", () => {
 		expect((await run.exited).code).toBe(0);
 		expect(endpoint.requests).toHaveLength(0);
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"RPC mode on a named pipe exits 0 once the pipe's writer closes",
+		async () => {
+			const { root, start } = fresh();
+			const fifo = path.join(root, "commands.fifo");
+			execFileSync("mkfifo", [fifo]);
+			// Opening either end waits for the other: the writer waits on the thread pool while the reader opens, blocking, as a
+			// shell's `< fifo` does.
+			const opening = fs.promises.open(fifo, "w");
+			const reader = fs.openSync(fifo, "r");
+			const writer = await opening;
+			const run = start(["--mode", "rpc"], { stdin: reader });
+			fs.closeSync(reader);
+			await until(() => run.stdout().includes('"rpc_ready"'), "RPC to start");
+			await writer.write(`${JSON.stringify({ id: "state", type: "get_state" })}\n`);
+			await until(() => run.stdout().includes('"id":"state"'), "the get_state answer");
+			await writer.close();
+			// Without the end of input the process waits for commands forever. The bound leaves room for a loaded machine's
+			// session cleanup; an idle one exits in about a second.
+			const exit = await Promise.race([
+				run.exited,
+				new Promise<"still running">((resolve) => setTimeout(() => resolve("still running"), 8_000).unref()),
+			]);
+			expect(exit).toEqual({ code: 0, signal: null });
+		},
+	);
 
 	it("a job stopped at run end leaves the answer alone and spends no request", async () => {
 		const { holdCommand, root, start } = fresh();

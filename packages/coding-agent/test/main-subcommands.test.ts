@@ -8,6 +8,7 @@ vi.mock("../src/package-manager-cli.ts", () => packageCli);
 const trust = vi.hoisted(() => ({ runTrustCommand: vi.fn(async () => 3) }));
 vi.mock("../src/cli/trust-command.ts", () => trust);
 
+import { CLI_COMMAND_NAMES } from "../src/cli/completion.ts";
 import { runSubcommand, SUBCOMMANDS } from "../src/main/subcommands.ts";
 
 afterEach(() => {
@@ -26,6 +27,10 @@ describe("one-shot subcommands", () => {
 			"security",
 			"trust",
 		]);
+	});
+
+	it("are all known to the shared command list the completion and unknown-command error read", () => {
+		for (const name of Object.keys(SUBCOMMANDS)) expect(CLI_COMMAND_NAMES).toContain(name);
 	});
 
 	it("run the named command with the arguments after its name and keep its exit code", async () => {

@@ -7,6 +7,7 @@ import { formatDuration } from "../../../utils/duration.ts";
 import { firstLine } from "../../shared/util.ts";
 import type { MemberDetails } from "../../team/store/details.ts";
 import { memberWorktree, worktreeLabel } from "../../worktree-paths/member-worktree.ts";
+import { type RecentCall, recentCallLines } from "./recent-calls.ts";
 import { labelValueRows } from "../../../theme/columns.ts";
 
 /** Messages to or from the agent shown on its page. */
@@ -23,6 +24,8 @@ export interface AgentDetailInput {
 	traffic: readonly Traffic[];
 	/** Where its finished report was written (`AgentRun.reportPath`). */
 	reportPath?: string;
+	/** Its last tool calls, newest first (`recent-calls.ts`). */
+	calls?: readonly RecentCall[];
 }
 
 export interface AgentDetail {
@@ -83,6 +86,7 @@ export function agentDetail(input: AgentDetailInput): AgentDetail {
 		["cost", formatCost(member) || undefined],
 		["goal", member.goal],
 		["activity", member.status === "working" ? (member.activity ?? "working") : "idle"],
+		["recent calls", input.calls?.length ? recentCallLines(input.calls, now).join("\n") : undefined],
 		["item", item ? `B${item.seq} ${firstLine(item.title)}${item.more ? ` (+${item.more} more)` : ""}` : undefined],
 		["worktree", place || undefined],
 		["holds", member.locks?.length ? member.locks.join(", ") : "no files reserved"],

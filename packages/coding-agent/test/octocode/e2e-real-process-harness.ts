@@ -186,7 +186,7 @@ export interface Sandbox {
 	/** Starts the CLI as a user would, on the scripted model: from source, or the built file at `cli`. */
 	start(
 		args: readonly string[],
-		options?: { stdin?: "pipe"; model?: false; cli?: string; trust?: false; subcommand?: true; cwd?: string },
+		options?: { stdin?: "pipe" | number; model?: false; cli?: string; trust?: false; subcommand?: true; cwd?: string },
 	): Run;
 	/** The live processes whose command line names this sandbox: the CLI, its children and their commands. */
 	survivors(): number[];

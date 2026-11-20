@@ -158,13 +158,24 @@ describe("stalled episodes", () => {
 
 	it("writes one stalled update per silence, whichever process notices, and a new one after a heartbeat", () => {
 		const t0 = start();
-		const quiet = member("quiet-one", { updatedAt: t0 - STALLED_LISTED_MS - 5000 });
+		const quiet = member("quiet-one", {
+			updatedAt: t0 - STALLED_LISTED_MS - 5000,
+			model: "test-model",
+			activity: "bash: yarn test",
+		});
 		mine.join(quiet);
 		prune(mine, t0);
 		prune(peer, t0 + 1000);
 		prune(mine, t0 + 120_000);
 		expect(stalledEvents()).toHaveLength(1);
 		expect(stalledEvents()[0]).toMatchObject({ name: "quiet-one", data: { state: "stalled", agentId: "quiet-one" } });
+		// The episode says what the profiler groups by: the cause, the last activity, the model and the silence in minutes.
+		expect(stalledEvents()[0]?.data).toMatchObject({
+			detail: "silent",
+			model: "test-model",
+			activity: "bash: yarn test",
+			minutes: Math.floor((STALLED_LISTED_MS + 5000) / 60_000),
+		});
 		// It beats again, then goes silent again: a second episode.
 		mine.save({ ...quiet, updatedAt: t0 + 130_000 });
 		prune(mine, t0 + 130_000 + STALLED_LISTED_MS + 61_000);

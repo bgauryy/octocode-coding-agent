@@ -96,6 +96,6 @@ async function showConfigurationSelector(host: ConfigurationHost): Promise<void>
 export async function handleConfigurationCommand(host: ConfigurationHost, args: string): Promise<void> {
 	const words = splitConfigWords(args);
 	if (words.length === 0) return showConfigurationSelector(host);
-	const outcome = await runConfigWords(sessionCatalog(host), words, "/configuration");
+	const outcome = await runConfigWords(sessionCatalog(host), words, "/configuration", { listRows: 40 });
 	print(host, outcome.lines, outcome.ok);
 }

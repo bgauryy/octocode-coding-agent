@@ -184,14 +184,29 @@ export function setEndHint(db: DatabaseSync, id: string, hint: string): boolean 
 }
 
 /**
- * Records that agent `id` entered `state` (`stalled`) as an `update` event, once per episode: the key names the registration
+ * Records that agent `id` entered `state` (`stalled`) as an `update` event with the cause (`detail: silent`), the row's last `activity` and the whole `minutes` of silence, once per episode: the key names the registration
  * and the heartbeat the silence began at, so every process that notices writes the same key and the second write is ignored.
  * Whether a row exists to describe; a heartbeat since moves `seen_at` and starts a new episode.
  */
 export function noteState(db: DatabaseSync, id: string, state: string, now = Date.now()): boolean {
 	const row = events.member(db, id);
 	if (!row || typeof row.registration_id !== "string") return false;
-	events.recordMember(db, row, "update", { state }, now, `${row.registration_id}:${state}:${String(row.seen_at)}`);
+	const silentMs = typeof row.seen_at === "number" ? Math.max(0, now - row.seen_at) : undefined;
+	const activity = typeof row.activity === "string" && row.activity ? row.activity : undefined;
+	// `detail` names the cause for a profiler grouping episodes; `model` rides in the event's own data.
+	events.recordMember(
+		db,
+		row,
+		"update",
+		{
+			state,
+			detail: "silent",
+			...(activity ? { activity } : {}),
+			...(silentMs === undefined ? {} : { minutes: Math.floor(silentMs / 60_000) }),
+		},
+		now,
+		`${row.registration_id}:${state}:${String(row.seen_at)}`,
+	);
 	return true;
 }
 

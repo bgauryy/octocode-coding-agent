@@ -106,9 +106,11 @@ export function startBackground(
 	const shown = { task, goal: identity.goal ?? "", profile: identity.role ?? "" };
 	let end: AgentEnd | undefined;
 	let audit: RunEnd | undefined;
+	// The process is over from here on: the rest (worktree, report) is the parent's own bookkeeping, no silence of the child.
+	const exited = () => runs.team.approvals.noteExited(identity.id);
 	entry.done = (async () => {
 		try {
-			const outcome = withStopFacts(await launch(controller.signal), details, runs.team);
+			const outcome = withStopFacts(await launch(controller.signal).finally(exited), details, runs.team);
 			providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
 			if (outcome.error) hintEnd(runs, identity.id, "failed");
 			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
@@ -289,8 +291,9 @@ export async function runForeground(
 	hintOnStop(runs, identity.id, entry);
 	beginRun(runs, run);
 	let outcome: Outcome;
+	const exited = () => runs.team.approvals.noteExited(identity.id);
 	try {
-		outcome = withStopFacts(await launch(controller.signal), details, runs.team);
+		outcome = withStopFacts(await launch(controller.signal).finally(exited), details, runs.team);
 		providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
 		if (outcome.error) hintEnd(runs, identity.id, "failed");
 	} catch (error) {

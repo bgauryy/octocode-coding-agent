@@ -2,9 +2,10 @@
  * The sandbox denials worth a line in a command's result: refused writes and reads of files (`deny(1) file-write-create
  * /path`) and refused connections, from Seatbelt (`network-outbound remote:*:443`) or the proxy (`deny network-outbound
  * host:443 (reason)`). Seatbelt also reports lookups every program makes and that do not matter (`sysctl-read`,
- * `mach-lookup`); those are left out. Each line is kept once.
+ * `mach-lookup`); those are left out. On Linux the library reports each refused write as `deny <syscall> /path`. Each
+ * line is kept once.
  */
-const RELEVANT = /\bdeny(?:\(\d+\))? (?:file-write\S*|file-read-data|network-outbound) /;
+const RELEVANT = /\bdeny(?:\(\d+\))? (?:file-write\S*|file-read-data|network-outbound) |^deny [a-z0-9_]+ \//;
 
 function relevantDenials(events: readonly { line: string }[]): string[] {
 	return [...new Set(events.map((event) => event.line.trim()).filter((line) => RELEVANT.test(line)))];

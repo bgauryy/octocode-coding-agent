@@ -15,6 +15,7 @@ import {
 	recoverWorktreeBase,
 	rejectChangedFilters,
 	rejectNestedRepositories,
+	rejectOutsideLinks,
 	saveWorkerRef,
 	validateSnapshot,
 	workerDeltaCommit,
@@ -87,6 +88,7 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 	)
 		throw new Error("A worktree commit includes private workspace state under .octocode/code");
 	await rejectNestedRepositories(worktree.repo, worktree.snapshot ?? base, head);
+	await rejectOutsideLinks(worktree.repo, worktree.snapshot ?? base, head);
 	const { commit, conflict } = worktree.snapshot
 		? await workerDeltaCommit(worktree.repo, base, worktree.snapshot, head, worktree.agentId)
 		: { commit: head, conflict: undefined };

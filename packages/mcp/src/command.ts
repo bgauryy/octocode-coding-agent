@@ -7,7 +7,7 @@ import type { McpCommandContext } from "./host/types.ts";
 import { hostPaths } from "./host.ts";
 import { say } from "./notice.ts";
 import { reconnect, signIn, signOut } from "./connections.ts";
-import { formatMcpConfigLocations, formatMcpTool } from "./inspection.ts";
+import { formatMcpConfigLocations, formatMcpTool, formatMcpToolRow } from "./inspection.ts";
 import { manage, signInWithUi, toolCatalog } from "./manager.ts";
 import { formatStatus } from "./report.ts";
 import { describeState, type McpServer } from "./server.ts";
@@ -150,20 +150,22 @@ function showToolsCommand(state: McpFeatureState, name: string, extra: string[],
 			tool ? formatMcpTool(tool, true) : `No available tool named "${toolName}" on MCP server "${name}".`,
 			tool ? "info" : "warning",
 		);
-	} else
-		say(
-			ctx,
-			snapshot
-				.map((server) =>
-					[
-						`${server.name}: ${server.enabled ? server.state : "disabled"}`,
-						...toolCatalog(state, server.name).map((tool) => `  ${formatMcpTool(tool)}`),
-						...(toolCatalog(state, server.name).length ? [] : ["  No tools available in the current connection."]),
-					].join("\n"),
-				)
-				.join("\n\n") || "No MCP servers configured. Use /mcp config to see configuration locations.",
-			"info",
-		);
+	} else {
+		const listed = snapshot.map((server) => {
+			const tools = toolCatalog(state, server.name);
+			return [
+				`${server.name}: ${server.enabled ? server.state : "disabled"}`,
+				...tools.map((tool) => `  ${formatMcpToolRow(tool, name !== "")}`),
+				...(tools.length ? [] : ["  No tools available in the current connection."]),
+			].join("\n");
+		});
+		if (listed.length === 0) {
+			say(ctx, "No MCP servers configured. Use /mcp config to see configuration locations.", "info");
+			return;
+		}
+		const hint = name ? `Description and schema: /mcp tools ${name} <tool>` : "Descriptions: /mcp tools <server>";
+		say(ctx, `${listed.join("\n\n")}\n\n${hint}`, "info");
+	}
 }
 
 async function reconnectCommand(state: McpFeatureState, name: string, ctx: McpCommandContext): Promise<void> {

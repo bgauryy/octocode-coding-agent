@@ -29,4 +29,4 @@ Form follows the data's shape, within 100 columns:
 
 - State marks are fixed and say a fact: 🟢 done or passed, 🔴 failed, ⏳ waiting or running, ⚠️ needs the user. Never swap them for another mark.
 - 🔍 goes next to a task or finding that came from research (code, repository, GitHub, packages, docs, web, archive).
-- Sea marks set the tone of a section or row, beside the state mark and never instead of it: 🐚 calm, good news or a plain note; 🌊 in motion or changing; 🦀 caution, a workaround or trade-off; 🦈 a risk or problem. One per section or row; none where the tone is neutral.
+- Tone marks set the tone of a section or row, beside the state mark and never instead of it. Write the width-safe glyphs: ≋ calm, good news, a plain note or something in motion; ▲ caution, a workaround or trade-off; ◆ a risk or problem. One per section or row; none where the tone is neutral. Write the sea emoji (🐚 calm, 🌊 in motion, 🦀 caution, 🦈 risk) only when the user asks for them or the conversation already uses them.

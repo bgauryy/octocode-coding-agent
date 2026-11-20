@@ -9,6 +9,7 @@ import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
+import { styleNotice } from "../../../theme/notice.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -173,7 +174,7 @@ export function showStatus(host: StatusIndicatorsHost, status: StatusText): void
 	const spacer = new Spacer(1);
 	// Each line reads its own message, so a later status or an invalidation never rewrites an earlier line.
 	const line = { message };
-	const text = new ThemedText(() => theme.fg("dim", line.message), 1, 0);
+	const text = new ThemedText(() => styleNotice(line.message), 1, 0);
 	statusLineMessages.set(text, line);
 	host.chatContainer.addChild(spacer);
 	host.chatContainer.addChild(text);

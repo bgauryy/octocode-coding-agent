@@ -20,6 +20,7 @@ import type { HookEvent, HookProtocol } from "./catalog.ts";
 import { unsupportedOutput } from "./profiles.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { runCommandHook } from "./command.ts";
+import { runSandboxedCommandHook } from "./sandboxed.ts";
 
 /** Context a hook may add to the conversation, as in the native host. */
 export const HOOK_CONTEXT_MAX_BYTES = 16 * 1024;
@@ -52,6 +53,7 @@ export function runHook(
 			: {}),
 	};
 	if (hook.type === "http") return runHttpHook(hook, input, environment, signal);
+	if (hook.sandbox) return runSandboxedCommandHook(hook, input, cwd, environment, signal);
 	return runCommandHook(hook, input, cwd, environment, signal);
 }
 

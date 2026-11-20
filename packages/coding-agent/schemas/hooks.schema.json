@@ -52,6 +52,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -304,6 +308,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -558,6 +566,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -810,6 +822,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -1064,6 +1080,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -1316,6 +1336,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -1570,6 +1594,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -1822,6 +1850,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -2076,6 +2108,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -2328,6 +2364,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -2582,6 +2622,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -2834,6 +2878,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -3088,6 +3136,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -3340,6 +3392,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -3594,6 +3650,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -3846,6 +3906,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -4100,6 +4164,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -4352,6 +4420,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -4606,6 +4678,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -4858,6 +4934,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -5112,6 +5192,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -5364,6 +5448,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",
@@ -5618,6 +5706,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -5871,6 +5963,10 @@
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
                         },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
+                        },
                         "statusMessage": {
                           "type": "string",
                           "description": "Spinner text shown while the hook runs."
@@ -6123,6 +6219,10 @@
                         "failClosed": {
                           "type": "boolean",
                           "description": "A failure of a gate event denies the call instead of allowing it."
+                        },
+                        "sandbox": {
+                          "type": "boolean",
+                          "description": "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed."
                         },
                         "statusMessage": {
                           "type": "string",

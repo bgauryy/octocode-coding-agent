@@ -201,6 +201,7 @@ describe("process sampler", () => {
 				agentId: null,
 				ownerPid: null,
 				ownerStarted: null,
+				cwd: null,
 				rss: 1,
 				heapUsed: 1,
 				ended: false,

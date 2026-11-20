@@ -10,7 +10,7 @@ import type { Lingering } from "./linger.ts";
 import { refuseSecondChild } from "./second-child.ts";
 
 /** Share of its model's window at which a handoff warns that the child is near full. */
-export const CONTEXT_WARN_SHARE = 0.7;
+const CONTEXT_WARN_SHARE = 0.7;
 
 /** A running child's context: what its latest model request carried and its model's window, when known. */
 export interface ChildContext {

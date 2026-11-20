@@ -382,7 +382,7 @@ A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `O
 
 ## Emoji marks
 
-Notices carry a tone mark beside their state mark, and the terminal title starts with a mark for the session. By default these are width-safe glyphs the theme colors: `≋` calm, `▲` caution, `◆` problem, and `◈` in the title. `terminal.emojiMarks: true` brings back the emoji (🐚 🦀 🦈 and 🦑); emoji width varies by terminal, so rows can misalign. The setting is read at startup and on a settings reload.
+Notices carry a tone mark beside their state mark, and the terminal title starts with a mark for the session. By default these are width-safe glyphs the theme colors: `≋` calm, `▲` caution, `◆` problem, and `◈` in the title. `terminal.emojiMarks: true` brings back the emoji (🐚 🦀 🦈 and 🦑); emoji width varies by terminal, so rows can misalign. `/configuration` has an "Emoji marks" toggle that applies at once; the setting is also read at startup and on a settings reload.
 
 ```json
 { "terminal": { "emojiMarks": false } }
@@ -615,7 +615,7 @@ A sandboxed command can read everything you can. What it can write depends on wh
 | A read-only subagent  | its scratch folder, `.octocode/tmp/` and Markdown files under `.octocode/`, as its role allows                                                                  |
 | An isolated subagent  | its own worktree and, in the main repository's git folder, only what a commit on its branch needs; the main working tree and its checked-out branch stay closed |
 
-Every sandboxed command can also write the system temporary folders, its scratch folder and Octocode's host lock for test runs. Inside the workspace, paths that a later session loads stay write-protected even before they exist: git hooks and config (a nested repository's too), `.octocode/` configuration (skills, agents, hooks, settings, MCP servers), the workspace state folder except its scratch, `AGENTS.md`, and the project folders of Pi, Claude Code, Codex and Agents. Outside it, your home folder (`~/.zshrc`, `~/.ssh`, Octocode's own settings and credentials) is not writable. A program that writes elsewhere, such as `node -e "require('fs').writeFileSync('/some/other/file', '1')"`, fails with `EPERM`; so does a `git checkout` that would rewrite a protected file. A failed command's result names what the sandbox refused (the path or host). Your own `!` commands are never sandboxed.
+Every sandboxed command can also write the system temporary folders, its scratch folder and Octocode's host lock for test runs. Inside the workspace, paths that a later session loads stay write-protected even before they exist: git hooks and config (a nested repository's too), `.octocode/` configuration (skills, agents, hooks, settings, MCP servers), the workspace state folder except its scratch, `AGENTS.md`, and the project folders of Pi, Claude Code, Codex and Agents. Outside it, your home folder (`~/.zshrc`, `~/.ssh`, Octocode's own settings and credentials) is not writable. A program that writes elsewhere, such as `node -e "require('fs').writeFileSync('/some/other/file', '1')"`, fails with `EPERM` (on Linux, `EROFS`: read-only file system); so does a `git checkout` that would rewrite a protected file. A failed command's result names what the sandbox refused (the path or host). Your own `!` commands are never sandboxed. Hooks and stdio MCP servers run outside it unless their entry sets `sandbox: true` ([hooks](hooks.md), [MCP servers](mcp-reference.md)); they are then sandboxed with the same rules whatever `sandbox.mode` says, and are not started where the sandbox cannot start.
 
 Network access goes through a filtering proxy:
 
@@ -632,7 +632,15 @@ Loopback and this machine's own addresses are always reachable, so local test se
 
 When a command needs something the sandbox refuses, the agent can run it again with `sandbox: false` on the `bash` tool. That asks in every permission mode except `bypass`; allowing all shell commands never covers it, and the session answer covers only that exact command.
 
-The sandbox works on macOS (Seatbelt). On another platform, or when a dependency is missing, a warning says why the sandbox cannot start and one question asks whether this session's commands run unsandboxed; a no refuses them. When the session starts in your home folder (which would make all of it writable), a command is refused with the reason. Each command costs a few tens of milliseconds more to start.
+| Platform | Backend                        | Needs                                                                                                                                   |
+| -------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | Seatbelt (`sandbox-exec`)      | nothing: it ships with macOS                                                                                                            |
+| Linux    | bubblewrap (`bwrap`), WSL2 too | `bwrap`, `socat` and `rg` (ripgrep) on `PATH`, and unprivileged user namespaces (Ubuntu 23.10 and later restrict them through AppArmor) |
+| Other    | none                           | the sandbox cannot start                                                                                                                |
+
+On Linux, Octocode tries one `bwrap` run before the first command, so a kernel or container that refuses user namespaces is reported at start, not as a failed command. bubblewrap protects concrete paths, so a protected path given with a wildcard is matched when each command starts: git hooks and config in nested repositories are found three folders deep (outside `node_modules`), and a repository the command itself creates is not covered. A read-only subagent can change the Markdown files under `.octocode/` that exist but not add new ones. The Linux backend has unit tests for its path matching, start checks and refusals, but no real bubblewrap run has been verified yet: treat it as unverified until it is tested on a Linux host.
+
+When the sandbox cannot start (another platform, a missing program, user namespaces turned off), a warning says why and what to install, and one question asks whether this session's commands run unsandboxed; a no refuses them, and so does `sandbox.allowUnsandboxed: false`, without asking. When the session starts in your home folder (which would make all of it writable), a command is refused with the reason. Each command costs a few tens of milliseconds more to start.
 
 ## Wake hold window
 

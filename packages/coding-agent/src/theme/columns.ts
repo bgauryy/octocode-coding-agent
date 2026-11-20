@@ -1,4 +1,4 @@
-import { padToWidth, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { padToWidth, truncateToWidth as truncateStyled, visibleWidth } from "@octocodeai/octocode-tui";
 
 /**
  * Text laid out in columns for a width, shared by every command that prints a table or a label/value list as plain
@@ -19,6 +19,12 @@ export interface ColumnsOptions {
 	min?: readonly number[];
 	/** Columns that may be cut to fit, by index. Default: all but the last column, then the last. */
 	flex?: readonly number[];
+}
+
+/** Cuts like the terminal kit, but text that carried no escape codes comes back without the reset codes the cut adds. */
+function truncateToWidth(text: string, width: number): string {
+	const cut = truncateStyled(text, width);
+	return text.includes("\x1b") ? cut : cut.replaceAll("\x1b[0m", "");
 }
 
 /** The narrowest a cut column gets: a few characters and the ellipsis. */

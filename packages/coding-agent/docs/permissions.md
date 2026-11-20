@@ -1,6 +1,6 @@
 # Permissions
 
-Octocode decides, for every action an agent takes, whether to allow it, ask you, or refuse. This is a guard against mistakes, not an operating-system sandbox: modes never change the process's filesystem or network privileges.
+Octocode decides, for every action an agent takes, whether to allow it, ask you, or refuse. This is a guard against mistakes, not an operating-system sandbox: modes never change the process's filesystem or network privileges. The optional [shell sandbox](configuration.md#shell-sandbox) (`sandbox.mode`, off by default) adds one around the agent's shell commands.
 
 ```mermaid
 flowchart LR

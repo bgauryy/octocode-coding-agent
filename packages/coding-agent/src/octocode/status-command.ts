@@ -1,8 +1,7 @@
 import { problemLines, readProblems } from "../core/diagnostics-log.ts";
 import { builtinDescription } from "../core/slash-commands.ts";
 import type { FeatureSetup } from "../core/features/index.ts";
-import { mcpGroupLabel, mcpServerSource, getMcpSessionStatus } from "../../../mcp/src/api.ts";
-import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
+import { mcpGroupLabel, getMcpSessionStatus } from "../../../mcp/src/api.ts";
 import { computeSessionStats } from "../core/session-stats.ts";
 import { bypassMergeLine } from "./permission/ask/text.ts";
 import type { PermissionMode } from "./permission/mode.ts";
@@ -50,16 +49,19 @@ export function statusCommand(
 					...(permission.mode === "bypass" ? [bypassMergeLine("bypass")] : []),
 					"",
 					`Skills (${skills.length})`,
-					...(skills.length ? skills.map((skill) => `  ${skill.name} — ${skill.sourceInfo.path}`) : ["  none"]),
+					...(skills.length
+						? [`  ${skills.map((skill) => skill.name).join(", ")}`, "  Paths: /harness list <skill name>"]
+						: ["  none"]),
 					workersLine(),
 					...problemLines(readProblems()),
 					`MCPs (${servers.length})`,
 					...(servers.length
 						? servers.map(
 								(server) =>
-									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools — ${server.group ? `${mcpGroupLabel(server.group)} · ` : ""}${mcpServerSource(server, (file) => homeTilde(file))}`,
+									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools${server.group ? ` — ${mcpGroupLabel(server.group)}` : ""}`,
 							)
 						: ["  none"]),
+					...(servers.length ? ["  Sources and tools: /harness list <server name>, /mcp tools <server>"] : []),
 					"",
 					report,
 					"",

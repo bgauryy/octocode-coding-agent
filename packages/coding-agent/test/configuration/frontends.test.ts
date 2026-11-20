@@ -31,6 +31,17 @@ describe("/configuration text verbs", () => {
 		expect(await run("get tool:nope")).toMatchObject({ ok: false });
 	});
 
+	it("pages a long list for the terminal and keeps the full list for a script", async () => {
+		const paged = await runConfigWords(configuration(sandbox), ["list"], "/configuration", { listRows: 5 });
+		const text = paged.lines.join("\n");
+		expect(text).toMatch(/… \d+ more entries\. Filter: \/configuration list <kind>\|<text>/);
+		expect(paged.lines.filter((line) => /^ {2}\S/.test(line))).toHaveLength(5);
+		const filtered = await runConfigWords(configuration(sandbox), ["list", "tool"], "/configuration", { listRows: 2 });
+		expect(filtered.lines.join("\n")).toContain("Narrow it: /configuration list <kind> <text>");
+		expect((paged.json as unknown[]).length).toBeGreaterThan(5);
+		expect((await run("list")).lines.join("\n")).not.toContain("more entries");
+	});
+
 	it("enables, disables, sets and unsets, and says when each applies", async () => {
 		const off = await run("disable tool:backlog");
 		expect(off).toMatchObject({ ok: true });

@@ -12,6 +12,7 @@ const NOW = 1_000_000;
 const entry = (role: string, id: string, extra: Partial<ProcessEntry> = {}): ProcessEntry => ({
 	pid: 100,
 	ppid: 1,
+	cwd: null,
 	started: "1",
 	role,
 	id,

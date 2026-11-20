@@ -26,7 +26,7 @@ export interface HeldToolsHost {
 export class HeldTools {
 	/** Switched off, still declared: calls are refused until the next span drops the declaration. */
 	private readonly _off = new Set<string>();
-	/** Switched on, callable, not declared until the next span (never an MCP tool). */
+	/** Switched on, callable, not declared until the next span (an MCP tool that connects mid-session too). */
 	private readonly _late = new Set<string>();
 	private _span: string | undefined;
 	/** The next change is a span boundary: it applies whole, with nothing held back. */

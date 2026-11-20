@@ -186,7 +186,8 @@ const MCP_SKILLS_GENERAL = 30_800;
 /** The researcher (MCP 26,634 + skills 1,430) and the reviewer (skills 1,529). */
 const MCP_SKILLS_FILTERED = 29_600;
 /**
- * The browser child: the browser server's tools and every Octocode tool (26,370), and an empty skill catalog (261).
+ * The browser child: only the browser server's tools (26,370) beside its local tools (bash, file, web, mcp, wait,
+ * agent, skill), no Octocode MCP tool, and an empty skill catalog (261).
  * The browser preset leaves its 12 rarely used tools on demand.
  */
 const MCP_SKILLS_BROWSER = 28_000;
@@ -251,7 +252,7 @@ const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads
 	browser: {
 		system: 10_450,
 		mcpInstructions: 6_750,
-		// Every Octocode tool plus the browser floor: mcpTools measured 26,370, total 52,422, 37 loads.
+		// The browser server's tools alone (the role declares no Octocode MCP tool): mcpTools measured 26,370, total 52,422, 37 loads.
 		skills: 300,
 		nativeTools: 9_950,
 		mcpTools: 27_700,

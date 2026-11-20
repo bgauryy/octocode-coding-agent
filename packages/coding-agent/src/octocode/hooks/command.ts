@@ -14,21 +14,34 @@ const EXIT_DRAIN_MS = 150;
  */
 const CLAUDE_ASYNC_HOOK_TIMEOUT_MS = 10 * 60_000;
 
+/** A hook word with its `${CLAUDE_PROJECT_DIR}`, `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` filled in from `environment`. */
+export function expandHookPlaceholders(value: string, environment: NodeJS.ProcessEnv): string {
+	return value.replace(
+		/\$\{(CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT|CLAUDE_PLUGIN_DATA)\}/g,
+		(placeholder, key: string) => environment[key] ?? placeholder,
+	);
+}
+
+/** A program that runs the hook inside a sandbox, in place of its own command; `release` once the hook has ended. */
+export interface HookLaunch {
+	file: string;
+	args: string[];
+	env: Record<string, string>;
+	release(): void;
+}
+
 export function runCommandHook(
 	hook: HookCommand,
 	input: Record<string, unknown>,
 	cwd: string,
 	environment: NodeJS.ProcessEnv,
 	signal?: AbortSignal,
+	launch?: HookLaunch,
 ): Promise<HookRun> {
 	if (signal?.aborted) return Promise.resolve({ code: null, stdout: "", stderr: "", timedOut: false });
 	return new Promise((resolve) => {
 		// Detached on POSIX makes the shell a process-group leader, so a timeout can kill everything it started.
-		const expand = (value: string) =>
-			value.replace(
-				/\$\{(CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT|CLAUDE_PLUGIN_DATA)\}/g,
-				(placeholder, key: string) => environment[key] ?? placeholder,
-			);
+		const expand = (value: string) => expandHookPlaceholders(value, environment);
 		const executable = hook.args !== undefined;
 		const command = process.platform === "win32" && hook.commandWindows ? hook.commandWindows : hook.command;
 		let child: ChildProcessWithoutNullStreams;
@@ -38,18 +51,25 @@ export function runCommandHook(
 			const powershell = !executable && hook.shell === "powershell";
 			const program = powershell ? (process.platform === "win32" ? "powershell" : "pwsh") : command;
 			child = spawn(
-				executable ? expand(command) : program,
-				executable ? hook.args!.map(expand) : powershell ? ["-NoProfile", "-NonInteractive", "-Command", command] : [],
+				launch ? launch.file : executable ? expand(command) : program,
+				launch
+					? launch.args
+					: executable
+						? hook.args!.map(expand)
+						: powershell
+							? ["-NoProfile", "-NonInteractive", "-Command", command]
+							: [],
 				{
 					cwd,
-					shell: !executable && !powershell,
+					shell: !launch && !executable && !powershell,
 					detached: leadsProcessGroup(),
-					env: environment,
+					env: launch ? { ...environment, ...launch.env } : environment,
 					stdio: ["pipe", "pipe", "pipe"],
 					windowsHide: true,
 				},
 			);
 		} catch (error) {
+			launch?.release();
 			resolve({ code: null, stdout: "", stderr: errorMessage(error), timedOut: false });
 			return;
 		}
@@ -94,6 +114,7 @@ export function runCommandHook(
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
+			launch?.release();
 			const complete = () => {
 				for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
 				signal?.removeEventListener("abort", stop);

@@ -20,13 +20,42 @@ const PREFIX = "vt-";
 /** The hidden CLI subcommand of the web daemon (`web-daemon/launcher.ts`). */
 const DAEMON_COMMAND = "__web-daemon";
 
-function ownerIsAlive(dir: string): boolean {
+function pidIsAlive(pid: number): boolean {
 	try {
-		process.kill(Number(readFileSync(join(dir, OWNER_FILE), "utf8")), 0);
+		process.kill(pid, 0);
 		return true;
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "EPERM";
 	}
+}
+
+const ownerIsAlive = (dir: string): boolean => pidIsAlive(Number(readFileSync(join(dir, OWNER_FILE), "utf8")));
+
+/** The private tmux servers of the e2e suites: `-L <prefix>-<pid of the test process>[-<n>]`. */
+const E2E_TMUX_SOCKET = /^(?:octo-e2e|octo-reach)-(\d+)(?:-\d+)?$/;
+
+/** Where tmux keeps the `-L` sockets of this user. */
+export const tmuxSocketDir = (env: NodeJS.ProcessEnv = process.env): string =>
+	join(env.TMUX_TMPDIR ?? "/tmp", `tmux-${process.getuid?.() ?? 0}`);
+
+/**
+ * Stops and removes the e2e suites' tmux sockets in `dir` whose test process is gone: tmux leaves the socket file
+ * behind when its server is killed, and a run interrupted before its own cleanup leaves the server too. Returns the
+ * removed names.
+ */
+export function sweepStaleTmuxSockets(dir: string = tmuxSocketDir()): string[] {
+	if (process.platform === "win32" || !existsSync(dir)) return [];
+	const removed: string[] = [];
+	for (const name of readdirSync(dir)) {
+		const owner = E2E_TMUX_SOCKET.exec(name)?.[1];
+		if (owner === undefined || pidIsAlive(Number(owner))) continue;
+		const socket = join(dir, name);
+		// Fails without a live server (or without tmux, which then started none): the file is all that is left.
+		spawnSync("tmux", ["-S", socket, "kill-server"], { stdio: "ignore" });
+		rmSync(socket, { force: true });
+		removed.push(name);
+	}
+	return removed;
 }
 
 /**

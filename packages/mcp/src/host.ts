@@ -14,6 +14,7 @@ import type { TSchema } from "typebox";
 import type { ToolAudit } from "@octocodeai/octocode-contracts/config";
 import type { McpExposure, McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
+import type { StdioLaunchWrapper } from "./client/transports/stdio-launch.ts";
 
 /** The host application's name, version and runtime. */
 export interface McpIdentityPort {
@@ -326,6 +327,11 @@ export interface McpToolSwitchPort {
 	setExposure(place: McpVendorPlace, server: string, scope: McpToolWriteScope, exposure: McpExposure): string;
 }
 
+/** Runs a stdio server inside the host's command sandbox (a server entry's `sandbox: true`); rejects when it cannot. */
+export interface McpSandboxPort {
+	wrapStdio: StdioLaunchWrapper;
+}
+
 export interface McpHostPorts {
 	identity: McpIdentityPort;
 	plugins: McpPluginsPort;
@@ -340,6 +346,7 @@ export interface McpHostPorts {
 	ui: McpUiPort;
 	review: McpReviewPort;
 	toolSwitch: McpToolSwitchPort;
+	sandbox: McpSandboxPort;
 }
 
 let installed: Partial<McpHostPorts> = {};
@@ -368,6 +375,8 @@ export const hostRender = (): McpRenderPort => port("render");
 export const hostUi = (): McpUiPort => port("ui");
 /** The review port, or undefined when the host installed none. */
 export const hostReview = (): McpReviewPort | undefined => installed.review;
+/** The sandbox port, or undefined when the host installed none: an opted-in server then does not start. */
+export const hostSandbox = (): McpSandboxPort | undefined => installed.sandbox;
 /** The tool switch port, or undefined when the host installed none. */
 export const hostToolSwitch = (): McpToolSwitchPort | undefined => installed.toolSwitch;
 /** The folder for stdio server owner records, or undefined when no paths port is installed or it names none. */

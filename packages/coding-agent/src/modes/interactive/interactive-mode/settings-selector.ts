@@ -3,7 +3,7 @@
  * terminal UI.
  */
 
-import { animationClock, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, setEmojiMarks, TuiAltScreen } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../../../core/defaults.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../../core/http-dispatcher.ts";
@@ -81,6 +81,7 @@ export function createLiveSettingsSelector(host: SettingsSelectorHost, done: () 
 			clearOnShrink: host.settingsManager.getClearOnShrink(),
 			showTerminalProgress: host.settingsManager.getShowTerminalProgress(),
 			reduceMotion: host.settingsManager.getReduceMotion(),
+			emojiMarks: host.settingsManager.getEmojiMarks(),
 			tuiMode: host.ui.mode,
 			fullscreenExitOutput: host.settingsManager.getFullscreenExitOutput(),
 			fullscreenScrollbar: host.settingsManager.getFullscreenScrollbar(),
@@ -241,6 +242,10 @@ export function createLiveSettingsSelector(host: SettingsSelectorHost, done: () 
 			onReduceMotionChange: (value) => {
 				host.settingsManager.setReduceMotion(value);
 				animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
+			},
+			onEmojiMarksChange: (enabled) => {
+				host.settingsManager.setEmojiMarks(enabled);
+				setEmojiMarks(enabled);
 			},
 			onTuiModeChange: (mode) => {
 				if (!host.switchTuiMode(mode)) {

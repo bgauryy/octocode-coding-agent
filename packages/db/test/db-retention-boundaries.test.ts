@@ -104,6 +104,7 @@ describe("database retention boundaries", () => {
 				agentId: null,
 				ownerPid: null,
 				ownerStarted: null,
+				cwd: null,
 				rss: 0,
 				heapUsed: 0,
 				ended: true,

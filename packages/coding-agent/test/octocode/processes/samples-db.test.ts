@@ -22,6 +22,7 @@ const sample = (over: Partial<processSamples.ProcessSample> = {}): processSample
 	agentId: null,
 	ownerPid: null,
 	ownerStarted: null,
+	cwd: null,
 	rss: 100,
 	heapUsed: 40,
 	ended: false,
@@ -59,5 +60,14 @@ describe("processSamples", () => {
 		processSamples.record(agent.db, sample({ at: 1_000, rss: 1 }));
 		processSamples.record(agent.db, sample({ at: 1_000, rss: 2 }));
 		expect(processSamples.since(agent.db, 0).map((row) => row.rss)).toEqual([2]);
+	});
+
+	it("records the working folder and adds the column to a table made without it", () => {
+		agent.db.exec("DROP TABLE IF EXISTS process_samples");
+		agent.db.exec(
+			"CREATE TABLE process_samples (at INTEGER NOT NULL, pid INTEGER NOT NULL, started TEXT NOT NULL DEFAULT '', ppid INTEGER NOT NULL, role TEXT NOT NULL, title TEXT NOT NULL, id TEXT NOT NULL, session_id TEXT, agent_id TEXT, owner_pid INTEGER, owner_started TEXT, rss INTEGER NOT NULL, heap_used INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, children TEXT NOT NULL DEFAULT '[]', PRIMARY KEY (pid, started, at))",
+		);
+		processSamples.record(agent.db, sample({ cwd: "/work/app" }));
+		expect(processSamples.since(agent.db, 0)[0].cwd).toBe("/work/app");
 	});
 });

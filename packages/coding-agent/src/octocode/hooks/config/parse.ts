@@ -173,6 +173,7 @@ export function parseHooks(
 				const accepted = PROFILE_COMMAND_FIELDS[protocol];
 				const unsupported = Object.keys(hook).filter((key) => !accepted.includes(key));
 				const invalid: string[] = [];
+				if (hook.sandbox !== undefined && typeof hook.sandbox !== "boolean") invalid.push("sandbox must be a boolean");
 				if (protocol === "claude" && hook.shell !== undefined && hook.shell !== "bash" && hook.shell !== "powershell")
 					invalid.push('shell must be "bash" or "powershell"');
 				if (
@@ -248,6 +249,7 @@ export function parseHooks(
 						source,
 						...(origin ? { origins: [origin] } : {}),
 						...(hook.failClosed === true ? { failClosed: true as const } : {}),
+						...(hook.sandbox === true ? { sandbox: true as const } : {}),
 					},
 				];
 			};

@@ -236,4 +236,10 @@ describe("skills the application ships", () => {
 			expect(result.stdout).toMatch(/\b400\s+100\.0%\s+400\s+100\.0%\s+walk\s+\/app\/a\.js:1/);
 		});
 	});
+
+	it("octocode-output names the width-safe tone glyphs and not a fixed emoji mark", () => {
+		const text = fs.readFileSync(path.join(getNativeSkillsDir(), "octocode-output", "SKILL.md"), "utf8");
+		for (const glyph of ["≋", "▲", "◆"]) expect(text).toContain(glyph);
+		expect(text).toMatch(/only when the user asks/);
+	});
 });

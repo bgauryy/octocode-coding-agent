@@ -1,6 +1,6 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import type { registerPlanning } from "../plan/register.ts";
-import type { FeatureContext } from "../../core/features/index.ts";
+import type { CommandContext, FeatureContext } from "../../core/features/index.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
 import { shortcutText } from "../shared/keys.ts";
@@ -18,6 +18,7 @@ import {
 	reasonAsks,
 } from "./mode.ts";
 import { modeSummary } from "./ask/text.ts";
+import { pickPermissionsAction } from "./page.ts";
 
 /** Audit entries `/permissions log` shows, newest last. */
 const LOG_ENTRIES = 50;
@@ -89,46 +90,65 @@ export function registerPermissionCommand(
 		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode}. ${modeSummary(mode)}`);
 	};
 
+	const handle = async (args: string, ctx: CommandContext): Promise<void> => {
+		const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
+		const [word = "", rest] = words;
+		if (words.length === 0 && ctx.hasUI) {
+			const picked = await pickPermissionsAction(
+				{
+					mode: permission.mode,
+					grants: permission.grants().length,
+					planning: planning?.blocked() ?? false,
+					canPlan: planning !== undefined,
+				},
+				ctx,
+			);
+			if (!picked) return;
+			if ("mode" in picked) return select(picked.mode, ctx);
+			if (picked.open === "grants") return handle("grants", ctx);
+			if (picked.open === "log") return handle("log", ctx);
+			if (picked.open === "plan") return handle("plan", ctx);
+			return handle("status", ctx);
+		}
+		if (words.length === 0 || args.trim() === "status")
+			return say(
+				ctx,
+				`${status(permission, provenanceSize())}\nPlanning: ${planning?.blocked() ? "active" : "off"}. /permissions plan [off] controls the independent constraint.`,
+			);
+		if (word === "plan" && planning && (words.length === 1 || (words.length === 2 && rest === "off"))) {
+			await planning.control({ action: rest === "off" ? "leave" : "enter" }, ctx);
+			return say(ctx, `Planning ${planning.blocked() ? "active" : "off"}; permission mode ${permission.mode}.`);
+		}
+		if ((CHOOSABLE_MODES as readonly string[]).includes(word) && words.length === 1)
+			return select(word as PermissionMode, ctx);
+		if (word === "bypass" && words.length === 1) return say(ctx, BYPASS_AT_START, "warning");
+		if (word === "grants" && rest === "clear" && words.length === 2) {
+			permission.clearGrants();
+			return say(ctx, "Session grants cleared.");
+		}
+		if (word === "grants" && rest === "clear" && words[2] === "messages" && words.length === 3)
+			return say(ctx, `External-message grants removed: ${permission.clearMessageGrants()}.`);
+		if (word === "grants" && words.length === 1) {
+			const grants = permission.grants();
+			return say(
+				ctx,
+				grants.length > 0
+					? `Session grants:\n${grants.map((grant) => `  ${grant}`).join("\n")}`
+					: "Session grants: none",
+			);
+		}
+		if (word === "log" && words.length === 1) return say(ctx, logLines(ctx, permission));
+		return say(ctx, USAGE, "warning");
+	};
+
 	commands.add("permissions", {
 		description: builtinDescription("permissions"),
 		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log|plan [off]]",
 		complete: (prefix) =>
 			wordCompletions(
-				[...CHOOSABLE_MODES, "grants", "grants clear", "grants clear messages", "log", "plan", "plan off"],
+				[...CHOOSABLE_MODES, "grants", "grants clear", "grants clear messages", "log", "status", "plan", "plan off"],
 				prefix,
 			),
-		handler: async (args, ctx) => {
-			const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
-			const [word = "", rest] = words;
-			if (words.length === 0)
-				return say(
-					ctx,
-					`${status(permission, provenanceSize())}\nPlanning: ${planning?.blocked() ? "active" : "off"}. /permissions plan [off] controls the independent constraint.`,
-				);
-			if (word === "plan" && planning && (words.length === 1 || (words.length === 2 && rest === "off"))) {
-				await planning.control({ action: rest === "off" ? "leave" : "enter" }, ctx);
-				return say(ctx, `Planning ${planning.blocked() ? "active" : "off"}; permission mode ${permission.mode}.`);
-			}
-			if ((CHOOSABLE_MODES as readonly string[]).includes(word) && words.length === 1)
-				return select(word as PermissionMode, ctx);
-			if (word === "bypass" && words.length === 1) return say(ctx, BYPASS_AT_START, "warning");
-			if (word === "grants" && rest === "clear" && words.length === 2) {
-				permission.clearGrants();
-				return say(ctx, "Session grants cleared.");
-			}
-			if (word === "grants" && rest === "clear" && words[2] === "messages" && words.length === 3)
-				return say(ctx, `External-message grants removed: ${permission.clearMessageGrants()}.`);
-			if (word === "grants" && words.length === 1) {
-				const grants = permission.grants();
-				return say(
-					ctx,
-					grants.length > 0
-						? `Session grants:\n${grants.map((grant) => `  ${grant}`).join("\n")}`
-						: "Session grants: none",
-				);
-			}
-			if (word === "log" && words.length === 1) return say(ctx, logLines(ctx, permission));
-			return say(ctx, USAGE, "warning");
-		},
+		handler: async (args, ctx) => handle(args, ctx),
 	});
 }

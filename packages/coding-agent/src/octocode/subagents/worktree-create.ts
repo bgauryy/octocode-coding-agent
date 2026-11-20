@@ -5,6 +5,7 @@ import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { getOctocodeHome } from "../../config.ts";
 import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
+import { linkDependencies } from "../worktrees/dependencies.ts";
 import { copyIncluded } from "../worktrees/include.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
 import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
@@ -57,6 +58,7 @@ export async function createWorktree(
 	}
 	recordTrust();
 	const included = await copyIgnoredIncludes(repo, worktree);
+	const dependencies = await linkIgnoredDependencies(repo, worktree);
 	// `worktree add` does not fetch submodules (that would reach the network from URLs the branch names), so they are empty.
 	const submodules = fs.existsSync(path.join(worktree, ".gitmodules"))
 		? "The repository has submodules; they are empty in the isolated worktree (not initialised), so the subagent cannot build or test them."
@@ -67,6 +69,7 @@ export async function createWorktree(
 			: "",
 		submodules,
 		included,
+		dependencies,
 	].filter(Boolean);
 	return {
 		agentId,
@@ -122,13 +125,14 @@ export async function reopenWorktree(
 	await git(repo, ["update-ref", "-d", at.ref, head]);
 	recordTrust();
 	const included = await copyIgnoredIncludes(repo, at.path);
+	const warning = [included, await linkIgnoredDependencies(repo, at.path)].filter(Boolean).join(" ");
 	return {
 		agentId,
 		repo,
 		path: at.path,
 		base,
 		cwd: childCwd(repo, cwd, at.path),
-		...(included ? { warning: included } : {}),
+		...(warning ? { warning } : {}),
 	};
 }
 
@@ -158,5 +162,22 @@ async function copyIgnoredIncludes(repo: string, worktree: string): Promise<stri
 		return left.length > 0 ? `Not copied from .worktreeinclude: ${left.join(", ")}.` : "";
 	} catch (error) {
 		return `.worktreeinclude was not applied: ${errorMessage(error)}.`;
+	}
+}
+
+/**
+ * Links the checkout's ignored `node_modules` folders into the worktree (`linkDependencies`), after the
+ * `.worktreeinclude` copies so a workspace link can point at a copied build. Returns a warning naming what was left out,
+ * or "": the child then needs an install to build or test.
+ */
+async function linkIgnoredDependencies(repo: string, worktree: string): Promise<string> {
+	try {
+		const { skipped } = await linkDependencies(repo, worktree);
+		const left = skipped.filter((entry) => entry.reason !== "already exists");
+		return left.length > 0
+			? `Not linked from the checkout's dependencies: ${left.map((entry) => `${entry.path} (${entry.reason})`).join(", ")}.`
+			: "";
+	} catch (error) {
+		return `The checkout's node_modules folders were not linked, so builds and tests need an install: ${errorMessage(error)}.`;
 	}
 }

@@ -4,7 +4,7 @@
  */
 
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
-import { isSubcommand } from "../cli/completion.ts";
+import { CLI_COMMAND_NAMES, isSubcommand } from "../cli/completion.ts";
 import { handleConfigCommand, handlePackageCommand } from "../package-manager-cli.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { drainStdio } from "./drain-stdio.ts";
@@ -32,21 +32,6 @@ export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
 	context: async (args, { cwd, agentDir }) =>
 		(await import("../octocode/context-optimization/command.ts")).runContextCommand(args, { agentDir, cwd }),
 };
-
-/** Every first argument that is a command, for the unknown-command error. */
-const COMMAND_NAMES = [
-	...Object.keys(SUBCOMMANDS),
-	"models",
-	"auth",
-	"install",
-	"remove",
-	"update",
-	"list",
-	"config",
-	"completion",
-	"research",
-	"native",
-];
 
 /**
  * A lone lowercase word typed at a terminal that no command claims: a mistyped command, not a prompt. Quoted
@@ -77,7 +62,7 @@ export async function runSubcommand(args: string[], context: SubcommandContext):
 	}
 	if (looksLikeMistypedSubcommand(args)) {
 		process.stderr.write(
-			`octocode: unknown command "${args[0]}". Commands: ${COMMAND_NAMES.join(", ")}.\n` +
+			`octocode: unknown command "${args[0]}". Commands: ${CLI_COMMAND_NAMES.join(", ")}.\n` +
 				`To send "${args[0]}" as a prompt, quote it with more words or use -p.\n`,
 		);
 		process.exitCode = 2;

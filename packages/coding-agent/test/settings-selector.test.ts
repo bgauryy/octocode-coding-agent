@@ -63,6 +63,24 @@ describe("SettingsSelectorComponent", () => {
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});
 
+	it("toggles emoji marks from the selector", () => {
+		const onEmojiMarksChange = vi.fn();
+		const config = {
+			emojiMarks: false,
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onEmojiMarksChange } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		for (const character of "Emoji marks") list.handleInput(character);
+		list.handleInput("\r");
+		expect(onEmojiMarksChange.mock.calls.flat()).toEqual([true]);
+	});
+
 	it("keeps the configured fixed theme marked while browsing", () => {
 		const config = {
 			defaultModel: "not set",

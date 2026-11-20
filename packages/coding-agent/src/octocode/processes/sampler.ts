@@ -84,6 +84,8 @@ export interface SamplerOptions {
 	db: Db;
 	table: ProcessTableSource;
 	identity: () => SampleIdentity;
+	/** The working folder recorded with each sample, so `/processes` can scope to a workspace. Default: the process's own. */
+	cwd?: () => string;
 	/** Direct children by pid: `mcp`, `bash`. */
 	kinds: () => ReadonlyMap<number, string>;
 	intervalMs: number;
@@ -132,6 +134,7 @@ export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 				started: options.started ?? null,
 				ppid: options.ppid ?? process.ppid,
 				...identity,
+				cwd: options.cwd ? options.cwd() : process.cwd(),
 				rss: memory.rss,
 				heapUsed: memory.heapUsed,
 				ended,

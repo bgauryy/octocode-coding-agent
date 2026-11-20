@@ -109,3 +109,25 @@ describe("a child queued for a slot", () => {
 		expect(shown()).not.toHaveProperty("activity");
 	});
 });
+
+describe("a child whose process ended", () => {
+	it("has no silence left to measure while its run is still being closed out", async () => {
+		const run = gate<ChildRun>();
+		const outcome = gate<SubagentOutcome>();
+		launch.mockImplementationOnce((child: ChildRun) => {
+			run.resolve(child);
+			return outcome.promise;
+		});
+		await s.task();
+		await run.promise;
+		const [id] = s.control.running();
+		s.team.approvals.noteOutput(id, Date.now());
+		expect(s.team.approvals.lastOutput(id)).toBeDefined();
+		outcome.resolve(answer());
+		await vi.advanceTimersByTimeAsync(0);
+		// Whether or not the report has been delivered, no minutes of silence are counted past the process's end.
+		expect(s.team.approvals.lastOutput(id)).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(s.team.approvals.lastOutput(id)).toBeUndefined();
+	});
+});

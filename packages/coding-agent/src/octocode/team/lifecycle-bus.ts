@@ -59,6 +59,7 @@ function lifecycleEvent(row: agentEvents.EventRow, own = false): LifecycleEvent 
 		time: row.time,
 		own,
 		...(text(data.state) ? { state: text(data.state)! } : {}),
+		...(kind === "state" && text(data.detail) ? { detail: text(data.detail)! } : {}),
 		...(kind === "off"
 			? {
 					reason: text(data.reason) ?? "left",

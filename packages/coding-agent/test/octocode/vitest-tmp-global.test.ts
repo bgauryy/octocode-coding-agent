@@ -10,6 +10,7 @@ import {
 	PROTECTED_HOMES_ENV,
 	runProcesses,
 	staleRunOrphans,
+	sweepStaleTmuxSockets,
 } from "../../../../test-isolation.ts";
 import setup from "../../../../vitest.tmp.global.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
@@ -161,6 +162,29 @@ describe("the run's teardown", () => {
 			for (const pid of [daemon, helper]) if (processAlive(pid)) process.kill(pid, "SIGKILL");
 		}
 		await vi.waitFor(() => expect([daemon, helper].filter(processAlive)).toEqual([]));
+	});
+});
+
+describe.skipIf(process.platform === "win32")("e2e tmux sockets", () => {
+	it("stops and removes those of a gone test process, keeping a live one's and others", () => {
+		const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "tmux-")));
+		// A pid past the system's range never runs.
+		const dead = "999999999";
+		const live = `octo-e2e-${process.pid}-0`;
+		const kept = [live, `octo-reach-${process.pid}`, "octo-defects-olive", `octo-e2e-${dead}-x`];
+		const stale = [`octo-e2e-${dead}-0`, `octo-reach-${dead}`];
+		for (const name of [...kept, ...stale]) fs.writeFileSync(path.join(dir, name), "");
+		const server = path.join(dir, `octo-e2e-${dead}-1`);
+		const tmux = spawnSync("tmux", ["-S", server, "-f", "/dev/null", "new-session", "-d", "sleep 60"]).status === 0;
+		try {
+			const removed = sweepStaleTmuxSockets(dir);
+			expect(removed.sort()).toEqual([...stale, ...(tmux ? [path.basename(server)] : [])].sort());
+			expect(fs.readdirSync(dir).sort()).toEqual([...kept].sort());
+			if (tmux) expect(spawnSync("tmux", ["-S", server, "list-sessions"]).status).not.toBe(0);
+		} finally {
+			spawnSync("tmux", ["-S", server, "kill-server"]);
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -37,6 +37,7 @@ import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./
 import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { armShutdownDeadline } from "./shutdown-deadline.ts";
+import { rpcInput } from "./rpc-input.ts";
 import { createSessionUI, type PendingUiRequests } from "./rpc-mode/ui-context.ts";
 import type { RpcCommand, RpcExtensionUIRequest, RpcExtensionUIResponse, RpcResponse } from "./rpc-types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -135,6 +136,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	 * Called after handling each command when waiting for the next command.
 	 */
 	let detachInput = () => {};
+	const input = rpcInput();
 
 	async function shutdown(exitCode = 0, signal?: NodeJS.Signals): Promise<never> {
 		if (shuttingDown) {
@@ -160,7 +162,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 			status ||= 1;
 		}
 		detachInput();
-		process.stdin.pause();
+		input.close();
 		if (signal !== "SIGTERM") {
 			await flushRawStdout().catch(() => undefined);
 		}
@@ -223,15 +225,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	const onInputEnd = () => {
 		void shutdown();
 	};
-	process.stdin.on("end", onInputEnd);
+	input.stream.on("end", onInputEnd);
 
 	detachInput = (() => {
-		const detachJsonl = attachJsonlLineReader(process.stdin, (line) => {
+		const detachJsonl = attachJsonlLineReader(input.stream, (line) => {
 			void handleInputLine(line);
 		});
 		return () => {
 			detachJsonl();
-			process.stdin.off("end", onInputEnd);
+			input.stream.off("end", onInputEnd);
 		};
 	})();
 

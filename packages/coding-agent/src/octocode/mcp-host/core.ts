@@ -29,6 +29,7 @@ import {
 	spillOutput,
 	TEXT_MAX_CHARS,
 } from "../shared/spill.ts";
+import { mcpSandboxPort } from "../permission/sandbox/opt-in.ts";
 import { browserMcpAsked } from "../web/browser-mcp.ts";
 import { contextOptimizationDirs, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
@@ -120,5 +121,6 @@ export function installMcpCorePorts(): void {
 		models,
 		browser,
 		review,
+		sandbox: mcpSandboxPort,
 	});
 }

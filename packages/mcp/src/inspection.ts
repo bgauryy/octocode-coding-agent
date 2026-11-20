@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 import { toolExposureState } from "./tool-states.ts";
 import { existsSync } from "node:fs";
 import type { Tool } from "./client/index.ts";
@@ -40,6 +41,23 @@ export function formatMcpTool(tool: McpToolListing, schema = false): string {
 		...(schema ? [`Input schema:\n${JSON.stringify(tool.inputSchema, null, 2)}`] : []),
 		...(schema && tool.outputSchema ? [`Output schema:\n${JSON.stringify(tool.outputSchema, null, 2)}`] : []),
 	].join("\n");
+}
+
+/** The first sentence-line of a tool description as a person reads it: markup tags such as `<when>` removed, no usage stats. */
+export function toolSummary(description: string | undefined): string {
+	const plain = (description ?? "").replace(/<\/?[a-z][a-z-]*>/gi, "\n");
+	return (
+		plain
+			.split("\n")
+			.map((line) => line.trim())
+			.find(Boolean) ?? ""
+	);
+}
+
+/** One line of a tool list: name, exposure and a short plain description, without the usage record. */
+export function formatMcpToolRow(tool: McpToolListing, withSummary: boolean): string {
+	const summary = withSummary ? toolSummary(tool.description) : "";
+	return `${tool.name} [${tool.exposure}]${summary ? ` — ${clipText(summary, 90)}` : ""}`;
 }
 
 /** Configuration locations only; inspecting them never connects a server or reads credentials. */

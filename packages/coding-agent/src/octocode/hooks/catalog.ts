@@ -41,12 +41,13 @@ export const PROFILE_TIMEOUT_S: Record<HookProtocol, number> = { octocode: 60, c
 
 /** Command-handler fields each profile accepts. */
 export const PROFILE_COMMAND_FIELDS: Record<HookProtocol, readonly string[]> = {
-	octocode: ["type", "command", "timeout", "failClosed", "statusMessage"],
+	octocode: ["type", "command", "timeout", "failClosed", "sandbox", "statusMessage"],
 	claude: [
 		"type",
 		"command",
 		"timeout",
 		"failClosed",
+		"sandbox",
 		"statusMessage",
 		"args",
 		"shell",
@@ -59,6 +60,7 @@ export const PROFILE_COMMAND_FIELDS: Record<HookProtocol, readonly string[]> = {
 		"command",
 		"timeout",
 		"failClosed",
+		"sandbox",
 		"statusMessage",
 		"commandWindows",
 		"async",

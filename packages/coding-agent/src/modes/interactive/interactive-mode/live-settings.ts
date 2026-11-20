@@ -3,7 +3,7 @@
  * "Interface and session" list calls, run after the catalog has saved the value.
  */
 
-import { animationClock, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, setEmojiMarks, TuiAltScreen } from "@octocodeai/octocode-tui";
 import type { InteractiveModeHost } from "./host.ts";
 
 type ConfigurationHost = Pick<
@@ -72,6 +72,11 @@ const APPLIERS: Readonly<Record<string, Applier>> = {
 	"terminal.reduceMotion": (host, value: boolean | "auto") => {
 		host.settingsManager.setReduceMotion(value);
 		animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
+		return true;
+	},
+	"terminal.emojiMarks": (host, value: boolean) => {
+		host.settingsManager.setEmojiMarks(value);
+		setEmojiMarks(value);
 		return true;
 	},
 	tuiMode: (host, value: Parameters<ConfigurationHost["switchTuiMode"]>[0]) => {

@@ -1,4 +1,3 @@
-import { APP_NAME } from "../../config.ts";
 import { AGENT_ID_ENV, AGENT_ROLE_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 
@@ -15,7 +14,8 @@ import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 export const MAX_TITLE_LENGTH = 64;
 
 /** What every title starts with. */
-export const TITLE_PREFIX = `${APP_NAME}-agent`;
+// A fixed identity: a leaf module cannot read the host's configured app name, and every reader of a title shares this one.
+export const TITLE_PREFIX = "octocode-agent";
 const PREFIX = escapeRegExp(TITLE_PREFIX);
 const TITLE = new RegExp(`^${PREFIX}-([A-Za-z0-9._]+)-([A-Za-z0-9._-]+)(?:\\s|$)`);
 const BARE_TITLE = new RegExp(`^${PREFIX}-(main|rpc)(?:\\s|$)`);

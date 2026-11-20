@@ -65,9 +65,9 @@ Native input carries no host metadata. Source profiles add these fields when the
 
 ## Command handler fields
 
-- **Native** (default timeout 60 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`.
-- **Claude** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `args`, `shell`, `onFailure`, `async`, `asyncRewake`.
-- **Codex** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `statusMessage`, `commandWindows`, `async`, `additionalContextLimit`.
+- **Native** (default timeout 60 s): `type`, `command`, `timeout`, `failClosed`, `sandbox`, `statusMessage`.
+- **Claude** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `sandbox`, `statusMessage`, `args`, `shell`, `onFailure`, `async`, `asyncRewake`.
+- **Codex** (default timeout 600 s): `type`, `command`, `timeout`, `failClosed`, `sandbox`, `statusMessage`, `commandWindows`, `async`, `additionalContextLimit`.
 
 Other fields reject the handler with a diagnostic in `/harness hooks`. No timeout can exceed 600 seconds.
 

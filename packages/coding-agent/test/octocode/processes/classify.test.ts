@@ -30,6 +30,7 @@ const sample = (over: Partial<ProcessSample> & { pid: number; started: string })
 	agentId: null,
 	ownerPid: null,
 	ownerStarted: null,
+	cwd: null,
 	rss: 100 * MB,
 	heapUsed: 40 * MB,
 	ended: false,

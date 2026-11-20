@@ -13,6 +13,7 @@ import {
 	type JsonRpcId,
 	type JsonRpcMessage,
 } from "../protocol/jsonrpc.ts";
+import { type StdioLaunchWrapper, stdioLaunch } from "./stdio-launch.ts";
 import { recordStdioGroup, reapStdioOrphans } from "./stdio-owner.ts";
 import { DEFAULT_MAX_MESSAGE_BYTES, type McpTransport, TransportEvents } from "./transport.ts";
 
@@ -115,6 +116,8 @@ export interface StdioTransportOptions {
 	maxStderrBytes?: number;
 	/** Time to wait for the server to exit after SIGTERM before sending SIGKILL. Default: 2000. */
 	closeTimeoutMs?: number;
+	/** Runs the server inside a sandbox; a rejection fails `start` and the server is not started. */
+	wrapLaunch?: StdioLaunchWrapper;
 }
 
 export class StdioTransport extends TransportEvents implements McpTransport {
@@ -154,15 +157,26 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		await reapStdioOrphans();
 		const inherited = this.options.inheritEnv === true ? { ...process.env } : getDefaultEnvironment();
 		const env = { ...inherited, ...this.options.env };
-		const child = crossSpawn(this.options.command, this.options.args ?? [], {
-			cwd: this.options.cwd,
-			env,
-			stdio: ["pipe", "pipe", this.options.stderr === "inherit" ? "inherit" : "pipe"],
-			windowsHide: true,
-			// Own process group, so closing the transport can terminate the server's children too.
-			detached: USE_PROCESS_GROUPS,
-		});
+		const launch = await stdioLaunch(this.options, env);
+		let child: ChildProcess;
+		try {
+			child = crossSpawn(launch.file, launch.args, {
+				cwd: this.options.cwd,
+				env: launch.env,
+				stdio: ["pipe", "pipe", this.options.stderr === "inherit" ? "inherit" : "pipe"],
+				windowsHide: true,
+				// Own process group, so closing the transport can terminate the server's children too.
+				detached: USE_PROCESS_GROUPS,
+			});
+		} catch (error) {
+			launch.release?.();
+			throw error;
+		}
 		this.child = child;
+		if (launch.release) {
+			child.once("close", launch.release);
+			child.once("error", launch.release);
+		}
 		const pid = child.pid;
 		if (USE_PROCESS_GROUPS && pid !== undefined) {
 			liveProcessGroups.add(pid);

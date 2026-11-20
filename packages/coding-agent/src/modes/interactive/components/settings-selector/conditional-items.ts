@@ -142,4 +142,15 @@ export function addConditionalItems(
 		currentValue: String(config.reduceMotion),
 		values: ["auto", "true", "false"],
 	});
+
+	// Emoji marks (insert after reduce-motion)
+	const reduceMotionIndex = items.findIndex((item) => item.id === "reduce-motion");
+	items.splice(reduceMotionIndex + 1, 0, {
+		id: "emoji-marks",
+		label: "Emoji marks",
+		description:
+			"Tone marks and the terminal title use emoji (🐚 🦀 🦈 🦑) instead of width-safe glyphs; width varies by terminal",
+		currentValue: config.emojiMarks ? "true" : "false",
+		values: ["true", "false"],
+	});
 }

@@ -12,7 +12,7 @@ export const mergeThrough =
 		(await agents()?.merge(id, ctx, signal)) ?? { ok: false, text: "Agent controls are unavailable." };
 
 /** `agent` `message` with `item`, for a registration that reaches the agent tool later, like `mergeThrough`. */
-export const handThrough =
+const handThrough =
 	(agents: () => AgentControl | undefined): HandItem =>
 	(child, ref, ctx) => {
 		const control = agents();

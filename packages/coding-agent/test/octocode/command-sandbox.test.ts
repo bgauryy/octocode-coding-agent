@@ -136,9 +136,15 @@ describe("sandbox.mode: off (the default)", () => {
 });
 
 describe("the sandbox adapter", () => {
-	it.runIf(process.platform !== "darwin")("refuses a command on a platform it does not support", async () => {
+	it("refuses a command on a platform it does not support", async () => {
+		const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 		setCommandSandbox(srtSandbox());
-		await expect(run("true", tmp())).rejects.toThrow(/supports macOS only/);
+		Object.defineProperty(process, "platform", { ...platform, value: "aix" });
+		try {
+			await expect(run("true", tmp())).rejects.toThrow(/supports macOS and Linux only \(this is aix\)/);
+		} finally {
+			Object.defineProperty(process, "platform", platform);
+		}
 	});
 
 	it("refuses a shell that does not take `-c <command>`", async () => {

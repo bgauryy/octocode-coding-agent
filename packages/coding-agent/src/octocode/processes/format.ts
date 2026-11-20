@@ -24,7 +24,7 @@ function orphanLine(orphan: Orphan, width: number | undefined): string {
 export interface FormatOptions {
 	/** Terminal columns a row may use. Set, a table that is wider than this is laid out in fewer columns. Unset: full table. */
 	width?: number;
-	/** Processes of other sessions on the machine that the listing leaves out; a line says how to see them. */
+	/** Processes of other folders on the machine that the listing leaves out; a line says how to see them. */
 	hidden?: number;
 }
 
@@ -109,7 +109,10 @@ export function formatReport(report: ProcessReport, { width, hidden = 0 }: Forma
 		lines.push(head, ...rows.flatMap((row, index) => [...row, ...children[index]]));
 	}
 	if (hidden)
-		lines.push("", `${plural(hidden, "process", "processes")} of other sessions not shown: /processes all lists them.`);
+		lines.push(
+			"",
+			`${plural(hidden, "process", "processes")} outside this folder not shown: /processes all lists them.`,
+		);
 	if (processes.length)
 		lines.push(
 			"",

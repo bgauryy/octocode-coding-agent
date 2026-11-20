@@ -29,6 +29,9 @@ const commandFields: Record<string, TSchema> = {
 	command: Type.String({ minLength: 1, description: "Shell command, or the executable when `args` is set." }),
 	timeout,
 	failClosed,
+	sandbox: Type.Boolean({
+		description: "Run inside the command sandbox; where it cannot start, the hook is not run and counts as failed.",
+	}),
 	statusMessage,
 	args: Type.Array(Type.String(), { description: "Claude: argument list; spawns `command` without a shell." }),
 	shell: Type.Union([Type.Literal("bash"), Type.Literal("powershell")], {

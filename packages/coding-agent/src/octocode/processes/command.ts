@@ -6,7 +6,7 @@ import { plural } from "../shared/text.ts";
 import { type Orphan, type ProcessReport, classifyProcesses } from "./classify.ts";
 import { formatReport } from "./format.ts";
 import { SAMPLE_RETENTION_MS } from "./sampler.ts";
-import { scopeToSession } from "./scope.ts";
+import { scopeToWorkspace } from "./scope.ts";
 import { stopOrphans, type StopDeps } from "./stop.ts";
 import type { ProcessTableSource } from "./table.ts";
 
@@ -23,8 +23,8 @@ export interface ProcessesCommandOptions {
 const USAGE = "Usage: /processes [all|stop]";
 
 /**
- * `/processes`: this session's process and its subagents with the MCP servers and bash jobs each owns, flagging
- * orphans and memory that keeps growing; `/processes all` lists every Octocode process on the machine (other sessions,
+ * `/processes`: the Octocode processes working in this folder (every session here) and their subagents with the MCP servers and bash jobs each owns, flagging
+ * orphans and memory that keeps growing; `/processes all` lists every Octocode process on the machine (other folders,
  * RPC hosts); `/processes stop` stops the orphans after a confirmation. It reads the process table and every process's samples (`processSamples`), so what another session
  * recorded about its children is visible here.
  */
@@ -74,7 +74,7 @@ export function processesCommand(options: ProcessesCommandOptions): Subcommand {
 			if (args === "stop") return stop(ctx, current.orphans);
 			// A terminal wraps at its width, so rows are laid out for it; other modes get the full table.
 			const width = ctx.mode === "tui" && process.stdout.columns ? process.stdout.columns - 2 : undefined;
-			const shown = args === "all" ? { report: current, hidden: 0 } : scopeToSession(current, process.pid);
+			const shown = args === "all" ? { report: current, hidden: 0 } : scopeToWorkspace(current, ctx.cwd, process.pid);
 			say(
 				ctx,
 				formatReport(shown.report, { width, hidden: shown.hidden }),

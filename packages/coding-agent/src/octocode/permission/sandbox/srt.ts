@@ -3,14 +3,13 @@ import type * as SrtModule from "@anthropic-ai/sandbox-runtime";
 import type { SandboxRuntimeConfig as RuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { CommandSandbox, CommandSandboxRequest, SandboxedLaunch } from "../../../utils/command-sandbox.ts";
+import { linuxStart, unsupportedPlatform } from "./linux.ts";
+import { literalPolicy } from "./linux-paths.ts";
 import { type SandboxPolicy, sandboxTempDir } from "./policy.ts";
 import { withSocketFriendlyTempDir } from "./socket-dir.ts";
 import { commandDenials } from "./violations.ts";
 
 type Srt = typeof SrtModule;
-
-/** Where the library's `wrapWithSandboxArgv` runs: macOS wraps with Seatbelt (`/usr/bin/sandbox-exec`). */
-const SUPPORTED_PLATFORM = "darwin";
 
 /** How a connection to a host was answered: allowed for this connection (and the commands running now) or the session, or refused. */
 export type HostAnswer = { allow: true; scope: "once" | "session" } | { allow: false; reason: string };
@@ -57,13 +56,18 @@ async function askHost({ host, port }: { host: string; port: number | undefined 
 function startLibrary(): Promise<Srt> {
 	library ??= (async () => {
 		const srt = await import("@anthropic-ai/sandbox-runtime");
-		const { errors } = srt.SandboxManager.checkDependencies();
-		if (errors.length > 0) throw new Error(`The command sandbox cannot start: ${errors.join("; ")}.`);
+		// Linux adds bubblewrap's checks and the ripgrep its nested-repository scan runs.
+		const linux =
+			process.platform === "linux" ? linuxStart((ripgrep) => srt.SandboxManager.checkDependencies(ripgrep)) : undefined;
+		if (!linux) {
+			const { errors } = srt.SandboxManager.checkDependencies();
+			if (errors.length > 0) throw new Error(`The command sandbox cannot start: ${errors.join("; ")}.`);
+		}
 		// srt reads the child's TMPDIR from this name at each wrap; see `sandboxTempDir`.
 		process.env.CLAUDE_CODE_TMPDIR = sandboxTempDir();
 		// The log monitor reports Seatbelt denials, which name the refused path in the command's result.
 		// The proxy binds a Unix socket in the temporary folder, which a long `TMPDIR` makes too long for a socket path.
-		await withSocketFriendlyTempDir(() => srt.SandboxManager.initialize(baseConfig(), askHost, true));
+		await withSocketFriendlyTempDir(() => srt.SandboxManager.initialize({ ...baseConfig(), ...linux }, askHost, true));
 		return srt;
 	})().catch((error: unknown) => {
 		library = undefined;
@@ -88,8 +92,8 @@ interface Live {
 }
 
 /**
- * `CommandSandbox` over `@anthropic-ai/sandbox-runtime` (srt): a Seatbelt profile per command on macOS, from the
- * policy `policyFor` derives for the command's folder at that moment (the permission mode can change between
+ * `CommandSandbox` over `@anthropic-ai/sandbox-runtime` (srt): a Seatbelt profile per command on macOS, a bubblewrap
+ * sandbox on Linux (its wildcard rules made literal, `literalPolicy`), from the policy `policyFor` derives for the command's folder at that moment (the permission mode can change between
  * commands), with its network through the library's proxy. The library is loaded and started on the first sandboxed
  * command, so a session that never sandboxes pays nothing for it. Constructing one makes it the sandbox that answers
  * the proxy's questions.
@@ -151,8 +155,8 @@ export class SrtCommandSandbox implements CommandSandbox {
 
 	private async start(): Promise<Srt | undefined> {
 		let reason: string;
-		if (process.platform !== SUPPORTED_PLATFORM)
-			reason = `the command sandbox supports macOS only (this is ${process.platform})`;
+		const unsupported = unsupportedPlatform();
+		if (unsupported) reason = unsupported;
 		else
 			try {
 				return await startLibrary();
@@ -182,16 +186,24 @@ export class SrtCommandSandbox implements CommandSandbox {
 		// Unguessable (the library's rule for an id an allow list is registered under) and unique, so denials are this command's.
 		const commandId = randomBytes(16).toString("base64url");
 		const manager = srt.SandboxManager;
+		const linux = process.platform === "linux";
+		// On Linux the library makes mount points for denied paths that do not exist yet; each wrap's are removed after it.
+		const unmount = () => {
+			if (linux) manager.cleanupAfterCommand();
+		};
 		const { argv, env } = await manager.wrapWithSandboxArgv(
 			request.command,
 			request.shell,
-			{ filesystem: policy },
+			{ filesystem: linux ? literalPolicy(policy) : policy },
 			undefined,
 			request.cwd,
 			{ commandId, commandText: request.command },
 		);
 		const [file, ...args] = argv;
-		if (file === undefined) throw new Error("The command sandbox returned no program to run. The command was not run.");
+		if (file === undefined) {
+			unmount();
+			throw new Error("The command sandbox returned no program to run. The command was not run.");
+		}
 		this.live.set(commandId, { command: request.command, hosts: new Set() });
 		manager.registerCommandNetworkLists(commandId, { allowedDomains: [] });
 		let released = false;
@@ -204,6 +216,7 @@ export class SrtCommandSandbox implements CommandSandbox {
 				released = true;
 				this.live.delete(commandId);
 				manager.unregisterCommandNetworkLists(commandId);
+				unmount();
 			},
 			denials: (wait) => commandDenials(manager.getSandboxViolationStore(), commandId, { wait }),
 		};
