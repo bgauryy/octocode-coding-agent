@@ -82,9 +82,22 @@ flowchart LR
 
 ## Control a desktop app (optional)
 
-Octocode can operate native apps on your computer (a desktop app, a simulator, system settings, a browser's own windows) through [Cua Driver](https://cua.ai/docs/cua-driver/quickstart). It is off until you install Cua Driver yourself; Octocode never installs or bundles it.
+Octocode can operate native apps on your computer (a desktop app, a simulator, system settings, a browser's own windows) through [Cua Driver](https://github.com/trycua/cua) ([docs](https://cua.ai/docs/cua-driver/quickstart)). It is off until you install Cua Driver yourself; Octocode never installs or bundles it.
 
-1. Install Cua Driver and grant it Accessibility and Screen Recording. Its guide shows the steps for macOS, Windows and Linux.
+1. Install Cua Driver with Cua's own installer, from [github.com/trycua/cua](https://github.com/trycua/cua):
+
+   ```sh
+   # macOS or Linux
+   /bin/bash -c "$(curl -fsSL https://cua.ai/driver/install.sh)"
+   ```
+
+   ```powershell
+   # Windows (PowerShell)
+   irm https://cua.ai/driver/install.ps1 | iex
+   ```
+
+   These run a script from the internet, so read it first if you prefer. Then check `cua-driver --version`, and on macOS grant Accessibility and Screen Recording with `cua-driver permissions grant`. The Cua Spaces app also carries Cua Driver (see the repository).
+
 2. Start Octocode and run `/mcp`: the `desktop` server is listed, and enabled when Octocode finds `cua-driver` on your `PATH`. If you keep it elsewhere, set `OCTOCODE_CUA_DRIVER_PATH` to its absolute path (`~` works).
 3. Ask in plain words: "open Calculator, compute 6 × 7 and show me the screenshot". The agent hands the work to its `desktop` specialist, and **you approve every start**, in every permission mode.
 

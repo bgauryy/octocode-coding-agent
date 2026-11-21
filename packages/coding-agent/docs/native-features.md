@@ -811,7 +811,7 @@ It reuses saved captures, skips classification when URL, title and DOM digest ar
 
 ## Desktop control
 
-Native apps (a desktop app, a simulator, system settings, a window you must see) are driven with [Cua Driver](https://cua.ai/docs/cua-driver/quickstart), which Octocode neither installs nor bundles. Install it yourself; while Octocode finds `cua-driver` (on `PATH` or at `OCTOCODE_CUA_DRIVER_PATH`) the built-in `desktop` MCP server and the bundled `desktop` profile exist, and without it both stay out of the way: the server is listed disabled with the install pointer, and the profile is not offered, so the main prompt is unchanged. `OCTOCODE_MCP_DESKTOP=0` keeps both off.
+Native apps (a desktop app, a simulator, system settings, a window you must see) are driven with [Cua Driver](https://github.com/trycua/cua) ([install guide](https://cua.ai/docs/cua-driver/quickstart)), which Octocode neither installs nor bundles. Install it yourself; while Octocode finds `cua-driver` (on `PATH` or at `OCTOCODE_CUA_DRIVER_PATH`) the built-in `desktop` MCP server and the bundled `desktop` profile exist, and without it both stay out of the way: the server is listed disabled with the install pointer, and the profile is not offered, so the main prompt is unchanged. `OCTOCODE_MCP_DESKTOP=0` keeps both off.
 
 ```mermaid
 flowchart TD
