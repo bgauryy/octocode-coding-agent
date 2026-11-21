@@ -1,7 +1,8 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { effectivePlugins } from "../../core/extensibility/toggles.ts";
-import { desktopAvailable } from "../../../../mcp/src/api.ts";
+import { desktopEnabled } from "../../../../mcp/src/api.ts";
+import { getAgentDir } from "../../config.ts";
 import { PROFILE_DECLARABLE } from "../permission/mode.ts";
 import { notify } from "../shared/commands.ts";
 import { interactive } from "../shared/interactive.ts";
@@ -35,7 +36,8 @@ export function loadSessionProfiles(
 	);
 	// The `desktop` specialist drives the built-in server: without Cua Driver it would only waste prompt space and fail, and a
 	// main session nobody can answer (print, JSON) has no one to approve its start. The specialist's own child keeps its profile.
-	if (!desktopAvailable() || !(isSubagent || interactive(ctx, isSubagent))) profiles.delete("desktop");
+	const desktopOn = desktopEnabled({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
+	if (!desktopOn || !(isSubagent || interactive(ctx, isSubagent))) profiles.delete("desktop");
 	if (!interactive(ctx, isSubagent)) return { profiles, refused };
 	if (shadowed.length > 0)
 		notify(ctx.ui, `Project subagent profiles replace profiles loaded earlier:\n${shadowed.join("\n")}`, "warning");

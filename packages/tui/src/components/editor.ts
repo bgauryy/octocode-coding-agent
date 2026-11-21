@@ -6,7 +6,7 @@ import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { type DraftText, insertTextAtCursorInternal, prependedDraft, submitValue } from "./editor/editing.ts";
 import { dimGhost, ghostSuffix } from "./editor/ghost.ts";
-import { addToHistory } from "./editor/history.ts";
+import { addToHistory, clearHistory } from "./editor/history.ts";
 import { type EditorWordHighlight, linePainter } from "./editor/highlight.ts";
 import { handleEditorInput } from "./editor/input.ts";
 import { createScrollBorder } from "./editor/layout.ts";
@@ -108,12 +108,14 @@ export class Editor implements Component, Focusable {
 		this.model.autocomplete.setAutocompleteProvider(provider);
 	}
 
-	/**
-	 * Add a prompt to history for up/down arrow navigation.
-	 * Called after successful submission.
-	 */
+	/** Add a submitted prompt to the Up/Down history (the last 5 are kept). */
 	addToHistory(text: string): void {
 		addToHistory(this.model, text);
+	}
+
+	/** Forget the prompt history, as when another session is shown. */
+	clearHistory(): void {
+		clearHistory(this.model);
 	}
 
 	/**

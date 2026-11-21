@@ -238,25 +238,30 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.getText(), "line1X\nline2");
 		});
 
-		it("limits history to 100 entries", () => {
+		it("keeps the last 5 prompts", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			for (let i = 0; i < 8; i++) editor.addToHistory(`prompt ${i}`);
 
-			// Add 105 entries
-			for (let i = 0; i < 105; i++) {
-				editor.addToHistory(`prompt ${i}`);
-			}
-
-			// Navigate to oldest
-			for (let i = 0; i < 100; i++) {
+			const seen: string[] = [];
+			for (let i = 0; i < 6; i++) {
 				editor.handleInput("\x1b[A");
+				seen.push(editor.getText());
 			}
+			// Newest first, the oldest kept is prompt 3, and Up past it stays there.
+			assert.deepStrictEqual(seen, ["prompt 7", "prompt 6", "prompt 5", "prompt 4", "prompt 3", "prompt 3"]);
+		});
 
-			// Should be at entry 5 (oldest kept), not entry 0
-			assert.strictEqual(editor.getText(), "prompt 5");
-
-			// One more Up should not change anything
+		it("forgets every prompt when the history is cleared", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			editor.addToHistory("old session prompt");
 			editor.handleInput("\x1b[A");
-			assert.strictEqual(editor.getText(), "prompt 5");
+			editor.setText("");
+			editor.clearHistory();
+			editor.handleInput("\x1b[A");
+			assert.strictEqual(editor.getText(), "");
+			editor.addToHistory("new session prompt");
+			editor.handleInput("\x1b[A");
+			assert.strictEqual(editor.getText(), "new session prompt");
 		});
 
 		it("places cursor at start after browsing history upward", () => {

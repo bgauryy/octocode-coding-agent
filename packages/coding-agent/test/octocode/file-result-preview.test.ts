@@ -23,15 +23,13 @@ const rows = (count: number, expanded: boolean) =>
 describe("file result preview", () => {
 	beforeAll(() => initTheme("dark"));
 
-	it("shows the same first rows and hidden count collapsed as the whole diff gives", () => {
+	it("closes a finished diff to its outcome row, and shows the whole diff expanded", () => {
 		const total = diff.split("\n").length;
 		expect(total).toBeGreaterThan(400);
 		const collapsed = rows(1, false);
 		const expanded = rows(1, true);
-		// The outcome row and five diff rows (a collapsed result shows 5 lines), then one fold hint counting the rest.
-		expect(collapsed.slice(0, 6)).toEqual(expanded.slice(0, 6));
-		expect(collapsed).toHaveLength(7);
-		expect(collapsed[6]).toBe(`     … +${total - 5} lines (ctrl+o to expand)`);
+		expect(collapsed).toEqual([`${expanded[0]} (ctrl+o to expand)`]);
+		expect(expanded.length).toBeGreaterThanOrEqual(total);
 	});
 
 	it("colours only the start of a long diff while collapsed, and none of it for several changes", () => {

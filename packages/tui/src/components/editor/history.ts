@@ -3,7 +3,8 @@ import type { EditorModel } from "./model.ts";
 import { expandPasteMarkers, PASTE_MARKER_REGEX } from "./segmentation.ts";
 import type { HistoryEntry } from "./types.ts";
 
-const MAX_HISTORY = 100;
+/** Up in an empty editor recalls the last few prompts of the session. */
+const MAX_HISTORY = 5;
 
 /** The full text an entry submits. */
 const expandedEntry = (entry: HistoryEntry): string =>
@@ -47,6 +48,13 @@ export function addToHistory(editor: EditorModel, text: string): void {
 	if (editor.history.length > MAX_HISTORY) {
 		editor.history.pop();
 	}
+}
+
+/** Forget every prompt and stop browsing: a different session starts its own history. */
+export function clearHistory(editor: EditorModel): void {
+	editor.history.length = 0;
+	editor.historyIndex = -1;
+	editor.historyDraft = null;
 }
 
 export function isOnFirstVisualLine(editor: EditorModel): boolean {

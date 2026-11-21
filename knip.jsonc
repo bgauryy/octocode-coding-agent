@@ -13,6 +13,7 @@
 				"scripts/agent-treeshake-smoke-entry.ts",
 				"scripts/browser-smoke-entry.ts",
 				"scripts/desktop-acp-check.mjs",
+				"scripts/check-desktop-tools.mjs",
 				"scripts/generate-thinking-capabilities.mjs",
 				"scripts/profile-render-backpressure.mjs",
 				"scripts/replay-session.mjs",

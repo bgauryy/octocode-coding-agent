@@ -34,12 +34,16 @@ const compaction = { type: "compaction", id: "c0", parentId: null } as unknown a
 
 function fakeHost(entries: SessionEntry[]) {
 	const chatContainer = new Container();
+	const order: string[] = [];
 	const host = {
+		order,
+		editor: { clearHistory: vi.fn(() => order.push("clearHistory")) },
 		chatContainer,
 		pendingTools: new Map<string, Component>(),
 		streamingComponent: undefined as Component | undefined,
 		sessionManager: { buildContextEntries: () => entries, getEntries: () => entries },
 		renderSessionEntries: vi.fn((batch: SessionEntry[]) => {
+			order.push("render");
 			for (const entry of batch) chatContainer.addChild(new Row(entry.type === "compaction" ? "summary" : entry.id));
 			host.pendingTools.clear();
 		}),
@@ -62,6 +66,13 @@ describe("windowed resume", () => {
 		expect(shown).toHaveLength(RESUME_WINDOW_ENTRIES + 1); // window plus the load-earlier row
 		expect(shown.at(-1)).toBe("e1999");
 		expect(shown[1]).toBe(`e${2000 - RESUME_WINDOW_ENTRIES}`);
+	});
+
+	it("drops the previous session's prompt history before rendering this session's entries", () => {
+		const host = fakeHost(entries);
+		renderInitialMessages(host as never);
+		expect(host.order[0]).toBe("clearHistory");
+		expect(host.order).toContain("render");
 	});
 
 	it("prepends the previous window in order, below the row, until nothing is hidden", () => {

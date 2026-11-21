@@ -670,8 +670,8 @@ describe("web tool", () => {
 			details: { kind: "fetch", bytes: 12_288, lines: 240, file: "/tmp/page.txt", durationMs: 5 },
 		});
 		expect(page).toContain("⎿  Fetched 12.0KB · 240 lines");
-		// The short preview shows whole; the saved page is what expanding adds.
-		expect(page).toContain("     e");
+		// A finished fetch closes to its summary line; expanding shows the page.
+		expect(page).not.toContain("     e");
 		expect(page).toContain("(ctrl+o to expand)");
 		expect(page).not.toContain("saved:");
 		expect(

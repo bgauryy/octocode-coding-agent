@@ -546,15 +546,15 @@ describe("ToolExecutionComponent parity", () => {
 
 		const collapsed = stripAnsi(component.render(120).join("\n"));
 		expect(collapsed).toContain("custom_tool");
-		expect(collapsed).toContain("line-5");
-		expect(collapsed).not.toContain("line-6");
-		expect(collapsed).toContain("… +10 lines");
+		// A finished result closes; only its fold hint shows.
+		expect(collapsed).not.toContain("line-5");
+		expect(collapsed).toContain("… +15 lines");
 		const bindings = getKeybindings();
 		setKeybindings(new KeybindingsManager());
 		try {
 			component.invalidate();
 			component.setExpanded(false);
-			expect(stripAnsi(component.render(120).join("\n"))).toContain("… +10 lines (ctrl+o to expand)");
+			expect(stripAnsi(component.render(120).join("\n"))).toContain("… +15 lines (ctrl+o to expand)");
 		} finally {
 			setKeybindings(bindings);
 		}

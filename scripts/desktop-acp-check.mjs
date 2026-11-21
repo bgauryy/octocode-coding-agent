@@ -25,7 +25,7 @@ if (!existsSync(cli)) {
 	console.error(`No build at ${cli}: run yarn run build:offline, or pass --bundle.`);
 	process.exit(2);
 }
-if (spawnSync("cua-driver", ["--version"]).status !== 0) {
+if (spawnSync(process.env.OCTOCODE_CUA_DRIVER_PATH || "cua-driver", ["--version"]).status !== 0) {
 	console.error("cua-driver is not installed or not on PATH: nothing to check.");
 	process.exit(2);
 }

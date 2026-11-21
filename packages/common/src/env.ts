@@ -46,6 +46,12 @@ export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
 export const MCP_DESKTOP_ENV = "OCTOCODE_MCP_DESKTOP";
 
 /**
+ * Absolute path of the `cua-driver` executable the `desktop` MCP server starts (`~` stands for the home folder). Without it
+ * the server looks for `cua-driver` on `PATH`; a value that is not an executable file leaves the server disabled and says so.
+ */
+export const CUA_DRIVER_PATH_ENV = "OCTOCODE_CUA_DRIVER_PATH";
+
+/**
  * Comma-separated app names (`Cursor,Terminal`) the desktop server may drive although the default denylist refuses them
  * (`permission/desktop-apps.ts`). Only the user's own environment sets it: an agent's commands cannot change this process.
  */

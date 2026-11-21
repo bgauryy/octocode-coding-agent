@@ -79,6 +79,7 @@ describe("skills the application ships", () => {
 			"octocode-output",
 			"octocode-security-review",
 			"octocode-subagents",
+			"octocode-visual-browsing",
 			"resume-external-harness",
 		]);
 		// Delegation, filing items and saving memories need tools only the coordinator holds.

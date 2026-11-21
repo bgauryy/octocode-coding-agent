@@ -69,22 +69,25 @@ describe("policy section templates", () => {
 			).not.toBe("");
 	});
 
-	it("tells the main agent when to delegate to the desktop specialist, only while one exists", () => {
+	it("tells the main agent when and how to use the desktop specialist, only while one exists", () => {
 		const base = { research: undefined, profiles: [], canDelegate: true, canUseAgent: true } as Inputs;
 		const delegation = (desktopProfiles?: string[]) =>
 			octocodePromptSections({ ...base, ...(desktopProfiles ? { desktopProfiles } : {}) }).delegation ?? "";
-		expect(delegation()).not.toMatch(/desktop/i);
+		expect(delegation()).not.toMatch(/desktop|AppleScript/i);
 		const text = delegation(["desktop"]);
-		expect(text).toContain("`desktop`");
-		expect(text).toMatch(/native desktop app/);
-		expect(text).toMatch(/user approves each start/);
-		// How to brief it, and what to do with its answer: the other half of the exchange.
-		expect(text).toMatch(/Brief it with one app, the goal, the state to start from and the proof you need/);
-		expect(text).toMatch(/`blocked` report is a step only the user can take/);
-		expect(text).toMatch(/`message` it to go on/);
-		expect(text).toMatch(/never finish the task yourself with a shell or AppleScript/);
-		expect(text).toMatch(/Check the screenshot path/);
-		expect(text).toMatch(/browser/);
+		// The terms a coordinator needs, not their wording: the profile, when (native app against browser), how to brief, what to do with an answer.
+		for (const term of [
+			"`desktop`",
+			"native",
+			"browser",
+			"approves",
+			"`apps`",
+			"`message`",
+			"`blocked`",
+			"screenshot",
+			"AppleScript",
+		])
+			expect(text.toLowerCase(), term).toContain(term.toLowerCase());
 	});
 
 	it("render the lean policy under every flag combination", () => {

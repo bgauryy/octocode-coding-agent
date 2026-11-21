@@ -51,7 +51,9 @@ describe("transcript render tracking", () => {
 		await t.until(async () => (await t!.text()).includes("Summary"), "the answer on screen");
 		await t.until(() => !t!.host.session.isStreaming, "idle");
 		const screen = await t.text();
-		expect(screen).toContain("+35 earlier lines");
+		// The finished command closes to its summary line; the failed one keeps its output in view.
+		expect(screen).toContain("exit 0 · 40 lines (ctrl+o");
+		expect(screen).not.toContain("earlier lines");
 		expect(screen).toContain("oops");
 
 		const chat = t.host.chatContainer;

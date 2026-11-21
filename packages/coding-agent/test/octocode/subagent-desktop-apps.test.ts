@@ -19,8 +19,11 @@ describe("a desktop task's apps list", () => {
 		delete process.env[DESKTOP_APPS_ENV];
 	});
 
-	it("is a field of the agent tool's task", () => {
-		expect(Object.keys(agentToolSpec().parameters.properties)).toContain("apps");
+	it("is a field of the agent tool's task only when the desktop specialist exists", () => {
+		expect(Object.keys(agentToolSpec([], true).parameters.properties)).toContain("apps");
+		// Without Cua Driver the field would only cost prompt space in every session.
+		expect(Object.keys(agentToolSpec().parameters.properties)).not.toContain("apps");
+		expect(Object.keys(agentToolSpec([], false).parameters.properties)).not.toContain("apps");
 	});
 
 	it("reaches only a desktop child's environment, comma-joined", () => {

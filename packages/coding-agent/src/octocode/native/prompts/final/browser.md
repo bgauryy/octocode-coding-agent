@@ -99,7 +99,7 @@ Who can settle it?
 
 <skills>
 Use the skill tool (one call per name) to load a skill the task names; several can apply.
-24 more skills are not listed here; the skill tool loads any by name and names close matches for an unknown one.
+25 more skills are not listed here; the skill tool loads any by name and names close matches for an unknown one.
 
 <available_skills>
 </available_skills>

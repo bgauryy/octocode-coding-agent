@@ -80,6 +80,16 @@ flowchart LR
 | Web and remote        | Browser workspace, control or view-only links                                                    | `/web`, `/remote`                            | [web](docs/web-workspace.md), [remote](docs/remote.md)                                         |
 | Editors and scripts   | ACP, RPC, JSON Lines, session API                                                                | `--mode acp`, `--mode rpc`, `octocode-api`   | [CLI](docs/cli.md), [ACP](docs/acp.md), [RPC](docs/rpc.md), [session API](docs/session-api.md) |
 
+## Control a desktop app (optional)
+
+Octocode can operate native apps on your computer (a desktop app, a simulator, system settings, a browser's own windows) through [Cua Driver](https://cua.ai/docs/cua-driver/quickstart). It is off until you install Cua Driver yourself; Octocode never installs or bundles it.
+
+1. Install Cua Driver and grant it Accessibility and Screen Recording. Its guide shows the steps for macOS, Windows and Linux.
+2. Start Octocode and run `/mcp`: the `desktop` server is listed, and enabled when Octocode finds `cua-driver` on your `PATH`. If you keep it elsewhere, set `OCTOCODE_CUA_DRIVER_PATH` to its absolute path (`~` works).
+3. Ask in plain words: "open Calculator, compute 6 × 7 and show me the screenshot". The agent hands the work to its `desktop` specialist, and **you approve every start**, in every permission mode.
+
+What to expect: the specialist has no shell, controls only the app the task names, never your own browser profile, and asks again before risky actions such as reading the clipboard. A print or JSON run (`-p`, `--mode json`) has nobody to approve, so it has no desktop control at all. Without Cua Driver, none of this exists: no server, no specialist, no extra prompt text. Turn it off with `OCTOCODE_MCP_DESKTOP=0` or `/configuration disable mcp:desktop`. Cua Driver sends its own telemetry by default (`cua-driver telemetry disable`). Details: [desktop control](docs/native-features.md#desktop-control), [permissions](docs/permissions.md#desktop-control).
+
 ## Everyday commands
 
 | Command                             | Does                                                        |

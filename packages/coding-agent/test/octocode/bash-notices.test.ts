@@ -41,7 +41,8 @@ describe("native Bash host notices", () => {
 				expect(modelText).toContain(notice);
 				expect(view).toContain(notice);
 			}
-			expect(view.match(/unique-command-output/g)).toHaveLength(1);
+			// Notices show on the closed row too; the output only when expanded.
+			expect(view.match(/unique-command-output/g) ?? []).toHaveLength(expanded ? 1 : 0);
 		}
 		expect(modelText.match(/unique-command-output/g)).toHaveLength(1);
 		expect(modelText).toContain(CLAMP_NOTE);

@@ -16,9 +16,10 @@ import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "
  * Shared tool presentation:
  *
  *   ✓ Name(summary) · 1.2s
- *     ⎿  one-line summary
- *        the whole body up to 12 lines, else a 5-line preview
- *        … +K lines (ctrl+o to expand)
+ *     ⎿  one-line summary (ctrl+o to expand)
+ *
+ * A finished row closes to its summary line. While it runs, or when it failed, it shows the whole body up to 12 lines,
+ * else a 5-line preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
  *
  * The mark is the state light (`stateMark` with `light`): one ⏺ in the state's colour, steady grey (dim) before execution,
  * breathing yellow once Octocode started the call but its checks or approval still run, breathing green while running
@@ -148,7 +149,10 @@ interface ResultBlockOptions {
 	prefaceLabel?: string;
 	/** Shell output: failure and warning lines, `path:line` heads and a unified diff are coloured as such. */
 	shell?: boolean;
-	/** Preview lines while collapsed (default 3). */
+	/**
+	 * Preview lines while collapsed. Default: none once the call finished, so the row closes to its summary line (ctrl+o
+	 * opens it; a lone line without a summary stays); a 5-line preview while it runs or when it failed.
+	 */
 	max?: number;
 	/** Preview the last lines instead of the first (command output). */
 	tail?: boolean;
@@ -227,7 +231,6 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	const raw = styled || painted ? undefined : rawLines;
 	const paint = (line: string) => (raw ? theme.fg(color, line) : line);
 	const body = options.lines ?? styled ?? painted ?? raw!;
-	const max = Math.max(0, options.max ?? TOOL_PREVIEW_LINES);
 	// The `⎿` gutter leads the first row of the block only; every later row (and each wrapped continuation) hangs under the text.
 	const lead = () => (rows.length === 0 ? theme.fg("dim", GUTTER) : INDENT);
 	const hang = (text: string): Row => ({ text, wrap: true, indent: INDENT, lead: lead() });
@@ -249,6 +252,9 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	} else {
 		// Blank lines waste preview rows; they still count as hidden and show when expanded.
 		const filled = body.filter((line) => (raw ? line : stripTerminalSequences(line)).trim() !== "");
+		// A finished row closes; without a summary its one line stays, since a hint would take the same row.
+		const closed = summary || filled.length > 1 || preface.length > 0 ? 0 : 1;
+		const max = Math.max(0, options.max ?? (context.isPartial || failed ? TOOL_PREVIEW_LINES : closed));
 		const short =
 			max > 0 && preface.length === 0 && filled.length <= SHOW_ALL_LINES && (options.totalLines ?? 0) <= body.length;
 		const limit = short ? filled.length : max;

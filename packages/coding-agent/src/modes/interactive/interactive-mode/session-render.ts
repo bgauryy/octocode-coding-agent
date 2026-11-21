@@ -38,6 +38,7 @@ type SessionRenderHost = Pick<
 	| "addCustomEntryToChat"
 	| "addMessageToChat"
 	| "chatContainer"
+	| "editor"
 	| "getRegisteredToolDefinition"
 	| "outputPad"
 	| "pendingTools"
@@ -329,6 +330,8 @@ export function idleWarmingHint(
 
 export function renderInitialMessages(host: SessionRenderHost): void {
 	const entries = host.sessionManager.buildContextEntries();
+	// Prompt history belongs to the session shown: drop the previous session's prompts before adding this one's.
+	host.editor.clearHistory?.();
 	renderWindowedEntries(host, entries, {
 		updateFooter: true,
 		populateHistory: true,

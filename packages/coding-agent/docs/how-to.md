@@ -82,7 +82,7 @@ Details: [memory](memory.md).
 ## Control a desktop app
 
 1. Install [Cua Driver](https://cua.ai/docs/cua-driver/quickstart) and grant it Accessibility and Screen Recording (`cua-driver permissions grant`). Octocode does not install it.
-2. Start a new session. Check `/mcp`: `desktop` is listed, and enabled while `cua-driver` is on `PATH`.
+2. Start a new session. Check `/mcp`: `desktop` is listed, and enabled while Octocode finds `cua-driver` (on `PATH`, or at the absolute path in `OCTOCODE_CUA_DRIVER_PATH`).
 3. Ask for the task: "open Calculator, compute 6 × 7 and show me the screenshot". The main agent starts the `desktop` specialist and you are asked to approve it, in every permission mode.
 4. Read the report: the outcome, the app, the screenshot path. Cua Driver's telemetry is on by default; `cua-driver telemetry disable` turns it off.
 

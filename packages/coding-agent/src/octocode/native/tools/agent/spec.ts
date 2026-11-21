@@ -11,7 +11,7 @@ import { runnerField } from "../../../subagents/runner-task.ts";
  * The `agent` tool's declaration: its name, label, description and parameters. Built at registration, so the description
  * names the subagent limit in force for that session, and `runner` is declared only when `runners` names an installed runnable CLI.
  */
-export function agentToolSpec(runners: readonly string[] = []) {
+export function agentToolSpec(runners: readonly string[] = [], desktop = false) {
 	const spec = {
 		name: "agent",
 		roleVariant: true,
@@ -112,5 +112,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 	};
 	// Typed always, declared only when an installed runner is available in this session.
 	if (runners.length === 0) Reflect.deleteProperty(spec.parameters.properties, "runner");
+	// Likewise `apps`: it only means something when the desktop specialist exists, so a session without Cua Driver does not carry it.
+	if (!desktop) Reflect.deleteProperty(spec.parameters.properties, "apps");
 	return spec;
 }

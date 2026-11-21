@@ -43,6 +43,9 @@ export interface EditorComponent extends Component {
 
 	addToHistory?(text: string): void;
 
+	/** Forget the prompt history, as when another session is shown. */
+	clearHistory?(): void;
+
 	// Advanced text manipulation (optional)
 
 	insertTextAtCursor?(text: string): void;

@@ -40,6 +40,7 @@ export { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./pat
 export { presetEntries } from "./preset.ts";
 export { builtinPresets } from "./presets/index.ts";
 export { desktopAvailable } from "./presets/desktop/index.ts";
+export { desktopEnabled } from "./presets/desktop/enabled.ts";
 export { recommendedPresets } from "./recommended/index.ts";
 export { mcpGroupLabel } from "./group.ts";
 export { isEnabled } from "./server.ts";

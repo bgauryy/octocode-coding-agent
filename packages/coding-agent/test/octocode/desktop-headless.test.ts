@@ -1,6 +1,8 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import "../mcp-host.ts";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getAgentDir } from "../../src/config.ts";
 import { loadSessionProfiles } from "../../src/octocode/subagents/session-profiles.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -46,6 +48,19 @@ describe("the desktop specialist needs someone to approve its start", () => {
 	it("stays defined for its own child, which runs with its parent's answer", () => {
 		withCuaOnPath();
 		expect(profilesFor(false, true).has("desktop")).toBe(true);
+	});
+
+	it("is not offered when the user switched the desktop server off in their configuration", () => {
+		withCuaOnPath();
+		const file = join(getAgentDir(), "mcp.json");
+		mkdirSync(getAgentDir(), { recursive: true });
+		writeFileSync(file, JSON.stringify({ mcpServers: { desktop: { enabled: false } } }));
+		try {
+			expect(profilesFor(true, false).has("desktop")).toBe(false);
+		} finally {
+			rmSync(file, { force: true });
+		}
+		expect(profilesFor(true, false).has("desktop")).toBe(true);
 	});
 
 	it("is not offered without Cua Driver, whoever asks", () => {

@@ -1,4 +1,5 @@
 import { agentTaskDisplay } from "./display.ts";
+import { desktopAvailable } from "../../../../mcp/src/api.ts";
 import type { RunDetails } from "./run-types.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { Permission } from "../permission/ask.ts";
@@ -363,7 +364,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	};
 	registerTool(
 		timedTool({
-			...agentToolSpec(runners?.ids),
+			...agentToolSpec(runners?.ids, desktopAvailable()),
 			execute: (id, params, signal, onUpdate, ctx) => spawnAgent(spawnEnv, id, params, signal, onUpdate, ctx),
 			display: agentTaskDisplay,
 			renderCall: renderAgentCall,

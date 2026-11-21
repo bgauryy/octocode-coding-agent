@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENTS, baseEnv, fixture } from "./agent-context/capture.ts";
 
@@ -15,6 +16,16 @@ describe("the opt-in desktop capture", () => {
 			fs.rmSync(fx.root, { recursive: true, force: true });
 		}
 		expect(AGENTS.map((agent) => agent.name)).not.toContain("desktop");
+	});
+
+	it("shows no desktop text, no desktop profile and no `apps` field to a session without Cua Driver", () => {
+		// The committed prompts are captured with the server off, which is how a machine without `cua-driver` runs.
+		const finalDir = path.join(import.meta.dirname, "../../src/octocode/native/prompts/final");
+		for (const file of fs.readdirSync(finalDir).filter((name) => name.endsWith(".md"))) {
+			const text = fs.readFileSync(path.join(finalDir, file), "utf8");
+			expect(text, file).not.toMatch(/\bdesktop\b/i);
+			expect(text, file).not.toMatch(/"apps"|\bapps\b.*only apps it may control/i);
+		}
 	});
 
 	it("keeps the server on when OCTOCODE_CAPTURE_DESKTOP=1", () => {

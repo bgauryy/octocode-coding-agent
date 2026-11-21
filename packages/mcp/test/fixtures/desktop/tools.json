@@ -1,0 +1,295 @@
+{
+	"driverVersion": "0.30.4",
+	"tools": [
+		{
+			"name": "bring_to_front",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_click",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_dialog",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_download",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "browser_navigate",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_pointer",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_prepare",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "browser_set_input_files",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "browser_type",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "check_for_update",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "check_permissions",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "click",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "clipboard_read",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "clipboard_write",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "double_click",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "drag",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "end_session",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "escalate_session",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_accessibility_tree",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_agent_cursor_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_browser_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_config",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_cursor_position",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_desktop_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_recording_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_screen_size",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_session",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_session_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "get_window_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "health_report",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "hotkey",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "install_extension",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "install_ffmpeg",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "invoke_menu",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "kill_app",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "launch_app",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "list_apps",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "list_sessions",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "list_windows",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "move_cursor",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "page",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "parse_visual_regions",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "press_key",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "replay_trajectory",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "right_click",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "scroll",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "set_agent_cursor_enabled",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "set_agent_cursor_motion",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "set_agent_cursor_theme",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "set_config",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "set_value",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "set_window_frame",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "start_recording",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "start_session",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "stop_recording",
+			"readOnlyHint": false,
+			"destructiveHint": false
+		},
+		{
+			"name": "type_text",
+			"readOnlyHint": false,
+			"destructiveHint": true
+		},
+		{
+			"name": "verify_state",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		},
+		{
+			"name": "zoom",
+			"readOnlyHint": true,
+			"destructiveHint": false
+		}
+	]
+}

@@ -1,6 +1,7 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { envFlag, MCP_DESKTOP_ENV } from "@octocodeai/octocode-common/env";
+import { CUA_DRIVER_PATH_ENV, envFlag, MCP_DESKTOP_ENV } from "@octocodeai/octocode-common/env";
 import { DESKTOP_BIN, DESKTOP_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerPreset } from "../../preset.ts";
 import { defineDesktopTool } from "./tools.ts";
@@ -101,36 +102,59 @@ export function onPath(command: string, env: NodeJS.ProcessEnv = process.env): b
 	return false;
 }
 
-/** Whether the built-in `desktop` server is enabled here: `cua-driver` is on `PATH` and `OCTOCODE_MCP_DESKTOP` is not `0`. */
+/**
+ * The Cua Driver executable to start: the file `OCTOCODE_CUA_DRIVER_PATH` names (an explicit choice, so a wrong value is
+ * reported, never replaced by a `PATH` lookup), else `cua-driver` on `PATH`. `problem` says why there is none.
+ */
+function findDriver(
+	env: NodeJS.ProcessEnv,
+): { command: string; problem?: undefined } | { command?: undefined; problem: string } {
+	const named = env[CUA_DRIVER_PATH_ENV]?.trim();
+	if (named) {
+		const file = named === "~" || named.startsWith("~/") ? path.join(os.homedir(), named.slice(1)) : named;
+		if (!path.isAbsolute(file))
+			return { problem: `${CUA_DRIVER_PATH_ENV} must be an absolute path (it is "${named}")` };
+		try {
+			accessSync(file, constants.X_OK);
+			if (statSync(file).isFile()) return { command: file };
+		} catch {
+			// Reported below.
+		}
+		return { problem: `${CUA_DRIVER_PATH_ENV} points at ${file}, which is not an executable file` };
+	}
+	return onPath(DESKTOP_BIN, env) ? { command: DESKTOP_BIN } : { problem: `${DESKTOP_BIN} is not on PATH` };
+}
+
+/** Whether the built-in `desktop` server is enabled here: a Cua Driver executable is found and `OCTOCODE_MCP_DESKTOP` is not `0`. */
 export const desktopAvailable = (env: NodeJS.ProcessEnv = process.env): boolean =>
-	onPath(DESKTOP_BIN, env) && envFlag(env, MCP_DESKTOP_ENV, true);
+	findDriver(env).command !== undefined && envFlag(env, MCP_DESKTOP_ENV, true);
 
 /**
  * Cua Driver as the `desktop` MCP server (`cua-driver mcp`, MIT): it inspects and operates native apps on the user's
- * own desktop. Octocode never installs or bundles it, so the server is enabled only while `cua-driver` is on `PATH`
- * (`OCTOCODE_MCP_DESKTOP=0` keeps it off anyway); without the executable it stays listed, disabled, with the install
+ * own desktop. Octocode never installs or bundles it, so the server is enabled only while an executable is found: the
+ * file `OCTOCODE_CUA_DRIVER_PATH` names, else `cua-driver` on `PATH` (`OCTOCODE_MCP_DESKTOP=0` keeps it off anyway); without the executable it stays listed, disabled, with the install
  * pointer. It is not in the default tool selection (`defaultActive: false`): the `desktop` subagent selects its tools
  * and the main agent delegates to it. Every call that is not declared read-only asks `desktop.control` in every mode
  * (`permission/desktop-mcp.ts`). The launch never passes `--grant existing-profile`; a user's own `desktop` server in
  * `mcp.json` replaces this one.
  */
 export function desktopPreset(env: NodeJS.ProcessEnv = process.env): McpServerPreset {
-	const installed = onPath(DESKTOP_BIN, env);
+	const driver = findDriver(env);
 	return {
 		name: DESKTOP_SERVER,
 		config: {
-			command: DESKTOP_BIN,
+			command: driver.command ?? DESKTOP_BIN,
 			args: ["mcp"],
 			inheritEnv: true,
 			defaultActive: false,
-			enabled: installed && envFlag(env, MCP_DESKTOP_ENV, true),
+			enabled: driver.command !== undefined && envFlag(env, MCP_DESKTOP_ENV, true),
 			toolExposure: {
 				...Object.fromEntries(DESKTOP_RARE_TOOLS.map((tool) => [tool, "onDemand" as const])),
 				...Object.fromEntries(DESKTOP_HIDDEN_TOOLS.map((tool) => [tool, "hidden" as const])),
 			},
-			description: installed
+			description: driver.command
 				? "Native desktop apps on this computer: inspect and operate them, with screenshots."
-				: `Native desktop apps through Cua Driver. Not installed: ${DESKTOP_BIN} is not on PATH (https://cua.ai/docs/cua-driver/quickstart).`,
+				: `Native desktop apps through Cua Driver. Not installed: ${driver.problem} (https://cua.ai/docs/cua-driver/quickstart).`,
 		},
 		defineTool: defineDesktopTool,
 		instructionsOnDemand: true,

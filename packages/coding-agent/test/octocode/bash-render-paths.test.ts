@@ -172,9 +172,11 @@ describe("background job messages", () => {
 		expect(old).toContain("failed with exit code 1 after 5s");
 		expect(old).toContain("log: ~/x/bash-1.log");
 		expect(old).not.toContain("Log:");
-		const bare = text(renderJobMessage("Background bash bash-9 finished after 4m: sleep 240\ndone", false, theme));
+		const report = "Background bash bash-9 finished after 4m: sleep 240\ndone";
+		const bare = text(renderJobMessage(report, false, theme));
 		expect(bare).toContain("finished after 4m");
-		expect(bare).toContain("done");
+		expect(bare).not.toContain("done");
+		expect(text(renderJobMessage(report, true, theme))).toContain("done");
 	});
 
 	it("draw a stopped job as interrupted and unparseable text as a failure without throwing", () => {

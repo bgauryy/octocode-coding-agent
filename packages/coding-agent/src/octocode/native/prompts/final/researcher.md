@@ -97,7 +97,7 @@ Who can settle it?
 
 <skills>
 Use the skill tool (one call per name) to load a skill when its description matches the work at hand (a shared word is not a match); several can apply.
-20 more skills are not listed here; the skill tool loads any by name and names close matches for an unknown one.
+21 more skills are not listed here; the skill tool loads any by name and names close matches for an unknown one.
 
 <available_skills>
 {{SKILLS_LIST}}

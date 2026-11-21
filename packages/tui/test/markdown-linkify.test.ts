@@ -53,8 +53,14 @@ describe("file references", () => {
 			["user@example.com:25", []],
 			["src/a.ts:0", []],
 			["src/a.ts:12abc", []],
-			["src/a.ts:", []],
-			["src/a.ts", []],
+			["src/a.ts:", ["src/a.ts"]],
+			["src/a.ts", ["src/a.ts"]],
+			["see ~/proj/notes.md and ./b/c.json", ["~/proj/notes.md", "./b/c.json"]],
+			["/abs/dir/file.go.", ["/abs/dir/file.go"]],
+			["Node.js and main.ts", []],
+			["and/or, km/h, 2026/11/21", []],
+			["https://example.com/a.ts", []],
+			["file:///tmp/a.ts", []],
 		];
 		for (const [text, refs] of cases) {
 			it(JSON.stringify(text), () => {
@@ -111,6 +117,23 @@ describe("file references", () => {
 		it("links absolute paths as written", () => {
 			const out = render("in /tmp/x/a.ts:5 done", true);
 			assert.ok(out.includes(OSC8("file:///tmp/x/a.ts#L5")));
+		});
+
+		it("links a path without a line number in prose and in a code span", () => {
+			const prose = render("Open src/a.ts now", true);
+			assert.ok(prose.includes(`${OSC8(here("src/a.ts"))}<L>src/a.ts</L>${CLOSE}`), JSON.stringify(prose));
+			const code = render("Open `src/a.ts` now", true);
+			assert.ok(code.includes(`${OSC8(here("src/a.ts"))}<C>src/a.ts</C>${CLOSE}`), JSON.stringify(code));
+		});
+
+		it("links a code span that is only a URL", () => {
+			const out = render("Visit `https://example.com/docs` today", true);
+			assert.ok(
+				out.includes(`${OSC8("https://example.com/docs")}<C>https://example.com/docs</C>${CLOSE}`),
+				JSON.stringify(out),
+			);
+			assert.ok(!render("Visit `https://example.com/docs` today", false).includes("\x1b]8"));
+			assert.ok(!render("Run `curl https://example.com` now", true).includes("\x1b]8"));
 		});
 	});
 });

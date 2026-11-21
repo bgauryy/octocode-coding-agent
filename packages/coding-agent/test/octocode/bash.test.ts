@@ -806,20 +806,30 @@ describe("bash rendering", () => {
 				done(),
 			),
 		).split("\n");
-		// A short output shows whole: folding it would hide a few lines behind a one-line hint.
-		expect(whole).toHaveLength(13);
-		expect(whole.join("\n")).not.toContain("to expand");
+		// A finished command closes to its summary line; expanding shows the output.
+		expect(whole).toEqual(["  ⎿  exit 0 · 12 lines (ctrl+o to expand)"]);
 		const text = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
+		expect(
+			rendered(
+				tool.renderResult(
+					{ content: [{ type: "text", text }] },
+					{ expanded: false, isPartial: false },
+					theme,
+					done({ durationMs: 1_500 }),
+				),
+			),
+		).toBe("  ⎿  exit 0 · 20 lines (ctrl+o to expand)");
+		// While it runs, the row shows the last lines.
 		const lines = rendered(
 			tool.renderResult(
 				{ content: [{ type: "text", text }] },
-				{ expanded: false, isPartial: false },
+				{ expanded: false, isPartial: true },
 				theme,
-				done({ durationMs: 1_500 }),
+				done({ isPartial: true, executionStarted: true }),
 			),
 		).split("\n");
 		expect(lines).toEqual([
-			"  ⎿  exit 0 · 20 lines",
+			"  ⎿  running · 20 lines",
 			"     … +15 earlier lines (ctrl+o to expand)",
 			"     line 16",
 			"     line 17",
@@ -857,11 +867,21 @@ describe("bash rendering", () => {
 			for (const isPartial of [true, false]) {
 				const view = (expanded: boolean) =>
 					rendered(
-						tool.renderResult({ content: [{ type: "text", text }] }, { expanded, isPartial }, theme, done()),
+						tool.renderResult(
+							{ content: [{ type: "text", text }] },
+							{ expanded, isPartial },
+							theme,
+							done({ isPartial, executionStarted: true }),
+						),
 					).split("\n");
 				const collapsed = view(false);
 				const expanded = view(true);
 				expect(collapsed[0].replace(" (ctrl+o to expand)", "")).toBe(expanded[0]);
+				if (!isPartial) {
+					// A finished command closes to its summary line.
+					expect(collapsed).toHaveLength(1);
+					continue;
+				}
 				const body = expanded.slice(1).filter((line) => !line.trimStart().startsWith("saved:"));
 				if (!/to expand/.test(collapsed[1] ?? "")) {
 					// A short output is shown whole, without its blank lines.
@@ -982,7 +1002,7 @@ describe("bash rendering", () => {
 		const job = [...renderers.values()][0];
 		const message = { content: "Background bash bash-1 finished after 3s: yarn build\nLog: /tmp/j.log\nok" };
 		expect(rendered(job(message, { expanded: false }, theme))).toBe(
-			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s (ctrl+o to expand)\n      ok",
+			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s (ctrl+o to expand)",
 		);
 		expect(rendered(job(message, { expanded: true }, theme))).toBe(
 			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",

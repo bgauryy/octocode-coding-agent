@@ -3,7 +3,7 @@ import { renderLatex } from "../../latex.ts";
 import { getCapabilities } from "../../terminal-image/capabilities.ts";
 import { hyperlink } from "../../terminal-image.ts";
 import { markdownReferenceUrl } from "../../markdown-content.ts";
-import { fileReferenceUrl, findFileReferences, splitFileReferences } from "./linkify.ts";
+import { fileReferenceUrl, findFileReferences, splitFileReferences, wholeUrl } from "./linkify.ts";
 import type { LatexToken } from "./parser.ts";
 import type { InlineStyleContext, MarkdownRenderHost } from "./types.ts";
 
@@ -78,17 +78,11 @@ export function renderInlineTokens(
 
 			case "codespan": {
 				const code = host.theme.code(token.text);
-				// A span that is only a file reference becomes a link; the code styling stays.
-				const [only] = findFileReferences(token.text);
-				const isReference = only !== undefined && only.start === 0 && only.end === token.text.length;
-				result +=
-					(isReference && getCapabilities().hyperlinks
-						? hyperlink(
-								code,
-								fileReferenceUrl(only.path, host.options.cwd ?? process.cwd(), only.line, only.column),
-								host.linkId(token),
-							)
-						: code) + stylePrefix;
+				// A span that is only a file path or only a URL becomes a link; the code styling stays.
+				const url = getCapabilities().hyperlinks
+					? codeSpanUrl(token.text, host.options.cwd ?? process.cwd())
+					: undefined;
+				result += (url ? hyperlink(code, url, host.linkId(token)) : code) + stylePrefix;
 				break;
 			}
 
@@ -145,4 +139,13 @@ export function renderInlineTokens(
 	}
 
 	return result;
+}
+
+/** The link target of a code span that holds only a file path or only a URL. */
+function codeSpanUrl(text: string, cwd: string): string | undefined {
+	const [only] = findFileReferences(text);
+	if (only !== undefined && only.start === 0 && only.end === text.length) {
+		return fileReferenceUrl(only.path, cwd, only.line, only.column);
+	}
+	return wholeUrl(text);
 }

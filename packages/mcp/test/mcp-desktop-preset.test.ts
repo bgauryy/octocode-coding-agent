@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_BIN, DESKTOP_SERVER } from "../../common/src/mcp-names.ts";
@@ -6,7 +6,7 @@ import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import { presetEntries } from "../src/preset.ts";
 import { withStructuredText } from "../src/presets/structured-text.ts";
 import { builtinPresets } from "../src/presets/index.ts";
-import { desktopPreset, onPath } from "../src/presets/desktop/index.ts";
+import { desktopAvailable, desktopPreset, onPath } from "../src/presets/desktop/index.ts";
 import { boundedWindowRead } from "../src/presets/desktop/tools.ts";
 
 /** A PATH folder holding an executable `cua-driver`. */
@@ -57,6 +57,59 @@ describe("desktop MCP preset", () => {
 		// Not used by a recorded live run: declared on first load, one round trip, instead of ~4,000 characters per request.
 		for (const tool of ["list_apps", "get_desktop_state", "scroll", "set_value"])
 			expect(exposure[tool], tool).toBe("onDemand");
+	});
+
+	it("classifies every tool of the recorded Cua Driver and keeps no entry for a tool it does not have", () => {
+		// `scripts/check-desktop-tools.mjs` compares this fixture with the installed Driver; this test keeps the preset's lists honest against it.
+		const recorded = JSON.parse(readFileSync(new URL("./fixtures/desktop/tools.json", import.meta.url), "utf8")) as {
+			tools: Array<{ name: string }>;
+		};
+		const names = new Set(recorded.tools.map((tool) => tool.name));
+		const exposure = presetEntries([desktopPreset(pathWithDriver())])[0].config.toolExposure ?? {};
+		const stale = Object.keys(exposure).filter((tool) => !names.has(tool));
+		expect(stale, "preset entries for tools Driver does not offer").toEqual([]);
+		// Whatever the preset does not mention is declared in full: that set is the one the declared-tools test pins.
+		const declared = [...names].filter((tool) => exposure[tool] === undefined).sort();
+		expect(declared).toEqual(
+			[
+				"click",
+				"hotkey",
+				"invoke_menu",
+				"launch_app",
+				"list_windows",
+				"get_window_state",
+				"press_key",
+				"type_text",
+				"verify_state",
+			].sort(),
+		);
+	});
+
+	it("starts the executable OCTOCODE_CUA_DRIVER_PATH names, even when PATH has none", () => {
+		const folder = tmp();
+		mkdirSync(folder, { recursive: true });
+		const driver = join(folder, "my-cua-driver");
+		writeFileSync(driver, "#!/bin/sh\n");
+		chmodSync(driver, 0o755);
+		const env = { PATH: tmp(), OCTOCODE_CUA_DRIVER_PATH: driver };
+		const [entry] = presetEntries([desktopPreset(env)]);
+		expect(entry.config).toMatchObject({ command: driver, args: ["mcp"], enabled: true });
+		expect(desktopAvailable(env)).toBe(true);
+		// `OCTOCODE_MCP_DESKTOP=0` still wins.
+		expect(desktopAvailable({ ...env, OCTOCODE_MCP_DESKTOP: "0" })).toBe(false);
+	});
+
+	it("names the problem and does not fall back to PATH when the configured path is wrong", () => {
+		const onPathToo = pathWithDriver();
+		for (const bad of ["relative/cua-driver", join(tmp(), "missing"), tmp()]) {
+			const env = { ...onPathToo, OCTOCODE_CUA_DRIVER_PATH: bad };
+			const [entry] = presetEntries([desktopPreset(env)]);
+			expect(entry.config.enabled, bad).toBe(false);
+			expect(entry.config.description, bad).toMatch(/OCTOCODE_CUA_DRIVER_PATH/);
+			expect(desktopAvailable(env), bad).toBe(false);
+		}
+		const [relative] = presetEntries([desktopPreset({ ...onPathToo, OCTOCODE_CUA_DRIVER_PATH: "relative/x" })]);
+		expect(relative.config.description).toMatch(/must be an absolute path/);
 	});
 
 	it("stays listed but disabled, naming the install page, while cua-driver is not on PATH", () => {
