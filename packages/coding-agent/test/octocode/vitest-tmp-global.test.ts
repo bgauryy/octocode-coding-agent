@@ -152,7 +152,7 @@ describe("the run's teardown", () => {
 				(error: unknown) => error,
 			);
 			expect(String(failure)).toContain("Tests resolved the real agent database");
-			expect(String(failure)).toContain(path.join(fakeHome, ".octocode", "octocodecode", "agent", "workspaces.db"));
+			expect(String(failure)).toContain(path.join(fakeHome, ".octocode", "agent", "workspaces.db"));
 			expect(String(failure)).toContain(`Web daemons outlived the run (stopped now; pid, command):\n${daemon}\t`);
 			expect(String(failure)).not.toContain(`${helper}\t`);
 			expect(warn.mock.calls.flat().join("\n")).toContain(`${helper}\t`);
