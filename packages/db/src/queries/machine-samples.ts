@@ -3,8 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 /**
  * Per-minute samples of the whole machine (load, memory, swap, GPU and the busiest processes) for the threshold monitor,
  * and the lease that lets one Octocode process at a time take them. Every process reads the samples; only the lease
- * holder writes. The tables are created on first use (`IF NOT EXISTS`) instead of with the schema, so the schema version
- * is unchanged and an Octocode of another version sharing the file keeps working.
+ * holder writes. The tables are part of the coordination schema (`schema-samples.ts`).
  */
 
 /** One of the busiest processes when the machine was sampled. */
@@ -52,24 +51,8 @@ export interface SamplerLease {
 	expiresAt: number;
 }
 
-const created = new WeakSet<DatabaseSync>();
-
-function ensure(db: DatabaseSync): void {
-	if (created.has(db)) return;
-	db.exec(`
-CREATE TABLE IF NOT EXISTS machine_samples (
-  at INTEGER PRIMARY KEY, load1 REAL NOT NULL, load5 REAL NOT NULL, load15 REAL NOT NULL, cores INTEGER NOT NULL,
-  mem_total INTEGER NOT NULL, mem_available INTEGER, swap_used INTEGER NOT NULL, swap_total INTEGER NOT NULL,
-  gpu REAL, processes TEXT NOT NULL DEFAULT '[]');
-CREATE TABLE IF NOT EXISTS machine_sampler (
-  id INTEGER PRIMARY KEY CHECK (id = 1), holder TEXT NOT NULL, pid INTEGER NOT NULL,
-  acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);`);
-	created.add(db);
-}
-
 /** Writes one sample; a second sample at the same instant replaces the first. */
 export function record(db: DatabaseSync, sample: MachineSample): void {
-	ensure(db);
 	db.prepare(
 		`INSERT OR REPLACE INTO machine_samples
 		 (at, load1, load5, load15, cores, mem_total, mem_available, swap_used, swap_total, gpu, processes)
@@ -129,21 +112,18 @@ const toSample = (row: SampleRow): MachineSample => ({
 
 /** Every sample taken at or after `at` (ms since the epoch), oldest first. */
 export function since(db: DatabaseSync, at: number): MachineSample[] {
-	ensure(db);
 	const rows = db.prepare("SELECT * FROM machine_samples WHERE at >= ? ORDER BY at").all(at);
 	return (rows as unknown as SampleRow[]).map(toSample);
 }
 
 /** The newest sample, if any. */
 export function latest(db: DatabaseSync): MachineSample | undefined {
-	ensure(db);
 	const row = db.prepare("SELECT * FROM machine_samples ORDER BY at DESC LIMIT 1").get();
 	return row ? toSample(row as unknown as SampleRow) : undefined;
 }
 
 /** Deletes the samples taken before `at` (ms since the epoch), the retention rule; returns how many went. */
 export function pruneBefore(db: DatabaseSync, at: number): number {
-	ensure(db);
 	return Number(db.prepare("DELETE FROM machine_samples WHERE at < ?").run(at).changes);
 }
 
@@ -160,7 +140,6 @@ export function clear(db: DatabaseSync): number {
  * Returns whether `holder` holds it now.
  */
 export function acquire(db: DatabaseSync, holder: string, pid: number, now: number, ttlMs: number): boolean {
-	ensure(db);
 	const changes = db
 		.prepare(
 			`INSERT INTO machine_sampler (id, holder, pid, acquired_at, expires_at) VALUES (1, ?1, ?2, ?3, ?4)
@@ -175,13 +154,11 @@ export function acquire(db: DatabaseSync, holder: string, pid: number, now: numb
 
 /** Gives the lease up if `holder` has it, so another process can take over at once; returns whether it did. */
 export function release(db: DatabaseSync, holder: string): boolean {
-	ensure(db);
 	return Number(db.prepare("DELETE FROM machine_sampler WHERE holder = ?").run(holder).changes) > 0;
 }
 
 /** The unexpired lease at `now`, if any. */
 export function holderAt(db: DatabaseSync, now: number): SamplerLease | undefined {
-	ensure(db);
 	const row = db.prepare("SELECT * FROM machine_sampler WHERE expires_at > ?").get(now) as
 		| { holder: string; pid: number; acquired_at: number; expires_at: number }
 		| undefined;

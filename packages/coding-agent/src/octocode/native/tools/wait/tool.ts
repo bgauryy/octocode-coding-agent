@@ -30,14 +30,14 @@ const text = (description: string) => Type.Optional(Type.String({ description })
 const parameters = Type.Object(
 	{
 		op: StringEnum(["set", "on", "off", "list"] as const),
-		note: text("Required: what to do on waking"),
-		after: Type.Optional(Type.Number({ description: "set: wake once after this many seconds" })),
+		note: text("set/on: what to do on waking (required)"),
+		after: Type.Optional(Type.Number({ description: "set: wake once after N seconds" })),
 		every: Type.Optional(
 			Type.Number({
 				description: `set: repeat every N seconds (min ${MIN_EVERY_SECONDS}); on: event check interval (min ${MIN_CHECK_SECONDS})`,
 			}),
 		),
-		event: Type.Optional(StringEnum(LISTEN_EVENTS, { description: "on: the event to wait for" })),
+		event: Type.Optional(StringEnum(LISTEN_EVENTS, { description: "on: event" })),
 		filter: Type.Optional(
 			Type.Object(
 				{
@@ -52,13 +52,13 @@ const parameters = Type.Object(
 				{ additionalProperties: false },
 			),
 		),
-		check: text("on: judged when the event fires (paid); omit: filter.command alone (free)"),
+		check: text("on: judged on the event (paid); omit: filter.command alone (free)"),
 		cron: text("set: 5-field local-time cron; replaces after/every"),
 		tz: text("set with cron: IANA zone, e.g. Europe/Paris"),
-		once: Type.Optional(Type.Boolean({ description: "on: stop at the first wake (default); false keeps listening" })),
+		once: Type.Optional(Type.Boolean({ description: "on: first wake only (default); false keeps listening" })),
 		maxRuns: Type.Optional(Type.Integer({ description: "Stop after N wakes (default 20)" })),
-		deadline: Type.Optional(Type.Number({ description: "Seconds until it expires (on: default 3600)" })),
-		id: Type.Optional(Type.Integer({ description: "off: wait to remove (see list)" })),
+		deadline: Type.Optional(Type.Number({ description: "Seconds to expiry (on: default 3600)" })),
+		id: Type.Optional(Type.Integer({ description: "off: wait id (see list)" })),
 		all: Type.Optional(Type.Boolean({ description: "list: include ended; off: remove all" })),
 		items: Type.Optional(
 			Type.Unsafe<object[]>({
@@ -215,7 +215,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Wait",
 		promptSnippet: renderPrompt("tools/wait/snippet.md"),
 		description:
-			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list also shows what wakes you unasked. Free: on check.result with filter.command (`test -e path`) wakes at exit 0. Paid: check, a question a small model judges.",
+			"Wake with a note. set: a clock (after/every seconds, cron; repeats blind). on: an event (once:false repeats), filter keys: agent.ended agent; item.state ref+state; item.changed ref|epic|path; peer.landed ref; path.unlocked path; check.result command. Free: filter.command (`test -e path`) wakes at exit 0: poll with it. Paid: check, a question a small model judges. off by id; list shows what wakes you unasked.",
 		parameters,
 		validationParameters: validation,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {

@@ -110,7 +110,6 @@ describe("replaysWithReasoningUnchanged", () => {
 	it("is true for APIs whose reasoning setting ignores the output cap", () => {
 		for (const api of [
 			"openai-responses",
-			"openai-codex-responses",
 			"azure-openai-responses",
 			"openai-completions",
 			"google-generative-ai",

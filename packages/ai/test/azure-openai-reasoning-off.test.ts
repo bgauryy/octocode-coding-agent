@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { addAzureModels } from "../scripts/generate-models/codex-azure-models.ts";
+import { addAzureModels } from "../scripts/generate-models/aliases-azure-models.ts";
 import { applyModelsDevReasoningOptionMetadata } from "../scripts/generate-models/thinking.ts";
 import { getModelKey, modelsDevReasoningOptions } from "../scripts/generate-models/thinking-levels.ts";
 import { streamSimple } from "../src/api/azure-openai-responses.ts";

@@ -11,7 +11,7 @@ export type ConfigSettingScope = Static<typeof ConfigSettingScopeSchema>;
 const ValueSchema = Type.String({ minLength: 1, maxLength: 256, pattern: "^[^\\u0000-\\u001f\\u007f]+$" });
 const Target = { scope: ConfigSettingScopeSchema, repoId: Type.Optional(Type.String({ pattern: "^[\\w.-]{1,128}$" })) };
 
-/** Legacy single-field writes remain valid; the UI replaces or clears a startup provider/model pair atomically. */
+/** A single-field write, or a startup provider/model pair replaced or cleared atomically. */
 export const ConfigSettingCommandSchema = Type.Union([
 	Type.Object(
 		{ key: ConfigSettingKeySchema, value: Type.Union([ValueSchema, Type.Null()]), ...Target },

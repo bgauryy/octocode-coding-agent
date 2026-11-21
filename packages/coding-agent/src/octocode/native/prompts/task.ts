@@ -14,7 +14,7 @@ export interface ChildIdentity {
 	why?: string;
 	parentId?: string;
 	scratch?: string;
-	isolation?: { path: string; repo: string; cwd: string };
+	isolation?: { path: string; repo: string; cwd: string; unlinked?: string };
 	/** The backlog item the coordinator started it for: the only one it may update. */
 	item?: string;
 	/** Paths the coordinator reserved for it until it reports. */
@@ -75,10 +75,10 @@ export function withIdentity(task: string, identity: ChildIdentity, archive?: { 
  * The worktree an isolated child works in (`subagent/worktree.md`). Its system prompt shows the main checkout's paths,
  * which are the same for every child, so the real location rides in the task.
  */
-function worktreeNote(isolation: { path: string; repo: string; cwd: string } | undefined): string {
+function worktreeNote(isolation: ChildIdentity["isolation"]): string {
 	if (!isolation) return "";
 	const shown = rebasePath(isolation.cwd, { worktree: isolation.path, root: isolation.repo });
-	return renderPrompt("subagent/worktree.md", { cwd: isolation.cwd, shown });
+	return renderPrompt("subagent/worktree.md", { cwd: isolation.cwd, shown, unlinked: isolation.unlinked });
 }
 
 /**

@@ -156,7 +156,6 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `vercelGatewayRouting` | object |  | Vercel AI Gateway routing preferences. Controls which upstream providers the gateway routes requests to. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options. |
 | `zaiToolStream` | boolean | `false` | Whether z.ai supports top-level tool_stream for streaming tool call deltas. |
 | `thinkingTokenBudgetField` | `"thinking_token_budget" \| "thinking_budget" \| "thinking_budget_tokens"` |  | Top-level request field used to cap reasoning tokens from thinkingBudgets. Reasoning and the answer share max_tokens on these endpoints. "thinking_token_budget" is vLLM, "thinking_budget" is Qwen, DashScope, or SGLang, and "thinking_budget_tokens" is llama.cpp. Off by default and not set on the generated catalog. |
-| `supportsThinkingTokenBudget` | boolean | `false` | Alias for thinkingTokenBudgetField: "thinking_token_budget" (vLLM). Prefer thinkingTokenBudgetField. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether the provider supports OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system or developer messages after the conversation has started. When false, the leading system message stays unchanged and later system messages are sent as marked user messages. The generated catalog enables this for verified models. |
 | `supportsMidConvoToolAdditions` | boolean | `false` | Whether system messages can introduce additional tools mid-conversation. Requires supportsMidConvoSystemMessages. The generated catalog enables this for capable models. |
@@ -172,7 +171,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 
 ### `openai-responses`
 
-Also applies to `azure-openai-responses` and `openai-codex-responses`.
+Also applies to `azure-openai-responses`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -207,6 +206,31 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system-role messages inside the conversation. When false, the top-level system prompt stays unchanged and later system messages are sent as marked user messages. |
 | `supportsMidConvoToolChanges` | boolean | `false` | Whether the exact model accepts mid-conversation tool_addition and tool_removal blocks. Requires supportsMidConvoSystemMessages. |
 | `allowedFallbackModels` | `object[]` |  | Models Anthropic accepts for server-side refusal fallback, with local pricing metadata for returned fallback responses. When absent or empty, callers must omit fallbacks; Anthropic rejects the field for models with no permitted fallback targets. |
+| `allowedFallbackModels[].provider` | string |  | Required. |
+| `allowedFallbackModels[].model` | string |  | Required. |
+| `allowedFallbackModels[].cost` | object |  | Required. |
+| `allowedFallbackModels[].cost.input` | number |  | Required. Input cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.output` | number |  | Required. Output cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `allowedFallbackModels[].cost.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `allowedFallbackModels[].cost.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.until` | string |  | Last UTC day (YYYY-MM-DD, inclusive) these rates apply, for a time-limited price. Ignored without `after`. |
+| `allowedFallbackModels[].cost.after` | object |  | Rates (and tiers) charged from the day after `until`. |
+| `allowedFallbackModels[].cost.after.input` | number |  | Required. Input cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.output` | number |  | Required. Output cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `allowedFallbackModels[].cost.after.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `allowedFallbackModels[].cost.after.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `allowedFallbackModels[].cost.after.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
 
 ### `bedrock-converse-stream`
 

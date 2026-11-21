@@ -292,7 +292,7 @@ export function countsText(counts: BacklogCounts): string {
 	return ["/web · backlogs & activity", ...parts].join(" · ");
 }
 
-/** Markdown snapshot of the whole board with every note, for `<repo>/.octocode/code/backlog.md`. Nothing reads it back. */
+/** Markdown snapshot of the whole board with every note, for `<repo>/.octocode/agent/backlog.md`. Nothing reads it back. */
 export function exportMarkdown(store: BacklogStore, repoName: string, now: number): string {
 	const { items } = store.list();
 	const notes = new Map(items.map((item) => [item.ref, store.notes(item, -1)]));

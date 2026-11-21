@@ -183,7 +183,7 @@ describe("a read-only role's git", () => {
 	});
 
 	it("refuses parsed writes under the home folder, but not the temporary folder or scratch", () => {
-		const scratch = path.join(cwd, ".octocode/code/temp/agents/rev-1");
+		const scratch = path.join(cwd, ".octocode/agent/temp/agents/rev-1");
 		const withScratch = { ...env, [AGENT_SCRATCH_ENV]: scratch };
 		const call = (command: string) => readOnlyRoleRefusal({ toolName: "bash", input: { command } }, cwd, withScratch);
 		for (const command of [
@@ -204,7 +204,7 @@ describe("a read-only role's git", () => {
 describe("an isolated child's shell", () => {
 	const main = repo();
 	const worktree = repo();
-	const scratch = path.join(main, ".octocode/code/temp/agents/impl-1");
+	const scratch = path.join(main, ".octocode/agent/temp/agents/impl-1");
 	const env = { [SUBAGENT_ENV]: "1", [TEAM_WORKSPACE_ENV]: main, [AGENT_SCRATCH_ENV]: scratch };
 	const refused = (command: string) => isolatedTreeRefusal({ toolName: "bash", input: { command } }, worktree, env);
 

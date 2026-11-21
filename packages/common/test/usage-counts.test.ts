@@ -143,27 +143,6 @@ describe("usage counts", () => {
 		]);
 	});
 
-	it("reads the renamed native/timer key as native/wait", () => {
-		const at = file();
-		const counts = (declared: number, called: number) => ({ declared, called, used: called });
-		fs.writeFileSync(
-			at,
-			JSON.stringify({
-				days: { "2026-11-15": { main: { "native/timer": counts(12, 2), "native/wait": counts(9, 1) } } },
-				snapshots: { main: { at: NOW, tools: ["native/timer", "native/wait", "docs/pick"] } },
-			}),
-		);
-		expect(usageCounts(at, "main", NOW)).toEqual({
-			"native/wait": { declared: 21, called: 3, loaded: 0, calledUndeclared: 0, refused: 0, used: 3 },
-		});
-		expect([...usageSnapshot(at, "main", NOW, { version: "1" })]).toEqual(["docs/pick", "native/wait"]);
-		new UsageRecorder(
-			() => at,
-			() => "main",
-		).record("called", ["native/wait"], NOW);
-		expect(Object.keys(JSON.parse(fs.readFileSync(at, "utf8")).days["2026-11-15"].main)).toEqual(["native/wait"]);
-	});
-
 	it("keeps bumps it could not write and adds them to the next update", () => {
 		const at = file();
 		let blocked = true;

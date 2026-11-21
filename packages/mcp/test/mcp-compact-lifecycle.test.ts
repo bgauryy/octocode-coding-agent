@@ -54,21 +54,4 @@ describe("generated file lifecycle", () => {
 		});
 		expect(resolveServerFile(dir, "s", changed).text).toBe(renderServer(changed));
 	});
-
-	it("ignores wording an earlier release stored for the server: the server's text is rendered", () => {
-		const dir = generatedDir(tmp());
-		const legacy = {
-			hash: catalogHash(input),
-			generatorVersion: COMPACT_GENERATOR_VERSION,
-			generatedAt: "2026-10-28T00:00:00.000Z",
-			overrides: { server: "Short server text.", tools: { a: "Rewritten a." } },
-			authored: { tools: { a: { descriptionHash: "x", description: "Rewritten a." } } },
-		};
-		writeGenerated(dir, "s", "old text", legacy);
-		const file = resolveServerFile(dir, "s", input);
-		expect(file.text).toBe(renderServer(input));
-		expect(file.text).not.toContain("Rewritten a.");
-		expect(file.text).not.toContain("Short server text.");
-		expect(file.meta).not.toHaveProperty("overrides");
-	});
 });

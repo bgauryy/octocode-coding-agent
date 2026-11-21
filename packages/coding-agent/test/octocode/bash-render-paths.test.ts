@@ -148,35 +148,27 @@ describe("bash result rows", () => {
 describe("background job messages", () => {
 	beforeAll(() => initTheme("dark"));
 	const log = "~/.octocode/octocodecode/agent/sessions/abc/bash/bash-1-1792877887622.log";
-	const fresh = `[exit 1 · 61s · 48,213 lines · 2.1 MB · log: ${log}]\nBackground bash bash-1 failed with exit code 1 after 1m1s: yarn build\n[+48173 earlier lines in the log]\nerror TS2322: nope`;
+	const fresh = `[exit 1 · 61s · 48,213 lines · 2.1 MB · log: ${log}]\nBackground bash bash-1 failed with exit code 1 after 1m01s: yarn build\n[+48173 earlier lines in the log]\nerror TS2322: nope`;
 
+	const freshDetails = { id: "bash-1", command: "yarn build", how: "failed with exit code 1", ok: false, seconds: 61 };
 	it("hide the status header and name the whole log path, wrapped, when expanded", () => {
-		const collapsed = text(renderJobMessage(fresh, false, theme));
+		const collapsed = text(renderJobMessage(fresh, false, theme, 1, freshDetails));
 		expect(collapsed).toContain("Bash(bash-1: yarn build) · background");
-		expect(collapsed).toContain("failed with exit code 1 after 1m1s");
+		expect(collapsed).toContain("failed with exit code 1 after 1m01s");
 		expect(collapsed).not.toContain("[exit 1");
 		for (const width of [40, 80]) {
-			const expanded = text(renderJobMessage(fresh, true, theme), width);
+			const expanded = text(renderJobMessage(fresh, true, theme, 1, freshDetails), width);
 			expect(expanded.replace(/\s+/g, "")).toContain(`log:${log}`);
 		}
 	});
 
-	it("still read the older report with a `Log:` line, and one without any log", () => {
-		const old = text(
-			renderJobMessage(
-				"Background bash bash-1 failed with exit code 1 after 5s: yarn run check\nLog: ~/x/bash-1.log\npackages/a.ts(1,2): error",
-				true,
-				theme,
-			),
-		);
-		expect(old).toContain("failed with exit code 1 after 5s");
-		expect(old).toContain("log: ~/x/bash-1.log");
-		expect(old).not.toContain("Log:");
+	it("draw a report without a log, with its output only when expanded", () => {
 		const report = "Background bash bash-9 finished after 4m: sleep 240\ndone";
-		const bare = text(renderJobMessage(report, false, theme));
+		const details = { id: "bash-9", command: "sleep 240", how: "finished", ok: true, seconds: 240 };
+		const bare = text(renderJobMessage(report, false, theme, 1, details));
 		expect(bare).toContain("finished after 4m");
 		expect(bare).not.toContain("done");
-		expect(text(renderJobMessage(report, true, theme))).toContain("done");
+		expect(text(renderJobMessage(report, true, theme, 1, details))).toContain("done");
 	});
 
 	it("draw a stopped job as interrupted and unparseable text as a failure without throwing", () => {
@@ -185,6 +177,8 @@ describe("background job messages", () => {
 				"[stopped (user) · 5s · 1 line · 3 B · log: ~/l.log]\nBackground bash bash-4 stopped (user) after 5s: sleep 100\nx",
 				false,
 				theme,
+				1,
+				{ id: "bash-4", command: "sleep 100", how: "stopped (user)", ok: false, interrupted: true, seconds: 5 },
 			),
 		);
 		expect(stopped).toContain("⏺");

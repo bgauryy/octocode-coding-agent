@@ -35,7 +35,7 @@ it("a tool that declares a write effect and its paths is a write to those paths 
 
 	const cwd = fs.realpathSync(tmp());
 	fs.mkdirSync(path.join(cwd, "src"));
-	const scratch = path.join(cwd, ".octocode/code/temp/agents/rev-1");
+	const scratch = path.join(cwd, ".octocode/agent/temp/agents/rev-1");
 	fs.mkdirSync(scratch, { recursive: true });
 
 	// The read-only role refuses the declared path, and allows its scratch folder.
@@ -71,7 +71,7 @@ it("a tool that declares a write effect and its paths is a write to those paths 
 
 it("treats a Pi-style write or edit tool that declares no effect as a write to its path", async () => {
 	const cwd = fs.realpathSync(tmp());
-	const scratch = path.join(cwd, ".octocode/code/temp/agents/rev-1");
+	const scratch = path.join(cwd, ".octocode/agent/temp/agents/rev-1");
 	fs.mkdirSync(scratch, { recursive: true });
 	const env = { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1", [AGENT_SCRATCH_ENV]: scratch, [PERMISSION_ENV]: "full" };
 	const fake = fakeHost();

@@ -26,12 +26,10 @@ export interface CheckInHost {
 	record?(attention: Attention, delivered: boolean): void;
 }
 
-/** `monitor.checkInSeconds`, else the deprecated `subagents.checkInSeconds`, else the default; a refused value is unset. */
-export function checkInSeconds(settings: Pick<Settings, "monitor" | "subagents"> | undefined): number {
+/** `monitor.checkInSeconds`, else the default; a refused value is unset. */
+export function checkInSeconds(settings: Pick<Settings, "monitor"> | undefined): number {
 	const current = settings?.monitor?.checkInSeconds;
-	if (validSpan(current)) return current;
-	const legacy = settings?.subagents?.checkInSeconds;
-	return validSpan(legacy) ? legacy : MONITOR_DEFAULTS.checkInSeconds;
+	return validSpan(current) ? current : MONITOR_DEFAULTS.checkInSeconds;
 }
 
 /** Whether the session of `owner` (its feature API) lists a background bash job or a timer: the two things that wake a child that ended its turn. */
@@ -42,7 +40,7 @@ const waitsOnWork = (owner: object): boolean =>
 
 /** The check-in setting and how this child runs: `parentWaits` from its owner, `busy` from `owner`'s running work. */
 export function checkInConfig(
-	settings: Pick<Settings, "monitor" | "subagents"> | undefined,
+	settings: Pick<Settings, "monitor"> | undefined,
 	parentWaits: boolean,
 	owner?: object,
 ): CheckInConfig {

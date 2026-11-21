@@ -195,8 +195,8 @@ export function registerWebTool(api: FeatureSetup, permission: Permission): void
 			// on the selected tools).
 			promptGuidelines: [],
 			parameters: Type.Object({
-				url: Type.Optional(Type.String()),
-				query: Type.Optional(Type.String()),
+				url: Type.Optional(Type.String({ description: "Page to read" })),
+				query: Type.Optional(Type.String({ description: "Search text" })),
 				maxResults: Type.Optional(Type.Integer({ description: "Search results (default 8, max 20)" })),
 				maxChars: Type.Optional(
 					Type.Integer({

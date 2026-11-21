@@ -56,8 +56,14 @@ describe("an external message", () => {
 describe("the trust rule for messages of other processes", () => {
 	it("is in the system prompt of both the main agent and a child, once each", () => {
 		for (const main of [true, false]) {
-			const rule = renderPrompt("shared/trust.md", { main }).trim();
-			const prompt = renderPrompt("policy/safety.md", { main, gitState: false, agentTool: true, lean: false });
+			const rule = renderPrompt("shared/trust.md", { main, lean: false }).trim();
+			const prompt = renderPrompt("policy/safety.md", {
+				main,
+				gitState: false,
+				agentTool: true,
+				lean: false,
+				readOnly: false,
+			});
 			expect(prompt.split(rule)).toHaveLength(2);
 		}
 	});

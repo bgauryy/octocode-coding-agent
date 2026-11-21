@@ -1,25 +1,22 @@
 import { JOBS_SCHEMA } from "./schema-jobs.ts";
 import { ITEM_HANDOFFS_SCHEMA } from "./schema-handoffs.ts";
+import { SAMPLES_SCHEMA } from "./schema-samples.ts";
 
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
-export const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
-/** The check of files created before `settled` (`ensureSettledStatus` widens them). */
-export const AGENT_STATUS_CHECK_WITHOUT_SETTLED = "CHECK(status IN ('idle','working'))";
-/** Additive on schema10 files; legacy rows and writers leave the capability unset. */
-export const AGENT_MAILBOX_COLUMN = "mailbox TEXT CHECK(mailbox IS NULL OR mailbox = 'pull')";
+const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
+/** The capability a main session declares; NULL leaves it unset. */
+const AGENT_MAILBOX_COLUMN = "mailbox TEXT CHECK(mailbox IS NULL OR mailbox = 'pull')";
 
-/** How the run's model was reached and billed (`AgentRoute`); additive, so older rows and writers leave it NULL. */
-export const AGENT_RUN_ROUTE_COLUMN =
+/** How the run's model was reached and billed (`AgentRoute`); NULL when unknown. */
+const AGENT_RUN_ROUTE_COLUMN =
 	"route TEXT CHECK(route IS NULL OR route IN ('config','subscription','remote','external'))";
 
-/**
- * Indexes on `at` for the tables housekeeping ages out (`retention.ts`): without them every pass scans the whole table
- * for its oldest row. New files get them from the schema; `history.ensureAtIndexes` adds them to existing files.
- */
-export const HISTORY_AT_INDEXES = {
-	backlog_audits: "CREATE INDEX IF NOT EXISTS backlog_audits_at ON backlog_audits(at);",
-	workspace_commands: "CREATE INDEX IF NOT EXISTS workspace_commands_at ON workspace_commands(at);",
-} as const;
+/** The parent-session index of `agent_runs` (`queries/agent-run-children.ts`); created with IF NOT EXISTS like `ITEM_HANDOFFS_SCHEMA`. */
+const AGENT_RUNS_PARENT_INDEX =
+	"CREATE INDEX IF NOT EXISTS agent_runs_parent_session ON agent_runs(parent_session_id);";
+
+/** The objects an existing file of this version may lack; run each time the coordination file is opened. */
+export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}`;
 
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `
@@ -31,22 +28,19 @@ CREATE INDEX shell_history_recent ON shell_history(last_at);
 
 /**
  * `worktree_openings`: who opened a worktree or a tmux window or pane, one row per thing (`queries/openings.ts`).
- * Written with IF NOT EXISTS so a file created before the table existed gains it at first use (`openings.ensure`)
- * without a schema version change, which would set the whole file aside.
  */
-export const WORKTREE_OPENINGS_SCHEMA = `
-CREATE TABLE IF NOT EXISTS worktree_openings (
+const WORKTREE_OPENINGS_SCHEMA = `
+CREATE TABLE worktree_openings (
   kind TEXT NOT NULL CHECK(kind IN ('worktree','tmux')), ref TEXT NOT NULL, opener TEXT NOT NULL, session_id TEXT,
   opened_at INTEGER NOT NULL, PRIMARY KEY (kind, ref));
 `;
 
 /**
  * `api_message_receipts`: the keyed `message.send` calls of the external API, one row per session and key, so a retry
- * after a restart finds what became of the message (`queries/api-receipts.ts`). Written with IF NOT EXISTS so a file
- * created before the table existed gains it at first use (`apiReceipts.ensure`) without a schema version change.
+ * after a restart finds what became of the message (`queries/api-receipts.ts`).
  */
-export const API_MESSAGE_RECEIPTS_SCHEMA = `
-CREATE TABLE IF NOT EXISTS api_message_receipts (
+const API_MESSAGE_RECEIPTS_SCHEMA = `
+CREATE TABLE api_message_receipts (
   session_id TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL, message_id TEXT NOT NULL, queued TEXT NOT NULL,
   phase TEXT NOT NULL CHECK(phase IN ('preparing','accepted','uncertain')), updated_at INTEGER NOT NULL,
   PRIMARY KEY (session_id, key));
@@ -54,17 +48,16 @@ CREATE TABLE IF NOT EXISTS api_message_receipts (
 
 /**
  * `item_reviews`: the user's review decisions about hooks, MCP servers and skills that Octocode did not ship, one row
- * per item and scope (`queries/guard.ts`). Written with IF NOT EXISTS so a file created before the table existed gains
- * it at first use (`guard.ensure`) without a schema version change, which would set the whole file aside.
+ * per item and scope (`queries/guard.ts`).
  */
-export const ITEM_REVIEWS_SCHEMA = `
-CREATE TABLE IF NOT EXISTS item_reviews (
+const ITEM_REVIEWS_SCHEMA = `
+CREATE TABLE item_reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, identity TEXT NOT NULL, scope TEXT NOT NULL,
   content_hash TEXT NOT NULL, decision TEXT NOT NULL CHECK(decision IN ('approved','denied','seen')),
   rating TEXT NOT NULL, findings TEXT NOT NULL DEFAULT '[]', label TEXT NOT NULL, path TEXT NOT NULL,
   decided_at INTEGER NOT NULL, decided_via TEXT NOT NULL, absent_at INTEGER,
   UNIQUE(kind, identity, scope));
-CREATE TABLE IF NOT EXISTS item_review_snapshots (
+CREATE TABLE item_review_snapshots (
   kind TEXT NOT NULL, identity TEXT NOT NULL, scope TEXT NOT NULL, files TEXT NOT NULL,
   PRIMARY KEY(kind, identity, scope));
 `;
@@ -197,7 +190,7 @@ CREATE TABLE backlog_audits (
   at INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, entity TEXT NOT NULL,
   before_value TEXT, after_value TEXT);
 CREATE INDEX backlog_audits_item ON backlog_audits(workspace_id, backlog_id, id);
-${HISTORY_AT_INDEXES.backlog_audits}
+CREATE INDEX backlog_audits_at ON backlog_audits(at);
 CREATE TRIGGER backlog_audits_immutable_update BEFORE UPDATE ON backlog_audits BEGIN
  SELECT RAISE(ABORT, 'Audit events are immutable');
 END;
@@ -285,7 +278,7 @@ CREATE TABLE workspace_commands (
   action TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL, at INTEGER NOT NULL, message TEXT NOT NULL,
   PRIMARY KEY(workspace_id, session_id, id));
 CREATE INDEX workspace_commands_repo ON workspace_commands(workspace_id, session_id, at);
-${HISTORY_AT_INDEXES.workspace_commands}
+CREATE INDEX workspace_commands_at ON workspace_commands(at);
 CREATE TRIGGER workspace_commands_audit_insert AFTER INSERT ON workspace_commands WHEN NEW.backlog_id IS NOT NULL BEGIN
  INSERT INTO backlog_audits(workspace_id, backlog_id, at, actor, action, entity, after_value)
  VALUES (NEW.workspace_id, NEW.backlog_id, NEW.at, octocode_audit_actor(), 'insert', 'workspace_commands', json_object('id', NEW.id, 'action', NEW.action, 'input', NEW.input, 'status', NEW.status));
@@ -353,8 +346,8 @@ CREATE INDEX deliveries_inbox ON deliveries(recipient, delivered_at);
 CREATE INDEX deliveries_unnotified ON deliveries(message) WHERE dead_at IS NOT NULL AND notified_at IS NULL;
 CREATE TABLE leases (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), path TEXT NOT NULL, path_key TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('file','tree')), owner TEXT NOT NULL, reason TEXT NOT NULL, item TEXT,
-  acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+  kind TEXT NOT NULL CHECK(kind IN ('file','tree')), owner TEXT NOT NULL, reason TEXT NOT NULL,
+  acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, item TEXT);
 CREATE INDEX leases_path ON leases(workspace_id, path_key);
 CREATE INDEX leases_owner ON leases(owner);
 CREATE TABLE edits (
@@ -377,7 +370,8 @@ ${ITEM_REVIEWS_SCHEMA}
 ${SHELL_HISTORY_SCHEMA}
 ${WORKTREE_OPENINGS_SCHEMA}
 ${API_MESSAGE_RECEIPTS_SCHEMA}
-${ITEM_HANDOFFS_SCHEMA}
+${ENSURED_OBJECTS}
+${SAMPLES_SCHEMA}
 `;
 
 /** Optional full-text index over memories and its synchronization triggers. */

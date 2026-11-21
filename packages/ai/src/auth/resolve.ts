@@ -170,12 +170,12 @@ export async function refreshStoredOAuthCredential(
 
 /**
  * Whether a refresh error says the provider refused the refresh token for good, so retrying it cannot succeed:
- * the OAuth `invalid_grant` code, Kimi's unauthorized refresh, or a 400/401 from the OpenAI Codex token endpoint.
+ * the OAuth `invalid_grant` code, or Kimi's unauthorized refresh.
  * Providers throw plain errors, so this reads the message and its causes. Network, timeout, abort, 429 and 5xx
  * failures match nothing and stay retryable.
  */
 const TERMINAL_GRANT_ERROR =
-	/\binvalid_grant\b|Kimi Code token refresh unauthorized \(status (?:401|403)\)|OpenAI Codex token refresh failed \((?:400|401)\)/;
+	/\binvalid_grant\b|Kimi Code token refresh unauthorized \(status (?:401|403)\)/;
 
 function isTerminalGrantError(error: unknown): boolean {
 	let current = error;

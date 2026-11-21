@@ -106,7 +106,7 @@ export interface RemoveOptions {
 }
 
 /**
- * Removes `<main root>/.octocode/worktrees/<name>`. Without `force` it refuses a worktree with changed or untracked
+ * Removes `<main root>/.octocode/agent/worktrees/<name>`. Without `force` it refuses a worktree with changed or untracked
  * files, with commits no other branch has, with occupants (`options.occupants`), or whose sessions still hold undelivered
  * subagent reports or parked agent windows, and says which. With `force` it first copies those reports to the same
  * sessions under the main checkout. It never removes the worktree `sessionCwd` is in. The branch goes only through

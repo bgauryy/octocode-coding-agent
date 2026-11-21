@@ -53,6 +53,19 @@ export function leanTools(profile: string, tools: string | undefined): string {
 	return [...toolList(list), ...LEAN_FLOOR.filter((name) => !matchesTool(selected ?? [], name))].join(",");
 }
 
+/**
+ * A profile with an absolute tool list gains `backlog` when its child is started for an item: the child is told to note
+ * progress there, and a list that does not name the tool would leave it without. A relative list or none keeps the
+ * defaults, which declare `backlog` for such a child. A lean child never holds an item (`refuseLeanItem`).
+ */
+export function withBacklogTool<T extends { name: string; lean?: true; tools?: string } | undefined>(profile: T): T {
+	if (!profile || profile.lean) return profile;
+	const list = profile.tools;
+	const selected = selectedTools(list);
+	if (!list || isRelative(selected) || matchesTool(selected ?? [], "backlog")) return profile;
+	return { ...profile, tools: [...toolList(list), "backlog"].join(",") };
+}
+
 export const mcpRequired = (name: string): string =>
 	`Profile "${name}" disables MCP, but every specialist needs Octocode local research. Remove mcp: false.`;
 

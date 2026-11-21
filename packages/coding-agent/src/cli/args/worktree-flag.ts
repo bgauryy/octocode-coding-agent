@@ -8,7 +8,7 @@ export const WORKTREE_FLAG: FlagSpec = {
 	arg: "<name>",
 	completion: "text",
 	help: [
-		"Start in git worktree <name>: created or reused at .octocode/worktrees/<name> on branch worktree-<name>,",
+		"Start in git worktree <name>: created or reused at .octocode/agent/worktrees/<name> on branch worktree-<name>,",
 		"with untracked files matching .worktreeinclude copied into a new one",
 	],
 	apply: (a, v) => {

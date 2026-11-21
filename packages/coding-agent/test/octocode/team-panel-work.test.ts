@@ -183,7 +183,7 @@ describe("the worktree badge", () => {
 	const main = member("main-0001", { status: "idle", checkout: "/repo" });
 	const isolated = member("implementer-1a2b", {
 		parentId: "main-0001",
-		checkout: "/home/u/.octocode/worktrees/implementer-1a2b",
+		checkout: "/home/u/.octocode/agent/worktrees/implementer-1a2b",
 		branch: "octocode/implementer-1a2b",
 		goal: "Add the typed view",
 	});
@@ -196,7 +196,7 @@ describe("the worktree badge", () => {
 	});
 
 	it("marks an isolated child that joined the coordinator's team: same checkout, a working folder outside it", () => {
-		const child = { ...isolated, checkout: "/repo", cwd: "/home/u/.octocode/worktrees/ab12/implementer-1a2b" };
+		const child = { ...isolated, checkout: "/repo", cwd: "/home/u/.octocode/agent/worktrees/ab12/implementer-1a2b" };
 		const peer = { ...plain, cwd: "/repo/packages/app" };
 		const lines = widgetLines([main, child, peer], "main-0001", NOW, theme, 200);
 		expect(groupOf(lines, "implementer-1a2b")).toContain("worktree ⎇ octocode/implementer-1a2b");

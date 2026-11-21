@@ -1,1 +1,0 @@
-[["wait",4],["key","enter"],["wait",2],["key","enter"],["wait",3],["send","say hi"],["wait",0.5],["key","enter"],["wait",8],["resize",90,30],["wait",2],["paste","pasted line one\npasted line two"],["wait",1],["key","ctrl-c"],["wait",1],["key","ctrl-c"],["wait",1],["key","ctrl-c"],["wait",1]]

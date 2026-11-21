@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Row } from "../rows.ts";
-import { HISTORY_AT_INDEXES } from "../schema-sql.ts";
 
 /**
  * The history tables housekeeping moves out of the database by age (`retention.ts`): audit rows and web
@@ -13,14 +12,6 @@ const TABLES = {
 	workspace_commands: { guard: undefined },
 } as const;
 export type HistoryTable = keyof typeof TABLES;
-
-/**
- * Adds the `at` indexes of the audit and receipt tables to a file created before them (additive: no schema version
- * change, like the other `ensure*` steps). Each statement commits on its own and changes nothing once the index exists.
- */
-export function ensureAtIndexes(db: DatabaseSync): void {
-	for (const sql of Object.values(HISTORY_AT_INDEXES)) db.exec(sql);
-}
 
 /**
  * When the oldest row of `table` was written, or undefined when it is empty. A scan, not a lookup of the lowest id: a

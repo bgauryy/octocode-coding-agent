@@ -154,8 +154,8 @@ Every change to an item is recorded with its actor (an agent session or you) and
 
 | Command           | Writes                                                                         |
 | ----------------- | ------------------------------------------------------------------------------ |
-| `/backlog html`   | Read-only offline snapshot `.octocode/code/backlog.html` (no docs or diagrams) |
-| `/backlog export` | Markdown snapshot `.octocode/code/backlog.md`                                  |
+| `/backlog html`   | Read-only offline snapshot `.octocode/agent/backlog.html` (no docs or diagrams) |
+| `/backlog export` | Markdown snapshot `.octocode/agent/backlog.md`                                  |
 
 Both refuse to write, naming the item and field, when text they would carry looks like a secret. Other backlog commands: `/backlog tui` (terminal board), `/backlog add <title>`, `/backlog <id> <state>`, `/backlog <id> close`, `/backlog do <id>`.
 
@@ -178,7 +178,7 @@ The notices the terminal shows (a memory pass's summary, a cache warming cost, a
 
 ## Docs tab
 
-The board's **Docs** tab (`#docs`) lists every Markdown file under the workspace's `.octocode/` folder (symbolic links skipped): RFCs, research, plans, reviews, the exported `backlog.md` and, when temporary files are enabled, handoffs under `.octocode/code/temp/`. Each row shows the title (first heading), a kind from its top-level folder (`rfc`, `research`, `brainstorm`, `review`, `audit`, `plan`, `contract`, else `report`), the modified date, and `status` and `question` from flat front matter. Filter by kind, folder, title, path or status; `tmp/` appears only with **Include tmp/**, and `skills/` never. At most 1,000 documents are indexed; files over 512 KiB, dot-folders, `view/` and `node_modules/` are skipped.
+The board's **Docs** tab (`#docs`) lists every Markdown file under the workspace's `.octocode/` folder (symbolic links skipped): RFCs, research, plans, reviews, the exported `backlog.md` and, when temporary files are enabled, handoffs under `.octocode/agent/temp/`. Each row shows the title (first heading), a kind from its top-level folder (`rfc`, `research`, `brainstorm`, `review`, `audit`, `plan`, `contract`, else `report`), the modified date, and `status` and `question` from flat front matter. Filter by kind, folder, title, path or status; `tmp/` appears only with **Include tmp/**, and `skills/` never. At most 1,000 documents are indexed; files over 512 KiB, dot-folders, `view/` and `node_modules/` are skipped.
 
 In a **trusted project** the tab also lists the workspace's git-tracked `*.md` files under **Repository docs (git-tracked)**. An untracked file, a path outside the repository or a symbolic link is refused. In an untrusted project no repository documents are listed and the tab says why.
 

@@ -112,7 +112,7 @@ describe("unified agent", () => {
 		await expect(call({ background: true })).rejects.toThrow(/Invalid agent task call[\s\S]*task/);
 	});
 
-	it("gives a mode's renderers its own arguments as context.args, flat or from an old envelope, also for an error", () => {
+	it("gives a mode's renderers its own arguments as context.args, also for an error", () => {
 		const fake = fakeHost();
 		const modes = agentModes();
 		const seen: unknown[] = [];
@@ -128,16 +128,11 @@ describe("unified agent", () => {
 		});
 		modes.register(fake.api);
 		const agent = fake.tools.get("agent")!;
-		// Sessions recorded before the flat fields hold the `{type, input}` envelope: they still render.
-		for (const args of [
-			{ type: "message", to: "inky" },
-			{ type: "message", input: { to: "inky" } },
-		]) {
-			agent.renderCall(args, {}, { args });
-			// A thrown error has no agentType in its details; the call's type still selects the mode's renderer.
-			agent.renderResult({ content: [{ type: "text", text: "boom" }], details: {}, isError: true }, {}, {}, { args });
-		}
-		expect(seen).toEqual([{ to: "inky" }, { to: "inky" }, { to: "inky" }, { to: "inky" }]);
+		const args = { type: "message", to: "inky" };
+		agent.renderCall(args, {}, { args });
+		// A thrown error has no agentType in its details; the call's type still selects the mode's renderer.
+		agent.renderResult({ content: [{ type: "text", text: "boom" }], details: {}, isError: true }, {}, {}, { args });
+		expect(seen).toEqual([{ to: "inky" }, { to: "inky" }]);
 		// An old `models` call has no mode now: its result renders as its text.
 		const old = { type: "models", input: { query: "opus" } };
 		const row = agent.renderResult(
@@ -179,7 +174,7 @@ describe("unified agent", () => {
 		}
 	});
 
-	it("gives domain policy each type's tool name and own arguments, flat or from an old envelope", () => {
+	it("gives domain policy each type's tool name and own arguments", () => {
 		const op = (input: Record<string, unknown>) => agentOperation({ toolName: "agent", toolCallId: "id", input });
 		expect(
 			op({ type: "external", externalAction: "prompt", connection: "r", promptText: "data", reason: "ask" }),
@@ -199,10 +194,6 @@ describe("unified agent", () => {
 		expect(op({ type: "message", to: "parent", message: "m" })).toMatchObject({
 			toolName: "sendMessage",
 			input: { to: "parent", message: "m" },
-		});
-		expect(op({ type: "external", input: { action: "prompt", text: "data" } })).toMatchObject({
-			toolName: "externalAgent",
-			input: { action: "prompt", text: "data" },
 		});
 		// No mode: the call stays the public `agent` call.
 		expect(op({ type: "models" })).toMatchObject({ toolName: "agent" });

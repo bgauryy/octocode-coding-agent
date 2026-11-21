@@ -39,8 +39,8 @@ describe("the harness opens the screenshots a desktop report cites", () => {
 
 	it("checks a path under .octocode and ignores other file types", () => {
 		const cwd = tmp();
-		write(path.join(cwd, ".octocode/tmp/x/calc.png"), "image bytes");
-		expect(evidenceNotes(".octocode/tmp/x/calc.png notes.txt", Date.now() - 5_000, cwd)).toEqual([]);
-		expect(evidenceNotes(".octocode/tmp/x/gone.png", Date.now() - 5_000, cwd)[0]).toContain("does not exist");
+		write(path.join(cwd, ".octocode/agent/tmp/x/calc.png"), "image bytes");
+		expect(evidenceNotes(".octocode/agent/tmp/x/calc.png notes.txt", Date.now() - 5_000, cwd)).toEqual([]);
+		expect(evidenceNotes(".octocode/agent/tmp/x/gone.png", Date.now() - 5_000, cwd)[0]).toContain("does not exist");
 	});
 });

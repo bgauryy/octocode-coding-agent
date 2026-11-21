@@ -8,7 +8,7 @@ import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 export type PromptEvaluator = (request: { prompt: string; model?: string; signal: AbortSignal }) => Promise<string>;
 
-export const HOOK_EVALUATION_SYSTEM_PROMPT = renderPrompt("hooks/evaluation.md");
+const HOOK_EVALUATION_SYSTEM_PROMPT = renderPrompt("hooks/evaluation.md");
 
 export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "modelRegistry">): PromptEvaluator {
 	return async (request) => {

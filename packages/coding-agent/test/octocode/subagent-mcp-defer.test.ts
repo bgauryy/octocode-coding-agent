@@ -74,6 +74,6 @@ describe("a role's skill catalog in the child's environment", () => {
 		expect(empty.catalog).toEqual([]);
 		expect(subagentProcessEnv(empty, {}).OCTOCODE_SKILL_CATALOG).toBe("");
 		expect(subagentProcessEnv(parseProfile("b", "---\n---\nTask"), {}).OCTOCODE_SKILL_CATALOG).toBeUndefined();
-		expect(subagentProcessEnv(undefined, {}).OCTOCODE_SKILL_CATALOG).toContain("octocode-research");
+		expect(subagentProcessEnv(undefined, {}).OCTOCODE_SKILL_CATALOG).toContain("octocode-local-research");
 	});
 });

@@ -13,7 +13,7 @@ import { tmp } from "./helpers.ts";
 
 /** A bash command cannot change a curated MEMORY.md around the `memory` tool, in any mode; reading it stays allowed. */
 
-const MEMORY = ".octocode/octocodecode/MEMORY.md";
+const MEMORY = ".octocode/agent/MEMORY.md";
 const bash = (command: string) =>
 	({ type: "tool_call", toolCallId: "t1", toolName: "bash", input: { command } }) as ToolCallEvent;
 
@@ -71,9 +71,9 @@ describe("bash and the MEMORY.md files", () => {
 		).toBeUndefined();
 	});
 
-	it("counts the folder as loaded by later sessions", () => {
+	it("counts the file as loaded by later sessions", () => {
 		const { cwd } = setup("workspace");
-		expect(runsLater(path.join(cwd, ".octocode/octocodecode/notes.md"), cwd)).toBe(true);
-		expect(runsLater(path.join(cwd, ".octocode/tmp/notes.md"), cwd)).toBe(false);
+		expect(runsLater(path.join(cwd, ".octocode/agent/MEMORY.md"), cwd)).toBe(true);
+		expect(runsLater(path.join(cwd, ".octocode/agent/tmp/notes.md"), cwd)).toBe(false);
 	});
 });

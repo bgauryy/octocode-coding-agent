@@ -28,7 +28,7 @@ export async function createWorktree(
 	const base = await gitQuiet(repo, ["rev-parse", "--verify", "HEAD"]);
 	if (!base) throw new Error("isolate needs at least one commit to start the worktree from.");
 	await rejectTrackedWorkspaceState(repo, base);
-	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE]);
+	const dirty = workingCopy ? "" : await git(repo, ["status", "--porcelain", "--", ...EXCLUDE_WORKSPACE_STATE]);
 	const dir = worktreesDir(repo, home);
 	const worktree = path.join(dir, agentId);
 	// Settled before anything is created, so a "No" leaves nothing behind.
@@ -78,6 +78,7 @@ export async function createWorktree(
 		base,
 		...(snapshot ? { snapshot } : {}),
 		cwd: childCwd(repo, cwd, worktree),
+		...(dependencies ? { unlinked: dependencies } : {}),
 		...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
 	};
 }
@@ -125,13 +126,15 @@ export async function reopenWorktree(
 	await git(repo, ["update-ref", "-d", at.ref, head]);
 	recordTrust();
 	const included = await copyIgnoredIncludes(repo, at.path);
-	const warning = [included, await linkIgnoredDependencies(repo, at.path)].filter(Boolean).join(" ");
+	const dependencies = await linkIgnoredDependencies(repo, at.path);
+	const warning = [included, dependencies].filter(Boolean).join(" ");
 	return {
 		agentId,
 		repo,
 		path: at.path,
 		base,
 		cwd: childCwd(repo, cwd, at.path),
+		...(dependencies ? { unlinked: dependencies } : {}),
 		...(warning ? { warning } : {}),
 	};
 }

@@ -82,7 +82,7 @@ flowchart LR
 
 ## Control a desktop app (optional)
 
-Octocode can operate native apps on your computer (a desktop app, a simulator, system settings, a browser's own windows) through [Cua Driver](https://github.com/trycua/cua) ([docs](https://cua.ai/docs/cua-driver/quickstart)). It is off until you install Cua Driver yourself; Octocode never installs or bundles it.
+Octocode drives web pages with its built-in browser tools and operates native apps on your computer (a desktop app, a simulator, system settings) through [Cua Driver](https://github.com/trycua/cua) ([docs](https://cua.ai/docs/cua-driver/quickstart)). It is off until you install Cua Driver yourself; Octocode never installs or bundles it.
 
 1. Install Cua Driver with Cua's own installer, from [github.com/trycua/cua](https://github.com/trycua/cua):
 
@@ -101,7 +101,7 @@ Octocode can operate native apps on your computer (a desktop app, a simulator, s
 2. Start Octocode and run `/mcp`: the `desktop` server is listed, and enabled when Octocode finds `cua-driver` on your `PATH`. If you keep it elsewhere, set `OCTOCODE_CUA_DRIVER_PATH` to its absolute path (`~` works).
 3. Ask in plain words: "open Calculator, compute 6 × 7 and show me the screenshot". The agent hands the work to its `desktop` specialist, and **you approve every start**, in every permission mode.
 
-What to expect: the specialist has no shell, controls only the app the task names, never your own browser profile, and asks again before risky actions such as reading the clipboard. A print or JSON run (`-p`, `--mode json`) has nobody to approve, so it has no desktop control at all. Without Cua Driver, none of this exists: no server, no specialist, no extra prompt text. Turn it off with `OCTOCODE_MCP_DESKTOP=0` or `/configuration disable mcp:desktop`. Cua Driver sends its own telemetry by default (`cua-driver telemetry disable`). Details: [desktop control](docs/native-features.md#desktop-control), [permissions](docs/permissions.md#desktop-control).
+What to expect: the specialist has no shell, controls only the app the task names, never your own browser profile, and asks again before risky actions such as reading the clipboard. A print or JSON run (`-p`, `--mode json`) has nobody to approve, so it has no desktop control at all. Without Cua Driver, none of this exists: no server, no specialist, no extra prompt text. Octocode warns you at startup if Cua Driver is too old or lacks the macOS permissions. Turn it off with `OCTOCODE_MCP_DESKTOP=0` or `/configuration disable mcp:desktop`. Cua Driver sends its own telemetry by default (`cua-driver telemetry disable`). Details: [desktop control](docs/native-features.md#desktop-control), [permissions](docs/permissions.md#desktop-control).
 
 ## Everyday commands
 

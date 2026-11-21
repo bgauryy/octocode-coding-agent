@@ -1,17 +1,17 @@
-/** Legacy extension OAuth prompt. */
+/** Text prompt an OAuth login shows. */
 export interface OAuthPrompt {
 	message: string;
 	placeholder?: string;
 	allowEmpty?: boolean;
 }
 
-/** Legacy extension OAuth authorization link. */
+/** Authorization link an OAuth login shows. */
 export interface OAuthAuthInfo {
 	url: string;
 	instructions?: string;
 }
 
-/** Legacy extension OAuth device-code notification. */
+/** Device-code notification an OAuth login shows. */
 export interface OAuthDeviceCodeInfo {
 	userCode: string;
 	verificationUri: string;
@@ -29,7 +29,7 @@ export interface OAuthSelectPrompt {
 	options: OAuthSelectOption[];
 }
 
-/** Callback surface retained only for coding-agent extension compatibility. */
+/** Callbacks a provider feature's OAuth login drives. */
 export interface OAuthLoginCallbacks {
 	onAuth(info: OAuthAuthInfo): void;
 	onDeviceCode(info: OAuthDeviceCodeInfo): void;

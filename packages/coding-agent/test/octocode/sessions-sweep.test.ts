@@ -256,37 +256,9 @@ describe("session sweep", () => {
 		expect(await sweepSessions(index, "current", { listed: async () => new Set<string>() })).toEqual(["unindexed-old"]);
 	});
 
-	it.each(["a file", "unreadable"] as const)(
-		"removes nothing when Octocode's default sessions dir is %s",
-		async (broken) => {
-			if (broken === "unreadable" && (process.platform === "win32" || process.getuid?.() === 0)) return;
-			const index = new SessionIndex(sharedAgentDb());
-			const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
-			const agentDir = tmp();
-			process.env.OCTOCODE_CODING_AGENT_DIR = agentDir;
-			const sessions = path.join(agentDir, "sessions");
-			if (broken === "a file") fs.writeFileSync(sessions, "");
-			else fs.mkdirSync(sessions, { mode: 0o000 });
-			try {
-				sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run("dead-pid", DEAD_PID);
-				age(folder("dead-pid"), 31 * DAY);
-				age(folder("orphan"), 31 * DAY);
-				expect(await sweepSessions(index, "current", { force: true })).toEqual([]);
-				for (const name of ["dead-pid", "orphan"])
-					expect(fs.existsSync(path.join(home, "agent", "sessions", name))).toBe(true);
-				expect(index.get("dead-pid")).toBeDefined();
-			} finally {
-				if (broken === "unreadable") fs.chmodSync(sessions, 0o700);
-				if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
-				else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
-			}
-		},
-	);
-
 	it("keeps the folders of sessions Octocode keeps in a recorded custom session dir, still removes true orphans", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
-		// Octocode's default listing reads an empty agent dir, so only the recorded custom dir can name the kept session.
 		process.env.OCTOCODE_CODING_AGENT_DIR = tmp();
 		try {
 			const custom = tmp();

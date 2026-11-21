@@ -25,7 +25,7 @@ describe("the sandbox policy", () => {
 
 	it("writes the workspace, the temporary folders, the scratch folder and the host lock, the same in every sandboxed mode", () => {
 		const workspace = fs.realpathSync(tmp());
-		const scratch = path.join(workspace, ".octocode", "code", "temp", "agents", "a");
+		const scratch = path.join(workspace, ".octocode", "agent", "temp", "agents", "a");
 		const env = mainEnv({ OCTOCODE_AGENT_SCRATCH: scratch });
 		const policy = sandboxPolicy(workspace, context("auto", "manual", env));
 		expect(policy?.allowWrite).toEqual(
@@ -44,7 +44,7 @@ describe("the sandbox policy", () => {
 
 	it("protects what later sessions load, present or not, and keeps the state folder's scratch writable", () => {
 		const workspace = fs.realpathSync(tmp());
-		fs.mkdirSync(path.join(workspace, ".octocode", "code", "newer"), { recursive: true });
+		fs.mkdirSync(path.join(workspace, ".octocode", "agent", "newer"), { recursive: true });
 		const denied = sandboxPolicy(workspace, context("auto", "full"))?.denyWrite ?? [];
 		const at = (...parts: string[]) => path.join(workspace, ...parts);
 		expect(denied).toEqual(
@@ -59,32 +59,37 @@ describe("the sandbox policy", () => {
 				at(".claude"),
 				at(".agents"),
 				at(".husky"),
-				at(".octocode", "code", "sessions"),
-				at(".octocode", "code", "newer"),
-				at(".octocode", "worktrees", "*", "AGENTS.md"),
+				at(".octocode", "agent", "sessions"),
+				at(".octocode", "agent", "MEMORY.md"),
+				at(".octocode", "agent", "worktrees", "*", "AGENTS.md"),
 				"/tmp/claude",
 			]),
 		);
 		expect(denied).not.toContain(at(".git"));
-		expect(denied).not.toContain(at(".octocode", "code", "temp"));
-		expect(denied).not.toContain(at(".octocode", "code"));
+		expect(denied).not.toContain(at(".octocode", "agent", "temp"));
+		expect(denied).not.toContain(at(".octocode", "agent", "newer"));
+		expect(denied).not.toContain(at(".octocode", "agent"));
 	});
 
-	it("lets a read-only child write only its throwaway folders and Markdown under .octocode/", () => {
+	it("lets a read-only child write only its throwaway folders and Markdown under .octocode/agent/", () => {
 		const workspace = fs.realpathSync(tmp());
 		const env = mainEnv({ OCTOCODE_SUBAGENT: "1", OCTOCODE_READ_ONLY: "1" });
 		const policy = sandboxPolicy(workspace, context("auto", "full", env));
 		const at = (...parts: string[]) => path.join(workspace, ...parts);
 		expect(policy?.allowWrite).not.toContain(workspace);
 		expect(policy?.allowWrite).toEqual(
-			expect.arrayContaining([at(".octocode", "tmp"), at(".octocode", "code", "temp"), at(".octocode", "**", "*.md")]),
+			expect.arrayContaining([
+				at(".octocode", "agent", "tmp"),
+				at(".octocode", "agent", "temp"),
+				at(".octocode", "agent", "**", "*.md"),
+			]),
 		);
 		expect(policy?.denyWrite).toEqual(
 			expect.arrayContaining([
 				at(".octocode", "skills"),
-				at(".octocode", "worktrees"),
-				at(".octocode", "code", "*.md"),
-				at(".octocode", "code", "temp", "sessions"),
+				at(".octocode", "agent", "worktrees"),
+				at(".octocode", "agent", "MEMORY.md"),
+				at(".octocode", "agent", "temp", "sessions"),
 			]),
 		);
 	});

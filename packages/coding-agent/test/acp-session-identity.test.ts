@@ -69,8 +69,8 @@ it("refuses a native command's new session before replacing an ACP-owned session
 		});
 	git("init", "-q");
 	git("commit", "--allow-empty", "-q", "-m", "init");
-	mkdirSync(join(sandbox.project, ".octocode", "worktrees"), { recursive: true });
-	git("worktree", "add", "-q", "-b", "wt", join(".octocode", "worktrees", "wt"));
+	mkdirSync(join(sandbox.project, ".octocode", "agent", "worktrees"), { recursive: true });
+	git("worktree", "add", "-q", "-b", "wt", join(".octocode", "agent", "worktrees", "wt"));
 	server = await startModelServer([{ text: "before" }, { text: "after" }]);
 	writeScriptedProvider(sandbox, server);
 	agent = startAcpAgent(sandbox);

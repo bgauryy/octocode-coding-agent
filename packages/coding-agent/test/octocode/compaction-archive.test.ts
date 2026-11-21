@@ -193,18 +193,20 @@ describe("the archive writer", () => {
 
 	it("writes nothing when no compaction was captured, after a discard, or for another compaction", () => {
 		const label = summaryLabel("");
-		expect(new ArchiveCapture().write(compactionEntry(), "s", label, "pi-default")).toBeUndefined();
+		expect(new ArchiveCapture().write(compactionEntry(), "s", label, "octocode-default")).toBeUndefined();
 		const archive = capture();
 		expect(archive.captured).toBe(true);
 		archive.discard();
 		expect(archive.captured).toBe(false);
-		expect(archive.write(compactionEntry(), "s", label, "pi-default")).toBeUndefined();
-		expect(capture().write(compactionEntry({ firstKeptEntryId: "other" }), "s", label, "pi-default")).toBeUndefined();
+		expect(archive.write(compactionEntry(), "s", label, "octocode-default")).toBeUndefined();
+		expect(
+			capture().write(compactionEntry({ firstKeptEntryId: "other" }), "s", label, "octocode-default"),
+		).toBeUndefined();
 		expect(fs.existsSync(archiveFolder())).toBe(false);
 		// A capture is used once: the next compaction needs its own.
 		const once = capture();
-		expect(once.write(compactionEntry(), "s", label, "pi-default")).toBeDefined();
-		expect(once.write(compactionEntry({ id: "c2" }), "s", label, "pi-default")).toBeUndefined();
+		expect(once.write(compactionEntry(), "s", label, "octocode-default")).toBeDefined();
+		expect(once.write(compactionEntry({ id: "c2" }), "s", label, "octocode-default")).toBeUndefined();
 		expect(readSegments()).toHaveLength(1);
 	});
 
@@ -212,7 +214,7 @@ describe("the archive writer", () => {
 		const labelOf = (summary: string, first: Array<Record<string, unknown>> = messages) => {
 			const archive = new ArchiveCapture();
 			archive.capture({ preparation: preparation(first), branchEntries: [] } as never);
-			archive.write(compactionEntry({ id: `c${Math.random()}` }), "s", summaryLabel(summary), "pi-default");
+			archive.write(compactionEntry({ id: `c${Math.random()}` }), "s", summaryLabel(summary), "octocode-default");
 			return readSegments().at(-1)!.tldr;
 		};
 		expect(labelOf("## Goal\ng\n\n## TL;DR\nthe tldr")).toBe("the tldr");
@@ -234,7 +236,10 @@ describe("the archive writer", () => {
 		];
 		const archive = new ArchiveCapture();
 		archive.capture({ preparation: preparation(odd), branchEntries: [] } as never);
-		const text = fs.readFileSync(archive.write(compactionEntry(), "s", summaryLabel(""), "pi-default")!.file, "utf8");
+		const text = fs.readFileSync(
+			archive.write(compactionEntry(), "s", summaryLabel(""), "octocode-default")!.file,
+			"utf8",
+		);
 		for (const part of [
 			"went another way",
 			"earlier",
@@ -256,7 +261,7 @@ describe("hostile message text in the archive", () => {
 		const archive = new ArchiveCapture();
 		archive.capture({ preparation: preparation(messages), branchEntries: entriesOf(branch) } as never);
 		return fs.readFileSync(
-			archive.write(compactionEntry({ id: `c${Math.random()}` }), "s", summaryLabel(""), "pi-default")!.file,
+			archive.write(compactionEntry({ id: `c${Math.random()}` }), "s", summaryLabel(""), "octocode-default")!.file,
 			"utf8",
 		);
 	};
@@ -353,9 +358,9 @@ describe("hostile message text in the archive", () => {
 		const other = [user("trunk", 0), user("right branch", 1), user("more", 2)];
 		const archive = new ArchiveCapture();
 		archive.capture({ preparation: preparation(trunk), branchEntries: entriesOf(trunk) } as never);
-		archive.write(compactionEntry({ id: "cL" }), "s", summaryLabel(""), "pi-default");
+		archive.write(compactionEntry({ id: "cL" }), "s", summaryLabel(""), "octocode-default");
 		archive.capture({ preparation: preparation(other), branchEntries: entriesOf(other) } as never);
-		archive.write(compactionEntry({ id: "cR" }), "s", summaryLabel(""), "pi-default");
+		archive.write(compactionEntry({ id: "cR" }), "s", summaryLabel(""), "octocode-default");
 		expect(readSegments().map((segment) => [segment.n, segment.leaf])).toEqual([
 			[1, "m1"],
 			[2, "m2"],
@@ -564,7 +569,9 @@ describe("archive wiring in the session", () => {
 		await s.before();
 		expect(fs.existsSync(archiveFolder())).toBe(false);
 		await s.compacted();
-		expect(readSegments()).toMatchObject([{ n: 1, entry: "c1", method: "pi-default", tldr: "fix login", messages: 2 }]);
+		expect(readSegments()).toMatchObject([
+			{ n: 1, entry: "c1", method: "octocode-default", tldr: "fix login", messages: 2 },
+		]);
 		expect(s.sendMessage).toHaveBeenCalledTimes(1);
 		expect(s.sendMessage.mock.calls[0][0]).toMatchObject({ customType: ARCHIVE_POINTER_TYPE, display: false });
 		expect(s.sendMessage.mock.calls[0][0].content).toContain("This compaction is segment 1 ");

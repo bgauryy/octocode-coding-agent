@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { AgentRoute } from "@octocodeai/octocode-contracts/config";
 import { num, type Row } from "../rows.ts";
-import { ensureRoute, parseRoute } from "./agent-run-route.ts";
+import { parseRoute } from "./agent-run-route.ts";
 
 /**
  * The audit of one run of an agent (`agent_runs`): who it was, where it worked, what it was for, how it
@@ -135,7 +135,6 @@ export function latest(db: DatabaseSync, agentId: string): AgentRun | undefined 
 
 /** The parent starts child `start.agentId`: its run opens, and an earlier run of that name that never ended is closed as crashed. Returns the run id. */
 export function begin(db: DatabaseSync, start: RunStart, now = Date.now()): string {
-	ensureRoute(db);
 	db.prepare(CLOSE_OPEN).run(now, "superseded by a new run of the same name", start.agentId);
 	const runId = randomUUID();
 	db.prepare(

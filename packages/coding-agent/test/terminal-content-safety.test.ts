@@ -76,7 +76,9 @@ describe("terminal content boundary", () => {
 			isError: false,
 		});
 		const preview = stripAnsi(component.render(80).join("\n"));
-		expect(preview).toContain("… +4995 lines");
+		// A finished result closes to its fold hint.
+		expect(preview).toContain("… +5000 lines");
+		expect(preview).not.toContain("line 0");
 		expect(preview).not.toContain("line 4999");
 		expect(component.render(80).length).toBeLessThan(30);
 		component.setExpanded(true);
@@ -129,6 +131,7 @@ describe("terminal content boundary", () => {
 					],
 					isError: false,
 				});
+				component.setExpanded(true);
 				const rendered = component.render(80).join("\n");
 				const imageMarker = images === "kitty" ? "\x1b_G" : images === "iterm2" ? "\x1b]1337;File=" : "[image]";
 				expect(rendered.indexOf("BEFORE IMAGE")).toBeGreaterThan(-1);
@@ -147,9 +150,8 @@ describe("terminal content boundary", () => {
 			isError: false,
 		});
 		const preview = stripAnsi(component.render(80).join("\n"));
-		expect(preview).toContain("BLOCK 4");
-		expect(preview).not.toContain("BLOCK 5");
-		expect(preview).toContain("… +10 lines");
+		expect(preview).not.toContain("BLOCK 0");
+		expect(preview).toContain("… +15 lines");
 		component.setExpanded(true);
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("BLOCK 14");
 	});

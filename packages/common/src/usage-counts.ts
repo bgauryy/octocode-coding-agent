@@ -9,8 +9,7 @@
  * `group` is `main` (a main or coordinator session) or `subagent`. `declared` (the tool was declared, or listed by name
  * to load on demand), `called`, `loaded` (the full description read through the `mcp` tool) and `used` (called or
  * loaded) count a session once; `refused` counts each call a deferred tool's schema rejected, so a tool whose callers
- * need more than one try stands out. A tool is `<server>/<tool>` or `native/<tool>`, as in `tool-use.json`; a key that
- * was renamed since (`native/timer`, now `native/wait`) reads as its new name.
+ * need more than one try stands out. A tool is `<server>/<tool>` or `native/<tool>`, as in `tool-use.json`.
  *
  * `sizes` holds, per tool, the bytes promoting it adds to a request's tool list (the thin declaration of a tool the
  * configuration leaves on demand) and the last day they were measured; a tool without an entry adds nothing. The promotion snapshot (`usageSnapshot`) is

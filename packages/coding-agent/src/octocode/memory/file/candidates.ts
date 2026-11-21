@@ -16,8 +16,8 @@ import { CANDIDATE_TAG, isCandidate, isQuarantined, QUARANTINE_TAG } from "./can
  * The queue of lesson candidates: the bullets of a checkpoint's "Constraints & Preferences", "Key Decisions" and "Errors
  * & Fixes", and the `Noticed:` lines of a child's report, kept as notes of the repository (`project` scope) tagged
  * `memory-candidate`. A checkpoint holds task-scoped detail, so a candidate never reaches a MEMORY.md file by itself: a
- * reflection or consolidation pass (`reflect.ts`) decides, and a consolidation pass drops what it considered. Recall, the
- * store's duplicate check and the migration leave candidates out (`candidate-tags.ts`).
+ * reflection or consolidation pass (`reflect.ts`) decides, and a consolidation pass drops what it considered. Recall and the
+ * store's duplicate check leave candidates out (`candidate-tags.ts`).
  */
 
 /** Candidates a repository keeps queued; past it the oldest pending ones go. */

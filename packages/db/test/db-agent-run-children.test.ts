@@ -39,12 +39,4 @@ describe("agentRunChildren.countBySession", () => {
 		ids.push("s1");
 		expect(agentRunChildren.countBySession(agent.db, ids)).toEqual(new Map([["s1", 1]]));
 	});
-
-	it("creates the index on a file without it", () => {
-		agent.db.exec("DROP INDEX IF EXISTS agent_runs_parent_session");
-		const name = () =>
-			agent.db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_runs_parent_session'").get();
-		agentRunChildren.countBySession(agent.db, ["s1"]);
-		expect(name()).toBeDefined();
-	});
 });

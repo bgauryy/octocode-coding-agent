@@ -8,7 +8,6 @@ import { browserPreset } from "../src/presets/browser/index.ts";
 import { browserLaunch, browserMcpEntry } from "../src/presets/browser/launch.ts";
 import { BROWSER_SERVER } from "../../common/src/mcp-names.ts";
 import { withStructuredText } from "../src/presets/structured-text.ts";
-import { getMcpSessionStatus } from "../src/status.ts";
 import { createMcpToolName } from "../src/tool-names.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
@@ -38,8 +37,8 @@ describe("browser MCP preset", () => {
 	it("supplies the launch only for its own default entry", () => {
 		const preset = browserPreset();
 		const [entry] = presetEntries([preset]);
-		expect(entry).toMatchObject({ name: BROWSER_SERVER, scope: "default", config: { defaultActive: false } });
-		expect(entry.config.exposure).toBeUndefined();
+		expect(entry).toMatchObject({ name: BROWSER_SERVER, scope: "default", config: { exposure: "onDemand" } });
+		expect(entry.config.defaultActive).toBeUndefined();
 		expect(preset.prepareLaunch!(entry, "/work", true).config).toMatchObject({
 			args: [browserMcpEntry()],
 			cwd: "/work",
@@ -86,19 +85,17 @@ describe("browser MCP preset", () => {
 		expect(withStructuredText(plain)).toBe(plain);
 	});
 
-	it("is not started where no tool selection names it, and says so", async () => {
+	it("starts for the main agent's default selection (its tools are on demand)", async () => {
 		const host = mcpHost({ presets: [browserPreset()], cwd: tmp() });
 		hosts.push(host);
 		// The main agent's selection: tools active by default only.
 		host.api.tools.selects = (_prefix: string, activeByDefault: boolean) => activeByDefault;
 		await host.start();
 		const server = host.state.findServer(BROWSER_SERVER)!;
-		expect(server.unselected).toBe(true);
-		expect(server.connection).toBeUndefined();
-		expect(host.transports).toHaveLength(0);
-		expect(getMcpSessionStatus(host.api.channels)).toMatchObject([{ name: BROWSER_SERVER, state: "unselected" }]);
-		const sections = await host.prompt();
-		expect(Object.keys(sections).filter((name) => name.startsWith("mcp_"))).toEqual([]);
+		expect(server.unselected).toBeFalsy();
+		await host.prompt();
+		expect(server.connection?.state).toBe("connected");
+		// The on-demand index and the withheld instructions are asserted with the real session in e2e-browser-on-demand.
 	});
 
 	it("lists the real server's tools and returns schema evidence the model can read", async () => {
@@ -112,7 +109,8 @@ describe("browser MCP preset", () => {
 		const server = host.state.findServer(BROWSER_SERVER)!;
 		expect(server.connection?.state).toBe("connected");
 		expect(server.connection?.tools.map((tool) => tool.name)).toEqual(
-			expect.arrayContaining(["open", "run", "snapshot", "screenshot", "query", "artifact", "cleanup"]),
+			// Captures are `run` plan steps: the server's MCP presets export no snapshot or screenshot tool.
+			expect.arrayContaining(["open", "run", "query", "artifact", "cleanup", "schema"]),
 		);
 		// Contract change: Octocode ships no overrides for the browser server, so the prompt carries the server's own
 		// instructions, word for word.
@@ -125,9 +123,10 @@ describe("browser MCP preset", () => {
 			operation: "extract",
 		});
 		const text = textOf(result);
-		// The server's acknowledgement is one line (`OK; data in structuredContent: <keys>`); the preset appends the JSON evidence.
-		const [acknowledgement, evidence] = [text.slice(0, text.indexOf("\n")), text.slice(text.indexOf("\n") + 1)];
-		expect(acknowledgement).toMatch(/^OK; data in structuredContent: /);
-		expect(JSON.parse(evidence)).toMatchObject({ ok: true, data: { plan: expect.any(Object) } });
+		// The server's text already is its JSON evidence: the preset leaves it whole, once.
+		expect(JSON.parse(text)).toMatchObject({
+			ok: true,
+			data: { commands: { run: expect.any(String) }, inputExamples: { run: { plan: expect.any(Object) } } },
+		});
 	}, 60_000);
 });

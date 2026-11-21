@@ -48,8 +48,13 @@ function guardTo(target: number, options: { running?: boolean } = {}): BrowserGu
 /** The proxy URL an `open` call hands Chrome. */
 async function proxyOf(guard: BrowserGuard, input: Record<string, unknown> = {}): Promise<URL> {
 	const { args } = await guard.call("open", input, tmp());
-	const list = (args as { args: string[] }).args;
-	return new URL(list[list.indexOf("--proxyServer") + 1]);
+	return launchProxy(args);
+}
+
+/** The proxy `open` arguments start Chrome behind. */
+function launchProxy(args: Record<string, unknown>): URL {
+	const proxy = (args.launch as { proxy: { server: string } }).proxy;
+	return new URL(proxy.server);
 }
 
 /** One request as Chrome sends it to an HTTP proxy: the absolute URL on the request line. */
@@ -139,27 +144,35 @@ describe("browser MCP page-request filter", () => {
 		}
 	});
 
-	it("rewrites `open` to start Chrome behind the proxy and leaves other calls alone", async () => {
+	it("adds the proxy to `open`'s launch fields and leaves other calls alone", async () => {
 		const guard = guardTo(1);
 		const own = {
 			url: "http://app.test/",
-			args: ["--proxyServer", "http://evil:1", "--proxyBypassList", "*", "--windowSize", "800x600"],
+			port: 9222,
+			launch: {
+				windowSize: "800x600",
+				proxy: { server: "http://evil:1", bypassList: "*" },
+				chromeFlags: ["--lang=fr"],
+			},
 		};
 		const { args } = await guard.call("open", own, tmp());
-		const list = (args as { args: string[] }).args;
-		// The package refuses typed fields beside `args`, so the typed `url` travels as a launcher flag.
-		expect(list.slice(0, 4)).toEqual(["--url", "http://app.test/", "--windowSize", "800x600"]);
-		expect(list.filter((item) => item === "--proxyServer")).toHaveLength(1);
-		expect(list[list.indexOf("--proxyServer") + 1]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-		expect(list[list.indexOf("--proxyBypassList") + 1]).toBe("<-loopback>");
-		expect(args.url).toBeUndefined();
+		// The typed fields stay as sent; only the proxy is replaced by the filter, whatever the model asked for.
+		expect(args).toMatchObject({ url: "http://app.test/", port: 9222 });
+		expect(args.launch).toMatchObject({ windowSize: "800x600", chromeFlags: ["--lang=fr"] });
+		expect(launchProxy(args).origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+		expect((args.launch as { proxy: { bypassList: string } }).proxy.bypassList).toBe("<-loopback>");
+		expect(own.launch.proxy.server).toBe("http://evil:1"); // The caller's input is not mutated.
+
+		const bare = (await guard.call("open", { headless: true }, tmp())).args;
+		expect(bare).toMatchObject({ headless: true });
+		expect(launchProxy(bare).hostname).toBe("127.0.0.1");
 
 		const cleanup = { port: 9222, dryRun: true };
 		expect((await guard.call("cleanup", cleanup, tmp())).args).toBe(cleanup);
 		const run = goto("http://app.test/");
 		expect((await guard.call("run", run, tmp())).args).toBe(run);
-		// A malformed `args` is left for the server to reject; nothing starts.
-		const bad = { args: "--headless" };
+		// A malformed `launch` is left for the server to reject; nothing starts.
+		const bad = { launch: "--headless" };
 		expect((await guard.call("open", bad, tmp())).args).toBe(bad);
 	});
 
@@ -235,8 +248,17 @@ describe("browser MCP page-request filter", () => {
 			webrtc: { ip_handling_policy: "disable_non_proxied_udp" },
 		});
 		const real = tmp();
-		await guard.call("open", { port: 9444, args: ["--profile", "Default"] }, real);
-		expect(fs.existsSync(path.join(real, ".octocode"))).toBe(false);
+		// A browser already running keeps its profile: nothing is written for it.
+		const running = createBrowserGuard({
+			lookup,
+			running: async () => true,
+			start: async () => ({ port: 1, url: "http://127.0.0.1:1", close: async () => {} }),
+		});
+		cleanups.push(() => running.dispose());
+		await running.call("open", { port: 9444 }, real);
+		expect(
+			fs.existsSync(path.join(real, ".octocode/octocode-chrome-devtools/tmp/browser-state/cdp-chrome-profile-9444")),
+		).toBe(false);
 	});
 
 	it("restores a reused Chrome's filter on its recorded port in a later process, failing closed", async () => {
@@ -259,12 +281,11 @@ describe("browser MCP page-request filter", () => {
 		// The first run starts Chrome behind its proxy and records the port.
 		const first = guardFor();
 		const launched = await first.call("open", { port: 9555 }, cwd);
-		const list = (launched.args as { args: string[] }).args;
-		const proxy = new URL(list[list.indexOf("--proxyServer") + 1]);
+		const proxy = launchProxy(launched.args);
 		chromeRunning = true;
 		// The same process opening again reuses a filtered browser: no proxy flags (the package would warn), no note.
 		const again = await first.call("open", { port: 9555 }, cwd);
-		expect((again.args as { args: string[] }).args).not.toContain("--proxyServer");
+		expect(again.args.launch).toBeUndefined();
 		expect(text(again.review(reused))).toBe("OK");
 
 		// The first process ends (its subagent run settled); Chrome keeps running.
@@ -295,19 +316,49 @@ describe("browser MCP page-request filter", () => {
 		expect(result.content).toEqual([{ type: "text", text: "OK" }]);
 	});
 
-	it("moves typed `open` fields into launcher args, which the package requires once args are present", async () => {
-		const guard = guardTo(1, { running: false });
-		const { args } = await guard.call("open", { port: 9777, url: "https://app.test/", headless: true }, tmp());
-		expect(Object.keys(args)).toEqual(["args"]);
-		expect((args as { args: string[] }).args.slice(0, 5)).toEqual([
-			"--port",
-			"9777",
-			"--url",
-			"https://app.test/",
-			"--headless",
-		]);
-		const visible = await guard.call("open", { port: 9778, headless: false }, tmp());
-		expect((visible.args as { args: string[] }).args).not.toContain("--headless");
+	it("sends no proxy to a reused browser, but keeps the model's other launch fields", async () => {
+		const guard = guardTo(1, { running: true });
+		const cwd = tmp();
+		const free = net.createServer();
+		await new Promise<void>((resolve) => free.listen(0, "127.0.0.1", resolve));
+		const freePort = (free.address() as AddressInfo).port;
+		await new Promise<void>((resolve) => free.close(() => resolve()));
+		const stateDir = path.join(cwd, ".octocode/octocode-chrome-devtools/tmp/browser-state");
+		fs.mkdirSync(stateDir, { recursive: true });
+		fs.writeFileSync(path.join(stateDir, "octocode-proxy-9779.json"), JSON.stringify({ proxyPort: freePort }));
+		const { args } = await guard.call(
+			"open",
+			{ port: 9779, launch: { windowSize: "800x600", proxy: { server: "x" } } },
+			cwd,
+		);
+		expect(args.launch).toEqual({ windowSize: "800x600" });
+	});
+
+	it("does not filter an `attach` and says so; its launch fields are not rewritten", async () => {
+		const guard = guardTo(1, { running: true });
+		const attach = { port: 9222, attach: true, acknowledge: true };
+		const call = await guard.call("open", attach, tmp());
+		expect(call.args).toBe(attach);
+		const result = call.review({
+			content: [{ type: "text", text: "OK" }],
+			structuredContent: { data: { reused: false } },
+		});
+		expect(JSON.stringify(result.content)).toMatch(/not started behind Octocode's private-address filter/);
+	});
+
+	it("approves the URLs of a tab group, of a flow's `url` parameter and of `run` gotos", async () => {
+		const secret = await secretServer();
+		const guard = guardTo(secret);
+		const proxy = await proxyOf(guard);
+		const url = `http://127.0.0.1:${secret}/`;
+		await browserMcpRequest("mcp__browser__group", { action: "open", urls: [url] }, lookup);
+		await guard.call("group", { action: "open", urls: [url] }, tmp());
+		expect(await viaProxy(proxy, `${url}secret`)).toMatchObject({ status: 200 });
+		const other = await secretServer();
+		const flow = { action: "run", name: "extract-links", params: { url: `http://127.0.0.1:${other}/` } };
+		await browserMcpRequest("mcp__browser__flow", flow, lookup);
+		await guard.call("flow", flow, tmp());
+		expect(await viaProxy(proxy, `http://127.0.0.1:${other}/secret`)).toMatchObject({ status: 200 });
 	});
 
 	it("stops the proxy when the preset is disposed", async () => {

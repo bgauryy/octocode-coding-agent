@@ -29,14 +29,10 @@ describe("servers the parent stopped for the session", () => {
 		off();
 	});
 
-	it("keeps version 1 without stopped servers and reads stopped names from version 2", () => {
-		expect(JSON.parse(serializeMcpSessionServers({ echo: stdio })!).version).toBe(1);
+	it("writes stopped names and rejects another file version", () => {
 		expect(serializeMcpSessionServers({}, [])).toBeUndefined();
 		const text = serializeMcpSessionServers({}, ["cfg"])!;
-		expect(JSON.parse(text).version).toBe(2);
 		expect(parseMcpSessionServers(text)).toEqual({ servers: {}, stopped: ["cfg"], errors: [] });
-		// A version 1 file carries no stopped names, even when the field is present.
-		expect(parseMcpSessionServers('{"version":1,"servers":{},"stopped":["cfg"]}').stopped).toEqual([]);
 		expect(() => parseMcpSessionServers('{"version":4,"servers":{}}')).toThrow("not a session server list");
 	});
 

@@ -95,7 +95,7 @@ async function create(name: string, ctx: CommandContext, deps: WorktreeCommandDe
 	if (skipped.length > 0) say(ctx, `Not copied from .worktreeinclude: ${skipped.join(", ")}`, "warning");
 	// check-ignore exits 1 for a path no rule ignores.
 	if ((await gitQuiet(info.main, ["check-ignore", "-q", path.relative(info.main, info.path)])) === undefined)
-		say(ctx, "The folder .octocode/worktrees/ is not ignored by git: add it to .gitignore.", "warning");
+		say(ctx, "The folder .octocode/agent/worktrees/ is not ignored by git: add it to .gitignore.", "warning");
 
 	await launch(name, info.path, { placement: "window" }, ctx, deps);
 }

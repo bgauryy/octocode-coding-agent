@@ -90,18 +90,6 @@ describe("remote catalog provider", () => {
 			expect(refreshModels.mock.calls[0]).toEqual([expect.objectContaining({ allowNetwork: false })]);
 		}
 	});
-	it.each([true, false])("upgrades historical OpenCode catalog roots (network: %s)", async (allowNetwork) => {
-		const old = { ...model("old"), provider: "opencode", baseUrl: "https://opencode.ai/inference/v1" };
-		const custom = { ...old, id: "custom", baseUrl: "https://proxy.example/v1" };
-		const source = { ...builtinProvider(), id: "opencode", getModels: () => [old] };
-		const provider = withRemoteCatalog(source, "https://catalog.example");
-		const store = new InMemoryModelsStore();
-		await store.write(provider.id, { models: [old, custom], checkedAt: 0, lastModified: 1 });
-		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json([old, custom]));
-		await refreshProvider(provider, store, { allowNetwork });
-		expect(provider.getModels()).toEqual([{ ...old, baseUrl: "https://opencode.ai/inference/openai/v1" }, custom]);
-		expect(fetchSpy).toHaveBeenCalledTimes(allowNetwork ? 1 : 0);
-	});
 	it("uses built-in models without requesting an unconfigured catalog service", async () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 		const provider = withRemoteCatalog(builtinProvider());

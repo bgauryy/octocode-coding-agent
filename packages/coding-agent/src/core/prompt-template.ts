@@ -112,7 +112,7 @@ export function renderTemplate(source: string, values: TemplateValues): string {
 let sources: Map<string, string> | undefined;
 
 /**
- * The prompt folders of `native/` and the key prefix of their files: `prompts/policy/work.md` is `policy/work.md`,
+ * The prompt folders of `native/` and the key prefix of their files: `prompts/policy/finish.md` is `policy/finish.md`,
  * `tools/bash/cli.md`, `hooks/context.md` and `agents/researcher.md` keep their folder. `skills/` is not prompt text.
  */
 export const PROMPT_FOLDERS: Readonly<Record<string, string>> = {
@@ -145,14 +145,14 @@ function promptSources(): Map<string, string> {
 	return read;
 }
 
-/** The text of a prompt file. `name` is its key (`PROMPT_FOLDERS`), such as `policy/work.md` or `tools/bash/cli.md`. */
+/** The text of a prompt file. `name` is its key (`PROMPT_FOLDERS`), such as `policy/finish.md` or `tools/bash/cli.md`. */
 export function promptSource(name: string): string {
 	const text = promptSources().get(name);
 	if (text === undefined) throw new Error(`Prompt template: no file ${name} in ${getNativeDir()}`);
 	return text;
 }
 
-/** Render a prompt file (`policy/work.md`) with the given values. */
+/** Render a prompt file (`policy/finish.md`) with the given values. */
 export function renderPrompt(name: string, values: TemplateValues = {}): string {
 	return renderTemplate(promptSource(name), values);
 }

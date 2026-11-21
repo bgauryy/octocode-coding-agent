@@ -1,5 +1,5 @@
 /**
- * The file behind `usage-counts.ts` (`tool-usage.json`): its types, how it is read (renamed keys merged, anything
+ * The file behind `usage-counts.ts` (`tool-usage.json`): its types, how it is read (anything
  * malformed read as no data) and written (days and sizes outside the retention window left out), and the one locked,
  * merging update every writer goes through. The format and the rules are described in `usage-counts.ts`.
  */
@@ -45,9 +45,6 @@ export interface UsageFile {
 }
 
 export const KINDS: readonly UsageKind[] = ["declared", "called", "loaded", "calledUndeclared", "refused", "used"];
-/** Keys renamed since counts were written, read as their new name. */
-const RENAMED: Readonly<Record<string, string>> = { "native/timer": "native/wait" };
-const currentName = (name: string): string => RENAMED[name] ?? name;
 export const dayKey = (at: number): string => new Date(at).toISOString().slice(0, 10);
 export const oldestDay = (now: number): string => dayKey(now - (USAGE_RETENTION_DAYS - 1) * DAY_MS);
 export const emptyCounts = (): UsageCounts => ({
@@ -65,9 +62,8 @@ function parseTools(tools: Record<string, unknown>): UsageByTool {
 	const byTool: UsageByTool = {};
 	for (const [key, counts] of Object.entries(tools)) {
 		if (!isRecord(counts)) continue;
-		const name = currentName(key);
-		const each = byTool[name] ?? emptyCounts();
-		byTool[name] = each;
+		const each = byTool[key] ?? emptyCounts();
+		byTool[key] = each;
 		for (const kind of KINDS) each[kind] += count(counts[kind]);
 	}
 	return byTool;
@@ -75,7 +71,7 @@ function parseTools(tools: Record<string, unknown>): UsageByTool {
 
 function parseSnapshot(snap: unknown): Snapshot | undefined {
 	if (!isRecord(snap) || typeof snap.at !== "number" || !Array.isArray(snap.tools)) return undefined;
-	const tools = snap.tools.filter((tool): tool is string => typeof tool === "string").map(currentName);
+	const tools = snap.tools.filter((tool): tool is string => typeof tool === "string");
 	return {
 		at: snap.at,
 		...(typeof snap.version === "string" ? { version: snap.version } : {}),
@@ -84,7 +80,7 @@ function parseSnapshot(snap: unknown): Snapshot | undefined {
 	};
 }
 
-/** The file's content as counts, renamed keys merged into their new name; anything malformed reads as no data. */
+/** The file's content as counts; anything malformed reads as no data. */
 function parse(text: string | undefined): UsageFile {
 	const usage: UsageFile = { days: {}, sizes: {}, snapshots: {} };
 	let value: unknown;
@@ -110,8 +106,7 @@ function parse(text: string | undefined): UsageFile {
 			const kept: Record<string, ToolSize> = {};
 			for (const [key, size] of Object.entries(sizes)) {
 				if (!isRecord(size) || typeof size.day !== "string") continue;
-				const name = currentName(key);
-				if (!kept[name] || size.day > kept[name].day) kept[name] = { bytes: count(size.bytes), day: size.day };
+				if (!kept[key] || size.day > kept[key].day) kept[key] = { bytes: count(size.bytes), day: size.day };
 			}
 			usage.sizes[group] = kept;
 		}

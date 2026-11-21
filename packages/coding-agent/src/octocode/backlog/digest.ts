@@ -19,7 +19,7 @@ const SCAN = 30;
 
 /**
  * A short orientation for a fresh session: the open work this session holds or another session left behind (holder
- * ended), how many items are to do and proposed, and the most urgent open titles. Undefined when the board has
+ * ended), how many items are to do and proposed, and the most urgent open titles, ready ones first. Undefined when the board has
  * nothing open.
  */
 function backlogDigest(store: BacklogStore, session: string, options: BacklogOptions): string | undefined {
@@ -40,11 +40,17 @@ function backlogDigest(store: BacklogStore, session: string, options: BacklogOpt
 	if (named.length > MAX_ONGOING) shown.push(`${named.length - MAX_ONGOING} more`);
 	const elsewhere = items.length - named.length;
 	if (elsewhere > 0) shown.push(`${elsewhere} held by live sessions`);
-	const top = store
-		.list({ states: ["todo", "backlog"], maxPriority: 1, limit: SCAN })
-		.items.toSorted((a, b) => a.priority - b.priority)
+	// Ready items first (no open prerequisite), then by priority; a waiting one says so.
+	const urgent = store.list({ states: ["todo", "backlog"], maxPriority: 1, limit: SCAN }).items;
+	const marks = store.marks(urgent, session);
+	const waiting = (item: { ref: string }) => (marks.get(item.ref)?.blockedBy?.length ? 1 : 0);
+	const top = urgent
+		.toSorted((a, b) => waiting(a) - waiting(b) || a.priority - b.priority)
 		.slice(0, MAX_TOP)
-		.map((item) => `${item.ref} ${priorityName(item.priority)} "${clip(item.title, TITLE_CHARS)}"`);
+		.map(
+			(item) =>
+				`${item.ref} ${priorityName(item.priority)} "${clip(item.title, TITLE_CHARS)}"${waiting(item) ? " (blocked)" : ""}`,
+		);
 	// The item this session works on, with the version a write passes and its next step.
 	const agent = sharedAgentDb(options.env ?? process.env);
 	const active = activeItem(backlogQueries.snapshot(agent.db, store.repo), session);

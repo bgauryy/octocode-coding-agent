@@ -430,8 +430,8 @@ describe("a call in the shape backlog had before backlogPlan", () => {
 					expanded: false,
 				}),
 			);
-		expect(row({ op: "list" }, "B2 [todo p2] second\nB1 [todo p2] first", { shown: 2, total: 2 })).toMatch(
-			/^ {2}⎿ {2}2 items\n {5}B2 \[/,
+		expect(row({ op: "list" }, "B2 [todo p2] second\nB1 [todo p2] first", { shown: 2, total: 2 })).toBe(
+			"  ⎿  2 items (ctrl+o to expand)",
 		);
 		const item = { ref: "B2", state: "ongoing", title: "second" };
 		expect(row({ op: "update", id: "B2", state: "ongoing" }, "Updated B2 [ongoing p2] second (you)", { item })).toBe(

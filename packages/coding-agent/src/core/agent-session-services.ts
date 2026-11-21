@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getAgentDir, getLegacyProviderDirs } from "../config.ts";
+import { getAgentDir, getLegacyConfigDirs } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
 import { resolvePath } from "@octocodeai/octocode-common/paths";
@@ -91,7 +91,7 @@ export async function createAgentSessionServices(
 
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
 		if (!options.modelRuntime) {
-			const dirs = [agentDir, ...getLegacyProviderDirs(agentDir)];
+			const dirs = [agentDir, ...getLegacyConfigDirs(agentDir)];
 			const keyFiles = [
 				...dirs.map((dir) => join(dir, "auth.json")),
 				...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),

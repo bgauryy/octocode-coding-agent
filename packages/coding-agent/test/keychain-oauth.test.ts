@@ -65,10 +65,8 @@ const fileEntry = (provider: string): Credential => JSON.parse(readFileSync(auth
 /** A login that saves through the keychain write, as the login dialogs and web settings do for API keys. */
 async function loginToKeychain(storage: AuthStorage, keychain: KeychainBackend, credential: Credential) {
 	const runtime = new RuntimeCredentials(storage);
-	const write = new KeychainWrite(keychain, "openai-codex").asTransform();
-	return runtime.withWriteTransform("openai-codex", write, () =>
-		runtime.modify("openai-codex", async () => credential),
-	);
+	const write = new KeychainWrite(keychain, "openai").asTransform();
+	return runtime.withWriteTransform("openai", write, () => runtime.modify("openai", async () => credential));
 }
 
 describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain", () => {
@@ -77,43 +75,43 @@ describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain
 		const storage = AuthStorage.create(authPath, { keychain });
 		await loginToKeychain(storage, keychain, signedIn("1", 1_000));
 
-		const stub = fileEntry("openai-codex");
+		const stub = fileEntry("openai");
 		expect(stub).toEqual({
 			type: "oauth",
 			access: "",
 			refresh: "",
 			expires: 1_000,
-			keychain: keychain.referenceFor("openai-codex.oauth"),
+			keychain: keychain.referenceFor("openai.oauth"),
 		});
 		expect(readFileSync(authPath, "utf8")).not.toContain("synthetic-");
-		expect(JSON.parse(readFileSync(join(home, "openai-codex.oauth.secret"), "utf8"))).toEqual({
+		expect(JSON.parse(readFileSync(join(home, "openai.oauth.secret"), "utf8"))).toEqual({
 			access: "synthetic-access-1",
 			refresh: "synthetic-refresh-1",
 			expires: 1_000,
 			accountId: "acct-synthetic",
 		});
-		expect(await storage.read("openai-codex")).toEqual(signedIn("1", 1_000));
+		expect(await storage.read("openai")).toEqual(signedIn("1", 1_000));
 	});
 
 	test("a refresh sees the real tokens and writes the new ones back to the keychain", async () => {
 		const keychain = fileKeychain(home);
 		const storage = AuthStorage.create(authPath, { keychain });
 		await loginToKeychain(storage, keychain, signedIn("1", 1_000));
-		const stub = fileEntry("openai-codex");
+		const stub = fileEntry("openai");
 
 		let seen: Credential | undefined;
-		const post = await storage.modify("openai-codex", async (current) => {
+		const post = await storage.modify("openai", async (current) => {
 			seen = current;
 			return current?.type === "oauth" ? { ...current, ...signedIn("2", 2_000) } : undefined;
 		});
 
 		expect(seen).toEqual(signedIn("1", 1_000));
 		expect(post).toEqual(signedIn("2", 2_000));
-		expect(fileEntry("openai-codex")).toEqual({ ...stub, expires: 2_000 });
+		expect(fileEntry("openai")).toEqual({ ...stub, expires: 2_000 });
 		expect(readFileSync(authPath, "utf8")).not.toContain("synthetic-");
-		expect(await storage.read("openai-codex")).toEqual(signedIn("2", 2_000));
+		expect(await storage.read("openai")).toEqual(signedIn("2", 2_000));
 		// A second store over the same file reads the refreshed blob too.
-		expect(await AuthStorage.create(authPath, { keychain }).read("openai-codex")).toEqual(signedIn("2", 2_000));
+		expect(await AuthStorage.create(authPath, { keychain }).read("openai")).toEqual(signedIn("2", 2_000));
 	});
 
 	test("a refresh the keychain refuses keeps the tokens in auth.json instead of losing them", async () => {
@@ -123,12 +121,12 @@ describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain
 		const locked = AuthStorage.create(authPath, { keychain: { ...fileKeychain(home, { failStore: true }) } });
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		try {
-			await locked.modify("openai-codex", async () => signedIn("2", 2_000));
+			await locked.modify("openai", async () => signedIn("2", 2_000));
 		} finally {
 			stderr.mockRestore();
 		}
-		expect(fileEntry("openai-codex")).toEqual(signedIn("2", 2_000));
-		expect(await locked.read("openai-codex")).toEqual(signedIn("2", 2_000));
+		expect(fileEntry("openai")).toEqual(signedIn("2", 2_000));
+		expect(await locked.read("openai")).toEqual(signedIn("2", 2_000));
 	});
 
 	test("a keychain write that fails during a refresh is recorded and named on stderr, never thrown", async () => {
@@ -138,11 +136,11 @@ describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		try {
 			const locked = AuthStorage.create(authPath, { keychain: fileKeychain(home, { failStore: true }) });
-			await expect(locked.modify("openai-codex", async () => signedIn("2", 2_000))).resolves.toBeDefined();
+			await expect(locked.modify("openai", async () => signedIn("2", 2_000))).resolves.toBeDefined();
 
 			const [problem] = readProblems(join(home, "problems.json"));
 			expect(problem).toMatchObject({ source: "auth" });
-			expect(problem.message).toContain("openai-codex");
+			expect(problem.message).toContain("openai");
 			expect(problem.message).toContain("keychain locked");
 			expect(problem.message).toContain("auth.json");
 			expect(problem.message).not.toContain("synthetic-");
@@ -154,35 +152,35 @@ describe.skipIf(process.platform === "win32")("OAuth credentials in the keychain
 
 	test("a plaintext OAuth credential stays in auth.json on refresh", async () => {
 		const keychain = fileKeychain(home);
-		writeFileSync(authPath, JSON.stringify({ "openai-codex": signedIn("1", 1_000) }));
+		writeFileSync(authPath, JSON.stringify({ openai: signedIn("1", 1_000) }));
 		const storage = AuthStorage.create(authPath, { keychain });
-		await storage.modify("openai-codex", async () => signedIn("2", 2_000));
-		expect(fileEntry("openai-codex")).toEqual(signedIn("2", 2_000));
-		expect(existsSync(join(home, "openai-codex.oauth.secret"))).toBe(false);
+		await storage.modify("openai", async () => signedIn("2", 2_000));
+		expect(fileEntry("openai")).toEqual(signedIn("2", 2_000));
+		expect(existsSync(join(home, "openai.oauth.secret"))).toBe(false);
 	});
 
 	test("signing out and removing the credential release the keychain entry", async () => {
 		const keychain = fileKeychain(home);
 		const storage = AuthStorage.create(authPath, { keychain });
 		await loginToKeychain(storage, keychain, signedIn("1", 1_000));
-		await storage.modify("openai-codex", async (current) =>
+		await storage.modify("openai", async (current) =>
 			current?.type === "oauth" ? { ...current, access: "", refresh: "", signedOut: true } : undefined,
 		);
-		expect(fileEntry("openai-codex")).toMatchObject({ type: "oauth", signedOut: true, access: "", refresh: "" });
-		expect(keychain.removed).toEqual(["openai-codex.oauth"]);
+		expect(fileEntry("openai")).toMatchObject({ type: "oauth", signedOut: true, access: "", refresh: "" });
+		expect(keychain.removed).toEqual(["openai.oauth"]);
 
 		await loginToKeychain(storage, keychain, signedIn("3", 3_000));
-		await storage.delete("openai-codex");
-		expect(keychain.removed).toEqual(["openai-codex.oauth", "openai-codex.oauth"]);
-		expect(existsSync(join(home, "openai-codex.oauth.secret"))).toBe(false);
+		await storage.delete("openai");
+		expect(keychain.removed).toEqual(["openai.oauth", "openai.oauth"]);
+		expect(existsSync(join(home, "openai.oauth.secret"))).toBe(false);
 	});
 
 	test("a stub whose keychain entry is gone reads back as the stub, never as tokens", async () => {
 		const keychain = fileKeychain(home);
 		const storage = AuthStorage.create(authPath, { keychain });
 		await loginToKeychain(storage, keychain, signedIn("1", 1_000));
-		rmSync(join(home, "openai-codex.oauth.secret"));
+		rmSync(join(home, "openai.oauth.secret"));
 		clearConfigValueCache();
-		expect(await storage.read("openai-codex")).toMatchObject({ type: "oauth", access: "", refresh: "" });
+		expect(await storage.read("openai")).toMatchObject({ type: "oauth", access: "", refresh: "" });
 	});
 });

@@ -1,29 +1,22 @@
-import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { workspaces } from "../../../../db/src/api.ts";
-import { resolvePath } from "@octocodeai/octocode-common/paths";
-import { getSessionsDir } from "../../config.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";
 
-/** Default transcript directories. Pre-workspace JSONL directories remain discoverable for import. */
+/** Every registered workspace's transcript directory that still belongs to its checkout. */
 export async function knownSessionDirectories(): Promise<string[]> {
-	const legacy = getSessionsDir();
-	const dirs = (await readdir(legacy, { withFileTypes: true }).catch(() => []))
-		.filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-		.map((entry) => join(legacy, entry.name));
+	const dirs: string[] = [];
 	let registered: ReturnType<typeof workspaces.list>;
 	try {
 		registered = workspaces.list(sharedAgentDb().db);
 	} catch {
-		// Existing JSONL files can still be imported when SQLite refuses this configuration.
+		// SQLite refused this configuration: no workspace is known.
 		return dirs;
 	}
 	for (const workspace of registered) {
 		try {
 			// A removed checkout, or another one occupying the same path, has no live files for this ID.
-			if (isCurrentWorkspace(workspace)) dirs.push(workspaceStateDir(workspace.root, "sessions"));
+			if (isCurrentWorkspace(workspace)) dirs.push(workspaceStateDir(workspace.root, AGENT_FOLDERS.sessions));
 		} catch {
 			// An unavailable workspace cannot hide accessible ones.
 		}
@@ -37,23 +30,7 @@ export interface CwdSessionDirectory {
 	filterCwd: boolean;
 }
 
-/** The pre-workspace folder of a cwd (`--<cwd with separators as dashes>--`), whether or not it exists. */
-export function legacySessionDirectoryPath(cwd: string): string {
-	const encoded = resolvePath(cwd)
-		.replace(/^[/\\]/, "")
-		.replace(/[/\\:]/g, "-");
-	return join(getSessionsDir(), `--${encoded}--`);
-}
-
-/**
- * Where the default session directory of `cwd` keeps transcripts: the workspace folder (shared by the checkout, not
- * filtered) and, when it exists, the legacy folder of exactly this cwd. The encoding is lossy, so legacy files are
- * filtered by header cwd. Creates nothing.
- */
+/** Where the default session directory of `cwd` keeps transcripts: the workspace folder, shared by the checkout. Creates nothing. */
 export function defaultSessionDirectories(cwd: string): CwdSessionDirectory[] {
-	const workspace = workspaceStateDir(cwd, "sessions");
-	const legacy = legacySessionDirectoryPath(cwd);
-	const dirs: CwdSessionDirectory[] = [{ dir: workspace, filterCwd: false }];
-	if (legacy !== workspace && existsSync(legacy)) dirs.push({ dir: legacy, filterCwd: true });
-	return dirs;
+	return [{ dir: workspaceStateDir(cwd, AGENT_FOLDERS.sessions), filterCwd: false }];
 }

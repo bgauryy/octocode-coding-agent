@@ -51,8 +51,8 @@ test("changedPaths: allows, requires and ignores runtime state", (t) => {
 	writeFileSync(join(dir, "a.txt"), "new\n");
 	mkdirSync(join(dir, "sub"));
 	writeFileSync(join(dir, "sub", "b.txt"), "new\n");
-	mkdirSync(join(dir, ".octocode", "code"), { recursive: true });
-	writeFileSync(join(dir, ".octocode", "code", "state"), "runtime\n");
+	mkdirSync(join(dir, ".octocode", "agent"), { recursive: true });
+	writeFileSync(join(dir, ".octocode", "agent", "state"), "runtime\n");
 	mkdirSync(join(dir, ".octocode"), { recursive: true });
 	writeFileSync(join(dir, ".octocode", "state"), "runtime\n");
 	assert.equal(gradeChangedPaths(grader, dir).status, "pass");

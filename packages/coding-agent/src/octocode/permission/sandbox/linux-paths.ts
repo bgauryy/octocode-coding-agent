@@ -104,7 +104,7 @@ export function literalPaths(pattern: string, use: Use, skip: (folder: string) =
 /**
  * `policy` as bubblewrap can apply it. bubblewrap binds concrete paths: the sandbox library skips a write rule with a
  * wildcard on Linux, which would drop protected paths such as `**\/.git/hooks` and the checkouts under
- * `.octocode/worktrees/*`. Each such rule becomes the paths it matches when the command starts: a deny keeps every match
+ * `.octocode/agent/worktrees/*`. Each such rule becomes the paths it matches when the command starts: a deny keeps every match
  * (a match made later is not covered), and an allow keeps only matches outside every deny, its search not entering a
  * denied folder. Rules without wildcards stay as they are; read denials stay too, as the library expands those itself.
  */

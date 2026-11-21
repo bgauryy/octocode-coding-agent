@@ -34,8 +34,8 @@ export interface ProviderSource {
 
 /** What Octocode offers for a detected tool's account. Nothing is read from the tool. */
 export type DetectedToolAction =
-	/** Octocode's own sign-in covers the account. `alternativeProviderIds` are other built-in sign-ins for it. */
-	| { kind: "sign-in"; providerId: string; alternativeProviderIds?: readonly string[] }
+	/** Octocode's own sign-in covers the account. */
+	| { kind: "sign-in"; providerId: string }
 	/** No sign-in covers it: set up an API key for this vendor provider. */
 	| { kind: "api-key"; providerId: string };
 

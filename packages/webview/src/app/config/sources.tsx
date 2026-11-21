@@ -112,7 +112,6 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 					) : (
 						plan.terms
 					)}
-					{plan.deprecated && <span> · Deprecated: {plan.deprecated}</span>}
 					{plan.disabled && <output> · Paused: {plan.disabled}</output>}
 				</p>
 			)}

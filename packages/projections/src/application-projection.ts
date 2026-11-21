@@ -235,7 +235,7 @@ function relatedTools(tools: readonly ApplicationTool[], ids: Set<string>): Appl
 	return tools.filter((tool) => ids.has(tool.toolCallId));
 }
 
-/** Compatibility with hosts that only sent text previews. Rich blocks never pass through placeholder parsing. */
+/** Strips the placeholders `applicationContentText` writes into a text-only message. Rich blocks never pass through it. */
 function visibleLegacyText(text: string): string {
 	return text.replace(/\[Tool call: [^\]\n]*\]|\[Content available in the session\]/g, "");
 }

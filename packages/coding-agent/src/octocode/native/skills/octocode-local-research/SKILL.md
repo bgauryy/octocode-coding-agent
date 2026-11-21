@@ -1,33 +1,33 @@
 ---
 name: octocode-local-research
-description: "Use before searching or reading code in this checkout: where it is defined, how it works, who calls it, what a change affects, its type; search, minimal reads, LSP drill-downs. Not GitHub or packages (octocode-github-research) or runtime failures (octocode-debugging)."
+description: "Use before searching or reading code in this checkout: where it is defined, how it works, who calls it, what a change affects, its type; minimal reads, LSP drill-downs. GitHub or packages: octocode-github-research; runtime failures: octocode-debugging."
 ---
 
 # Local research
 
-Research this checkout with `structureSearch`, `localSearch`, `astSearch`, `localFetch` and `lspSearch`; `bash` is for running things. Name the question and the evidence that settles it, then take the cheapest call that can change the answer. A known path or line goes straight to `localFetch`. Batch independent queries in one call (up to 5), give each a `mainGoal`, and reuse paths and lines you already observed.
+Research this checkout with `structureSearch`, `localSearch`, `astSearch`, `localFetch` and `lspSearch`; `bash` is for running things. Name the question and the evidence that settles it, then take the cheapest call that can change the answer. A known path or line goes straight to `localFetch`. Batch independent queries in one call and reuse paths and lines you already observed. Parameters: each tool's own description.
 
 ## Find
 
-| You have                                                          | Use                                                                                                                                    |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| A half-known name, or "largest / newest / longest file"           | `structureSearch` (`operation: files`, `nameRegex`, `sort`; `view: paths`)                                                             |
-| A word, error text or option name                                 | `localSearch`; `view: files` for which files, `countMatches` or `countLines` for exact counts (a content page's total is only a floor) |
-| A code shape (calls, imports, declarations, a call inside a loop) | `astSearch` (`operation: match` with a `rule`; `symbols` with `symbolFilter` for a declaration by name); its hits are candidates       |
-| A symbol name and a line from any hit                             | `lspSearch` (below)                                                                                                                    |
+| You have                                                          | Use                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| A half-known name, or "largest / newest / longest file"           | `structureSearch` (files by name, size or date)                                       |
+| A word, error text or option name                                 | `localSearch`; a count view for exact counts (a content page's total is only a floor) |
+| A code shape (calls, imports, declarations, a call inside a loop) | `astSearch`; its hits are candidates                                                  |
+| A symbol name and a line from any hit                             | `lspSearch` (below)                                                                   |
 
-Narrow with `path`, `include`, `fileHas` and `testCode: exclude` before widening. `wholeWord` for identifiers; `regexEngine` only when the pattern needs it.
+Narrow by path, include globs and test exclusion before widening; whole-word for identifiers.
 
 ## Read the least
 
-| Need                                                   | `localFetch`                                                                                       |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| One function or class                                  | `matchString` (a unique spelling) with `block: true`                                               |
-| Lines around a hit                                     | `matchString` with `contextLines`, or `ranges: [{startLine, endLine}]` (several spans in one call) |
-| The shape of a big file                                | `view: symbols`, then a `matchString` + `block` on the one declaration                             |
-| Comment-heavy or minified code you only need to follow | `view: compact` (never quote it; quote from `content`)                                             |
+| Need                                                   | `localFetch`                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| One function or class                                  | a unique `matchString` as a block                                         |
+| Lines around a hit                                     | `matchString` with context lines, or `ranges` (several spans in one call) |
+| The shape of a big file                                | the symbols view, then one declaration as a block                         |
+| Comment-heavy or minified code you only need to follow | the compact view (never quote it; quote from `content`)                   |
 
-Check that a `block` closed where the declaration ends. Search hits on very long lines show a window and `column`: re-read the whole line with the same `matchString` before relying on it. When `viewFallback` or `fileTooLarge` appears, read by `ranges` instead of assuming a missing outline means absence.
+Check that a `block` closed where the declaration ends. Search hits on very long lines show a window and `column`: re-read the whole line with the same `matchString` before relying on it. When a read falls back or reports the file too large, read by `ranges` instead of assuming a missing outline means absence.
 
 ## Drill down with `lspSearch`
 
@@ -42,5 +42,3 @@ Check each row's `lsp` field: `syntax` or `text` level, `recovered*` rows or `an
 ## Prove, then answer
 
 A hit is a lead; read the deciding span and cite `path:line`. Search paging (`responsePagination.next`, then each row's `next.nextPage`, `hasMore`) must finish before you claim completeness or "no other callers"; `isPartial`, a `countScope` other than complete and skipped paths limit the claim. Absence needs an unfiltered scan (`includeHidden`, `includeIgnored`, `defaultExcludes: false`). Before deleting an "unused" symbol also check registration, exports, tests, config and docs. Say which scope you did not scan.
-
-When many hits need a judgment by meaning, load octocode-clasify instead of reading them all.

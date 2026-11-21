@@ -10,7 +10,8 @@ import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const commands = [
+/** Raw protocol, whatever its method: the cookie-capable approval covers it without inspecting the call. */
+const cdpCommands = [
 	{ tool: "cdp", input: { method: "Runtime.evaluate", params: { expression: "document.title" } } },
 	{
 		tool: "cdp",
@@ -28,34 +29,39 @@ const commands = [
 			},
 		},
 	},
-	{ tool: "step", input: { step: { op: "cdp", method: "Storage.getCookies" } } },
-	{ tool: "script", input: { args: ["fixture.mjs"] } },
-	{ tool: "corpus_query", input: { args: ["--script", "fixture.mjs"] } },
-	{ tool: "corpus_query", input: { args: ["--script=fixture.mjs"] } },
-	{ tool: "corpus_query", input: { args: ["--scraping-skill-dir", "fixture-skill"] } },
-	{ tool: "protocol_corpus", input: { args: ["--scraping-skill-dir=fixture-skill"] } },
-	{ tool: "har_ingest", input: { args: ["--scraping-skill-dir", "fixture-skill"] } },
-	{ tool: "check", input: { recipe: "webmcp-tools", options: { WEBMCP_ACTION: "invoke", WEBMCP_TOOL: "fixture" } } },
-	{
-		tool: "check",
-		input: { recipe: "webmcp-tools", options: { WEBMCP_ACTION: "future-action", WEBMCP_TOOL: "fixture" } },
-	},
+	{ tool: "run", input: { plan: { steps: [{ op: "cdp", method: "Storage.getCookies" }] } } },
 ] as const;
 
+/** Page code and programs the package runs: `browser.control`, which a read-only role is refused. */
+const programs = [
+	{ tool: "run", input: { plan: { steps: [{ op: "evaluate", expression: "document.title" }] } } },
+	{ tool: "flow", input: { action: "run", name: "handle-dialog", params: { trigger: "alert(1)" } } },
+	{ tool: "open", input: { port: 9222, attach: true, acknowledge: true } },
+	{ tool: "open", input: { launch: { chromePath: "/tmp/fixture-program" } } },
+] as const;
+
+const approvals = (request: Awaited<ReturnType<typeof browserMcpRequest>>) => [
+	request?.action,
+	...(request?.also ?? []),
+];
+
 describe("opaque browser programs", () => {
-	it.each(commands)(
-		"requires cookie-capable approval for $tool without inspecting program text",
+	it.each(cdpCommands)(
+		"requires cookie-capable approval for $tool without inspecting its text",
 		async ({ tool, input }) => {
 			const request = await browserMcpRequest(`mcp__browser__${tool}`, input);
-			expect([request?.action, ...(request?.also ?? [])]).toContain("browser.cookies");
-			if ("args" in input) expect([request?.action, ...(request?.also ?? [])]).toContain("browser.control");
+			expect(approvals(request)).toContain("browser.cookies");
 			expect(browserMcpEscalations(`mcp__browser__${tool}`, input).some((entry) => entry.kind === "cookies")).toBe(
 				true,
 			);
 		},
 	);
 
-	it.each(commands)("dismissal prevents the entire $tool invocation in full mode", async ({ tool, input }) => {
+	it.each(programs)("requires browser.control approval for $tool code and programs", async ({ tool, input }) => {
+		expect(approvals(await browserMcpRequest(`mcp__browser__${tool}`, input))).toContain("browser.control");
+	});
+
+	it.each(cdpCommands)("dismissal prevents the entire $tool invocation in full mode", async ({ tool, input }) => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const permission = new Permission({ api: fakeHost().api, env: { [PERMISSION_ENV]: "full" }, isSubagent: false });
@@ -68,29 +74,22 @@ describe("opaque browser programs", () => {
 			annotations: () => ({ readOnlyHint: true }),
 			network: (toolName, args, folder) => browserMcpRequest(toolName, args, undefined, folder),
 		});
-		let executions = 0;
 		const result = await gate(
 			{ type: "tool_call", toolCallId: "opaque", toolName: `mcp__browser__${tool}`, input },
 			ctx,
 		);
-		if (!result?.block) executions++;
 		expect(result?.block).toBe(true);
-		expect(executions).toBe(0);
 	});
 
-	it.each(commands.slice(6, 11))("refuses local $tool programs in read-only browser roles", ({ tool, input }) => {
+	it.each(programs)("refuses $tool programs in read-only browser roles", ({ tool, input }) => {
 		const env = { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1" };
 		expect(readOnlyRoleRefusal({ toolName: `mcp__browser__${tool}`, input }, tmp(), env)).toMatch(/read-only role/);
 		expect(
-			readOnlyRoleRefusal(
-				{ toolName: "mcp__browser__corpus_query", input: { args: ["--regex", "fixture"] } },
-				tmp(),
-				env,
-			),
+			readOnlyRoleRefusal({ toolName: "mcp__browser__query", input: { file: "capture.json" } }, tmp(), env),
 		).toBeUndefined();
 	});
 
-	it("keeps typed DOM operations and protocol discovery out of opaque-program escalation", async () => {
+	it("keeps typed DOM operations, saved-file reads and discovery out of escalation", async () => {
 		for (const [tool, input] of [
 			[
 				"run",
@@ -99,30 +98,37 @@ describe("opaque browser programs", () => {
 						steps: [
 							{ op: "act", action: "click", ref: "e1" },
 							{ op: "extract", selector: "h1" },
+							{ op: "snapshot" },
+							{ op: "screenshot" },
 						],
 					},
 				},
 			],
-			["snapshot", {}],
-			["protocol", { domain: "Runtime", member: "evaluate" }],
+			["protocol", { member: "Runtime.evaluate" }],
 			["schema", { command: "run" }],
-			["query", { file: "capture.json", where: "response.status=200" }],
-			["corpus_query", { args: ["--regex", "fixture"] }],
-			["check", { recipe: "webmcp-tools", options: { WEBMCP_ACTION: "list" } }],
+			["query", { file: "capture.json", where: [{ path: "/response/status", op: "eq", value: 200 }] }],
+			["artifact", { file: "capture.json" }],
+			["skill", { topic: "operating" }],
+			["flow", { action: "run", name: "extract-links", params: { url: "https://example.com/" } }],
+			["flow", { action: "list" }],
+			["targets", {}],
+			["cleanup", { port: 9222 }],
+			["group", { action: "list" }],
+			["open", { url: "https://example.com/", headless: true }],
 		] as const) {
-			expect(await browserMcpRequest(`mcp__browser__${tool}`, input)).toBeUndefined();
+			expect(browserMcpEscalations(`mcp__browser__${tool}`, input), tool).toEqual([]);
 		}
 	});
 
-	it.each([commands[0], commands[6]])(
+	it.each([cdpCommands[0], cdpCommands[3]])(
 		"runs opaque $tool code after an explicit once-only approval",
 		async ({ tool, input }) => {
 			const cwd = tmp();
 			const permission = new Permission({ api: fakeHost().api, env: { [PERMISSION_ENV]: "full" }, isSubagent: false });
 			const ctx = fakeCtx({ cwd, hasUI: true });
-			let approvals = 0;
+			let asked = 0;
 			ctx.ui.select = async (_title, choices) => {
-				approvals++;
+				asked++;
 				return choices[0];
 			};
 			permission.start(ctx);
@@ -136,7 +142,7 @@ describe("opaque browser programs", () => {
 				{ type: "tool_call", toolCallId: "approved", toolName: `mcp__browser__${tool}`, input },
 				ctx,
 			);
-			expect(approvals).toBe(1);
+			expect(asked).toBe(1);
 			expect(result).toBeUndefined();
 		},
 	);

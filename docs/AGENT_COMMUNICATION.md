@@ -182,7 +182,6 @@ flowchart LR
 | Filters              | Octocode never runs Git filters when saving, so changed or new files with a filter attribute (LFS) refuse the export and keep the worktree. Ordinary checkout may run configured smudge filters |
 | Hooks and submodules | Repository hooks do not run at creation; submodules are not initialised and the child is warned                                                                                                 |
 | Backlog item         | If the child held one, it gets an `output` link to the ref and a note "not merged"; `/agents merge` notes the merge                                                                             |
-| Old refs             | Refs saved under `refs/octocode/pi/<id>` by earlier versions are still listed and merged                                                                                                        |
 | Not a sandbox        | External programs can write paths the tool-level check cannot parse                                                                                                                             |
 
 See [native features](../packages/coding-agent/docs/native-features.md) for commands and enablement and [configuration](../packages/coding-agent/docs/configuration.md#precedence) for settings precedence.

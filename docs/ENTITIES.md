@@ -18,7 +18,7 @@ An item can involve several sessions, agents and attempts, and a session can wor
 
 ## Database
 
-Schema version 10. A file at this version gains new tables and nullable columns in place (`jobs` and `leases.item` when opened; `item_handoffs`, review and opening tables at first use), so builds before and after the addition share it. There are no other upgrade steps: a file at an older version is set aside and a new one created that takes over the tables people wrote (memories, backlog, trust, reviews, command history) when their columns still fit, a newer one is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
+Schema version 10. There are no upgrade steps: a file at another version is refused ([database versions](../packages/coding-agent/docs/configuration.md#runtime-storage)). Everything checkout-local resolves to a workspace id (`workspaces`); several historical workspaces can share a name or last-known path, so file-serving routes check the current directory binding first.
 
 | Tables                                                                      | Holds                                                                                                                                                |
 | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -9,7 +9,6 @@ import { RECOVERY_CHARS } from "../../src/octocode/compaction/summary-text.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { asSetup } from "./fake-host.ts";
-import { tmp } from "./helpers.ts";
 
 const model = { provider: "p", id: "m", api: "anthropic-messages", maxTokens: 10_000, contextWindow: 200_000 };
 const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 };
@@ -34,17 +33,22 @@ const agentResult = (id: string) => ({
 });
 
 let savedHome: string | undefined;
+let home: string;
 /** A long session path in a folder that exists: the paid summary is kept beside it. */
 let sessionFile: string;
 beforeEach(() => {
 	savedHome = process.env.OCTOCODE_HOME;
-	process.env.OCTOCODE_HOME = tmp();
+	// The archive line names this folder and always stays whole, so its length sets what the cap leaves: a fixed base
+	// keeps the budget the same under any $TMPDIR (an isolated run's is about 30 characters longer).
+	home = fs.mkdtempSync("/tmp/octocode-");
+	process.env.OCTOCODE_HOME = home;
 	sessionFile = path.join(process.env.OCTOCODE_HOME, "octocodecode/agent/sessions/long-session-with-a-long-name.jsonl");
 	fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
 	setCurrentSession("long-session-with-a-long-name");
 });
 afterEach(() => {
 	setCurrentSession(undefined);
+	fs.rmSync(home, { recursive: true, force: true });
 	if (savedHome === undefined) delete process.env.OCTOCODE_HOME;
 	else process.env.OCTOCODE_HOME = savedHome;
 });

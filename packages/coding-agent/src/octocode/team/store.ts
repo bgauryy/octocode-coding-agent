@@ -323,7 +323,7 @@ export class TeamStore {
 
 	/**
 	 * A live lease held by someone other than `self` that covers `file` (or, for a tree request, lies under it): in this
-	 * checkout, or in a nested one of the team (a worktree under `.octocode/worktrees/` is the same files as in main).
+	 * checkout, or in a nested one of the team (a worktree under `.octocode/agent/worktrees/` is the same files as in main).
 	 */
 	conflict(file: string, self: string, kind: "file" | "tree" = "file", now = Date.now()): Lease | undefined {
 		return conflictingLease(this.db, this.team, this.workspace, file, self, kind, now, (owner, at) =>

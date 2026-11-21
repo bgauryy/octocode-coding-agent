@@ -282,7 +282,6 @@ function describe(api: Api, payload: Record_, measure: Measure): RequestTrace | 
 			return describeAnthropic(payload, measure);
 		case "openai-responses":
 		case "azure-openai-responses":
-		case "openai-codex-responses":
 			return describeOpenAi(payload, "input", measure);
 		case "openai-completions":
 		case "mistral-conversations":

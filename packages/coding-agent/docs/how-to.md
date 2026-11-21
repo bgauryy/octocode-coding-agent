@@ -15,7 +15,7 @@ In a worktree, `--continue` and `--resume` see only that folder's sessions: pres
 
 ## Recover a saved conversation
 
-Sessions persist as JSONL transcripts in `.octocode/code/sessions/` of the checkout (`--session-dir` picks another folder) and are mirrored in Octocode's database, including tool results, child reports, branches and compactions. If the database is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
+Sessions persist as JSONL transcripts in `.octocode/agent/sessions/` of the checkout (`--session-dir` picks another folder) and are mirrored in Octocode's database, including tool results, child reports, branches and compactions. If the database is unavailable after a file write, Octocode reports the pending mirror and retries when the transcript is next opened or written.
 
 A transcript writes repeated data once and refers back to it from later lines of the same file. Reading the file restores every entry whole, and nothing else is needed: a copied, forked or exported file reads on its own. Transcripts written by earlier versions read unchanged.
 
@@ -59,7 +59,7 @@ A session whose last record was cut off (a crash or a power loss mid-write) resu
 3. Check: `/mcp list` in the session or `octocode mcp list` in a shell shows each server's state; `/mcp tools docs` lists its tools.
 4. To switch it off later: `/configuration disable mcp:docs --local`.
 
-Details: [MCP quick setup](mcp.md#quick-setup), [MCP precedence](configuration.md#precedence), [project trust](permissions.md#project-trust).
+Details: [Add an MCP server](mcp.md#add-a-server), [MCP precedence](configuration.md#precedence), [project trust](permissions.md#project-trust).
 
 ## Make subagents use a cheaper model
 
@@ -90,8 +90,8 @@ Details: [memory](memory.md).
 
 ## Run two sessions in parallel on different branches
 
-- In a second terminal: `octocode --worktree <name>`. It creates `.octocode/worktrees/<name>` on branch `worktree-<name>` at the current HEAD, or reuses it. From a session, `/worktree new <name>` does the same (inside tmux it opens a window).
-- Add `.octocode/worktrees/` to `.gitignore`. List `.env`-style untracked files to copy in a `.worktreeinclude` file; dependencies are not installed.
+- In a second terminal: `octocode --worktree <name>`. It creates `.octocode/agent/worktrees/<name>` on branch `worktree-<name>` at the current HEAD, or reuses it. From a session, `/worktree new <name>` does the same (inside tmux it opens a window).
+- Add `.octocode/agent/worktrees/` to `.gitignore`. List `.env`-style untracked files to copy in a `.worktreeinclude` file; dependencies are not installed.
 - `/worktree list` shows each worktree's branch and unsaved work. Each worktree has its own backlog and workspace memories; the agent team and project memories span the repository.
 
 Details: [worktrees](native-features.md#worktrees).

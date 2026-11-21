@@ -16,9 +16,9 @@ Two files hold the curated notes the next agent should know: preferences, decisi
 | File      | Path                                                                               | Holds                                                                                                             |
 | --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Global    | `MEMORY.md` in the Octocode home (`~/.octocode/octocodecode/`, or `OCTOCODE_HOME`) | Your preferences and working style across repositories, facts about the machine, procedures that apply everywhere |
-| Workspace | `.octocode/octocodecode/MEMORY.md` in the repository's main checkout               | This repository's decisions and why, gotchas with their trigger, procedures, pointers, reflections                |
+| Workspace | `.octocode/agent/MEMORY.md` in the repository's main checkout                      | This repository's decisions and why, gotchas with their trigger, procedures, pointers, reflections                |
 
-Every worktree of a repository, a child's isolated one included, reads and writes the main checkout's file. A folder outside Git uses its workspace folder. The first write creates `.octocode/octocodecode/.gitignore` containing `*`, so the file stays out of commits. If you commit it anyway, it counts as repository content: the prompt labels it read-only, and Octocode proposes a diff instead of writing it. The agent's `file` tool refuses to change either file and names the `memory` tool, which keeps the format and the caps.
+Every worktree of a repository, a child's isolated one included, reads and writes the main checkout's file. A folder outside Git uses its workspace folder. Octocode adds no `.gitignore` for it: ignore `.octocode/agent/MEMORY.md` yourself to keep it out of commits. If you commit it, it counts as repository content: the prompt labels it read-only, and Octocode proposes a diff instead of writing it. The agent's `file` tool refuses to change either file and names the `memory` tool, which keeps the format and the caps.
 
 ```markdown
 ## Preferences
@@ -27,19 +27,19 @@ Every worktree of a repository, a child's isolated one included, reads and write
 
 ## Decisions
 
-- The TUI stays the default renderer; Ink only behind OCTOCODE_UI=ink (agent 2026-11-18)
+- Database migrations are written by hand, never generated (user 2026-11-18)
 ```
 
 - Sections appear in this order, each only when it holds a line: Preferences, Decisions, Gotchas, Procedures, Pointers, Reflections.
 - One fact per `- ` line: the rule and why, then who last confirmed it (`user`, `agent` or `reflection`) and when. A line you write by hand without that ending counts as yours.
 - A leading `!` pins a line: it is never removed to make room, and only a change you approve edits it.
-- Each file holds at most 30 non-blank lines (headings count), 200 characters per line and 4 KB. Octocode enforces this on every write and on every read.
+- The global file holds at most 30 non-blank lines and the workspace file 40 (headings count); each holds 200 characters per line and 4 KB. Octocode enforces this on every write and on every read.
 
 Octocode never just appends. A save of a fact already in the file confirms it (the date moves on), a rename replaces its line, and a delete removes it. When a file is full, the line that ranks lowest leaves to make room: first by who confirmed it (yours over a reflection's over an agent's), then by section (preferences and decisions over gotchas and procedures over pointers and reflections), then by date, oldest first. A line that leaves is kept as a note in the database, so nothing is lost. A line that looks like a secret, or that repeats `AGENTS.md` or Octocode's shipped policy, is refused.
 
 ```mermaid
 flowchart LR
-  S["memory set, /memory add"] --> V{"30 lines, 200 chars, no secret, no repeat of AGENTS.md"}
+  S["memory set, /memory add"] --> V{"line cap, 200 chars, no secret, no repeat of AGENTS.md"}
   V -->|fits| F["MEMORY.md"]
   V -->|full| E["lowest-ranked line"] --> D[("notes database")]
   S --> D
@@ -70,7 +70,7 @@ flowchart TD
 - **Reflection.** When a main session of 5 or more user turns ends (you quit, or start or resume another session), and only if something outside the agent happened, one call to the cheaper model proposes at most 3 changes. Those signals are: you corrected the agent, a check failed and then passed, a call was refused or reverted, or the same error came back. The model sees the last checkpoint, the session's candidates, the signals with the session and entries that show them, and both files.
 - **Consolidation.** At most once a day per file, when candidates are pending, the first session to start or end takes the file's lease and reviews it. Code drops lines that repeat `AGENTS.md` or Octocode's policy (a line you wrote is marked instead), marks a line whose repository path no longer exists, and confirms a line a candidate restates. The model then merges duplicates and paraphrases, marks both sides of a contradiction instead of keeping only the newer one, and adds candidates that are durable rules; the candidates it saw are dropped, while the checkpoints they came from stay in the archive. Without a cheaper model, or with `memory.reflection` off, only the code's part runs.
 
-The model never writes a file. It returns changes as data; Octocode applies them as `reflection` lines, never pinned and never touching a pinned line, and the same checks as a save apply: 30 lines, 200 characters, no secret, no repeat of `AGENTS.md`. A reply that is not the changes asked for leaves both files as they were. A marked line ends with `recheck`, for you or the next pass to settle; rewriting it clears the mark.
+The model never writes a file. It returns changes as data; Octocode applies them as `reflection` lines, never pinned and never touching a pinned line, and the same checks as a save apply: the file's line cap, 200 characters, no secret, no repeat of `AGENTS.md`. A reply that is not the changes asked for leaves both files as they were. A marked line ends with `recheck`, for you or the next pass to settle; rewriting it clears the mark.
 
 A proposed line is quarantined, kept as a candidate tagged `memory-quarantined` and never written, when it names a URL, tells tools what to run or fetch, would skip your approval, mostly repeats what a web page, an MCP tool or a network command returned, or comes from a child that read outside the workspace. Find them with `/memory search quarantined`, and save one yourself if it is right. Each pass is recorded in the session, and a session with a screen names what changed.
 
@@ -80,7 +80,7 @@ Settings (global or project, see [configuration](configuration.md#memory)): `mem
 
 ## Notes
 
-Notes live in the agent database selected by `OCTOCODE_AGENT_DB`, which is also the archive and search index behind the MEMORY.md files. A new note belongs to the workspace identified by `.octocode/code/workspace/id`; every Git worktree, including a child's isolated one, has its own workspace in the database, and the ID follows a moved checkout. Scope `project` shares a note across a repository's worktrees, `global` makes it available everywhere; reads with scope `all` see the workspace, its repository's project notes and global notes. IDs are `M<n>`. A workspace or global note's title is also its line in the matching MEMORY.md file; its body stays in the database.
+Notes live in the agent database selected by `OCTOCODE_AGENT_DB`, which is also the archive and search index behind the MEMORY.md files. A new note belongs to the workspace identified by `.octocode/agent/workspace/id`; every Git worktree, including a child's isolated one, has its own workspace in the database, and the ID follows a moved checkout. Scope `project` shares a note across a repository's worktrees, `global` makes it available everywhere; reads with scope `all` see the workspace, its repository's project notes and global notes. IDs are `M<n>`. A workspace or global note's title is also its line in the matching MEMORY.md file; its body stays in the database.
 
 Kinds: `preference`, `fact`, `decision`, `gotcha`, `procedure`, `reference`; in a MEMORY.md file facts and references go under Pointers. A pinned note is injected before every prompt while recall is on, and is a pinned line in its file.
 
@@ -167,12 +167,12 @@ Automatic recall is the `memory.recall` setting: `main` (the default) recalls in
 
 Claude Code's auto memory is a separate, read-only source, off by default: [project context](../../../docs/CONTEXT.md#project-context).
 
-An omitted or replaced memory notice no longer counts as present: unchanged notes can be recalled again when their original content has left the active branch. Restoring the exact notice restores that deduplication state. Saved notes provide long-term knowledge; the checkpoint, recent messages and task records provide the working state of the current session ([context management](../../../docs/CONTEXT.md#working-across-many-context-windows)).
+An omitted or replaced memory notice no longer counts as present: unchanged notes can be recalled again when their original content has left the active branch. Restoring the exact notice restores that deduplication state. Saved notes provide long-term knowledge; the checkpoint, recent messages and task records provide the working state of the current session ([context management](../../../docs/CONTEXT.md#across-many-context-windows)).
 
 ## Lifecycle events and compaction history
 
 Built-in hooks record init, create, update, delete and committed compaction events in the same database. Every activation, including resume and reload, gets its own init event; repeated delivery is idempotent; registration IDs distinguish reused agent names. Heartbeats and activity text produce no events, and nonpersistent agents produce no automatic durable events.
 
-`.octocode/code/agents.txt` is a generated JSON Lines view of the latest 50 workspace events (time, event id, name, parentId, sessionId, type, data, schema version); older events stay in the database and in Archive. The first writer binds the view to its database through `data.storeKey`; a different database or a malformed file is refused. Delete the file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused, and a projection failure does not undo database commits.
+`.octocode/agent/agents.txt` is a generated JSON Lines view of the latest 50 workspace events (time, event id, name, parentId, sessionId, type, data, schema version); older events stay in the database and in Archive. The first writer binds the view to its database through `data.storeKey`; a different database or a malformed file is refused. Delete the file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused, and a projection failure does not undo database commits.
 
 Complete compaction summaries are kept indefinitely. Detailed archive copies expire after `OCTOCODE_CLEANUP_DAYS` days (default 30, zero disables), counted from the committed compaction time, not reads, resume or file mtime; a copy is removed only after its full summary and a trustworthy timestamp are retained, and unverifiable legacy copies stay. Forks reference source compactions and repair never recreates expired copies. Original transcripts stay available for resume and branching. `--no-session` skips automatic lifecycle and compaction persistence; saving a memory explicitly is unchanged.

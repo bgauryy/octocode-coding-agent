@@ -13,30 +13,15 @@ describe("the browser role's Octocode tools", () => {
 	beforeEach(() => publishToolRoles(resolveToolRoles([octocode])));
 	afterEach(() => publishToolRoles(resolveToolRoles([])));
 
-	it("keeps local search, read and the judge for its saved captures, and drops the GitHub tools", () => {
+	it("admits the whole research server beside its browser tools, and no other server", () => {
 		const allowed = (loadProfiles(tmp(), tmp(), false, {}).get("browser")!.tools ?? "").split(",");
-		const octocodeTools = allowed.filter((name) => name.startsWith("mcp__octocode__")).sort();
-		expect(octocodeTools).toEqual([
-			"mcp__octocode__astSearch",
-			"mcp__octocode__clasify",
-			"mcp__octocode__localFetch",
-			"mcp__octocode__localSearch",
-			"mcp__octocode__lspSearch",
-			"mcp__octocode__structureSearch",
-		]);
-		// No pattern in the list reaches them either: the role names one MCP server, so it does not keep every server.
-		const dropped = [
-			"ghSearchRepo",
-			"ghSearchCode",
-			"ghStructure",
-			"ghGetFileContent",
-			"ghSearchHistory",
-			"ghGetHistoryItem",
-		];
-		expect(octocode.config.roles?.readOnly).toEqual(expect.arrayContaining(dropped));
-		for (const tool of dropped) expect(matchesTool(allowed, `mcp__octocode__${tool}`)).toBe(false);
-		// The Octocode server leaves every tool declared (none on demand), so the role's local tools are its floor.
-		expect(octocode.config.toolExposure).toBeUndefined();
+		// Every specialist but lean gets the research server: local search, read and the judge for its saved captures,
+		// and the GitHub tools too.
+		for (const tool of ["localSearch", "localFetch", "clasify", "structureSearch", "ghSearchCode", "ghGetFileContent"])
+			expect(matchesTool(allowed, `mcp__octocode__${tool}`), tool).toBe(true);
 		expect(matchesTool(allowed, "mcp__browser__open")).toBe(true);
+		// Naming two servers keeps every other server out.
+		expect(matchesTool(allowed, "mcp__freellama__chat")).toBe(false);
+		expect(matchesTool(allowed, "mcp__desktop__launch_app")).toBe(false);
 	});
 });

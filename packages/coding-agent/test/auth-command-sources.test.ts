@@ -67,12 +67,12 @@ describe("auth command credential sources", () => {
 	test("reads an expired Pi OAuth token without refreshing or creating Octocode credentials", async () => {
 		const piAuth = join(home, ".pi", "agent", "auth.json");
 		write(piAuth, {
-			"openai-codex": { type: "oauth", access: "pi-expired-test-token", refresh: "fixture-refresh", expires: 0 },
+			openai: { type: "oauth", access: "pi-expired-test-token", refresh: "fixture-refresh", expires: 0 },
 		});
 		const before = readFileSync(piAuth, "utf8");
 		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-		await runAuthCommand(["auth", "check", "--provider", "openai-codex", "--credentials", "--no-refresh"]);
+		await runAuthCommand(["auth", "check", "--provider", "openai", "--credentials", "--no-refresh"]);
 
 		expect(stdout).toHaveBeenLastCalledWith("pi-expired-test-token\n");
 		expect(process.exitCode).toBe(0);

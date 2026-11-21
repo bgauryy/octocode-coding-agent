@@ -1,6 +1,6 @@
 ---
 name: octocode-github-research
-description: "Use for code, history or packages outside this checkout: GitHub repo files at a ref, who changed what and why (commits, PRs, issues), which repo and ref ship a package version."
+description: "Use for code, history or packages outside this checkout: GitHub files at a ref, who changed what and why (commits, PRs, issues), which repo and ref ship a package version."
 ---
 
 # GitHub and package research
@@ -32,4 +32,4 @@ When you would run more than a few searches or AST queries against the same repo
 
 ## Prove
 
-A hit is a lead: read the span at the SHA before citing. Separate what a commit message claims from what its patch shows. Report what you left unread (unpaged files, unindexed repos, rate limits, missing auth) rather than implying completeness. When many search hits or history rows need a judgment by meaning, load octocode-clasify.
+A hit is a lead: read the span at the SHA before citing. Separate what a commit message claims from what its patch shows. Report what you left unread (unpaged files, unindexed repos, rate limits, missing auth) rather than implying completeness.

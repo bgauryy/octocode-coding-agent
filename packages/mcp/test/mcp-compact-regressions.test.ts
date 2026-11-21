@@ -8,7 +8,6 @@ import {
 	COMPACT_GENERATOR_VERSION,
 	readGenerated,
 	renderServer,
-	resolveServerFile,
 	writeGenerated,
 } from "../src/compact/index.ts";
 import { McpPresentation } from "../src/presentation/index.ts";
@@ -59,22 +58,6 @@ it("loads metadata and text from the same snapshot when another writer replaces 
 	writeGenerated(dir, "s", text, meta);
 	writeFileSync(join(dir, "s.txt"), renderServer({ server: "s", tools: [tool({ type: "number" })] }));
 	expect(readGenerated(dir, "s")).toEqual({ text, meta });
-});
-
-it("regenerates legacy split caches and drops the wording they stored", () => {
-	const dir = tmp();
-	const input = { server: "s", tools: [tool({ type: "string" })] };
-	const overrides = { tools: { a: "Keep the authored wording." } };
-	const optimizedBy = { model: "author", at: "2026-10-28T00:00:00.000Z" };
-	writeFileSync(
-		join(dir, "s.json"),
-		JSON.stringify({ hash: catalogHash(input), generatorVersion: COMPACT_GENERATOR_VERSION, overrides, optimizedBy }),
-	);
-	writeFileSync(join(dir, "s.txt"), "A stale or mixed legacy text file.");
-	const result = resolveServerFile(dir, "s", input);
-	expect(result.meta).not.toHaveProperty("overrides");
-	expect(result.text).not.toContain("Keep the authored wording.");
-	expect(readGenerated(dir, "s")?.text).toBe(result.text);
 });
 
 describe("compact schema fidelity", () => {

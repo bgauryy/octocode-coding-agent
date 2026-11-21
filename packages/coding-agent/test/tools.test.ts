@@ -24,7 +24,7 @@ function getTextOutput(result: any): string {
 	);
 }
 
-/** The result text without its first line, the `[exit 0 · 1s · 3 lines · 12 B]` header. */
+/** The result text without its first line, the `[exit 0 · 1s]` header. */
 function bodyOf(result: any): string {
 	return getTextOutput(result).replace(/^\[[^\n]*\]\n?/, "");
 }
@@ -55,7 +55,7 @@ describe("Coding Agent Tools", () => {
 		it("should report non-zero exit codes as error results with structured content", async () => {
 			const result = await bashTool.execute("test-call-9", { command: "echo out; exit 3" });
 			expect(result.isError).toBe(true);
-			expect(getTextOutput(result)).toMatch(/^\[exit 3 · [\d.]+s · 1 line · 4 B\]\nout\n$/);
+			expect(getTextOutput(result)).toMatch(/^\[exit 3 · [\d.]+s\]\nout\n$/);
 			expect(getTextOutput(result)).not.toContain("Command exited");
 			expect(result.structuredContent).toEqual({
 				output: "out\n",
@@ -127,9 +127,7 @@ describe("Coding Agent Tools", () => {
 						command: `printf 'before-kill\\n'; kill -${signal} $$`,
 					});
 					expect(result.isError).toBe(true);
-					expect(getTextOutput(result)).toMatch(
-						new RegExp(`^\\[exit ${exitCode} · [\\d.]+s · 1 line · 12 B\\]\\nbefore-kill\\s*$`),
-					);
+					expect(getTextOutput(result)).toMatch(new RegExp(`^\\[exit ${exitCode} · [\\d.]+s\\]\\nbefore-kill\\s*$`));
 				}
 			},
 		);
@@ -144,7 +142,7 @@ describe("Coding Agent Tools", () => {
 			const bash = createBashTool(testDir, { operations });
 
 			await expect(bash.execute("test-call-null-exit", { command: "remote" })).rejects.toThrow(
-				/^\[terminated \(no exit code\) · [\d.]+s · 1 line · 8 B\]\npartial\s*$/,
+				/^\[terminated \(no exit code\) · [\d.]+s\]\npartial\s*$/,
 			);
 		});
 

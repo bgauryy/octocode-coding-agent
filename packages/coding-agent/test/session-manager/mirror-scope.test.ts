@@ -55,8 +55,11 @@ describe("the transcripts database indexes", () => {
 		expect(await indexed(reopened)).toBe(true);
 	});
 
-	it("no file opened by path from a temporary folder, nor one from a repository's .octocode/tmp", async () => {
-		for (const file of [join(scratch, "fixtures", "copy.jsonl"), join(cwd, ".octocode", "tmp", "bench", "big.jsonl")]) {
+	it("no file opened by path from a temporary folder, nor one from a repository's .octocode/agent/tmp", async () => {
+		for (const file of [
+			join(scratch, "fixtures", "copy.jsonl"),
+			join(cwd, ".octocode", "agent", "tmp", "bench", "big.jsonl"),
+		]) {
 			const manager = SessionManager.open(sessionFileAt(file));
 			manager.appendMessage(message("not indexed"));
 			expect(await indexed(manager)).toBe(false);

@@ -1,11 +1,8 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CallToolResult } from "../../client/index.ts";
 import { withStructuredText } from "../structured-text.ts";
 
 type Structured = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Structured {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** Fields of a window read the model never acts on: the tree is already in the text, the note only advertises it. */
 const WINDOW_STATE_DROPPED = ["tree_markdown", "elements", "_note"] as const;

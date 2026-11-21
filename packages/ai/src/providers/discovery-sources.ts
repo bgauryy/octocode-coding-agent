@@ -80,10 +80,6 @@ export const MODEL_DISCOVERY_SOURCES: Readonly<Record<string, ModelDiscoverySour
 	"moonshotai-cn": list("models", "https://platform.kimi.com/docs/api/list-models"),
 	nvidia: list("models", "https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html"),
 	openai: list("models", "https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference"),
-	"openai-codex": catalog(
-		"https://developers.openai.com/codex/auth",
-		"Use the Codex app-server model/list RPC for this legacy backend; public API models belong to the openai provider.",
-	),
 	opencode: {
 		...list("v1/models", "https://opencode.ai/v2/docs/console/models/"),
 		public: true,

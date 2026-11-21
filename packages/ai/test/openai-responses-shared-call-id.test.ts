@@ -15,7 +15,7 @@ const usage: Usage = {
 	totalTokens: 0,
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
-const providers = new Set(["openai", "openai-codex", "opencode"]);
+const providers = new Set(["openai", "opencode"]);
 const ids = ["call_shared|itemAAAA/+=", "call_shared|itemBBBB/+="];
 
 function replay(callIds: string[]) {
@@ -45,7 +45,7 @@ function replay(callIds: string[]) {
 	const context = normalizeContext({
 		messages: [{ role: "user", content: "read both", timestamp: 1 }, assistant, ...results],
 	});
-	return convertResponsesMessages(getBuiltinModel("openai-codex", "gpt-5.5"), context, providers);
+	return convertResponsesMessages(getBuiltinModel("openai", "gpt-5.5"), context, providers);
 }
 
 const calls = (input: ReturnType<typeof replay>) =>

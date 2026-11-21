@@ -39,7 +39,7 @@ export function initializeSession(
 	preloadedFileEntries?: FileEntry[],
 	loadedFile?: LoadedSessionFile,
 ): void {
-	// An existing file needs no folder yet: a session opened from the legacy folder must not create a missing cwd tree.
+	// An existing file needs no folder yet: a session opened in place must not create a missing cwd tree.
 	if (state.persist && state.sessionDir && !(sessionFile && existsSync(sessionFile)) && !existsSync(state.sessionDir)) {
 		mkdirSync(state.sessionDir, { recursive: true });
 	}

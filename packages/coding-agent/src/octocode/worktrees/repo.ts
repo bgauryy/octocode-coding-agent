@@ -1,7 +1,8 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { git, GitError, gitQuiet } from "../../utils/git-run.ts";
-import { workspaceOctocodeDir } from "../shared/home.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
+import { workspaceAgentDir } from "../shared/home.ts";
 import { worktreeBranch } from "./name.ts";
 
 /** One entry of `git worktree list --porcelain -z`. */
@@ -64,7 +65,7 @@ async function listWorktrees(cwd: string): Promise<WorktreeEntry[]> {
 export interface WorktreeRepo {
 	/** Top level of the checkout `cwd` is in: the source of `.worktreeinclude` and of the new branch's start point. */
 	checkout: string;
-	/** The main worktree's root, where `.octocode/worktrees` lives, whichever worktree `cwd` is in. */
+	/** The main worktree's root, where `.octocode/agent/worktrees` lives, whichever worktree `cwd` is in. */
 	main: string;
 	entries: WorktreeEntry[];
 }
@@ -80,8 +81,8 @@ export async function locateRepo(cwd: string): Promise<WorktreeRepo> {
 	return { checkout: canonical(checkout), main: canonical(first.path), entries };
 }
 
-/** `<main root>/.octocode/worktrees`. */
-export const worktreesFolder = (main: string): string => path.join(workspaceOctocodeDir(main), "worktrees");
+/** `<main root>/.octocode/agent/worktrees`. */
+export const worktreesFolder = (main: string): string => path.join(workspaceAgentDir(main), AGENT_FOLDERS.worktrees);
 export const worktreePath = (main: string, name: string): string => path.join(worktreesFolder(main), name);
 
 /** The entry whose folder is `target`. */

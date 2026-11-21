@@ -37,15 +37,8 @@ import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
+import type { SessionConfig } from "./session-config-port.ts";
 import { BacklogProjection } from "./backlog-projection.ts";
-
-/** Settings routes injected by the root composer: the workspace domain cannot import `web-daemon`, which owns them. */
-export interface SessionConfig {
-	/** Answers a settings request (the caller checked the token) and returns true, or returns false for another route. */
-	handle(req: http.IncomingMessage, url: URL, reply: (status: number, body: unknown) => void): Promise<boolean>;
-	/** Cancels running sign-ins; called when the server closes. */
-	close(): void;
-}
 
 /** A loopback board with a per-launch capability; the general session API stays browser-inaccessible. */
 export async function startWorkspaceWeb(

@@ -20,7 +20,7 @@ export interface Segment {
 	from?: string;
 	to?: string;
 	tokensBefore: number;
-	/** How the summary was written: `cache-shared`, `standalone` or `pi-default`. */
+	/** How the summary was written: `cache-shared`, `standalone` or `octocode-default`. */
 	method: string;
 	/** A one-line label of the segment: the summary's own TL;DR or a fallback (the file has the whole text). */
 	tldr: string;

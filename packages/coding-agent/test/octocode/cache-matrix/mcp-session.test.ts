@@ -89,29 +89,23 @@ describe("a deferred MCP tool loaded in a session", () => {
 });
 
 describe("the session's requests through each real adapter", () => {
-	it.each([
-		"anthropic",
-		"responses",
-		"completions-explicit",
-		"completions-plain",
-		"codex",
-		"google",
-		"vertex",
-		"xai",
-	] as const)("%s: a load across prompts keeps the cache prefix", async (id) => {
-		await withMcpSession(async (s) => {
-			await s.prompt("first", SCRIPT);
-			await s.prompt("second", [call({ query: "api" }), fauxAssistantMessage("two")]);
-			const wires = await replayAll(
-				recordings(
-					s.requests.map((r) => r.context),
-					s.requests.map((r) => r.options),
-				),
-				wireCase(id),
-			);
-			for (let index = 1; index < wires.length; index++) expectAppend(wireCase(id), wires[index - 1], wires[index]);
-		});
-	});
+	it.each(["anthropic", "responses", "completions-explicit", "completions-plain", "google", "vertex", "xai"] as const)(
+		"%s: a load across prompts keeps the cache prefix",
+		async (id) => {
+			await withMcpSession(async (s) => {
+				await s.prompt("first", SCRIPT);
+				await s.prompt("second", [call({ query: "api" }), fauxAssistantMessage("two")]);
+				const wires = await replayAll(
+					recordings(
+						s.requests.map((r) => r.context),
+						s.requests.map((r) => r.options),
+					),
+					wireCase(id),
+				);
+				for (let index = 1; index < wires.length; index++) expectAppend(wireCase(id), wires[index - 1], wires[index]);
+			});
+		},
+	);
 
 	it.each(WIRE_CASES.map((entry) => entry.id))(
 		"%s: a provider switch rewrites the request once, then appends on the new provider",

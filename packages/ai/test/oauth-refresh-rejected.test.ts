@@ -34,7 +34,6 @@ describe("rejected OAuth refresh tokens", () => {
 		["OAuth invalid_grant", "OpenAI OAuth token request failed (400 invalid_grant); the ChatGPT sign-in expired"],
 		["xAI invalid_grant", "xAI OAuth token refresh failed (HTTP 400): invalid_grant: token revoked"],
 		["Kimi unauthorized", "Kimi Code token refresh unauthorized (status 401): revoked"],
-		["Codex 401", "OpenAI Codex token refresh failed (401)"],
 	])("%s: sends the refresh once, then fails the same way without a request", async (_name, reason) => {
 		const refresh = vi.fn(async () => {
 			throw new Error(reason);

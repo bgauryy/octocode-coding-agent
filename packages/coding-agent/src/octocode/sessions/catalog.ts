@@ -1,10 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-	defaultSessionDirectories,
-	knownSessionDirectories,
-	legacySessionDirectoryPath,
-} from "../../core/session-manager/directories.ts";
+import { defaultSessionDirectories, knownSessionDirectories } from "../../core/session-manager/directories.ts";
 import type { CatalogEntry, CatalogRow } from "../../../../db/src/api.ts";
 import { buildSessionInfo, type SessionInfoFolder, sessionInfoFolder } from "../../core/session-manager/listing.ts";
 import { EntryCursor } from "../shared/entry-cursor.ts";
@@ -237,15 +233,7 @@ export async function quickList(
 	};
 	await Promise.all(Array.from({ length: Math.min(PARSE_CONCURRENCY, stale.length) }, worker));
 	const wanted = scope.cwd && scope.sessionDir ? path.resolve(scope.cwd) : undefined;
-	// The legacy folder is named by a lossy encoding of the cwd, so only its sessions of this exact cwd belong.
-	const legacy = scope.cwd && !scope.sessionDir ? legacySessionDirectoryPath(scope.cwd) : undefined;
 	return listed
 		.filter((info) => !wanted || path.resolve(info.cwd || wanted) === wanted)
-		.filter(
-			(info) =>
-				!legacy ||
-				path.dirname(info.path) !== legacy ||
-				(info.cwd !== "" && path.resolve(info.cwd) === path.resolve(scope.cwd!)),
-		)
 		.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }

@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 /**
  * The closed list of events that can wake a session: one entry per kind with its payload type, how the session hears of it,
  * its dedupe key and its row label. A wake source names its kind here; the `wait` tool parses `event` against this list.
@@ -73,8 +74,6 @@ interface Entry<K extends AgentEventKind> {
 	key(payload: EventPayloads[K]): string;
 }
 
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
 /** The refs of an `idle-items` alert, from its `subject`. */
 const idleRefs = (subject: string | undefined): string[] => (subject ? subject.split(",") : []);
 
@@ -119,7 +118,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"item.changed": {
 		listener: "explicit",
 		wakes: "yes",
-		label: (p) => `${p.ref} ${p.change} by ${clip(p.by, 24)}`,
+		label: (p) => `${p.ref} ${p.change} by ${clipText(p.by, 24)}`,
 		key: (p) => `changed:${p.ref}:${p.change}:${p.by}`,
 	},
 	"peer.landed": {
@@ -131,7 +130,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"item.peer": {
 		listener: "implicit",
 		wakes: "yes",
-		label: (p) => `${p.ref} ${p.change} by ${clip(p.by, 24)} (${p.relation})`,
+		label: (p) => `${p.ref} ${p.change} by ${clipText(p.by, 24)} (${p.relation})`,
 		key: (p) => `peer:${p.ref}:${p.id}`,
 	},
 	"path.unlocked": {
@@ -147,8 +146,8 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 			p.rule === "idle-items"
 				? `${idleRefs(p.subject).join(", ")} idle: you hold it, nothing works on it`
 				: p.rule === "idle-agent" || p.rule === "stalled-item"
-					? `${clip(p.subject ?? "agent", 24)} no progress for ${p.value} min`
-					: `monitor: ${p.subject ? `${clip(p.subject, 24)} ` : ""}${p.rule} ${p.value} (threshold ${p.threshold})`,
+					? `${clipText(p.subject ?? "agent", 24)} no progress for ${p.value} min`
+					: `monitor: ${p.subject ? `${clipText(p.subject, 24)} ` : ""}${p.rule} ${p.value} (threshold ${p.threshold})`,
 		key: (p) =>
 			p.rule === "idle-items"
 				? `idle:${idleRefs(p.subject).sort().join(",")}`
@@ -163,7 +162,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"time.due": {
 		listener: "explicit",
 		wakes: "yes",
-		label: (p) => `wait ${p.timerId} · ${clip(p.note, 60)}`,
+		label: (p) => `wait ${p.timerId} · ${clipText(p.note, 60)}`,
 		key: (p) => `time:${p.timerId}:${p.run}`,
 	},
 	"hook.feedback": {
@@ -181,7 +180,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"peer.notice": {
 		listener: "implicit",
 		wakes: "yes",
-		label: (p) => `peer: ${clip(p.text, 60)}`,
+		label: (p) => `peer: ${clipText(p.text, 60)}`,
 		key: (p) => `peer:${p.seq}`,
 	},
 };

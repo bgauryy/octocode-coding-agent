@@ -11,7 +11,7 @@ export async function mainCheckout(cwd: string): Promise<{ folder: string; here:
 }
 
 /**
- * The existing worktree `name` (made by `/worktree new`, under `.octocode/worktrees`) of the repository `cwd` is in: its
+ * The existing worktree `name` (made by `/worktree new`, under `.octocode/agent/worktrees`) of the repository `cwd` is in: its
  * folder, and whether `cwd` is already inside it. Rejects with the reason and what to run next when the name is invalid,
  * no such worktree exists, or its folder is gone.
  */

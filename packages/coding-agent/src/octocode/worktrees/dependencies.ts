@@ -71,7 +71,7 @@ function worktreeTarget(from: string, realSource: string, destination: string): 
 async function ignoredDependencyFolders(source: string): Promise<string[]> {
 	const listing = await git(
 		source,
-		["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--", EXCLUDE_WORKSPACE_STATE],
+		["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--", ...EXCLUDE_WORKSPACE_STATE],
 		{ raw: true },
 	);
 	return listing

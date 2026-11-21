@@ -43,7 +43,7 @@ export function backlogPrompt(subagent: boolean): {
 	return {
 		promptSnippet: renderPrompt("tools/backlog/snippet.md"),
 		description:
-			"States: backlog proposed, todo accepted, ongoing claimed, done. Others' live claims: notes only unless delegated. No deletion.",
+			"States: backlog proposed, todo accepted, ongoing claimed, done, closed. Others' live claims: notes only unless delegated. No deletion.",
 		ops: "get: read, follow Next; claim: start; note: progress; step, done: finish a step, the item; close: end unneeded",
 		promptGuidelines: renderPrompt("tools/backlog/guidelines.md", { subagent }).split("\n"),
 	};

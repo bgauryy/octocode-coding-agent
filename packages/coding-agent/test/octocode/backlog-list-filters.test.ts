@@ -256,6 +256,7 @@ describe("backlog list filters", () => {
 			"priorityAtLeast",
 			"anyTag",
 			"derivedFrom",
+			"blocked",
 			"since",
 			"sort",
 			"limit",
@@ -264,7 +265,7 @@ describe("backlog list filters", () => {
 		// A filter is named for what it matches; only the ones a name cannot explain carry a description.
 		for (const field of ["states", "query", "since", "limit"])
 			expect(properties[field].description, field).toBeTruthy();
-		for (const field of ["assignee", "blocked", "createdSince"]) expect(properties).not.toHaveProperty(field);
+		for (const field of ["assignee", "createdSince"]) expect(properties).not.toHaveProperty(field);
 		// Every other field is one `add` and `edit` write, inside an `items` entry, and none of them is also a filter.
 		expect(Object.keys(properties).filter((field) => !filters.includes(field))).toEqual(["op", "items"]);
 		const written = planEntryFields(tool);
@@ -278,7 +279,7 @@ describe("backlog list filters", () => {
 		expect(Object.keys(fake.tools.get("backlog").parameters.properties)).toEqual(
 			expect.not.arrayContaining(["states", "query", "ids", "since", "sort", "limit", "offset"]),
 		);
-		const undeclared = { reason: "r", op: "list", ids: ["B1"], assignee: "me", blocked: false, createdSince: "1d" };
+		const undeclared = { reason: "r", op: "list", ids: ["B1"], assignee: "me", createdSince: "1d" };
 		expect(
 			validateToolArguments(tool, { type: "toolCall", id: "c1", name: "backlogPlan", arguments: undeclared } as never),
 		).toMatchObject(undeclared);

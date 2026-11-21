@@ -87,8 +87,6 @@ describe("Pi source", () => {
 	it("loads Octocode and Pi model files with default runtime paths and keeps Octocode on when Pi is disabled", async () => {
 		const roots = [
 			["octocode", join(home, ".octocode", "octocodecode")],
-			["legacy-agent", join(home, ".octocode", "agent")],
-			["legacy-root", join(home, ".octocode")],
 			["pi-agent", join(home, ".pi", "agent")],
 			["pi-root", join(home, ".pi")],
 		] as const;
@@ -197,7 +195,7 @@ describe("detected tools", () => {
 		const tools = detectLocalTools({ home, env: {} });
 		expect(Object.fromEntries(tools.map((tool) => [tool.id, tool.action]))).toEqual({
 			"claude-code": { kind: "api-key", providerId: "anthropic" },
-			"codex-cli": { kind: "sign-in", providerId: "openai", alternativeProviderIds: ["openai-codex"] },
+			"codex-cli": { kind: "sign-in", providerId: "openai" },
 			"grok-cli": { kind: "sign-in", providerId: "xai" },
 			"gemini-cli": { kind: "api-key", providerId: "google" },
 			"copilot-cli": { kind: "sign-in", providerId: "github-copilot" },

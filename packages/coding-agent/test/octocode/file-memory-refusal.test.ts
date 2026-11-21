@@ -72,14 +72,11 @@ describe("file and the MEMORY.md files", () => {
 
 	it("refuses a patch that adds the file, spelled in another case", async () => {
 		const { run } = fileTool(repo);
-		const patch = [
-			"*** Begin Patch",
-			"*** Add File: .octocode/OctocodeCode/memory.md",
-			"+- planted",
-			"*** End Patch",
-		].join("\n");
+		const patch = ["*** Begin Patch", "*** Add File: .octocode/agent/Memory.md", "+- planted", "*** End Patch"].join(
+			"\n",
+		);
 		await expect(run({ patch })).rejects.toThrow(/curated memory file/);
-		expect(fs.existsSync(path.join(repo, ".octocode", "OctocodeCode", "memory.md"))).toBe(false);
+		expect(fs.existsSync(path.join(repo, ".octocode", "Memory.md"))).toBe(false);
 	});
 
 	it("refuses the main checkout's file from a linked worktree, and that worktree's own copy", async () => {
@@ -92,7 +89,7 @@ describe("file and the MEMORY.md files", () => {
 		);
 		const { run } = fileTool(cwd);
 		await expect(
-			run({ queries: [{ type: "write", path: ".octocode/octocodecode/MEMORY.md", content: "x\n" }] }),
+			run({ queries: [{ type: "write", path: ".octocode/agent/MEMORY.md", content: "x\n" }] }),
 		).rejects.toThrow(/curated memory file/);
 	});
 

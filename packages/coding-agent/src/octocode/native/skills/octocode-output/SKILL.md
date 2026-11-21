@@ -1,11 +1,11 @@
 ---
 name: octocode-output
-description: "Use when a reply holds a comparison, numbers, a flow, a hierarchy, part status, findings or a recommendation: picks table, tree or diagram."
+description: "Use when a reply holds a comparison, numbers, a flow, a hierarchy, part status, findings or a recommendation: picks a table, tree or diagram."
 ---
 
 # Output shape
 
-A reply to the user opens with its status in 1-3 plain lines (done, running or blocked; while work runs, what runs and what will wake the agent); the shapes below carry the details that follow, only those the next decision needs.
+After the reply's opening (communication policy), the shapes below carry the details that follow, only those the next decision needs. When status leads, give it in plain lines (done, running or blocked; while work runs, what runs and what will wake the agent).
 
 Form follows the data's shape, within 100 columns:
 

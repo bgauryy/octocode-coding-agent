@@ -65,7 +65,7 @@ describe("fallback auth.json", () => {
 	});
 
 	it("skips a fallback auth.json that does not parse", async () => {
-		write(join(home, ".octocode", "auth.json"), "{ not json");
+		write(join(home, ".pi", "auth.json"), "{ not json");
 		write(join(home, ".pi", "agent", "auth.json"), { cerebras: { type: "api_key", key: "pi-key" } });
 		const runtime = await createRuntime();
 		expect(available(runtime)).toContain("cerebras");
@@ -74,7 +74,7 @@ describe("fallback auth.json", () => {
 
 	it("names the fallback file and entry it skips at startup, and the store still reads the good entries", async () => {
 		const piAuth = join(home, ".pi", "agent", "auth.json");
-		const legacyAuth = join(home, ".octocode", "auth.json");
+		const legacyAuth = join(home, ".pi", "auth.json");
 		write(piAuth, { cerebras: { type: "api_key", key: "pi-key" }, future: { type: "session-token" } });
 		write(legacyAuth, "{ not json");
 		const startup = [...checkAuthFileSafety(piAuth), ...checkAuthFileSafety(legacyAuth)].filter((line) =>
@@ -85,8 +85,8 @@ describe("fallback auth.json", () => {
 			`Skipped ${legacyAuth}: it could not be read as JSON, so none of its credentials are used.`,
 		]);
 		const store = new PiFallbackCredentialStore(AuthStorage.create(join(agentDir, "auth.json")), [
-			join(home, ".octocode"),
 			join(home, ".pi", "agent"),
+			join(home, ".pi"),
 		]);
 		expect((await store.read("cerebras"))?.type).toBe("api_key");
 	});

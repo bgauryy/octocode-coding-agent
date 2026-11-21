@@ -289,7 +289,7 @@ describe("a database write the parse finds is a write for the role guards", () =
 	it("refuses an isolated child's sqlite3 write to the main tree's database", () => {
 		const main = repo();
 		const worktree = repo();
-		const scratch = path.join(main, ".octocode/code/temp/agents/impl-1");
+		const scratch = path.join(main, ".octocode/agent/temp/agents/impl-1");
 		fs.mkdirSync(scratch, { recursive: true });
 		const env = { [SUBAGENT_ENV]: "1", [TEAM_WORKSPACE_ENV]: main, [AGENT_SCRATCH_ENV]: scratch };
 		const event = { toolName: "bash", input: { command: `sqlite3 ${main}/app.db 'DELETE FROM users'` } };

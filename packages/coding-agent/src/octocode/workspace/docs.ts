@@ -14,20 +14,25 @@ import {
 } from "@octocodeai/octocode-contracts/docs";
 import { mermaidScript } from "@octocodeai/octocode-webview";
 import { redactData } from "@octocodeai/octocode-common/sanitize";
-import { WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
-import { workspaceOctocodeDir } from "../shared/home.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
+import { workspaceAgentDir } from "../shared/home.ts";
 import { docKind, MAX_DOC_BYTES, summarize } from "./doc-summary.ts";
 import { isSymlink } from "./reports.ts";
 import { readRepoDocFile, readRepoDocsIndex } from "./repo-docs.ts";
 
 /**
- * Never listed as authored documents: the saved skill output of other tools, and the workspace state folder inside
- * `.octocode/` (listed only through its backlog export and opted-in scratch). Only the top-level folder is excluded.
+ * Never listed as authored documents: Octocode's state and checkouts inside `.octocode/agent/`, and the repository
+ * documents' own prefix. Only the top-level folder is excluded.
  */
-const EXCLUDED_TOP = new Set(["skills", WORKSPACE_STATE.split(path.sep)[1], REPO_DOC_PREFIX.slice(0, -1)]);
-/** Scratch space: listed only when the request opts in. */
-const SCRATCH_TOP = "tmp";
-const RUNTIME_PREFIX = WORKSPACE_STATE.split(path.sep).join("/") + "/";
+const EXCLUDED_TOP = new Set<string>([
+	AGENT_FOLDERS.marker,
+	AGENT_FOLDERS.sessions,
+	AGENT_FOLDERS.sessionData,
+	AGENT_FOLDERS.worktrees,
+	REPO_DOC_PREFIX.slice(0, -1),
+]);
+/** Scratch folders: listed only when the request opts in. */
+const SCRATCH_TOPS = new Set<string>([AGENT_FOLDERS.tmp, AGENT_FOLDERS.temp]);
 const SKIPPED_FOLDERS = new Set(["view", "node_modules"]);
 const MAX_DOCS = 1000;
 const MAX_FILES_SEEN = 5000;
@@ -36,10 +41,10 @@ const MAX_DEPTH = 8;
 export { docKind };
 
 function skipped(top: string, includeTmp: boolean): boolean {
-	return EXCLUDED_TOP.has(top) || (top === SCRATCH_TOP && !includeTmp);
+	return EXCLUDED_TOP.has(top) || (SCRATCH_TOPS.has(top) && !includeTmp);
 }
 
-/** Authored documents, the backlog export, and optional runtime scratch, newest first. Skip symbolic links. */
+/** The Markdown under `.octocode/agent/` (reports, the backlog export, `MEMORY.md`) and optional scratch, newest first. Skip symbolic links. */
 export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 	const docs: DocSummary[] = [];
 	let seen = 0;
@@ -78,19 +83,7 @@ export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 			}
 		}
 	};
-	walk(workspaceOctocodeDir(root), "", 0);
-	try {
-		const state = workspaceStateDir(root);
-		const file = path.join(state, "backlog.md");
-		const stat = fs.lstatSync(file, { throwIfNoEntry: false });
-		if (stat?.isFile() && stat.size <= MAX_DOC_BYTES) {
-			const doc = summarize(file, RUNTIME_PREFIX + "backlog.md", stat.size, stat.mtime);
-			if (doc) docs.push(doc);
-		}
-		if (includeTmp) walk(path.join(state, "temp"), RUNTIME_PREFIX + "temp", 1);
-	} catch {
-		// Runtime output is optional; an inaccessible state directory cannot hide authored documents.
-	}
+	walk(workspaceAgentDir(root), "", 0);
 	docs.sort((a, b) => (a.updated < b.updated ? 1 : a.updated > b.updated ? -1 : a.path.localeCompare(b.path)));
 	const index: DocsIndex = {
 		docs: docs.slice(0, MAX_DOCS),
@@ -103,21 +96,18 @@ export function readDocsIndex(root: string, includeTmp = false): DocsIndex {
 
 /**
  * One document. The path must be a relative `.md` path with plain segments; every segment below its permitted base must exist
- * as a regular entry, never a symbolic link, and the resolved file must stay inside the real `.octocode/`, so a request
+ * as a regular entry, never a symbolic link, and the resolved file must stay inside the real `.octocode/agent/`, so a request
  * never turns into an arbitrary host file read.
  */
 export function readDocFile(root: string, relativePath: string, includeTmp = false): DocFile | undefined {
 	if (relativePath.length > 300 || relativePath.includes("\0") || relativePath.includes("\\")) return undefined;
-	const runtime = relativePath.startsWith(RUNTIME_PREFIX);
-	const relative = runtime ? relativePath.slice(RUNTIME_PREFIX.length) : relativePath;
-	if (runtime && relative !== "backlog.md" && !(includeTmp && relative.startsWith("temp/"))) return undefined;
-	const segments = relative.split("/");
+	const segments = relativePath.split("/");
 	if (segments.some((part) => !part || part === "." || part === ".." || part.startsWith("."))) return undefined;
 	if (!/\.md$/i.test(relativePath) || skipped(segments[0], includeTmp)) return undefined;
 	if (segments.slice(0, -1).some((part) => SKIPPED_FOLDERS.has(part)) || segments.length - 1 > MAX_DEPTH)
 		return undefined;
 	try {
-		const base = runtime ? workspaceStateDir(root) : workspaceOctocodeDir(root);
+		const base = workspaceAgentDir(root);
 		if (isSymlink(base)) return undefined;
 		const realBase = fs.realpathSync(base);
 		let current = realBase;

@@ -5,13 +5,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { privateDir } from "../../common/src/file-mode.ts";
 import { beginImmediate, isBusy, loadSqlite, RETRY_MS } from "./sqlite.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
-import { withFileLockSync } from "../../common/src/file-write-lock.ts";
-import { refuseIfInUse } from "./in-use.ts";
 import * as agentEvents from "./queries/agent-events.ts";
-import { AgentDbError, AgentDbRetiredError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
+import { AgentDbError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
 import * as archiveIndex from "./queries/archive-index.ts";
 import { createMirrorSchema, MIRROR_APPLICATION_ID } from "./schema-mirror.ts";
-import { carryRetired } from "./carry-over.ts";
 
 /** The open SQLite handle of an agent database; features pass it to `api.ts` functions and never call it themselves. */
 export type Db = DatabaseSync;
@@ -72,7 +69,7 @@ const MIRROR_FILE: FileKind = {
 	create: createMirrorSchema,
 };
 
-/** The archive search index: a disposable cache, set aside and rebuilt when its schema version changes. */
+/** The archive search index: a disposable cache. */
 const ARCHIVE_INDEX_FILE: FileKind = {
 	applicationId: archiveIndex.APPLICATION_ID,
 	name: "Octocode archive index",
@@ -89,9 +86,9 @@ export interface ArchiveIndexDb {
 	close(): void;
 }
 
-/** Opens the archive index at `file`, creating it (or setting aside one at an older schema version). */
+/** Opens the archive index at `file`, creating it. */
 export function openArchiveIndex(file: string, waitMs = 5000): ArchiveIndexDb {
-	const { db, transaction, close } = openConnection(file, false, ARCHIVE_INDEX_FILE, waitMs);
+	const { db, transaction, close } = connect(file, false, ARCHIVE_INDEX_FILE, waitMs);
 	return { file, db, fts: archiveIndex.hasFts(db), transaction, close };
 }
 
@@ -107,7 +104,7 @@ const mirrorOpeners = new WeakMap<AgentDb, (waitMs: number) => MirrorDb>();
 
 function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: number): AgentDb {
 	const { file, mirrorFile, archiveDir, privateParent } = locations;
-	const coordination = openConnection(file, privateParent, kind, waitMs);
+	const coordination = connect(file, privateParent, kind, waitMs);
 	let mirror: Connection | undefined;
 	let refused: AgentDbError | undefined;
 	const mirrorDb = (mirrorWaitMs = 5000): MirrorDb => {
@@ -115,7 +112,7 @@ function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: n
 		if (refused) throw refused;
 		if (!mirror?.db.isOpen) {
 			try {
-				mirror = openConnection(mirrorFile, privateParent, MIRROR_FILE, mirrorWaitMs);
+				mirror = connect(mirrorFile, privateParent, MIRROR_FILE, mirrorWaitMs);
 			} catch (error) {
 				if (error instanceof AgentDbError) refused = error;
 				throw error;
@@ -159,52 +156,6 @@ interface Connection {
 	onEvents(listener: (from: number, to: number) => void): () => void;
 	onCommit(listener: () => void): () => void;
 	close(): void;
-}
-
-/**
- * One connection on `target`, with the schema of a file of `kind`. A file at an older schema version is renamed to
- * `<file>.v<version>.retired` (with its `-wal` and `-shm`; a name already taken gets a timestamp and counter, so an
- * earlier retired file is never replaced), so nothing in it is lost, and a new file is created in its place: Octocode has
- * no upgrade steps, but the new file takes over the kind's `carried` tables (`carry-over.ts`). The rename runs under
- * `<file>.lock` and re-reads the file first: another process may have retired it already, and a fresh file it created
- * must not be renamed away.
- */
-function openConnection(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {
-	try {
-		return connect(target, privateParent, kind, waitMs);
-	} catch (error) {
-		if (!(error instanceof AgentDbRetiredError)) throw error;
-	}
-	return withFileLockSync(
-		target,
-		() => {
-			try {
-				return connect(target, privateParent, kind, waitMs);
-			} catch (error) {
-				if (!(error instanceof AgentDbRetiredError)) throw error;
-				refuseIfInUse(target, error.version);
-				const retired = retire(target, error.version);
-				const connection = connect(target, privateParent, kind, waitMs);
-				if (kind.carried) carryRetired(connection, retired, error.version, kind.carried);
-				return connection;
-			}
-		},
-		{ attempts: RETIRE_LOCK_ATTEMPTS },
-	);
-}
-
-/** About two seconds of waiting for another process that is retiring or creating the same file. */
-const RETIRE_LOCK_ATTEMPTS = 100;
-
-/** Moves `target` and its `-wal` and `-shm` to a retired name no file uses yet, and returns that name. Hold the file's lock. */
-function retire(target: string, version: number): string {
-	const parts = ["", "-wal", "-shm"];
-	const free = (base: string) => parts.every((suffix) => !fs.existsSync(`${base}${suffix}`));
-	let base = `${target}.v${version}.retired`;
-	for (let n = 0; !free(base); n++) base = `${target}.v${version}.retired.${Date.now()}${n > 0 ? `-${n}` : ""}`;
-	for (const suffix of parts)
-		if (fs.existsSync(`${target}${suffix}`)) fs.renameSync(`${target}${suffix}`, `${base}${suffix}`);
-	return base;
 }
 
 function connect(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {

@@ -65,7 +65,7 @@ describe("agent task `item` for an item this session does not hold", () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "held", state: "todo", createdBy: "user" });
 		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
-		const patch = "/repo/.octocode/tmp/isolate/w1.patch";
+		const patch = "/repo/.octocode/agent/tmp/isolate/w1.patch";
 		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).map((note) => note.text);
 		expect(await itemLink(ctx, "B1")!.attach(undefined, "w1", "refs/octocode/w1", patch)).toContain(
 			"Linked refs/octocode/w1",

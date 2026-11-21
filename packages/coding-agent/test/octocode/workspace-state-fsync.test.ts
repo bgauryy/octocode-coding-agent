@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ensureWorkspaceStateDir, WORKSPACE_STATE } from "../../src/storage/workspace.ts";
+import { AGENT_DIR } from "../../src/storage/agent-layout.ts";
+import { ensureWorkspaceStateDir } from "../../src/storage/workspace.ts";
 import { tmp } from "./helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -15,7 +16,7 @@ describe("workspace state folders", () => {
 		const fsync = vi.spyOn(fs, "fsyncSync");
 
 		const created = ensureWorkspaceStateDir(cwd, path.join("sessions", "s1", "output"));
-		expect(created).toBe(path.join(fs.realpathSync(cwd), WORKSPACE_STATE, "sessions", "s1", "output"));
+		expect(created).toBe(path.join(fs.realpathSync(cwd), AGENT_DIR, "sessions", "s1", "output"));
 		expect(fs.statSync(created).isDirectory()).toBe(true);
 		expect(fsync).toHaveBeenCalledTimes(1);
 

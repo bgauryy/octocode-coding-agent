@@ -39,7 +39,7 @@ describe("codeReadTool", () => {
 		],
 		["grep -rn foo src --include=*.ts", "search"],
 		["cd src && ls -la | head -30", "search"],
-		["cd .octocode/tmp && cat ../../src/a.ts", "reader"],
+		["cd .octocode/agent/tmp && cat ../../../src/a.ts", "reader"],
 	])("%s reads with %s", (command, tool) => {
 		expect(codeReadTool(command, cwd)).toBe(tool);
 	});
@@ -67,7 +67,7 @@ describe("codeReadTool", () => {
 		"cd /tmp && ls",
 		"cd .. && ls",
 		// A bare listing inside a generated directory looks at output, as a named path there does (2026-11-05 session).
-		"cd .octocode/tmp/agent-prompts && ls -la | head -30",
+		"cd .octocode/agent/tmp/agent-prompts && ls -la | head -30",
 		"cd node_modules/x && ls",
 		"yarn test",
 		"cat a.ts && yarn test",
@@ -110,7 +110,7 @@ describe("createReadHint", () => {
 	it("stays silent for a read of a log, doc, config or other output, and keeps the hint for source", () => {
 		const hint = createReadHint(active);
 		for (const command of [
-			"rg ERROR .octocode/tmp/int2-sys.log",
+			"rg ERROR .octocode/agent/tmp/int2-sys.log",
 			"tail -n 50 build.log",
 			"cat notes.txt",
 			"head out.OUT",
@@ -118,7 +118,7 @@ describe("createReadHint", () => {
 			"sed -n '1,40p' docs/guide.md",
 			"cat package.json",
 			"head config.yaml",
-			"ls .octocode/tmp",
+			"ls .octocode/agent/tmp",
 			"rg foo node_modules/x/index.js",
 		])
 			expect(hint(command, cwd, "s1"), command).toBeUndefined();

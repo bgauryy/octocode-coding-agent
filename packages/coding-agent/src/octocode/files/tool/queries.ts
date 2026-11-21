@@ -15,8 +15,7 @@ const QuerySchema = Type.Object({
 	type: Type.Unsafe<"edit" | "write" | "delete">({
 		type: "string",
 		enum: ["edit", "write", "delete"],
-		description:
-			"edit: exact replacements; write: create or replace; delete: irreversible, only when the task needs it",
+		description: "edit: exact replacements; write: create or replace; delete: /rewind restores it; only if needed",
 	}),
 	path: Type.String({ description: "Absolute path or relative to cwd" }),
 	edits: Type.Optional(

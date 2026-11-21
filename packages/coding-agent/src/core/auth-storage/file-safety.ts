@@ -6,7 +6,7 @@
 
 import { statSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { getLegacyProviderDirs } from "../../config.ts";
+import { getLegacyConfigDirs } from "../../config.ts";
 import { gitMarkerDir } from "../../utils/git-marker.ts";
 import { providerSourceGate } from "../provider-sources/gate.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
@@ -19,7 +19,7 @@ export interface AuthFileSafetyOptions {
 function fallbackAuthProblems(authPath: string): string[] {
 	if (basename(authPath) !== "auth.json" || !providerSourceGate.isEnabled("pi")) return [];
 	const dir = resolve(dirname(authPath));
-	if (!getLegacyProviderDirs().some((fallback) => resolve(fallback) === dir)) return [];
+	if (!getLegacyConfigDirs().some((fallback) => resolve(fallback) === dir)) return [];
 	return ReadOnlyAuthStorage.problems(authPath);
 }
 

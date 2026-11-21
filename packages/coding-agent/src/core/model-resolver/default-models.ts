@@ -8,7 +8,6 @@ export const defaultModelPerProvider: Partial<Record<KnownProvider, string>> = {
 	anthropic: "claude-opus-5-5",
 	openai: "gpt-6.1-sol",
 	azure: "gpt-5.4",
-	"openai-codex": "gpt-6.1-sol",
 	nvidia: "nvidia/nemotron-3.5-super-vl-120b-a12b",
 	deepseek: "deepseek-v4-pro",
 	google: "gemini-3.1-pro-preview",

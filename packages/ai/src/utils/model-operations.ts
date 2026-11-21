@@ -20,7 +20,7 @@ export function getModelType(model: AnyModel): ModelType {
 	return model.type ?? "chat";
 }
 
-/** Runtime-checked model type narrowing, including legacy chat models without `type`. */
+/** Runtime-checked model type narrowing, where a model without `type` is a chat model. */
 export function isModelType<TType extends ModelType>(model: AnyModel, type: TType): model is ModelTypeMap[TType] {
 	return getModelType(model) === type;
 }

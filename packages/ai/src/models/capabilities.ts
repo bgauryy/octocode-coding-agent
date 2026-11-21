@@ -107,7 +107,7 @@ function thinkingControl(model: Model<Api>): ThinkingControl {
 			return usesGoogleThinkingLevel(model as Model<"google-generative-ai">) ? "level" : "budget";
 		case "openai-completions": {
 			const compat = getCompletionsCompat(model as Model<"openai-completions">);
-			if (compat.supportsThinkingTokenBudget) return "budget";
+			if (compat.thinkingTokenBudgetField) return "budget";
 			return compat.supportsReasoningEffort ? "effort" : "none";
 		}
 		default:
@@ -163,7 +163,6 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
  */
 const REPLAY_STABLE_APIS: ReadonlySet<Api> = new Set<Api>([
 	"openai-responses",
-	"openai-codex-responses",
 	"azure-openai-responses",
 	"openai-completions",
 	"mistral-conversations",
@@ -213,7 +212,6 @@ function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 			return azureSupportsExplicitPromptCacheMode(model) || azureSupportsInstructionBreakpoints(model)
 				? "explicit-breakpoint"
 				: "key";
-		case "openai-codex-responses":
 		case "mistral-conversations":
 			return "key";
 		case "google-generative-ai":

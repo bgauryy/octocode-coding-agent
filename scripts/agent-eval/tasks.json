@@ -301,7 +301,7 @@
 				},
 				{
 					"path": "packages/coding-agent/src/octocode/subagents/handoff/scratch.ts",
-					"match": "\\.octa/code/temp/agents"
+					"match": "\\.octocode/agent/temp/agents"
 				},
 				{
 					"path": "packages/coding-agent/src/octocode/subagents/process/session.ts",
@@ -309,10 +309,10 @@
 				}
 			],
 			"reference": {
-				"answer": "In .octocode/code/temp/agents/<name>/session/. `scratchNames` in packages/coding-agent/src/octocode/subagents/handoff/scratch.ts lists the taken names.",
+				"answer": "In .octocode/agent/temp/agents/<name>/session/. `scratchNames` in packages/coding-agent/src/octocode/subagents/handoff/scratch.ts lists the taken names.",
 				"wrong": [
 					"In ~/.octocode/octocodecode/sessions. `scratchNames` in subagents/handoff/scratch.ts lists the taken names.",
-					"In .octocode/code/temp/agents/<name>/session/; the names come from `teamWorkspace` in team/store/workspace.ts."
+					"In .octocode/agent/temp/agents/<name>/session/; the names come from `teamWorkspace` in team/store/workspace.ts."
 				]
 			}
 		},

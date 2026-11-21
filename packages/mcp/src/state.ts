@@ -63,12 +63,12 @@ export class McpFeatureState {
 	globalConfig: string | undefined;
 	/** In a subagent: servers its parent stopped for the session (`isParentStopped` decides which stay out). */
 	parentStopped: ReadonlySet<string> = new Set();
-	/** In a subagent whose task named its servers: the configured servers it runs; any other stays out. */
+	/** In a subagent: the servers it runs (`planTaskMcpServers`); any other, configured or registered, stays out. */
 	taskServers: ReadonlySet<string> | undefined;
 	/** The servers among them that the task itself named: all their tools are active (`isDefaultActive`). */
 	taskNamed: ReadonlySet<string> | undefined;
 
-	/** Whether this subagent leaves the configured server `name` out: its task did not name it, or its parent stopped it. */
+	/** Whether this subagent leaves the server `name` out: it is not in the child's server list, or its parent stopped it. */
 	leavesOut(name: string): boolean {
 		return (
 			(this.taskServers !== undefined && !this.taskServers.has(name)) ||
@@ -321,6 +321,8 @@ export class McpFeatureState {
 		const registered: McpServer[] = [];
 		const overriddenNames: string[] = [];
 		for (const { name, config, source } of this.api.mcpServers.list()) {
+			// A plugin the child loads itself registers its servers too: the child's server list binds them like configured ones.
+			if (this.leavesOut(name)) continue;
 			const configured = this.configuredEntries.find((entry) => mcpNamespace(entry.name) === mcpNamespace(name));
 			if (configured && (configured.scope !== "default" || configured.override)) {
 				overriddenNames.push(

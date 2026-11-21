@@ -11,7 +11,7 @@ const CONFINED = "node --permission --no-experimental-sqlite --allow-fs-read=*";
 
 /** The confined form with the words `export` and `alias` where they are only data: Node's code, a path or an argument. */
 const DATA_WORDS = [
-	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octocode/code/temp/agents/x/export"))'`,
+	`${CONFINED} -e 'console.log(require("fs").readdirSync(".octocode/agent/temp/agents/x/export"))'`,
 	`${CONFINED} -e "export const alias = 1"`,
 	`${CONFINED} -e 'x' .octocode/export/alias.json`,
 	`${CONFINED} -e 'x' > out/export.txt`,

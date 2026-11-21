@@ -4,19 +4,12 @@
 		".": {
 			// `scripts/build-workspace-state.mjs` reads Mermaid from the webview workspace's dependency (listed there).
 			"ignoreDependencies": ["mermaid"],
-			// `scripts/desktop-acp-check.mjs` runs the user's own Cua Driver, which Octocode never installs.
-			"ignoreBinaries": ["cua-driver"],
 			// Build inputs and developer commands invoked by path rather than static imports.
 			"entry": [
-				"scripts/agent-eval/{run,compare,understand,session-baseline}.mjs",
+				"scripts/agent-eval/{run,compare}.mjs",
 				"scripts/agent-eval/fixtures/checks/*.mjs",
 				"scripts/agent-treeshake-smoke-entry.ts",
 				"scripts/browser-smoke-entry.ts",
-				"scripts/desktop-acp-check.mjs",
-				"scripts/check-desktop-tools.mjs",
-				"scripts/generate-thinking-capabilities.mjs",
-				"scripts/profile-render-backpressure.mjs",
-				"scripts/replay-session.mjs",
 				"scripts/stage-registry-release.mjs",
 				"scripts/use-local-packages.mjs",
 				// `node --test --test-global-setup` (root and tui test scripts).
@@ -75,7 +68,6 @@
 				"src/octocode/api/cli.ts",
 				"scripts/generate-{schemas,references}.ts",
 				"scripts/generate-codex-hook-output-fixtures.mjs",
-				"scripts/export-agent-prompts.ts",
 				// Bundled skill scripts the agent runs with node by path.
 				"src/octocode/native/skills/*/scripts/*.mjs",
 			],

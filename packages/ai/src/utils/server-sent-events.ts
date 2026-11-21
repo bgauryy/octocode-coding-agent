@@ -8,8 +8,7 @@ export interface ServerSentEvent {
 
 /**
  * Fails on an `event: error` frame, whose data is the endpoint's own failure text rather than a payload. Every JSON
- * stream reader calls this before parsing a frame, except the Codex one: Codex errors are `{"type":"error",...}`
- * payloads (also on a frame named `error`), and its event mapper turns them into errors that keep their `code`.
+ * stream reader calls this before parsing a frame.
  */
 export function throwOnSseErrorEvent(event: ServerSentEvent): void {
 	if (event.event === "error") throw new Error(event.data.trim() || "Stream reported an error");

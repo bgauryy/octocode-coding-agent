@@ -12,7 +12,7 @@ import {
 	type ReportSummary,
 	type ReportsIndex,
 } from "@octocodeai/octocode-contracts/protocol";
-import { workspaceOctocodeDir } from "../shared/home.ts";
+import { workspaceAgentDir } from "../shared/home.ts";
 import { redactData } from "@octocodeai/octocode-common/sanitize";
 import { cutText } from "@octocodeai/octocode-common/text";
 
@@ -128,8 +128,8 @@ function sanitizeSummary(summary: ReportSummary): ReportSummary {
 function scanReports(root: string): ScannedReport[] {
 	const reports: ScannedReport[] = [];
 	for (const [sourceDir, kind] of Object.entries(REPORT_SOURCE_DIRS)) {
-		const source = path.join(workspaceOctocodeDir(root), sourceDir);
-		// A linked source folder could point anywhere on the host; like the docs library, links below `.octocode/` are never followed.
+		const source = path.join(workspaceAgentDir(root), sourceDir);
+		// A linked source folder could point anywhere on the host; like the docs library, links below `.octocode/agent/` are never followed.
 		if (isSymlink(source)) continue;
 		let folders: fs.Dirent[];
 		try {

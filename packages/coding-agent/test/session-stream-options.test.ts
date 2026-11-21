@@ -313,8 +313,8 @@ describe("session stream options", () => {
 		}
 	});
 
-	it("forwards httpIdleTimeoutMs as timeoutMs for OpenAI Codex", async () => {
-		const options = await captureStreamOptions("openai-codex-responses", { httpIdleTimeoutMs: 1234 });
+	it("forwards httpIdleTimeoutMs as timeoutMs for OpenAI Responses", async () => {
+		const options = await captureStreamOptions("openai-responses", { httpIdleTimeoutMs: 1234 });
 
 		expect(options?.timeoutMs).toBe(1234);
 	});
@@ -325,8 +325,8 @@ describe("session stream options", () => {
 		expect(options?.timeoutMs).toBe(1234);
 	});
 
-	it("lets request timeoutMs override httpIdleTimeoutMs for OpenAI Codex", async () => {
-		const options = await captureStreamOptions("openai-codex-responses", { httpIdleTimeoutMs: 1234 }, { timeoutMs: 0 });
+	it("lets request timeoutMs override httpIdleTimeoutMs for OpenAI Responses", async () => {
+		const options = await captureStreamOptions("openai-responses", { httpIdleTimeoutMs: 1234 }, { timeoutMs: 0 });
 
 		expect(options?.timeoutMs).toBe(0);
 	});

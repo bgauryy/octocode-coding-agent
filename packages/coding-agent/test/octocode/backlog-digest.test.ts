@@ -57,6 +57,31 @@ function setup(isSubagent = false) {
 }
 
 describe("backlog session-start digest", () => {
+	it("lists ready items before blocked ones in Top open, and marks a blocked one", async () => {
+		const t = setup();
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Prerequisite", state: "todo", priority: "p1" }] });
+		await t.backlog({
+			op: "add",
+			items: [{ ...READY, title: "Waiting urgent", state: "todo", priority: "p0", dependsOn: ["B1"] }],
+		});
+		await t.start("startup");
+		const content = (await t.prompt())?.message.content ?? "";
+		const top = content.slice(content.indexOf("Top open"));
+		expect(top.indexOf("Prerequisite")).toBeGreaterThan(-1);
+		expect(top.indexOf("Prerequisite")).toBeLessThan(top.indexOf("Waiting urgent"));
+		expect(top).toMatch(/Waiting urgent"[^;]*\(blocked\)/);
+		expect(top).not.toMatch(/Prerequisite"[^;]*\(blocked\)/);
+	});
+
+	it("lists only ready items for blocked false", async () => {
+		const t = setup();
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Base", state: "todo" }] });
+		await t.backlog({ op: "add", items: [{ ...READY, title: "Next", state: "todo", dependsOn: ["B1"] }] });
+		const ready = await t.backlog({ op: "list", blocked: false });
+		expect(ready).toContain("Base");
+		expect(ready).not.toContain("Next");
+	});
+
 	it("gives a fresh main session its claims, stale claims, counts and top open titles once", async () => {
 		const t = setup();
 		await t.backlog({ op: "add", items: [{ ...READY, title: "Mine", state: "ongoing" }] });

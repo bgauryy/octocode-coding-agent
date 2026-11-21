@@ -18,7 +18,7 @@ import {
 	type MemoryLine,
 	parseMemoryFile,
 	serializeMemoryFile,
-	validateMemoryLines,
+	validateMemoryLines as validate,
 } from "../../src/octocode/memory/file/format.ts";
 import { ensureMemoryDir, trackedByGit } from "../../src/octocode/memory/file/paths.ts";
 import {
@@ -57,7 +57,7 @@ describe("MEMORY.md paths", () => {
 		const tree = path.join(fs.realpathSync(tmp("memfile-wt-")), "wt");
 		git(repo, "worktree", "add", "-q", tree);
 		fs.mkdirSync(path.join(tree, "src"));
-		const expected = path.join(repo, ".octocode", "octocodecode", "MEMORY.md");
+		const expected = path.join(repo, ".octocode", "agent", "MEMORY.md");
 		expect(workspaceMemoryFile(path.join(tree, "src"))).toEqual({ scope: "workspace", path: expected, root: repo });
 		expect(workspaceMemoryFile(repo).path).toBe(expected);
 		const plain = fs.realpathSync(tmp("memfile-plain-"));
@@ -72,15 +72,10 @@ describe("MEMORY.md paths", () => {
 		expect(() => globalMemoryFile(env)).toThrow(/real global memory file/);
 	});
 
-	it("creates the folder's .gitignore once and never overwrites it", () => {
-		const root = tmp("memfile-ignore-");
-		const ref = workspaceMemoryFile(root);
+	it("creates the file's folder without writing a .gitignore of its own", () => {
+		const ref = workspaceMemoryFile(tmp("memfile-ignore-"));
 		ensureMemoryDir(ref);
-		const ignore = path.join(path.dirname(ref.path), ".gitignore");
-		expect(fs.readFileSync(ignore, "utf8")).toBe("*\n");
-		fs.writeFileSync(ignore, "# mine\n");
-		ensureMemoryDir(ref);
-		expect(fs.readFileSync(ignore, "utf8")).toBe("# mine\n");
+		expect(fs.readdirSync(path.dirname(ref.path))).toEqual([]);
 		ensureMemoryDir(globalMemoryFile());
 		expect(fs.existsSync(path.join(path.dirname(globalMemoryFile().path), ".gitignore"))).toBe(false);
 	});
@@ -125,14 +120,27 @@ describe("MEMORY.md format", () => {
 		]);
 	});
 
-	it("refuses a 31st line, a long line, a secret and a duplicate, and keeps pins byte-identical", () => {
-		const thirty = Array.from({ length: 29 }, (_, i) => line(`Decision number ${i}`));
-		expect(validateMemoryLines(thirty)).toEqual([]);
-		expect(validateMemoryLines([...thirty, line("One more decision")])[0]).toMatch(
-			/31 lines with headings, over the cap of 30/,
-		);
-		expect(validateMemoryLines(thirty, { maxLines: 40 })).toEqual([]);
-		expect(validateMemoryLines(thirty, { maxLines: 10 })[0]).toMatch(/over the cap of 10/);
+	it("caps the global file at 30 lines and the workspace file at 40, a setting may only lower either", () => {
+		const global = { scope: "global" } as const;
+		const workspace = { scope: "workspace" } as const;
+		const fits = (count: number) => Array.from({ length: count }, (_, i) => line(`Decision number ${i}`));
+		expect(validate(fits(29), global)).toEqual([]);
+		expect(validate(fits(30), global)[0]).toMatch(/31 lines with headings, over the cap of 30/);
+		expect(validate(fits(39), workspace)).toEqual([]);
+		expect(validate(fits(40), workspace)[0]).toMatch(/41 lines with headings, over the cap of 40/);
+		expect(validate(fits(29), { ...global, maxLines: 40 })).toEqual([]);
+		expect(validate(fits(30), { ...global, maxLines: 40 })[0]).toMatch(/over the cap of 30/);
+		expect(validate(fits(39), { ...workspace, maxLines: 100 })).toEqual([]);
+		expect(validate(fits(29), { ...workspace, maxLines: 10 })[0]).toMatch(/over the cap of 10/);
+		expect(countedLines(loadableLines(fits(60), "global").lines)).toBe(30);
+		expect(countedLines(loadableLines(fits(60), "workspace").lines)).toBe(40);
+	});
+
+	it("refuses a long line, a secret and a duplicate, and keeps pins byte-identical", () => {
+		const validateMemoryLines = (
+			lines: readonly MemoryLine[],
+			options: Omit<Parameters<typeof validate>[1], "scope"> = {},
+		) => validate(lines, { scope: "global", ...options });
 		expect(validateMemoryLines([line("x".repeat(190))])[0]).toMatch(/over 200/);
 		expect(validateMemoryLines([line("Deploy key AKIAABCDEFGHIJKLMNOP for staging")])[0]).toMatch(/secret/);
 		expect(validateMemoryLines([line("Use yarn"), line("use YARN.")])[0]).toMatch(/repeats another line/);
@@ -143,10 +151,13 @@ describe("MEMORY.md format", () => {
 
 	it("skips a secret on load and cuts at the cap", () => {
 		const lines = [line("Rotate with token ghp_abcdefghijklmnopqrstuvwxyz0123456789AB"), line("Keep this one")];
-		const loaded = loadableLines(lines);
+		const loaded = loadableLines(lines, "global");
 		expect(loaded.lines.map((kept) => kept.text)).toEqual(["Keep this one"]);
 		expect(loaded.skipped[0].reason).toMatch(/secret/);
-		const many = loadableLines(Array.from({ length: 40 }, (_, i) => line(`Fact ${i}`)));
+		const many = loadableLines(
+			Array.from({ length: 40 }, (_, i) => line(`Fact ${i}`)),
+			"global",
+		);
 		expect(countedLines(many.lines)).toBe(30);
 		expect(many.skipped).toHaveLength(11);
 	});
@@ -235,7 +246,7 @@ describe("memory ops", () => {
 		expect(evictionRank(lines[1])).toEqual([3, 1, "2026-01-01"]);
 		const order: string[] = [];
 		for (let cap = countedLines(lines) - 1; cap >= 1; cap--) {
-			const fit = evictToFit(lines, cap);
+			const fit = evictToFit(lines, "global", cap);
 			for (const gone of fit.evicted) if (!order.includes(gone.text)) order.push(gone.text);
 		}
 		expect(order).toEqual([
@@ -245,7 +256,7 @@ describe("memory ops", () => {
 			"Reflection gotcha",
 			"User pointer",
 		]);
-		expect(evictToFit(lines, 1).lines.map((kept) => kept.text)).toEqual(["Pinned agent pointer"]);
+		expect(evictToFit(lines, "global", 1).lines.map((kept) => kept.text)).toEqual(["Pinned agent pointer"]);
 	});
 
 	it("drops an add or rewrite that repeats AGENTS.md or shipped policy", () => {
@@ -288,7 +299,7 @@ describe("MEMORY.md writer", () => {
 
 	it("hands the lines it evicts to beforeWrite first, and leaves the file whole when beforeWrite fails", async () => {
 		const ref = fileIn(tmp("memfile-archive-first-"));
-		fill(ref, 29);
+		fill(ref, 39);
 		const before = fs.readFileSync(ref.path, "utf8");
 		const seen: string[] = [];
 		await expect(
@@ -304,39 +315,39 @@ describe("MEMORY.md writer", () => {
 		expect(fs.readFileSync(ref.path, "utf8")).toBe(before);
 	});
 
-	it("takes a 31st line by evicting the weakest unpinned line, and refuses it when every line is pinned", async () => {
+	it("takes a 41st line by evicting the weakest unpinned line, and refuses it when every line is pinned", async () => {
 		const ref = fileIn(tmp("memfile-cap-"));
-		fill(ref, 29);
+		fill(ref, 39);
 		const update = await updateMemoryFile(ref, [add("A brand new decision")], { now: new Date(2026, 10, 19) });
 		expect(update.evicted.map((gone) => gone.text)).toEqual(["Old decision 00"]);
 		const text = fs.readFileSync(ref.path, "utf8");
-		expect(text.split("\n").filter(Boolean)).toHaveLength(30);
+		expect(text.split("\n").filter(Boolean)).toHaveLength(40);
 		expect(text).toContain("- A brand new decision (agent 2026-11-19)");
 		const pinned = fileIn(tmp("memfile-pinned-"));
-		fill(pinned, 29, { pinned: true, source: "user" });
+		fill(pinned, 39, { pinned: true, source: "user" });
 		const before = fs.readFileSync(pinned.path, "utf8");
 		// Every other line is pinned: the new line is the weakest, so it is the one left out.
 		const refused = await updateMemoryFile(pinned, [add("No room for this")]);
 		expect([refused.changed, refused.evicted.map((gone) => gone.text)]).toEqual([false, ["No room for this"]]);
-		// A pinned 31st line has nothing to displace: the validator refuses the file.
+		// A pinned 41st line has nothing to displace: the validator refuses the file.
 		await expect(
 			updateMemoryFile(pinned, [{ ...add("Pinned with no room"), pinned: true }], { allowPinChanges: true }),
-		).rejects.toThrow(/31 lines with headings, over the cap of 30/);
+		).rejects.toThrow(/41 lines with headings, over the cap of 40/);
 		expect(fs.readFileSync(pinned.path, "utf8")).toBe(before);
 	});
 
-	it("lands two concurrent writers and stays within 30 lines", async () => {
+	it("lands two concurrent writers and stays within 40 lines", async () => {
 		const ref = fileIn(tmp("memfile-race-"));
-		fill(ref, 29);
+		fill(ref, 38);
 		await Promise.all([
 			updateMemoryFile(ref, [add("Writer A's decision")]),
 			updateMemoryFile(ref, [add("Writer B's decision")]),
 		]);
 		const lines = parseMemoryFile(fs.readFileSync(ref.path, "utf8")).lines.map((kept) => kept.text);
 		expect(lines).toEqual(expect.arrayContaining(["Writer A's decision", "Writer B's decision"]));
-		expect(lines.length + 1).toBeLessThanOrEqual(30);
+		expect(lines.length + 1).toBeLessThanOrEqual(40);
 		// Nothing is left behind next to the file: no temp files and no lock.
-		expect(fs.readdirSync(path.dirname(ref.path)).sort()).toEqual([".gitignore", "MEMORY.md"]);
+		expect(fs.readdirSync(path.dirname(ref.path)).sort()).toEqual(["MEMORY.md"]);
 	});
 
 	it("refuses a git-tracked file and proposes the change as a diff", async () => {

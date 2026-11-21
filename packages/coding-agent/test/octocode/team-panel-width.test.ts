@@ -48,7 +48,7 @@ const work: WorkRow[] = [
 		kind: "bash",
 		id: "bash-28",
 		title: "Run every workspace's tests",
-		detail: "./test.sh > .octocode/tmp/test.log 2>&1",
+		detail: "./test.sh > .octocode/agent/tmp/test.log 2>&1",
 		startedAt: NOW - 617_000,
 	},
 ];

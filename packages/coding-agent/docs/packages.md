@@ -2,7 +2,7 @@
 
 A package distributes skills, prompt templates and themes through npm or git as one unit. It is not a [plugin](plugins.md): a package's `hooks/hooks.json` and Claude or Codex plugin manifests are not loaded. Add that directory as a plugin instead.
 
-A package is a directory or npm package with conventional resource folders, an optional `octocode` key in `package.json` (Pi's `pi` key is not read) and its own runtime dependencies. There is no package gallery.
+A package is a directory or npm package with conventional resource folders, an optional `octocode` key in `package.json` and its own runtime dependencies. There is no package gallery.
 
 ## Install and manage
 

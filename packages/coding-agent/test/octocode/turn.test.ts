@@ -174,12 +174,12 @@ describe("registerTurnSetup", () => {
 		const first = await sectionFor(
 			"researcher-1a2b",
 			"main-aaaaaa",
-			"/repo/.octocode/code/temp/agents/researcher-1a2b",
+			"/repo/.octocode/agent/temp/agents/researcher-1a2b",
 		);
 		const second = await sectionFor(
 			"researcher-9z8y",
 			"main-bbbbbb",
-			"/other/.octocode/code/temp/agents/researcher-9z8y",
+			"/other/.octocode/agent/temp/agents/researcher-9z8y",
 		);
 		expect(second).toBe(first);
 		expect(first).not.toMatch(/researcher-1a2b|main-aaaaaa|\.octocode\/tmp/);
@@ -208,13 +208,13 @@ describe("registerTurnSetup", () => {
 			await fake.emit("before_agent_start", { systemPromptOptions }, {});
 			return { prompt: buildSystemPrompt(systemPromptOptions), options: systemPromptOptions };
 		};
-		const first = await promptFor("/home/user/.octocode/worktrees/aaa/researcher-1a2b");
-		const second = await promptFor("/home/user/.octocode/worktrees/aaa/researcher-9z8y");
+		const first = await promptFor("/home/user/.octocode/agent/worktrees/aaa/researcher-1a2b");
+		const second = await promptFor("/home/user/.octocode/agent/worktrees/aaa/researcher-9z8y");
 		expect(second.prompt).toBe(first.prompt);
 		expect(first.options.cwd).toBe("/repo/packages/app");
 		expect(first.prompt).toContain('<project_instructions path="/repo/AGENTS.md">');
 		expect(first.prompt).toContain('<project_instructions path="/home/user/.octocode/AGENTS.md">');
-		expect(first.prompt).not.toContain(".octocode/worktrees/");
+		expect(first.prompt).not.toContain(".octocode/agent/worktrees/");
 		expect(first.prompt).not.toContain("researcher-1a2b");
 	});
 });

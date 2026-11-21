@@ -1,1 +1,1 @@
-- Research, code, ideas, plans and designs start from evidence the research server (`{{research.prefix}}*`) fetches; its `<mcps>` block routes each question. Read and search source with its {{#if localReader}}reader {{research.reader}} and {{/if}}search tools{{#if shell}}; bash is the fallback{{/if}}.
+- Fetch through the research server (`{{research.prefix}}*`); its `<mcps>` block routes each question. Read and search source with its {{#if localReader}}reader {{research.reader}} and {{/if}}search tools{{#if shell}}; bash is the fallback{{/if}}.

@@ -162,7 +162,14 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	"terminal.images":
 		'Inline image protocol: `"kitty"`, `"iterm2"`, `"auto"` or `false`. See [terminal images](configuration.md#terminal-images).',
 	"terminal.trueColor": "Truecolor output: `true`, `false` or `auto`. `OCTOCODE_TRUE_COLOR` overrides detection.",
-	thinkingBudgets: "Custom token budgets for thinking levels; keys are `minimal`, `low`, `medium` and `high`.",
+	thinkingBudgets: "Custom token budgets for thinking levels.",
+	"thinkingBudgets.minimal": "Token budget for the `minimal` thinking level.",
+	"thinkingBudgets.low": "Token budget for the `low` thinking level.",
+	"thinkingBudgets.medium": "Token budget for the `medium` thinking level.",
+	"thinkingBudgets.high": "Token budget for the `high` thinking level.",
+	timer: "The `wait` tool's cron schedules and its model-judged checks, both off until enabled.",
+	"subagents.models.small": "`provider/model[:level]` for the `small` purpose.",
+	"subagents.models.medium": "`provider/model[:level]` for the `medium` purpose.",
 	tuiMode: "Interface layout; `regular` uses the terminal's normal scrollback. `--tui-mode` overrides it for one run.",
 	"markdown.codeBlockIndent": "Indent prepended to code blocks in rendered Markdown.",
 	"markdown.mermaid":

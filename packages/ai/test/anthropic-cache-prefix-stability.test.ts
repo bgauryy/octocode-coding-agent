@@ -133,7 +133,7 @@ describe("Anthropic cached prefix stability across requests", () => {
 		expectPrefixStable(payloads);
 
 		const last = payloads.at(-1)!;
-		expect(last.tools?.map((tool) => tool.name)).toEqual(["read", "__pi_deferred_placeholder__"]);
+		expect(last.tools?.map((tool) => tool.name)).toEqual(["read", "__octocode_deferred_placeholder__"]);
 		expect(last.thinking).toEqual({
 			type: "adaptive",
 			display: "summarized",

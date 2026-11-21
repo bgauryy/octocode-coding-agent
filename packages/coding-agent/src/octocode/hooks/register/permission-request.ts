@@ -54,7 +54,7 @@ export function permissionRequestHook(
 				() => ({
 					tool_name: call.tool_name,
 					tool_input: call.tool_input,
-					pi_tool_name: invocation.toolName,
+					octocode_tool_name: invocation.toolName,
 				}),
 				signal,
 				protocol,

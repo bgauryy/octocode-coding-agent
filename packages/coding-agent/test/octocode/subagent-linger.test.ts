@@ -90,7 +90,7 @@ describe("a background subagent that reported blocked", () => {
 			await t.control.settle();
 			expect(t.reports()[0]).toContain(`reported blocked`);
 			expect(t.reports()[0]).toContain(
-				`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s. \`agent\` type \`message\` to ${id} continues this conversation`,
+				`${id} is blocked and stays resumable for ${BLOCKED_LINGER_SECONDS} s; \`message\` continues it`,
 			);
 			expect(await t.team.send(id, "linger answered: use the second option", { replyRequired: false })).toHaveProperty(
 				"resumed",
@@ -181,7 +181,7 @@ describe("a profile's linger seconds", () => {
 			await t.control.settle();
 			expect(t.reports()[0]).toContain(`${id} stays reachable for 900 s`);
 			// The line names what the run used, so continuing it is weighed against that.
-			expect(t.reports()[0]).toMatch(/ends that\. This run made \d+ model requests? \(≈\$0\.\d\d\) so far\.$/m);
+			expect(t.reports()[0]).toMatch(/continues it\. This run made \d+ model requests? \(≈\$0\.\d\d\) so far\.$/m);
 			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toHaveProperty("resumed");
 			await t.control.settle();
 			expect(t.reports()[1]).toMatch(/Message #[1-9]\d* from your coordinator [\s\S]*linger follow-up/);
@@ -311,11 +311,13 @@ describe("a lingering background subagent", () => {
 		Object.assign(t.f.api, {
 			channels: {
 				on: () => () => undefined,
-				emit: (_name: string, reply: (handoff: unknown) => void) => reply({ servers, stopped: [] }),
+				emit: (_name: string, reply: (handoff: unknown) => void) =>
+					reply({ servers, stopped: [], available: ["old", "fresh"] }),
 			},
 		});
 		try {
-			const id = await t.start("linger with servers");
+			// A child gets the session's added servers its task names.
+			const id = await t.start("linger with servers", { mcp: ["old", "fresh"] });
 			await t.control.settle();
 			expect(t.reports()[0]).toContain("mcp=old ");
 			const text = fs.readFileSync(path.join(sessionDir("session-test"), "parked-workers.json"), "utf8");

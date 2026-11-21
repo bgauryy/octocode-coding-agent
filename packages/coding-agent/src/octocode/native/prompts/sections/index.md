@@ -6,12 +6,12 @@
 | docs | base | drop | - | - | system/docs.md |
 | mcps | base | keep | - | - | sections/mcps.md, and the connected MCP servers' instructions, tools and schemas |
 | addendum | session | keep | - | - | the user's APPEND_SYSTEM.md |
-| work | session | keep | policy | `policy/readonly.md` readOnly, `policy/work.md` !readOnly | the policy renderer |
+| work | session | keep | policy | `policy/understand.md`, `policy/readonly.md` readOnly, `policy/change.md` !readOnly, `policy/finish.md` | the policy renderer |
 | research | session | keep | policy | `policy/research.md` | the policy renderer |
 | delegation | session | keep | policy | `policy/delegation.md` main agentTool | the policy renderer; the main session only |
 | children | session | keep | policy | `policy/children.md` main agentTool childStarted | the policy renderer; the main session, from its first `agent` call that starts a child or messages an agent |
-| subagent | session | keep | policy | `policy/subagent.md` !main !readOnly | the policy renderer; a subagent that may write |
-| safety | session | keep | policy | `policy/safety.md` !readOnly | the policy renderer |
+| subagent | session | keep | policy | `policy/subagent.md` !main | the policy renderer; every subagent |
+| safety | session | keep | policy | `policy/safety.md` | the policy renderer |
 | communication | session | keep | policy | `policy/communication.md` | the policy renderer |
 | lean | session | keep | lean | `lean/lean.md` | the lean renderer |
 | project_context | session | keep | - | - | system/project-context.md and the project's AGENTS.md files |

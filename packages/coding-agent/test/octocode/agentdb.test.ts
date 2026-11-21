@@ -163,15 +163,10 @@ describe("openAgentDb", () => {
 		expect(fs.readFileSync(file)).toEqual(bytes);
 	});
 
-	it("sets an older version aside unchanged and opens a new file in its place", () => {
+	it("refuses an older version and leaves the file unchanged", () => {
 		const { file, bytes } = versioned(0);
-		const fresh = openAgentDb(file);
-		try {
-			expect(workspaces.list(fresh.db)).toEqual([]);
-		} finally {
-			fresh.close();
-		}
-		expect(fs.readFileSync(`${file}.v0.retired`)).toEqual(bytes);
+		expect(() => openAgentDb(file)).toThrow(/older than this Octocode's/);
+		expect(fs.readFileSync(file)).toEqual(bytes);
 	});
 
 	it("keeps workspaces with colliding names and roots in history, and refuses a copied identity", () => {

@@ -1,50 +1,23 @@
 import type { DatabaseSync } from "node:sqlite";
 import * as schemaVersion from "./queries/schema-version.ts";
-import { COORDINATION_CARRIED, type CarriedTable } from "./carry-over.ts";
-import { amendCoordination, coordinationGaps } from "./schema-amend.ts";
-import { FTS, SCHEMA } from "./schema-sql.ts";
+import { ENSURED_OBJECTS, FTS, SCHEMA } from "./schema-sql.ts";
 
 /** A foreign file or unsupported schema. Retrying the same file cannot fix it. */
 export class AgentDbError extends Error {}
 
-/**
- * The file is one of Octocode's at an older schema version. Whoever opens files sets it aside under another name and
- * creates a new one (`db.ts`).
- */
-export class AgentDbRetiredError extends AgentDbError {
-	readonly version: number;
-	constructor(file: string, version: number, newest: number) {
-		super(
-			`${file} has Octocode schema version ${version}, older than this Octocode's ${newest}: it is set aside and a new file created.`,
-		);
-		this.version = version;
-	}
-}
-
-/** A distinct application ID keeps older, additive-schema writers out of workspace databases. */
+/** The `PRAGMA application_id` of a coordination file ("OcDW"): no other SQLite file carries it. */
 export const AGENT_APPLICATION_ID = 0x4f634457;
-
-/** The "OcPg" files of an earlier, incompatible Octocode store. */
-const RETIRED_APPLICATION_ID = 0x4f635067;
 
 /** Which of Octocode's database files a connection opens: its header id, its name in errors and its schema. */
 export interface FileKind {
 	applicationId: number;
 	name: string;
-	/**
-	 * The schema version this Octocode writes and reads. There are no upgrade steps: a file at an older version is set
-	 * aside and a new one created (`db.ts`), which takes over the `carried` tables; a newer one is refused.
-	 */
+	/** The one schema version this Octocode writes and reads; a file at any other version is refused. */
 	version: number;
+	/** Adds objects an existing current file may lack; runs on every open. */
+	ensure?(db: DatabaseSync): void;
 	/** Creates the newest schema in an empty file; returns whether FTS5 was available. */
 	create(db: DatabaseSync): { fts: boolean };
-	/** Tables the new file takes over from one this version retires (`carry-over.ts`); a rebuildable file has none. */
-	carried?: readonly CarriedTable[];
-	/**
-	 * Additions this version made without a bump (`schema-amend.ts`): whether a current file lacks any, and adding them.
-	 * Only tables and nullable columns an older Octocode of the same version never reads.
-	 */
-	amend?: { gaps(db: DatabaseSync): boolean; apply(db: DatabaseSync): void };
 }
 
 /** The coordination file (`workspaces.db`): its schema with the optional full-text index over memories. */
@@ -52,8 +25,7 @@ export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
 	version: 10,
-	carried: COORDINATION_CARRIED,
-	amend: { gaps: coordinationGaps, apply: amendCoordination },
+	ensure: (db) => db.exec(ENSURED_OBJECTS),
 	create: (db) => {
 		db.exec(SCHEMA);
 		try {
@@ -91,12 +63,10 @@ function schemaState(db: DatabaseSync, file: string, kind: FileKind): SchemaStat
 			throw new AgentDbError(
 				`${file} has Octocode schema version ${version}, newer than this Octocode's ${kind.version}. Nothing in the file changed. Update Octocode, or select another file with OCTOCODE_AGENT_DB.`,
 			);
-		throw new AgentDbRetiredError(file, version, kind.version);
-	}
-	if (id === RETIRED_APPLICATION_ID)
 		throw new AgentDbError(
-			`${file} has unsupported Octocode schema version ${String(version)}; select a new file with OCTOCODE_AGENT_DB.`,
+			`${file} has Octocode schema version ${version}, older than this Octocode's ${kind.version}. Nothing in the file changed. Delete it, or select another file with OCTOCODE_AGENT_DB.`,
 		);
+	}
 	if (id !== 0 || version !== 0 || occupied)
 		throw new AgentDbError(`${file} is not an ${kind.name}; set OCTOCODE_AGENT_DB to another file.`);
 	return { status: "empty" };
@@ -116,8 +86,7 @@ export function prepareSchema(
 	for (;;) {
 		const state = schemaState(db, file, kind);
 		if (state.status === "current") {
-			// Checked first, so opening a complete file never takes the write lock.
-			if (kind.amend?.gaps(db)) transaction(() => kind.amend?.apply(db));
+			kind.ensure?.(db);
 			return { fts: state.fts };
 		}
 		const created = transaction(() => {

@@ -60,8 +60,9 @@ export async function gitState(cwd: string): Promise<{ branch?: string; head?: s
 /** Changed or untracked paths in the working tree of `cwd` (0 outside git or when git is slow). Never rejects. */
 export async function gitDirty(cwd: string): Promise<number> {
 	try {
-		return (await sessionGit(cwd, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE])).split("\n").filter(Boolean)
-			.length;
+		return (await sessionGit(cwd, ["status", "--porcelain", "--", ...EXCLUDE_WORKSPACE_STATE]))
+			.split("\n")
+			.filter(Boolean).length;
 	} catch {
 		return 0;
 	}

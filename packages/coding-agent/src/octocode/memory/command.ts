@@ -3,8 +3,7 @@ import { USER_AUTHOR } from "../../../../db/src/api.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { migrateMemories, migrationReport } from "./file/migrate.ts";
-import { type MemoryFileSync, repeatsOf, syncDeletedMemory, syncSavedMemory } from "./file/sync.ts";
+import { type MemoryFileSync, syncDeletedMemory, syncSavedMemory } from "./file/sync.ts";
 import { lastInjection } from "./inject.ts";
 import { ADD_ROW, memoryDetailPage, memoryListPage, sectionOf } from "./page.ts";
 import { memoryLabel } from "./query.ts";
@@ -126,8 +125,7 @@ async function fileNote(
 }
 
 /**
- * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto`, `last`, `review [days]`,
- * `migrate [--dry-run]`. The TUI picks with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
+ * `/memory`: browse (pinned/project/global), `search <q>`, `add [title]`, `auto`, `last`, `review [days]`. The TUI picks with `ui.select` and edits in `ui.editor`; without a UI every form prints text.
  */
 export function registerMemoryCommand(commands: Subcommands, deps: MemoryCommandDeps): void {
 	commands.add("memory", {
@@ -140,7 +138,6 @@ export function registerMemoryCommand(commands: Subcommands, deps: MemoryCommand
 					["auto", "automatic recall status"],
 					["last", "what was injected last"],
 					["review", "unused or stale memories"],
-					["migrate", "write notes to MEMORY.md"],
 				],
 				prefix,
 			),
@@ -163,7 +160,6 @@ async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: 
 			`Automatic recall is ${autoStatus(deps)}. Change it with /configuration set memory.recall off|main|all (add --local for this project).`,
 			"info",
 		);
-	if (verb === "migrate") return migrate(ctx, store, rest, deps);
 	if (verb === "last") {
 		const last = lastInjection(ctx.sessionManager.getBranch());
 		return say(ctx, last ?? "No memories were injected on this branch yet.", "info");
@@ -183,20 +179,7 @@ async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: 
 	}
 	if (verb === "" || verb === "list")
 		return browse(ctx, store, store.list("all", LIST_LIMIT), `Memories (recall ${autoStatus(deps)})`, deps);
-	return say(ctx, "Usage: /memory [search <q>|add|auto|last|review [days]|migrate [--dry-run]]", "warning");
-}
-
-/** `/memory migrate [--dry-run]` (`file/migrate.ts`): the dry run prints the diff and writes nothing. */
-async function migrate(ctx: CommandContext, store: MemoryStore, rest: string, deps: MemoryCommandDeps): Promise<void> {
-	if (rest !== "" && rest !== "--dry-run") return say(ctx, "Usage: /memory migrate [--dry-run]", "warning");
-	if (!deps.sync.settings().file) return say(ctx, "memory.file is off, so there is no MEMORY.md to write.", "warning");
-	const dryRun = rest === "--dry-run";
-	const results = await migrateMemories(store, ctx.cwd, {
-		dryRun,
-		repeats: repeatsOf(ctx.getSystemPromptOptions().contextFiles ?? []),
-		...(deps.sync.env ? { env: deps.sync.env } : {}),
-	});
-	return say(ctx, migrationReport(results, dryRun), "info");
+	return say(ctx, "Usage: /memory [search <q>|add|auto|last|review [days]]", "warning");
 }
 
 /**

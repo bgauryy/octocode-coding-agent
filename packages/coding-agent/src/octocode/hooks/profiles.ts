@@ -56,7 +56,7 @@ export function hookPayload(
 	} = {},
 ): Record<string, unknown> {
 	if (protocol === "octocode") return payload;
-	const { pi_tool_name, ...projected } = payload;
+	const { octocode_tool_name, ...projected } = payload;
 	const event = String(payload.hook_event_name);
 	const input = profileSupport(protocol, event)?.input ?? [];
 	if (metadata.child && input.includes("agent")) {
@@ -68,12 +68,12 @@ export function hookPayload(
 		projected.permission_mode =
 			metadata.permissionMode === "full" || metadata.permissionMode === "bypass" ? "bypassPermissions" : "default";
 	if (metadata.model && input.includes("model")) projected.model = metadata.model;
-	if (protocol === "claude" && pi_tool_name === "bash" && isRecord(payload.tool_input))
+	if (protocol === "claude" && octocode_tool_name === "bash" && isRecord(payload.tool_input))
 		projected.tool_input = projectClaudeBash(payload.tool_input);
 	if (protocol === "codex") {
 		if (metadata.turnId && input.includes("turn_id")) projected.turn_id = metadata.turnId;
 		if (!projected.transcript_path) projected.transcript_path = null;
-		if (pi_tool_name === "bash" && isRecord(payload.tool_input)) {
+		if (octocode_tool_name === "bash" && isRecord(payload.tool_input)) {
 			projected.tool_input = { command: payload.tool_input.command };
 		}
 	}

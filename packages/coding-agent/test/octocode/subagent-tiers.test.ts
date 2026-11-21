@@ -9,7 +9,7 @@ import { withNativePermissionOwners } from "../../src/octocode/permission/native
 import { registerSkillTool } from "../../src/octocode/native/tools/skill/tool.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
-import { parseProfile, profileReach, profileTools } from "../../src/octocode/subagents/profiles.ts";
+import { loadProfiles, parseProfile, profileReach, profileTools } from "../../src/octocode/subagents/profiles.ts";
 import { prefixKey, taskSkillPlan, taskSkillText, withRoleSkills } from "../../src/octocode/subagents/task-skills.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -48,6 +48,12 @@ describe("lean profiles", () => {
 		// `timer` is not in the floor: a lean profile has it only when its list names it.
 		expect(profileTools(parseProfile("t", "---\nlean: true\ntools: bash,timer\n---\n"))).toBe("bash,timer,agent");
 		expect(profileReach(cli)).toEqual(["shell"]);
+	});
+
+	it("ship the bundled lean role with bash, file, web and the parent channel only", () => {
+		const lean = loadProfiles(tmp(), tmp(), false, {}).get("lean")!;
+		expect(profileTools(lean).split(",").sort()).toEqual(["agent", "bash", "file", "web"]);
+		expect(buildAgentArgs(lean, undefined, session, [])).toContain("--no-mcp");
 	});
 
 	it("refuse relative tool selectors, which would inherit the full default set", () => {

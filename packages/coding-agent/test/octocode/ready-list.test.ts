@@ -43,6 +43,11 @@ describe("readyItems: code orders the work", () => {
 		expect(readyItems(workGraph({ items }), items)[1]).toMatchObject({ ref: "B2", unblocks: 2 });
 	});
 
+	it("takes accepted work only: a proposal (backlog) and an ongoing item are not ready", () => {
+		const items = [snap("B1"), snap("B2", { state: "backlog" }), snap("B3", { state: "ongoing" })];
+		expect(ready(items)).toEqual(["B1"]);
+	});
+
 	it("leaves out started, held, epic, unmet and resource-blocked items, and counts done prerequisites as met", () => {
 		const items = [
 			snap("B1", { state: "done" }),

@@ -45,7 +45,7 @@ function setup() {
 		repo,
 		store,
 		command: commands.get("backlog")!,
-		file: path.join(cwd, ".octocode", "code", "backlog.md"),
+		file: path.join(cwd, ".octocode", "agent", "backlog.md"),
 		body: (seq: number, text: string) =>
 			sharedAgentDb().db.prepare("UPDATE backlog SET body = ? WHERE seq = ? AND workspace_id = ?").run(text, seq, repo),
 	};

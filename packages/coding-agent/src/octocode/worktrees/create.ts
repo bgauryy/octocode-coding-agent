@@ -22,7 +22,7 @@ export interface WorktreeInfo {
 }
 
 /**
- * Creates `<main root>/.octocode/worktrees/<name>` on branch `worktree-<name>` started at the HEAD of the checkout
+ * Creates `<main root>/.octocode/agent/worktrees/<name>` on branch `worktree-<name>` started at the HEAD of the checkout
  * `cwd` is in, or reuses the worktree (or the branch) when it exists. Git runs its hooks as it does for a manual
  * `git worktree add`: the user asked for this worktree. Rejects with a message fit to show when `name` is invalid,
  * `cwd` is not in a repository, or the repository has no commit. Before it creates one it settles folder trust for the

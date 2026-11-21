@@ -203,7 +203,7 @@ describe("coordinate list details", () => {
 				goal: "help",
 				backlog: { workspaceId: store.workspaceId, seq: 7 },
 			});
-			const folder = path.join(cwd, ".octocode", "code", "session-data", `x${"y".repeat(150)}`);
+			const folder = path.join(cwd, ".octocode", "agent", "session-data", `x${"y".repeat(150)}`);
 			sessions.locate(agent.db, "session-kid", cwd, folder);
 			const kid = { ...member("kid-a1", "general", "main-a"), sessionId: "session-kid", checkout: cwd };
 			const bare = member("kid-a2", "implementer", "main-a");

@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { bindingKeySql, bindingKey, sameBinding } from "../binding.ts";
 import { allRows } from "../rows.ts";
 import { keptStatement } from "../statements.ts";
 
@@ -26,20 +25,17 @@ interface WorkspaceRow extends WorkspaceIdentity {
 }
 const COLUMNS = "id, root, name, binding, git_common_dir, linked_worktree";
 
-/** The binding is returned as `ino:birth` whatever format the row stores (see `binding.ts`); the row itself is never rewritten. */
 function decode({ git_common_dir, linked_worktree, ...stored }: WorkspaceRow): Workspace {
-	const workspace = { ...stored, binding: bindingKey(stored.binding) };
 	return git_common_dir === null
-		? workspace
-		: { ...workspace, git: { commonDir: git_common_dir, linkedWorktree: linked_worktree === 1 } };
+		? stored
+		: { ...stored, git: { commonDir: git_common_dir, linkedWorktree: linked_worktree === 1 } };
 }
 
 /** An omitted Git association leaves the last observation intact. Null records a verified non-Git checkout. */
 export function register(db: DatabaseSync, workspace: WorkspaceIdentity & { git?: Workspace["git"] | null }): void {
 	const { id, name, root, binding, git } = workspace;
 	const previous = byId(db, id);
-	if (previous && !sameBinding(previous.binding, binding))
-		throw new Error(`Workspace ID ${id} belongs to a different directory.`);
+	if (previous && previous.binding !== binding) throw new Error(`Workspace ID ${id} belongs to a different directory.`);
 	if (
 		previous &&
 		previous.name === name &&
@@ -53,7 +49,7 @@ export function register(db: DatabaseSync, workspace: WorkspaceIdentity & { git?
 		ON CONFLICT(id) DO UPDATE SET name=excluded.name, root=excluded.root,
 		git_common_dir=CASE WHEN ? THEN excluded.git_common_dir ELSE workspaces.git_common_dir END,
 		linked_worktree=CASE WHEN ? THEN excluded.linked_worktree ELSE workspaces.linked_worktree END
-		WHERE ${bindingKeySql("workspaces.binding")}=${bindingKeySql("excluded.binding")}`)
+		WHERE workspaces.binding=excluded.binding`)
 		.run(
 			id,
 			name,

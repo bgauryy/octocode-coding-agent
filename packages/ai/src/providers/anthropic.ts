@@ -45,7 +45,7 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
 			if (isClaudeSubscriptionToken(key)) throw new Error(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
 			return { type: "api_key", key };
 		},
-		// A Claude subscription token, saved before this release or set in the environment, configures nothing: no model of
+		// A Claude subscription token, saved or set in the environment, configures nothing: no model of
 		// this provider is offered. `resolve` still returns it, so a request names the reason and hosts can explain it.
 		check: async (input) => {
 			const resolved = await resolveAnthropicAuth(input);

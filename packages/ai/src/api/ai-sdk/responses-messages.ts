@@ -226,7 +226,7 @@ export function responsesMessages(model: ResponsesModel, context: TranscriptCont
 			if (anchored && support === "additions" && additions.length) {
 				const names = additions.map((definition) => definition.name);
 				const position = index - (transformed[0]?.role === "system" ? 1 : 0);
-				const callId = `pi_tool_load_${fastHash(`system:${position}:${names.join(",")}`)}`;
+				const callId = `octocode_tool_load_${fastHash(`system:${position}:${names.join(",")}`)}`;
 				messages.push({
 					role: "assistant",
 					content: [

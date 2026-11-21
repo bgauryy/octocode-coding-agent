@@ -56,7 +56,7 @@ setup and model-data hydration: [DEVELOPMENT.md](DEVELOPMENT.md). Yarn runs ever
 | `yarn run build:offline` | builds into `packages/coding-agent/dist/bundle/`; `yarn run build` refreshes model data first; `yarn start` runs source |
 | `node scripts/agent-eval/run.mjs --dry-run --model <id>` | plans the ship eval; `--live` costs money: only on request |
 
-- Run builds and full suites in the background, output to `.octocode/tmp/`. After a wave of changes, run the full e2e: focused runs miss stale expectations elsewhere.
+- Run builds and full suites in the background, output to `.octocode/agent/tmp/`. After a wave of changes, run the full e2e: focused runs miss stale expectations elsewhere.
 - One full suite or `check` at a time on this machine: a host lock makes a second one wait and names the holder. Never bypass it (`OCTOCODE_RUN_LOCK=off`) or run full suites side by side; children run named test files.
 - Report failures and skipped checks. Never weaken assertions or thresholds; change a test only for an intended contract change. Test behavior, not instruction wording.
 - An MCP tool that refuses twice or disconnects: restart it with `mcp`, then fall back to bash and say so.
@@ -64,7 +64,7 @@ setup and model-data hydration: [DEVELOPMENT.md](DEVELOPMENT.md). Yarn runs ever
 
 ## Generated files and releases
 
-Change the generator, never its output (`yarn workspace @octocodeai/octocode-agent run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`. `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
+Change the generator, never its output (`yarn workspace @octocodeai/octocode-agent run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`. `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/agent/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
 
 `@octocodeai/octocode-agent` and `@octocodeai/octocode-agentic-testkit` are the public packages. Every other workspace is bundled into octocode-agent and tied to the sibling `octocode` repository by `link:` dependencies and `octocodeRelease`; the testkit depends on no workspace and publishes on its own (`yarn pack` builds and runs `check:consumer` first). Releases: [DEVELOPMENT.md](DEVELOPMENT.md) (`publish:dry` rehearses).
 

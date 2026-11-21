@@ -7,8 +7,6 @@ import {
 	type Provider,
 	type RefreshModelsContext,
 } from "@octocodeai/octocode-ai";
-import { withOpenCodeEndpoint } from "@octocodeai/octocode-ai/providers/opencode-endpoints";
-import { withMiniMaxEndpoint } from "@octocodeai/octocode-ai/providers/minimax-endpoints";
 import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { hasControlCharacters, modelLabel } from "@octocodeai/octocode-ai/utils/model-text";
 import { VERSION } from "../config.ts";
@@ -37,7 +35,7 @@ function mergeModels<TModel extends AnyModel>(baseline: readonly TModel[], dynam
 	for (const model of [...baseline, ...dynamic])
 		merged.set(
 			`${getModelType(model)}\0${model.id}`,
-			withMiniMaxEndpoint(withOpenCodeEndpoint(isModelType(model, "chat") ? withCacheCapabilities(model) : model)),
+			isModelType(model, "chat") ? withCacheCapabilities(model) : model,
 		);
 	return [...merged.values()];
 }

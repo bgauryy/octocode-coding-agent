@@ -36,7 +36,7 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 		const renderer = createInteractiveTui({
 			tuiMode: "fullscreen",
 			showHardwareCursor: false,
-			logDirectory: ".octocode/tmp",
+			logDirectory: ".octocode/agent/tmp",
 			terminal,
 		});
 		const ui = renderer as unknown as TUI;

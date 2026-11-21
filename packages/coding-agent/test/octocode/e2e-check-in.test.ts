@@ -39,7 +39,7 @@ function withInterval(seconds: number): Sandbox {
 	const box = sandbox(endpoint);
 	fs.writeFileSync(
 		path.join(box.home, ".octocode", "octocodecode", "settings.json"),
-		JSON.stringify({ subagents: { checkInSeconds: seconds } }),
+		JSON.stringify({ monitor: { checkInSeconds: seconds } }),
 	);
 	return box;
 }

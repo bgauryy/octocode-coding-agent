@@ -60,13 +60,14 @@ export function residentBlock({
 	// With no direct tool the block's head would be missing: the instructions come first, unless the server keeps them
 	// for the `mcp` tool's read while it declares nothing.
 	const withheld = deferral.instructionsOnDemand === true && offered.length === 0;
-	const head = direct.text || (index.length > 0 && !withheld ? instructionsOf() : "");
+	// With no tool offered, `direct` is the instructions block itself: a withholding server drops it too.
+	const head = withheld ? "" : direct.text || (index.length > 0 ? instructionsOf() : "");
 	return {
-		file: direct.file,
+		file: withheld ? undefined : direct.file,
 		text: [head, ...index].filter(Boolean).join("\n"),
 		direct: head,
 		/** Bytes the direct tools cost, which an `auto:<bytes>` budget counts: the block's text, or their declarations. */
-		directBytes: direct.text ? sizeOf(direct) : Buffer.byteLength(head),
+		directBytes: direct.text && !withheld ? sizeOf(direct) : Buffer.byteLength(head),
 		deferred: deferred as ReadonlySet<string>,
 		onDemand: new Set(onDemand) as ReadonlySet<string>,
 	};

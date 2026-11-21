@@ -133,11 +133,11 @@ describe("the check-in", () => {
 
 describe("checkInConfig", () => {
 	it("reads the setting, 0 included, and takes the default for a value the schema refuses", () => {
-		expect(SETTINGS_DEFAULTS.subagents.checkInSeconds).toBe(300);
-		expect(checkInConfig({ subagents: { checkInSeconds: 42 } }, false).seconds).toBe(42);
-		expect(checkInConfig({ subagents: { checkInSeconds: 0 } }, false).seconds).toBe(0);
+		expect(SETTINGS_DEFAULTS.monitor.checkInSeconds).toBe(300);
+		expect(checkInConfig({ monitor: { checkInSeconds: 42 } }, false).seconds).toBe(42);
+		expect(checkInConfig({ monitor: { checkInSeconds: 0 } }, false).seconds).toBe(0);
 		expect(checkInConfig(undefined, false).seconds).toBe(300);
-		expect(checkInConfig({ subagents: { checkInSeconds: -1 } }, false).seconds).toBe(300);
+		expect(checkInConfig({ monitor: { checkInSeconds: -1 } }, false).seconds).toBe(300);
 	});
 
 	it("reads whether the parent waits from what the parent set", () => {

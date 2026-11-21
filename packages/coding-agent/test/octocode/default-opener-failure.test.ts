@@ -41,7 +41,7 @@ describe("callers of the default system opener when it cannot start", () => {
 		fs.mkdirSync(cwd, { recursive: true });
 		const ctx = fakeCtx({ cwd });
 		await commands.get("backlog")!.handler("html", ctx);
-		const file = path.join(cwd, ".octocode", "code", "backlog.html");
+		const file = path.join(cwd, ".octocode", "agent", "backlog.html");
 		expect(opener.openTarget).toHaveBeenLastCalledWith(file);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({
 			type: "warning",

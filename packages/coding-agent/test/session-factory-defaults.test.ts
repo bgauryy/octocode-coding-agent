@@ -35,7 +35,7 @@ describe("session session manager defaults", () => {
 			model: model,
 		});
 
-		const expectedSessionDir = join(realpathSync(cwd), ".octocode", "code", "sessions");
+		const expectedSessionDir = join(realpathSync(cwd), ".octocode", "agent", "sessions");
 		const sessionDir = session.sessionManager.getSessionDir();
 		const sessionFile = session.sessionManager.getSessionFile();
 
@@ -118,7 +118,7 @@ describe("session session manager defaults", () => {
 			.join("");
 
 		const [header, ...body] = output.trim().split("\n");
-		expect(header).toMatch(/^\[exit 0 · .* · 5 lines · /);
+		expect(header).toMatch(/^\[exit 0 · [\d.]+s\]$/);
 		expect(body).toEqual([session.sessionId, session.sessionFile, model.provider, model.id, session.thinkingLevel]);
 
 		session.dispose();

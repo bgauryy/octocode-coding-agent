@@ -21,6 +21,10 @@ Nested fields are listed as `parent.child`. Defaults shown are the values Octoco
 | `transport` | `"auto" \| "sse"` | `"auto"` | Request transport for providers that offer more than one. Every built-in provider streams over HTTP (SSE), so `auto` and `sse` behave the same. |
 | `enabledModels` | `string[]` |  | Model patterns for cycling, in the same format as the --models CLI flag. |
 | `thinkingBudgets` | object |  | Custom token budgets for thinking levels. |
+| `thinkingBudgets.minimal` | number |  | Token budget for the `minimal` thinking level. |
+| `thinkingBudgets.low` | number |  | Token budget for the `low` thinking level. |
+| `thinkingBudgets.medium` | number |  | Token budget for the `medium` thinking level. |
+| `thinkingBudgets.high` | number |  | Token budget for the `high` thinking level. |
 
 ## Caching, retries and network
 
@@ -65,16 +69,16 @@ Cache behavior is described in [prompt caching](prompt-caching.md) and retry beh
 | `treeFilterMode` | `"default" \| "no-tools" \| "user-only" \| "labeled-only" \| "all"` | `"default"` | Default filter when opening /tree. |
 | `sessionDir` | string |  | Custom session storage directory, in the same format as the --session-dir CLI flag. |
 | `retention` | object |  | How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it. |
-| `retention.days` | integer | `30` | Days Octocode keeps output, bash logs, subagent scratch, session data, `&lt;workspace>/.octocode/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it. |
-| `retention.sessionDays` | integer | `90` | Days a session transcript (JSONL, in a workspace or the legacy per-folder directories) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it. |
+| `retention.days` | integer | `30` | Days Octocode keeps output, bash logs, subagent scratch, session data, `&lt;workspace>/.octocode/agent/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it. |
+| `retention.sessionDays` | integer | `90` | Days a session transcript (JSONL, in a workspace) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it. |
 | `retention.archiveAfterDays` | integer | `14` | Days after which backlog audit, configuration audit and workspace command history rows move from the database to gzip archive files; archived rows older than `days` are dropped. A window longer than `days` is cut to it. |
 | `subagents` | object |  | Limits on the subagents a session starts, and how they are checked on. |
 | `subagents.models` | object |  | Model for the `small` and `medium` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { "small": "openai/gpt-5-mini:low" }. Used by every profile or task that names the purpose, before the automatic choice; a call's own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it. |
+| `subagents.models.small` | string |  | `provider/model[:level]` for the `small` purpose. |
+| `subagents.models.medium` | string |  | `provider/model[:level]` for the `medium` purpose. |
 | `subagents.maxChildren` | integer |  | Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value. |
 | `subagents.maxCost` | number |  | US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value. |
 | `subagents.queuedStarts` | boolean | `true` | Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B&lt;n>`, children `agent:&lt;name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before. |
-| `subagents.checkInSeconds` | number | `300` | Deprecated: use monitor.checkInSeconds, which wins when both are set. Seconds a running subagent and its parent may go without a message before the subagent is asked whether it needs something; 0 turns it off. |
-| `subagents.silenceMinutes` | number |  | Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off. |
 | `subagents.wakeHoldSeconds` | number | `0` | Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. |
 | `subagents.peerOverlapWake` | boolean | `true` | Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead. |
 | `subagents.skillCatalog` | `"all" \| "role"` | `"all"` | Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed. |
@@ -220,7 +224,12 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `web.window` | `"app" \| "browser"` | `"app"` | Where /web opens the workspace: "app" is a Chrome, Edge, Chromium or Brave app window with a temporary profile apart from your own (no extensions, cookies or history; removed when it closes); "browser" uses the default browser. Without an installed Chromium browser "app" falls back to the default browser. Applies to the next /web. |
 | `sessions` | object |  |  |
 | `sessions.autoTitle` | boolean | `true` | Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title. |
-| `timer` | object |  |  |
+| `timer` | object |  | The `wait` tool's cron schedules and its model-judged checks, both off until enabled. |
+| `timer.cron` | object |  |  |
+| `timer.cron.enabled` | boolean | `false` | Let a session without a screen to confirm on (print, JSON, RPC) set cron schedules with wait. Each run is a model turn with nobody attending, so it is off until you turn it on here; a session with a screen asks once instead. Read from the global settings file; a project file cannot turn it on. |
+| `timer.cron.maxUsdPerSession` | number | `2` | The most a session may spend, in USD, since its first cron schedule before cron runs stop. Read from the global settings file. |
+| `timer.check` | object |  |  |
+| `timer.check.enabled` | boolean | `false` | Let a wait's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per wait, $0.25 per session. Read from the global settings file; a project file cannot turn it on. |
 | `monitor` | object |  |  |
 | `monitor.enabled` | boolean | `true` | Sample the machine (load, memory, swap, GPU, busiest processes) once per interval and tell the session whose processes cause a tripped threshold. One Octocode process per machine takes the samples; every session reads them. |
 | `monitor.sampleSeconds` | number | `60` | Seconds between machine samples. |
@@ -234,9 +243,8 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `monitor.contextBands` | `number[]` | `[0.5,0.75,0.9]` | Shares of the room before automatic compaction at which the model is told, once each, how much context it has used and how much is left. Each is above 0 and below 1; [] turns the notices off. |
 | `monitor.checkInSeconds` | number | `300` | Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off. |
 | `monitor.idleAgentMinutes` | number | `5` | Minutes a working agent may make no progress (no model reply or tool event) before the agent responsible for it is told, once per silence: a subagent's parent, or a main session itself (a note and a footer mark). Checked once a minute; an agent waiting on the user, its children or its jobs is excused, and nothing is stopped. 0 turns it off. |
-| `monitor.silenceMinutes` | number |  | Deprecated: use monitor.idleAgentMinutes, which wins when both are set. Read in its place when it is unset; 0 turns the rule off. |
 | `memory` | object |  |  |
-| `memory.file` | boolean | `true` | Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/octocodecode/MEMORY.md into the system prompt at session start. Off: neither is read or written. |
+| `memory.file` | boolean | `true` | Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/agent/MEMORY.md into the system prompt at session start. Off: neither is read or written. |
 | `memory.autoUpdate` | `"off" \| "explicit" \| "auto"` | `"auto"` | Who writes the MEMORY.md files: "off" nobody (the files are only read), "explicit" saves you or the agent make with memory set or /memory add, "auto" those plus the background passes that harvest and consolidate lessons. |
 | `memory.subagents` | `"workspace" \| "all" \| "none"` | `"workspace"` | Which MEMORY.md files a subagent gets: "workspace" the repository's, "all" the global one too, "none" neither. A lean subagent gets none. |
 | `memory.recall` | `"off" \| "main" \| "all"` | `"main"` | Before each prompt, add pinned and word-matched notes from the notes database: "off" never, "main" in the main session only, "all" in subagents too. OCTOCODE_MEMORY_AUTO=0 turns it off for the process. |

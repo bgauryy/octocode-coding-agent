@@ -31,7 +31,7 @@ interface PromptChunk {
 	when: string[];
 }
 
-/** A Chunks cell: comma-separated entries, each a backticked file then its flags (`` `policy/work.md` !readOnly ``). */
+/** A Chunks cell: comma-separated entries, each a backticked file then its flags (`` `policy/change.md` !readOnly ``). */
 function parseChunks(cell: string): PromptChunk[] | undefined {
 	if (cell === "-") return undefined;
 	return cell.split(",").map((entry) => {

@@ -1,6 +1,7 @@
 import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
 import { leanMainPolicy } from "../core/lean-main.ts";
 import type { Skill } from "../core/skills.ts";
+import { isBundledSkill } from "../core/skills/category.ts";
 import {
 	currentEnvironment,
 	type EnvironmentSurface,
@@ -54,8 +55,6 @@ export function registerTurnSetup(
 	options: {
 		isSubagent: boolean;
 		profiles: () => Map<string, AgentProfile>;
-		/** Whether the `agent` tool declares its `external` type here. */
-		canExternal?: () => boolean;
 	},
 ): { reset(): void } {
 	let prompt: Record<string, string> | undefined;
@@ -146,7 +145,6 @@ export function registerTurnSetup(
 					: [],
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
-			canExternal: selected.includes("agent") && options.canExternal?.() === true,
 			readOnly,
 			// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 			canSave: selected.includes(FILE_TOOL),
@@ -206,9 +204,13 @@ export function registerTurnSetup(
 			// its prompt leaves out the harnesses line.
 			event.systemPromptOptions.sections.docs = "";
 			event.systemPromptOptions.sections.harnesses = "";
-			event.systemPromptOptions.skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
-			// An empty catalog (`catalog: []`) lists none of the skills; an unset one lists them all.
-			if (skillCatalog && !skillsInTask) event.systemPromptOptions.skillCatalog = skillCatalog;
+			const skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
+			event.systemPromptOptions.skills = skills;
+			// A child lists only its role's catalog: an empty one (`catalog: []`) lists none, an unset one every bundled
+			// skill. The user's own skills are listed to the main session only; a child still loads any of them by name.
+			if (!skillsInTask)
+				event.systemPromptOptions.skillCatalog =
+					skillCatalog ?? skills.filter(isBundledSkill).map((skill) => skill.name);
 		}
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});

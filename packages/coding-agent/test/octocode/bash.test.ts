@@ -1000,26 +1000,32 @@ describe("bash rendering", () => {
 			),
 		).toBe("  ⎿  running · 2 lines\n     one\n     two");
 		const job = [...renderers.values()][0];
-		const message = { content: "Background bash bash-1 finished after 3s: yarn build\nLog: /tmp/j.log\nok" };
+		const message = {
+			content: "[exit 0 · 3s · log: /tmp/j.log]\nBackground bash bash-1 finished after 3s: yarn build\nok",
+			details: { id: "bash-1", command: "yarn build", how: "finished", ok: true, seconds: 3, log: "/tmp/j.log" },
+		};
 		expect(rendered(job(message, { expanded: false }, theme))).toBe(
 			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s (ctrl+o to expand)",
 		);
 		expect(rendered(job(message, { expanded: true }, theme))).toBe(
 			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
 		);
-		// A report that opens with the status header names its log there instead of on a `Log:` line.
-		const headed = {
-			content:
-				"[exit 0 · 3s · 1 line · 3 B · log: /tmp/j.log]\nBackground bash bash-1 finished after 3s: yarn build\nok",
-		};
-		expect(rendered(job(headed, { expanded: true }, theme))).toBe(
-			" ⏺ Bash(bash-1: yarn build) · background\n   ⎿  finished after 3s\n      ok\n      log: /tmp/j.log",
-		);
 		// A job the user killed is interrupted, not failed.
 		const colored = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` };
 		const killed = rendered(
 			job(
-				{ content: "Background bash bash-1 stopped (user) after 3s: yarn build\nLog: /tmp/j.log\n(no output)" },
+				{
+					content:
+						"[stopped (user) · 3s · log: /tmp/j.log]\nBackground bash bash-1 stopped (user) after 3s: yarn build\n(no output)",
+					details: {
+						id: "bash-1",
+						command: "yarn build",
+						how: "stopped (user)",
+						ok: false,
+						interrupted: true,
+						seconds: 3,
+					},
+				},
 				{ expanded: false },
 				colored,
 			),

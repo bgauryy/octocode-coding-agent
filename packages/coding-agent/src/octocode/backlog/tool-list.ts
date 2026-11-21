@@ -45,6 +45,7 @@ export const listFields = {
 	priorityAtLeast: Type.Optional(StringEnum(PRIORITIES)),
 	anyTag: Type.Optional(Type.Array(Type.String())),
 	derivedFrom: Type.Optional(Type.String()),
+	blocked: Type.Optional(Type.Boolean()),
 	since: Type.Optional(Type.String({ description: "updated (sort created: created) since ISO time or age (2h, 7d)" })),
 	sort: Type.Optional(StringEnum(queries.ITEM_SORTS)),
 	limit: Type.Optional(Type.Integer({ description: `≤${MAX_LIST_LIMIT}, default 15` })),
@@ -96,11 +97,10 @@ export function listParams(args: ListArguments): ListParams {
 
 /**
  * List filters the declaration does not show, still accepted: `createdSince` is `since` with sort created, and
- * `assignee` and `blocked` have no declared form.
+ * `assignee` has no declared form.
  */
 export const legacyListFields = {
 	assignee: Type.Optional(Type.String()),
-	blocked: Type.Optional(Type.Boolean()),
 	createdSince: Type.Optional(Type.String()),
 };
 

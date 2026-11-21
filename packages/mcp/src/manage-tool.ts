@@ -92,8 +92,8 @@ const ManageSchema = Type.Object({
 			description: `Server name; required for every intent except list. "${NATIVE_SERVER}" with tools reads a deferred native tool`,
 		}),
 	),
-	tool: Type.Optional(Type.String()),
-	uri: Type.Optional(Type.String()),
+	tool: Type.Optional(Type.String({ description: "tools: tool name, for its schema" })),
+	uri: Type.Optional(Type.String({ description: "read: resource uri" })),
 });
 
 /**
@@ -183,8 +183,8 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 	return {
 		name: MCP_MANAGE_TOOL_NAME,
 		label: "MCP",
-		promptSnippet: "When an MCP server's tools fail, time out or disappear, or to check its state",
-		description: `Manage this session's MCP servers; configuration files stay unchanged. list: state, tool count, group, purpose, last error (with server: that one, plus where it is defined). tools: the catalog; with tool: that tool's full description and schemas, without running it. resources: the server's resources and URI templates. read: one resource's contents by uri, as resources lists it. restart: start a stopped or failed server or reconnect a running one (a connected server restarted again within ${MCP_RESTART_COOLDOWN_MS / 1000}s is refused). stop: end a server for this session.`,
+		promptSnippet: "When an MCP server fails; to check it or load deferred native tools",
+		description: `Manage this session's MCP servers; config files stay unchanged. list: state, tool count, group, purpose, last error (with server: that one, and where it is defined). tools: the catalog; with tool: its description and schemas, unrun. resources: the server's resources and URI templates. read: a resource's contents by uri. restart: start a stopped or failed server or reconnect a running one (a connected server restarted again within ${MCP_RESTART_COOLDOWN_MS / 1000}s is refused). stop: end a server this session. On a tool failure: restart, say so, use other tools; never stop work or disable the server.`,
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {

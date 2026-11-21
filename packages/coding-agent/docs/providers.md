@@ -6,7 +6,7 @@
 
 | You have                                            | Do this                                                                                                                                                                                               | Models appear as                   |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| ChatGPT Plus/Pro (Codex)                            | `/providers openai` → **Sign in — OpenAI (ChatGPT subscription)**. The older `openai-codex` (legacy) sign-in still works                                                                              | `openai/…`                         |
+| ChatGPT Plus/Pro (Codex)                            | `/providers openai` → **Sign in — OpenAI (ChatGPT subscription)**                                                                                                                                     | `openai/…`                         |
 | Claude Pro/Max                                      | Only through Claude Code: connect it as an external agent in `/providers` (**External agents**). A subscription token pasted as a key is refused ([details](#use-your-claude-subscription))           | Claude Code tasks                  |
 | Google AI Pro/Ultra                                 | Only through Gemini CLI as an external agent; for direct use add a Gemini API key with `/providers google`                                                                                            | Gemini CLI tasks, `google/…`       |
 | A Claude API key (Claude Console)                   | `/providers anthropic` → **Add API key**, or export `ANTHROPIC_API_KEY`                                                                                                                               | `anthropic/…`                      |
@@ -49,7 +49,7 @@ Provider sections in `/model`, model shortcuts, the footer, `/providers` and the
 | `local`        | Every model of the provider is served from this machine (`localhost`, `127.0.0.1`, `::1`)         | None from a vendor         |
 | `API key`      | A key or token from the credential store, keychain, `models.json` or the environment              | Per token                  |
 
-When a subscription is connected, subagent routing (`small`, `medium`) prefers a capable plan-billed model over a per-token one. OpenAI Codex (legacy, `openai-codex`) is deprecated: use **Sign in with ChatGPT** under `/providers openai`.
+When a subscription is connected, subagent routing (`small`, `medium`) prefers a capable plan-billed model over a per-token one.
 
 GitHub Copilot identifies as the VS Code Copilot client unless `OCTOCODE_COPILOT_CLIENT_ID` names a GitHub OAuth app you registered for Octocode ([environment variables](environment-variables.md)); GitHub officially supports only OpenCode as a third-party Copilot client.
 

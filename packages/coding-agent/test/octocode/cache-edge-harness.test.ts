@@ -48,8 +48,9 @@ describe("children of different bundled roles", () => {
 		contexts = [];
 		for (const role of roles) contexts.push(await captureChild(role ?? "general", role));
 		const [general, ...others] = contexts;
-		// Not vacuous: the roles do differ after the boundary.
-		expect(new Set(contexts.map((context) => instructionBlocks(context).session)).size).toBe(roles.length);
+		// Not vacuous: the read-only roles differ from each other and from the writable ones after the boundary; the
+		// general child and the implementer are both writable with the same policy, so they share it.
+		expect(new Set(contexts.map((context) => instructionBlocks(context).session)).size).toBe(roles.length - 1);
 		expect(general.tools.length).toBeGreaterThan(5);
 		expect(instructionBlocks(general).base.length).toBeGreaterThan(2_000);
 		for (const other of others) {

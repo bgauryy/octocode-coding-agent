@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, wr
 import { join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { APP_NAME, getPackageDir, VERSION } from "../config.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "@octocodeai/octocode-common/child-process";
 import { canonicalizePath, getCwdRelativePath } from "@octocodeai/octocode-common/paths";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";
@@ -76,13 +77,7 @@ function verifyManagedRelease(releaseDir: string, expectedVersion: string): void
 
 function activateManagedRelease(managedRoot: string, version: string): void {
 	const currentPath = join(managedRoot, "current-version");
-	const temporaryPath = join(managedRoot, `current-version.tmp.${process.pid}-${Date.now()}`);
-	try {
-		writeFileSync(temporaryPath, `${version}\n`);
-		renameSync(temporaryPath, currentPath);
-	} finally {
-		rmSync(temporaryPath, { force: true });
-	}
+	atomicWriteFileSync(currentPath, `${version}\n`);
 }
 
 // Keep the active release and the one running this update, which other open

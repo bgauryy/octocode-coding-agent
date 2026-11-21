@@ -1,6 +1,6 @@
 ---
 name: octocode-security-review
-description: "Explain /security reports (hook, MCP server, skill): what it does, its rating, approval; never decides."
+description: "Use to explain a /security report on a hook, MCP server or skill: what it does, its rating, approval; never decides."
 ---
 
 # Reading a security report

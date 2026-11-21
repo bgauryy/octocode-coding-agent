@@ -2,20 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
-import { OCTOCODE_DIR } from "../shared/home.ts";
+import { AGENT_DIR } from "../../storage/agent-layout.ts";
 import type { Worktree, WorktreeOutputs } from "./worktree-base.ts";
 
-/** Git-ignored files a child wrote under `.octocode/` are copied to the checkout when its worktree is removed; these bound the copy. */
+/** Git-ignored files a child wrote under `.octocode/agent/` are copied to the checkout when its worktree is removed; these bound the copy. */
 export const OUTPUT_LIMITS = { fileBytes: 1024 * 1024, totalBytes: 8 * 1024 * 1024, files: 100 } as const;
 
-const FOLDER = OCTOCODE_DIR;
-/** Listed from the worktree's root: the folder, less the harness's private state (`.octocode/code`), its `tmp` caches and any `node_modules`. */
-const PATHSPEC = [
-	`:(top)${FOLDER}`,
-	EXCLUDE_WORKSPACE_STATE,
-	`:(top,exclude)${FOLDER}/tmp`,
-	":(top,glob,exclude)**/node_modules/**",
-];
+const FOLDER = AGENT_DIR.split(path.sep).join("/");
+/** Listed from the worktree's root: the agent folder, less its runtime state (`EXCLUDE_WORKSPACE_STATE`: ids, transcripts, `tmp`) and any `node_modules`. */
+const PATHSPEC = [`:(top)${FOLDER}`, ...EXCLUDE_WORKSPACE_STATE, ":(top,glob,exclude)**/node_modules/**"];
 
 type Rescued = Pick<Worktree, "agentId" | "repo" | "path">;
 
@@ -28,7 +23,7 @@ function isRegular(file: string): fs.Stats | undefined {
 }
 
 /**
- * Copies the child's new or changed ignored files under `.octocode/` to the same paths in the checkout (one `git
+ * Copies the child's new or changed ignored files under `.octocode/agent/` to the same paths in the checkout (one `git
  * ls-files` walk, then one stat per file; links and special files are skipped). A file the checkout already holds
  * identically is left; one it holds differently and at least as new is not overwritten: the child's version is written
  * beside it (`besidePath`) and the path is returned in `conflicts`. Files past `OUTPUT_LIMITS` are not copied, and the

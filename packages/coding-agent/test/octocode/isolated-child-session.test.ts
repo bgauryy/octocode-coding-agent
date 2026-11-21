@@ -202,10 +202,10 @@ describe("isolated subagent session", () => {
 			expect(fs.existsSync(path.join(sibling, "x.txt"))).toBe(false);
 		}, 30_000);
 
-		it("keeps `.octocode/code` inside the worktree refused, and a link out of it", async () => {
+		it("keeps `.octocode/agent` inside the worktree refused, and a link out of it", async () => {
 			const { cwd } = await childWorktree();
 			const { write } = headlessFileTool("full", cwd, { isSubagent: true });
-			expect(await write(".octocode/code/settings.json", "{}")).toMatch(/state folder/);
+			expect(await write(".octocode/agent/sessions/x.json", "{}")).toMatch(/state folder/);
 			const state = path.join(process.env.HOME!, ".octocode", "octocodecode");
 			fs.symlinkSync(path.join(state, "settings.json"), path.join(cwd, "link.json"));
 			expect(await write("link.json", "{}")).toMatch(/state folder/);

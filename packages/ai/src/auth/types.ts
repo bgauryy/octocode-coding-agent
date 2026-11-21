@@ -229,8 +229,8 @@ export interface LoginOptions {
 	 */
 	getDeviceId?: () => string;
 	/**
-	 * Name this app introduces itself with during login, e.g. OpenAI's agent name hint and
-	 * Codex originator. Each flow supplies its default when omitted.
+	 * Name this app introduces itself with during login, e.g. OpenAI's agent name hint.
+	 * Each flow supplies its default when omitted.
 	 */
 	agentName?: string;
 }
@@ -284,8 +284,6 @@ export interface ProviderPlan {
 	unattended?: false;
 	/** Kill switch: the reason this route is paused. Its models are unavailable; stored logins are kept. */
 	disabled?: string;
-	/** Why this route is being retired and what replaces it. Its models stay usable. */
-	deprecated?: string;
 	/** `cli`: requests run through the vendor's own installed CLI, signed in by its own login. */
 	transport?: "cli";
 }

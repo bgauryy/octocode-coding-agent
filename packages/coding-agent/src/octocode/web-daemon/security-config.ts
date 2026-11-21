@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 import { type SecurityAction, type SecurityItem, type SecurityList } from "@octocodeai/octocode-contracts/config";
 import { decideOne, refreshed, SecurityCommandError } from "../guard/actions.ts";
 import { collectReviews } from "./security-collect.ts";
@@ -16,30 +17,28 @@ export interface SecurityOptions {
 	guard?: GuardOptions;
 }
 
-const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
 function itemOf(review: Review): SecurityItem {
 	const { item } = review;
 	return {
 		id: item.id,
 		kind: item.kind,
-		label: cut(visible(item.label), 512),
-		path: cut(visible(item.path), 2048),
+		label: clipText(visible(item.label), 512),
+		path: clipText(visible(item.path), 2048),
 		scope: item.scope === "global" ? "global" : "workspace",
 		state: review.word,
 		rating: review.rating,
 		changed: review.changed,
 		withheld: isWithheld(review),
-		...(item.unreadable ? { unreadable: cut(visible(item.unreadable), 1024) } : {}),
-		grants: item.grants.slice(0, 32).map((grant) => cut(visible(grant), 512)),
+		...(item.unreadable ? { unreadable: clipText(visible(item.unreadable), 1024) } : {}),
+		grants: item.grants.slice(0, 32).map((grant) => clipText(visible(grant), 512)),
 		findings: review.findings
 			.slice(0, 200)
-			.map((finding) => ({ rule: finding.rule, rating: finding.rating, text: cut(visible(finding.text), 2048) })),
+			.map((finding) => ({ rule: finding.rule, rating: finding.rating, text: clipText(visible(finding.text), 2048) })),
 		...(review.changed && review.approved
 			? {
 					changes: renderChanges(review.approved, item.files)
 						.slice(0, 130)
-						.map((line) => cut(line, 2048)),
+						.map((line) => clipText(line, 2048)),
 				}
 			: {}),
 	};
@@ -53,7 +52,7 @@ async function load(options: SecurityOptions): Promise<{ reviews: Review[]; trus
 const listOf = (reviews: readonly Review[], trusted: boolean, message?: string): SecurityList => ({
 	items: sortReviews(reviews).map(itemOf),
 	workspace: { trusted },
-	...(message ? { message: cut(message, 500) } : {}),
+	...(message ? { message: clipText(message, 500) } : {}),
 });
 
 /** The reviewed hooks, MCP servers and skills a session in the workspace would load, with their stored decisions. */

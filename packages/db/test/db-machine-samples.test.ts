@@ -83,11 +83,8 @@ describe("machineSamples", () => {
 		expect(machineSamples.acquire(agent.db, "p3", 3, 151_000, 90_000)).toBe(true);
 	});
 
-	it("is emptied by the all-data purge, which creates nothing on a file without it", () => {
+	it("is emptied by the all-data purge", () => {
 		expect(purge.all(agent.db, agent.mirror.db).machine_samples).toBe(0);
-		expect(
-			agent.db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='machine_samples'").get(),
-		).toBeUndefined();
 		machineSamples.record(agent.db, sample());
 		machineSamples.acquire(agent.db, "p1", 1, 1_000, 90_000);
 		expect(purge.all(agent.db, agent.mirror.db).machine_samples).toBe(1);

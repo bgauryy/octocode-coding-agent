@@ -22,6 +22,9 @@ const FREE_FORM = new Map<string, string>([
 	// entries); each entry is validated in code against the single call's own schema, so none goes unchecked.
 	// `backlogPlan.items` is not here: its entries are typed, so strict mode constrains them like any other field.
 	["agent.tasks", "batch entries, each validated against the single task call's schema (native/tools/agent/batch.ts)"],
+	["backlog.items", "batch entries, each validated against the single write's fields (native/tools/backlog/tool.ts)"],
+	["memory.items", "batch entries, each validated as a single set or delete (native/tools/memory/tool.ts)"],
+	["wait.items", "batch entries, each validated against the single call's fields (native/tools/wait/tool.ts)"],
 ]);
 
 type Node = Record<string, unknown>;

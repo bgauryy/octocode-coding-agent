@@ -66,7 +66,7 @@ export class JoinWatch {
 	}
 }
 
-/** `joined bash-4 (running 3m, log .octocode/tmp/check.log)`: what a second identical start is told. */
+/** `joined bash-4 (running 3m, log .octocode/agent/tmp/check.log)`: what a second identical start is told. */
 export function joinedText(row: JobRow, cwd: string, now: number): string {
 	const who = [row.agent && `agent ${row.agent}`, row.item && `item ${row.item}`].filter(Boolean).join(", ");
 	return `joined ${row.job} (running ${formatDuration(now - row.started_at)}, log ${shortPath(row.log, cwd)}); its exit wakes you.${who ? ` Started by ${who}.` : ""} Pass fresh: true to start a new run instead.`;

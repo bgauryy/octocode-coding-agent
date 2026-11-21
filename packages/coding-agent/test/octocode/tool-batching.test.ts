@@ -77,8 +77,9 @@ describe("declarations", () => {
 		for (const name of Object.keys(fields)) expect(top, name).not.toContain(name);
 		const properties = (name: string, isSubagent = false) =>
 			(schema(isSubagent, name).parameters as { properties: Record<string, unknown> }).properties;
-		expect(properties("backlog").items).toBeUndefined();
-		expect(properties("backlog", true).items).toBeUndefined();
+		// backlog batches writes as short plain entries; each is validated in code against the single write's fields.
+		for (const isSubagent of [false, true])
+			expect(properties("backlog", isSubagent).items).toMatchObject({ type: "array", items: { type: "object" } });
 	});
 });
 

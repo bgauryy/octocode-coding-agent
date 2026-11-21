@@ -51,7 +51,7 @@ export { mcpLaunchIdentity } from "./launch-identity.ts";
 // Session state the host reads: status, reloads, roles, tool states and subagent hand-offs.
 export { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "./status.ts";
 export { getMcpSwitch, requestMcpReload, type McpReloadResult, type McpSwitch } from "./switch.ts";
-export { currentToolRoles, publishToolRoles, resolveToolRoles, type ResolvedRoles } from "./roles.ts";
+export { currentToolRoles, type ResolvedRoles } from "./roles.ts";
 export {
 	currentMcpToolStates,
 	currentMcpServerNames,
@@ -69,14 +69,11 @@ export { getMcpHookCaller, type BoundMcpHookCaller, type McpHookCaller } from ".
 export { liveStdioServerPids } from "./client/transports/stdio.ts";
 
 // Tool declarations and the prompt section.
-export { createMcpToolDefinition } from "./tool-definition.ts";
 export { createMcpToolName } from "./tool-names.ts";
 export { deferredInputSchema, deferredParameters } from "./deferred-schema.ts";
 export { thinParameters } from "./presentation/declaration.ts";
-export { MCPS_SECTION, renderMcpsSection } from "./section.ts";
 export { redeclaresInPlace } from "./redeclare.ts";
 export type { McpNativeTools } from "./manage-tool.ts";
-export type { Tool } from "./client/index.ts";
 export type { CallToolResult } from "./client/protocol/content.ts";
 
 // The MCP server the host serves to a Claude Code child.

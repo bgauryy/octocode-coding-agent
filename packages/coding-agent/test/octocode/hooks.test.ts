@@ -538,7 +538,7 @@ describe("registerHooks", () => {
 			session_id: "sess-1",
 			hook_event_name: "PreToolUse",
 			tool_name: "Bash",
-			pi_tool_name: "bash",
+			octocode_tool_name: "bash",
 			tool_input: { command: "rm -rf /" },
 		});
 		expect(

@@ -16,7 +16,7 @@ flowchart LR
 
 | Page                                                           | Covers                                                                                        |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [Providers and models](docs/providers-and-models.md)           | Factories, model queries, static catalog, dynamic providers, migrating from the global API    |
+| [Providers and models](docs/providers-and-models.md)           | Factories, model queries, static catalog, dynamic providers, the compat entrypoint             |
 | [Auth](docs/auth.md)                                           | Auth resolution, header transforms, credential store, environment variables, OAuth, Vertex AI |
 | [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, partial JSON, validation, event reference               |
 | [Images](docs/images.md)                                       | Image input and generation                                                                    |
@@ -33,7 +33,7 @@ flowchart LR
 | Group                       | Providers                                                                                                                                                                                                              |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontier                    | OpenAI (including Decisions), Anthropic, Google, Vertex AI, Azure OpenAI (Responses), Amazon Bedrock, Mistral, xAI, Meta (Responses-compatible), DeepSeek                                                              |
-| Subscriptions (OAuth)       | OpenAI Codex (legacy, ChatGPT Plus/Pro), GitHub Copilot: see [OAuth](docs/auth.md#oauth)                                                                                                                               |
+| Subscriptions (OAuth)       | OpenAI (ChatGPT Plus/Pro), GitHub Copilot: see [OAuth](docs/auth.md#oauth)                                                                                                                               |
 | Gateways and hosts          | OpenRouter, Vercel AI Gateway, Cloudflare AI Gateway and Workers AI, Groq, Cerebras, Together AI, Baseten, Hugging Face, NVIDIA NIM, Fireworks (OpenAI- and Anthropic-compatible), OpenCode Zen and Go                 |
 | Regional and plan providers | Ant Ling, ZAI Coding Plan, MiniMax, Moonshot AI and Kimi For Coding, Qwen Token Plan, Xiaomi MiMo (each with its China or region variants where listed in [environment variables](docs/auth.md#environment-variables)) |
 | Classifiers                 | TypeSafe (System One)                                                                                                                                                                                                  |

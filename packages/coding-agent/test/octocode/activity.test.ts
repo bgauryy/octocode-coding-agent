@@ -122,7 +122,7 @@ describe("Activity: the working-line vocabulary", () => {
 		["an Octocode tool running", (a) => a.toolStart("1", "mcp__octocode__localSearch", {}, 1), "Running localSearch"],
 		[
 			"a subagent running",
-			(a) => a.toolStart("1", "agent", { input: { goal: "review the footer" } }, 1),
+			(a) => a.toolStart("1", "agent", { type: "task", goal: "review the footer" }, 1),
 			"Running subagent review the footer",
 		],
 		[

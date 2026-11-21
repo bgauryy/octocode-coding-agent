@@ -5,7 +5,7 @@
  * missing installation fails loudly instead of falling back to a guess.
  *
  * Ports are installed in two groups so a command that never draws a screen (`octocode mcp list`) does not load the
- * renderers: `core` (identity, paths, output, images, trust, models, browser) and `view` (render, ui).
+ * renderers: `core` (identity, paths, output, trust, models, browser) and `view` (render, ui).
  */
 
 import type { Component, Container, TUI } from "@octocodeai/octocode-tui";
@@ -97,18 +97,6 @@ export interface McpOutputPort {
 }
 
 /** An image fitted to limits. `note` maps coordinates back when it was scaled down. */
-interface McpFittedImage {
-	data: string;
-	mimeType: string;
-	note?: string;
-}
-
-/** Image decoding and resizing, which the host owns (it ships the worker). */
-export interface McpImagePort {
-	/** Resizes `bytes` to `limits`; null when the image cannot be decoded or fitted. */
-	fit(bytes: Uint8Array, mimeType: string, limits: ImageLimits & { maxBytes: number }): Promise<McpFittedImage | null>;
-}
-
 /** The folder trust decision, for commands that run outside a session (a session reads `ctx.isProjectTrusted()`). */
 export interface McpTrustPort {
 	/** Whether the user trusted `cwd` (or a folder above it that covers it). */
@@ -338,7 +326,6 @@ export interface McpHostPorts {
 	paths: McpPathsPort;
 	vendors: McpVendorsPort;
 	output: McpOutputPort;
-	images: McpImagePort;
 	trust: McpTrustPort;
 	models: McpModelsPort;
 	browser: McpBrowserPort;
@@ -367,7 +354,6 @@ export const hostPaths = (): McpPathsPort => port("paths");
 export const hostPlugins = (): McpPluginsPort => port("plugins");
 export const hostVendors = (): McpVendorsPort => port("vendors");
 export const hostOutput = (): McpOutputPort => port("output");
-export const hostImages = (): McpImagePort => port("images");
 export const hostTrust = (): McpTrustPort => port("trust");
 export const hostModels = (): McpModelsPort => port("models");
 export const hostBrowser = (): McpBrowserPort => port("browser");

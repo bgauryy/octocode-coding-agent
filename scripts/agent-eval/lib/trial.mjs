@@ -121,11 +121,10 @@ function jsonlFiles(dir) {
 	}
 }
 
-/** Child transcripts live in `<workspace>/.octocode/code/temp/agents/<name>/session/*.jsonl` (`subagents/handoff/scratch.ts`). */
+/** Child transcripts live in `<workspace>/.octocode/agent/temp/agents/<name>/session/*.jsonl` (`subagents/handoff/scratch.ts`). */
 function childTranscripts(workspace) {
-	// `.octa` is where a build from before the rename keeps them, such as the eval baseline.
-	return [".octocode", ".octa"].flatMap((state) => {
-		const agents = join(workspace, state, "code", "temp", "agents");
+	return [".octocode"].flatMap((state) => {
+		const agents = join(workspace, state, "agent", "temp", "agents");
 		let names;
 		try {
 			names = readdirSync(agents).sort();

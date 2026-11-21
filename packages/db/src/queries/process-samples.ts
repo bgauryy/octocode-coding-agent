@@ -3,9 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 /**
  * Periodic memory samples of Octocode processes (main sessions, subagents, RPC hosts) and the child processes each
  * owned when it sampled. Every process writes its own rows; any process reads all of them, which is how a session finds
- * the children another session left behind. The table is created on first use (`IF NOT EXISTS`) instead of with the
- * schema, so the schema version is unchanged and an Octocode of another version sharing the file keeps working. `cwd` was added
- * later as a nullable column, added to a table that lacks it the same way.
+ * the children another session left behind. The table is part of the coordination schema (`schema-samples.ts`).
  */
 
 /** A process an Octocode process owns (an MCP server, a bash job, anything below them), named by pid plus start time. */
@@ -46,26 +44,8 @@ export interface ProcessSample {
 	children: OwnedChild[];
 }
 
-const created = new WeakSet<DatabaseSync>();
-
-function ensure(db: DatabaseSync): void {
-	if (created.has(db)) return;
-	db.exec(`
-CREATE TABLE IF NOT EXISTS process_samples (
-  at INTEGER NOT NULL, pid INTEGER NOT NULL, started TEXT NOT NULL DEFAULT '', ppid INTEGER NOT NULL,
-  role TEXT NOT NULL, title TEXT NOT NULL, id TEXT NOT NULL, session_id TEXT, agent_id TEXT,
-  owner_pid INTEGER, owner_started TEXT, rss INTEGER NOT NULL, heap_used INTEGER NOT NULL,
-  ended INTEGER NOT NULL DEFAULT 0, children TEXT NOT NULL DEFAULT '[]',
-  PRIMARY KEY (pid, started, at));
-CREATE INDEX IF NOT EXISTS process_samples_at ON process_samples(at);`);
-	if (!db.prepare("SELECT 1 FROM pragma_table_info('process_samples') WHERE name = 'cwd'").get())
-		db.exec("ALTER TABLE process_samples ADD COLUMN cwd TEXT");
-	created.add(db);
-}
-
 /** Writes one sample; a second sample of the same process at the same instant replaces the first. */
 export function record(db: DatabaseSync, sample: ProcessSample): void {
-	ensure(db);
 	db.prepare(
 		`INSERT OR REPLACE INTO process_samples
 		 (at, pid, started, ppid, role, title, id, session_id, agent_id, owner_pid, owner_started, rss, heap_used, ended, children, cwd)
@@ -120,7 +100,6 @@ function parseChildren(text: string): OwnedChild[] {
 
 /** Every sample taken at or after `at` (ms since the epoch), oldest first, whatever process wrote it. */
 export function since(db: DatabaseSync, at: number): ProcessSample[] {
-	ensure(db);
 	const rows = db
 		.prepare("SELECT * FROM process_samples WHERE at >= ? ORDER BY at, pid")
 		.all(at) as unknown as SampleRow[];
@@ -146,7 +125,6 @@ export function since(db: DatabaseSync, at: number): ProcessSample[] {
 
 /** Deletes the samples taken before `at` (ms since the epoch), the retention rule; returns how many went. */
 export function pruneBefore(db: DatabaseSync, at: number): number {
-	ensure(db);
 	return Number(db.prepare("DELETE FROM process_samples WHERE at < ?").run(at).changes);
 }
 

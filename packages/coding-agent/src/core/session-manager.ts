@@ -209,7 +209,7 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	/**
 	 * Create a new session.
 	 * @param cwd Working directory (stored in session header)
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/agent/sessions/).
 	 */
 	static create(cwd: string, sessionDir?: string, options?: NewSessionOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
@@ -253,7 +253,7 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	/**
 	 * Continue the most recent session, or create new if none.
 	 * @param cwd Working directory
-	 * @param sessionDir Optional session directory. If omitted, uses the default folders (workspace and legacy).
+	 * @param sessionDir Optional session directory. If omitted, uses the workspace folder.
 	 */
 	static continueRecent(cwd: string, sessionDir?: string): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
@@ -324,7 +324,7 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	 * Find an exact session ID without loading transcript bodies.
 	 * @param cwd Working directory (used to compute default session directory)
 	 * @param id Exact session ID
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/agent/sessions/).
 	 */
 	static findById(cwd: string, id: string, sessionDir?: string): string | undefined {
 		return findSessionFileById(cwd, id, sessionDir);
@@ -333,7 +333,7 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	/**
 	 * List all sessions for a directory.
 	 * @param cwd Working directory (used to compute default session directory)
-	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/code/sessions/).
+	 * @param sessionDir Optional session directory. If omitted, uses default (<workspace>/.octocode/agent/sessions/).
 	 * @param onProgress Optional callback for progress updates (loaded, total)
 	 */
 	static async list(

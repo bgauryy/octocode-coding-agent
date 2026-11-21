@@ -69,11 +69,11 @@ async function tell(
 	team: Pick<Team, "send">,
 	id: string,
 	requests: number,
-	{ used, soft, hard }: BudgetStanding,
+	{ used, hard }: BudgetStanding,
 	replyTo: number | undefined,
 	signal?: AbortSignal,
 ): Promise<string> {
-	const text = renderPrompt("notices/subagents/budget-granted.md", { requests, used, soft, hard });
+	const text = renderPrompt("notices/subagents/budget-granted.md", { requests, used, hard });
 	try {
 		const result = await team.send(id, text, {
 			replyRequired: false,

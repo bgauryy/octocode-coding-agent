@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -32,5 +32,16 @@ describe("resuming recoverable session files", () => {
 	it("does not offer a session header without an identifier", async () => {
 		writeFileSync(join(dir, "invalid.jsonl"), JSON.stringify({ type: "session", cwd: dir }) + "\n");
 		expect(await SessionManager.list(dir, dir)).toEqual([]);
+	});
+	it("finds no session in a folder that does not exist, and reports one that cannot be read", () => {
+		expect(findMostRecentSession(join(dir, "absent"), dir)).toBeNull();
+		const locked = join(dir, "locked");
+		mkdirSync(locked);
+		chmodSync(locked, 0o000);
+		try {
+			if (process.getuid?.() !== 0) expect(() => findMostRecentSession(locked, dir)).toThrow(/EACCES/);
+		} finally {
+			chmodSync(locked, 0o700);
+		}
 	});
 });

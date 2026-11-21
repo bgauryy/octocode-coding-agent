@@ -7,13 +7,11 @@ type SweepKind =
 	| "session-folder"
 	/** A session transcript (JSONL) past `retention.sessionDays`. */
 	| "transcript"
-	/** An emptied legacy per-folder transcript directory. */
-	| "legacy-folder"
 	/** An old spilled-output, bash-log or screenshot file of a kept session. */
 	| "output"
 	/** A kept session's checkpoints nothing wrote to. */
 	| "checkpoints"
-	/** An entry of a workspace's `.octocode/tmp`. */
+	/** An entry of a workspace's `.octocode/agent/tmp`. */
 	| "scratch";
 
 export interface SweepCandidate {

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { gt, maxSatisfying, rcompare, satisfies } from "semver";
 import { CONFIG_DIR_NAME } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
@@ -7,12 +7,6 @@ import { markPathIgnoredByCloudSync } from "@octocodeai/octocode-common/paths";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import { assertProjectTrustedForScope, getTemporaryDir } from "./sources.ts";
 import { NETWORK_TIMEOUT_MS, type NpmSource, type PackageManagerHost, type SourceScope } from "./types.ts";
-
-/** The global npm root, resolved once per configured npm command. */
-export interface GlobalNpmRootCache {
-	root?: string;
-	commandKey?: string;
-}
 
 function getNpmCommand(host: PackageManagerHost): { command: string; args: string[] } {
 	const configuredCommand = host.settingsManager.getNpmCommand();
@@ -74,11 +68,6 @@ export function getGitDependencyInstallArgs(host: PackageManagerHost): string[] 
 		default:
 			return ["install", "--ignore-scripts"];
 	}
-}
-
-function runNpmCommandSync(host: PackageManagerHost, args: string[]): string {
-	const npmCommand = getNpmCommand(host);
-	return host.runCommandSync(npmCommand.command, [...npmCommand.args, ...args]);
 }
 
 export function getNpmInstallArgs(host: PackageManagerHost, specs: string[], installRoot: string): string[] {
@@ -166,37 +155,7 @@ export function getNpmInstallRoot(host: PackageManagerHost, scope: SourceScope, 
 	return join(host.agentDir, "npm");
 }
 
-export function getGlobalNpmRoot(host: PackageManagerHost, cache: GlobalNpmRootCache): string {
-	const npmCommand = getNpmCommand(host);
-	const commandKey = [npmCommand.command, ...npmCommand.args].join("\0");
-	if (cache.root && cache.commandKey === commandKey) {
-		return cache.root;
-	}
-	if (getPackageManagerName(host) === "bun") {
-		const binDir = runNpmCommandSync(host, ["pm", "bin", "-g"]).trim();
-		cache.root = join(dirname(binDir), "install", "global", "node_modules");
-	} else {
-		cache.root = runNpmCommandSync(host, ["root", "-g"]).trim();
-	}
-	cache.commandKey = commandKey;
-	return cache.root;
-}
-
-function getPnpmGlobalPackagePath(host: PackageManagerHost, packageName: string): string | undefined {
-	if (getPackageManagerName(host) !== "pnpm") {
-		return undefined;
-	}
-
-	const output = runNpmCommandSync(host, ["list", "-g", "--depth", "0", "--json"]);
-	const entries = JSON.parse(output) as Array<{ dependencies?: Record<string, { path?: string }> }>;
-	for (const entry of entries) {
-		const path = entry.dependencies?.[packageName]?.path;
-		if (path) return path;
-	}
-	return undefined;
-}
-
-export function getManagedNpmInstallPath(host: PackageManagerHost, source: NpmSource, scope: SourceScope): string {
+export function getNpmInstallPath(host: PackageManagerHost, source: NpmSource, scope: SourceScope): string {
 	if (scope === "temporary") {
 		return join(getTemporaryDir(host, "npm"), "node_modules", source.name);
 	}
@@ -205,23 +164,6 @@ export function getManagedNpmInstallPath(host: PackageManagerHost, source: NpmSo
 		return join(host.cwd, CONFIG_DIR_NAME, "npm", "node_modules", source.name);
 	}
 	return join(host.agentDir, "npm", "node_modules", source.name);
-}
-
-function getLegacyGlobalNpmInstallPath(host: PackageManagerHost, source: NpmSource): string | undefined {
-	try {
-		return getPnpmGlobalPackagePath(host, source.name) ?? join(host.getGlobalNpmRoot(), source.name);
-	} catch {
-		return undefined;
-	}
-}
-
-export function getNpmInstallPath(host: PackageManagerHost, source: NpmSource, scope: SourceScope): string {
-	const managedPath = getManagedNpmInstallPath(host, source, scope);
-	if (scope !== "user" || existsSync(managedPath)) {
-		return managedPath;
-	}
-	const legacyPath = getLegacyGlobalNpmInstallPath(host, source);
-	return legacyPath && existsSync(legacyPath) ? legacyPath : managedPath;
 }
 
 export async function installedNpmMatchesConfiguredVersion(source: NpmSource, installedPath: string): Promise<boolean> {

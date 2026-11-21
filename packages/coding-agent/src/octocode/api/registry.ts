@@ -195,10 +195,8 @@ export function selectInstance(instances: readonly InstanceRecord[], selector: s
 }
 
 /**
- * A fallback socket's private folder in the temp directory: `octocode-<uid>-<owner pid>-XXXXXX`, made by `mkdtemp`.
- * Folders from earlier versions have no pid.
- */
-const SOCKET_DIR = /^octocode-(\d+)-(?:(\d+)-)?[A-Za-z0-9]{6}$/;
+ * A fallback socket's private folder in the temp directory: `octocode-<uid>-<owner pid>-XXXXXX`, made by `mkdtemp`. */
+const SOCKET_DIR = /^octocode-(\d+)-(\d+)-[A-Za-z0-9]{6}$/;
 /** The one file such a folder holds: `newInstanceId`'s socket. */
 const SOCKET_FILE = /^oc-[0-9a-f]{6}\.sock$/;
 
@@ -248,7 +246,7 @@ const refusesConnection = (file: string): Promise<boolean> =>
  * holding nothing but one API socket, and neither a live owner pid nor a listener may answer for it: the pid covers a
  * session between its bind and its listen or too busy to accept, and the connection a session in another pid namespace
  * sharing this temp directory. An empty folder (a kill between `mkdtemp` and the bind, or between the unlink and the
- * removal) is proved by its pid alone; from an earlier version it has none, so it stays. Pid 1 is always alive, so as an
+ * removal) is proved by its pid alone, so one owned by pid 1 stays. Pid 1 is always alive, so as an
  * owner it proves nothing (a container's main process) and counts as none.
  */
 async function removeDeadSocketFolder(folder: string, named: string | undefined): Promise<boolean> {

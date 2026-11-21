@@ -11,6 +11,6 @@ Before first calling a `- name: trigger` tool, load its schema with `mcp` (inten
 {{/if}}
 {{/if}}
 {{#if onDemand}}
-A `- name: trigger` tool is not declared yet: load it with `mcp` (intent `tools`, the block's server, the tool's name), or call it by replacing `*` in the block's `tools` prefix with its name. It is declared from then on.
+A `- name: trigger` tool is not declared yet: load it with `mcp`{{#unless deferred}} (intent `tools`, the block's server, the tool's name){{/unless}}, or call it by replacing `*` in the block's `tools` prefix with its name. It is declared from then on.
 {{/if}}
 {{blocks}}

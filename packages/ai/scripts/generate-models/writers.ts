@@ -204,7 +204,7 @@ export function writeModelCatalogs({
 	}
 
 	if (generatorOptions.jsonOutputDir) {
-		// `models.json` and `providers/{id}.json` retain the legacy keyed chat catalog.
+		// `models.json` and `providers/{id}.json` hold the keyed chat catalog.
 		// The `.all` variants are arrays so the same upstream id can appear once per type.
 		const providerOutputDir = join(generatorOptions.jsonOutputDir, "providers");
 		rmSync(generatorOptions.jsonOutputDir, { recursive: true, force: true });

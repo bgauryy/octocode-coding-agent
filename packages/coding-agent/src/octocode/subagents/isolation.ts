@@ -53,7 +53,12 @@ export class Isolation {
 			: await createWorktree(ctx.cwd, this.id, undefined, workingCopy, this.item, approve);
 		// The parent made it for the child, so the parent is the opener (a top-level run's own id stands in for none).
 		recordWorktreeOpening(this.worktree.path, { id: identity.parentId ?? identity.id, sessionId: identity.sessionId });
-		identity.isolation = { path: this.worktree.path, repo: this.worktree.repo, cwd: this.worktree.cwd };
+		identity.isolation = {
+			path: this.worktree.path,
+			repo: this.worktree.repo,
+			cwd: this.worktree.cwd,
+			...(this.worktree.unlinked ? { unlinked: this.worktree.unlinked } : {}),
+		};
 		identity.workspace = teamWorkspace(ctx.cwd);
 		return this.worktree.cwd;
 	}

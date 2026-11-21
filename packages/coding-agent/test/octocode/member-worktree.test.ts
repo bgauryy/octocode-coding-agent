@@ -34,8 +34,11 @@ const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	...extra,
 });
 const main = member("main", { role: "main", cwd: ROOT });
-const isolated = member("iso-1", { parentId: "main", cwd: "/home/u/.octocode/worktrees/iso-1" });
-const linked = member("peer", { checkout: "/r/.octocode/worktrees/hotfix", cwd: "/r/.octocode/worktrees/hotfix/src" });
+const isolated = member("iso-1", { parentId: "main", cwd: "/home/u/.octocode/agent/worktrees/iso-1" });
+const linked = member("peer", {
+	checkout: "/r/.octocode/agent/worktrees/hotfix",
+	cwd: "/r/.octocode/agent/worktrees/hotfix/src",
+});
 const sub = member("sub", { parentId: "main", cwd: "/r/packages/a" });
 
 const temp: string[] = [];
@@ -49,10 +52,10 @@ describe("memberWorktree", () => {
 		expect(memberWorktree(isolated, undefined)).toBeUndefined();
 	});
 	it("names an isolated child's folder although its checkout is its coordinator's", () => {
-		expect(memberWorktree(isolated, ROOT)).toBe("/home/u/.octocode/worktrees/iso-1");
+		expect(memberWorktree(isolated, ROOT)).toBe("/home/u/.octocode/agent/worktrees/iso-1");
 	});
 	it("names the checkout of a session in a linked worktree", () => {
-		expect(memberWorktree(linked, ROOT)).toBe("/r/.octocode/worktrees/hotfix");
+		expect(memberWorktree(linked, ROOT)).toBe("/r/.octocode/agent/worktrees/hotfix");
 	});
 	it("marks a folder that no longer exists as gone", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wt-"));

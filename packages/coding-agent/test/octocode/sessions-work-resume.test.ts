@@ -14,7 +14,7 @@ const start = (call: string, runId?: string) => [
 		timestamp: "2026-10-28T12:00:00Z",
 		message: {
 			role: "assistant",
-			content: [{ type: "toolCall", id: call, name: "agent", arguments: { type: "task", input: { goal: call } } }],
+			content: [{ type: "toolCall", id: call, name: "agent", arguments: { type: "task", goal: call } }],
 		},
 	},
 	{
@@ -35,16 +35,11 @@ const report = (runId?: string) => ({
 });
 
 describe("background continuations of one child", () => {
-	it("a previous report does not hide a later launch, including legacy records", () => {
-		for (const runs of [
-			[undefined, undefined],
-			["first", "second"],
-		]) {
-			const entries = [...start("first", runs[0]), report(runs[0]), ...start("second", runs[1])];
-			expect(unreportedWork(entries)).toMatchObject([{ id: "general-worker", label: "second" }]);
-			expect(unreportedWork(entries, Date.parse("2026-10-28T00:00:00Z"))).toHaveLength(1);
-			expect(unreportedWork([...entries, report(runs[1])])).toEqual([]);
-		}
+	it("a previous report does not hide a later launch", () => {
+		const entries = [...start("first", "first"), report("first"), ...start("second", "second")];
+		expect(unreportedWork(entries)).toMatchObject([{ id: "general-worker", label: "second" }]);
+		expect(unreportedWork(entries, Date.parse("2026-10-28T00:00:00Z"))).toHaveLength(1);
+		expect(unreportedWork([...entries, report("second")])).toEqual([]);
 	});
 
 	it("a delayed old report cannot acknowledge the newer generation", () => {

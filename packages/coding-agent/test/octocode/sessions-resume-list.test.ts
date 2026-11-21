@@ -63,7 +63,7 @@ async function listing(sessionDir: string, cwd: string): Promise<string> {
 describe("/resume text list", () => {
 	it("shows child agents, cost, a gone worktree and keeps branch out of the way of nothing", async () => {
 		const root = fs.realpathSync(tmp("octocode-list-"));
-		const gone = path.join(root, ".octocode", "worktrees", "old");
+		const gone = path.join(root, ".octocode", "agent", "worktrees", "old");
 		const sessionDir = path.join(root, "sessions");
 		fs.mkdirSync(sessionDir, { recursive: true });
 		fs.writeFileSync(

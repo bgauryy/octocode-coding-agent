@@ -142,38 +142,6 @@ Each row has the pass or fail with grader evidence, cost, turns (assistant messa
 - **Prompt cache between trials.** The provider's cache outlives a trial, so the first trial of an arm pays for cache writes that later trials read. Arm order, and time between arms, can move cost. Both arms use the same task order; run them back to back, and swap their order on repeats if the difference is small.
 - **Dependencies shared by both arms.** Both builds link the sibling `octocode` checkout, so `octocode-mcp` is the same in each arm unless it changes between builds. The kit does not record its version.
 
-## Do agents understand their instructions?
-
-[understand.mjs](understand.mjs) is a separate, cheaper check. It decides no release: a wrong answer points at an instruction to improve. It sends a small model each agent's exact system prompt, tools and first message from `.octocode/tmp/agent-prompts/` (written by every `build:offline`, or by `yarn workspace @octocodeai/octocode-agent run generate:prompts`), tools off, with a question about how that agent would work, and grades the answer with the `expect` and `forbid` patterns in [understanding.json](understanding.json). Each agent is also asked what in its instructions is unclear, which is reported and not graded.
-
-Without `--live`, `--max-usd` and `--provider` it prints the number of questions and exits 2, so it spends nothing. Agree a live run with the user first.
-
-```sh
-node scripts/agent-eval/understand.mjs --live --max-usd <n> --provider <name>
-```
-
-`--provider` names an entry of `--models-file` (default `~/.pi/agent/models.json`) with a `baseUrl` that answers `/v1/messages` in Anthropic's format and an `apiKey`. `--model` is a model of that provider (default `claude-haiku-5-5`), `--agents` a comma-separated subset and `--concurrency` the parallel requests (default 4). It stops starting questions at the limit. The report goes to `--out` (default `.octocode/tmp/prompt-understanding/`) as `report.md` and `results.json`. The exit code does not depend on how many answers were right.
-
-## What do stored sessions say?
-
-[session-baseline.mjs](session-baseline.mjs) reads the sessions already stored in the agent database and prints a Markdown baseline. It calls no model, opens the database read-only (no migration, no write) and writes only when `--out` names a file under `.octocode/tmp/`.
-
-```bash
-node scripts/agent-eval/session-baseline.mjs [--db <workspaces.db>] [--out .octocode/tmp/session-baseline.md] [--json]
-```
-
-| Section | Kind | Decides |
-| --- | --- | --- |
-| Cache read share per day and role, split into instructions and history, and of each session's first request | counts measured; the split is estimated from the first request's prompt size | whether the instruction blocks need another layout |
-| Request gaps past 5 minutes and 1 hour, cache write tokens and their tier, per role | measured | which cache tier a role's runs pay for |
-| Tool calls per tool per role, with a table of the Octocode GitHub tools | measured | which tools a profile keeps |
-| Main sessions that start no, one, or two or more children | measured | where the multi-child planning rules belong |
-| Output tokens spent on the `reason` argument | estimated: 4 characters per token plus the key | whether `reason` is worth a test of making it optional |
-| Child reports whose first word is not an outcome word, by model | measured | the cost of asking a child for its outcome |
-| First prompts replayed against stored memories | the hit is measured; "a near match and no hit" is a trigram proxy | whether recall needs an approximate fallback |
-
-Sessions on a scripted model or in a temporary directory are left out and counted. The report ends with what the database does not store. A role with zero sessions is no evidence about its tools.
-
 ## Develop
 
 ```sh

@@ -8,4 +8,4 @@ A short report in task terms, before or alongside the resumed work.
 - **Next:** the work you are continuing here, or the native command with the directory to run it from.
 - **Worktrees:** for each one acted on or needing a decision, its state and the suggested command; say which commands you ran and which wait for the user.
 
-Do not paste whole transcripts or secrets; quote only the lines that decide the next step. Save a digest or worktree report only when it must outlive the reply, under `<workspace>/.octocode/resume-external-harness/` (scratch under `<workspace>/.octocode/resume-external-harness/tmp/`), never in the repository's tracked files.
+Do not paste whole transcripts or secrets; quote only the lines that decide the next step. Save a digest or worktree report only when it must outlive the reply, under `<workspace>/.octocode/agent/resume-external-harness/` (scratch under `<workspace>/.octocode/agent/resume-external-harness/tmp/`), never in the repository's tracked files.

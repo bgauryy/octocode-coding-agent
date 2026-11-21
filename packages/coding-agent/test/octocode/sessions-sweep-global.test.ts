@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { getSessionsDir } from "../../src/config.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
@@ -56,7 +55,7 @@ const age = (target: string, days: number) => {
 function workspace() {
 	const root = fs.realpathSync(tmp("octocode-ws-"));
 	const identity = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(identity.root, ".octocode", "code");
+	const state = path.join(identity.root, ".octocode", "agent");
 	return { root: identity.root, id: identity.id, state };
 }
 
@@ -74,7 +73,7 @@ function transcript(dir: string, id: string, daysOld: number): string {
 const none = async () => new Set<string>();
 
 describe("global sweep", () => {
-	it("sweeps a stale workspace that is not the current one, the global root and a legacy folder, from any cwd", async () => {
+	it("sweeps a stale workspace that is not the current one, and the global root, from any cwd", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
 		fs.mkdirSync(path.join(ws.state, "session-data", "stale-session", "output"), { recursive: true });
@@ -83,17 +82,12 @@ describe("global sweep", () => {
 		const global = path.join(home, "agent", "sessions", "global-stale");
 		fs.mkdirSync(path.join(global, "output"), { recursive: true });
 		age(global, 40);
-		const legacyFile = transcript(path.join(getSessionsDir(), "--tmp-old--"), "legacy-1", 120);
-		const legacyFresh = transcript(path.join(getSessionsDir(), "--tmp-new--"), "legacy-2", 5);
 
 		await sweepSessions(index, "someone-else", { force: true, listed: none });
 
 		expect(fs.existsSync(path.join(ws.state, "session-data", "stale-session"))).toBe(false);
 		expect(fs.existsSync(path.join(ws.state, "session-data", "fresh-session"))).toBe(true);
 		expect(fs.existsSync(global)).toBe(false);
-		expect(fs.existsSync(legacyFile)).toBe(false);
-		expect(fs.existsSync(path.dirname(legacyFile))).toBe(false);
-		expect(fs.existsSync(legacyFresh)).toBe(true);
 	});
 
 	it("expires a transcript past sessionDays with its session folder and database rows, never a younger one", async () => {
@@ -127,26 +121,21 @@ describe("global sweep", () => {
 		sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run("dead-session", DEAD_PID);
 		const other = workspace();
 		const hidden = transcript(path.join(other.state, "sessions"), "hidden-session", 200);
-		const legacyDir = path.join(getSessionsDir(), "--blocked--");
-		const blocked = transcript(legacyDir, "blocked-session", 200);
 		try {
 			fs.chmodSync(path.join(other.state, "sessions"), 0o000);
-			fs.chmodSync(legacyDir, 0o000);
 			await sweepSessions(index, "current-session", { force: true, listed: none });
 		} finally {
 			fs.chmodSync(path.join(other.state, "sessions"), 0o700);
-			fs.chmodSync(legacyDir, 0o700);
 		}
 		expect(fs.existsSync(current)).toBe(true);
 		expect(fs.existsSync(live)).toBe(true);
 		expect(fs.existsSync(hidden)).toBe(true);
-		expect(fs.existsSync(blocked)).toBe(true);
 	});
 
-	it("expires .octocode/tmp entries but never other .octocode topics, and follows no symlink", async () => {
+	it("expires .octocode/agent/tmp entries but never other .octocode topics, and follows no symlink", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
-		const tmpDir = path.join(ws.root, ".octocode", "tmp");
+		const tmpDir = path.join(ws.root, ".octocode", "agent", "tmp");
 		const topic = path.join(ws.root, ".octocode", "reports");
 		fs.mkdirSync(path.join(tmpDir, "old-run"), { recursive: true });
 		fs.mkdirSync(path.join(tmpDir, "busy-run"), { recursive: true });
@@ -177,13 +166,13 @@ describe("global sweep", () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
 		const file = transcript(path.join(ws.state, "sessions"), "ancient", 500);
-		fs.mkdirSync(path.join(ws.root, ".octocode", "tmp", "old"), { recursive: true });
-		age(path.join(ws.root, ".octocode", "tmp", "old"), 500);
+		fs.mkdirSync(path.join(ws.root, ".octocode", "agent", "tmp", "old"), { recursive: true });
+		age(path.join(ws.root, ".octocode", "agent", "tmp", "old"), 500);
 		process.env.OCTOCODE_CLEANUP_DAYS = "0";
 		process.env.OCTOCODE_SESSION_RETENTION_DAYS = "0";
 		await sweepSessions(index, undefined, { force: true, listed: none });
 		expect(fs.existsSync(file)).toBe(true);
-		expect(fs.existsSync(path.join(ws.root, ".octocode", "tmp", "old"))).toBe(true);
+		expect(fs.existsSync(path.join(ws.root, ".octocode", "agent", "tmp", "old"))).toBe(true);
 
 		delete process.env.OCTOCODE_CLEANUP_DAYS;
 		delete process.env.OCTOCODE_SESSION_RETENTION_DAYS;
@@ -197,7 +186,7 @@ describe("global sweep", () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
 		const file = transcript(path.join(ws.state, "sessions"), "expired", 150);
-		const scratch = path.join(ws.root, ".octocode", "tmp", "run");
+		const scratch = path.join(ws.root, ".octocode", "agent", "tmp", "run");
 		fs.mkdirSync(scratch, { recursive: true });
 		fs.writeFileSync(path.join(scratch, "big.bin"), Buffer.alloc(2048));
 		age(scratch, 45);
@@ -219,7 +208,7 @@ describe("global sweep", () => {
 	it("reports one summary line, and failures, instead of swallowing them", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
-		const scratch = path.join(ws.root, ".octocode", "tmp", "run");
+		const scratch = path.join(ws.root, ".octocode", "agent", "tmp", "run");
 		fs.mkdirSync(scratch, { recursive: true });
 		fs.writeFileSync(path.join(scratch, "a"), "x");
 		age(scratch, 45);
@@ -300,10 +289,10 @@ describe("applySweep after the plan", () => {
 		expect(index.get("resumed")).toBeDefined();
 	});
 
-	it("keeps a .octocode/tmp entry written after the plan, and removes its idle neighbour", async () => {
+	it("keeps a .octocode/agent/tmp entry written after the plan, and removes its idle neighbour", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const ws = workspace();
-		const tmpDir = path.join(ws.root, ".octocode", "tmp");
+		const tmpDir = path.join(ws.root, ".octocode", "agent", "tmp");
 		for (const name of ["idle", "revived"]) {
 			fs.mkdirSync(path.join(tmpDir, name), { recursive: true });
 			fs.writeFileSync(path.join(tmpDir, name, "a.txt"), "x");

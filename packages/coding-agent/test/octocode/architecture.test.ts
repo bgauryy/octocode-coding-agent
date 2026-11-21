@@ -283,7 +283,7 @@ describe("source layout", () => {
 
 	it("names the .octocode folder only in shared/home.ts", () => {
 		// Every path under `~/.octocode` or `<repo root>/.octocode` goes through src/shared/home.ts, so one module decides
-		// where things live. Prose that mentions `.octocode/code/temp/` (prompts, tool descriptions) is fine; path segments are not.
+		// where things live. Prose that mentions `.octocode/agent/temp/` (prompts, tool descriptions) is fine; path segments are not.
 		const owners = new Set(["shared/home.ts"]);
 		const segment = /(['"`])\.octocode\1|homedir\(\)\s*,\s*(['"`])\.octocode/;
 		const hits = files

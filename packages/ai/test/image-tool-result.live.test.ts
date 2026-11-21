@@ -14,12 +14,8 @@ import { hasBedrockCredentials } from "./bedrock-utils.ts";
 import { resolveApiKey } from "./oauth.ts";
 
 // Resolve OAuth tokens at module level (async, runs before tests)
-const oauthTokens = await Promise.all([
-	resolveApiKey("anthropic"),
-	resolveApiKey("github-copilot"),
-	resolveApiKey("openai-codex"),
-]);
-const [anthropicOAuthToken, githubCopilotToken, openaiCodexToken] = oauthTokens;
+const oauthTokens = await Promise.all([resolveApiKey("anthropic"), resolveApiKey("github-copilot")]);
+const [anthropicOAuthToken, githubCopilotToken] = oauthTokens;
 
 /**
  * Test that tool results containing only images work correctly across all providers.
@@ -508,26 +504,6 @@ describe("Tool Results with Images", () => {
 			async () => {
 				const llm = getBuiltinModel("github-copilot", "claude-sonnet-4.6");
 				await handleToolWithTextAndImageResult(llm, { apiKey: githubCopilotToken });
-			},
-		);
-	});
-
-	describe("OpenAI Codex Provider", () => {
-		it.skipIf(!openaiCodexToken)(
-			"gpt-5.5 - should handle tool result with only image",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-				await handleToolWithImageResult(llm, { apiKey: openaiCodexToken });
-			},
-		);
-
-		it.skipIf(!openaiCodexToken)(
-			"gpt-5.5 - should handle tool result with text and image",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-				await handleToolWithTextAndImageResult(llm, { apiKey: openaiCodexToken });
 			},
 		);
 	});

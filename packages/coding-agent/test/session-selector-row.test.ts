@@ -59,7 +59,7 @@ describe("session row line 2", () => {
 	});
 
 	it("marks a worktree checkout whose folder is gone", () => {
-		const gone = path.join(tmp("octocode-gone-"), ".octocode", "worktrees", "old");
+		const gone = path.join(tmp("octocode-gone-"), ".octocode", "agent", "worktrees", "old");
 		const list = new SessionList([info(gone)], true, "recent", "all", new KeybindingsManager());
 		const lines = list.render(120).map(stripAnsi);
 		expect(lines.join("\n")).toContain("worktree old (gone)");

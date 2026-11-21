@@ -1,38 +1,29 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getSessionsDir } from "../../config.ts";
-import { WORKSPACE_STATE } from "../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { listSessionHeaders } from "../../core/session-manager/header-listing.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { type Db, type SessionExtra, workspaces } from "../../../../db/src/api.ts";
 import { runningPid } from "../shared/session-liveness.ts";
-import { globalPaths, octocodeTmpDir, sessionDirName } from "../shared/home.ts";
+import { globalPaths, agentTmpDir, sessionDirName } from "../shared/home.ts";
 import { realDirectory } from "./sweep-fs.ts";
 import type { SweepSkip } from "./sweep-types.ts";
 
 /** What the sweep knows about a session: which of them Octocode lists, which are running, and every root to sweep. */
 
 /**
- * Ids of every session Octocode has a file for: in its default sessions dir and in each custom session dir a session ran from.
- * Octocode lists an unreadable dir as empty, so each dir is read first: a default dir that cannot be read (only a missing
- * one means no sessions yet), or a custom dir that turned unreadable since the sweep checked it, rejects, and the sweep
- * then removes nothing.
+ * Ids of every session Octocode has a file for, in each session dir a session ran from. Octocode lists an
+ * unreadable dir as empty, so each dir is read first: one that turned unreadable since the sweep checked it rejects, and
+ * the sweep then removes nothing.
  */
 export async function sessionIds(dirs: readonly string[]): Promise<Set<string>> {
 	// Ids only: each file's header, never its transcript (a full listing parses every session and keeps its text).
-	const lists = await Promise.all([
-		fs.promises.readdir(getSessionsDir()).then(
-			() => listSessionHeaders(undefined),
-			(error: NodeJS.ErrnoException) => {
-				if (error.code === "ENOENT") return [];
-				throw error;
-			},
-		),
-		...dirs.map(async (dir) => {
+	const lists = await Promise.all(
+		dirs.map(async (dir) => {
 			await fs.promises.readdir(dir);
 			return listSessionHeaders(undefined, dir);
 		}),
-	]);
+	);
 	return new Set(lists.flat().map((info) => info.id));
 }
 
@@ -61,26 +52,23 @@ export function folderName(id: string): string[] {
 	}
 }
 
-/** One place cleanup looks: a workspace's `.octocode/code`, the global agent folder, or the legacy per-folder transcripts. */
+/** One place cleanup looks: a workspace's `.octocode/agent` or the global agent folder. */
 export interface SweepScope {
 	label: string;
 	workspaceId?: string;
-	/** Session data roots (`session-data`, `temp/sessions`); absent for the legacy scope. */
+	/** Session data roots (`session-data`, `temp/sessions`). */
 	durable?: string;
 	temp?: string;
 	/** Where a session's folders live when its transcript expires from this scope. */
 	folderRoots: string[];
 	/** Directories holding session JSONL. */
 	transcripts: string[];
-	/** An emptied transcript directory goes too (legacy folders), never a workspace's own `sessions`. */
-	prunesEmptyDirs: boolean;
-	/** The workspace scratch folder (`octocodeTmpDir`), when it and its parent are real directories. */
+	/** The workspace scratch folder (`agentTmpDir`), when it and its parent are real directories. */
 	scratch?: string;
 }
 
 /**
- * Every root a pass looks at: each registered workspace whose root still exists, the global agent sessions root, and
- * the legacy per-folder transcript directories. A workspace that is gone is listed as skipped, never removed.
+ * Every root a pass looks at: each registered workspace whose root still exists, and the global agent sessions root. A workspace that is gone is listed as skipped, never removed.
  */
 export async function sweepScopes(
 	db: Db,
@@ -96,18 +84,17 @@ export async function sweepScopes(
 			skipped.push({ path: workspace.root, reason: "workspace root is missing" });
 			continue;
 		}
-		const state = path.join(workspace.root, WORKSPACE_STATE);
-		const durable = path.join(state, "session-data");
-		const temp = path.join(state, "temp", "sessions");
-		const scratch = octocodeTmpDir(workspace.root);
+		const state = path.join(workspace.root, AGENT_DIR);
+		const durable = path.join(state, AGENT_FOLDERS.sessionData);
+		const temp = path.join(state, AGENT_FOLDERS.temp, "sessions");
+		const scratch = agentTmpDir(workspace.root);
 		scopes.push({
 			label: workspace.root,
 			workspaceId: workspace.id,
 			durable,
 			temp,
 			folderRoots: [durable, temp],
-			transcripts: [path.join(state, "sessions")],
-			prunesEmptyDirs: false,
+			transcripts: [path.join(state, AGENT_FOLDERS.sessions)],
 			...((await realDirectory(path.dirname(scratch))) && (await realDirectory(scratch)) ? { scratch } : {}),
 		});
 	}
@@ -118,18 +105,6 @@ export async function sweepScopes(
 		temp: global,
 		folderRoots: [global],
 		transcripts: [],
-		prunesEmptyDirs: false,
-	});
-	const legacy = getSessionsDir();
-	const folders = await fs.promises.readdir(legacy, { withFileTypes: true }).catch((): fs.Dirent[] => []);
-	scopes.push({
-		label: legacy,
-		folderRoots: [global],
-		transcripts: [
-			legacy,
-			...folders.filter((entry) => entry.isDirectory()).map((entry) => path.join(legacy, entry.name)),
-		],
-		prunesEmptyDirs: true,
 	});
 	return { scopes, skipped };
 }

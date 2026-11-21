@@ -138,7 +138,7 @@ describe("folder trust gate (CLI)", () => {
 		expect(git("worktree", "list").trim().split("\n")).toHaveLength(1);
 		run(box, box.project, ["-p", "hello", "--worktree", "feat", "--trust"]);
 		expect(git("worktree", "list").trim().split("\n")).toHaveLength(2);
-		const made = path.join(box.project, ".octocode", "worktrees", "feat");
+		const made = path.join(box.project, ".octocode", "agent", "worktrees", "feat");
 		const state = resolveFolderTrust(made, { env: box.env, home: box.home });
 		expect(state.state).toBe("trusted");
 		if (state.state === "trusted") expect(state.grant.source).toBe("worktree");

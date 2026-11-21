@@ -61,12 +61,6 @@ describe.runIf(process.platform !== "win32")("background job intent", () => {
 		expect(lines).toContain("bash-1: sleep 0.3; echo done");
 		expect(lines).toMatch(/finished after \d/);
 		expect(lines).not.toContain("Why:");
-		// A report saved before the details existed still renders from its text.
-		const old =
-			"[exit 0 · 3s · log: a.log]\nBackground bash bash-1 finished after 3s: yarn build\nWhy: Run the full suite\nok";
-		const legacy = renderJobMessage(old, false, plainTheme).render(120).join("\n");
-		expect(legacy).toContain("↳ Run the full suite");
-		expect(legacy).toContain("bash-1: yarn build");
 	});
 
 	it("keeps the why of a foreground command that moved to the background", async () => {

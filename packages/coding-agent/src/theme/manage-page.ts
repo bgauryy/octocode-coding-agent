@@ -49,8 +49,6 @@ interface PageFact {
 
 export interface ManagePageOptions {
 	title: string;
-	/** @deprecated Every page is responsive; the flag is ignored. Remove it from callers. */
-	responsive?: boolean;
 	/** Muted lines under the list, above the key hints. */
 	notes?: readonly string[];
 	/** Problems to show under the list in the error colour, above the notes. */

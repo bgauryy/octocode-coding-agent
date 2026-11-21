@@ -11,21 +11,21 @@ Private workspace: SQLite schema, connections, named entity queries, history ret
 - Closing an `AgentDb` closes both connections. Its lazy mirror refuses access after closing; only a fresh `openDatabase` or `sharedDatabase` call can reopen it.
 - Scheduled history maintenance and interactive archive reads use the coordination writer's bounded queue. Maintenance admits one pass per database; audit reads filter in the worker and return at most 500 rows. Neither operation falls back to compression on the calling thread when its worker is unavailable. The synchronous archive API remains available for explicit callers.
 - History archive writes happen before the short database delete transaction. A mutable command receipt is deleted only while its status and message still match the archived snapshot. Concurrent receipt revisions survive as separate archive snapshots with the same receipt id; identical retries deduplicate, so a stale archiver cannot replace a newer result. A month file is a concatenation of gzip members (up to 5000 rows each, headers carrying their length, row count and `at` range), so any gzip reader reads it whole; a write copies members it cannot affect as raw bytes, inflates others one at a time and compresses only new rows, keeping memory at one member. A month an older build wrote (one member) is converted on its next write, and refused above 256 MiB inflated, leaving it and its source rows as they were. No database write lock spans monthly gzip or file-lock work. Closing an active archiver rejects its caller immediately, then lets the current compression unit reach a cancellation check and release its file lock before the worker stops; cancellation is checked again before atomic replacement and source deletion.
-- Timer retention removes an active timer only after both its next wake and its last update fall before the retention cutoff. A future wake survives a shorter history window. The all-data purge clears shell command history and optional process samples too; samples belonging to explicitly kept sessions survive, and purging does not create the optional sample table.
+- Timer retention removes an active timer only after both its next wake and its last update fall before the retention cutoff. A future wake survives a shorter history window. The all-data purge clears shell command history and optional process samples too; samples belonging to explicitly kept sessions survive.
 - An active agent run survives retention while its exact registration remains in `agents`; ended runs and unregistered abandoned runs still expire by age, and a reused agent name cannot keep an older registration's audit alive.
 
 ## Change the schema
 
 Octocode has no schema upgrade steps: it is in development, and a file from another schema version is not converted.
 
-| File at open  | What happens                                                                                                                                                                                       |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Empty         | The schema of `src/schema-sql.ts` (or `src/schema-mirror.ts`) is created at the kind's `version` (`src/schema.ts`)                                                                                 |
-| Same version  | Used as it is                                                                                                                                                                                      |
-| Older version | Renamed under the file's lock to `<file>.v<version>.retired` (a taken name gets a timestamp suffix, so none is replaced) with its `-wal` and `-shm`, and a new file is created; nothing is deleted |
-| Newer version | Refused with a message; nothing changes                                                                                                                                                            |
+| File at open  | What happens                                                                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Empty         | The schema of `src/schema-sql.ts` (or `src/schema-mirror.ts`) is created at the kind's `version` (`src/schema.ts`)                                 |
+| Same version  | Used as it is; `COORDINATION_FILE.ensure` first creates, with `IF NOT EXISTS`, the few objects (`ENSURED_OBJECTS`) a file of this version may lack |
+| Older version | Refused with a message; nothing changes: delete the file or point `OCTOCODE_AGENT_DB` at another                                                   |
+| Newer version | Refused with a message; nothing changes                                                                                                            |
 
-To change the schema, edit `src/schema-sql.ts` and raise `COORDINATION_FILE.version`. Every existing agent database is then set aside at its next open, so backlog items, memories and history start empty; say so in the change.
+To change the schema, edit `src/schema-sql.ts` and raise `COORDINATION_FILE.version`. Every existing agent database is then refused at its next open and must be deleted, losing its backlog items, memories and history; say so in the change.
 
 ## Tests
 

@@ -123,7 +123,6 @@ describe("ModelRuntime auth options", () => {
 		);
 		expect(authOptions(runtime, "api_key").every((option) => option.type === "api_key")).toBe(true);
 		expect(authOptions(runtime, "oauth").every((option) => option.type === "oauth")).toBe(true);
-		expect(options.some((option) => option.provider.id === "openai-codex" && option.type === "api_key")).toBe(false);
 	});
 
 	it("attaches the provider's active auth status to every method option", async () => {

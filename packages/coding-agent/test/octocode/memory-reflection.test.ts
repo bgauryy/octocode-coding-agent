@@ -428,11 +428,11 @@ describe("reflection at session end", () => {
 		expect(pass.files[0].skipped).toEqual([expect.stringMatching(/over 200: shorten the rule$/)]);
 	});
 
-	it("keeps a full file at 30 lines or fewer and archives what it evicts", async () => {
+	it("keeps a full file at 40 lines or fewer and archives what it evicts", async () => {
 		// Distinct words per line, so the archive does not take two evicted lines for one note.
 		const text = (i: number) => `Pointer ${["a", "b", "c", "d"].map((x) => `w${i}${x}`).join(" ")}`;
 		const lines = Array.from(
-			{ length: 28 },
+			{ length: 38 },
 			(_, i) => `- ${text(i)} (agent 2026-01-${String(i + 1).padStart(2, "0")})`,
 		);
 		writeWorkspace(`## Pointers\n${lines.join("\n")}\n`);
@@ -447,7 +447,7 @@ describe("reflection at session end", () => {
 		);
 		await setup({ small }).fire("session_shutdown", { reason: "quit" }, ctxWith(correction()));
 		const after = parseMemoryFile(readWorkspace()).lines;
-		expect(countedLines(after)).toBeLessThanOrEqual(30);
+		expect(countedLines(after)).toBeLessThanOrEqual(40);
 		expect(after.filter((line) => line.section === "Gotchas")).toHaveLength(2);
 		const archived = memoryStore(cwd)
 			.list("all", 50)

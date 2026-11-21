@@ -1,5 +1,6 @@
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
+import type { MemoryFileScope } from "../../permission/memory-files.ts";
 import { jaccard, stem, terms } from "../query.ts";
 import {
 	countedLines,
@@ -15,7 +16,7 @@ import {
 } from "./format.ts";
 
 /**
- * The only way a MEMORY.md changes: a list of ops a caller (a save, a migration, a reflection or consolidation model)
+ * The only way a MEMORY.md changes: a list of ops a caller (a save, a reflection or consolidation model)
  * proposes and code applies. Ops are idempotent, so a writer that lost a race re-applies the same list to the new file:
  * an add finds its own line, a rewrite or merge whose result is already there does nothing, an evict of a missing line
  * does nothing, a flag marks its line `recheck` once. Targets name a line by its text (case, punctuation and spacing
@@ -44,7 +45,7 @@ const MemoryOpSchema = Type.Union([
 			text: TextSchema,
 			source: Type.Optional(SourceSchema),
 			pinned: Type.Optional(Type.Boolean()),
-			/** When the fact was last confirmed, if not now (a migrated note keeps its date). */
+			/** When the fact was last confirmed, if not now. */
 			date: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
 		},
 		{ additionalProperties: false },
@@ -246,9 +247,10 @@ const compareRank = (a: MemoryLine, b: MemoryLine): number => {
  */
 export function evictToFit(
 	lines: readonly MemoryLine[],
+	scope: MemoryFileScope,
 	maxLines?: number,
 ): { lines: MemoryLine[]; evicted: MemoryLine[] } {
-	const cap = lineCap(maxLines);
+	const cap = lineCap(scope, maxLines);
 	let kept = [...lines];
 	const evicted: MemoryLine[] = [];
 	const fits = () => countedLines(kept) <= cap && Buffer.byteLength(serializeMemoryFile(kept)) <= MEMORY_FILE_MAX_BYTES;

@@ -15,12 +15,8 @@ import { resolveApiKey } from "./oauth.ts";
 const emptySchema = Type.Object({});
 
 // Resolve OAuth tokens at module level (async, runs before tests)
-const oauthTokens = await Promise.all([
-	resolveApiKey("anthropic"),
-	resolveApiKey("github-copilot"),
-	resolveApiKey("openai-codex"),
-]);
-const [anthropicOAuthToken, githubCopilotToken, openaiCodexToken] = oauthTokens;
+const oauthTokens = await Promise.all([resolveApiKey("anthropic"), resolveApiKey("github-copilot")]);
+const [anthropicOAuthToken, githubCopilotToken] = oauthTokens;
 
 /**
  * Test for Unicode surrogate pair handling in tool results.
@@ -795,34 +791,5 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testUnpairedHighSurrogate(llm);
 		});
-	});
-
-	describe("OpenAI Codex Provider Unicode Handling", () => {
-		it.skipIf(!openaiCodexToken)(
-			"gpt-5.5 - should handle emoji in tool results",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-				await testEmojiInToolResults(llm, { apiKey: openaiCodexToken });
-			},
-		);
-
-		it.skipIf(!openaiCodexToken)(
-			"gpt-5.5 - should handle real-world LinkedIn comment data with emoji",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-				await testRealWorldLinkedInData(llm, { apiKey: openaiCodexToken });
-			},
-		);
-
-		it.skipIf(!openaiCodexToken)(
-			"gpt-5.5 - should handle unpaired high surrogate (0xD83D) in tool results",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const llm = getBuiltinModel("openai-codex", "gpt-5.5");
-				await testUnpairedHighSurrogate(llm, { apiKey: openaiCodexToken });
-			},
-		);
 	});
 });

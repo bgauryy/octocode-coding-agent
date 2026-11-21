@@ -11,7 +11,7 @@ export const HOME_NAMES = {
 	team: "team",
 	api: "api",
 	worktrees: "worktrees",
-	/** Global database and runtime files for sessions without a workspace. */
+	/** Global database and runtime files for sessions without a workspace: `~/.octocode/agent`, or `agent` in `OCTOCODE_HOME`. */
 	agentState: "agent",
 	/** The octocode-agents-communication package's folder: `communication.sqlite` holds its sessions, messages and path leases. */
 	peerCommunication: "agents-communication",
@@ -19,17 +19,19 @@ export const HOME_NAMES = {
 
 type GlobalPaths = { readonly [K in keyof typeof HOME_NAMES]: string } & { readonly home: string };
 
-/** Native state paths; peer communication keeps the external package's shared root. Nothing is created. */
+/**
+ * Native state paths. Agent state and peer communication sit in the shared `~/.octocode` root, beside the Octocode home,
+ * unless `OCTOCODE_HOME` moves everything. Nothing is created.
+ */
 export function globalPaths(env: NodeJS.ProcessEnv = process.env, home = os.homedir()): GlobalPaths {
 	const base = getOctocodeHome(env, home);
 	const entries = Object.entries(HOME_NAMES).map(([key, name]) => [key, path.join(base, name)]);
+	const shared = env.OCTOCODE_HOME?.trim() ? base : path.join(home, CONFIG_DIR_NAME);
 	return {
 		home: base,
 		...Object.fromEntries(entries),
-		peerCommunication: path.join(
-			env.OCTOCODE_HOME?.trim() ? base : path.join(home, CONFIG_DIR_NAME),
-			HOME_NAMES.peerCommunication,
-		),
+		agentState: path.join(shared, HOME_NAMES.agentState),
+		peerCommunication: path.join(shared, HOME_NAMES.peerCommunication),
 	} as GlobalPaths;
 }
 

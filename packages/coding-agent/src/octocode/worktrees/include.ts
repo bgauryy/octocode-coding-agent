@@ -96,7 +96,7 @@ export async function copyIncluded(source: string, destination: string): Promise
 	if (!include) return result;
 	const listing = await git(
 		source,
-		["ls-files", "-z", "--others", "--ignored", `--exclude-from=${include.file}`, "--", EXCLUDE_WORKSPACE_STATE],
+		["ls-files", "-z", "--others", "--ignored", `--exclude-from=${include.file}`, "--", ...EXCLUDE_WORKSPACE_STATE],
 		{
 			raw: true,
 		},

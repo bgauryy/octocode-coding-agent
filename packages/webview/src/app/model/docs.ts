@@ -46,7 +46,7 @@ export function displayDocPath(path: string): string {
 	return isRepoDocPath(path) ? path.slice(REPO_DOC_PREFIX.length) : path;
 }
 
-/** Documents kept apart by where they live: `.octocode/` (authored) and the git-tracked repository files. */
+/** Documents kept apart by where they live: `.octocode/agent/` (authored) and the git-tracked repository files. */
 export function splitDocSources(docs: readonly DocSummary[]): { octocode: DocSummary[]; repo: DocSummary[] } {
 	return {
 		octocode: docs.filter((doc) => !isRepoDocPath(doc.path)),

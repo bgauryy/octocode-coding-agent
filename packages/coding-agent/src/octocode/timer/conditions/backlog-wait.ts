@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import type { BacklogChange } from "../../shared/backlog-change.ts";
 import { sharedPaths } from "../../shared/path-overlap.ts";
@@ -36,11 +37,9 @@ export function watchBacklog(
 	};
 }
 
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
 /** One change in a few words: `B661 note by agent-a: halfway there`. */
 export const describeChange = (change: BacklogChange): string =>
-	`${change.ref} ${change.kind} by ${clip(change.by, 24)}${change.text ? `: ${clip(change.text.replace(/\s+/g, " "), 160)}` : ""}`;
+	`${change.ref} ${change.kind} by ${clipText(change.by, 24)}${change.text ? `: ${clipText(change.text.replace(/\s+/g, " "), 160)}` : ""}`;
 
 /** What narrows the changes a wait hears of; every field given must hold. */
 export interface ChangeScope {

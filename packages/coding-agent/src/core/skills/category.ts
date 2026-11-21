@@ -33,6 +33,12 @@ export function skillCategory(skill: {
 	return skill.sourceInfo?.scope === "project" ? "workspace" : "global";
 }
 
+/** Whether Octocode ships the skill (`core` or its `octocode` collection), not the user's workspace or home folders. */
+export function isBundledSkill(skill: Parameters<typeof skillCategory>[0]): boolean {
+	const category = skillCategory(skill);
+	return category === "core" || category === "octocode";
+}
+
 /** The skills in category order, keeping their order within a category. */
 export function sortByCategory<T>(items: readonly T[], category: (item: T) => SkillCategory): T[] {
 	return SKILL_CATEGORIES.flatMap((wanted) => items.filter((item) => category(item) === wanted));

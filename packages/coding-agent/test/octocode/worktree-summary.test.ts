@@ -36,7 +36,7 @@ const agent = (id: string, extra: Partial<Member>): Member => ({
 });
 
 const addWorktree = (name: string) => {
-	const dir = path.join(repo.root, ".octocode", "worktrees", name);
+	const dir = path.join(repo.root, ".octocode", "agent", "worktrees", name);
 	sh(repo.root, "worktree", "add", "-q", "-b", `octocode/${name}`, dir);
 	return realpathSync(dir);
 };
@@ -62,7 +62,9 @@ describe("describeWorktrees (the coordinate list Worktrees section)", () => {
 		// A worktree nobody works in or opened is counted, not listed: `/worktree list` shows it.
 		expect(text).not.toContain("tidy");
 		expect(text).toContain("  1 other worktree without agents: /worktree list");
-		expect(text).toMatch(/\n {2}busy · branch octocode\/busy · 1 changed, 1 untracked · \.octocode\/worktrees\/busy/u);
+		expect(text).toMatch(
+			/\n {2}busy · branch octocode\/busy · 1 changed, 1 untracked · \.octocode\/agent\/worktrees\/busy/u,
+		);
 		expect(text).toContain("      agents: main-aaaaaa (main, idle, pid 99, tmux work:1.0)");
 		expect(text).toContain("      tmux: work:2.0 (zsh, pid 5120)");
 		// Nobody is recorded as the opener of either (made by plain git), so none is named safe to close.

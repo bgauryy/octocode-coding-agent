@@ -5,7 +5,7 @@ export { StringEnum } from "@octocodeai/octocode-contracts/schema";
 // Core only, side-effect free: no generated catalogs, no provider factories,
 // no api-registry, no OAuth implementations, no compat. Provider factories
 // live under "@octocodeai/octocode-ai/providers/*", API implementations under
-// "@octocodeai/octocode-ai/api/*", the old global API under
+// "@octocodeai/octocode-ai/api/*", the global-registry API under
 // "@octocodeai/octocode-ai/compat".
 export type { AnthropicEffort, AnthropicOptions, AnthropicThinkingDisplay } from "./api/anthropic-messages.ts";
 export type { AzureOpenAIResponsesOptions } from "./api/azure-openai-responses.ts";
@@ -15,7 +15,6 @@ export type { GoogleApiThinkingLevel, ResolvedGoogleThinkingLevel } from "./api/
 export type { GoogleVertexOptions } from "./api/google-vertex.ts";
 export * from "./api/lazy.ts";
 export type { MistralOptions } from "./api/mistral-conversations.ts";
-export type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 export * from "./auth/context.ts";

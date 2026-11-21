@@ -76,7 +76,7 @@ const daysAgo = (now: number, at: number) => Math.floor((now - at) / DAY_MS);
  *
  * Rules, per `resolveRetention` (`0` turns a rule off): `days` for a session's folder when Octocode no longer lists it
  * (and no process runs it), stale output and bash logs, idle checkpoints, subagent screenshots and old
- * `<workspace>/.octocode/tmp` entries (an output or bash log the session's latest checkpoint names stays); `sessionDays` for a transcript whose last write is older, with its session folders
+ * `<workspace>/.octocode/agent/tmp` entries (an output or bash log the session's latest checkpoint names stays); `sessionDays` for a transcript whose last write is older, with its session folders
  * and database rows. The current session, running sessions, a recorded directory that cannot be read, and a live bash
  * job are never touched.
  */
@@ -161,7 +161,6 @@ export async function planSweep(
 				plan.forgets.push({ id: file.id, reason });
 				if (name) expired.add(name);
 			}
-			if (scope.prunesEmptyDirs) await pruneEmptyDirs(scope, files, plan.candidates);
 		}
 	}
 
@@ -253,7 +252,7 @@ export async function planSweep(
 						...own,
 					});
 			}
-			// Only `.octocode/tmp`: other `.octocode/<topic>/` folders hold durable output.
+			// Only `agent/tmp`: other `agent/<topic>/` folders hold durable output.
 			if (scope.scratch) {
 				const tmpNames = await fs.promises.readdir(scope.scratch).catch((): string[] => []);
 				for (const tmpName of tmpNames) {
@@ -302,23 +301,4 @@ export async function planSweep(
 		}
 	}
 	return plan;
-}
-
-/** An emptied legacy transcript directory: every entry is a planned removal. Its bytes are counted by those entries. */
-async function pruneEmptyDirs(
-	scope: SweepScope,
-	files: readonly Transcript[],
-	candidates: SweepCandidate[],
-): Promise<void> {
-	const root = scope.transcripts[0];
-	if (!root) return;
-	const going = new Set(
-		candidates.filter((candidate) => candidate.kind === "transcript").map((candidate) => candidate.path),
-	);
-	for (const dir of new Set(files.map((file) => file.dir))) {
-		if (dir === root) continue;
-		const names = await fs.promises.readdir(dir).catch((): string[] => ["?"]);
-		if (names.length > 0 && names.every((name) => going.has(path.join(dir, name))))
-			candidates.push({ kind: "legacy-folder", path: dir, root, reason: "every transcript in it expired", bytes: 0 });
-	}
 }

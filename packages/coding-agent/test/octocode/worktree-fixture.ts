@@ -22,7 +22,7 @@ export interface TestRepo {
 	cleanup(): void;
 }
 
-/** A temporary repository with one commit that tracks `a.txt` and ignores `.env` and `.octocode/worktrees/`. */
+/** A temporary repository with one commit that tracks `a.txt` and ignores `.env` and `.octocode/agent/worktrees/`. */
 export function makeRepo(options: { commit?: boolean } = {}): TestRepo {
 	const base = realpathSync(mkdtempSync(path.join(tmpdir(), "octocode-worktrees-")));
 	const root = path.join(base, "repo");
@@ -32,7 +32,7 @@ export function makeRepo(options: { commit?: boolean } = {}): TestRepo {
 		mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
 		writeFileSync(path.join(root, relative), text);
 	};
-	write(".gitignore", ".env\n.env.local\n.octocode/worktrees/\n");
+	write(".gitignore", ".env\n.env.local\n.octocode/agent/worktrees/\n");
 	write("a.txt", "a\n");
 	if (options.commit !== false) {
 		sh(root, "add", ".");

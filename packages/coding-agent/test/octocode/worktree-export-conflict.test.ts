@@ -31,7 +31,7 @@ describe("an isolated child's delta that does not apply to the commit it started
 		expect(result.ref).toBe("refs/octocode/export-conflict");
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(git(dir, "show", `${result.ref}:a.txt`)).toBe("one\nTWO\nthree\nfour");
-		const patch = path.join(dir, ".octocode", "tmp", "isolate", "export-conflict.patch");
+		const patch = path.join(dir, ".octocode", "agent", "tmp", "isolate", "export-conflict.patch");
 		expect(result.conflict).toMatchObject({ patch });
 		expect(result.conflict?.reason).toMatch(/conflict/i);
 		// Only the child's own change, not the parent's `two` -> `TWO`.
@@ -98,6 +98,6 @@ describe("an isolated child's delta that does not apply to the commit it started
 		const result = await finishWorktree(worktree);
 		expect(result.conflict).toBeUndefined();
 		expect(git(dir, "diff", "--name-only", "HEAD", result.ref!)).toBe("a.txt");
-		expect(fs.existsSync(path.join(dir, ".octocode", "tmp", "isolate"))).toBe(false);
+		expect(fs.existsSync(path.join(dir, ".octocode", "agent", "tmp", "isolate"))).toBe(false);
 	});
 });

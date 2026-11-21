@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withOpenCodeEndpoint } from "../../src/providers/opencode-endpoints.ts";
 import type { AnyModel, Api, ClassifierApi, ClassifierModel, ImageApi, ImageModel, Model } from "../../src/types.ts";
 import { readModelDataProviderIds, validateGeneratedModelData } from "../model-data.ts";
 import type { OpenRouterCatalog } from "../openrouter-catalog.ts";
@@ -67,8 +66,7 @@ export function buildProviderCatalogs(
 				Record<string, AnyModel>
 			>;
 			const saved: ProviderCatalog = { chat: {}, image: {}, classifier: {} };
-			for (const entry of Object.values(groups).flatMap(Object.values)) {
-				const model = selected.has(id) ? withOpenCodeEndpoint(entry) : entry;
+			for (const model of Object.values(groups).flatMap(Object.values)) {
 				if (model.type === "image") saved.image[model.id] = model;
 				else if (model.type === "classifier") saved.classifier[model.id] = model;
 				else saved.chat[model.id] = model;

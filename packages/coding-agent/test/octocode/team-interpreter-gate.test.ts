@@ -271,7 +271,7 @@ describe("the reservation gate for inline interpreter code", () => {
 				reason: expect.stringContaining(`src/a.ts is reserved by ${owner.team.id}`),
 			});
 			expect(refused?.reason).toContain("names a path another agent has reserved");
-			expect(refused?.reason).toContain("script file under .octocode/code/temp/");
+			expect(refused?.reason).toContain("script file under .octocode/agent/temp/");
 			// The same code that names no reserved path runs.
 			expect(await peer.gate(`${command}\n# src/other.ts`), command).toBeUndefined();
 			// The next step it names must work for that interpreter: Node has the permission flag, the others the read tools.

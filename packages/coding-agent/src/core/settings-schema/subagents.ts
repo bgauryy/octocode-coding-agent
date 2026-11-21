@@ -3,8 +3,7 @@ import { SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 
 /**
  * The `subagents` settings: opt-in limits, off when absent, whose one reader is `spawnRefusal`
- * (octocode/subagents/spawn-limits.ts), and the deprecated check-in and silence keys, read by the monitor
- * (octocode/monitor/attention/) only when the `monitor.*` key is unset.
+ * (octocode/subagents/spawn-limits.ts).
  */
 export const SubagentSettingsSchema = Type.Object(
 	{
@@ -40,21 +39,6 @@ export const SubagentSettingsSchema = Type.Object(
 				description:
 					"Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
 				default: true,
-			}),
-		),
-		checkInSeconds: Type.Optional(
-			Type.Number({
-				minimum: 0,
-				description:
-					"Deprecated: use monitor.checkInSeconds, which wins when both are set. Seconds a running subagent and its parent may go without a message before the subagent is asked whether it needs something; 0 turns it off.",
-				default: SETTINGS_DEFAULTS.subagents.checkInSeconds,
-			}),
-		),
-		silenceMinutes: Type.Optional(
-			Type.Number({
-				minimum: 0,
-				description:
-					"Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off.",
 			}),
 		),
 		wakeHoldSeconds: Type.Optional(

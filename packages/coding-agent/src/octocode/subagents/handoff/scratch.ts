@@ -1,6 +1,7 @@
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import fs from "node:fs";
 import path from "node:path";
+import { AGENT_FOLDERS } from "../../../storage/agent-layout.ts";
 import { workspaceStateDir } from "../../../storage/workspace.ts";
 import { recordedLocalReads } from "../../shared/local-reads.ts";
 import { readPaths, workspaceScratchDir } from "../../shared/home.ts";
@@ -12,12 +13,12 @@ import { teamWorkspace } from "../../team/store/workspace.ts";
 import type { ReportArtifact } from "../../child-sessions/report-artifact.ts";
 
 /**
- * `<team workspace>/.octocode/code/temp/agents`: one folder per subagent for the files it hands back. The team workspace
+ * `<team workspace>/.octocode/agent/temp/agents`: one folder per subagent for the files it hands back. The team workspace
  * (`teamWorkspace`, which follows `OCTOCODE_TEAM_WORKSPACE`) is where `agentScratch` writes, so names and the sweep see
  * the same folders.
  */
 export const scratchRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env) =>
-	workspaceStateDir(teamWorkspace(cwd, env), path.join("temp", "agents"));
+	workspaceStateDir(teamWorkspace(cwd, env), path.join(AGENT_FOLDERS.temp, "agents"));
 
 /**
  * Names whose scratch folder exists. A name is a subagent's identity: its scratch folder holds its saved conversation

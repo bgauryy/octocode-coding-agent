@@ -27,13 +27,9 @@ function serializeStates(states: StoredStates): string {
 	return `${JSON.stringify(states, null, 2)}\n`;
 }
 
-/**
- * Keys of a server's state: by name and URL, so servers sharing a URL keep separate accounts, and the
- * legacy key by URL alone, written by older versions.
- */
-function storeKeys(name: string, serverUrl: string): { key: string; legacyKey: string } {
-	const legacyKey = String(new URL(serverUrl));
-	return { key: `${mcpNamespace(name)}|${legacyKey}`, legacyKey };
+/** Key of a server's state: by name and URL, so servers sharing a URL keep separate accounts. */
+function storeKey(name: string, serverUrl: string): string {
+	return `${mcpNamespace(name)}|${String(new URL(serverUrl))}`;
 }
 
 export interface McpOAuthServerStore extends McpOAuthStateStore {
@@ -53,17 +49,9 @@ export class McpOAuthCredentialStore {
 	}
 
 	forServer(name: string, serverUrl: string): McpOAuthServerStore {
-		const { key, legacyKey } = storeKeys(name, serverUrl);
+		const key = storeKey(name, serverUrl);
 		return {
-			// The first server to load legacy state takes it over; others with the same URL sign in again.
-			load: () =>
-				this.backend.withLock((current) => {
-					const states = parseStates(current);
-					if (states[key] || !states[legacyKey]) return { result: states[key] };
-					states[key] = states[legacyKey];
-					delete states[legacyKey];
-					return { result: states[key], next: serializeStates(states) };
-				}),
+			load: () => this.backend.withLock((current) => ({ result: parseStates(current)[key] })),
 			save: (state) =>
 				this.write((states) => {
 					states[key] = state;
@@ -99,21 +87,19 @@ export class McpOAuthCredentialStore {
 		}
 	}
 
-	/** The stored tokens of a server, for noticing sign-ins done by another process. Does not take over legacy state. */
+	/** The stored tokens of a server, for noticing sign-ins done by another process. */
 	tokens(name: string, serverUrl: string): McpOAuthState["tokens"] {
-		const { key, legacyKey } = storeKeys(name, serverUrl);
 		const states = this.backend.withLock((current) => ({ result: parseStates(current) }));
-		return (states[key] ?? states[legacyKey])?.tokens;
+		return states[storeKey(name, serverUrl)]?.tokens;
 	}
 
-	/** Returns whether credentials were stored for the server. Removes legacy state the server would take over. */
+	/** Returns whether credentials were stored for the server. */
 	remove(name: string, serverUrl: string): boolean {
-		const { key, legacyKey } = storeKeys(name, serverUrl);
+		const key = storeKey(name, serverUrl);
 		return this.backend.withLock((current) => {
 			const states = parseStates(current);
-			const stored = key in states ? key : legacyKey in states ? legacyKey : undefined;
-			if (!stored) return { result: false };
-			delete states[stored];
+			if (!(key in states)) return { result: false };
+			delete states[key];
 			return { result: true, next: serializeStates(states) };
 		});
 	}

@@ -3,13 +3,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { appendArchive, trimArchive, type ArchiveRecord } from "../src/history-archive.ts";
-import { cachedMonth, visitMonth } from "../src/history-month.ts";
-import {
-	ArchiveDamagedError,
-	ArchiveTooLargeError,
-	LEGACY_MONTH_MAX_BYTES,
-	memberHeads,
-} from "../src/history-member.ts";
+import { ArchiveDamagedError, memberHeads } from "../src/history-member.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = Date.UTC(2026, 10, 15, 12);
@@ -48,38 +42,16 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-it("reads an older single-member month, keeps its rows and rewrites it as members any gzip reader reads", async () => {
-	fs.writeFileSync(
-		file,
-		zlib.gzipSync(
-			batch(0, 3)
-				.map((r) => `${JSON.stringify(r)}\n`)
-				.join(""),
-		),
-	);
-	write(batch(3, 2));
-	expect(stored()).toEqual(batch(0, 5));
-	expect(cachedMonth(file)).toEqual(batch(0, 5));
-	const seen: ArchiveRecord[] = [];
-	await visitMonth(
-		file,
-		(r) => seen.push(r),
-		() => {},
-	);
-	expect(seen).toEqual(batch(0, 5));
-	expect(heads().map((h) => h.rows)).toEqual([5]);
-	expect(fs.statSync(file).mode & 0o777).toBe(0o600);
-});
-
-it("leaves an older month untouched when a retry changes nothing", () => {
+it("refuses a month without member headers, leaving it as it was", () => {
 	const bytes = zlib.gzipSync(
 		batch(0, 3)
 			.map((r) => `${JSON.stringify(r)}\n`)
 			.join(""),
 	);
 	fs.writeFileSync(file, bytes);
-	write(batch(1, 2));
+	expect(() => write(batch(3, 2))).toThrow(ArchiveDamagedError);
 	expect(fs.readFileSync(file)).toEqual(bytes);
+	expect(fs.readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 });
 
 it("bounds a large month's write to the new rows plus one raw copy, however many rows it holds", () => {
@@ -158,14 +130,6 @@ it("refuses a member whose header row count does not match its content", () => {
 	expect(() => write([record(6)])).toThrow(ArchiveDamagedError);
 	expect(fs.readFileSync(file)).toEqual(bytes);
 });
-
-it("refuses, without changing anything, an older month too large to inflate in one piece", () => {
-	const bytes = zlib.gzipSync(Buffer.alloc(LEGACY_MONTH_MAX_BYTES + 1, 10));
-	fs.writeFileSync(file, bytes);
-	expect(() => write(batch(0, 1))).toThrow(ArchiveTooLargeError);
-	expect(fs.readFileSync(file)).toEqual(bytes);
-	expect(fs.readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
-}, 60_000);
 
 it("trims a month by member: expired members are dropped uninflated, a straddling one is filtered", () => {
 	const day = 86_400_000;

@@ -67,7 +67,6 @@ const NO_CONFIGURABLE_RETENTION = "the retention period is not configurable and 
 function describeProviderManaged(api: Api, history: Policy["cacheRetention"]): string | undefined {
 	switch (api) {
 		case "azure-openai-responses":
-		case "openai-codex-responses":
 		case "mistral-conversations":
 			return history === "none"
 				? "No routing key is sent; the provider may still cache automatically."

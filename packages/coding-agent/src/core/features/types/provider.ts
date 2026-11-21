@@ -64,15 +64,11 @@ export interface ProviderConfig {
 		name: string;
 		/** Whether access through this auth method is backed by a provider subscription. */
 		isSubscription?: boolean;
-		/** @deprecated Retained for source compatibility; canonical auth flows ignore it. */
-		usesCallbackServer?: boolean;
 		/** Run the login flow, return credentials to persist. */
 		login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials>;
 		/** Refresh expired credentials, return updated credentials to persist. */
 		refreshToken(credentials: OAuthCredentials, signal: AbortSignal): Promise<OAuthCredentials>;
 		getApiKey(credentials: OAuthCredentials): string;
-		/** Legacy synchronous credential-dependent model projection. */
-		modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
 	};
 }
 

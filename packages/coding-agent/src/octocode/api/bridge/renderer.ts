@@ -4,6 +4,7 @@ import { fencedBody } from "../../shared/fence.ts";
 import { formatClock } from "../../shared/format.ts";
 import { EXTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock } from "../../render/tool.ts";
+import { TOOL_PREVIEW_LINES } from "../../../theme/theme-tui-helpers.ts";
 import { contentText } from "../../shared/util.ts";
 import { clip } from "../../shared/text.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
@@ -34,7 +35,8 @@ export function registerExternalMessageRenderer(api: FeatureSetup): void {
 			),
 		);
 		if (caller) box.addChild(new Text(theme.fg("dim", caller), 0, 0));
-		box.addChild(resultBlock(theme, { expanded }, { summary: "", body, error: false }));
+		// A message, not a tool result: its first lines stay in view.
+		box.addChild(resultBlock(theme, { expanded }, { summary: "", body, error: false, max: TOOL_PREVIEW_LINES }));
 		return box;
 	});
 }

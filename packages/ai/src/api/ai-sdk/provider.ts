@@ -35,10 +35,6 @@ export async function sdkModel(
 			const { anthropicSdkModel } = await import("./anthropic-provider.ts");
 			return anthropicSdkModel(model as Model<"anthropic-messages">, options, fetch);
 		}
-		case "openai-codex-responses": {
-			const { codexSdkModel } = await import("./codex-provider.ts");
-			return codexSdkModel(model as Model<"openai-codex-responses">, options, fetch);
-		}
 		case "mistral-conversations": {
 			const { mistralSdkModel } = await import("./mistral-provider.ts");
 			return mistralSdkModel(model as Model<"mistral-conversations">, options, fetch);

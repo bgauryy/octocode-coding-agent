@@ -56,7 +56,7 @@ function harnessWorktreeDirs(ctx) {
 	const name = basename(ctx.root);
 	return [
 		...children(join(ctx.root, ".claude", "worktrees")),
-		...children(join(ctx.root, ".octocode", "worktrees")),
+		...children(join(ctx.root, ".octocode", "agent", "worktrees")),
 		...children(join(ctx.home, ".cursor", "worktrees", name)),
 		...children(join(ctx.home, ".codex", "worktrees")).flatMap((dir) => [dir, ...children(dir)]),
 	];

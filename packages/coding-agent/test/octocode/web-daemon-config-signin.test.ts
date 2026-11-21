@@ -54,7 +54,7 @@ async function daemon(
 	const manager = new SignInManager({
 		login: options.login ?? fake.login,
 		abortGraceMs: options.abortGraceMs,
-		offersOAuth: async (provider) => options.offers?.(provider) ?? provider === "openai-codex",
+		offersOAuth: async (provider) => options.offers?.(provider) ?? provider === "openai",
 		lifetimeMs: options.lifetimeMs,
 		actor: () => "web:test",
 		audit: (entry) => audits.push(entry),
@@ -84,7 +84,7 @@ async function daemon(
 	};
 	return { server, call, fake, audits, bodies, manager };
 }
-const start = { action: "start", provider: "openai-codex" };
+const start = { action: "start", provider: "openai" };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
 
 describe("POST /api/admin/config/signin", () => {
@@ -100,19 +100,19 @@ describe("POST /api/admin/config/signin", () => {
 			{ type: "auth_url", url: "https://example.com/authorize?state=1", instructions: "Sign in" },
 			expect.objectContaining({ type: "progress", message: expect.stringContaining("cannot be shown") }),
 		]);
-		const polled = (await call(server.token, { action: "status", provider: "openai-codex" })).json();
+		const polled = (await call(server.token, { action: "status", provider: "openai" })).json();
 		expect(polled.prompt?.type).toBe("manual_code");
 
 		const stale = await call(server.token, {
 			action: "answer",
-			provider: "openai-codex",
+			provider: "openai",
 			promptId: "nope",
 			value: "x",
 		});
 		expect(stale.status).toBe(409);
 		const answered = await call(server.token, {
 			action: "answer",
-			provider: "openai-codex",
+			provider: "openai",
 			promptId: polled.prompt?.id,
 			value: "the-code",
 		});
@@ -121,17 +121,17 @@ describe("POST /api/admin/config/signin", () => {
 		expect(fake.control.answer).toBe("the-code");
 		fake.control.finish(true);
 		await tick();
-		expect((await call(server.token, { action: "status", provider: "openai-codex" })).json().status).toBe("succeeded");
+		expect((await call(server.token, { action: "status", provider: "openai" })).json().status).toBe("succeeded");
 		// The stale answer above is audited too, as refused; this checks the sign-in itself.
 		expect(audits.filter((entry) => entry.outcome !== "refused")).toEqual([
-			expect.objectContaining({ action: "credential.signin", outcome: "ok", target: "openai-codex" }),
+			expect.objectContaining({ action: "credential.signin", outcome: "ok", target: "openai" }),
 		]);
 	});
 
 	it("cancels a running sign-in and allows a new one afterwards", async () => {
 		const { server, call, audits } = await daemon();
 		await call(server.token, start);
-		const cancelled = await call(server.token, { action: "cancel", provider: "openai-codex" });
+		const cancelled = await call(server.token, { action: "cancel", provider: "openai" });
 		expect(cancelled.json().status).toBe("cancelled");
 		expect(audits[0]?.errorCode).toBe("cancelled");
 		expect((await call(server.token, start)).json().status).toBe("running");
@@ -142,7 +142,7 @@ describe("POST /api/admin/config/signin", () => {
 		await call(server.token, start);
 		fake.control.finish(false);
 		await tick();
-		const failed = (await call(server.token, { action: "status", provider: "openai-codex" })).json();
+		const failed = (await call(server.token, { action: "status", provider: "openai" })).json();
 		expect(failed.status).toBe("failed");
 		expect(failed.error).toContain("token exchange failed");
 		expect(bodies.join("\n")).not.toContain(TOKEN_TEXT);
@@ -160,7 +160,7 @@ describe("POST /api/admin/config/signin", () => {
 		const { server, call } = await daemon({ lifetimeMs: 30 });
 		await call(server.token, start);
 		await new Promise((resolve) => setTimeout(resolve, 80));
-		const state = (await call(server.token, { action: "status", provider: "openai-codex" })).json();
+		const state = (await call(server.token, { action: "status", provider: "openai" })).json();
 		expect(state.status).toBe("failed");
 		expect(state.error).toContain("too long");
 	});
@@ -171,7 +171,7 @@ describe("POST /api/admin/config/signin", () => {
 		expect((await call(server.viewToken, start)).status).toBe(403);
 		expect((await call("wrong", start)).status).toBe(401);
 		expect((await call(server.token, { action: "start", provider: "Bad Id" })).status).toBe(400);
-		expect((await call(server.token, { action: "answer", provider: "openai-codex" })).status).toBe(400);
+		expect((await call(server.token, { action: "answer", provider: "openai" })).status).toBe(400);
 	});
 });
 
@@ -181,9 +181,9 @@ describe("sign-in hardening", () => {
 	it("abandons a login that ignores cancel, so a new sign-in can start", async () => {
 		const { server, call } = await daemon({ login: never, abortGraceMs: 30 });
 		await call(server.token, start);
-		expect((await call(server.token, { action: "cancel", provider: "openai-codex" })).json().status).toBe("running");
+		expect((await call(server.token, { action: "cancel", provider: "openai" })).json().status).toBe("running");
 		await new Promise((resolve) => setTimeout(resolve, 80));
-		expect((await call(server.token, { action: "status", provider: "openai-codex" })).json().status).toBe("cancelled");
+		expect((await call(server.token, { action: "status", provider: "openai" })).json().status).toBe("cancelled");
 		expect((await call(server.token, start)).status).toBe(200);
 	});
 
@@ -198,7 +198,7 @@ describe("sign-in hardening", () => {
 		await call(server.token, start);
 		await call(server.token, start);
 		await call(server.token, { action: "start", provider: "plain" });
-		await call(server.token, { action: "answer", provider: "openai-codex", promptId: "nope", value: "x" });
+		await call(server.token, { action: "answer", provider: "openai", promptId: "nope", value: "x" });
 		expect(audits.filter((entry) => entry.outcome === "refused").map((entry) => entry.errorCode)).toEqual([
 			"busy",
 			"unsupported",
@@ -215,10 +215,10 @@ describe("sign-in hardening", () => {
 		const { server, call, bodies } = await daemon({ login });
 		await call(server.token, start);
 		await tick();
-		const prompt = (await call(server.token, { action: "status", provider: "openai-codex" })).json().prompt;
-		await call(server.token, { action: "answer", provider: "openai-codex", promptId: prompt?.id, value: pasted });
+		const prompt = (await call(server.token, { action: "status", provider: "openai" })).json().prompt;
+		await call(server.token, { action: "answer", provider: "openai", promptId: prompt?.id, value: pasted });
 		await tick();
-		const failed = (await call(server.token, { action: "status", provider: "openai-codex" })).json();
+		const failed = (await call(server.token, { action: "status", provider: "openai" })).json();
 		expect(failed.status).toBe("failed");
 		expect(failed.error).toContain("exchange rejected code");
 		expect(bodies.join("\n")).not.toContain(pasted);
@@ -226,12 +226,12 @@ describe("sign-in hardening", () => {
 
 	it("says the credential was saved when only the follow-up step failed", async () => {
 		const login = async () => {
-			throw new CredentialSynchronizationError("openai-codex", "login", undefined, { cause: new Error("refresh") });
+			throw new CredentialSynchronizationError("openai", "login", undefined, { cause: new Error("refresh") });
 		};
 		const { server, call } = await daemon({ login });
 		await call(server.token, start);
 		await tick();
-		const state = (await call(server.token, { action: "status", provider: "openai-codex" })).json();
+		const state = (await call(server.token, { action: "status", provider: "openai" })).json();
 		expect(state.status).toBe("failed");
 		expect(state.credentialSaved).toBe(true);
 		expect(state.error).toContain("credential was saved");

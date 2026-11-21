@@ -308,7 +308,7 @@ describe("environment section", () => {
 	test("names a linked worktree with its main checkout and branch, and says nothing in a main checkout", () => {
 		const root = mkdtempSync(join(tmpdir(), "env-worktree-"));
 		try {
-			const linked = join(root, "main", ".octocode", "worktrees", "feat");
+			const linked = join(root, "main", ".octocode", "agent", "worktrees", "feat");
 			const gitdir = join(root, "main", ".git", "worktrees", "feat");
 			mkdirSync(linked, { recursive: true });
 			mkdirSync(gitdir, { recursive: true });

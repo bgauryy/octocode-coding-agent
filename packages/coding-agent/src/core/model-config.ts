@@ -1,8 +1,7 @@
 /** Immutable, credential-blind models.json snapshot. */
 
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { ProviderCompatSchema } from "@octocodeai/octocode-ai/providers/compat-schema";
 import {
 	ModelCostSchema,
@@ -14,7 +13,7 @@ import {
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
-import { getLegacyOctocodeDirs, getModelsPath } from "../config.ts";
+import { getModelsPath } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
 import { stripJsonComments } from "@octocodeai/octocode-common/json";
@@ -216,13 +215,7 @@ export class ModelConfig {
 		if (!modelsJsonPath) return new ModelConfig(new Map());
 		const paths = [modelsJsonPath];
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
-			// Octocode's file first, then the Octocode Pi extension's legacy folders, then Pi's: the first definition of a
-			// provider wins.
-			if (providerSourceGate.isEnabled("pi")) {
-				for (const dir of getLegacyOctocodeDirs(dirname(getModelsPath()))) {
-					if (existsSync(join(dir, "models.json"))) paths.push(join(dir, "models.json"));
-				}
-			}
+			// Octocode's file first, then Pi's: the first definition of a provider wins.
 			const input = discoveryInput({
 				cwd: process.cwd(),
 				agentDir: dirname(getModelsPath()),

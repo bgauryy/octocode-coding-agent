@@ -42,10 +42,10 @@ describe("worktree names", () => {
 });
 
 describe("ensureWorktree", () => {
-	it("creates .octocode/worktrees/<name> on branch worktree-<name> at HEAD", async () => {
+	it("creates .octocode/agent/worktrees/<name> on branch worktree-<name> at HEAD", async () => {
 		const info = await ensureWorktree(repo.root, "auth");
 		expect(info).toMatchObject({ name: "auth", branch: "worktree-auth", created: true, main: repo.root });
-		expect(info.path).toBe(path.join(repo.root, ".octocode", "worktrees", "auth"));
+		expect(info.path).toBe(path.join(repo.root, ".octocode", "agent", "worktrees", "auth"));
 		expect(readFileSync(path.join(info.path, "a.txt"), "utf8")).toBe("a\n");
 		expect(sh(info.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("worktree-auth");
 		expect(sh(info.path, "rev-parse", "HEAD")).toBe(sh(repo.root, "rev-parse", "HEAD"));
@@ -93,7 +93,7 @@ describe("ensureWorktree", () => {
 	});
 
 	it("refuses a folder that is not a worktree", async () => {
-		repo.write(".octocode/worktrees/taken/x.txt", "x");
+		repo.write(".octocode/agent/worktrees/taken/x.txt", "x");
 		await expect(ensureWorktree(repo.root, "taken")).rejects.toThrow("not a git worktree");
 	});
 
@@ -122,7 +122,7 @@ describe("ensureWorktree", () => {
 		sh(first.path, "add", ".");
 		sh(first.path, "commit", "-q", "-m", "c");
 		const nested = await ensureWorktree(first.path, "billing");
-		expect(nested.path).toBe(path.join(repo.root, ".octocode", "worktrees", "billing"));
+		expect(nested.path).toBe(path.join(repo.root, ".octocode", "agent", "worktrees", "billing"));
 		expect(nested.main).toBe(repo.root);
 		expect(existsSync(path.join(first.path, ".octocode"))).toBe(false);
 		expect(readFileSync(path.join(nested.path, "c.txt"), "utf8")).toBe("c");

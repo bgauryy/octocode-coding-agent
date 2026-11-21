@@ -332,7 +332,7 @@ describe("with Octocode MCP (default)", () => {
 		expect(JSON.stringify(declared?.parameters)).toContain('"queries"');
 		expect(JSON.stringify(declared?.parameters)).toContain('"queries":{"type":"array","minItems":1,"maxItems":5,');
 		expect(JSON.stringify(declared?.parameters)).toContain('"matchString":{"type":"array"}');
-		expect(JSON.stringify(declared?.parameters)).toContain('"required":["path","matchString"]');
+		expect(JSON.stringify(declared?.parameters)).toMatch(/"required":\[(?:"path",)?"matchString"\]/);
 		expect(JSON.stringify(declared?.parameters)).not.toContain('"description"');
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];

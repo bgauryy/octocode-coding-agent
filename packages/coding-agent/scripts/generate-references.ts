@@ -178,15 +178,27 @@ function referenceType(schema: ReferenceSchema): string {
 	return schema.type ?? "unknown";
 }
 
+/** Whether a field, or anything nested in it, carries documentation in the schema or the section's overrides. */
+function hasDocumentation(field: ReferenceSchema, path: string, section: ReferenceSection): boolean {
+	if (field.description !== undefined || field.default !== undefined) return true;
+	if (section.descriptions?.[path] !== undefined || section.defaults?.[path] !== undefined) return true;
+	const nested = field.properties ?? field.anyOf?.find((branch) => branch.properties)?.properties ?? {};
+	return Object.entries(nested).some(([name, child]) => hasDocumentation(child, `${path}.${name}`, section));
+}
+
 /** Nested object whose fields get their own rows, if any of them carry documentation. */
-function documentedObject(schema: ReferenceSchema): { suffix: string; schema: ReferenceSchema } | undefined {
+function documentedObject(
+	schema: ReferenceSchema,
+	path: string,
+	section: ReferenceSection,
+): { suffix: string; schema: ReferenceSchema } | undefined {
 	if (schema.type === "array") {
-		const item = schema.items && documentedObject(schema.items);
+		const item = schema.items && documentedObject(schema.items, `${path}[]`, section);
 		return item && { suffix: `[]${item.suffix}`, schema: item.schema };
 	}
 	const object = schema.properties ? schema : schema.anyOf?.find((branch) => branch.properties);
-	const documented = Object.values(object?.properties ?? {}).some(
-		(field) => field.description !== undefined || field.default !== undefined,
+	const documented = Object.entries(object?.properties ?? {}).some(([name, field]) =>
+		hasDocumentation(field, `${path}.${name}`, section),
 	);
 	return object && documented ? { suffix: "", schema: object } : undefined;
 }
@@ -218,7 +230,7 @@ function referenceRows(
 			`| \`${path}\` | ${link ? `[${typeText}](${link})` : typeText} | ${defaultText} | ${escapeTableText(description)} |`,
 		);
 		if (link || (prefix === "" && section.collapsed?.includes(name))) continue;
-		const nested = documentedObject(field);
+		const nested = documentedObject(field, path, section);
 		if (nested) rows.push(...referenceRows(nested.schema, section, `${path}${nested.suffix}.`));
 	}
 	return rows;

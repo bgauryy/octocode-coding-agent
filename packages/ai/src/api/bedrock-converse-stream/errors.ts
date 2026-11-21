@@ -5,7 +5,7 @@ import { normalizeProviderError } from "../../utils/error-body.ts";
 /**
  * Human-readable prefixes for Bedrock SDK exception names.
  * The downstream retry logic in agent-session matches patterns like
- * `server.?error` and `service.?unavailable`, so we preserve the legacy
+ * `server.?error` and `service.?unavailable`, so we keep this
  * prefix format rather than using the raw SDK exception name.
  */
 const BEDROCK_ERROR_PREFIXES: Record<string, string> = {

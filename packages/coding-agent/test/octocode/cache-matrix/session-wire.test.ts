@@ -11,7 +11,6 @@ import { lightSessions, replay, replayAll, replayOn } from "./session-wire.ts";
 /** The header each API routes its cache by, and the body field carrying the shared key. */
 const ROUTING: Partial<Record<WireCase["id"], string[]>> = {
 	xai: ["x-grok-conv-id", "x-client-request-id"],
-	codex: ["session-id", "x-client-request-id"],
 	"completions-explicit": ["x-session-id"],
 	responses: ["x-client-request-id"],
 };

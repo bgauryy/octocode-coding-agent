@@ -39,15 +39,9 @@ describe("shared MCP discovery", () => {
 		return { options, write, home };
 	}
 
-	it("layers Pi and previous native defaults before the canonical global MCP configuration", () => {
+	it("layers Pi defaults before the canonical global MCP configuration", () => {
 		const { options, write, home } = globalSetup();
-		const paths = [
-			join(home, ".pi/mcp.json"),
-			join(home, ".pi/agent/mcp.json"),
-			join(home, ".octocode/agent/mcp.json"),
-			join(options.agentDir, "mcp.json"),
-			join(home, ".octocode/mcp.json"),
-		];
+		const paths = [join(home, ".pi/mcp.json"), join(home, ".pi/agent/mcp.json"), join(home, ".octocode/mcp.json")];
 		expect(globalMcpConfigPaths(options.agentDir)).toEqual(paths);
 		for (const [index, file] of paths.entries()) {
 			write(file, { shared: { command: `layer-${index}` }, [`unique${index}`]: { command: "unique" } });
@@ -65,7 +59,7 @@ describe("shared MCP discovery", () => {
 
 	it("keeps omitted enablement and exposure defaults, and applies native and trusted project controls without copying credentials", () => {
 		const { options, write, home } = globalSetup();
-		const fallback = join(options.agentDir, "mcp.json");
+		const fallback = join(home, ".pi/mcp.json");
 		const canonical = join(home, ".octocode/mcp.json");
 		const project = join(options.cwd, ".octocode/mcp.json");
 		write(fallback, { octocode: { command: "fallback", env: { TEST_TOKEN: "fixture-only" } } });
@@ -96,22 +90,20 @@ describe("shared MCP discovery", () => {
 	it("deduplicates namespace aliases between layers while rejecting aliases inside one file", () => {
 		const { options, write, home } = globalSetup();
 		write(join(home, ".pi/mcp.json"), { "work-files": { command: "pi", env: { PRIVATE: "fixture" } } });
-		write(join(home, ".octocode/agent/mcp.json"), { work_files: { command: "octocode" } });
-		write(join(options.agentDir, "mcp.json"), {
+		write(join(home, ".octocode/mcp.json"), {
 			"work-files": { enabled: false },
 			work_files: { command: "conflict" },
 		});
 		const loaded = loadMcpConfig(options);
 		expect(loaded.servers).toHaveLength(1);
-		expect(loaded.servers[0]).toMatchObject({ name: "work-files", config: { command: "octocode", enabled: false } });
-		expect(loaded.servers[0].config).not.toHaveProperty("env");
+		expect(loaded.servers[0]).toMatchObject({ name: "work-files", config: { command: "pi", enabled: false } });
 		expect(loaded.errors).toEqual([expect.stringContaining('server "work_files" conflicts with "work-files"')]);
 	});
 
 	it("retains a valid fallback after an invalid global override and layers codemode activation independently", () => {
 		const { options, write, home } = globalSetup();
 		const fallback = join(home, ".pi/agent/mcp.json");
-		const canonical = join(options.agentDir, "mcp.json");
+		const canonical = join(home, ".octocode/mcp.json");
 		write(fallback, { tools: { command: "fallback" } });
 		writeFileSync(
 			fallback,

@@ -24,15 +24,18 @@ import { expandPath, resolveReadPath, resolveToCwd } from "../../core/tools/path
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { repoKey, workspaceRoot } from "../../utils/git-repository.ts";
-import { ensureWorkspaceStateDir, WORKSPACE_STATE, workspaceStateDir } from "../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS, OCTOCODE_DIR } from "../../storage/agent-layout.ts";
+import { ensureWorkspaceStateDir, workspaceStateDir } from "../../storage/workspace.ts";
 
 export { privateDir };
 
-/** The folder name Octocode uses at both levels: `~/.octocode` (global) and `<repo root>/.octocode` (workspace). */
-export const OCTOCODE_DIR = ".octocode";
+export { OCTOCODE_DIR };
 
-/** `<root>/.octocode` for a repository root already resolved by the caller. Nothing is created. */
+/** `<root>/.octocode`, the project configuration folder, for a repository root already resolved by the caller. Nothing is created. */
 export const workspaceOctocodeDir = (root: string): string => path.join(root, OCTOCODE_DIR);
+
+/** `<root>/.octocode/agent`, where Octocode writes everything it saves in the workspace. Nothing is created. */
+export const workspaceAgentDir = (root: string): string => path.join(root, AGENT_DIR);
 
 /**
  * A folder under the Octocode home for files a tool writes at runtime (logs, spilled output, browser profiles), so
@@ -63,7 +66,7 @@ export function readPaths(toolName: string, input: Record<string, unknown>, cwd:
 
 /** Private, Git-ignored scratch for artifacts handed between agents. */
 export function workspaceScratchDir(workspace: string, name: string): string {
-	return ensureWorkspaceStateDir(workspace, `temp${path.sep}${name}`);
+	return ensureWorkspaceStateDir(workspace, path.join(AGENT_FOLDERS.temp, name));
 }
 
 /** The agents-communication package's database (its default; the package takes no environment override). Nothing is created. */
@@ -82,11 +85,16 @@ export function peerRegistryDir(env: NodeJS.ProcessEnv = process.env): string {
 interface WorkspacePaths {
 	/** The project configuration root. Runtime paths follow the nearest workspace declaration. */
 	root: string;
+	/** `<root>/.octocode`: configuration the user writes. */
 	dir: string;
+	/** `<root>/.octocode/agent`: everything Octocode writes. */
+	agent: string;
 	skills: string;
 	agents: string;
 	hooks: string;
-	/** Scratch space for agent hand-offs (see `workspaceScratchDir`). */
+	/** Session-keyed runtime scratch and agent hand-offs (see `workspaceScratchDir`), the workspace's `agent/temp`. */
+	temp: string;
+	/** Throwaways agents write by name, the workspace's `agent/tmp`; retention expires them. */
 	tmp: string;
 }
 
@@ -131,18 +139,22 @@ export function workspacePaths(cwd: string): WorkspacePaths {
 	return {
 		root,
 		dir,
+		agent: path.join(root, AGENT_DIR),
 		skills: path.join(dir, "skills"),
 		agents: path.join(dir, "agents"),
 		hooks: path.join(dir, "hooks.json"),
+		get temp() {
+			return workspaceStateDir(cwd, AGENT_FOLDERS.temp);
+		},
 		get tmp() {
-			return workspaceStateDir(cwd, "temp");
+			return workspaceStateDir(cwd, AGENT_FOLDERS.tmp);
 		},
 	};
 }
 
-/** `<workspace root>/.octocode/tmp`: agent scratch that retention expires. Other `.octocode/<topic>/` folders hold durable output. */
-export function octocodeTmpDir(root: string): string {
-	return path.join(root, OCTOCODE_DIR, "tmp");
+/** `<workspace root>/.octocode/agent/tmp`: agent throwaways that retention expires. Other `agent/<topic>/` folders hold durable output. */
+export function agentTmpDir(root: string): string {
+	return path.join(workspaceAgentDir(root), AGENT_FOLDERS.tmp);
 }
 
 /** Trust-gated project subagent profile directories, least specific first. */
@@ -184,4 +196,4 @@ export function claudeSettingsSources(
 
 /** Whether `dir` is a checkout's `temp/sessions` folder: the parent of the session folders (`sessionFolder`). */
 export const isSessionsTempDir = (dir: string): boolean =>
-	dir.endsWith(path.sep + path.join(WORKSPACE_STATE, "temp", "sessions"));
+	dir.endsWith(path.sep + path.join(AGENT_DIR, AGENT_FOLDERS.temp, "sessions"));

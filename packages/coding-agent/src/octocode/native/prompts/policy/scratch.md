@@ -1,5 +1,1 @@
-{{#if keepsScratch}}
-Scratch is not cleared automatically.
-{{else}}
-Scratch is cleared after {{days}} day{{#unless oneDay}}s{{/unless}} without writes.
-{{/if}}
+{{#if keepsScratch}}{{#if main}}Child scratch folders are{{else}}Scratch is{{/if}} not cleared automatically{{else}}{{#if main}}Child scratch folders are{{else}}Scratch is{{/if}} cleared after {{days}} day{{#unless oneDay}}s{{/unless}} without writes{{/if}}.

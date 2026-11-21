@@ -1,4 +1,3 @@
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { trust, type AgentDb } from "../../../db/src/api.ts";
@@ -142,23 +141,5 @@ describe("trusted_folders queries", () => {
 			trust.revokeBySource(agent.db, "worktree", { path: "/wt/a2", identity: { dev: "1", ino: "3" } }, 2, "u"),
 		).toBe(0);
 		expect(trust.liveAt(agent.db, "1", "3")).toBeDefined();
-	});
-});
-
-describe("the schema", () => {
-	it("sets a pre-versioned database aside without creating trust grants or changing its data", () => {
-		agent.db.exec("DROP TABLE trusted_folders; PRAGMA user_version=0");
-		agent.db.prepare("INSERT INTO meta (key, value) VALUES ('keep', 'me')").run();
-		agent.close();
-		// An older file is renamed whole (`<file>.v0.retired`) and a new one opened in its place.
-		agent = openAgentDb(file);
-		expect(agent.db.prepare("SELECT value FROM meta WHERE key='keep'").get()).toBeUndefined();
-		const original = new DatabaseSync(`${file}.v0.retired`, { readOnly: true });
-		try {
-			expect(original.prepare("SELECT name FROM sqlite_schema WHERE name='trusted_folders'").get()).toBeUndefined();
-			expect(original.prepare("SELECT value FROM meta WHERE key='keep'").get()).toEqual({ value: "me" });
-		} finally {
-			original.close();
-		}
 	});
 });

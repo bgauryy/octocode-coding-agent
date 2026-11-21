@@ -9,7 +9,7 @@ import { recordMutation } from "../feedback/revisions.ts";
 
 /**
  * Whether `command` changes the workspace, as far as the shell guard's parse shows (`permission/shell/mutation.ts`): a
- * write inside the repository (scratch under `.octocode/code/temp/` aside), a change with no path to name (`git commit`,
+ * write inside the repository (scratch under `.octocode/agent/temp/` aside), a change with no path to name (`git commit`,
  * `sed -i`, `npm install`), or a write it could not resolve. Writes elsewhere (`/tmp`, `~`) do not count. A command whose
  * effect no parse shows (`node script.js`) is not seen, so a receipt can stay fresh after one.
  */
@@ -19,8 +19,8 @@ async function changesWorkspace(command: string, cwd: string, powershell: boolea
 	if (powershell) return !readOnlyCommand(command, "powershell");
 	const effect = shellMutation(command);
 	if (effect.opaque.length > 0 || effect.uncertain) return true;
-	const { root, tmp } = workspacePaths(cwd);
-	const [base, scratch] = [canonicalPath(path.resolve(root)), canonicalPath(tmp)];
+	const { root, temp } = workspacePaths(cwd);
+	const [base, scratch] = [canonicalPath(path.resolve(root)), canonicalPath(temp)];
 	return effect.writes.some((file) => {
 		const target = canonicalPath(shellPath(cwd, file));
 		return isWithin(target, base) && !isWithin(target, scratch);

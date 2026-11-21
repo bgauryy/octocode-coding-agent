@@ -30,6 +30,12 @@ async function fixture(registered = false, configured = false) {
 			path.join(agentDir, "mcp.json"),
 			JSON.stringify({ mcpServers: { cfgecho: { command: process.execPath, args: [echoServer] } } }),
 		);
+	// A user profile whose tools name the configured server.
+	fs.mkdirSync(path.join(home, ".octocode", "agents"), { recursive: true });
+	fs.writeFileSync(
+		path.join(home, ".octocode", "agents", "echoer.md"),
+		"---\ndescription: A worker that uses the echo server.\ntools: bash,file,mcp__cfgecho__*\n---\nDo the task.\n",
+	);
 	const requests: JsonObject[] = [];
 	const server = createServer(async (req, res) => {
 		const chunks: Buffer[] = [];
@@ -141,7 +147,8 @@ async function fixture(registered = false, configured = false) {
 	await session.setModel(session.modelRuntime.getModel("faux-parent", "parent")!);
 	// The CLI's tool selection activates `mcp`; this loader composes only the extension.
 	session.setActiveToolsByName([...session.getActiveToolNames(), "mcp"]);
-	const delegate = (): void => {
+	/** Scripts one delegation; `extra` adds task fields such as `mcp` or `profile`. */
+	const delegate = (extra: JsonObject = {}): void => {
 		faux.setResponses([
 			fauxAssistantMessage(
 				[
@@ -151,6 +158,7 @@ async function fixture(registered = false, configured = false) {
 						goal: "Use the added server",
 						task: "Report the servers you have.",
 						model: "fixture-local/fixture",
+						...extra,
 					}),
 				],
 				{ stopReason: "toolUse" },
@@ -224,17 +232,24 @@ it("gives a child nothing when no server was added", async () => {
 	}
 }, 60000);
 
-it("starts a configured server in a child while the parent still runs it", async () => {
+it("keeps a configured server with the main session unless the child's task or profile names it", async () => {
 	const f = await fixture(false, true);
 	try {
+		const hasEcho = (request: JsonObject) => declaredTools(request).includes("mcp__cfgecho__shout");
 		f.delegate();
 		await f.session.prompt("Delegate.");
-		expect(f.requests).toHaveLength(1);
-		expect(declaredTools(f.requests[0])).toContain("mcp__cfgecho__shout");
+		f.delegate({ mcp: ["cfgecho"] });
+		await f.session.prompt("Delegate with the server.");
+		f.delegate({ profile: "echoer" });
+		await f.session.prompt("Delegate to the echo profile.");
+		expect(f.requests).toHaveLength(3);
+		// The parent runs the server; a child gets it only when named, while the parent still runs it.
+		expect(f.requests.map(hasEcho)).toEqual([false, true, true]);
+		expect(JSON.stringify(f.requests[0])).not.toContain('<mcp name=\\"cfgecho\\"');
 	} finally {
 		await f.close();
 	}
-}, 60000);
+}, 90000);
 
 it("leaves out a configured server the parent stopped for this session, and keeps mcp.json unchanged", async () => {
 	const f = await fixture(false, true);
@@ -259,10 +274,22 @@ it("leaves out a configured server the parent stopped for this session, and keep
 	}
 }, 60000);
 
-it("inherits an extension server even when the child's extension loader does not load its parent plugin", async () => {
+it("leaves an extension server out of a child unless its task names it", async () => {
 	const f = await fixture(true);
 	try {
 		f.delegate();
+		await f.session.prompt("Delegate.");
+		expect(f.requests).toHaveLength(1);
+		expect(declaredTools(f.requests[0]).some((name) => name.startsWith("mcp__extension_echo__"))).toBe(false);
+	} finally {
+		await f.close();
+	}
+}, 60000);
+
+it("inherits an extension server the task names even when the child's extension loader does not load its parent plugin", async () => {
+	const f = await fixture(true);
+	try {
+		f.delegate({ mcp: ["extension-echo"] });
 		await f.session.prompt("Delegate with the extension server.");
 		expect(f.requests).toHaveLength(1);
 		// The child's first request carries the server's contract section and declares its tools.

@@ -59,7 +59,7 @@ export function filesBlock(files: readonly PassFile[]): string {
 	return files
 		.map((file) =>
 			[
-				`### ${file.ref.scope} (${countedLines(file.lines)}/${lineCap()} lines with headings)`,
+				`### ${file.ref.scope} (${countedLines(file.lines)}/${lineCap(file.ref.scope)} lines with headings)`,
 				file.lines.length > 0 ? serializeMemoryFile(file.lines).trimEnd() : "(empty)",
 			].join("\n"),
 		)

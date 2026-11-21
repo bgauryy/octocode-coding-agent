@@ -28,11 +28,11 @@ afterEach(() => {
 	while (repos.length) repos.pop()?.cleanup();
 });
 
-/** A repository with a worktree `x` under `.octocode/worktrees` and a linked worktree `ext` beside it. */
+/** A repository with a worktree `x` under `.octocode/agent/worktrees` and a linked worktree `ext` beside it. */
 function repoWithWorktrees(): { root: string; inside: string; outside: string } {
 	const repo = makeRepo();
 	repos.push(repo);
-	const inside = path.join(repo.root, ".octocode", "worktrees", "x");
+	const inside = path.join(repo.root, ".octocode", "agent", "worktrees", "x");
 	const outside = path.join(path.dirname(repo.root), "ext");
 	mkdirSync(path.dirname(inside), { recursive: true });
 	sh(repo.root, "worktree", "add", "-q", "-b", "worktree-x", inside);
@@ -62,19 +62,19 @@ describe("checkoutLabel", () => {
 	});
 
 	it("still names an Octocode worktree whose folder was removed, from its path alone", () => {
-		const gone = path.join(tmp("octocode-gone-"), ".octocode", "worktrees", "old", "src");
+		const gone = path.join(tmp("octocode-gone-"), ".octocode", "agent", "worktrees", "old", "src");
 		expect(checkoutLabel(gone)).toBe("worktree old");
 		expect(octocodeWorktreeAt(gone)).toEqual({
-			main: path.dirname(path.dirname(path.dirname(path.dirname(gone)))),
+			main: path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(gone))))),
 			name: "old",
 		});
 	});
 
 	it("suggests recreating only a folder that was an Octocode worktree", () => {
-		expect(worktreeRecoveryHint("/repo/.octocode/worktrees/old")).toContain("/worktree new old");
-		expect(worktreeRecoveryHint("/repo/.octocode/worktrees/old")).toContain("octocode --worktree old");
+		expect(worktreeRecoveryHint("/repo/.octocode/agent/worktrees/old")).toContain("/worktree new old");
+		expect(worktreeRecoveryHint("/repo/.octocode/agent/worktrees/old")).toContain("octocode --worktree old");
 		expect(worktreeRecoveryHint("/repo/packages/app")).toBeUndefined();
-		expect(worktreeRecoveryHint("/repo/.octocode/worktrees")).toBeUndefined();
+		expect(worktreeRecoveryHint("/repo/.octocode/agent/worktrees")).toBeUndefined();
 	});
 });
 
@@ -87,7 +87,7 @@ describe("the /resume all picker", () => {
 		const { root, inside } = repoWithWorktrees();
 		const lines = render([session("in-main", root), session("in-worktree", inside)], 400);
 		expect(lines.find((line) => /\bmain \S*repo\b/.test(line))).toBeDefined();
-		expect(lines.find((line) => /worktree x \S*\.octocode\/worktrees\/x/.test(line))).toBeDefined();
+		expect(lines.find((line) => /worktree x \S*\.octocode\/agent\/worktrees\/x/.test(line))).toBeDefined();
 		// The label is above its row, not repeated on it.
 		expect(lines.find((line) => line.includes("message of in-main"))).not.toMatch(/\bmain \S*repo\b/);
 	});

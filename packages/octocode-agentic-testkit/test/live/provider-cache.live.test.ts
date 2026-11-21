@@ -156,7 +156,7 @@ describe("provider prompt cache through the real bundle", () => {
 				recordedUsage: recordedUsage(run.events),
 				stderrTail: run.stderr.slice(-1500),
 			};
-			const dir = process.env.TESTKIT_REPORT_DIR ?? join(process.cwd(), ".octocode", "tmp");
+			const dir = process.env.TESTKIT_REPORT_DIR ?? join(process.cwd(), ".octocode", "agent", "tmp");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(join(dir, `testkit-live-cache-${target.id}.json`), `${JSON.stringify(result, null, 2)}\n`);
 			console.info(`[live-cache:${target.id}] ${JSON.stringify(result)}`);
@@ -210,7 +210,7 @@ describe("provider prompt cache through the real bundle", () => {
 				rawUsage: requests.map((r) => r.rawUsage),
 				stderrTail: run.stderr.slice(-1500),
 			};
-			const dir = process.env.TESTKIT_REPORT_DIR ?? join(process.cwd(), ".octocode", "tmp");
+			const dir = process.env.TESTKIT_REPORT_DIR ?? join(process.cwd(), ".octocode", "agent", "tmp");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(join(dir, `testkit-live-retention-${target.id}.json`), `${JSON.stringify(result, null, 2)}\n`);
 			console.info(`[live-retention:${target.id}] ${JSON.stringify(result)}`);

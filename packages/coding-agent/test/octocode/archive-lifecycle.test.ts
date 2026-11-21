@@ -115,7 +115,7 @@ describe("durable agent lifecycle", () => {
 				}),
 			);
 		await projectAgents(db, root);
-		const file = path.join(root, ".octocode/code/agents.txt");
+		const file = path.join(root, ".octocode/agent/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		const rows = content
 			.trim()
@@ -150,7 +150,7 @@ describe("durable agent lifecycle", () => {
 			);
 		event("first");
 		await projectAgents(db, root);
-		const file = path.join(root, ".octocode/code/agents.txt");
+		const file = path.join(root, ".octocode/agent/agents.txt");
 		const content = fs.readFileSync(file, "utf8");
 		// Another process holds the view's lock: a commit that changed no event does not wait for it or fail.
 		fs.mkdirSync(`${file}.lock`);
@@ -164,8 +164,8 @@ describe("durable agent lifecycle", () => {
 		expect(fs.readFileSync(file, "utf8")).toContain('"id":"second"');
 	});
 	it("refuses symlink and empty projections without overwriting them", async () => {
-		fs.mkdirSync(path.join(root, ".octocode/code"), { recursive: true });
-		const file = path.join(root, ".octocode/code/agents.txt");
+		fs.mkdirSync(path.join(root, ".octocode/agent"), { recursive: true });
+		const file = path.join(root, ".octocode/agent/agents.txt");
 		fs.writeFileSync(file, "");
 		await expect(projectAgents(db, root)).rejects.toThrow("Invalid");
 		fs.unlinkSync(file);
@@ -184,7 +184,7 @@ describe("durable agent lifecycle", () => {
 		const replacement = registeredWorkspace(project, db);
 		expect(replacement.id).not.toBe(original.id);
 		await expect(projectAgents(db, project, original)).rejects.toThrow(/path changed/);
-		expect(fs.existsSync(path.join(project, ".octocode/code/agents.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(project, ".octocode/agent/agents.txt"))).toBe(false);
 	});
 
 	it("records every activation, deduplicates dispatch retries and skips no-session", async () => {
@@ -214,7 +214,7 @@ describe("durable agent lifecycle", () => {
 	});
 
 	it("projects the view in a top-level session but not in a subagent process", async () => {
-		const view = path.join(root, ".octocode", "code", "agents.txt");
+		const view = path.join(root, ".octocode", "agent", "agents.txt");
 		const commit = async (subagent: boolean) => {
 			vi.stubEnv("OCTOCODE_SUBAGENT", subagent ? "1" : "");
 			const fake = fakeHost();
@@ -308,7 +308,7 @@ describe("durable agent lifecycle", () => {
 			getSessionId: () => "session",
 		});
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		const file = path.join(root, ".octocode/code/agents.txt");
+		const file = path.join(root, ".octocode/agent/agents.txt");
 		const syncWrites = [vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "writeFileSync"), vi.spyOn(fs, "mkdirSync")];
 		const shared = sharedAgentDb();
 		const workspace = registeredWorkspace(root, shared).id;

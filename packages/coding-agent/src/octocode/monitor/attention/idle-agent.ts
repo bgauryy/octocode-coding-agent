@@ -6,17 +6,10 @@ import { validSpan } from "./span.ts";
 /** How often the idle-agent rule looks: the team ticker beats every second, the rule reads its timestamps once a minute. */
 const IDLE_CHECK_MS = 60_000;
 
-/**
- * `monitor.idleAgentMinutes`, else the deprecated `monitor.silenceMinutes`, else the deprecated `subagents.silenceMinutes`,
- * else the default, in milliseconds; 0 is off.
- */
-export function idleAgentMs(settings: Pick<Settings, "monitor" | "subagents"> | undefined): number {
-	const minutes = [
-		settings?.monitor?.idleAgentMinutes,
-		settings?.monitor?.silenceMinutes,
-		settings?.subagents?.silenceMinutes,
-	].find(validSpan);
-	return (minutes ?? MONITOR_DEFAULTS.idleAgentMinutes) * 60_000;
+/** `monitor.idleAgentMinutes`, else the default, in milliseconds; 0 is off. */
+export function idleAgentMs(settings: Pick<Settings, "monitor"> | undefined): number {
+	const minutes = settings?.monitor?.idleAgentMinutes;
+	return (validSpan(minutes) ? minutes : MONITOR_DEFAULTS.idleAgentMinutes) * 60_000;
 }
 
 /** The parent's notice about an idle child; `activity` is the child's last reported activity line. */

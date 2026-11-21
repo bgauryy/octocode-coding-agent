@@ -68,7 +68,6 @@ export function archiveHistory(
 		assertActive();
 		trimArchive(agentDb.archiveDir, now, keepMs, assertActive);
 		withoutWaiting(db, () => {
-			history.ensureAtIndexes(db);
 			for (const { table, family, key } of FAMILIES) {
 				const oldest = history.oldestAt(db, table);
 				if (oldest === undefined || oldest >= cutoff) continue;

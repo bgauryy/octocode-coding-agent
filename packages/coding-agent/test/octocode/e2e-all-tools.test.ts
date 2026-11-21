@@ -1067,17 +1067,17 @@ describe.skipIf(process.env.OCTOCODE_E2E_CHROME !== "1")(
 			});
 			const url = `http://127.0.0.1:${await listen(loaded)}/page.html`;
 			const child: Step[] = [
-				call("mcp__browser__snapshot", { connection }),
+				call("mcp__browser__targets", { connection }),
 				call("mcp__browser__open", { url, headless: true, port }),
 				call("mcp__browser__run", { connection, plan: { steps: [{ op: "nonsense" }] } }),
 				// The page has loaded, not just the browser opened.
 				call("bash", { command: waitFor(requested) }),
-				call("mcp__browser__snapshot", { connection, options: { SNAPSHOT_TEXT: 500 } }),
 				call("mcp__browser__run", {
 					connection,
-					plan: { steps: [{ op: "extract", selector: "h1", fields: ["text"] }] },
+					plan: {
+						steps: [{ op: "snapshot" }, { op: "extract", selector: "h1", fields: ["text"] }, { op: "screenshot" }],
+					},
 				}),
-				call("mcp__browser__screenshot", { connection }),
 				call("mcp__browser__cleanup", { port }),
 				call("agent", { type: "message", to: "parent", message: "browser-note" }),
 				{ text: "browser-report" },
@@ -1109,7 +1109,7 @@ describe.skipIf(process.env.OCTOCODE_E2E_CHROME !== "1")(
 			if (reason) context.skip(`Chrome or the browser server cannot start here: ${reason}`);
 
 			// Before the open: a real failure, not a crash, and the child goes on.
-			expect(browserData(results[0]).ok).toBe(false);
+			expect(results[0]).toContain("No Chrome on port");
 			// The Chrome it drove: headless, its profile in the sandbox, never the user's.
 			const opened = browserData(results[1]).data as { isolated: boolean; profileDir: string };
 			expect(opened.isolated).toBe(true);
@@ -1125,24 +1125,20 @@ describe.skipIf(process.env.OCTOCODE_E2E_CHROME !== "1")(
 			// A plan the schema refuses names the steps it wanted.
 			expect(results[2]).toContain("Validation failed");
 			expect(results[2]).toContain("plan.steps.0.op");
-			// The DOM, read from the rendered page: the snapshot's text artifact and the plan's extraction.
-			const snapshot = browserData(results[4]);
-			expect(fs.readFileSync(path.join(snapshot.root as string, "page-text.txt"), "utf8")).toContain("loopback-marker");
-			const extraction = (browserData(results[5]).flow as { steps: { data: { file: string } }[] }).steps[0].data.file;
-			expect(fs.readFileSync(extraction, "utf8")).toContain("loopback-marker");
-			// The screenshot: the file the parent's report names is an image of a real size.
-			const reported = lastResults(parent)[0] ?? "";
-			const shot = /Last screenshot: (\S+?)\)/.exec(reported)?.[1] ?? "";
-			const image = fs.readFileSync(path.join(box.project, shot));
+			// The DOM, read from the rendered page, and the screenshot: the files the package names, an image of a real size.
+			const files = (browserData(results[4]).files as string[]).map((file) => path.resolve(box.project, file));
+			const named = (name: string) => files.find((file) => file.endsWith(name)) ?? "";
+			expect(fs.readFileSync(named("extract-2.json"), "utf8")).toContain("loopback-marker");
+			const image = fs.readFileSync(files.find((file) => /screenshot.*\.(?:jpe?g|png)$/.test(file)) ?? "");
 			expect(image.length).toBeGreaterThan(1000);
 			expect([image.subarray(0, 3).toString("hex"), image.subarray(1, 4).toString()]).toSatisfy(
 				([jpeg, png]: string[]) => jpeg === "ffd8ff" || png === "PNG",
 			);
 			// Closed: the package says so and the process is gone.
-			expect(browserData(results[7]).data?.status).toBe("CLEANED_UP");
+			expect(browserData(results[5]).data?.status).toBe("CLEANED_UP");
 			await until(() => chromeOn(port).length === 0, "Chrome to exit after the close", 15_000);
 			// The profile's tools, its message and its report all reached the parent.
-			expect(reported).toContain("browser-report");
+			expect(lastResults(parent)[0] ?? "").toContain("browser-report");
 			expect(
 				requestsOf(parent)
 					.at(-1)

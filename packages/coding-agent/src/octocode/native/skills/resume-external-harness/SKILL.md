@@ -1,6 +1,6 @@
 ---
 name: resume-external-harness
-description: "Use to find, read or resume Claude Code, Codex and Cursor work from this repository or its worktrees, including dangling worktrees; not Octocode sessions. Returns timing, location, a digest and its resume command, or continues here."
+description: "Use to find, read or resume Claude Code, Codex or Cursor work from this repository or its worktrees, dangling ones too; not Octocode sessions. Returns timing, location, a digest and the resume command, or continues here."
 ---
 
 # Resume External Harness
@@ -69,7 +69,7 @@ The script only suggests these commands. Removing or pruning a worktree, deletin
 ## Rules
 
 - Read the other tools' folders only; never edit, move or delete their files.
-- Keep digests out of the repository; save one when needed under `<workspace>/.octocode/resume-external-harness/`.
+- Keep digests out of the repository; save one when needed under `<workspace>/.octocode/agent/resume-external-harness/`.
 - Requirements: Node 22+ and git; `sqlite3` for Cursor's databases; Node 23.8+ or the `zstd` CLI for compressed Codex rollouts. A missing tool shows as a note, not an error.
 
 ## Resources

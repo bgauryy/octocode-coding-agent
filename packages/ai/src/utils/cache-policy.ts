@@ -43,7 +43,7 @@ function parseCacheRetention(value: unknown, field: string): CacheRetention | un
 	throw new Error(`Invalid ${field}: expected none, short, or long`);
 }
 
-/** Layers are ordered from lowest to highest priority; a legacy history value controls both layers. */
+/** Layers are ordered from lowest to highest priority; a history value alone controls both layers. */
 export function mergeCachePreferences(layers: readonly CachePreferenceLayer[]) {
 	const options: CachePreferences = {};
 	const sources: Partial<Record<keyof CachePreferences, string>> = {};

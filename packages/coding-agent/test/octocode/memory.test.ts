@@ -618,7 +618,7 @@ describe("memory lines the model reads", () => {
 		await run(tool, { op: "set", id: "M1", title: "Gadgets", body: long });
 		// The deleted note's line leaves the workspace MEMORY.md too.
 		expect(text(await run(tool, { op: "delete", id: "M1" }, ctxFor({ selects: ["Allow once"] }).ctx))).toBe(
-			`Deleted M1 (workspace, fact) Gadgets — ${long}\nworkspace MEMORY.md: 0/30 lines.`,
+			`Deleted M1 (workspace, fact) Gadgets — ${long}\nworkspace MEMORY.md: 0/40 lines.`,
 		);
 	});
 });
@@ -791,7 +791,7 @@ describe("/memory", () => {
 		await command.handler("add Deploy with care — run the smoke tests first", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Saved M1 \(workspace, fact\) Deploy with care — run the smoke/);
 		// A user's workspace note is also the repository MEMORY.md line, marked as the user's.
-		expect(ctx.ui.notes.at(-1)!.message).toContain("workspace MEMORY.md: 2/30 lines.");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("workspace MEMORY.md: 2/40 lines.");
 		memoryStore(cwd).set({ title: "Global pin", scope: "global", pinned: true, author: "user" });
 		await command.handler("", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toBe(

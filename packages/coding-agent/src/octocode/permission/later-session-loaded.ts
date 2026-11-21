@@ -1,3 +1,5 @@
+import { AGENT_FOLDERS, MEMORY_FILE } from "../../storage/agent-layout.ts";
+
 /**
  * Entries directly under a workspace's `.octocode/` that a later session loads as code, configuration or instructions:
  * a file planted there would run or steer that session, so a change there outlives the one that made it. Every other
@@ -20,11 +22,8 @@
  * - `plugins`: not discovered by folder; a plugin that `settings.json` names loads from any path (`core/plugin-resources.ts`),
  *   and this is the conventional place for it;
  * - `npm`, `git`: project-installed packages, `core/package-manager/npm.ts` and `git.ts` (code that loads as resources);
- * - `worktrees`: checkouts (`octocode/worktrees/repo.ts`) that a session can start in and load all of the above from;
- * - `code`: the workspace state folder (transcripts, workspace id, database), `config/workspace.ts`; only its
- *   `temp/` scratch is data (`file-access.ts`, `read-only-role.ts`);
- * - `octocodecode`: the repository's curated `MEMORY.md`, which every session loads into its prompt
- *   (`permission/memory-files.ts`, `memory/file/section.ts`).
+ * - `agent`: Octocode's own folder, split by `loadedFromAgentDir`; its other entries (`tmp/`,
+ *   `temp/` scratch, a topic's report folder) are data.
  */
 export const LOADED_BY_LATER_SESSIONS: ReadonlySet<string> = new Set(
 	[
@@ -45,8 +44,32 @@ export const LOADED_BY_LATER_SESSIONS: ReadonlySet<string> = new Set(
 		"agents.md",
 		"agents.override.md",
 		"claude.md",
-		"worktrees",
-		"code",
-		"octocodecode",
 	].map((name) => name.toLowerCase()),
 );
+
+/** Octocode's private state directly under `.octocode/agent/`, lower-cased: workspace id, transcripts, session data, the event view and backlog exports. */
+const AGENT_STATE_ENTRIES: ReadonlySet<string> = new Set(
+	[
+		AGENT_FOLDERS.marker,
+		AGENT_FOLDERS.sessions,
+		AGENT_FOLDERS.sessionData,
+		"agents.txt",
+		"backlog.md",
+		"backlog.html",
+	].map((name) => name.toLowerCase()),
+);
+
+/** Whether `entry`, directly under `.octocode/agent/`, is Octocode's private state (the event view's lock and temporary files count). */
+export const agentStateEntry = (entry: string): boolean => {
+	const name = entry.toLowerCase();
+	return AGENT_STATE_ENTRIES.has(name) || name.startsWith("agents.txt");
+};
+
+/**
+ * Whether `entry`, directly under `.octocode/agent/`, is not data: Octocode's state, the checkouts under `worktrees/` that a
+ * session can start in and load everything above from, or the curated `MEMORY.md` every session loads into its prompt
+ * (`permission/memory-files.ts`). Only `temp/` (outside `temp/sessions/`), `tmp/` and topic folders are data.
+ */
+export const loadedFromAgentDir = (entry: string): boolean =>
+	agentStateEntry(entry) ||
+	[AGENT_FOLDERS.worktrees, MEMORY_FILE].some((name) => name.toLowerCase() === entry.toLowerCase());

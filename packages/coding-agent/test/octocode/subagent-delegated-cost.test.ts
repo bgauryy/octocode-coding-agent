@@ -46,7 +46,7 @@ describe("the notice when delegated cost passes a multiple of the session's own"
 		expect(delegatedCostNote(scope, entries(...own), 0.6)).toBe("");
 		// 0.6 + 0.6 passes it.
 		expect(delegatedCostNote(scope, entries(...own, background(0.6)), 0.6)).toBe(
-			"\n\nSubagents have now cost ≈$1.20 in this session: more than its own ≈$1.00. Nothing is stopped. Before you start or continue a subagent, check that the task needs one. Do a small step yourself.",
+			"\n\nSubagents have now cost ≈$1.20 in this session: more than its own ≈$1.00. Nothing is stopped. Start or continue a subagent only for work that needs one, on the smallest model that settles it.",
 		);
 		// Still between one and two times: nothing more to say.
 		expect(delegatedCostNote(scope, entries(...own, background(1.2)), 0.5)).toBe("");

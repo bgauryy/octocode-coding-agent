@@ -14,7 +14,7 @@ import type { ConvertResponsesToolsOptions } from "./types.ts";
  *
  * `additional_tools` items accumulate: a later item adds tools and replaces same-name
  * definitions from earlier items, but it cannot replace a top-level tool and cannot remove any
- * tool (verified with strict schemas on the OpenAI, Codex, and Copilot backends).
+ * tool (verified with strict schemas on the OpenAI and Copilot backends).
  * Every tool is therefore declared in `additional_tools` items, starting with one
  * at the head of the input, and removals are announced as text. Synthetic tool search can
  * only add tools. Without mid-conversation system messages there is nothing to anchor.
@@ -29,8 +29,7 @@ export function getResponsesToolSupport(options: {
 
 /**
  * Precedes every additional_tools item after the first. Without it, models read the latest item as
- * the complete tool set once a removal was announced; Codex precedes its incremental tool batches
- * with the same guidance. Restating the tools that are still unavailable keeps smaller models
+ * the complete tool set once a removal was announced. Restating the tools that are still unavailable keeps smaller models
  * (gpt-5.6-luna, gpt-6-luna) from calling them again after later loads (verified October 2026).
  */
 export function renderIncrementalToolsNotice(unavailable: ReadonlySet<string>): string {

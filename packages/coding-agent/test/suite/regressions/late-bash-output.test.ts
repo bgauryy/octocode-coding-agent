@@ -25,7 +25,7 @@ describe("late bash output callbacks", () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
 		const [header, ...body] = getTextOutput(result).trim().split("\n");
-		expect(header).toMatch(/^\[exit 0 · .* · 1 line · 7 B\]$/);
+		expect(header).toMatch(/^\[exit 0 · [\d.]+s\]$/);
 		expect(body.join("\n")).toBe("before");
 	});
 });

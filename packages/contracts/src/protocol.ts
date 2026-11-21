@@ -55,7 +55,7 @@ export const DAEMON_ROUTES = {
 	scope: { session: "/s", repo: "/r" },
 } as const;
 
-/** Workspace report folders under `.octocode/`, mapped to their report kind. */
+/** Workspace report folders under `.octocode/agent/`, mapped to their report kind. */
 export const REPORT_SOURCE_DIRS = {
 	"octocode-rfc-generator": "rfc",
 	"octocode-research": "research",

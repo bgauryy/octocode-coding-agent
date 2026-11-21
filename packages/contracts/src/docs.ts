@@ -16,15 +16,15 @@ export function isRepoDocPath(path: string): boolean {
 	return path.startsWith(REPO_DOC_PREFIX);
 }
 
-/** What a document is, read from the `.octocode/` folder (or file name) it sits in. */
+/** What a document is, read from the `.octocode/agent/` folder (or file name) it sits in. */
 export const DOC_KINDS = ["rfc", "research", "brainstorm", "review", "audit", "plan", "contract", "report"] as const;
 
-/** Markdown in the workspace docs view. Authored paths are relative to `.octocode/`; runtime exports and opted-in scratch paths start with `.octocode/code/`. */
+/** Markdown in the workspace docs view. Paths are relative to `.octocode/agent/`; scratch folders are listed only on request. */
 export const DocSummarySchema = Type.Object(
 	{
 		path: Type.String({ minLength: 1, maxLength: 300 }),
 		kind: StringEnum(DOC_KINDS),
-		/** The top-level folder the document sits in; empty for a file directly in `.octocode/`. */
+		/** The top-level folder the document sits in; empty for a file directly in `.octocode/agent/`. */
 		topic: Type.String({ maxLength: 128 }),
 		title: Type.String({ maxLength: 300 }),
 		updated: Type.String({ minLength: 4, maxLength: 64 }),

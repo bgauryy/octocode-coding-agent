@@ -316,6 +316,7 @@ export async function listAllSessions(
 				try {
 					return (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).map((file) => join(dir, file));
 				} catch {
+					// One project's folder that is gone or unreadable must not hide every other project's sessions.
 					return [];
 				}
 			},
@@ -359,8 +360,8 @@ export async function listAllSessions(
 		);
 
 		return sortSessionInfos(results.filter((info): info is SessionInfo => info !== null));
-	} catch {
+	} catch (error) {
 		abortSignal?.throwIfAborted();
-		return [];
+		throw error;
 	}
 }

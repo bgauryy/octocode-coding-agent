@@ -89,23 +89,3 @@ describe("agent event retention", () => {
 		expect(ids("ws")).toEqual(["newest"]);
 	});
 });
-
-describe("history `at` indexes", () => {
-	it("exist in a new file and are added to a file without them", () => {
-		const names = () =>
-			(
-				agent.db
-					.prepare(
-						"SELECT name FROM sqlite_master WHERE type='index' AND name IN ('backlog_audits_at', 'workspace_commands_at')",
-					)
-					.all() as Array<{ name: string }>
-			)
-				.map((row) => row.name)
-				.sort();
-		expect(names()).toEqual(["backlog_audits_at", "workspace_commands_at"]);
-		agent.db.exec("DROP INDEX backlog_audits_at; DROP INDEX workspace_commands_at");
-		expect(names()).toEqual([]);
-		archiveHistory(agent, NOW);
-		expect(names()).toEqual(["backlog_audits_at", "workspace_commands_at"]);
-	});
-});

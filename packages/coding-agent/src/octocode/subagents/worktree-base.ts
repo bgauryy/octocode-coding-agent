@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { atomicWriteFileSync, shortHash } from "@octocodeai/octocode-common/atomic-file";
-import { HOME_NAMES } from "../shared/home.ts";
-import { getOctocodeHome } from "../../config.ts";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { repoKey } from "../../utils/git-repository.ts";
 import { processStartTime, processStartTimeAsync } from "../shared/process.ts";
 
@@ -10,8 +8,6 @@ import { processStartTime, processStartTimeAsync } from "../shared/process.ts";
 
 /** Where an isolated agent's changes are saved; the agent id follows. */
 export const REF_PREFIX = "refs/octocode/";
-/** Where an earlier version saved results; they are still listed and merged, never written. */
-export const LEGACY_REF_PREFIX = "refs/octocode/pi/";
 export const ID_PATTERN = /^(?!\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 
 export interface Worktree {
@@ -28,6 +24,8 @@ export interface Worktree {
 	cwd: string;
 	/** Set when the main tree had uncommitted changes, which the worktree does not see. */
 	warning?: string;
+	/** What the dependency link left out, or a failure to link; absent when every `node_modules` folder is linked. */
+	unlinked?: string;
 }
 
 /** The git-ignored files a child wrote under `.octocode/`, copied to the checkout before its worktree was removed; paths are relative to the checkout. */
@@ -49,11 +47,6 @@ export interface WorktreeResult {
 }
 
 export { worktreesDir } from "../worktree-paths/own-worktree.ts";
-
-/** The folder earlier versions used: named by the checkout's own root, so a linked worktree's orphans were not shared. */
-export function legacyWorktreesDir(root: string, home = getOctocodeHome()): string {
-	return path.join(home, HOME_NAMES.worktrees, shortHash(root));
-}
 
 /** The repository's checkout root, the same `repoKey` root the team workspace uses, so both always agree. */
 export function repoRoot(cwd: string): string {

@@ -1,6 +1,6 @@
 ---
 name: octocode-clasify
-description: "Use when many unread files, hits, history rows or logs need sorting by a yes/no, label or score needing no reasoning, so you read only what matters. Not when exact search answers it or for a claim you must prove."
+description: "Use to sort many unread files, hits, history rows or logs by a yes/no, label or score needing no reasoning, then read only what matters. Not when exact search answers it, or for a claim you must prove."
 ---
 
 # Classify instead of reading
@@ -35,10 +35,11 @@ Each question stands alone: the provider sees no conversation and no sibling ans
 | Several files, one answer each       | `resources: {name: {tool, query: {path: "glob"}}}`                                                               |
 | Where in many files the answer lives | `operation: sections` with `resources` and `questions`; page with `next.nextPage` until no sections remain       |
 | Command output or a log              | save it under the workspace, then `source` on that path; `sections` for every place or event order               |
+| An image or screenshot               | `assets` with the file, and `content` naming it ("Screenshot shot is …")                                         |
 | Text or an array in hand             | `content`; an array with `perItem: true` judges each item                                                        |
 | Hits while you search                | `classification: {predicates: [...], context?}` on the search itself; add the `contextLines` the predicate needs |
 
-One of `source`, `resources` or `content` per row; a path inside `content` is just text. A row-level `model` overrides the default (`operation: models` lists them); `longContext` is rarely needed. Up to 5 rows per call. Narrow with a glob or `ranges` first; that is the main cost control.
+One of `source`, `resources` or `content` per row; a path inside `content` is just text. Narrow with a glob or `ranges` first; that is the main cost control. Other parameters (models, `longContext`, row limits): the tool's own description.
 
 ## Verify
 

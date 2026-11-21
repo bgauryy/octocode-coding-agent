@@ -16,8 +16,7 @@ type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const oauthTokens = await Promise.all([resolveApiKey("github-copilot"), resolveApiKey("openai-codex")]);
-const [githubCopilotToken, openaiCodexToken] = oauthTokens;
+const githubCopilotToken = await resolveApiKey("github-copilot");
 
 const getImageSchema = Type.Object({});
 const getImageTool: Tool<typeof getImageSchema> = {
@@ -173,21 +172,6 @@ describe("Responses API tool result images", () => {
 			async () => {
 				await verifyToolResultImagesStayInFunctionCallOutput(model, {
 					apiKey: githubCopilotToken,
-					reasoningEffort: "low",
-				});
-			},
-		);
-	});
-
-	describe("OpenAI Codex Responses Provider (gpt-5.5)", () => {
-		const model = getBuiltinModel("openai-codex", "gpt-5.5");
-
-		it.skipIf(!openaiCodexToken)(
-			"should send tool result images in function_call_output",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				await verifyToolResultImagesStayInFunctionCallOutput(model, {
-					apiKey: openaiCodexToken,
 					reasoningEffort: "low",
 				});
 			},

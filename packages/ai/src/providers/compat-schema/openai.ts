@@ -111,13 +111,6 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 					'Top-level request field used to cap reasoning tokens from thinkingBudgets. Reasoning and the answer share max_tokens on these endpoints. "thinking_token_budget" is vLLM, "thinking_budget" is Qwen, DashScope, or SGLang, and "thinking_budget_tokens" is llama.cpp. Off by default and not set on the generated catalog.',
 			}),
 		),
-		supportsThinkingTokenBudget: Type.Optional(
-			Type.Boolean({
-				description:
-					'Alias for thinkingTokenBudgetField: "thinking_token_budget" (vLLM). Prefer thinkingTokenBudgetField.',
-				default: false,
-			}),
-		),
 		supportsOpenAIGrammarTools: optionalCompatBoolean({
 			description:
 				"Whether the provider supports OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models.",

@@ -1,4 +1,5 @@
 import { storedSecret, storedText } from "@octocodeai/octocode-common/sanitize";
+import type { MemoryFileScope } from "../../permission/memory-files.ts";
 import { normalizeTitle } from "../query.ts";
 
 /**
@@ -21,8 +22,8 @@ export type MemorySection = (typeof MEMORY_SECTIONS)[number];
 export const MEMORY_SOURCES = ["user", "reflection", "agent"] as const;
 export type MemorySource = (typeof MEMORY_SOURCES)[number];
 
-/** The user's cap: non-blank lines, headings included. A setting may lower it, never raise it. */
-const MEMORY_FILE_MAX_LINES = 30;
+/** The user's cap per file: non-blank lines, headings included. A setting may lower it, never raise it. */
+const MEMORY_FILE_MAX_LINES: Record<MemoryFileScope, number> = { global: 30, workspace: 40 };
 export const MEMORY_LINE_MAX_CHARS = 200;
 export const MEMORY_FILE_MAX_BYTES = 4096;
 
@@ -133,9 +134,9 @@ export function memoryDate(at: Date | number = Date.now()): string {
 	return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 }
 
-/** The cap a setting asks for, never above the user's 30. */
-export const lineCap = (requested?: number): number =>
-	Math.max(1, Math.min(MEMORY_FILE_MAX_LINES, Math.floor(requested ?? MEMORY_FILE_MAX_LINES)));
+/** The cap a setting asks for, never above the user's cap of the file's scope (30 global, 40 workspace). */
+export const lineCap = (scope: MemoryFileScope, requested?: number): number =>
+	Math.max(1, Math.min(MEMORY_FILE_MAX_LINES[scope], Math.floor(requested ?? MEMORY_FILE_MAX_LINES[scope])));
 
 /** Why one line cannot be stored as it is, or undefined: too long, a secret, control or invisible characters, empty. */
 export function lineProblem(line: MemoryLine): string | undefined {
@@ -156,10 +157,10 @@ export function lineProblem(line: MemoryLine): string | undefined {
  */
 export function validateMemoryLines(
 	lines: readonly MemoryLine[],
-	options: { previous?: readonly MemoryLine[]; maxLines?: number; allowPinChanges?: boolean } = {},
+	options: { scope: MemoryFileScope; previous?: readonly MemoryLine[]; maxLines?: number; allowPinChanges?: boolean },
 ): string[] {
 	const problems: string[] = [];
-	const cap = lineCap(options.maxLines);
+	const cap = lineCap(options.scope, options.maxLines);
 	if (countedLines(lines) > cap) problems.push(`${countedLines(lines)} lines with headings, over the cap of ${cap}`);
 	const bytes = Buffer.byteLength(serializeMemoryFile(lines));
 	if (bytes > MEMORY_FILE_MAX_BYTES) problems.push(`${bytes} bytes, over ${MEMORY_FILE_MAX_BYTES}`);
@@ -185,11 +186,12 @@ export function validateMemoryLines(
  */
 export function loadableLines(
 	lines: readonly MemoryLine[],
+	scope: MemoryFileScope,
 	maxLines?: number,
 ): { lines: MemoryLine[]; skipped: Array<{ text: string; reason: string }> } {
 	const kept: MemoryLine[] = [];
 	const skipped: Array<{ text: string; reason: string }> = [];
-	const cap = lineCap(maxLines);
+	const cap = lineCap(scope, maxLines);
 	for (const raw of lines) {
 		const line = { ...raw, text: storedText(raw.text).replace(/\s+/g, " ") };
 		const problem = lineProblem(line);

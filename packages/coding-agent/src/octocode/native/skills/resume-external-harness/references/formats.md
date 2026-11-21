@@ -25,4 +25,4 @@ Three stores; one chat can appear in more than one under the same id, and the sc
 
 ## Worktrees
 
-Scopes are the repository root plus every entry of `git worktree list --porcelain`, including entries whose folder is gone. Folders under `<repo>/.claude/worktrees/`, `<repo>/.octocode/worktrees/`, `~/.cursor/worktrees/<repo name>/` and `~/.codex/worktrees/` whose `.git` file points into this repository's `worktrees/` metadata but that git no longer lists are reported as unregistered. Ahead and behind counts compare with `origin/HEAD`, else `main` or `master`, else the root's branch.
+Scopes are the repository root plus every entry of `git worktree list --porcelain`, including entries whose folder is gone. Folders under `<repo>/.claude/worktrees/`, `<repo>/.octocode/agent/worktrees/`, `~/.cursor/worktrees/<repo name>/` and `~/.codex/worktrees/` whose `.git` file points into this repository's `worktrees/` metadata but that git no longer lists are reported as unregistered. Ahead and behind counts compare with `origin/HEAD`, else `main` or `master`, else the root's branch.

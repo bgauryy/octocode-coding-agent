@@ -72,4 +72,14 @@ describe("a child task that names backlog items", () => {
 		expect(section).toContain("Left out to keep the brief short");
 		expect(section).toContain(refs[9]);
 	});
+
+	it("never lets a clipped field exceed its budget", () => {
+		const { store } = workspace();
+		const item = store.add({ title: "Long", goal: "g".repeat(2000), createdBy: "t" });
+		const goal = itemsSection(item.ref, store)
+			.split("\n")
+			.find((line) => line.startsWith("Goal: "))!;
+		expect(goal.slice("Goal: ".length)).toHaveLength(600);
+		expect(goal.endsWith("…")).toBe(true);
+	});
 });

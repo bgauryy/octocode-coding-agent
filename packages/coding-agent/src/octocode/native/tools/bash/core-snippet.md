@@ -1,1 +1,1 @@
-Execute bash commands (ls, grep, find, etc.)
+Run shell commands, builds and tests

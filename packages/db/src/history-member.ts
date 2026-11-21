@@ -5,15 +5,13 @@ import zlib from "node:zlib";
  * Month file layout: a concatenation of gzip members, which any gzip reader reads as one stream. Each member written by
  * this build holds up to `MEMBER_ROWS` JSONL records and carries an `OA` extra field in its gzip header (RFC 1952 FEXTRA)
  * with its own byte length, row count and `at` range, so a writer steps over members and skips the ones a change cannot
- * touch without inflating them. A month an older build wrote is one member without that field ("legacy").
+ * touch without inflating them. A month without those headers (not written by this build) is refused as damaged.
  */
 export const MEMBER_ROWS = 5000;
 /** Decoded characters after which a member is closed even below `MEMBER_ROWS` (rows may be large). */
 export const MEMBER_CHARS = 4 * 1024 * 1024;
 /** Largest decoded size a member (or one inflated pass) may have; a larger one is refused as damaged. */
 export const MEMBER_MAX_BYTES = 64 * 1024 * 1024;
-/** Largest decoded size of a legacy month the writer converts (it is inflated in one piece); a larger one is refused. */
-export const LEGACY_MONTH_MAX_BYTES = 256 * 1024 * 1024;
 
 const GZIP_HEADER = 10;
 const FEXTRA = 4;
@@ -37,15 +35,6 @@ export class ArchiveDamagedError extends Error {
 	}
 }
 
-export class ArchiveTooLargeError extends Error {
-	constructor(file: string) {
-		super(
-			`History archive ${file} inflates to more than ${LEGACY_MONTH_MAX_BYTES / (1024 * 1024)} MiB in one piece; it was not changed and its source rows stay in the database. Move the file aside to continue archiving into a fresh month.`,
-		);
-		this.name = "ArchiveTooLargeError";
-	}
-}
-
 /** One gzip member of `lines` (JSONL), its header extended with the `OA` field. */
 export function encodeMember(lines: readonly string[], minAt: number, maxAt: number): Buffer {
 	const gz = zlib.gzipSync(`${lines.join("\n")}\n`);
@@ -63,8 +52,8 @@ export function encodeMember(lines: readonly string[], minAt: number, maxAt: num
 	return Buffer.concat([head, gz.subarray(GZIP_HEADER)]);
 }
 
-/** The head of the member at `offset`, or undefined when it has no `OA` field (a legacy member or not gzip at all). */
-export function readHead(fd: number, offset: number, size: number): MemberHead | undefined {
+/** The head of the member at `offset`, or undefined when it has no `OA` field (not written by this build, or not gzip at all). */
+function readHead(fd: number, offset: number, size: number): MemberHead | undefined {
 	const buffer = Buffer.alloc(HEAD);
 	if (fs.readSync(fd, buffer, 0, Math.min(HEAD, size - offset), offset) < HEAD) return undefined;
 	if (
@@ -87,7 +76,7 @@ export function readHead(fd: number, offset: number, size: number): MemberHead |
 	};
 }
 
-/** Every member head of a file whose first member is not legacy; a torn or foreign member throws. */
+/** Every member head of the file; a torn or foreign member throws. */
 export function* memberHeads(fd: number, size: number, file: string): Generator<MemberHead> {
 	for (let offset = 0; offset < size;) {
 		const head = readHead(fd, offset, size);
@@ -113,9 +102,7 @@ export function inflate(bytes: Buffer, file: string, limit: number): Buffer {
 		return zlib.gunzipSync(bytes, { maxOutputLength: limit });
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE")
-			throw limit === LEGACY_MONTH_MAX_BYTES
-				? new ArchiveTooLargeError(file)
-				: new ArchiveDamagedError(file, "member too large");
+			throw new ArchiveDamagedError(file, "member too large");
 		throw error;
 	}
 }

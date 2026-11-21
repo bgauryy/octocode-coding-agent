@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stream } from "../src/api/openai-codex-responses.ts";
+import { stream } from "../src/api/openai-responses.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 import { createAbortError } from "../src/utils/abort.ts";
 import { iterateSseMessages, throwOnSseErrorEvent } from "../src/utils/server-sent-events.ts";
@@ -22,14 +22,13 @@ describe("terminal provider limits", () => {
 		"insufficient_quota",
 		"GoUsageLimitError",
 		"Monthly usage limit reached",
-	])("treats %s as final on the shared classifier and on a Codex 429", async (text) => {
+	])("treats %s as final on the shared classifier and on a 429", async (text) => {
 		expect(isTerminalProviderLimitError(text)).toBe(true);
 		const fetch = vi.fn(async () => new Response(text, { status: 429 }));
-		const token = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64url")}.b`;
 		const result = await stream(
-			getBuiltinModel("openai-codex", "gpt-5.5"),
+			getBuiltinModel("openai", "gpt-5.5"),
 			normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
-			{ apiKey: token, fetch, maxRetries: 2 },
+			{ apiKey: "sk-test", fetch, maxRetries: 2 },
 		).result();
 		expect(result.stopReason).toBe("error");
 		expect(fetch).toHaveBeenCalledTimes(1);
@@ -121,20 +120,5 @@ describe("SSE error frames", () => {
 			}
 		};
 		await expect(read()).rejects.toThrow("gateway failure");
-	});
-
-	it("parses a Codex frame named error as a payload that keeps its code", async () => {
-		const body = 'event: error\ndata: {"type":"error","code":"usage_limit_reached","message":"limit"}\n\n';
-		const token = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64url")}.b`;
-		const result = await stream(
-			getBuiltinModel("openai-codex", "gpt-5.5"),
-			normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
-			{
-				apiKey: token,
-				fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
-			},
-		).result();
-		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toContain("usage_limit_reached");
 	});
 });

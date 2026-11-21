@@ -4,7 +4,7 @@ import type { OpenAICompletionsCompat, StreamOptions, ThinkingBudgets } from "..
 export interface OpenAICompletionsOptions extends StreamOptions {
 	toolChoice?: ChatCompletionToolChoiceOption;
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-	/** Token budgets per thinking level. Used when `compat.thinkingTokenBudgetField` or `compat.supportsThinkingTokenBudget` is set, or by `{ "$var": "thinking.budget" }`. */
+	/** Token budgets per thinking level. Used when `compat.thinkingTokenBudgetField` is set, or by `{ "$var": "thinking.budget" }`. */
 	thinkingBudgets?: ThinkingBudgets;
 }
 
@@ -16,7 +16,6 @@ export interface OpenAICompatCacheControl {
 export type ResolvedOpenAICompletionsCompat = Omit<
 	Required<OpenAICompletionsCompat>,
 	| "cacheControlFormat"
-	| "supportsThinkingTokenBudget"
 	| "thinkingTokenBudgetField"
 	| "supportsMidConvoSystemMessages"
 	| "supportsMidConvoToolAdditions"
@@ -28,7 +27,6 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	supportsTemperature?: OpenAICompletionsCompat["supportsTemperature"];
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	supportsExplicitPromptCacheMode?: OpenAICompletionsCompat["supportsExplicitPromptCacheMode"];
-	supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];
 	supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];
 	supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];

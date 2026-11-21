@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { openBacklog } from "../backlog/context.ts";
 import { type Item, priorityName } from "../backlog/store.ts";
@@ -15,7 +16,7 @@ export function findItemIds(task: string): string[] {
 	return [...new Set([...task.matchAll(ID)].map((match) => `B${match[1]}`))];
 }
 
-const clip = (text: string, max = FIELD_BYTES): string => (text.length > max ? `${text.slice(0, max)}…` : text);
+const clip = (text: string): string => clipText(text, FIELD_BYTES);
 
 function itemBlock(item: Item): string {
 	const lines = [`${item.ref} [${item.state}, ${priorityName(item.priority)}] ${item.title}`];

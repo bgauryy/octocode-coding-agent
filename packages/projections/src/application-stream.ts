@@ -70,7 +70,7 @@ export class ApplicationStream {
 				if (index === -1) return this.resync();
 				const message = next.messages[index];
 				// A replacement owns all display fields; absent optional fields clear a previous asset or
-				// rich body. Legacy text-only appends have no replacement fields and keep their old shape.
+				// rich body. A plain text append has no replacement fields and keeps the current shape.
 				const replacement = event.text !== undefined || event.content !== undefined || event.full !== undefined;
 				// An append continues the block exactly as this view holds it; any other state needs a fresh snapshot.
 				const updated = event.block

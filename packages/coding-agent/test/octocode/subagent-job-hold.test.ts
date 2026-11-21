@@ -179,13 +179,13 @@ describe.runIf(posix)("a subagent's own waits around its report (B744)", () => {
 		}
 	});
 	const setWait = (after: number) =>
-		fauxAssistantMessage([fauxToolCall("wait", { op: "set", after, note: "check the build" })], {
+		fauxAssistantMessage([fauxToolCall("wait", { op: "set", after, note: "check the build", reason: "build" })], {
 			stopReason: "toolUse",
 		});
 	const listWaits = async (session: { harness: Harness }) => {
 		let listed = "";
 		session.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("wait", { op: "list", all: true })], {
+			fauxAssistantMessage([fauxToolCall("wait", { op: "list", all: true, reason: "check" })], {
 				stopReason: "toolUse",
 			}),
 			(context) => {

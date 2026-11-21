@@ -1,1 +1,1 @@
-Read or update an item and its steps
+Read, claim and finish an item you hold

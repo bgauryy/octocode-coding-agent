@@ -56,8 +56,8 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 	// Before `status`, which also runs a clean filter to tell whether a changed file really differs.
 	await rejectTrackedWorkspaceState(worktree.path, "HEAD");
 	await rejectChangedFilters(worktree.path);
-	if (await git(worktree.path, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE])) {
-		await git(worktree.path, ["add", "-A", "--", EXCLUDE_WORKSPACE_STATE]);
+	if (await git(worktree.path, ["status", "--porcelain", "--", ...EXCLUDE_WORKSPACE_STATE])) {
+		await git(worktree.path, ["add", "-A", "--", ...EXCLUDE_WORKSPACE_STATE]);
 		const identity = (await gitQuiet(worktree.path, ["config", "user.email"]))
 			? []
 			: ["-c", "user.name=Octocode", "-c", "user.email=octocode@localhost"];
@@ -73,7 +73,7 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 			`octocode subagent ${worktree.agentId}`,
 		]);
 		// Anything still uncommitted (a failed partial commit) would be lost with the worktree.
-		if (await git(worktree.path, ["status", "--porcelain", "--", EXCLUDE_WORKSPACE_STATE]))
+		if (await git(worktree.path, ["status", "--porcelain", "--", ...EXCLUDE_WORKSPACE_STATE]))
 			throw new Error("Uncommitted changes remain after the commit");
 	}
 	const head = await git(worktree.path, ["rev-parse", "HEAD"]);
@@ -87,10 +87,10 @@ async function saveChanges(worktree: Finishing): Promise<WorktreeResult> {
 			"--format=%H",
 			`${worktree.snapshot ?? base}..${head}`,
 			"--",
-			WORKSPACE_STATE_PATHSPEC,
+			...WORKSPACE_STATE_PATHSPEC,
 		])
 	)
-		throw new Error("A worktree commit includes private workspace state under .octocode/code");
+		throw new Error("A worktree commit includes private workspace state under .octocode/agent");
 	await rejectNestedRepositories(worktree.repo, worktree.snapshot ?? base, head);
 	await rejectOutsideLinks(worktree.repo, worktree.snapshot ?? base, head);
 	const { commit, conflict } = worktree.snapshot

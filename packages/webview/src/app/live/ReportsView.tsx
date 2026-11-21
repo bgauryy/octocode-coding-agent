@@ -19,7 +19,7 @@ const FIRST_LIST: ListState = { reports: [], loading: true, error: "" };
 
 type DocumentState = { file: string; markdown: string } | { file: string; error: string };
 
-/** Saved RFCs of this workspace, read from `.octocode/` by the authenticated host. */
+/** Saved RFCs of this workspace, read from `.octocode/agent/` by the authenticated host. */
 export function RfcView(props: ViewProps) {
 	return <ReportsTab {...props} tab="rfc" heading="RFCs" empty="No RFCs saved in this workspace yet." />;
 }

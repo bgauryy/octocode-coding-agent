@@ -104,7 +104,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 	/** Without a custom component (RPC): the board as a select list. */
 	const selectBoard = async (ctx: CommandContext, backlog: Backlog): Promise<void> => {
 		const ADD = "+ Add an item";
-		const EXPORT = "Export to .octocode/code/backlog.md";
+		const EXPORT = "Export to .octocode/agent/backlog.md";
 		const HTML = "Open as HTML";
 		for (;;) {
 			const items = backlog.store.list().items;
@@ -157,7 +157,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 		},
 		export: {
 			args: "",
-			description: "write .octocode/code/backlog.md",
+			description: "write .octocode/agent/backlog.md",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog export", "warning");
 				doExport(ctx, backlog);
@@ -165,7 +165,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 		},
 		html: {
 			args: "",
-			description: "write .octocode/code/backlog.html and open it in the browser",
+			description: "write .octocode/agent/backlog.html and open it in the browser",
 			run: (ctx, backlog, args) => {
 				if (args) return say(ctx, "Usage: /backlog html", "warning");
 				return doHtml(ctx, backlog);

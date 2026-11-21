@@ -27,7 +27,8 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "MCP servers added to the profile defaults; omit: session's servers; empty: profile only",
+					description:
+						"Session MCP servers added to the profile's (built-in Octocode, those its tools name); omit or empty: profile's only, also on resume",
 				}),
 			),
 			goal: Type.Optional(
@@ -73,7 +74,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			model: Type.Optional(
 				Type.String({
 					description:
-						"provider/id, bare id, small or medium; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium",
+						"provider/id, bare id, small or medium; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium. ids: models",
 				}),
 			),
 			resultSchema: Type.Optional(

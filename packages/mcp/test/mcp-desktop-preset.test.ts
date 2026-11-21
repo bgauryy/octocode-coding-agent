@@ -60,7 +60,7 @@ describe("desktop MCP preset", () => {
 	});
 
 	it("classifies every tool of the recorded Cua Driver and keeps no entry for a tool it does not have", () => {
-		// `scripts/check-desktop-tools.mjs` compares this fixture with the installed Driver; this test keeps the preset's lists honest against it.
+		// The recorded fixture is the tool list; this test keeps the preset's lists honest against it.
 		const recorded = JSON.parse(readFileSync(new URL("./fixtures/desktop/tools.json", import.meta.url), "utf8")) as {
 			tools: Array<{ name: string }>;
 		};
@@ -158,5 +158,25 @@ describe("desktop MCP preset", () => {
 		const desktop = presetEntries([desktopPreset(pathWithDriver())]);
 		expect(desktopPreset(pathWithDriver()).defineTool).toBeTypeOf("function");
 		expect(desktop).toHaveLength(1);
+	});
+});
+
+describe("the desktop preset's user warnings", () => {
+	it("keeps the description the model reads plain and speaks to the user through takeWarnings, once", () => {
+		const folder = tmp();
+		mkdirSync(folder, { recursive: true });
+		const driver = join(folder, "old-driver");
+		writeFileSync(driver, '#!/bin/sh\ncase "$1" in --version) echo "cua-driver 0.20.0";; *) exit 1;; esac\n');
+		chmodSync(driver, 0o755);
+		const preset = desktopPreset({ PATH: tmp(), OCTOCODE_CUA_DRIVER_PATH: driver });
+		expect(presetEntries([preset])[0].config.description).not.toMatch(/older|0\.20/);
+		const first = preset.takeWarnings?.() ?? [];
+		expect(first.join(" ")).toMatch(/Cua Driver 0\.20\.0 is older than 0\.30\.4/);
+		expect(preset.takeWarnings?.() ?? []).toEqual([]);
+	});
+
+	it("says nothing for a disabled server", () => {
+		const preset = desktopPreset({ PATH: tmp(), OCTOCODE_MCP_DESKTOP: "0" });
+		expect(preset.takeWarnings?.() ?? []).toEqual([]);
 	});
 });

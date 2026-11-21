@@ -90,6 +90,17 @@ describe("the memory prompt section", () => {
 		expect(await sectionFor(false, process.env, { memory: { file: false } })).toBe("");
 	});
 
+	it("reads the workspace file at .octocode/agent/MEMORY.md", async () => {
+		const ref = workspaceMemoryFile(cwd);
+		expect(ref.path).toBe(path.join(ref.root, ".octocode", "agent", "MEMORY.md"));
+		writeWorkspace("## Decisions\n- Current (user 2026-11-18)\n");
+		const fake = fakeHost();
+		registerMemorySection(fake.api, { isSubagent: false });
+		const event = startEvent();
+		await fake.fire("before_agent_start", event, fakeCtx({ cwd }));
+		expect(event.systemPromptOptions.sections[MEMORY_SECTION]).toContain("Current");
+	});
+
 	it("leaves a secret line out of the prompt and tells the user", async () => {
 		writeWorkspace(
 			"## Gotchas\n- Staging token ghp_abcdefghijklmnopqrstuvwxyz0123456789AB works\n- Keep the smoke test (agent 2026-11-01)\n",
@@ -235,7 +246,7 @@ describe("the memory tool and MEMORY.md", () => {
 			body: "never auto-runs them",
 			kind: "decision",
 		});
-		expect(saved).toContain("workspace MEMORY.md: 2/30 lines.");
+		expect(saved).toContain("workspace MEMORY.md: 2/40 lines.");
 		expect(readWorkspace()).toMatch(
 			/^## Decisions\n- Swarm resume offers cut-off children \(agent \d{4}-\d{2}-\d{2}\)\n$/,
 		);
@@ -252,7 +263,7 @@ describe("the memory tool and MEMORY.md", () => {
 		await run({ op: "set", id: "M1", title: "Swarm resume never auto-runs children" });
 		expect(readWorkspace()).toContain("- Swarm resume never auto-runs children (agent ");
 		expect(readWorkspace()).not.toContain("offers cut-off");
-		expect(await run({ op: "delete", id: "M1" })).toContain("workspace MEMORY.md: 0/30 lines.");
+		expect(await run({ op: "delete", id: "M1" })).toContain("workspace MEMORY.md: 0/40 lines.");
 		expect(readWorkspace()).toBe("");
 		// A project note has no file line.
 		await run({ op: "set", title: "Project only note", scope: "project" });
@@ -289,7 +300,7 @@ describe("the memory tool and MEMORY.md", () => {
 	it("moves a line evicted to fit into the database archive", async () => {
 		const { run } = setup();
 		const old = Array.from(
-			{ length: 29 },
+			{ length: 39 },
 			(_, i) => `- Old pointer alpha${i} beta${i} (agent 2026-03-${String(i + 1).padStart(2, "0")})`,
 		);
 		writeWorkspace(`## Pointers\n${old.join("\n")}\n`);
@@ -299,46 +310,11 @@ describe("the memory tool and MEMORY.md", () => {
 			'moved to the archive to fit: "Old pointer alpha0 beta0" (M2), "Old pointer alpha1 beta1" (M3)',
 		);
 		expect(readWorkspace()).not.toContain("alpha0 ");
-		expect(readWorkspace().split("\n").filter(Boolean)).toHaveLength(30);
+		expect(readWorkspace().split("\n").filter(Boolean)).toHaveLength(40);
 		expect(memoryStore(cwd).get(2)).toMatchObject({
 			title: "Old pointer alpha0 beta0",
 			scope: "project",
 			kind: "reference",
 		});
-	});
-});
-
-describe("/memory migrate", () => {
-	it("prints a diff on a dry run and writes nothing; the run writes at most 30 lines and keeps every note", async () => {
-		const store = memoryStore(cwd);
-		for (let i = 0; i < 31; i++)
-			store.set(
-				{ title: `Migrated decision w${i}x`, kind: "decision", author: i === 0 ? "user" : "agent" },
-				new Date(2026, 9, 1 + i, 12).getTime(),
-			);
-		store.set({ title: "Answer in the reply", kind: "preference", scope: "global", author: "user" });
-		const fake = fakeHost();
-		const commands = new Subcommands();
-		registerMemory(fake.api, { commands, isSubagent: false, permission: fakePermission() });
-		const ctx = Object.assign(fakeCtx({ cwd, hasUI: false }), { getSystemPromptOptions: () => ({ contextFiles: [] }) });
-		const command = commands.get("memory")!;
-		await command.handler("migrate --dry-run", ctx);
-		const dry = ctx.ui.notes.at(-1)!.message;
-		expect(dry).toContain("Would write workspace");
-		expect(dry).toContain("+- Migrated decision w30x (agent 2026-10-31)");
-		expect(dry).toContain("Dry run: nothing was written.");
-		expect(fs.existsSync(workspaceMemoryFile(cwd).path)).toBe(false);
-		expect(fs.existsSync(globalMemoryFile().path)).toBe(false);
-		await command.handler("migrate", ctx);
-		const lines = readWorkspace().split("\n").filter(Boolean);
-		expect(lines.length).toBeLessThanOrEqual(30);
-		// The user's note outranks the agents' older ones; the oldest agent notes stay in the database only.
-		expect(readWorkspace()).toContain("- Migrated decision w0x (user 2026-10-01)");
-		expect(readWorkspace()).not.toContain("Migrated decision w1x ");
-		expect(ctx.ui.notes.at(-1)!.message).toContain("Kept in the notes database only:");
-		expect(fs.readFileSync(globalMemoryFile().path, "utf8")).toContain("- Answer in the reply (user ");
-		expect(store.list("all", 100)).toHaveLength(32);
-		await command.handler("migrate --bogus", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/^Usage: \/memory migrate/);
 	});
 });

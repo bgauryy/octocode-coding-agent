@@ -301,7 +301,7 @@ describe("Anthropic session with every marker source", () => {
 			// The base and project blocks carry the instruction markers.
 			expect(payload.system?.map((block) => block.cache_control !== undefined)).toEqual([true, true]);
 			// Tools keep their own names; the list never changes after the first request.
-			expect(payload.tools?.map((tool) => tool.name)).toEqual(["read", "__pi_deferred_placeholder__"]);
+			expect(payload.tools?.map((tool) => tool.name)).toEqual(["read", "__octocode_deferred_placeholder__"]);
 			if (index === 0) continue;
 
 			const previous = payloads[index - 1];

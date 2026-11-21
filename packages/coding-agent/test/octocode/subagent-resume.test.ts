@@ -66,7 +66,7 @@ const recorded = (input: Record<string, unknown>, details: Record<string, unknow
 		type: "message",
 		message: {
 			role: "assistant",
-			content: [{ type: "toolCall", id: "call-1", name: "agent", arguments: { type: "task", input } }],
+			content: [{ type: "toolCall", id: "call-1", name: "agent", arguments: { type: "task", ...input } }],
 		},
 	},
 	{

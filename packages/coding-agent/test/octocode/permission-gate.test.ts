@@ -18,6 +18,8 @@ import { tmp } from "./helpers.ts";
 import { classify } from "../../src/octocode/permission/gate/classify.ts";
 import { runsLater, shellTargetAccess, stateFolderRefusal } from "../../src/octocode/permission/file-access.ts";
 import { browserMcpRequest } from "../../src/octocode/web/browser-mcp.ts";
+import { globalPaths } from "../../src/storage/state-paths.ts";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 
 const call = (toolName: string, input: Record<string, unknown>, extra: Partial<ToolCallEvent> = {}) =>
 	({ type: "tool_call", toolCallId: "t1", toolName, input, ...extra }) as ToolCallEvent;
@@ -166,11 +168,27 @@ describe("permission gate", () => {
 			"session-data/s/archive/SESSION.md",
 			"temp/sessions/s/bash/job.json",
 		]) {
-			expect(stateFolderRefusal(path.join(root, ".octocode/code", target), target, "file")).toContain("state folder");
+			expect(stateFolderRefusal(path.join(root, ".octocode/agent", target), target, "file")).toContain("state folder");
 		}
 		expect(
-			stateFolderRefusal(path.join(root, ".octocode/code/temp/agents/worker/report.md"), "report", "file"),
+			stateFolderRefusal(path.join(root, ".octocode/agent/temp/agents/worker/report.md"), "report", "file"),
 		).toBeUndefined();
+	});
+
+	it("protects the global agent state, which sits outside the Octocode home", () => {
+		vi.stubEnv("HOME", fs.realpathSync(tmp("agent-state-home-")));
+		vi.stubEnv("OCTOCODE_HOME", "");
+		try {
+			const { agentState, home } = globalPaths();
+			expect(isWithin(agentState, home)).toBe(false);
+			for (const entry of ["workspaces.db", "transcripts.db-wal", "job-owners/1.json", "models-dev.json"])
+				expect(stateFolderRefusal(path.join(agentState, entry), entry, "file")).toContain("state folder");
+			expect(
+				stateFolderRefusal(path.join(path.dirname(agentState), "elsewhere.txt"), "elsewhere", "file"),
+			).toBeUndefined();
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("lets workspace run shell and asks in manual", async () => {
@@ -255,7 +273,7 @@ describe("permission gate", () => {
 		expect(await files.write("src/app.ts")).toBeUndefined();
 		expect(fs.existsSync(path.join(cwd, "src", "app.ts"))).toBe(true);
 		// Scratch and report folders under `.octocode/` run unasked; what a later session loads still asks.
-		for (const file of [".octocode/tmp/x.log", ".octocode/backlog-audit/2026-11-06/PLAN.md"]) {
+		for (const file of [".octocode/agent/tmp/x.log", ".octocode/backlog-audit/2026-11-06/PLAN.md"]) {
 			expect(await files.write(file), file).toBeUndefined();
 			expect(fs.existsSync(path.join(cwd, file)), file).toBe(true);
 		}
@@ -294,11 +312,11 @@ describe("permission gate", () => {
 			"docs/npmrc.md",
 			"src/gitmodules.ts",
 			".github/workflows-notes.md",
-			".octocode/code/temp/agents/x/report.md",
-			".octocode/code/temp",
+			".octocode/agent/temp/agents/x/report.md",
+			".octocode/agent/temp",
 			// Scratch and report folders: nothing loads them in a later session.
-			".octocode/tmp/x.log",
-			".octocode/tmp",
+			".octocode/agent/tmp/x.log",
+			".octocode/agent/tmp",
 			".octocode/backlog-audit/2026-11-06/PLAN.md",
 			".octocode/octocode-brainstorming/tmp/notes.md",
 			".octocode/octocode-rfc-generator/x/RFC.md",
@@ -314,10 +332,11 @@ describe("permission gate", () => {
 			".Git/config",
 			".HUSKY/pre-commit",
 			".GitHub/Workflows/ci.yml",
-			// Outside the scratch folder `.octocode/` still loads later; a hook inside scratch still runs.
-			".octocode/code/temp-not-scratch/x",
+			// Octocode's state and `MEMORY.md` load later; a hook inside scratch still runs.
+			".octocode/agent/sessions/x",
+			".octocode/agent/MEMORY.md",
 			".octocode/settings.json",
-			".octocode/code/temp/repo/.git/hooks/pre-commit",
+			".octocode/agent/temp/repo/.git/hooks/pre-commit",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
 		// Under `.octocode/` only what a later session loads asks: configuration, hooks, skills, profiles, prompts, state.
@@ -338,12 +357,12 @@ describe("permission gate", () => {
 			".octocode/AGENTS.md",
 			".octocode/CLAUDE.md",
 			".octocode/lsp-servers.json",
-			".octocode/worktrees/w/src/a.ts",
-			".octocode/code/backlog.md",
+			".octocode/agent/worktrees/w/src/a.ts",
+			".octocode/agent/backlog.md",
 			".OCTOCODE/Skills/x/SKILL.md",
 			// A hook or config nested in scratch or a report folder still runs or loads.
-			".octocode/tmp/repo/.git/hooks/pre-commit",
-			".octocode/tmp/pkg/.husky/pre-commit",
+			".octocode/agent/tmp/repo/.git/hooks/pre-commit",
+			".octocode/agent/tmp/pkg/.husky/pre-commit",
 			".octocode/backlog-audit/.mcp.json",
 		])
 			expect(runsLater(path.join(root, file), root), file).toBe(true);
@@ -383,25 +402,39 @@ describe("permission gate", () => {
 		expect(workspace.asked.every((title) => !title.includes("for this session"))).toBe(true);
 	});
 
-	it("asks for a browser MCP script in full and workspace with no session grant to offer", async () => {
+	it("asks for raw browser CDP in full and in workspace", async () => {
 		const full = setup("full", { selects: ["Allow once"] });
-		expect(await full.gate(call("mcp__browser__script", { code: "document.cookie" }), full.ctx)).toBeUndefined();
+		expect(
+			await full.gate(
+				call("mcp__browser__cdp", { method: "Runtime.evaluate", params: { expression: "document.cookie" } }),
+				full.ctx,
+			),
+		).toBeUndefined();
 		expect(full.fake.entries.map((entry) => entry.data)).toEqual([
-			expect.objectContaining({ action: "browser.control", allowed: true, via: "user" }),
+			expect.objectContaining({ action: "browser.cookies", allowed: true, via: "user" }),
 		]);
 		expect(full.fake.entries[0].data).toMatchObject({
 			what: expect.arrayContaining([expect.stringContaining("arbitrary browser code")]),
 		});
 		expect(full.asked).toHaveLength(1);
-		expect(await full.gate(call("mcp__browser__script", { code: "1" }), full.ctx)).toMatchObject({ block: true });
+		expect(
+			await full.gate(call("mcp__browser__cdp", { method: "Runtime.evaluate", params: { expression: "1" } }), full.ctx),
+		).toMatchObject({ block: true });
 		const choices: string[][] = [];
 		const workspace = setup("workspace");
 		workspace.ctx.ui.select = async (_title: string, options: string[]) => {
 			choices.push(options);
 			return "Allow once";
 		};
-		expect(await workspace.gate(call("mcp__browser__script", { code: "1" }), workspace.ctx)).toBeUndefined();
-		expect(choices).toEqual([["Allow once", "Deny", "Deny and tell the agent why…"]]);
+		expect(
+			await workspace.gate(
+				call("mcp__browser__cdp", { method: "Runtime.evaluate", params: { expression: "1" } }),
+				workspace.ctx,
+			),
+		).toBeUndefined();
+		expect(choices).toHaveLength(1);
+		expect(choices[0]).toContain("Allow once");
+		expect(choices[0]).toContain("Deny");
 	});
 
 	it("runs a hook ask in full without a dialog and records the reason, headless too", async () => {

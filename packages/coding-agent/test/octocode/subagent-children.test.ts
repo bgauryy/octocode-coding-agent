@@ -22,7 +22,7 @@ function agentCall(callId: string, input: Record<string, unknown>, details: Reco
 			timestamp: at,
 			message: {
 				role: "assistant",
-				content: [{ type: "toolCall", id: callId, name: "agent", arguments: { type: "task", input } }],
+				content: [{ type: "toolCall", id: callId, name: "agent", arguments: { type: "task", ...input } }],
 			},
 		},
 		{

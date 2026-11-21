@@ -53,7 +53,7 @@ describe("who opened a worktree", () => {
 			"-q",
 			"-b",
 			"octocode/old",
-			path.join(repo.root, ".octocode", "worktrees", "old"),
+			path.join(repo.root, ".octocode", "agent", "worktrees", "old"),
 		);
 		expect(before).toBe("");
 
@@ -72,7 +72,7 @@ describe("who opened a worktree", () => {
 		expect(lineOf(await list("main-bbbbbb"), "mine")).toBe("");
 		const rows = sharedAgentDb(env()).db.prepare("SELECT ref FROM worktree_openings WHERE kind = 'worktree'").all();
 		expect(rows.map((row) => String(row.ref))).toEqual([
-			realpathSync(path.join(repo.root, ".octocode", "worktrees", "theirs")),
+			realpathSync(path.join(repo.root, ".octocode", "agent", "worktrees", "theirs")),
 		]);
 	});
 
@@ -94,7 +94,7 @@ describe("who opened a worktree", () => {
 			agentId: () => "main-aaaaaa",
 		});
 		await command.handler("new w", contextAt(repo.root, "s-a"));
-		const dir = realpathSync(path.join(repo.root, ".octocode", "worktrees", "w"));
+		const dir = realpathSync(path.join(repo.root, ".octocode", "agent", "worktrees", "w"));
 		const panes = vi.fn<TmuxRunner>(async () => `%8\twork:3.0\t77\tzsh\t${dir}\t@5`);
 		const mine = await describeWorktrees(repo.root, { env: tmuxEnv, tmux: { runner: panes }, self: "main-aaaaaa" });
 		const theirs = await describeWorktrees(repo.root, { env: tmuxEnv, tmux: { runner: panes }, self: "main-bbbbbb" });

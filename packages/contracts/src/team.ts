@@ -9,7 +9,7 @@ export interface Member {
 	started?: string;
 	/** `settled`: a headless child whose run ended while its parent still holds its reservations; never listed as a live teammate and unreachable by mail. */
 	status: "idle" | "working" | "settled";
-	/** Explicit cooperative runner mailbox; absent for legacy/native push delivery. */
+	/** Explicit cooperative runner mailbox; absent for native push delivery. */
 	mailbox?: "pull";
 	/** What it works on, any length (`checkGoal` in `identity.ts` refuses only a missing one). Stored in the `task` column. */
 	goal?: string;

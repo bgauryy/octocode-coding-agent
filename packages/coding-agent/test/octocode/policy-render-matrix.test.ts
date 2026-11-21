@@ -14,7 +14,6 @@ type Inputs = Parameters<typeof octocodePromptSections>[0];
 const FLAGS = [
 	"canDelegate",
 	"canUseAgent",
-	"canExternal",
 	"readOnly",
 	"canSave",
 	"canShell",
@@ -71,8 +70,13 @@ describe("policy section templates", () => {
 
 	it("tells the main agent when and how to use the desktop specialist, only while one exists", () => {
 		const base = { research: undefined, profiles: [], canDelegate: true, canUseAgent: true } as Inputs;
+		// The shipped profile's description says when to pick it; the delegation policy says how to brief and answer it.
+		const description = /^description: (.*)$/m.exec(promptSource("agents/desktop.md"))?.[1] ?? "";
 		const delegation = (desktopProfiles?: string[]) =>
-			octocodePromptSections({ ...base, ...(desktopProfiles ? { desktopProfiles } : {}) }).delegation ?? "";
+			octocodePromptSections({
+				...base,
+				...(desktopProfiles ? { desktopProfiles, profiles: [{ name: "desktop", description }] } : {}),
+			}).delegation ?? "";
 		expect(delegation()).not.toMatch(/desktop|AppleScript/i);
 		const text = delegation(["desktop"]);
 		// The terms a coordinator needs, not their wording: the profile, when (native app against browser), how to brief, what to do with an answer.

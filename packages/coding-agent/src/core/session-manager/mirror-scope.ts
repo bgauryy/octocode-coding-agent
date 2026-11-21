@@ -3,12 +3,13 @@ import path from "node:path";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { getAgentDir } from "../../config.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { workspaceStateDir } from "../../storage/workspace.ts";
 import type { SessionState } from "./state.ts";
 
 /**
  * Which session files the database mirror indexes. A file in a temporary folder (the system's, or a repository's
- * `.octocode/tmp/` scratch folder) belongs to a test, a benchmark or a copy, so it stays out of the transcripts
+ * `.octocode/agent/tmp/` scratch folder) belongs to a test, a benchmark or a copy, so it stays out of the transcripts
  * database that session search, `/resume` by id and usage profiles read. An active session folder is indexed wherever
  * it is: the session directory a caller chose (`--session-dir`, not merely the folder of a file opened by path), the
  * workspace's own state folder (its sessions and its subagents' sessions) and the Octocode home.
@@ -23,9 +24,19 @@ export function mirrorsSessionFile(
 	return active.some((dir) => isUnderPath(file, dir));
 }
 
-/** `file` (canonical) is in a temporary folder or a `.octocode/tmp/` scratch folder. */
+const [OCTOCODE_FOLDER, AGENT_FOLDER] = AGENT_DIR.split(path.sep);
+
+/** `file` (canonical) is in a temporary folder or a `.octocode/agent/tmp/` scratch folder. */
 function isScratch(file: string): boolean {
-	if (file.split(path.sep).some((part, at, parts) => part === ".octocode" && parts[at + 1] === "tmp")) return true;
+	if (
+		file
+			.split(path.sep)
+			.some(
+				(part, at, parts) =>
+					part === OCTOCODE_FOLDER && parts[at + 1] === AGENT_FOLDER && parts[at + 2] === AGENT_FOLDERS.tmp,
+			)
+	)
+		return true;
 	return temporaryRoots().some((root) => isUnderPath(file, root));
 }
 

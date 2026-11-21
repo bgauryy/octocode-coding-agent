@@ -369,7 +369,7 @@ describe("provider setup flow", () => {
 		await run;
 	});
 
-	it("shows a plan's billing, terms, deprecation and pause on the provider page", async () => {
+	it("shows a plan's billing, terms and pause on the provider page", async () => {
 		const { host, value, runtime } = manager();
 		runtime.getProviderPlan.mockImplementation((id: string) =>
 			id === "openai"
@@ -377,7 +377,6 @@ describe("provider setup flow", () => {
 						billing: "plan",
 						access: "direct",
 						terms: "https://example.test/plan-terms",
-						deprecated: "Use the new route instead.",
 						disabled: "The vendor paused this route.",
 					}
 				: undefined,
@@ -388,7 +387,6 @@ describe("provider setup flow", () => {
 		const detail = textOf(await pageAt(value, 1));
 		expect(detail).toMatch(/Billing +Billed by plan/);
 		expect(detail).toMatch(/Plan terms +https:\/\/example\.test\/plan-terms/);
-		expect(detail).toMatch(/Deprecated +Use the new route instead\./);
 		expect(detail).toMatch(/Paused +The vendor paused this route\./);
 		(await pageAt(value, 1)).handleInput(ESC);
 		await pageAt(value, 2).then((page) => page.handleInput(ESC));

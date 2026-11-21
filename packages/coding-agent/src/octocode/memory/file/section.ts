@@ -39,7 +39,7 @@ async function loadMemoryFile(ref: MemoryFileRef, env: NodeJS.ProcessEnv = proce
 	const text = await readMemoryFile(ref, env);
 	if (text === undefined) return { ref, sha: undefined, lines: [], skipped: [], tracked: false };
 	const parsed = parseMemoryFile(text);
-	const loadable = loadableLines(parsed.lines);
+	const loadable = loadableLines(parsed.lines, ref.scope);
 	return {
 		ref,
 		sha: sha256(text),

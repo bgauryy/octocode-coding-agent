@@ -6,14 +6,7 @@ import { gitQuiet } from "../../utils/git-run.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import { sameProcessAsync } from "../shared/process.ts";
-import {
-	ID_PATTERN,
-	legacyWorktreesDir,
-	ownersOf,
-	repoRoot,
-	type WorktreeOutputs,
-	worktreesDir,
-} from "./worktree-base.ts";
+import { ID_PATTERN, ownersOf, repoRoot, type WorktreeOutputs, worktreesDir } from "./worktree-base.ts";
 import { finishWorktree } from "./worktree-finish.ts";
 import { outputsReport } from "./worktree-outputs.ts";
 
@@ -58,8 +51,7 @@ export function pruneWorktrees(cwd: string, home = getOctocodeHome()): Promise<P
 	const shared = worktreesDir(repo, home);
 	const running = pruning.get(shared);
 	if (running) return running;
-	const dirs = [...new Set([shared, legacyWorktreesDir(repo, home)])];
-	const prune = pruneDirs(repo, repoKey(repo).key, dirs).finally(() => pruning.delete(shared));
+	const prune = pruneDirs(repo, repoKey(repo).key, [shared]).finally(() => pruning.delete(shared));
 	pruning.set(shared, prune);
 	return prune;
 }

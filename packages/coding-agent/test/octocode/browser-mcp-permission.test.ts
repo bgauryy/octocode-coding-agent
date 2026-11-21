@@ -42,9 +42,17 @@ describe("browser MCP navigation targets", () => {
 			}),
 		).toEqual(["https://a.test/", "https://b.test/", "https://c.test/"]);
 		expect(browserMcpUrls("mcp__browser__open", { url: "https://d.test/" })).toEqual(["https://d.test/"]);
-		expect(browserMcpUrls("mcp__browser__step", { step: { op: "goto", url: "https://e.test/" } })).toEqual([
-			"https://e.test/",
-		]);
+		expect(browserMcpUrls("mcp__browser__group", { action: "open", urls: ["https://e.test/", "about:blank"] })).toEqual(
+			["https://e.test/", "about:blank"],
+		);
+		expect(
+			browserMcpUrls("mcp__browser__flow", {
+				action: "run",
+				name: "extract-links",
+				params: { url: "https://g.test/" },
+			}),
+		).toEqual(["https://g.test/"]);
+		expect(browserMcpUrls("mcp__browser__flow", { action: "list", params: { url: "https://h.test/" } })).toEqual([]);
 		expect(
 			browserMcpUrls("mcp__browser__cdp", { method: "Target.createTarget", params: { url: "https://f.test/" } }),
 		).toEqual(["https://f.test/"]);
@@ -67,13 +75,13 @@ describe("browser MCP navigation targets", () => {
 		const file = await browserMcpRequest("mcp__browser__run", goto("file:///etc/passwd"), lookup);
 		expect(file).toMatchObject({ action: "net.private", what: [expect.stringContaining("not a web address")] });
 		expect(file?.grant).toBeUndefined();
-		for (const tool of ["script", "api-replay"])
-			expect((await browserMcpRequest(createMcpToolName("browser", tool), { args: [] }, lookup))?.action).toBe(
-				"browser.control",
-			);
-		expect((await browserMcpRequest(createMcpToolName("browser", "cookies"), { args: [] }, lookup))?.action).toBe(
-			"browser.cookies",
+		const evaluate = { plan: { steps: [{ op: "evaluate", expression: "1" }] } };
+		expect((await browserMcpRequest(createMcpToolName("browser", "run"), evaluate, lookup))?.action).toBe(
+			"browser.control",
 		);
+		expect(
+			(await browserMcpRequest(createMcpToolName("browser", "cdp"), { method: "Network.getCookies" }, lookup))?.action,
+		).toBe("browser.cookies");
 		expect(
 			await browserMcpRequest("browser", { action: "navigate", url: "http://127.0.0.1/" }, lookup),
 		).toBeUndefined();
@@ -105,16 +113,12 @@ describe("browser MCP navigation targets", () => {
 		const refused = await gate(call(goto("http://127.0.0.1:3000/")), ctx);
 		expect(asked).toHaveLength(1);
 		expect(refused?.block).toBe(true);
-		const replay = await gate(
-			{
-				...call({ args: ["--url", "http://127.0.0.1:3000/", "--method", "POST"] }),
-				toolName: createMcpToolName("browser", "api-replay"),
-			},
+		const script = await gate(
+			call({ plan: { steps: [{ op: "evaluate", expression: "document.cookie" }] }, connection: { port: 9222 } }),
 			ctx,
 		);
 		expect(asked).toHaveLength(2);
-		expect(asked[1]).toContain("Replay a captured request?");
-		expect(replay?.block).toBe(true);
+		expect(script?.block).toBe(true);
 	});
 });
 
@@ -122,8 +126,8 @@ const browserTool = (tool: string) => createMcpToolName("browser", tool);
 
 /** One call per gap: the real profile, another program as Chrome, an outside upload, and cookie or download CDP. */
 const GAPS = {
-	profile: { tool: "open", input: { args: ["--profile", "Default"] } },
-	chromePath: { tool: "open", input: { args: ["--chromePath=/tmp/evil"] } },
+	attach: { tool: "open", input: { port: 9222, attach: true, acknowledge: true } },
+	chromePath: { tool: "open", input: { launch: { chromePath: "/tmp/evil" } } },
 	upload: {
 		tool: "run",
 		input: { plan: { steps: [{ op: "act", action: "upload", selector: "input", value: "/etc/hosts" }] } },
@@ -142,13 +146,20 @@ const GAPS = {
 } as const;
 
 describe("browser MCP calls that leave the isolated browser", () => {
-	it("finds launcher flags, cookie and download CDP, and uploads wherever the package reads them", () => {
+	it("finds attach, another program, cookie and download CDP, page scripts and uploads wherever the package reads them", () => {
 		const found = (tool: string, input: Record<string, unknown>) =>
 			browserMcpEscalations(browserTool(tool), input).map(({ kind, path }) => `${kind}${path ? `:${path}` : ""}`);
-		expect(found("open", { args: ["--profile", "Work", "--CHROMEPATH", "/x"] })).toEqual(["control", "control"]);
-		expect(found("open", { args: ["--headless", "--port", "9333"] })).toEqual([]);
-		expect(found("cookies", { args: ["--chrome-path", "/x"] })).toEqual(["control"]);
-		expect(found("step", { step: { op: "cdp", method: "Storage.getCookies" } })).toEqual(["cookies"]);
+		expect(found("open", { attach: true, port: 9222, acknowledge: true })).toEqual(["control"]);
+		expect(found("open", { launch: { chromePath: "/x", windowSize: "800x600" } })).toEqual(["control"]);
+		expect(found("open", { headless: true, port: 9333, launch: { windowSize: "800x600" } })).toEqual([]);
+		expect(found("run", { plan: { steps: [{ op: "cdp", method: "Storage.getCookies" }] } })).toEqual(["cookies"]);
+		expect(found("run", { plan: { steps: [{ op: "evaluate", expression: "1" }] } })).toEqual(["control"]);
+		expect(found("flow", { action: "run", name: "handle-dialog", params: { trigger: "alert(1)" } })).toEqual([
+			"control",
+		]);
+		expect(
+			found("flow", { action: "save", name: "x", plan: { steps: [{ op: "evaluate", expression: "1" }] } }),
+		).toEqual(["control"]); // Saved, it runs unseen later.
 		expect(found("cdp", { method: "Target.sendMessageToTarget", params: { message: "{}" } })).toEqual([
 			"cookies",
 			"control",
@@ -160,20 +171,11 @@ describe("browser MCP calls that leave the isolated browser", () => {
 			"upload:/a",
 			"upload:b",
 		]);
-		expect(found("step", { step: { op: "act", action: "upload", value: "/a | /b" } })).toEqual([
+		expect(found("run", { plan: { steps: [{ op: "act", action: "upload", value: "/a | /b" }] } })).toEqual([
 			"upload:/a",
 			"upload:/b",
 		]);
-		expect(
-			found("check", { recipe: "dom-operations-check", options: { DOM_ACTION: "upload", DOM_VALUE: "/c" } }),
-		).toEqual(["upload:/c"]);
-		expect(
-			found("check", {
-				recipe: "dom-operations-check",
-				options: { DOM_STEPS: JSON.stringify([{ action: "upload", value: "/d" }]) },
-			}),
-		).toEqual(["upload:/d"]);
-		expect(browserMcpEscalations("mcp__other__open", { args: ["--profile"] })).toEqual([]);
+		expect(browserMcpEscalations("mcp__other__open", { launch: { chromePath: "/x" } })).toEqual([]);
 	});
 
 	it("asks in workspace mode for each gap, with the existing classes, and lets workspace uploads run", async () => {
@@ -206,7 +208,7 @@ describe("browser MCP calls that leave the isolated browser", () => {
 		expect((await browserMcpRequest(browserTool("cdp"), GAPS.cookies.input, lookup, cwd))?.action).toBe(
 			"browser.cookies",
 		);
-		for (const gap of ["profile", "chromePath", "downloads"] as const)
+		for (const gap of ["attach", "chromePath", "downloads"] as const)
 			expect((await browserMcpRequest(browserTool(GAPS[gap].tool), GAPS[gap].input, lookup, cwd))?.action).toBe(
 				"browser.control",
 			);
@@ -253,8 +255,8 @@ describe("browser MCP calls that leave the isolated browser", () => {
 			gate({ type: "tool_call", toolCallId: `r-${tool}`, toolName: browserTool(tool), input }, ctx);
 		for (const [gap, { tool, input }] of Object.entries(GAPS))
 			if (gap !== "cookies") expect((await call(tool, input))?.reason, gap).toMatch(/read-only role/);
-		expect((await call("script", { args: ["probe.mjs"] }))?.block).toBe(true);
-		expect(await call("open", { args: ["--headless"] })).toBeUndefined();
+		expect((await call("run", { plan: { steps: [{ op: "evaluate", expression: "1" }] } }))?.block).toBe(true);
+		expect(await call("open", { headless: true })).toBeUndefined();
 	});
 
 	describe("cookie access in a read-only role", () => {
@@ -297,7 +299,7 @@ describe("browser MCP calls that leave the isolated browser", () => {
 			expect(asked).toHaveLength(1);
 			expect(asked[0]).toContain(KIND);
 			expect(await call("cdp", { method: "Network.getAllCookies" })).toBeUndefined();
-			expect(await call("cookies", { args: [] })).toBeUndefined();
+			expect(await call("run", { plan: { steps: [{ op: "cdp", method: "Storage.getCookies" }] } })).toBeUndefined();
 			expect(asked).toHaveLength(1);
 		});
 
@@ -308,17 +310,16 @@ describe("browser MCP calls that leave the isolated browser", () => {
 			expect(asked).toHaveLength(2);
 		});
 
-		it("asks for the cookies tool the same way, though the profile declares browser.control", async () => {
-			const { asked, call } = child([KIND]);
-			expect(await call("cookies", { args: [] })).toBeUndefined();
-			expect(asked).toHaveLength(1);
-			expect(await call("cdp", { method: "Storage.getCookies" })).toBeUndefined();
-			expect(asked).toHaveLength(1);
-		});
-
 		it("does not offer a session answer when the call also needs another class", async () => {
 			const { asked, call } = child(["Allow once"]);
-			await call("cookies", { args: [], url: "http://127.0.0.1:3000/" });
+			await call("run", {
+				plan: {
+					steps: [
+						{ op: "goto", url: "http://127.0.0.1:3000/" },
+						{ op: "cdp", method: "Network.getCookies" },
+					],
+				},
+			});
 			expect(asked[0]).not.toContain(KIND);
 		});
 	});

@@ -77,17 +77,8 @@ export async function applySweep(
 		const reason = await changedSincePlan(candidate);
 		if (reason) skip(candidate, reason);
 	}
-	// An emptied legacy folder goes only while every transcript planned in it still does.
-	const keptDirs = new Set(
-		plan.candidates
-			.filter(({ kind, session }) => kind === "transcript" && session && skippedSessions.has(session))
-			.map(({ root }) => root),
-	);
 	const live = plan.candidates.filter(
-		(candidate) =>
-			!skippedPaths.has(candidate) &&
-			!(candidate.session && skippedSessions.has(candidate.session)) &&
-			!(candidate.kind === "legacy-folder" && keptDirs.has(candidate.path)),
+		(candidate) => !skippedPaths.has(candidate) && !(candidate.session && skippedSessions.has(candidate.session)),
 	);
 	for (const candidate of live.filter(({ kind }) => kind !== "transcript")) {
 		try {

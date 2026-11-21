@@ -43,7 +43,7 @@ export interface MemoryFileUpdate extends Omit<AppliedOps, "lines"> {
 interface MemoryUpdateOptions {
 	/** When the change happens: its date stamps added and confirmed lines. */
 	now?: Date | number;
-	/** A lower cap than 30 (`memory.maxLines`); never a higher one. */
+	/** A lower cap than the scope's own, 30 global and 40 workspace (`memory.maxLines`); never a higher one. */
 	maxLines?: number;
 	/** The user approved changing pinned lines. */
 	allowPinChanges?: boolean;
@@ -97,8 +97,9 @@ function planMemoryUpdate(
 		...(options.allowPinChanges ? { allowPinChanges: true } : {}),
 		...(options.repeats ? { repeats: options.repeats } : {}),
 	});
-	const fit = evictToFit(applied.lines, options.maxLines);
+	const fit = evictToFit(applied.lines, file.scope, options.maxLines);
 	const problems = validateMemoryLines(fit.lines, {
+		scope: file.scope,
 		previous: parsed.lines,
 		...(options.maxLines !== undefined ? { maxLines: options.maxLines } : {}),
 		...(options.allowPinChanges ? { allowPinChanges: true } : {}),

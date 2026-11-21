@@ -163,13 +163,12 @@ describe("check-in", () => {
 		expect(record.mock.calls.map((call) => call[1])).toEqual([false, true]);
 	});
 
-	it("reads monitor.checkInSeconds before the deprecated subagents.checkInSeconds", () => {
-		expect(checkInSeconds({ monitor: { checkInSeconds: 60 }, subagents: { checkInSeconds: 120 } })).toBe(60);
-		expect(checkInSeconds({ monitor: { checkInSeconds: 0 }, subagents: { checkInSeconds: 120 } })).toBe(0);
-		expect(checkInSeconds({ subagents: { checkInSeconds: 120 } })).toBe(120);
-		expect(checkInSeconds({ monitor: { checkInSeconds: -1 }, subagents: { checkInSeconds: 120 } })).toBe(120);
+	it("reads monitor.checkInSeconds, 0 included, and takes the default for a refused value", () => {
+		expect(checkInSeconds({ monitor: { checkInSeconds: 60 } })).toBe(60);
+		expect(checkInSeconds({ monitor: { checkInSeconds: 0 } })).toBe(0);
+		expect(checkInSeconds({ monitor: { checkInSeconds: -1 } })).toBe(300);
 		expect(checkInSeconds(undefined)).toBe(300);
-		expect(checkInConfig({ subagents: { checkInSeconds: 120 } }, true)).toEqual({
+		expect(checkInConfig({ monitor: { checkInSeconds: 120 } }, true)).toEqual({
 			seconds: 120,
 			parentWaits: true,
 			busy: false,

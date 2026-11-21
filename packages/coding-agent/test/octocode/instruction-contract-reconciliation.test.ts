@@ -13,31 +13,6 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("instructions agree with the tools their recipient receives", () => {
-	it("names the public stop field accepted by the main agent schema", () => {
-		const agent = contexts.find((context) => context.name === "main")!.tools.find((tool) => tool.name === "agent")!;
-		const notice = renderPrompt("notices/subagents/lingering.md", {
-			id: "child-example",
-			seconds: 900,
-			blocked: false,
-			peer: false,
-			parent: false,
-			reachable: true,
-			requests: 1,
-			one: true,
-			cost: "",
-		});
-		const field = notice.match(/`coordinate` action `stop` with `(\w+)` child-example/)?.[1];
-		expect(field).toBe("subagent");
-		expect(() =>
-			validateToolArguments(agent as Tool, {
-				type: "toolCall",
-				id: "check",
-				name: "agent",
-				arguments: { type: "coordinate", action: "stop", [field!]: "child-example", reason: "Contract check only" },
-			}),
-		).not.toThrow();
-	});
-
 	it.each(["resume", "fork"])("does not recommend resuming an isolated child after %s", (kind) => {
 		const entries = [
 			{

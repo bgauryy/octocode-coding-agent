@@ -40,7 +40,7 @@ function missingCwdError(relative: string): MissingSessionCwdError {
 	throw new Error("the session folder should be missing");
 }
 
-const WORKTREE = ".octocode/worktrees/feature";
+const WORKTREE = ".octocode/agent/worktrees/feature";
 
 describe("resuming a session whose worktree is gone", () => {
 	it("the startup prompt (--session, --continue) offers recreating the worktree", async () => {

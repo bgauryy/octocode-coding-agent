@@ -40,7 +40,7 @@ describe("/worktree new", () => {
 		const command = worktreeCommand({ env, tmux: { runner }, invocation });
 		await command.handler("new hotfix", contextAt(repo.root));
 
-		const worktree = path.join(repo.root, ".octocode", "worktrees", "hotfix");
+		const worktree = path.join(repo.root, ".octocode", "agent", "worktrees", "hotfix");
 		expect(existsSync(worktree)).toBe(true);
 		expect(runner).toHaveBeenCalledTimes(1);
 		const [args, options] = runner.mock.calls[0] ?? [];
@@ -84,18 +84,18 @@ describe("/worktree new", () => {
 		expect(text()).toContain("--worktree hotfix");
 	});
 
-	it("warns when .octocode/worktrees/ is not ignored by git", async () => {
+	it("warns when .octocode/agent/worktrees/ is not ignored by git", async () => {
 		repo.write(".gitignore", ".env\n");
 		sh(repo.root, "commit", "-q", "-am", "drop ignore");
 		await worktreeCommand({ env: { ...process.env }, invocation }).handler("new hotfix", contextAt(repo.root));
-		expect(notices.find((n) => n.level === "warning")?.text).toContain(".octocode/worktrees/ is not ignored");
+		expect(notices.find((n) => n.level === "warning")?.text).toContain(".octocode/agent/worktrees/ is not ignored");
 	});
 
 	it("reports an invalid name or a missing repository as an error, creating nothing", async () => {
 		await worktreeCommand({ invocation }).handler("new bad/name", contextAt(repo.root));
 		expect(notices.at(-1)).toMatchObject({ level: "error" });
 		expect(text()).toContain("Invalid worktree name");
-		expect(existsSync(path.join(repo.root, ".octocode", "worktrees"))).toBe(false);
+		expect(existsSync(path.join(repo.root, ".octocode", "agent", "worktrees"))).toBe(false);
 	});
 });
 
@@ -105,11 +105,11 @@ describe("/worktree list and remove", () => {
 		await command.handler("new auth", contextAt(repo.root));
 		notices = [];
 		await command.handler("", contextAt(repo.root));
-		expect(text()).toContain("auth · branch worktree-auth · clean · .octocode/worktrees/auth");
+		expect(text()).toContain("auth · branch worktree-auth · clean · .octocode/agent/worktrees/auth");
 		expect(text()).toContain("main · branch main");
 		notices = [];
-		await command.handler("list", contextAt(path.join(repo.root, ".octocode", "worktrees", "auth")));
-		expect(text()).toContain("auth · branch worktree-auth · clean · .octocode/worktrees/auth · current");
+		await command.handler("list", contextAt(path.join(repo.root, ".octocode", "agent", "worktrees", "auth")));
+		expect(text()).toContain("auth · branch worktree-auth · clean · .octocode/agent/worktrees/auth · current");
 		// The main checkout contains the linked worktree's folder but is not the session's worktree.
 		expect(text().match(/· current/gu)).toHaveLength(1);
 	});
@@ -117,8 +117,8 @@ describe("/worktree list and remove", () => {
 	it("refuses removing dirty work, then removes with --force", async () => {
 		const command = worktreeCommand({ env: { ...process.env }, invocation });
 		await command.handler("new auth", contextAt(repo.root));
-		const dir = path.join(repo.root, ".octocode", "worktrees", "auth");
-		repo.write(".octocode/worktrees/auth/u.txt", "u");
+		const dir = path.join(repo.root, ".octocode", "agent", "worktrees", "auth");
+		repo.write(".octocode/agent/worktrees/auth/u.txt", "u");
 		notices = [];
 		await command.handler("remove auth", contextAt(repo.root));
 		expect(notices.at(-1)).toMatchObject({ level: "warning" });
@@ -131,7 +131,7 @@ describe("/worktree list and remove", () => {
 	it("refuses to remove the worktree it runs in and shows usage for bad input", async () => {
 		const command = worktreeCommand({ env: { ...process.env }, invocation });
 		await command.handler("new auth", contextAt(repo.root));
-		const dir = path.join(repo.root, ".octocode", "worktrees", "auth");
+		const dir = path.join(repo.root, ".octocode", "agent", "worktrees", "auth");
 		notices = [];
 		await command.handler("remove auth --force", contextAt(dir));
 		expect(text()).toContain("This session runs in worktree");
@@ -166,7 +166,7 @@ describe("/worktree remove: who is still there", () => {
 	it("refuses while an agent or a tmux pane is in the worktree, names them, and removes with --force", async () => {
 		const command0 = worktreeCommand({ env: { ...process.env }, invocation });
 		await command0.handler("new feat", contextAt(repo.root));
-		const dir = path.join(repo.root, ".octocode", "worktrees", "feat");
+		const dir = path.join(repo.root, ".octocode", "agent", "worktrees", "feat");
 		const feat = realpathSync(dir);
 		const members = [
 			agent("main-aaaaaa", { checkout: realpathSync(repo.root) }),
@@ -189,7 +189,7 @@ describe("/worktree remove: who is still there", () => {
 
 	it("removes when only agents of other worktrees, or none, are around", async () => {
 		await worktreeCommand({ env: { ...process.env }, invocation }).handler("new feat", contextAt(repo.root));
-		const dir = path.join(repo.root, ".octocode", "worktrees", "feat");
+		const dir = path.join(repo.root, ".octocode", "agent", "worktrees", "feat");
 		const members = [agent("main-aaaaaa", { checkout: realpathSync(repo.root), tmuxPane: "%1" })];
 		// A pane in the main checkout, outside the linked worktree's folder, is not in the worktree.
 		const runner = vi.fn<TmuxRunner>(async () => `%1\twork:1.0\t100\tnode\t${realpathSync(repo.root)}`);
@@ -207,7 +207,7 @@ describe("/worktree list: who runs where", () => {
 	it("shows live agents with pid and tmux location, and other tmux panes, under the worktree each works in", async () => {
 		await worktreeCommand({ env: { ...process.env }, invocation }).handler("new feat", contextAt(repo.root));
 		const root = realpathSync(repo.root);
-		const feat = realpathSync(path.join(repo.root, ".octocode", "worktrees", "feat"));
+		const feat = realpathSync(path.join(repo.root, ".octocode", "agent", "worktrees", "feat"));
 		const members = [
 			agent("main-aaaaaa", { checkout: root, tmuxPane: "%1" }),
 			agent("feat-bbbbbb", { checkout: feat, status: "working", tmuxPane: "%4", pid: 5001 }),

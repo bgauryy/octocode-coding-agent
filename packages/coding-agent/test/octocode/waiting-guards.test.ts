@@ -46,11 +46,11 @@ describe("the check-in while the child waits on its own work", () => {
 		const start = Date.now();
 		ping.begin(start);
 		work.set(kind, [{ kind, id: "x", title: "waiting" }]);
-		const busy = checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner);
+		const busy = checkInConfig({ monitor: { checkInSeconds: 300 } }, false, owner);
 		ping.due("c-1", "p-1", busy, start + 6 * MIN);
 		expect(notice).not.toHaveBeenCalled();
 		work.set(kind, []);
-		ping.due("c-1", "p-1", checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner), start + 6 * MIN);
+		ping.due("c-1", "p-1", checkInConfig({ monitor: { checkInSeconds: 300 } }, false, owner), start + 6 * MIN);
 		expect(notice).toHaveBeenCalledTimes(1);
 	});
 
@@ -58,7 +58,7 @@ describe("the check-in while the child waits on its own work", () => {
 		const owner = {};
 		const work = runningWorkOf(owner);
 		work.set("external", [{ kind: "external", id: "e", title: "prompt" }]);
-		expect(checkInConfig({ subagents: { checkInSeconds: 300 } }, false, owner).busy).toBe(false);
+		expect(checkInConfig({ monitor: { checkInSeconds: 300 } }, false, owner).busy).toBe(false);
 	});
 });
 

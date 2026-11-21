@@ -15,7 +15,7 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
 /** The section whose chunk fails to render, as a template naming a value the code does not pass would. */
 const broken = vi.hoisted(() => ({ section: undefined as string | undefined }));
 const CHUNK: Record<string, string> = {
-	work: "policy/work.md",
+	work: "policy/understand.md",
 	safety: "policy/safety.md",
 	communication: "policy/communication.md",
 };

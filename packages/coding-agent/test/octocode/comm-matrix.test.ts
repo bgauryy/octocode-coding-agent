@@ -73,7 +73,7 @@ describe("team mail routes", () => {
 	it("isolated child in a linked worktree: delivered both ways over the shared team database", async () => {
 		const repo = makeRepo();
 		closers.push(async () => repo.cleanup());
-		const linked = path.join(repo.root, ".octocode", "worktrees", "kid-iso");
+		const linked = path.join(repo.root, ".octocode", "agent", "worktrees", "kid-iso");
 		sh(repo.root, "worktree", "add", "-q", "-b", "kid-iso", linked);
 		const parent = open({}, repo.root);
 		const parentId = parent.join().id;
@@ -178,7 +178,7 @@ describe.runIf(process.platform !== "win32")("socket routes between processes", 
 	it("main ↔ linked worktree session: `coordinator` reaches the main checkout; none running is refused", async () => {
 		const repo = makeRepo();
 		try {
-			const linked = path.join(repo.root, ".octocode", "worktrees", "feature");
+			const linked = path.join(repo.root, ".octocode", "agent", "worktrees", "feature");
 			sh(repo.root, "worktree", "add", "-q", "-b", "feature", linked);
 			const main = await owned.peer("oc-main", repo.root);
 			const { send } = owned.sender(linked);

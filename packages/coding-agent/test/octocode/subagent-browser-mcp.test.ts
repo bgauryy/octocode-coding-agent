@@ -1,6 +1,8 @@
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
+import { registerMcpAddedServers } from "../../../mcp/src/session-servers.ts";
 import { MCP_BROWSER_ENV } from "@octocodeai/octocode-common/env";
 import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
@@ -9,6 +11,7 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles, profileTools } from "../../src/octocode/subagents/profiles.ts";
+import { resolveTaskServers } from "../../src/octocode/subagents/task-servers.ts";
 import { testFeatures } from "../helpers/features.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { tmp } from "./helpers.ts";
@@ -17,7 +20,7 @@ const profiles = () => loadProfiles(tmp(), tmp(), false, {});
 
 /** Stand-ins for the browser server's tools: one it declares, and one its configuration leaves on demand. */
 const OPEN = "mcp__browser__open";
-const RARE = "mcp__browser__har_pager";
+const RARE = "mcp__browser__protocol";
 const browserServer: FeatureRegister = (api) => {
 	for (const [name, onDemand] of [
 		[OPEN, false],
@@ -66,19 +69,21 @@ async function declaredWith(tools: string[]): Promise<string[]> {
 describe("browser MCP server in a subagent", () => {
 	it("is selected by the browser role's tools and by no other bundled role", () => {
 		const roles = profiles();
-		// The server is `defaultActive: false`: only a selector naming mcp__browser__ starts it in a child.
-		expect(profileTools(roles.get("browser"))).toContain("mcp__browser__*");
+		// A child starts only a server its tools name: the browser role names every tool of the server exactly.
+		expect(profileTools(roles.get("browser"))).toContain(OPEN);
 		for (const name of ["implementer", "researcher", "reviewer"])
 			expect(profileTools(roles.get(name)), name).not.toContain("mcp__browser__");
 	});
 
-	it("declares the server's on-demand tools only when the role's list names one exactly, never through its pattern", async () => {
+	it("declares the on-demand tools of the server the role's list names exactly, and leaves a pattern's undeclared", async () => {
+		// The main session takes the server's tools on demand; the browser role names each exactly so they are declared up front.
 		const role = profileTools(profiles().get("browser")).split(",");
-		expect(role).toContain("mcp__browser__*");
-		const declared = await declaredWith(role);
-		expect(declared).toContain(OPEN);
-		expect(declared).not.toContain(RARE);
-		expect(await declaredWith([...role, RARE])).toEqual(expect.arrayContaining([OPEN, RARE]));
+		expect(role).toEqual(expect.arrayContaining([OPEN, RARE]));
+		expect(role).not.toContain("mcp__browser__*");
+		expect(await declaredWith(role)).toEqual(expect.arrayContaining([OPEN, RARE]));
+		const byPattern = await declaredWith(["mcp__browser__*"]);
+		expect(byPattern).toContain(OPEN);
+		expect(byPattern).not.toContain(RARE);
 	});
 
 	it("passes only a value the user set for the whole process", () => {
@@ -96,30 +101,24 @@ describe("browser MCP server in a subagent", () => {
 
 	// A main-session opt-in (`defaultTools` entries, `defaultActive: true`, `/mcp assign browser all`) is read by every
 	// child from the same settings; the exclusion keeps it in the main session and the profiles that name the server.
-	it("excludes the browser server for every bundled role except browser", () => {
+	// A child runs only the servers its tools or task name: browser and desktop belong to the roles that name them.
+	it("gives the browser server only to the browser role and the desktop server only to the desktop role or a task listing it", () => {
 		const roles = profiles();
-		const argsOf = (name: string) => buildAgentArgs(roles.get(name), undefined, { dir: "/s", id: "a" }, []);
+		const events = createEventBus();
+		registerMcpAddedServers(events, () => ({
+			servers: {},
+			stopped: [],
+			available: ["browser", "desktop", "octocode"],
+		}));
+		const runs = (name: string, named?: string[]) => resolveTaskServers(events, named, roles.get(name))?.only ?? [];
 		for (const name of ["implementer", "researcher", "reviewer"]) {
-			const args = argsOf(name);
-			expect(args[args.indexOf("--exclude-tools") + 1]?.split(","), name).toContain("mcp__browser__*");
+			expect(runs(name), name).not.toContain("browser");
+			expect(runs(name), name).not.toContain("desktop");
 		}
-		const browser = argsOf("browser");
-		expect(browser.includes("--exclude-tools") ? browser[browser.indexOf("--exclude-tools") + 1] : "").not.toContain(
-			"mcp__browser__",
-		);
-	});
-
-	// Desktop control follows the browser rule: only the `desktop` profile, or a task that lists the server, starts it.
-	it("excludes the desktop server for every bundled role except desktop, unless a task lists it", () => {
-		const roles = profiles();
-		const exclusions = (name: string, named: string[] = []) => {
-			const args = buildAgentArgs(roles.get(name), undefined, { dir: "/s", id: "a" }, [], undefined, named);
-			return args.includes("--exclude-tools") ? (args[args.indexOf("--exclude-tools") + 1] ?? "") : "";
-		};
-		for (const name of ["browser", "implementer", "researcher", "reviewer"])
-			expect(exclusions(name).split(","), name).toContain("mcp__desktop__*");
-		expect(exclusions("desktop")).not.toContain("mcp__desktop__");
-		expect(exclusions("implementer", ["desktop"])).not.toContain("mcp__desktop__");
+		expect(runs("browser")).toEqual(["browser", "octocode"]);
+		expect(runs("desktop")).toEqual(["desktop", "octocode"]);
+		expect(runs("implementer", ["desktop"])).toContain("desktop");
+		expect(runs("lean")).toEqual([]);
 	});
 
 	it("ships the desktop profile read-only with its permission declared", () => {
@@ -129,16 +128,14 @@ describe("browser MCP server in a subagent", () => {
 		// No shell: untrusted screen text must never reach a command line.
 		expect(desktop?.excludeTools).toBe("bash");
 		// The child's half of the exchange: it leads with the outcome, names evidence paths, and says what stays open for a message.
-		expect(desktop?.prompt).toMatch(
-			/outcome word first, then the app, what you did, the screenshot paths and any blocker/,
-		);
+		expect(desktop?.prompt).toMatch(/outcome word first, then the app|After the outcome word: the app/);
+		expect(desktop?.prompt).toMatch(/screenshot paths/);
 		expect(desktop?.prompt).toMatch(/report `blocked`/);
 		expect(desktop?.linger).toBeGreaterThan(0);
-		// One small image is read inline (an extra request costs more); clasify is for several images or a region, with the call shape that works.
+		// One small image is read inline (an extra request costs more).
 		expect(desktop?.prompt).toMatch(/attach one small screenshot \(`include_screenshot: true`\)/);
-		expect(desktop?.prompt).toMatch(/ask `clasify` about the file/);
-		expect(desktop?.prompt).toMatch(/"operation":"evaluate","assets":\{"shot"/);
-		expect(desktop?.prompt).toMatch(/search for it with `localSearch`/);
+		// Every specialist but lean gets the research server.
+		expect(desktop?.tools).toMatch(/mcp__octocode__\*/);
 		// The two cheap habits the live runs lacked: the menu quit's argument shape, and a quit confirmed by the pid's windows.
 		expect(desktop?.prompt).toMatch(/`invoke_menu` takes the numbers `pid` and `window_id` and `path` as a list/);
 		expect(desktop?.prompt).toMatch(/Confirm the quit with `list_windows` for that `pid`, never `list_apps`/);

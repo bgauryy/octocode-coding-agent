@@ -133,7 +133,7 @@ it("projects model and absent transcript metadata by source event without changi
 	const payload = {
 		hook_event_name: "PreToolUse",
 		transcript_path: "",
-		pi_tool_name: "bash",
+		octocode_tool_name: "bash",
 		tool_input: { command: "true", timeout: 10 },
 	};
 	const metadata = { model: "fixture-model" };

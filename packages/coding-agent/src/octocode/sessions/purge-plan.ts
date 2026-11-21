@@ -2,12 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { agents, workspaces } from "../../../../db/src/api.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
-import { isUnderPath } from "@octocodeai/octocode-common/paths";
-import { getSessionsDir } from "../../config.ts";
-import { agentDbPath } from "../../storage/state-paths.ts";
-import { WORKSPACE_STATE, workspaceDataRoot } from "../../storage/workspace.ts";
+import { workspaceDataRoot } from "../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { readSessionHeaderForDiscovery, getSessionHeaderCwd } from "../../core/session-manager/storage.ts";
-import { globalPaths, octocodeTmpDir, sessionDirName, workspaceOctocodeDir } from "../shared/home.ts";
+import { agentTmpDir, globalPaths, sessionDirName } from "../shared/home.ts";
 import { sameProcess } from "../shared/process.ts";
 import { realDirectory, pathSize, strictlyInside } from "./sweep-fs.ts";
 import { running } from "./sweep-listing.ts";
@@ -18,18 +16,14 @@ import type { SessionIndex } from "./store.ts";
 export type PurgeScope = "workspace" | "all";
 
 export type PurgeKind =
-	/** A session transcript (JSONL) in a workspace's `.octocode/code/sessions`. */
+	/** A session transcript (JSONL) in a workspace's `.octocode/agent/sessions`. */
 	| "transcript"
-	/** A transcript in the legacy per-folder directories of the agent home. */
-	| "legacy-transcript"
-	/** An entry of `.octocode/code/session-data` or of the global `agent/sessions`. */
+	/** An entry of `.octocode/agent/session-data` or of the global `agent/sessions`. */
 	| "session-data"
-	/** An entry of `.octocode/code/temp` (session temp, subagent scratch). */
+	/** An entry of `.octocode/agent/temp` (session temp, subagent scratch). */
 	| "temp"
-	/** An entry of `<root>/.octocode/tmp`. */
-	| "scratch"
-	/** The old `agent/octocode.db` (only `all`). */
-	| "old-database";
+	/** An entry of `<root>/.octocode/agent/tmp`. */
+	| "scratch";
 
 interface PurgeItem {
 	kind: PurgeKind;
@@ -118,10 +112,9 @@ function liveBlockers(
 }
 
 /**
- * Decides what `/purge` removes, without removing anything. `workspace`: the current workspace's transcripts (and the
- * legacy per-folder transcripts of sessions that ran inside it), `.octocode/code/{session-data,temp}` and
- * `<root>/.octocode/tmp`. `all`: the same for every registered workspace whose root still exists, the global
- * `agent/sessions`, every legacy transcript and the old `agent/octocode.db`. The current session's transcript, folders
+ * Decides what `/purge` removes, without removing anything. `workspace`: the current workspace's transcripts, `.octocode/agent/{session-data,temp}` and
+ * `<root>/.octocode/agent/tmp`. `all`: the same for every registered workspace whose root still exists, the global
+ * `agent/sessions`. The current session's transcript, folders
  * and team seat are never listed. Nothing else is: settings, `auth.json`, `mcp-auth.json`, `child-credentials/`, MCP
  * configuration, the workspace marker, other `.octocode/<topic>/` folders and every file outside the roots stay.
  */
@@ -157,43 +150,26 @@ export async function planPurge(index: SessionIndex, scope: PurgeScope, options:
 			continue;
 		}
 		if (id) plan.workspaces.push({ id, root });
-		const state = path.join(root, WORKSPACE_STATE);
-		for (const { file, id: session } of await transcriptsIn(path.join(state, "sessions")))
-			if (session !== current) await add("transcript", file, path.join(state, "sessions"));
-		for (const entry of await entriesOf(path.join(state, "session-data")))
-			if (notCurrent(entry)) await add("session-data", entry, path.join(state, "session-data"));
-		const temp = path.join(state, "temp");
+		const state = path.join(root, AGENT_DIR);
+		for (const { file, id: session } of await transcriptsIn(path.join(state, AGENT_FOLDERS.sessions)))
+			if (session !== current) await add("transcript", file, path.join(state, AGENT_FOLDERS.sessions));
+		for (const entry of await entriesOf(path.join(state, AGENT_FOLDERS.sessionData)))
+			if (notCurrent(entry)) await add("session-data", entry, path.join(state, AGENT_FOLDERS.sessionData));
+		const temp = path.join(state, AGENT_FOLDERS.temp);
 		for (const entry of await entriesOf(temp)) {
 			if (path.basename(entry) !== "sessions") await add("temp", entry, temp);
 			else for (const folder of await entriesOf(entry)) if (notCurrent(folder)) await add("temp", folder, entry);
 		}
-		// Only `.octocode/tmp`: other `.octocode/<topic>/` folders hold durable output.
-		const scratch = octocodeTmpDir(root);
-		if (await realDirectory(workspaceOctocodeDir(root)))
+		// Only `agent/tmp`: other `agent/<topic>/` folders hold durable output.
+		const scratch = agentTmpDir(root);
+		if (await realDirectory(path.dirname(scratch)))
 			for (const entry of await entriesOf(scratch)) await add("scratch", entry, scratch);
-	}
-
-	const legacy = getSessionsDir();
-	const legacyDirs = [legacy, ...(await entriesOf(legacy))];
-	const inWorkspace = (cwd: string | undefined) =>
-		scope === "all" || (cwd !== undefined && [...roots.values()].some((root) => isUnderPath(canonicalPath(cwd), root)));
-	for (const dir of legacyDirs) {
-		if (dir !== legacy && !(await realDirectory(dir))) continue;
-		for (const { file, id, cwd } of await transcriptsIn(dir))
-			if (id !== current && inWorkspace(cwd)) await add("legacy-transcript", file, legacy);
 	}
 
 	if (scope === "all") {
 		const agentState = globalPaths(env).agentState;
 		const global = path.join(agentState, "sessions");
 		for (const entry of await entriesOf(global)) if (notCurrent(entry)) await add("session-data", entry, global);
-		// The pre-workspace database, unless `OCTOCODE_AGENT_DB` makes it the live one: removing it would unlink the open database.
-		const old = path.join(agentState, "octocode.db");
-		if (canonicalPath(old) !== canonicalPath(agentDbPath(env)))
-			for (const suffix of ["", "-wal", "-shm"]) {
-				const file = `${old}${suffix}`;
-				if (fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) await add("old-database", file, agentState);
-			}
 	}
 
 	const ids = scope === "all" ? undefined : new Set(plan.workspaces.map((workspace) => workspace.id));

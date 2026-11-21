@@ -1,3 +1,4 @@
+import { clipText } from "@octocodeai/octocode-common/clip";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts";
 
 export interface AgentNode {
@@ -23,7 +24,7 @@ export function lastMessage(id: string, traffic: readonly Traffic[]): Traffic | 
 /** `↳ to main · awaiting reply · “text…”`, or `from` when the agent received it. */
 export function describeLast(id: string, message: Traffic): string {
 	const text = message.text.replace(/\s+/g, " ").trim();
-	const clipped = text.length > PREVIEW ? `${text.slice(0, PREVIEW - 1)}…` : text;
+	const clipped = clipText(text, PREVIEW);
 	const direction = message.from === id ? `to ${message.to.join(", ")}` : `from ${message.from}`;
 	return `↳ ${direction} · ${message.state} · “${clipped}”`;
 }

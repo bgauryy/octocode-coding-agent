@@ -365,7 +365,7 @@ function archiveCompaction(
 			entry,
 			ctx.sessionManager.getSessionId(),
 			summaryLabel(splitSummary(entry.summary).body),
-			summaryMethodOf(entry.details) ?? (entry.fromHook ? "feature" : "pi-default"),
+			summaryMethodOf(entry.details) ?? (entry.fromHook ? "feature" : "octocode-default"),
 		);
 		return written?.n;
 	} catch (error) {

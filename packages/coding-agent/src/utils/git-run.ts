@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import path from "node:path";
-import { WORKSPACE_STATE } from "../storage/workspace.ts";
+import { AGENT_DIR, AGENT_IGNORED } from "../storage/agent-layout.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 
 const execFileAsync = promisify(execFile);
@@ -16,16 +16,21 @@ export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
  */
 const NO_FSMONITOR: readonly string[] = ["-c", "core.fsmonitor=false"];
 
-// Project operations must exclude private runtime files even if the repository overrides ignore rules.
-const stateGlob = `**/${WORKSPACE_STATE.split(path.sep).join("/")}/**`;
-export const WORKSPACE_STATE_PATHSPEC = `:(top,glob,icase)${stateGlob}`;
-export const EXCLUDE_WORKSPACE_STATE = `:(top,glob,icase,exclude)${stateGlob}`;
+// Project operations must exclude private runtime files even if the repository overrides ignore rules. `MEMORY.md` and
+// topic folders in `.octocode/agent/` are not runtime state.
+const agentGlob = `**/${AGENT_DIR.split(path.sep).join("/")}`;
+const statePatterns = [
+	...AGENT_IGNORED.folders.map((name) => `${agentGlob}/${name}/**`),
+	...AGENT_IGNORED.files.map((name) => `${agentGlob}/${name}`),
+];
+export const WORKSPACE_STATE_PATHSPEC: string[] = statePatterns.map((pattern) => `:(top,glob,icase)${pattern}`);
+export const EXCLUDE_WORKSPACE_STATE: string[] = statePatterns.map((pattern) => `:(top,glob,icase,exclude)${pattern}`);
 
 /** Refuse to check out or automatically commit a staged or tracked workspace marker or transcript. */
 export async function rejectTrackedWorkspaceState(cwd: string, tree: string): Promise<void> {
-	if (await git(cwd, ["ls-files", "--cached", `--with-tree=${tree}`, "--", WORKSPACE_STATE_PATHSPEC]))
+	if (await git(cwd, ["ls-files", "--cached", `--with-tree=${tree}`, "--", ...WORKSPACE_STATE_PATHSPEC]))
 		throw new Error(
-			"Git tracks private workspace state under .octocode/code. Remove it from the index and commit before using worktrees.",
+			"Git tracks private workspace state under .octocode/agent. Remove it from the index and commit before using worktrees.",
 		);
 }
 

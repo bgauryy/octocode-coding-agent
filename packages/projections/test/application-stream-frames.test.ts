@@ -94,7 +94,7 @@ describe("ApplicationStream event reducers", () => {
 		expect(stream.snapshot?.messages[0].content).toBeUndefined();
 	});
 
-	it("legacy text-only appends preserve existing content and its asset", () => {
+	it("text-only appends preserve existing content and its asset", () => {
 		const full = { id: "old", mimeType: "application/json", size: 1 };
 		const content = [{ id: "b", type: "text" as const, text: "Old" }];
 		const stream = started({ ...base, messages: [{ ...base.messages[0], content, full }] });

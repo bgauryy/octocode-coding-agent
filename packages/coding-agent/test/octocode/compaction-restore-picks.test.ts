@@ -78,9 +78,13 @@ describe("what comes back after a compaction", () => {
 
 	it("never reads back anything under .octocode/, edited or not, but does read back a worktree checkout's own files", async () => {
 		const dir = tmp();
-		const octocode = [".octocode/tmp/plan.ts", ".octocode/code/temp/agents/a/out.ts", ".octocode/roast/report.ts"];
-		const worktree = ".octocode/worktrees/fix-a/src/kept.ts";
-		for (const file of [...octocode, worktree, ".octocode/worktrees/fix-a/.octocode/tmp/x.ts"]) {
+		const octocode = [
+			".octocode/agent/tmp/plan.ts",
+			".octocode/agent/temp/agents/a/out.ts",
+			".octocode/roast/report.ts",
+		];
+		const worktree = ".octocode/agent/worktrees/fix-a/src/kept.ts";
+		for (const file of [...octocode, worktree, ".octocode/agent/worktrees/fix-a/.octocode/agent/tmp/x.ts"]) {
 			fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
 			fs.writeFileSync(path.join(dir, file), "export const s = 1;\n");
 		}
@@ -89,13 +93,13 @@ describe("what comes back after a compaction", () => {
 			...edit("2", octocode[1], 200),
 			...edit("3", octocode[2], 300),
 			...edit("4", worktree, 400),
-			...edit("5", ".octocode/worktrees/fix-a/.octocode/tmp/x.ts", 500),
+			...edit("5", ".octocode/agent/worktrees/fix-a/.octocode/agent/tmp/x.ts", 500),
 		]);
 		expect(candidates.map((candidate) => path.relative(dir, candidate.file))).toEqual([worktree]);
 		// A session working inside the worktree gets its own files back.
 		const inside = await restoreCandidates(
 			{ messagesToSummarize: edit("6", "src/kept.ts", 600) as never, turnPrefixMessages: [] },
-			path.join(dir, ".octocode/worktrees/fix-a"),
+			path.join(dir, ".octocode/agent/worktrees/fix-a"),
 			[],
 		);
 		expect(inside.map((candidate) => path.basename(candidate.file))).toEqual(["kept.ts"]);

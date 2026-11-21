@@ -6,7 +6,6 @@ import {
 	isModelType,
 	lazyStream,
 	type Model,
-	type OAuthCredentials,
 	type Provider,
 	type ProviderHeaders,
 	type StreamOptions,
@@ -71,28 +70,17 @@ export function composeModelProvider(
 	known?: KnownModelLookup,
 ): Provider {
 	const config = modelConfig.getProvider(providerId);
-	let featureOAuthCredential: OAuthCredentials | undefined;
 	let refreshedFeatureModels: ProviderConfigInput["models"];
 	const currentFeature = (): ProviderConfigInput | undefined =>
 		feature && refreshedFeatureModels ? { ...feature, models: refreshedFeatureModels } : feature;
 	// models.json modelOverrides are the topmost user-config layer: they apply once,
-	// after custom-model upserts, feature model replacement, and legacy OAuth projection.
+	// after custom-model upserts and feature model replacement.
 	const getAllModels = (): AnyModel[] => {
-		let models = applyFeature(
+		const models = applyFeature(
 			providerId,
 			applyModelsJson(providerId, getAllProviderModels(base), config, known),
 			currentFeature(),
 		);
-		if (featureOAuthCredential && feature?.oauth?.modifyModels) {
-			// The feature hook is chat-only; other model types pass through untouched.
-			models = [
-				...feature.oauth.modifyModels(
-					models.filter((model) => isModelType(model, "chat")),
-					featureOAuthCredential,
-				),
-				...models.filter((model) => !isModelType(model, "chat")),
-			];
-		}
 		return models.map((model) => {
 			if (!isModelType(model, "chat")) return model;
 			// Custom models never passed through the catalog's stamping: declare their cache compat here (explicit values win).
@@ -135,13 +123,12 @@ export function composeModelProvider(
 		getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
 		getAllModels,
 		refreshModels:
-			base?.refreshModels || feature?.refreshModels || feature?.oauth?.modifyModels
+			base?.refreshModels || feature?.refreshModels
 				? async (context) => {
 						await base?.refreshModels?.(context);
 						let refreshed: NonNullable<ProviderConfigInput["models"]> | undefined;
 						if (feature?.refreshModels) refreshed = await feature.refreshModels(context);
 						if (context.signal.aborted) return;
-						const oauthCredential = context.credential?.type === "oauth" ? context.credential : undefined;
 						await context.publish({
 							update: () => {
 								if (refreshed) {
@@ -152,7 +139,6 @@ export function composeModelProvider(
 									});
 									refreshedFeatureModels = refreshed;
 								}
-								featureOAuthCredential = oauthCredential;
 							},
 						});
 					}

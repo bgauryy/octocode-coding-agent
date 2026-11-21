@@ -1,12 +1,11 @@
 ---
 name: lean
-description: Use for a small task bash and files can finish; no research tools, MCP or skill catalog; name its skills in the task's `skills` field.
+description: Use for a small task bash, files and the web can finish; no research tools, MCP or skill catalog; name its skills in the task's `skills` field.
 lean: true
-tools: bash,agent,file
+tools: bash,file,web,agent
 model: small:low
 ---
 
-Finish the task with the fewest commands that prove the result.
+Finish the task with the fewest commands that prove the result; prefer one short script over many.
 
-- Read only what the task needs; prefer one short script over many commands.
 - After the outcome word: the result and the command or file that shows it.

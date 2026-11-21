@@ -50,7 +50,8 @@ type HandRuns = Pick<AgentRuns, "running" | "items" | "live" | "handed">;
  * epic, not finished, not held by another session, no open prerequisite) and claimed for this session when unheld; an
  * item another running or reachable child serves is refused. The child may then update it besides its start item, until
  * its run ends. The summary names the child's context fill (with a warning at `CONTEXT_WARN_SHARE`) and the paths the
- * item shares with the child's own item.
+ * item shares with the child's own item. A child started without an item has no `backlog` tool and cannot act on one,
+ * so it is refused.
  */
 export function handItem(
 	runs: HandRuns,
@@ -63,18 +64,22 @@ export function handItem(
 		throw new Error(
 			`${child} is not a running subagent you started: item hands work only to such a child. Start one for it with agent task and item.`,
 		);
+	const start = runs.items.get(child);
+	if (!start)
+		throw new Error(
+			`${child} was started without an item, so it has no backlog tool to update ${ref}. Nothing was sent: start a child for it with agent task and item, or resume ${child} with item.`,
+		);
 	const handed = runs.handed;
 	if (!handed) throw new Error("This session cannot hand items to its children.");
 	const backlog: Backlog = openBacklog(ctx, { isSubagent: false });
 	const { item, claimable } = checkDelegable(backlog, ref);
-	if (runs.items.get(child) === item.ref || handed.has(child, item.ref))
+	if (start === item.ref || handed.has(child, item.ref))
 		throw new Error(`${item.ref} is already ${child}'s item. Nothing was sent.`);
 	refuseSecondChild(runs, lingering, item, [child]);
 	const held = claimable ? claimDelegated(backlog, item) : item;
 	backlog.store.hand(held, child, backlog.session);
 	handed.add(child, held.ref, () => backlog.store.unhand(child, held));
-	const start = runs.items.get(child);
-	const shared = sharedPaths(held, start ? backlog.store.get(start) : undefined);
+	const shared = sharedPaths(held, backlog.store.get(start));
 	const context = contextOf(runs, child);
 	const near = context?.window !== undefined && context.used >= context.window * CONTEXT_WARN_SHARE;
 	const parts = [
@@ -82,15 +87,11 @@ export function handItem(
 		context
 			? `Its ${contextText(context)}${near ? ": near full, so it may compact or run out; a fresh child may do better" : ""}.`
 			: "Its context is not known yet (no model reply).",
-		start
-			? shared.length
-				? `Shares ${shared.join(", ")} with its item ${start}.`
-				: `Shares no paths with its item ${start}.`
-			: "",
+		shared.length ? `Shares ${shared.join(", ")} with its item ${start}.` : `Shares no paths with its item ${start}.`,
 	];
 	return {
 		notice: renderPrompt("notices/subagents/item-handed.md", { ref: held.ref, title: held.title, goal: held.goal }),
-		summary: parts.filter(Boolean).join(" "),
+		summary: parts.join(" "),
 		undo: () => handed.end(child, held.ref),
 	};
 }

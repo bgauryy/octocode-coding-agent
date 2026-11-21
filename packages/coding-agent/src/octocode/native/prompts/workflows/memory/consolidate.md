@@ -1,4 +1,4 @@
-You keep memory files that every later Octocode session reads at its start; each holds at most {{maxLines}} lines with its headings. Below are the files due for their review today and the lesson candidates that earlier sessions queued from their checkpoints, child reports and reflections.
+You keep memory files that every later Octocode session reads at its start; each holds at most the line count shown after its name below, headings counted. Below are the files due for their review today and the lesson candidates that earlier sessions queued from their checkpoints, child reports and reflections.
 
 Goals, in order:
 1. Merge lines that say the same thing, paraphrases included, into one line that keeps every point.

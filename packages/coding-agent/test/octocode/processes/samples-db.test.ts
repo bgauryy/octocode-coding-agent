@@ -51,7 +51,7 @@ describe("processSamples", () => {
 		expect(processSamples.since(agent.db, 0).map((row) => row.at)).toEqual([3_000]);
 	});
 
-	it("works on a database created before the table existed", () => {
+	it("reads an empty table", () => {
 		expect(processSamples.since(agent.db, 0)).toEqual([]);
 		expect(processSamples.pruneBefore(agent.db, 10)).toBe(0);
 	});
@@ -62,11 +62,7 @@ describe("processSamples", () => {
 		expect(processSamples.since(agent.db, 0).map((row) => row.rss)).toEqual([2]);
 	});
 
-	it("records the working folder and adds the column to a table made without it", () => {
-		agent.db.exec("DROP TABLE IF EXISTS process_samples");
-		agent.db.exec(
-			"CREATE TABLE process_samples (at INTEGER NOT NULL, pid INTEGER NOT NULL, started TEXT NOT NULL DEFAULT '', ppid INTEGER NOT NULL, role TEXT NOT NULL, title TEXT NOT NULL, id TEXT NOT NULL, session_id TEXT, agent_id TEXT, owner_pid INTEGER, owner_started TEXT, rss INTEGER NOT NULL, heap_used INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, children TEXT NOT NULL DEFAULT '[]', PRIMARY KEY (pid, started, at))",
-		);
+	it("records the working folder", () => {
 		processSamples.record(agent.db, sample({ cwd: "/work/app" }));
 		expect(processSamples.since(agent.db, 0)[0].cwd).toBe("/work/app");
 	});

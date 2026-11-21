@@ -82,12 +82,13 @@ describe("production TUI terminal permutations", () => {
 			// Every row in the one tool grammar: a word title, a state mark, the `⎿` outcome; no raw ids, emoji or brackets.
 			const rows = frame.text.map((line) => line.trim());
 			expect(rows).toContain("⏺ Bash(ls packages)");
-			expect(rows).toContain("⎿  exit 0 · 3 lines");
+			// A finished row closes to its outcome and the expand hint.
+			expect(rows.some((row) => row.startsWith("⎿  exit 0 · 3 lines (ctrl+o to exp"))).toBe(true);
 			// At 40 columns the row cannot hold the meta too: it drops whole and the path stays uncut.
 			expect(rows).toContain(
 				config.width === 40 ? "⏺ File(edit src/render/tool.ts)" : "⏺ File(edit src/render/tool.ts) · 1 edit",
 			);
-			expect(rows).toContain("⎿  +1 -1");
+			expect(rows).toContain("⎿  +1 -1 (ctrl+o to expand)");
 			expect(rows).toContain("⏺ Agent(audit transcript rows)");
 			// An outcome row drops its trailing meta parts whole, as a head row does: at 40 columns the tool count goes.
 			expect(rows).toContain(config.width === 40 ? "⎿  Done · general-0001" : "⎿  Done · general-0001 · 14 tool calls");

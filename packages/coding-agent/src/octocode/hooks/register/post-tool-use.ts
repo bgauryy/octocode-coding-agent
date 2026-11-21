@@ -77,7 +77,7 @@ export function registerPostToolUseHook(
 					() => ({
 						tool_use_id: event.toolCallId,
 						tool_name: call.tool_name,
-						pi_tool_name: event.toolName,
+						octocode_tool_name: event.toolName,
 						tool_input: call.tool_input,
 						...(hookEvent === "PostToolUseFailure"
 							? { error: contentText(event.content), ...(ctx.signal?.aborted ? { is_interrupt: true } : {}) }

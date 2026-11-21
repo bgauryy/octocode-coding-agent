@@ -55,7 +55,7 @@ export interface AgentProfile {
 	/**
 	 * True: the child investigates and reports without changing source (`OCTOCODE_READ_ONLY`). Its prompt says so, and the
 	 * permission gate enforces it in every mode (`permission/read-only-role.ts`): `file` writes are refused outside its
-	 * scratch folder, `.octocode/code/temp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
+	 * scratch folder, `.octocode/agent/temp/` and Markdown docs under `.octocode/`, and so are bash commands whose parse changes
 	 * the workspace. It is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen.
 	 */
 	readOnly?: true;

@@ -12,8 +12,8 @@ import {
 import { join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { transcripts } from "../../../../db/src/api.ts";
-import { defaultSessionDirectories, legacySessionDirectoryPath } from "./directories.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../storage/workspace.ts";
 import { atomicWriteFileSync, atomicWriteFileUnlocked } from "@octocodeai/octocode-common/atomic-file";
 import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
@@ -32,11 +32,11 @@ import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
 /** Default transcript directory shared by all working directories in this checkout. */
 export function getDefaultSessionDirPath(cwd: string): string {
-	return workspaceStateDir(cwd, "sessions");
+	return workspaceStateDir(cwd, AGENT_FOLDERS.sessions);
 }
 
 export function getDefaultSessionDir(cwd: string): string {
-	return ensureWorkspaceStateDir(cwd, "sessions");
+	return ensureWorkspaceStateDir(cwd, AGENT_FOLDERS.sessions);
 }
 
 const SESSION_HEADER_READ_BUFFER_SIZE = 4096;
@@ -135,51 +135,43 @@ export function sessionCwdMatches(cwd: string | undefined, resolvedCwd: string):
 export function findMostRecentSession(sessionDir: string, cwd?: string): string | null {
 	const resolvedSessionDir = normalizePath(sessionDir);
 	const resolvedCwd = cwd ? resolvePath(cwd) : undefined;
+	let names: string[];
 	try {
-		const files = readdirSync(resolvedSessionDir)
-			.filter((file) => file.endsWith(".jsonl"))
-			.map((file) => join(resolvedSessionDir, file))
-			.flatMap((path) => {
-				try {
-					const stats = statSync(path);
-					return stats.isFile() ? [{ path, mtime: stats.mtimeMs }] : [];
-				} catch {
-					return [];
-				}
-			})
-			.sort((a, b) => b.mtime - a.mtime);
-
-		for (const { path } of files) {
-			const header = readSessionHeaderForDiscovery(path);
-			if (header && (!resolvedCwd || sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd))) return path;
-		}
-		return null;
-	} catch {
-		// A directory that cannot be read has no discoverable recent session.
-		return null;
+		names = readdirSync(resolvedSessionDir);
+	} catch (error) {
+		// A folder that does not exist has no recent session; an unreadable one is a failure to report.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return null;
+		throw error;
 	}
+	const files = names
+		.filter((file) => file.endsWith(".jsonl"))
+		.map((file) => join(resolvedSessionDir, file))
+		.flatMap((path) => {
+			try {
+				const stats = statSync(path);
+				return stats.isFile() ? [{ path, mtime: stats.mtimeMs }] : [];
+			} catch {
+				return [];
+			}
+		})
+		.sort((a, b) => b.mtime - a.mtime);
+
+	for (const { path } of files) {
+		const header = readSessionHeaderForDiscovery(path);
+		if (header && (!resolvedCwd || sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd))) return path;
+	}
+	return null;
 }
 
 /**
- * The newest session of `cwd`: in a custom `sessionDir` (only sessions whose header names `cwd`), else across its
- * default transcript folders (workspace and legacy), or null.
+ * The newest session of `cwd`: in a custom `sessionDir` (only sessions whose header names `cwd`), else in its
+ * workspace transcript folder, or null.
  */
 export function findMostRecentForCwd(cwd: string, sessionDir?: string): string | null {
 	if (sessionDir && normalizePath(sessionDir) !== getDefaultSessionDirPath(cwd))
 		return findMostRecentSession(sessionDir, cwd);
-	let best: { path: string; mtime: number } | undefined;
-	for (const { dir, filterCwd } of defaultSessionDirectories(cwd)) {
-		const path = findMostRecentSession(dir, filterCwd ? cwd : undefined);
-		if (!path) continue;
-		let mtime: number;
-		try {
-			mtime = statSync(path).mtimeMs;
-		} catch {
-			continue;
-		}
-		if (!best || mtime > best.mtime) best = { path, mtime };
-	}
-	return best?.path ?? null;
+	return findMostRecentSession(getDefaultSessionDirPath(cwd));
 }
 
 /**
@@ -236,11 +228,9 @@ export function resolveOpenedSession(
 		}
 	}
 	const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
-	// Without a sessionDir the file's folder is kept, except the legacy per-cwd folder: new sessions go to the workspace.
-	const parent = resolve(resolvedPath, "..");
-	const legacy = parent === legacySessionDirectoryPath(cwd);
-	const dir = sessionDir ? normalizePath(sessionDir) : legacy ? getDefaultSessionDirPath(cwd) : parent;
-	return { cwd, dir, dirFromFile: !sessionDir && !legacy, resolvedPath, preloadedFileEntries };
+	// Without a sessionDir the file's own folder is kept.
+	const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
+	return { cwd, dir, dirFromFile: !sessionDir, resolvedPath, preloadedFileEntries };
 }
 
 interface ForkSource {

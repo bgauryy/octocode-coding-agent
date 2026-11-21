@@ -11,7 +11,7 @@ export const MemorySettingsProperties = {
 				file: Type.Optional(
 					Type.Boolean({
 						description:
-							"Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/octocodecode/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
+							"Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/agent/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
 						default: defaults.file,
 					}),
 				),

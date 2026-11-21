@@ -238,19 +238,9 @@ export const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
 	"gpt-6.1-terra",
 ]);
 // These capabilities share a model cohort, but their transport gates differ:
-// proxies allow transcript updates without tool search; Codex has its own additions subset.
+// proxies allow transcript updates without tool search.
 export const OPENAI_ADDITIONAL_TOOLS_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 export const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
-export const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
-	"gpt-5.6-sol",
-	"gpt-5.6-terra",
-	"gpt-5.6-luna",
-	"gpt-6-astra",
-	"gpt-6-sol",
-	"gpt-6-luna",
-	"gpt-6.1-sol",
-	"gpt-6.1-terra",
-]);
 // OpenAI documents configuration_update for "supported GPT-6 and later models".
 // https://developers.openai.com/api/docs/guides/reasoning
 export const OPENAI_MID_CONVO_EFFORT_MODEL_IDS = new Set([

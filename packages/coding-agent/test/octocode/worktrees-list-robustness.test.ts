@@ -48,9 +48,9 @@ describe("/worktree list with a worktree git cannot read", () => {
 		const text = shown.map((notice) => notice.text).join("\n");
 		expect(shown.map((notice) => notice.level)).toEqual(["info"]);
 		expect(text).toContain("main · branch main · clean · .");
-		expect(text).toContain("good · branch worktree-good · clean · .octocode/worktrees/good");
+		expect(text).toContain("good · branch worktree-good · clean · .octocode/agent/worktrees/good");
 		expect(text).toMatch(
-			/bad · branch worktree-bad · unreadable: [^\n]*index file[^\n]* · \.octocode\/worktrees\/bad/u,
+			/bad · branch worktree-bad · unreadable: [^\n]*index file[^\n]* · \.octocode\/agent\/worktrees\/bad/u,
 		);
 	});
 });

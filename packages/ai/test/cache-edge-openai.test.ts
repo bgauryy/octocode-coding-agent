@@ -29,7 +29,6 @@ const SECTIONS = {
 	project_context: "<project>project text</project>",
 	environment: "<environment>Date: 2026-11-07</environment>",
 };
-const codexToken = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64")}.b`;
 
 function head(): SystemMessage {
 	return { role: "system", content: "", sections: SECTIONS, toolsAdded: TOOLS, timestamp: 0 };
@@ -113,14 +112,6 @@ const azureModel = (): Model<"azure-openai-responses"> => ({
 
 const RESPONSES_FIELDS = ["model", "tools", "tool_choice", "parallel_tool_calls", "text", "prompt_cache_key"];
 const ROWS: Row[] = [
-	{
-		name: "openai-codex-responses",
-		model: () => getBuiltinModel("openai-codex", "gpt-5.5"),
-		apiKey: codexToken,
-		head: (payload) => [payload.tools, payload.instructions],
-		history: (payload) => payload.input,
-		prefixFields: [...RESPONSES_FIELDS, "instructions"],
-	},
 	{
 		name: "azure-openai-responses",
 		model: azureModel,
@@ -737,7 +728,6 @@ describe("every catalog model gets its longest supported cache tier by default",
 
 	/** Routes whose provider manages retention: nothing configurable to send beyond a routing key. */
 	it.each([
-		["openai-codex", () => getBuiltinModel("openai-codex", "gpt-5.5"), codexToken],
 		["xai", () => getBuiltinModel("xai", "grok-4.3"), "xai-test"],
 		["mistral", () => getBuiltinModel("mistral", "codestral-latest"), "test-key"],
 		["deepseek", () => getBuiltinModel("deepseek", "deepseek-v4-pro"), "test-key"],
@@ -779,7 +769,7 @@ describe("payload describer coverage", () => {
 
 	async function defaultPayload(model: Model<any>): Promise<Payload> {
 		const local = model.baseUrl ? model : { ...model, baseUrl: "http://127.0.0.1:9/v1" };
-		const key = model.api === "openai-codex-responses" ? codexToken : "sk-test";
+		const key = "sk-test";
 		return rawPayload(local, key, [{ role: "user", content: "hi", timestamp: 0 }], DEFAULTS);
 	}
 

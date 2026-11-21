@@ -21,7 +21,6 @@ export function resolveToolLoadingMode(api: Api, compat: ToolLoadingCompat | und
 			return compat.supportsMidConvoToolChanges === true ? "changes" : "none";
 		case "openai-responses":
 		case "azure-openai-responses":
-		case "openai-codex-responses":
 			if (compat.supportsAdditionalTools === true) return "changes";
 			return compat.supportsToolSearch === true ? "additions" : "none";
 		case "openai-completions":

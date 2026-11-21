@@ -1,16 +1,16 @@
 /**
  * Writes the exact final prompt of the main agent and each subagent to a temp folder: what each one receives with its
  * first model request, captured from a real session on a scripted model. Every build runs this (`--fail-open`, so a
- * capture problem warns rather than fails the build); `scripts/agent-eval/understand.mjs` reads the result. It also
- * writes the templated, committed copy to `src/octocode/native/prompts/final/` (see `final/README.md`).
+ * capture problem warns rather than fails the build). It also writes the templated, committed copy to `src/octocode/native/prompts/final/` (see `final/README.md`).
  *
  * `--exposure <mcpExposure value>` captures every agent under that setting instead of the default (for example `direct`,
- * every tool declared in full) into `.octocode/tmp/agent-prompts-exposure-<value>/`, and leaves the default capture and the
- * committed copy alone: the way to compare request shapes (`scripts/agent-capture/request-size.mjs`).
+ * every tool declared in full) into `.octocode/agent/tmp/agent-prompts-exposure-<value>/`, and leaves the default capture and the
+ * committed copy alone: the way to compare request shapes.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { AGENT_DIR, AGENT_FOLDERS } from "../src/storage/agent-layout.ts";
 import { captureAll, captureDesktop } from "../test/octocode/agent-context/capture.ts";
 import { finalFiles } from "../test/octocode/agent-context/final-prompt.ts";
 import {
@@ -23,7 +23,7 @@ import {
 
 const REPOSITORY = path.resolve(import.meta.dirname, "..", "..", "..");
 const FINAL = path.join(import.meta.dirname, "..", "src", "octocode", "native", "prompts", "final");
-const OUTPUT = path.join(REPOSITORY, ".octocode", "tmp", "agent-prompts");
+const OUTPUT = path.join(REPOSITORY, AGENT_DIR, AGENT_FOLDERS.tmp, "agent-prompts");
 
 /**
  * A policy template that fails to render (an undeclared name, say) is reported as a handler error and the session

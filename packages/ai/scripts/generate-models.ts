@@ -6,9 +6,9 @@ import {
 	applyStrictToolCompatMetadata,
 	isAnthropicFallbackMetadataModel,
 } from "./generate-models/anthropic.ts";
+import { addAzureModels, addMissingAliasModels } from "./generate-models/aliases-azure-models.ts";
 import { buildProviderCatalogs, sortProviderCatalogs } from "./generate-models/catalog.ts";
 import { loadModelsDevClassifierModels } from "./generate-models/classifiers.ts";
-import { addAzureModels, addCodexModels, addMissingAliasModels } from "./generate-models/codex-azure-models.ts";
 import { XAI_BUILTIN_EXCLUDED_MODEL_IDS } from "./generate-models/constants.ts";
 import { fetchAiGatewayModels, fetchOpenRouterModels } from "./generate-models/fetchers.ts";
 import { addDeepSeekAndAntLingModels, addMissingOpenAiModels } from "./generate-models/manual-models.ts";
@@ -47,7 +47,6 @@ async function generateModels() {
 	applyUpstreamCorrections(allModels);
 	addMissingOpenAiModels(allModels);
 	addDeepSeekAndAntLingModels(allModels);
-	addCodexModels(allModels);
 	addMissingAliasModels(allModels);
 	addAzureModels(allModels);
 

@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { bindingKey } from "../binding.ts";
 
 /**
  * The transcript mirror's `session_transcripts` and `session_entries` (`schema-mirror.ts`). Every function takes the
@@ -14,12 +13,11 @@ interface TranscriptStamp {
 	file_binding: string;
 }
 
-/** The saved stamp of a transcript; `file_binding` is `ino:birth` whatever format the row stores (see `binding.ts`). */
+/** The saved stamp of a transcript; `file_binding` is `ino:birth`. */
 export function stamp(db: DatabaseSync, sessionId: string): TranscriptStamp | undefined {
-	const row = db
+	return db
 		.prepare("SELECT file,byte_size,mtime,file_binding FROM session_transcripts WHERE session_id=?")
 		.get(sessionId) as TranscriptStamp | undefined;
-	return row && { ...row, file_binding: bindingKey(row.file_binding) };
 }
 
 /** The session whose transcript is this exact path, including transcripts stored outside its checkout. */

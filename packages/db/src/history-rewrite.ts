@@ -8,12 +8,10 @@ import {
 	decodedLines,
 	encodeMember,
 	inflate,
-	LEGACY_MONTH_MAX_BYTES,
 	MEMBER_CHARS,
 	MEMBER_MAX_BYTES,
 	MEMBER_ROWS,
 	memberHeads,
-	readHead,
 	readMemberBytes,
 } from "./history-member.ts";
 
@@ -78,8 +76,8 @@ class Members {
  * The month is walked member by member (see `history-member.ts`): a member no change can touch is copied as raw bytes
  * and the rest are inflated one at a time, so memory is one member however large the month and nothing already
  * compressed is compressed again. New records go into new members after the existing ones; a small last member is
- * folded in so members stay near `MEMBER_ROWS` rows. A legacy month is inflated whole (refused above
- * `LEGACY_MONTH_MAX_BYTES`) and written back as members.
+ * folded in so members stay near `MEMBER_ROWS` rows. A month without member headers is
+ * refused as damaged and left as it was.
  */
 export function rewriteMonth(
 	file: string,
@@ -161,13 +159,7 @@ export function rewriteMonth(
 
 			const replace = (write: (chunk: Uint8Array) => void): boolean => {
 				const members = new Members(write);
-				const first = fd === undefined ? undefined : readHead(fd, 0, size);
-				if (fd !== undefined && !first) {
-					// Legacy: one member without a header field, inflated whole.
-					const decoded = inflate(fs.readFileSync(fd), file, LEGACY_MONTH_MAX_BYTES);
-					const count = survivors(decodedLines(decoded), (text, at) => members.add(text, at));
-					if (count === 0) changed = true;
-				} else if (fd !== undefined) {
+				if (fd !== undefined) {
 					for (const head of memberHeads(fd, size, file)) {
 						assertActive();
 						if (head.maxAt < floor) {

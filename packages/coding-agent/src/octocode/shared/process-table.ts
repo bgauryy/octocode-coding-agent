@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstartFields, PS_UTC_ENV, utcSeconds } from "@octocodeai/octocode-common/process-start";
+import { PS_UTC_ENV, utcSeconds } from "@octocodeai/octocode-common/process-start";
 
 export { PS_UTC_ENV, utcSeconds };
 
@@ -27,14 +27,9 @@ export interface ProcessTable {
 /** `ps` bound: a hung `ps` must not leave a sweep waiting forever. */
 export const PS_TIMEOUT_MS = 2000;
 
-/**
- * A recorded start time as seconds since the epoch: the decimal form `processStartTime` writes, or an older record's
- * `lstart` text printed in this machine's zone (before start times were zone free). Undefined when neither.
- */
+/** A recorded start time as seconds since the epoch: the decimal form `processStartTime` writes; undefined otherwise. */
 export function startSeconds(started: string): number | undefined {
-	if (/^\d+$/.test(started)) return Number(started);
-	const fields = lstartFields(started);
-	return fields ? new Date(...fields).getTime() / 1000 : undefined;
+	return /^\d+$/.test(started) ? Number(started) : undefined;
 }
 
 /** Runs `ps` without blocking; undefined when it fails (no `ps`, a timeout, Windows). */

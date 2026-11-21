@@ -3,18 +3,21 @@ import { createFileOps } from "../../core/compaction/utils.ts";
 import type { SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
-import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
+import { AGENT_DIR, AGENT_FOLDERS, OCTOCODE_DIR } from "../../storage/agent-layout.ts";
+import { resolveToolPath } from "../shared/home.ts";
 import { addLedgerEdits } from "./edit-ledger.ts";
 import { addFileToolOps } from "./file-tool-ops.ts";
 import { previousFileLists } from "./previous-file-lists.ts";
 import { recentFiles, type RestoreCandidate } from "./restore.ts";
+
+const AGENT_FOLDER = AGENT_DIR.split(path.sep)[1];
 
 type Preparation = Pick<SessionBeforeCompactEvent["preparation"], "messagesToSummarize" | "turnPrefixMessages">;
 
 /**
  * Whether `file` lies under a `.octocode/` folder (`OCTOCODE_DIR`): scratch, spilled output, saved results, reports and
  * notes Octocode or an agent wrote, never the work itself, so it is not read back after a compaction. A worktree under
- * `.octocode/worktrees/<name>/` is a checkout: its own files are work, and only its own `.octocode/` folder is not. The
+ * `.octocode/agent/worktrees/<name>/` is a checkout: its own files are work, and only its own `.octocode/` folder is not. The
  * path is judged from the working directory when it lies inside it, so a session working inside such a folder still
  * gets its files back.
  */
@@ -26,8 +29,8 @@ function octocodeFile(file: string, cwd: string): boolean {
 	const segments = (inside ? relative : resolved).split(path.sep);
 	for (let at = 0; at < segments.length - 1; at++) {
 		if (segments[at] !== OCTOCODE_DIR) continue;
-		if (segments[at + 1] === "worktrees" && at + 3 < segments.length) {
-			at += 2;
+		if (segments[at + 1] === AGENT_FOLDER && segments[at + 2] === AGENT_FOLDERS.worktrees && at + 4 < segments.length) {
+			at += 3;
 			continue;
 		}
 		return true;

@@ -28,7 +28,7 @@ const discover = () =>
 describe("a foreign MCP server that launches what another loaded server launches", () => {
 	const octocodeFile = () =>
 		write(
-			join(sandbox.agentDir, "mcp.json"),
+			join(sandbox.home, ".octocode", "mcp.json"),
 			JSON.stringify({ mcpServers: { octocode: { command: "npx", args: ["octocode-x", "--stdio"] } } }),
 		);
 	const codexFile = () =>

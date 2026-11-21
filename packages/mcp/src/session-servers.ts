@@ -6,11 +6,12 @@
  * selection names the server explicitly (`mcp__<server>__*` in `tools`; the server's default-active flag does not
  * count), because a profile that asks for a server's tools has chosen it over the parent's session state.
  *
- * A task can also name the servers the child gets (`only`, file version 3; `planTaskMcpServers`): a configured server
- * outside that list is left out of the child whatever its tool selection says, and the parent's added servers are
- * narrowed the same way before they are written. `only` also holds the servers the child's own tools name; `named` holds
- * just the ones the task's `mcp` list named, and only those get all their tools active (a profile's exact
- * `+mcp__x__tool` entry keeps that one tool).
+ * Every child gets a server list (`only`; `planTaskMcpServers`): the servers its own tools name (the
+ * research floor names Octocode's; a profile names others, such as `browser`) plus those its task's `mcp` list names.
+ * A configured or registered server outside that list is left out of the child whatever its tool selection says, and
+ * the parent's added servers are narrowed the same way before they are written, so the user's servers stay with the
+ * main session unless a profile or task names them. `named` holds just the ones the task's `mcp` list named, and only
+ * those get all their tools active (a profile's exact `+mcp__x__tool` entry keeps that one tool).
  */
 
 import fs from "node:fs";
@@ -23,10 +24,7 @@ import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 const REQUEST_ADDED_SERVERS = "mcp:added-servers:request";
-/** Version 1 lists servers only; version 2 adds `stopped`. A file without stopped servers stays version 1. */
 const FILE_VERSION = 1;
-const FILE_VERSION_STOPPED = 2;
-const FILE_VERSION_ONLY = 3;
 /** A handoff file larger than this is not a server list. */
 const MAX_FILE_BYTES = 256 * 1024;
 
@@ -67,9 +65,9 @@ export interface TaskMcpServers {
 }
 
 /**
- * The servers a child runs when its task names `named`: those, plus every server the child's tools name explicitly
- * (`childTools`: the profile's selection and the research floor; a wildcard such as `mcp__*` names none). A name that is
- * not an enabled server of the session is refused with a message naming them.
+ * The servers a child runs: those its task names (`named`, often none), plus every server the child's tools name
+ * explicitly (`childTools`: the profile's selection and the research floor; a wildcard such as `mcp__*` names none).
+ * A name that is not an enabled server of the session is refused with a message naming them.
  */
 export function planTaskMcpServers(
 	handoff: McpSessionHandoff,
@@ -87,8 +85,8 @@ export function planTaskMcpServers(
 }
 
 /**
- * The text of a handoff file, or undefined when there is nothing to hand over. `only` (even empty) is written as
- * version 3: the child runs just those configured servers.
+ * The text of a handoff file, or undefined when there is nothing to hand over. `only` (even empty) makes the child
+ * run just those configured servers.
  */
 export function serializeMcpSessionServers(
 	servers: AddedServers,
@@ -96,11 +94,8 @@ export function serializeMcpSessionServers(
 	only?: readonly string[],
 	named: readonly string[] = [],
 ): string | undefined {
-	if (only !== undefined) return JSON.stringify({ version: FILE_VERSION_ONLY, servers, stopped, only, named });
-	if (Object.keys(servers).length === 0 && stopped.length === 0) return undefined;
-	return stopped.length === 0
-		? JSON.stringify({ version: FILE_VERSION, servers })
-		: JSON.stringify({ version: FILE_VERSION_STOPPED, servers, stopped });
+	if (only === undefined && Object.keys(servers).length === 0 && stopped.length === 0) return undefined;
+	return JSON.stringify({ version: FILE_VERSION, servers, stopped, only, named });
 }
 
 /** Servers and stopped names in a handoff file; entries that fail validation are left out and named in `errors`. */
@@ -114,16 +109,12 @@ export function parseMcpSessionServers(text: string): {
 	const servers: Record<string, McpServerConfig> = {};
 	const errors: string[] = [];
 	const value: unknown = JSON.parse(text);
-	if (
-		!isRecord(value) ||
-		(value.version !== FILE_VERSION && value.version !== FILE_VERSION_STOPPED && value.version !== FILE_VERSION_ONLY) ||
-		!isRecord(value.servers)
-	)
+	if (!isRecord(value) || value.version !== FILE_VERSION || !isRecord(value.servers))
 		throw new Error("not a session server list");
 	const names = (list: unknown): string[] =>
 		Array.isArray(list) ? list.filter((name): name is string => typeof name === "string") : [];
-	const stopped = value.version === FILE_VERSION ? [] : names(value.stopped);
-	const only = value.version === FILE_VERSION_ONLY && Array.isArray(value.only) ? names(value.only) : undefined;
+	const stopped = names(value.stopped);
+	const only = Array.isArray(value.only) ? names(value.only) : undefined;
 	const named = only ? names(value.named) : undefined;
 	for (const [name, config] of Object.entries(value.servers)) {
 		const validated = validateMcpServerConfig(name, config);

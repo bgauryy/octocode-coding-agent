@@ -6,7 +6,7 @@ import { canonical, locateRepo, worktreesFolder, type WorktreeEntry } from "./re
 
 export interface WorktreeStatus {
 	entry: WorktreeEntry;
-	/** Name under `.octocode/worktrees`; undefined for the main worktree and for worktrees made elsewhere. */
+	/** Name under `.octocode/agent/worktrees`; undefined for the main worktree and for worktrees made elsewhere. */
 	name?: string;
 	main: boolean;
 	/** Tracked files changed or staged. */
@@ -22,7 +22,7 @@ export interface WorktreeStatus {
 export async function dirtyCounts(dir: string): Promise<{ dirty: number; untracked: number }> {
 	const out = await git(
 		dir,
-		["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", EXCLUDE_WORKSPACE_STATE],
+		["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...EXCLUDE_WORKSPACE_STATE],
 		{ raw: true },
 	);
 	let dirty = 0;
@@ -45,7 +45,7 @@ export async function unmergedCount(entry: WorktreeEntry): Promise<number> {
 	return Number(out) || 0;
 }
 
-/** The repository's worktrees with their state: the main one first, then those under `.octocode/worktrees`, then others. */
+/** The repository's worktrees with their state: the main one first, then those under `.octocode/agent/worktrees`, then others. */
 export async function worktreeStatuses(cwd: string): Promise<{ main: string; statuses: WorktreeStatus[] }> {
 	const repo = await locateRepo(cwd);
 	const folder = canonical(worktreesFolder(repo.main));

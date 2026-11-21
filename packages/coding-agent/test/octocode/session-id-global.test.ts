@@ -59,7 +59,7 @@ beforeEach(() => {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "octocode-session-id-")));
 	tempDirs.push(root);
 	mainDir = join(root, "repo");
-	worktreeDir = join(root, "repo", ".octocode", "worktrees", "x");
+	worktreeDir = join(root, "repo", ".octocode", "agent", "worktrees", "x");
 	sessionDir = join(root, "sessions");
 	mkdirSync(worktreeDir, { recursive: true });
 	vi.stubEnv("OCTOCODE_AGENT_DB", join(root, "agent.db"));

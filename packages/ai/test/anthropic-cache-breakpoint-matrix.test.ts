@@ -155,7 +155,7 @@ describe("Anthropic cache breakpoint matrix", () => {
 			// prefix, its last tool takes the slot of the first marker after it (the last tool's, or the base block's).
 			expect(instructions).toHaveLength(2);
 			const toolMarkers = found.filter(({ section }) => section === "tools").map(({ block }) => block.name);
-			const lastTool = payload.tools?.filter((tool) => tool.name !== "__pi_deferred_placeholder__").at(-1)?.name;
+			const lastTool = payload.tools?.filter((tool) => tool.name !== "__octocode_deferred_placeholder__").at(-1)?.name;
 			expect(toolMarkers).toEqual(toolBoundary ? ["read"] : boundary ? [] : [lastTool]);
 			expect(historyMarkers).toHaveLength(history.history);
 			for (const { block } of instructions) expect(block.cache_control?.ttl).toBe(retention.instructionTtl);
@@ -204,7 +204,7 @@ describe("Anthropic cache breakpoint matrix", () => {
 	it("keeps native tool changes off the top-level tool list", async () => {
 		const history = histories[2];
 		const payload = await capture(native, transcript(history.messages(native)));
-		expect(payload.tools?.map((tool) => tool.name)).toEqual(["read", "__pi_deferred_placeholder__"]);
+		expect(payload.tools?.map((tool) => tool.name)).toEqual(["read", "__octocode_deferred_placeholder__"]);
 		expect(payload.tools?.[0].cache_control).toBeDefined();
 		expect(payload.tools?.[1].cache_control).toBeUndefined();
 		const updates = payload.messages.filter((message) => message.role === "system" && message.content.length > 0);

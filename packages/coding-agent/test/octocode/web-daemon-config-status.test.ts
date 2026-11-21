@@ -64,7 +64,7 @@ describe("credential sources", () => {
 			openai: { type: "api_key", key: SECRET },
 			anthropic: { type: "api_key", key: fakeKeychain().referenceFor("anthropic") },
 			groq: { type: "api_key", key: `!touch ${marker} && echo ${SECRET}` },
-			"openai-codex": { type: "oauth", access: SECRET, refresh: SECRET, expires },
+			deepseek: { type: "oauth", access: SECRET, refresh: SECRET, expires },
 			mistral: { type: "api_key", key: "$CONFIG_STATUS_TEST_VAR" },
 		});
 		vi.stubEnv("CONFIG_STATUS_TEST_VAR", SECRET);
@@ -78,7 +78,7 @@ describe("credential sources", () => {
 		expect(provider(snapshot, "openai").sources).toEqual([{ kind: "auth-json" }]);
 		expect(provider(snapshot, "anthropic")).toMatchObject({ configured: true, sources: [{ kind: "keychain" }] });
 		expect(provider(snapshot, "groq").sources).toEqual([{ kind: "custom-command" }]);
-		expect(provider(snapshot, "openai-codex").sources).toEqual([{ kind: "oauth", expiresAt: expires }]);
+		expect(provider(snapshot, "deepseek").sources).toEqual([{ kind: "oauth", expiresAt: expires }]);
 		expect(provider(snapshot, "mistral").sources).toEqual([{ kind: "env", envVar: "CONFIG_STATUS_TEST_VAR" }]);
 		expect(provider(snapshot, "xai").sources).toEqual([{ kind: "env", envVar: "XAI_API_KEY" }]);
 		expect(snapshot.keychainAvailable).toBe(true);
@@ -141,20 +141,20 @@ describe("credential sources", () => {
 
 	it("skips signed-out OAuth, keyless entries and unset variable references", async () => {
 		writeAuth({
-			"openai-codex": { type: "oauth", access: "", refresh: "", expires: 0, signedOut: true },
+			deepseek: { type: "oauth", access: "", refresh: "", expires: 0, signedOut: true },
 			openai: { type: "api_key" },
 			mistral: { type: "api_key", key: "${CONFIG_STATUS_UNSET_VAR}" },
 		});
 		const snapshot = await buildConfigSnapshot({ agentDir, keychain: null });
-		for (const id of ["openai-codex", "openai", "mistral"]) {
+		for (const id of ["deepseek", "openai", "mistral"]) {
 			expect(provider(snapshot, id)).toMatchObject({ configured: false, sources: [] });
 		}
 	});
 
 	it("reports an OAuth credential without an expiry as signed in", async () => {
-		writeAuth({ "openai-codex": { type: "oauth", access: SECRET, refresh: SECRET, expires: 0 } });
+		writeAuth({ deepseek: { type: "oauth", access: SECRET, refresh: SECRET, expires: 0 } });
 		const snapshot = await buildConfigSnapshot({ agentDir, keychain: null });
-		expect(provider(snapshot, "openai-codex").sources).toEqual([{ kind: "oauth" }]);
+		expect(provider(snapshot, "deepseek").sources).toEqual([{ kind: "oauth" }]);
 	});
 
 	it("names providers by their display name and lists an unknown provider from auth.json last", async () => {

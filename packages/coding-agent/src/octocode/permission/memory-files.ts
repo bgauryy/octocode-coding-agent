@@ -7,7 +7,8 @@ import { CONFIG_DIR_NAME, getOctocodeHome } from "../../config.ts";
 import { TEST_GUARD_FILE_ENV, TEST_PROTECTED_HOMES_ENV } from "../../storage/state-paths.ts";
 import { workspaceDataRoot } from "../../storage/workspace.ts";
 import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
-import { workspaceOctocodeDir } from "../shared/home.ts";
+import { MEMORY_FILE } from "../../storage/agent-layout.ts";
+import { workspaceAgentDir } from "../shared/home.ts";
 
 /**
  * Where each curated memory file lives: one global file, and one per repository shared by its worktrees. It sits in the
@@ -25,14 +26,10 @@ export interface MemoryFileRef {
 	root: string;
 }
 
-const MEMORY_FILE_NAME = "MEMORY.md";
-/** `<root>/.octocode/octocodecode`: the workspace file's folder, which ignores itself in git. */
-const workspaceMemoryDir = (root: string): string => path.join(workspaceOctocodeDir(root), "octocodecode");
-
 /** `getOctocodeHome()/MEMORY.md` (`OCTOCODE_HOME` moves it). Under a test run the real home's file throws. */
 export function globalMemoryFile(env: NodeJS.ProcessEnv = process.env): MemoryFileRef {
 	const root = getOctocodeHome(env);
-	const file = path.join(root, MEMORY_FILE_NAME);
+	const file = path.join(root, MEMORY_FILE);
 	if (underTest(env) && protectedHomes(env).some((home) => isWithin(file, path.join(home, CONFIG_DIR_NAME))))
 		throw new Error(`A test resolved the real global memory file (${file}); isolate HOME and OCTOCODE_HOME.`);
 	return { scope: "global", path: file, root };
@@ -49,10 +46,10 @@ export function memoryWorkspaceRoot(cwd: string): string {
 	return path.basename(git.commonDir) === ".git" ? path.dirname(git.commonDir) : repoKey(cwd).root;
 }
 
-/** `<main checkout>/.octocode/octocodecode/MEMORY.md` of `cwd`'s repository. */
+/** `<main checkout>/.octocode/agent/MEMORY.md` of `cwd`'s repository. */
 export function workspaceMemoryFile(cwd: string): MemoryFileRef {
 	const root = memoryWorkspaceRoot(cwd);
-	return { scope: "workspace", path: path.join(workspaceMemoryDir(root), MEMORY_FILE_NAME), root };
+	return { scope: "workspace", path: path.join(workspaceAgentDir(root), MEMORY_FILE), root };
 }
 
 /**
@@ -81,7 +78,7 @@ export function memoryFileRefusal(
 	if (path.basename(file).toLowerCase() !== "memory.md") return undefined;
 	const real = canonicalPath(file).toLowerCase();
 	const workspace = workspaceMemoryFile(cwd);
-	// `.octocode/octocodecode/memory.md`: where every repository keeps its file.
+	// `.octocode/memory.md`: where every repository keeps its file.
 	const place = path.relative(workspace.root, workspace.path).toLowerCase();
 	const known = [globalMemoryFile(env).path, workspace.path].map((each) => canonicalPath(each).toLowerCase());
 	if (!known.includes(real) && !real.endsWith(`${path.sep}${place}`)) return undefined;

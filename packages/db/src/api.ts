@@ -111,6 +111,5 @@ export { archivedAudits } from "./history-archive.ts";
 export { archiveHistory } from "./retention.ts";
 export { historyArchivesSettled, scheduleHistoryArchive } from "./history-scheduler.ts";
 export { DEFAULT_HISTORY_WINDOWS, type HistoryWindows } from "./history-archive.ts";
-export { bindingKey, sameBinding } from "./binding.ts";
 
 export type { WorkspaceGit, WorkspaceIdentity } from "./queries/workspaces.ts";

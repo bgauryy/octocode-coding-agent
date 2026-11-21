@@ -138,7 +138,7 @@ Amazon Bedrock resolves ambient AWS credentials (`AWS_PROFILE`, access key pairs
 
 ## OAuth
 
-Providers with OAuth: OpenAI (Sign in with ChatGPT), OpenAI Codex (legacy, ChatGPT Plus/Pro), GitHub Copilot, OpenRouter (PKCE; mints a permanent API key, so refresh is a no-op). Anthropic subscription OAuth is not offered.
+Providers with OAuth: OpenAI (Sign in with ChatGPT), GitHub Copilot, OpenRouter (PKCE; mints a permanent API key, so refresh is a no-op). Anthropic subscription OAuth is not offered.
 
 Each carries `provider.auth.oauth` with `login(interaction)` (provider-neutral `prompt()`/`notify()` protocol, returns a credential), `refresh(credential, signal)` and `toAuth(credential)` (derives request auth; Copilot's per-account base URL comes from here). Both calls always receive a concrete abort signal. `models.getAuth()` and request paths refresh expired tokens under a credential-store lock, so concurrent requests and processes never double-refresh.
 
@@ -176,6 +176,5 @@ ADC also needs `GOOGLE_CLOUD_PROJECT` (or `GCLOUD_PROJECT`) and `GOOGLE_CLOUD_LO
 
 ### Provider notes
 
-- **OpenAI Codex (legacy):** superseded by Sign in with ChatGPT. With `sessionId` it caches prompts unless `cacheRetention` is `"none"`. Requests stream over HTTP (SSE).
 - **Azure OpenAI:** `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_AD_TOKEN` (externally renewed Entra token); the Responses adapter also takes `azureADTokenProvider`. Set `AZURE_OPENAI_BASE_URL` (`*.openai.azure.com`, `*.cognitiveservices.azure.com`, `*.ai.azure.com`; roots normalize to `/openai/v1`) or `AZURE_OPENAI_RESOURCE_NAME`. `AZURE_OPENAI_API_VERSION` defaults to `v1`. Deployment names equal model ids unless `azureDeploymentName` or `AZURE_OPENAI_DEPLOYMENT_NAME_MAP` (`model-id=deployment,...`) overrides; legacy deployment URLs are unsupported.
 - **GitHub Copilot:** on "The requested model is not supported", enable the model in VS Code (Copilot Chat, model selector, Enable).

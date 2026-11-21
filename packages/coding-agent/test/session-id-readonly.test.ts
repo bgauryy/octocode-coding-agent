@@ -91,7 +91,7 @@ describe("--session-id", () => {
 		const result = await runCli(["--session-id", "read-only-help", "--help"]);
 
 		expect(result.code).toBe(0);
-		expect(existsSync(join(result.projectDir, ".octocode", "code", "sessions"))).toBe(false);
+		expect(existsSync(join(result.projectDir, ".octocode", "agent", "sessions"))).toBe(false);
 	});
 
 	it("creates missing IDs and reopens existing IDs in process", async () => {

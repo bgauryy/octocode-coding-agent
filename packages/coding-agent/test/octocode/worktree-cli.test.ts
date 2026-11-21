@@ -51,16 +51,16 @@ describe("entering a worktree", () => {
 		process.chdir(repo.root);
 		const info = await enterWorktree("auth");
 		expect(realpathSync(process.cwd())).toBe(info.path);
-		expect(info.path).toBe(path.join(repo.root, ".octocode", "worktrees", "auth"));
+		expect(info.path).toBe(path.join(repo.root, ".octocode", "agent", "worktrees", "auth"));
 	});
 
 	it("startupCwd enters the worktree named by the arguments, reusing it on the next start", async () => {
 		process.chdir(repo.root);
 		const write = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		const cwd = await startupCwd(["--model", "x", "--worktree", "auth"]);
-		expect(realpathSync(cwd)).toBe(path.join(repo.root, ".octocode", "worktrees", "auth"));
+		expect(realpathSync(cwd)).toBe(path.join(repo.root, ".octocode", "agent", "worktrees", "auth"));
 		expect(String(write.mock.calls[0]?.[0])).toContain(
-			"Created worktree auth (branch worktree-auth) at .octocode/worktrees/auth",
+			"Created worktree auth (branch worktree-auth) at .octocode/agent/worktrees/auth",
 		);
 
 		// From inside the worktree, the same name resolves to the same folder under the main root.

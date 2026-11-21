@@ -32,7 +32,7 @@ afterEach(() => {
 function fixture(id: string, pid: number | null = null) {
 	const root = fs.realpathSync(tmp("octocode-rm-"));
 	const workspace = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(workspace.root, ".octocode", "code");
+	const state = path.join(workspace.root, ".octocode", "agent");
 	const file = path.join(state, "sessions", `${id}.jsonl`);
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	fs.writeFileSync(file, `${JSON.stringify({ type: "session", id, cwd: root })}\n`);

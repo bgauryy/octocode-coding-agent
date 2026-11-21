@@ -649,7 +649,7 @@ describe("AgentSessionRuntime characterization", () => {
 	it("starts a new session in a separately declared workspace and keeps the old one saved", async () => {
 		const { runtime, tempDir } = await createRuntimeForTest(() => {});
 		const otherDir = join(tempDir, "worktree");
-		mkdirSync(join(otherDir, ".octocode", "code", "workspace"), { recursive: true });
+		mkdirSync(join(otherDir, ".octocode", "agent", "workspace"), { recursive: true });
 		await runtime.session.prompt("before");
 		const oldFile = runtime.session.sessionFile!;
 

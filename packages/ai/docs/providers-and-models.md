@@ -8,7 +8,7 @@ A **provider** is the runtime unit: it owns its model catalog, its auth (API key
 
 Providers internally share **API implementations** (the wire protocols): Anthropic models use `anthropic-messages`, OpenAI and xAI use `openai-responses`, while Groq, Cerebras, OpenRouter, and most others share `openai-completions`. Mixed-API providers (GitHub Copilot, OpenCode Zen) dispatch per model.
 
-HTTP and error handling for Chat Completions, Responses, Mistral and classifiers comes from `@ai-sdk/provider-utils`, with shared SSE framing for those streams plus Anthropic and Codex; adapters keep grammar tools, reasoning replay, cache boundaries and usage accounting. Official Anthropic, Google, AWS and Azure SDKs remain where they own the vendor protocol. See [library boundaries](../../../docs/FEATURES.md#library-boundaries).
+HTTP and error handling for Chat Completions, Responses, Mistral and classifiers comes from `@ai-sdk/provider-utils`, with shared SSE framing for those streams plus Anthropic; adapters keep grammar tools, reasoning replay, cache boundaries and usage accounting. Official Anthropic, Google, AWS and Azure SDKs remain where they own the vendor protocol. See [library boundaries](../../../docs/FEATURES.md#library-boundaries).
 
 ### Provider Factories
 
@@ -136,30 +136,13 @@ const fresh = models.getModel("llamacpp", "qwen3-30b");
 
 Static built-in providers are no-ops for `refresh()`. See [createProvider()](custom-providers.md#createprovider) for building a dynamic provider.
 
-## Migrating from the Old Global API
+## Compat Entrypoint
 
-Older versions exposed a global API: `stream()`/`complete()` dispatching on `model.api` via a global registry, sync `getModel()`/`getModels()`/`getProviders()` catalog reads, `registerApiProvider()`, `getEnvApiKey()`, and per-API stream functions such as `streamAnthropic()`. The dispatch, registry and env-key surface lives on the **compat entrypoint**; the catalog reads moved to `getBuiltinModel()`/`getBuiltinModels()`/`getBuiltinProviders()` in `providers/all`, and the per-API stream functions to `stream`/`streamSimple` in `api/<api>`:
+`@octocodeai/octocode-ai/compat` exposes the global dispatch surface: `stream()`/`complete()` dispatching on `model.api` through a registry, `registerApiProvider()`, `getEnvApiKey()` and the global image `generateImages()`. It is a strict superset of the root entrypoint, and the coding agent dispatches through its registry.
 
 ```typescript
-// Before
-import { getModel, complete } from "@octocodeai/octocode-ai";
-
-// After
 import { complete } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 ```
 
-Compat is a strict superset of the root entrypoint, so a file can switch its import path wholesale. It is supported API: the coding agent dispatches through its registry. Code that wants no global state uses `createModels()` and the provider factories instead:
-
-| Old                                                                          | New                                                                                           |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `getModel('openai', 'gpt-4o-mini')`                                          | `models.getModel('openai', 'gpt-4o-mini')` or `getBuiltinModel()` from `providers/all`        |
-| `getModels('anthropic')` / `getProviders()`                                  | `models.getModels('anthropic')` / `models.getProviders()` or `getBuiltin*`                    |
-| `stream(model, ctx, opts)` (env-key injection)                               | `models.stream(model, ctx, opts)` (provider auth resolution)                                  |
-| `registerApiProvider({ api, stream, streamSimple })`                         | `createProvider({ id, auth, models, api })` + `models.setProvider()`                          |
-| `getEnvApiKey('openai')`                                                     | `await models.getAuth(model.provider)`                                                        |
-| `streamAnthropic(model, ctx, opts)`                                          | `stream` from `@octocodeai/octocode-ai/api/anthropic-messages`, or a provider in a collection |
-| `registerFauxProvider()`                                                     | `fauxProvider()` + `models.setProvider()`                                                     |
-| `getImageModel('openrouter', id)` / `generateImages(model, ctx, { apiKey })` | `models.getModelOfType('image', 'openrouter', id)` / `models.generateImages(model, ctx)`      |
-
-The separate `ImagesModels`/`ImagesProvider` collection that existed briefly (`createImagesModels()`, `createImagesProvider()`, `openrouterImagesProvider()`, `builtinImagesModels()`) is gone: image models now live on the regular provider. Replace `builtinImagesModels()` with `builtinModels()`, `imagesModels.getModel()` with `models.getModelOfType('image', ...)`, and `createImagesProvider({ models, api })` with `createProvider({ models, images })`. The old plural image type names are removed; use `ImageModel` and `ImageApi`, and add `type: "image"` to image model literals.
+Catalog reads are `getBuiltinModel()`/`getBuiltinModels()`/`getBuiltinProviders()` in `providers/all`, and per-API stream functions are `stream`/`streamSimple` in `api/<api>`. Code that wants no global state uses `createModels()` and the provider factories (`models.getModel()`, `models.stream()`, `createProvider({ id, auth, models, api })` with `models.setProvider()`, `models.getAuth()`, `fauxProvider()`, `models.getModelOfType('image', ...)`, `models.generateImages()`).

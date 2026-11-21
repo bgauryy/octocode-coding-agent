@@ -155,11 +155,9 @@ export interface PackageManagerHost {
 	): Promise<void>;
 	installParsedSource(parsed: ParsedSource, scope: SourceScope): Promise<void>;
 	refreshTemporaryGitSource(source: GitSource, sourceStr: string): Promise<void>;
-	getGlobalNpmRoot(): string;
 	updateGit(source: GitSource, scope: SourceScope): Promise<void>;
 	gitHasAvailableUpdate(installedPath: string): Promise<boolean>;
 	getLocalGitUpdateTarget(installedPath: string): Promise<GitUpdateTargetRef>;
 	runCommand(command: string, args: string[], options?: { cwd?: string }): Promise<void>;
 	runCommandCapture(command: string, args: string[], options?: CommandCaptureOptions): Promise<string>;
-	runCommandSync(command: string, args: string[]): string;
 }

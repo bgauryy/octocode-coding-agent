@@ -67,12 +67,16 @@ describe("the slash command menu", () => {
 		const search = await t!.submit("/help sess");
 		const picker = search.dialogs.join("\n");
 		expect(picker).toMatch(/\/rename\s+\S/);
-		// The picker's name column fits its labels too, instead of a fixed 36 columns.
-		expect(
-			picker
-				.split("\n")
-				.find((row) => row.includes("/tree"))!
-				.indexOf("Browse"),
-		).toBeLessThan(20);
+		// The picker's name column fits its widest visible label, instead of a fixed 36 columns.
+		const labelEnds = picker
+			.split("\n")
+			.map((row) => /^[›\s] (\/\S+)/.exec(row))
+			.filter((match) => match !== null)
+			.map((match) => match.index + match[0].length);
+		const column = picker
+			.split("\n")
+			.find((row) => row.includes("/tree"))!
+			.indexOf("Browse");
+		expect(column, picker).toBeLessThanOrEqual(Math.max(...labelEnds) + 2);
 	});
 });

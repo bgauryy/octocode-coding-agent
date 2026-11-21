@@ -29,11 +29,7 @@ function supportsDirectReasoningEffort(model: Model<Api>): boolean {
 	if (model.api === "anthropic-messages") {
 		return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true;
 	}
-	if (
-		model.api === "openai-responses" ||
-		model.api === "azure-openai-responses" ||
-		model.api === "openai-codex-responses"
-	) {
+	if (model.api === "openai-responses" || model.api === "azure-openai-responses") {
 		return true;
 	}
 	if (model.api !== "openai-completions") return false;
@@ -61,9 +57,7 @@ export function applyThinkingLevelMetadata(model: Model<any>): void {
 			model.id === "gpt-6-sol" ||
 			model.id === "gpt-6-luna" ||
 			model.id === "gpt-6.1-sol") &&
-		(model.api === "openai-responses" ||
-			model.api === "azure-openai-responses" ||
-			model.api === "openai-codex-responses")
+		(model.api === "openai-responses" || model.api === "azure-openai-responses")
 	) {
 		mergeThinkingLevelMap(model, {
 			// GPT-6 Astra and GPT-6.1 Sol reject reasoning.effort "none".
@@ -152,9 +146,6 @@ export function applyThinkingLevelMetadata(model: Model<any>): void {
 	}
 	if (model.provider === "groq" && model.id === "qwen/qwen3.6-27b") {
 		mergeThinkingLevelMap(model, { minimal: null, low: null, medium: null, high: "default" });
-	}
-	if (model.provider === "openai-codex" && supportsOpenAiXhigh(model.id)) {
-		mergeThinkingLevelMap(model, { minimal: "low" });
 	}
 	if (
 		(model.provider === "moonshotai" || model.provider === "moonshotai-cn") &&

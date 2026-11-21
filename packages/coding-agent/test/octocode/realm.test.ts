@@ -75,7 +75,7 @@ function contextAt(cwd: string, options: ContextOptions = {}) {
 	return { ctx, newSession, switchSession, select, confirm };
 }
 
-const worktreeFolder = (name: string) => path.join(repo.root, ".octocode", "worktrees", name);
+const worktreeFolder = (name: string) => path.join(repo.root, ".octocode", "agent", "worktrees", name);
 const addWorktree = (name: string) =>
 	sh(repo.root, "worktree", "add", "-q", "-b", `worktree-${name}`, worktreeFolder(name));
 
@@ -195,18 +195,18 @@ describe("member placement", () => {
 	const main = folder("", { path: "/repo", kind: "checkout" });
 
 	it("puts an agent where its folder is, the innermost worktree first, and an isolated child in its private one", () => {
-		const nested = folder(".octocode/worktrees/a");
+		const nested = folder(".octocode/agent/worktrees/a");
 		const isolated = folder("agent-x", { path: "/home/octocode/worktrees/k/agent-x", kind: "isolated" });
 		const view = buildRealms({
 			main: "/repo",
 			folders: [main, nested, isolated],
 			members: [
 				member("in-main", { checkout: "/repo", cwd: "/repo/src" }),
-				member("in-a", { checkout: "/repo", cwd: "/repo/.octocode/worktrees/a/src" }),
+				member("in-a", { checkout: "/repo", cwd: "/repo/.octocode/agent/worktrees/a/src" }),
 				// An isolated child's checkout is its coordinator's; only its cwd names the private worktree.
 				member("child", { parentId: "in-main", checkout: "/repo", cwd: "/home/octocode/worktrees/k/agent-x" }),
 				// An older row with a checkout and no cwd.
-				member("old-row", { checkout: "/repo/.octocode/worktrees/a" }),
+				member("old-row", { checkout: "/repo/.octocode/agent/worktrees/a" }),
 				member("nowhere"),
 			],
 			sessions: [],
@@ -237,7 +237,7 @@ describe("member placement", () => {
 			main: "/repo",
 			folders: [
 				main,
-				folder(".octocode/worktrees/main"),
+				folder(".octocode/agent/worktrees/main"),
 				folder("x/lint", { kind: "linked" }),
 				folder("y/lint", { kind: "linked" }),
 			],
@@ -246,7 +246,7 @@ describe("member placement", () => {
 			here: "/repo",
 		});
 		expect(view.realms.map((realm) => realm.name)).toEqual(["main", "main-2", "lint", "lint-2"]);
-		expect(findRealm(view, "main-2")?.folder.path).toBe("/repo/.octocode/worktrees/main");
+		expect(findRealm(view, "main-2")?.folder.path).toBe("/repo/.octocode/agent/worktrees/main");
 		expect(findRealm(view, "lint")?.name).toBe("lint");
 		expect(findRealm(view, "li")).toBeUndefined();
 	});

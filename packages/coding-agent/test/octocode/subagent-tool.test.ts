@@ -312,7 +312,7 @@ describe("agent tool with a scripted child", () => {
 				"--tools",
 				"read,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
 				"--exclude-tools",
-				"browser,mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
+				"browser",
 			]),
 		);
 		expect(text).toContain("(Last screenshot: ");
@@ -530,7 +530,7 @@ describe("agent tool with a scripted child", () => {
 					session: "parent",
 					entry: "c1",
 					tokensBefore: 1,
-					method: "pi-default",
+					method: "octocode-default",
 					tldr: "earlier work",
 					topics: [],
 					readFiles: [],
@@ -2142,7 +2142,7 @@ describe("a message to a finished subagent", () => {
 			type: "message",
 			message: {
 				role: "assistant",
-				content: [{ type: "toolCall", id: "call-1", name: "agent", arguments: { type: "task", input } }],
+				content: [{ type: "toolCall", id: "call-1", name: "agent", arguments: { type: "task", ...input } }],
 			},
 		},
 		{

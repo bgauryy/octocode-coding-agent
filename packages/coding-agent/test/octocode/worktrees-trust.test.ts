@@ -28,7 +28,7 @@ afterEach(() => {
 	repo.cleanup();
 });
 
-const target = () => path.join(repo.root, ".octocode", "worktrees", "feat");
+const target = () => path.join(repo.root, ".octocode", "agent", "worktrees", "feat");
 const trustOf = (folder: string) => resolveFolderTrust(folder);
 
 describe("trust for worktrees Octocode creates", () => {

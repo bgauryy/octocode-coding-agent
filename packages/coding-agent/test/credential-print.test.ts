@@ -77,7 +77,7 @@ describe("credential print commands", () => {
 
 	test("refreshes an expired OAuth token before printing it", async () => {
 		const storage = AuthStorage.inMemory({
-			"openai-codex": {
+			openai: {
 				type: "oauth",
 				access: "old-test-token",
 				refresh: "test-refresh-token",
@@ -91,14 +91,14 @@ describe("credential print commands", () => {
 			refresh: "test-refresh-token",
 			expires: Date.now() + 60 * 60 * 1000,
 		}));
-		const oauth = runtime.getProvider("openai-codex")?.auth.oauth;
-		if (!oauth) throw new Error("OpenAI Codex OAuth provider is not registered");
+		const oauth = runtime.getProvider("openai")?.auth.oauth;
+		if (!oauth) throw new Error("OpenAI OAuth provider is not registered");
 		oauth.refresh = refresh;
-		const args = parseArgs(["--provider", "openai-codex"]);
+		const args = parseArgs(["--provider", "openai"]);
 
 		await expect(resolveCredentialForPrint(args, runtime, "bearer_token")).resolves.toBe("fresh-test-token");
 		expect(refresh).toHaveBeenCalledOnce();
-		expect(await storage.read("openai-codex")).toMatchObject({ access: "fresh-test-token" });
+		expect(await storage.read("openai")).toMatchObject({ access: "fresh-test-token" });
 	});
 
 	test("reports unknown auth options like package commands", async () => {
@@ -106,7 +106,7 @@ describe("credential print commands", () => {
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
 			process.exitCode = undefined;
-			await main(["auth", "check", "--provider", "openai-codex", "--credentails"]);
+			await main(["auth", "check", "--provider", "openai", "--credentails"]);
 			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stderr).toContain('Unknown option --credentails for "auth check".');
 			expect(stderr).toContain(
@@ -122,7 +122,7 @@ describe("credential print commands", () => {
 	test("parses credential commands and rejects invalid arguments or credential types", async () => {
 		const runtime = await createRuntime(
 			AuthStorage.inMemory({
-				"openai-codex": {
+				openai: {
 					type: "oauth",
 					access: "test-token-not-to-be-printed",
 					refresh: "test-refresh-token",
@@ -158,8 +158,8 @@ describe("credential print commands", () => {
 		await expect(resolveCredentialForPrint(parseArgs([]), runtime, "api_key")).rejects.toThrow(
 			"requires --provider <provider> or --model <model>",
 		);
-		await expect(
-			resolveCredentialForPrint(parseArgs(["--provider", "openai-codex"]), runtime, "api_key"),
-		).rejects.toThrow("configured with OAuth");
+		await expect(resolveCredentialForPrint(parseArgs(["--provider", "openai"]), runtime, "api_key")).rejects.toThrow(
+			"configured with OAuth",
+		);
 	});
 });

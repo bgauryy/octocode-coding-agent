@@ -44,7 +44,7 @@ afterEach(() => {
 function session(id: string, pid: number | null = null) {
 	const root = fs.realpathSync(tmp("octocode-del-"));
 	const identity = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(root, ".octocode", "code");
+	const state = path.join(root, ".octocode", "agent");
 	const file = path.join(state, "sessions", `${id}.jsonl`);
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	fs.writeFileSync(

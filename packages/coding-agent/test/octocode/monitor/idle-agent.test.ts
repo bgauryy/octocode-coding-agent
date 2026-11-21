@@ -204,19 +204,18 @@ describe("idle-agent: a child", () => {
 		expect(s.parentTold()).toHaveLength(1);
 	});
 
-	it("is off at 0, and reads idleAgentMinutes before the deprecated silence keys", async () => {
-		const off = await session({ child: "working", settings: { monitor: { idleAgentMinutes: 0, silenceMinutes: 2 } } });
+	it("is off at 0, and takes the default for a refused value", async () => {
+		const off = await session({ child: "working", settings: { monitor: { idleAgentMinutes: 0 } } });
 		off.check(60);
 		expect(off.parentTold()).toEqual([]);
 		expect(idleAgentMs(undefined)).toBe(5 * MIN);
-		expect(idleAgentMs({ monitor: { silenceMinutes: 2 }, subagents: { silenceMinutes: 7 } })).toBe(2 * MIN);
-		expect(idleAgentMs({ subagents: { silenceMinutes: 7 } })).toBe(7 * MIN);
-		expect(idleAgentMs({ monitor: { idleAgentMinutes: -1, silenceMinutes: 3 } })).toBe(3 * MIN);
+		expect(idleAgentMs({ monitor: { idleAgentMinutes: 2 } })).toBe(2 * MIN);
+		expect(idleAgentMs({ monitor: { idleAgentMinutes: -1 } })).toBe(5 * MIN);
 	});
 
 	it("replaces child silence: one rule, one alert for a long silence", async () => {
 		expect(ATTENTION_RULES.map((rule) => rule.id)).not.toContain("silence");
-		const s = await session({ child: "working", settings: { monitor: { silenceMinutes: 10 } } });
+		const s = await session({ child: "working", settings: { monitor: { idleAgentMinutes: 10 } } });
 		for (let minutes = 1; minutes <= 60; minutes++) s.check(minutes);
 		expect(s.parentTold()).toHaveLength(1);
 		await settle();

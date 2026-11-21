@@ -51,7 +51,7 @@ describe("the real agent database under a test runner", () => {
 		expect(env[TEST_GUARD_FILE_ENV]).toBe(record);
 		const run = (childEnv: NodeJS.ProcessEnv) =>
 			spawnSync(process.execPath, ["--import", resolver, child], { env: childEnv, cwd: tmp(), encoding: "utf8" });
-		const expected = path.join(fakeHome, ".octocode", "octocodecode", "agent", "workspaces.db");
+		const expected = path.join(fakeHome, ".octocode", "agent", "workspaces.db");
 
 		const refused = run(env);
 		expect(refused.status, refused.stderr).toBe(3);

@@ -5,7 +5,7 @@ import { AGENT_SCRATCH_ENV } from "@octocodeai/octocode-common/env";
 import { isUnderPath } from "@octocodeai/octocode-common/paths";
 import { getAgentDir } from "../../../config.ts";
 import type { SandboxMode } from "../../../core/settings-defaults.ts";
-import { WORKSPACE_STATE } from "../../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../../storage/agent-layout.ts";
 import { workspaceRoot } from "../../../utils/git-repository.ts";
 import { OCTOCODE_DIR } from "../../shared/home.ts";
 import { isolatedMainTree } from "../isolated-tree.ts";
@@ -96,18 +96,18 @@ function sharedWrites(env: NodeJS.ProcessEnv): string[] {
 }
 
 /**
- * A read-only child's carve-outs, as `read-only-role.ts` allows them: the workspace's throwaway folders (`.octocode/tmp/`,
- * the state folder's scratch, a topic's `tmp/`) and Markdown docs under `.octocode/` outside what later sessions load.
+ * A read-only child's carve-outs, as `read-only-role.ts` allows them: the workspace's throwaway folders (`.octocode/agent/tmp/`,
+ * `temp/`, a topic's `tmp/`) and Markdown docs under `.octocode/agent/` outside what `protected.ts` keeps.
  */
 function readOnlyPolicy(root: string, env: NodeJS.ProcessEnv): SandboxPolicy {
-	const octocode = path.join(root, OCTOCODE_DIR);
+	const agent = path.join(root, AGENT_DIR);
 	return {
 		allowWrite: [
 			...sharedWrites(env),
-			path.join(octocode, "tmp"),
-			path.join(root, WORKSPACE_STATE, "temp"),
-			path.join(octocode, "*", "tmp"),
-			path.join(octocode, "**", "*.md"),
+			path.join(agent, AGENT_FOLDERS.tmp),
+			path.join(agent, AGENT_FOLDERS.temp),
+			path.join(agent, "*", AGENT_FOLDERS.tmp),
+			path.join(agent, "**", "*.md"),
 		],
 		denyWrite: [...claudeDefaultDenyWrite(), ...readOnlyProtectedPaths(root)],
 		denyRead: credentialPaths(),

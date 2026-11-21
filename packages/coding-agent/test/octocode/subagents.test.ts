@@ -264,9 +264,6 @@ describe("subagents", () => {
 			"anthropic/claude",
 			"--tools",
 			"read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
-			// A profile that does not name the browser server never starts it.
-			"--exclude-tools",
-			"mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -324,7 +321,7 @@ describe("subagents", () => {
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",
-			"browser,bash,mcp__browser__*,mcp__desktop__*,mcp__freellama__*",
+			"browser,bash",
 		]);
 	});
 
@@ -435,7 +432,7 @@ describe("subagents", () => {
 	it("gives the browser role its server and the specialist MCP floor without naming a research server's tools", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		const tools = (browser.tools ?? "").split(",");
-		expect(tools).toEqual(expect.arrayContaining(["mcp__browser__*", "web", ...mcpFloor(["mcp__browser__*"])]));
+		expect(tools).toEqual(expect.arrayContaining(["mcp__browser__open", "web", ...mcpFloor(["mcp__browser__open"])]));
 	});
 
 	it("carries the browser mode in the task, not the environment", () => {
@@ -507,7 +504,6 @@ describe("subagents", () => {
 		]) {
 			const text = failedNext(route, error, false);
 			expect(text, error).not.toContain(FAILED_NEXT);
-			expect(text, error).toContain("OCTOCODE_MAX_SUBAGENTS");
 			expect(text, error).toMatch(/wait/i);
 			expect(text, error).toContain("Ran on a/claude-haiku");
 		}

@@ -1544,10 +1544,8 @@ describe("file change rendering", () => {
 			.map(stripRowMarks)
 			.join("\n")
 			.split("\n");
-		// One change: the header names the path, so the outcome row is the size alone, then a five-line diff preview.
-		expect(oneCollapsed[0]).toMatch(/^ {2}⎿ {2}\+30$/);
-		expect(oneCollapsed).toHaveLength(1 + 5 + 1);
-		expect(oneCollapsed.at(-1)).toMatch(/… \+\d+ lines \(ctrl\+o to expand\)/);
+		// One change: the header names the path, so the outcome row is the size alone; a finished change closes to it.
+		expect(oneCollapsed).toEqual(["  ⎿  +30 (ctrl+o to expand)"]);
 		const failed = tool!
 			.renderResult(
 				{ content: [{ type: "text", text: "1. FAILED edit src/a.ts: oldText not found" }] },

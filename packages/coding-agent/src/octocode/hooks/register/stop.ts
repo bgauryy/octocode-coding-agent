@@ -3,6 +3,7 @@ import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultBlock } from "../../render/tool.ts";
+import { TOOL_PREVIEW_LINES } from "../../../theme/theme-tui-helpers.ts";
 import { runningWorkOf } from "../../shared/running-work.ts";
 import { STATUS } from "../../shared/status.ts";
 import { clipText, contentText, firstLine } from "../../shared/util.ts";
@@ -131,7 +132,13 @@ export function registerStopRenderer(api: FeatureSetup): void {
 			resultBlock(
 				theme,
 				{ expanded },
-				{ summary: "", body: text.startsWith(STOP_PREFIX) ? text.slice(STOP_PREFIX.length) : text, error: false },
+				{
+					summary: "",
+					body: text.startsWith(STOP_PREFIX) ? text.slice(STOP_PREFIX.length) : text,
+					error: false,
+					// Feedback the agent acts on, not a tool result: its first lines stay in view.
+					max: TOOL_PREVIEW_LINES,
+				},
 			),
 		);
 		return box;

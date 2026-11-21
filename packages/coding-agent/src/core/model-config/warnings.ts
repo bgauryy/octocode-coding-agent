@@ -9,7 +9,6 @@ const BUILTIN_APIS: Record<KnownApi, true> = {
 	"mistral-conversations": true,
 	"openai-responses": true,
 	"azure-openai-responses": true,
-	"openai-codex-responses": true,
 	"anthropic-messages": true,
 	"bedrock-converse-stream": true,
 	"google-generative-ai": true,

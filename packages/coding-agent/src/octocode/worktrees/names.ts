@@ -4,7 +4,7 @@ import { repoKey } from "../../utils/git-repository.ts";
 import { worktreesFolder } from "./repo.ts";
 
 /**
- * The names under `<main>/.octocode/worktrees` of the repository the session folder `cwd` is in, for completion. It reads
+ * The names under `<main>/.octocode/agent/worktrees` of the repository the session folder `cwd` is in, for completion. It reads
  * the folder and the cached `repoKey` (no git process per keystroke): the main checkout is the parent of the common git
  * dir. Empty outside a repository, in a bare one, or when the folder is missing.
  */

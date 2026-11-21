@@ -252,7 +252,7 @@ describe("leases across worktrees nested in the main checkout", () => {
 		store.lock(owner, [{ path: file, kind, reason: "edit" }]).ok;
 
 	beforeEach(() => {
-		nested = path.join(main, ".octocode", "worktrees", "x");
+		nested = path.join(main, ".octocode", "agent", "worktrees", "x");
 		git(main, "worktree", "add", "-q", "-b", "x", nested);
 	});
 
@@ -269,41 +269,41 @@ describe("leases across worktrees nested in the main checkout", () => {
 	it("conflicts a main lease on the nested path with the worktree's relative path, both ways", () => {
 		const { a, x } = joined();
 		expect(x.workspace).toBe(nested);
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x/src/a.ts")).toBe(true);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x/src/a.ts")).toBe(true);
 		const refused = x.lock("x-bbbbbb", [{ path: "src/a.ts", kind: "file", reason: "edit" }]);
 		expect(refused.ok).toBe(false);
 		expect(x.conflict("src/a.ts", "x-bbbbbb")?.owner).toBe("main-aaaaaa");
 		expect(lock(x, "x-bbbbbb", "src/b.ts")).toBe(true);
 		// The same file from the other side, and by absolute path.
 		expect(a.conflict(path.join(nested, "src", "b.ts"), "main-aaaaaa")?.owner).toBe("x-bbbbbb");
-		expect(a.conflict(".octocode/worktrees/x/src/b.ts", "main-aaaaaa")?.owner).toBe("x-bbbbbb");
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x/src/b.ts")).toBe(false);
+		expect(a.conflict(".octocode/agent/worktrees/x/src/b.ts", "main-aaaaaa")?.owner).toBe("x-bbbbbb");
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x/src/b.ts")).toBe(false);
 		// Another file is free, and neither side's leases moved checkout.
-		expect(a.conflict(".octocode/worktrees/x/src/c.ts", "main-aaaaaa")).toBeUndefined();
+		expect(a.conflict(".octocode/agent/worktrees/x/src/c.ts", "main-aaaaaa")).toBeUndefined();
 		expect(a.leases()).toHaveLength(1);
 		expect(x.leases()).toHaveLength(1);
 	});
 
 	it("covers the whole worktree with a main tree lock on its folder, and the main tree with a lock above it", () => {
 		const { a, x } = joined();
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x", "tree")).toBe(true);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x", "tree")).toBe(true);
 		expect(lock(x, "x-bbbbbb", "deep/dir/file.ts")).toBe(false);
 		expect(lock(x, "x-bbbbbb", ".", "tree")).toBe(false);
 		a.unlock("main-aaaaaa");
 
 		expect(lock(x, "x-bbbbbb", "src/a.ts")).toBe(true);
 		// A tree in main on the worktree folder, or above it, collides with the worktree's file.
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x", "tree")).toBe(false);
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees", "tree")).toBe(false);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x", "tree")).toBe(false);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees", "tree")).toBe(false);
 		expect(lock(a, "main-aaaaaa", ".", "tree")).toBe(false);
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x/src", "tree")).toBe(false);
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x/other", "tree")).toBe(true);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x/src", "tree")).toBe(false);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x/other", "tree")).toBe(true);
 		// A tree in the worktree covers main's path to the same files.
 		x.unlock("x-bbbbbb");
 		a.unlock("main-aaaaaa");
 		expect(lock(x, "x-bbbbbb", "lib", "tree")).toBe(true);
-		expect(a.conflict(".octocode/worktrees/x/lib/z.ts", "main-aaaaaa")?.owner).toBe("x-bbbbbb");
-		expect(a.conflict(".octocode/worktrees/x/src/z.ts", "main-aaaaaa")).toBeUndefined();
+		expect(a.conflict(".octocode/agent/worktrees/x/lib/z.ts", "main-aaaaaa")?.owner).toBe("x-bbbbbb");
+		expect(a.conflict(".octocode/agent/worktrees/x/src/z.ts", "main-aaaaaa")).toBeUndefined();
 	});
 
 	it("keeps sibling worktrees and unrelated files apart, and an agent's own leases never conflict with themselves", () => {
@@ -313,14 +313,14 @@ describe("leases across worktrees nested in the main checkout", () => {
 		expect(lock(a, "main-aaaaaa", "src/a.ts")).toBe(true);
 		// Main's own src/a.ts is not the worktree's.
 		expect(x.conflict("src/a.ts", "x-bbbbbb")).toBeUndefined();
-		expect(other.conflict(".octocode/worktrees/x/src/a.ts", "billing-cccccc")).toBeUndefined();
+		expect(other.conflict(".octocode/agent/worktrees/x/src/a.ts", "billing-cccccc")).toBeUndefined();
 		// The same owner holding the nested path from main is not blocked by its own lease.
-		expect(a.conflict(".octocode/worktrees/x/src/a.ts", "x-bbbbbb")).toBeUndefined();
+		expect(a.conflict(".octocode/agent/worktrees/x/src/a.ts", "x-bbbbbb")).toBeUndefined();
 	});
 
 	it("ignores a lease whose owner has left, and a nested checkout of another repository", () => {
 		const { a, x } = joined();
-		expect(lock(a, "main-aaaaaa", ".octocode/worktrees/x/src/a.ts")).toBe(true);
+		expect(lock(a, "main-aaaaaa", ".octocode/agent/worktrees/x/src/a.ts")).toBe(true);
 		expect(a.remove("main-aaaaaa")).toBe(true);
 		expect(lock(x, "x-bbbbbb", "src/a.ts")).toBe(true);
 

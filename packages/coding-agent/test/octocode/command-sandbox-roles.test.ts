@@ -61,9 +61,9 @@ macOnly("the sandbox by permission mode and role (sandbox.mode: auto)", () => {
 		const workspace = fs.realpathSync(outsideDir());
 		sandboxOn("full", mainEnv({ OCTOCODE_SUBAGENT: "1", OCTOCODE_READ_ONLY: "1" }));
 		await expectDenied(path.join(workspace, "src.ts"), workspace);
-		// A workspace has `.octocode/`; the child may create `tmp/` in it, not the folder itself.
-		fs.mkdirSync(path.join(workspace, ".octocode"));
-		const scratch = path.join(workspace, ".octocode", "tmp", "notes.txt");
+		// A workspace has `.octocode/agent/`; the child may create `tmp/` in it, not the folder itself.
+		fs.mkdirSync(path.join(workspace, ".octocode", "agent"), { recursive: true });
+		const scratch = path.join(workspace, ".octocode", "agent", "tmp", "notes.txt");
 		const written = await run(writeFile(scratch), workspace);
 		expect(written.code, written.output).toBe(0);
 		expect(fs.existsSync(scratch)).toBe(true);

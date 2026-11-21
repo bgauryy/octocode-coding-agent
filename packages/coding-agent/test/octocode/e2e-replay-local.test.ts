@@ -5,8 +5,7 @@ import { replayLine, replayMarkdown } from "./replay/report.ts";
 import { replay, type ReplayResult } from "./replay/run.ts";
 
 /**
- * Opt-in heavy replay of any local session file: `OCTOCODE_TEST_REPLAY_SESSION=<file.jsonl>` (or
- * `node scripts/replay-session.mjs <file.jsonl>`). Skipped without it. A copy of the file is replayed in temporary
+ * Opt-in heavy replay of any local session file: `OCTOCODE_TEST_REPLAY_SESSION=<file.jsonl>`. Skipped without it. A copy of the file is replayed in temporary
  * folders; the file itself is only read. Real sessions hold private content: never commit one, nor its report.
  *
  * Options, all `OCTOCODE_TEST_*` because the suite clears every other `OCTOCODE_*` variable before a test starts:

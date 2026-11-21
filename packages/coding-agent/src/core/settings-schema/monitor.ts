@@ -82,13 +82,6 @@ export const MonitorSettingsProperties = {
 					MONITOR_DEFAULTS.idleAgentMinutes,
 					0,
 				),
-				silenceMinutes: Type.Optional(
-					Type.Number({
-						minimum: 0,
-						description:
-							"Deprecated: use monitor.idleAgentMinutes, which wins when both are set. Read in its place when it is unset; 0 turns the rule off.",
-					}),
-				),
 			},
 			{ additionalProperties: false },
 		),

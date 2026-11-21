@@ -36,7 +36,7 @@ type CapturedParams = {
 function vllmModel(
 	compat: Model<"openai-completions">["compat"] = {
 		thinkingFormat: "zai",
-		supportsThinkingTokenBudget: true,
+		thinkingTokenBudgetField: "thinking_token_budget",
 	},
 ): Model<"openai-completions"> {
 	return {
@@ -152,19 +152,6 @@ describe("openai-completions thinking token budget", () => {
 			expect(params.thinking_token_budget).toBeUndefined();
 		},
 	);
-
-	it("lets thinkingTokenBudgetField win over the boolean alias", async () => {
-		const params = await capture(
-			vllmModel({
-				thinkingFormat: "zai",
-				supportsThinkingTokenBudget: true,
-				thinkingTokenBudgetField: "thinking_budget",
-			}),
-			{ reasoning: "medium", thinkingBudgets: { medium: 4096 } },
-		);
-		expect(params.thinking_budget).toBe(4096);
-		expect(params.thinking_token_budget).toBeUndefined();
-	});
 
 	it("puts the clamped budget in chat_template_kwargs when $var is thinking.budget", async () => {
 		const params = await capture(

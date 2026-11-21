@@ -36,7 +36,7 @@ A link is printed once, when published, with what it allows and (in a terminal) 
 | `remote.relayUrl`  | `ws://` or `wss://` URL  | unset   | The relay the daemon dials for `relay` links; a path prefix is kept (`wss://host/octo`), a query string is dropped   |
 | `remote.autoStart` | `off`, `view`, `control` | `off`   | Publish and print a link of that access at session start. A project file can only set `off`; the global value stands |
 
-Full list: [settings](settings.md#schema-and-legacy-settings).
+Full list: [settings](settings.md#schema-and-other-settings).
 
 ## Transports
 

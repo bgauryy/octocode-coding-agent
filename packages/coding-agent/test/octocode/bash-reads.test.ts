@@ -290,6 +290,20 @@ describe("the file tool and plain bash prints", () => {
 		expect(await change({ type: "write", path: "b.txt", content: "z\n" })).toMatchObject({ ok: false });
 	});
 
+	it("counts newline-separated prints after a cd, resolving relative files against it", async () => {
+		const { cwd, bash, change } = setup(MCP_READER);
+		const sub = path.join(cwd, "sub");
+		fs.mkdirSync(sub);
+		fs.writeFileSync(path.join(sub, "b.txt"), "x\ny\n");
+		fs.writeFileSync(path.join(sub, "c.txt"), "p\nq\n");
+		await bash(`cd ${sub}\ncat b.txt\n\nsed -n '1,2p' c.txt\n`);
+		expect(await change({ type: "write", path: "sub/b.txt", content: "z\n" })).toMatchObject({ ok: true });
+		expect(await change({ type: "write", path: "sub/c.txt", content: "z\n" })).toMatchObject({ ok: true });
+		expect(bashReads("cat a.txt\nrm a.txt", CWD)).toEqual([]);
+		expect(bashReads("cat a.txt &&\ncat b.txt", CWD)).toHaveLength(2);
+		expect(bashReads("echo 'x\ny'\ncat a.txt", CWD)).toEqual([{ file: abs("a.txt"), whole: true }]);
+	});
+
 	it("refusal says what counts as a read, naming the MCP reader or a plain bash print", async () => {
 		const edit = { type: "edit", edits: [{ oldText: "absent", newText: "2" }] };
 		const local = await setup(MCP_READER).change(edit);

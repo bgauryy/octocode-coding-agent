@@ -119,7 +119,6 @@ export async function showProviderDetail(
 		? [
 				{ label: "Billing", value: plan.billing === "plan" ? "Billed by plan" : "Billed per token" },
 				{ label: "Plan terms", value: plan.terms },
-				...(plan.deprecated ? [{ label: "Deprecated", value: plan.deprecated }] : []),
 				...(paused ? [{ label: "Paused", value: paused }] : []),
 			]
 		: [];

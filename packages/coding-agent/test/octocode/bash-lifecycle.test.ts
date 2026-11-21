@@ -299,7 +299,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 				exited = true;
 			});
 			const record = recordFile(job.log);
-			expect(job.log).toContain(path.join(".octocode", "code", "temp", "sessions", "job-owner", "bash"));
+			expect(job.log).toContain(path.join(".octocode", "agent", "temp", "sessions", "job-owner", "bash"));
 			expect(path.dirname(path.dirname(record))).toBe(path.join(home, "agent", "job-owners"));
 			expect(JSON.parse(fs.readFileSync(record, "utf8"))).toMatchObject({
 				id: job.id,
@@ -326,10 +326,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 		const record = recordFile(job.log);
 		// Its Octocode crashed: the owner in the record is a process that is gone.
 		const owned = JSON.parse(fs.readFileSync(record, "utf8"));
-		fs.writeFileSync(
-			record,
-			JSON.stringify({ ...owned, owner: { pid: deadPid(), started: "Mon Jan  1 00:00:00 2001" } }),
-		);
+		fs.writeFileSync(record, JSON.stringify({ ...owned, owner: { pid: deadPid(), started: "978307200" } }));
 		const { api, fire } = fakeHost();
 		registerBashTool(api, new Subcommands(), new BashJobs(dir), () => ({}));
 		const ctx = fakeCtx({ cwd: tmp() });
@@ -353,7 +350,7 @@ describe.runIf(posix)("background job lifecycle", () => {
 			JSON.stringify({
 				id: "bash-1",
 				pid: process.pid,
-				started: "Mon Jan  1 00:00:00 2001",
+				started: "978307200",
 				command: "x",
 				log: path.join(dir, "bash-1-1.log"),
 				owner: { pid: deadPid() },

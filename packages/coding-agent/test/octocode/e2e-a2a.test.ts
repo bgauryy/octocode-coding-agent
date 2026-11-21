@@ -70,7 +70,7 @@ describe("two sessions", () => {
 		expect(told).toContain(`(process ${JSON.stringify(a.name)})`);
 		expect(told).toContain("<<<untrusted-");
 		// The trust rule for such messages is in the system prompt, and the message does not carry a second copy.
-		const rule = renderPrompt("shared/trust.md", { main: true }).trim();
+		const rule = renderPrompt("shared/trust.md", { main: true, lean: false }).trim();
 		expect(requestsOf(endpoint, bHears)[0]?.system ?? "").toContain(rule);
 		expect(told).not.toContain(rule);
 		const answered = requestsOf(endpoint, aHears)[0]?.lastUserText ?? "";

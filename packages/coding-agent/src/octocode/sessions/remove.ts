@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { workspaces } from "../../../../db/src/api.ts";
-import { WORKSPACE_STATE, readWorkspaceIdentity } from "../../storage/workspace.ts";
+import { readWorkspaceIdentity } from "../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { deleteSessionFile } from "../../core/session-manager/delete-file.ts";
 import { isPaidSummaryOf } from "../../core/session-manager/sidecars.ts";
 import { globalPaths, sessionDirName } from "../shared/home.ts";
@@ -48,7 +49,10 @@ function sessionFolders(index: SessionIndex, target: RemovalTarget, env: NodeJS.
 		if (workspace && workspace.binding === marker.binding) root = workspace.root;
 	}
 	const roots = root
-		? [path.join(root, WORKSPACE_STATE, "session-data"), path.join(root, WORKSPACE_STATE, "temp", "sessions")]
+		? [
+				path.join(root, AGENT_DIR, AGENT_FOLDERS.sessionData),
+				path.join(root, AGENT_DIR, AGENT_FOLDERS.temp, "sessions"),
+			]
 		: [path.join(globalPaths(env).agentState, "sessions")];
 	return roots.map((folderRoot) => {
 		const folder = path.join(folderRoot, name);

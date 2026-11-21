@@ -3,8 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkSdkReachability, sdkReachEdges, valueImports } from "./sdk-reachability.mjs";
-import { SDK_REACH_BASELINE } from "./sdk-reach-baseline.mjs";
+import { checkSdkReachability, sdkReachEdges, valueImports, SDK_REACH_BASELINE } from "./sdk-reachability.mjs";
 
 const packageNames = new Map([
 	["@app/tui", "tui"],

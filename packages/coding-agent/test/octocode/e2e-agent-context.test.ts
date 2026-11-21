@@ -10,7 +10,7 @@ import { loadProfiles, profileSelectsTool } from "../../src/octocode/subagents/p
 /**
  * The full context each agent receives with its first model request, captured from real sessions on a scripted model:
  * the main session as the user starts it and every kind of subagent as `subagents/tool.ts` starts it. The checks below
- * say what each agent's context must hold; every build writes the contexts themselves to `.octocode/tmp/agent-prompts/`.
+ * say what each agent's context must hold; every build writes the contexts themselves to `.octocode/agent/tmp/agent-prompts/`.
  */
 const POLICY = ["work", "research", "delegation", "safety", "communication"];
 const BASE = ["preamble", "tools", "rules", "project_context", "cwd", "environment"];
@@ -84,12 +84,11 @@ describe.each(AGENTS)("$name context", (agent) => {
 			expect(names).toContain("lean");
 			for (const policy of POLICY) expect(names, `the full policy ${policy} in a lean child`).not.toContain(policy);
 		} else if (["researcher", "reviewer", "browser"].includes(agent.role ?? "")) {
-			// A read-only child's compact core (`policy/readonly.md`) replaces the work, subagent and safety sections.
-			const core = POLICY.filter((name) => name !== "delegation" && name !== "safety");
+			// A read-only child's compact core (`policy/readonly.md`) replaces the change-code chunk of the work section.
+			const core = POLICY.filter((name) => name !== "delegation");
 			expect(names).toEqual(expect.arrayContaining(core));
 			expect(names).not.toContain("delegation");
-			expect(names).not.toContain("subagent");
-			expect(names).not.toContain("safety");
+			expect(names).toContain("subagent");
 		} else {
 			// A child that may write: its policy is `<subagent>`; `<delegation>` is the main session's.
 			expect(names).toEqual(expect.arrayContaining(POLICY.map((name) => (name === "delegation" ? "subagent" : name))));
@@ -107,7 +106,7 @@ describe.each(AGENTS)("$name context", (agent) => {
 			return;
 		}
 		if (!admitsOctocode(agent.role)) {
-			// A role whose tools leave out the research server (the browser) gets neither its tools nor its block.
+			// A role whose tools leave out the research server gets neither its tools nor its block.
 			expect(names.filter((name) => name.startsWith("mcp__octocode__"))).toEqual([]);
 			expect(sectionNames(context())).not.toContain("mcps:octocode");
 			return;

@@ -1,5 +1,5 @@
 /**
- * The MCP workspace's host ports without terminal rendering: identity, folders, bounded output, images, trust, model
+ * The MCP workspace's host ports without terminal rendering: identity, folders, bounded output, trust, model
  * credentials and browser permission state. `installMcpCorePorts()` is the composition root for them; it is idempotent.
  */
 
@@ -18,7 +18,6 @@ import {
 } from "../../config.ts";
 import { FileAuthStorageBackend } from "../../core/auth-storage.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
-import { formatDimensionNote, resizeImage } from "../../utils/image-resize.ts";
 import { type McpAuthBackend, type McpHostPorts, installMcpHost } from "../../../../mcp/src/api.ts";
 import { tailNote } from "../shared/format.ts";
 import {
@@ -67,15 +66,6 @@ const output: McpHostPorts["output"] = {
 	tailNote,
 };
 
-const images: McpHostPorts["images"] = {
-	async fit(bytes, mimeType, limits) {
-		const fitted = await resizeImage(bytes, mimeType, limits);
-		if (!fitted) return null;
-		const note = formatDimensionNote(fitted);
-		return { data: fitted.data, mimeType: fitted.mimeType, ...(note ? { note } : {}) };
-	},
-};
-
 const trust: McpHostPorts["trust"] = {
 	folderTrusted: (cwd) => resolveFolderTrust(cwd).state === "trusted",
 };
@@ -115,7 +105,6 @@ export function installMcpCorePorts(): void {
 		plugins,
 		vendors,
 		output,
-		images,
 		trust,
 		models,
 		browser,

@@ -409,7 +409,7 @@ describe("the reservation gate with the shell parse", () => {
 		});
 		expect(refused?.reason).toContain(`runs ${name} on inline code`);
 		expect(refused?.reason).toContain(
-			"write the code to a script file under .octocode/code/temp/ and run that file, or use the file tool for edits",
+			"write the code to a script file under .octocode/agent/temp/ and run that file, or use the file tool for edits",
 		);
 		// The holder's own commands run.
 		expect(await owner.gate(command)).toBeUndefined();

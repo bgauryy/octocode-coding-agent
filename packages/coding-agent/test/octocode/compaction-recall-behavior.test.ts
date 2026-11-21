@@ -193,7 +193,7 @@ function compact(messages: Array<Record<string, unknown>>, n: number, tldr: stri
 		} as never,
 		SESSION,
 		{ topics: [], goal: tldr },
-		"pi-default",
+		"octocode-default",
 	);
 	expect(written?.n).toBe(n);
 }

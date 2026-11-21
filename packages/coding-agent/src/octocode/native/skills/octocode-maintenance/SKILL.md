@@ -1,13 +1,13 @@
 ---
 name: octocode-maintenance
-description: "Use when the user asks for maintenance or a health sweep: dependencies, dead code, stale docs, lint drift, flaky tests, Octocode upkeep (retention, worktrees, caches, MCP), saved memories, backlog; then fixes or files findings. Not one failure or edit."
+description: "Use when the user asks for maintenance or a health sweep (dependencies, dead code, stale docs, lint drift, flaky tests, Octocode retention, worktrees, caches, MCP, memories, backlog); fixes or files findings. Not for one failure or edit."
 metadata:
   audience: coordinator
 ---
 
 # Maintenance sweep
 
-Sweep first, act second. Each area below ends in a finding, then either a fix within scope, a backlog item (octocode-backlog) or a question to the user. Report the sweep as a list: area, finding, evidence, action taken or filed. Do not fix while sweeping and do not widen into unrelated work. Run one heavy command at a time, in the background with output under `.octocode/tmp/`; check what already runs first.
+Sweep first, act second. Each area below ends in a finding, then either a fix within scope, a backlog item (octocode-backlog) or a question to the user. Report the sweep as a list: area, finding, evidence, action taken or filed. Do not fix while sweeping and do not widen into unrelated work. Run one heavy command at a time, in the background with output under `.octocode/agent/tmp/`; check what already runs first.
 
 ## Repository
 
@@ -23,10 +23,10 @@ Sweep first, act second. Each area below ends in a finding, then either a fix wi
 
 | Area                   | Check                                                                                                                                                              | Finding becomes                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Retention              | `retention.days` and `retention.sessionDays` are set and the sizes of `.octocode/code/` folders, `.octocode/tmp`, transcripts and the database are sane (`du -sh`) | Automatic cleanup handles normal growth; an item when it does not. Manual removal is `/purge`, which previews and needs the user's typed confirmation |
+| Retention              | `retention.days` and `retention.sessionDays` are set and the sizes of `.octocode/agent/` folders, `.octocode/agent/tmp`, transcripts and the database are sane (`du -sh`) | Automatic cleanup handles normal growth; an item when it does not. Manual removal is `/purge`, which previews and needs the user's typed confirmation |
 | Worktrees              | `/worktree list` and `git worktree list`: merged branches, detached and abandoned trees, changed counts                                                            | Ask before `/worktree remove`; never remove one with uncommitted work                                                                                 |
-| Caches, logs, sessions | Old scratch under `.octocode/code/temp/agents/`, bash logs, large session folders                                                                                  | Retention removes them; ask before deleting anything sooner                                                                                           |
-| MCP health             | `/mcp list`; a server that fails or times out: restart it with `mcp`                                                                                               | Report persistent failures with the last error                                                                                                        |
+| Caches, logs, sessions | Old scratch under `.octocode/agent/temp/agents/`, bash logs, large session folders                                                                                  | Retention removes them; ask before deleting anything sooner                                                                                           |
+| MCP health             | the `mcp` tool's `list` (or the `/mcp` view); a server that fails or times out: restart it with `mcp`                                                              | Report persistent failures with the last error                                                                                                        |
 
 ## Memories
 

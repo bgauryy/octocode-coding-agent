@@ -37,7 +37,7 @@ describe("model capabilities", () => {
 		["Completions with effort", model("openai-completions", { compat: { supportsReasoningEffort: true } }), "effort"],
 		[
 			"Completions with token budget",
-			model("openai-completions", { compat: { supportsThinkingTokenBudget: true } }),
+			model("openai-completions", { compat: { thinkingTokenBudgetField: "thinking_token_budget" } }),
 			"budget",
 		],
 		["non-reasoning", model("openai-responses", { reasoning: false }), "none"],

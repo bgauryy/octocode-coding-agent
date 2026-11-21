@@ -84,39 +84,3 @@ describe("Pi credentials at runtime", () => {
 		expect(await credentials.read("acme")).toMatchObject({ access: "new-access" });
 	});
 });
-
-describe("Octocode Pi extension folders at runtime", () => {
-	it("reads models.json and auth.json from ~/.octocode/agent and ~/.octocode, after Octocode's and before Pi's", async () => {
-		const legacyAgent = join(sandbox.home, ".octocode", "agent");
-		const legacyRoot = join(sandbox.home, ".octocode");
-		write(join(legacyAgent, "models.json"), JSON.stringify({ providers: provider("shared", "http://agent.test/v1") }));
-		write(
-			join(legacyRoot, "models.json"),
-			JSON.stringify({ providers: { ...provider("shared", "http://root.test/v1"), ...provider("root-only") } }),
-		);
-		write(
-			join(sandbox.piAgentDir, "models.json"),
-			JSON.stringify({ providers: provider("shared", "http://pi.test/v1") }),
-		);
-		const rootAuth = join(legacyRoot, "auth.json");
-		const rootContent = JSON.stringify({ "root-only": { type: "api_key", key: "legacy-key" } });
-		write(rootAuth, rootContent);
-		const { config, credentials } = await load();
-		expect([...config.getProviderIds()].sort()).toEqual(["root-only", "shared"]);
-		expect(config.getProvider("shared")?.baseUrl).toBe("http://agent.test/v1");
-		expect(await credentials.read("root-only")).toEqual({ type: "api_key", key: "legacy-key" });
-		await credentials.delete("root-only");
-		expect(readFileSync(rootAuth, "utf8")).toBe(rootContent);
-	});
-
-	it("reads nothing from ~/.octocode when OCTOCODE_HOME is set", async () => {
-		write(join(sandbox.home, ".octocode", "models.json"), JSON.stringify({ providers: provider("root-only") }));
-		vi.stubEnv("OCTOCODE_HOME", join(sandbox.home, "isolated"));
-		const home = join(sandbox.home, "isolated", "octocodecode");
-		const { config } = await loadModelRuntimeParts({
-			authPath: join(home, "auth.json"),
-			modelsPath: join(home, "models.json"),
-		});
-		expect(config.getProviderIds()).toEqual([]);
-	});
-});

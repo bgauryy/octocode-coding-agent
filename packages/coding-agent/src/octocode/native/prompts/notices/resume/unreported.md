@@ -1,1 +1,1 @@
-Stopped when the session ended, without a report: {{work}}. Check their logs. Rerun them if you still need them.
+Stopped when the session ended, without a report: {{work}}. Continue a subagent with `agent` type `task` and `resume` set to its id; run a stopped job again only if you still need it. Otherwise leave it.

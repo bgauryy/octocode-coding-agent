@@ -311,10 +311,9 @@ describe("cache configuration", () => {
 				"request TTL 30m",
 			);
 		});
-		it("says provider-managed for Azure, Codex, Mistral, Google and generic completions", () => {
+		it("says provider-managed for Azure, Mistral, Google and generic completions", () => {
 			for (const api of [
 				"azure-openai-responses",
-				"openai-codex-responses",
 				"mistral-conversations",
 				"google-generative-ai",
 				"google-vertex",

@@ -55,7 +55,7 @@ describe("policy flags derived from profiles and servers", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	it("keeps browser profile policy stable while connecting and distinguishes browser permission", async () => {
-		const tools = ["file", "mcp", "mcp__browser__open", "mcp__browser__click"];
+		const tools = ["file", "mcp", "mcp__browser__open", "mcp__browser__run"];
 		const browser = await sections({ isSubagent: true, role: "browser", readOnly: true }, tools, [
 			server("browser", "connecting"),
 		]);
@@ -94,5 +94,22 @@ describe("child task composition", () => {
 			expect(withIdentity("do it", each, { library: "/archive/LIBRARY.md" })).toBe(`do it\n\n${block}`);
 		}
 		expect(identityBlock(isolated)).toContain("/repo/.worktrees/inky/pkg");
+	});
+
+	it("tells an isolated child what the dependency link left out, and that it can be resumed", () => {
+		const base = { id: "inky-kraken", parentId: "salty-squid" };
+		const at = { path: "/repo/.worktrees/inky", repo: "/repo", cwd: "/repo/.worktrees/inky" };
+		const linked = identityBlock({ ...base, isolation: at });
+		expect(linked).toContain("node_modules` are linked in");
+		expect(linked).not.toContain("Report any check that needs what is missing");
+		const partial = identityBlock({
+			...base,
+			isolation: { ...at, unlinked: "Not linked: packages/x/node_modules (missing)." },
+		});
+		expect(partial).toContain("except: Not linked: packages/x/node_modules (missing).");
+		for (const block of [linked, partial]) {
+			expect(block).toContain("coordinator can resume it");
+			expect(block).not.toContain("cannot be continued");
+		}
 	});
 });

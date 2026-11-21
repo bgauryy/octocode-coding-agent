@@ -232,7 +232,7 @@ export function breakDeadLockSync(lockfilePath: string): boolean {
 }
 
 /**
- * Protect a recorded owner before acquisition and again at the library's stale-removal point. Legacy locks without a
+ * Protect a recorded owner before acquisition and again at the library's stale-removal point. Locks without a
  * matching record retain the library's stale timeout. After acquisition, release uses the caller's own filesystem guard.
  */
 interface LockFileSystem extends Pick<

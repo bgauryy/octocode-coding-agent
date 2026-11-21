@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { streamSimple } from "../src/compat.ts";
 import { getBuiltinModels } from "../src/providers/all.ts";
-import { getOpenCodeBaseUrl, withOpenCodeEndpoint } from "../src/providers/opencode-endpoints.ts";
-import type { Api, Model } from "../src/types.ts";
+import { getOpenCodeBaseUrl } from "../src/providers/opencode-endpoints.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -43,17 +42,5 @@ describe.each(["opencode", "opencode-go"] as const)("OpenCode routing: %s", (pro
 		expect(request.headers.get("x-opencode-session")).toBe("stable-session");
 		expect(request.headers.get("user-agent")).toBe("octocode/test");
 		expect(await request.json()).toHaveProperty(api === "google-generative-ai" ? "contents" : "model");
-	});
-
-	it("preserves catalog IDs and upgrades old remote roots without changing custom URLs", () => {
-		for (const model of models) {
-			for (const root of ["zen", "inference"]) {
-				const baseUrl = `https://opencode.ai/${root}${provider === "opencode-go" ? "/go" : ""}/v1`;
-				const updated = withOpenCodeEndpoint({ ...model, baseUrl });
-				expect(updated).toEqual({ ...model, baseUrl: getOpenCodeBaseUrl(provider, model.api) });
-			}
-			const custom: Model<Api> = { ...model, baseUrl: "https://proxy.example/custom/v1" };
-			expect(withOpenCodeEndpoint(custom)).toBe(custom);
-		}
 	});
 });

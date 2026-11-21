@@ -115,7 +115,9 @@ describe("references in an agent task", () => {
 			await first.finish();
 		}
 		const id = reported.details.id as string;
-		expect(reported.content[0].text.split("\n")[0]).toBe(`Subagent ${id} reported done · cite as report:${id}:`);
+		expect(reported.content[0].text.split("\n")[0]).toBe(
+			`Subagent ${id} reported done · ran on faux/model, medium thinking (this session's model) · cite as report:${id}:`,
+		);
 
 		const parent = setup(recorded(input, reported), { 4: { from: "peer-a", text: "use the v2 schema" } });
 		try {

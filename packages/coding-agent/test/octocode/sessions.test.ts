@@ -223,7 +223,7 @@ describe("session extras", () => {
 			// Each session records the dir it runs from: the sweep keeps it while that dir cannot be read.
 			expect(custom.index().get("sess-custom")?.dir).toBe(path.dirname(custom.file));
 			const plain = setup({ id: "sess-default" });
-			const defaultDir = path.join(plain.ctx.cwd, ".octocode", "code", "sessions");
+			const defaultDir = path.join(plain.ctx.cwd, ".octocode", "agent", "sessions");
 			Object.assign(plain.ctx.sessionManager, { getSessionDir: () => defaultDir });
 			await plain.start();
 			expect(plain.index().sessionDirs()).toEqual([path.dirname(custom.file), defaultDir]);
@@ -333,10 +333,10 @@ const backgroundWork = (log: string, timestamp: string): Entry[] => {
 		result("c3", "bash", { job: "bash-3", pid: 3, log }),
 		call("c4", "agent", {
 			type: "task",
-			input: { task: `Review the parser ${"p".repeat(200)}\nsecond line`, background: true },
+			task: `Review the parser ${"p".repeat(200)}\nsecond line`,
+			background: true,
 		}),
 		result("c4", "agent", { id: "general-ab12", status: "background" }),
-		// Sessions recorded before the unified agent tool keep flat arguments.
 		call("c5", "agent", { task: "Done task", goal: "finish the done task", background: true }),
 		result("c5", "agent", { id: "general-done", status: "background" }),
 		// A foreground bash and a foreground subagent are not background work.
@@ -652,7 +652,7 @@ describe("resume brief", () => {
 		};
 		const first = result.message.content.split("\n")[0];
 		expect(first).toMatch(
-			/^\[Resumed\] Resumed after 5m away — Stopped when the session ended, without a report: bash-3 \(`yarn test`, log .*bash-3-1700000000000\.log\); general-ab12 \(task "Review the parser p{200} second line"\)\. Check their logs/,
+			/^\[Resumed\] Resumed after 5m away — Stopped when the session ended, without a report: bash-3 \(`yarn test`, log .*bash-3-1700000000000\.log\); general-ab12 \(task "Review the parser p{200} second line"\)\. Continue a subagent/,
 		);
 		expect(first).not.toMatch(/bash-1|general-done/);
 		// A log the retention sweep removed is not offered.

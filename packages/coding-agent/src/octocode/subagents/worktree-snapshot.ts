@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { octocodeTmpDir, workspaceScratchDir } from "../shared/home.ts";
+import { agentTmpDir, workspaceScratchDir } from "../shared/home.ts";
 import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { EXCLUDE_WORKSPACE_STATE, git, gitQuiet, type GitOptions } from "../../utils/git-run.ts";
@@ -25,7 +25,9 @@ async function withIndex<T>(repo: string, work: (index: string, dir: string) => 
 
 /** The paths of `git ls-files` with `flags` in `repo` (NUL separated, so any file name is safe). */
 const listFiles = async (repo: string, flags: string[], config: string[] = []): Promise<string[]> =>
-	(await git(repo, [...config, "ls-files", ...flags, "-z", "--", EXCLUDE_WORKSPACE_STATE])).split("\0").filter(Boolean);
+	(await git(repo, [...config, "ls-files", ...flags, "-z", "--", ...EXCLUDE_WORKSPACE_STATE]))
+		.split("\0")
+		.filter(Boolean);
 
 /** The Git filter driver of each of `files` that has one: `git add` would run its configured clean/process command. */
 async function filterDrivers(repo: string, files: string[]): Promise<Map<string, string>> {
@@ -130,9 +132,9 @@ export function snapshotWorkingCopy(repo: string, base: string): Promise<string>
 			throw new Error("HEAD changed before the working-copy snapshot; retry after the checkout settles.");
 		await rejectCleanFilters(repo);
 		await git(repo, ["read-tree", base], onIndex(index));
-		await git(repo, ["add", "-A", "--", EXCLUDE_WORKSPACE_STATE], onIndex(index));
+		await git(repo, ["add", "-A", "--", ...EXCLUDE_WORKSPACE_STATE], onIndex(index));
 		const tree = await git(repo, ["write-tree"], onIndex(index));
-		await git(repo, ["add", "-A", "--", EXCLUDE_WORKSPACE_STATE], onIndex(index));
+		await git(repo, ["add", "-A", "--", ...EXCLUDE_WORKSPACE_STATE], onIndex(index));
 		if ((await git(repo, ["write-tree"], onIndex(index))) !== tree || (await git(repo, ["rev-parse", "HEAD"])) !== base)
 			throw new Error("Working copy or HEAD changed while snapshotting; retry when edits settle.");
 		return git(repo, [
@@ -190,7 +192,7 @@ export interface WorkerDelta {
 
 /** Writes the child's patch where the user can read and apply it by hand; the agent id names it, so a rerun replaces its own earlier one. */
 function keepPatch(repo: string, agentId: string, patchFile: string): string {
-	const dir = path.join(octocodeTmpDir(repo), "isolate");
+	const dir = path.join(agentTmpDir(repo), "isolate");
 	fs.mkdirSync(dir, { recursive: true });
 	const kept = path.join(dir, `${agentId}.patch`);
 	fs.copyFileSync(patchFile, kept);
@@ -201,7 +203,7 @@ function keepPatch(repo: string, agentId: string, patchFile: string): string {
  * Moves only the snapshot-to-worker changes onto `base`. The patch applies to `base`, which lacks the parent's uncommitted
  * edits, so a child that changed lines the parent had edited conflicts however still the main tree is. Its work is then
  * kept as its own head commit (built on the snapshot, so the diff against `base` includes the parent's edits) and its
- * patch is written to `.octocode/tmp/isolate/<agent>.patch`, so nothing is lost and the user resolves the conflict.
+ * patch is written to `.octocode/agent/tmp/isolate/<agent>.patch`, so nothing is lost and the user resolves the conflict.
  */
 export function workerDeltaCommit(
 	repo: string,
@@ -222,7 +224,7 @@ export function workerDeltaCommit(
 			snapshot,
 			head,
 			"--",
-			EXCLUDE_WORKSPACE_STATE,
+			...EXCLUDE_WORKSPACE_STATE,
 		]);
 		try {
 			await git(repo, ["apply", "--cached", "--3way", "--whitespace=nowarn", patchFile], onIndex(index));

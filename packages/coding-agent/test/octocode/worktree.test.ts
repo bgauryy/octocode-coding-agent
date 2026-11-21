@@ -261,29 +261,6 @@ describe("isolated subagent worktrees", () => {
 		expect(await pendingRefs(dir)).toEqual(["dup-1", "dup-1-2"]);
 	});
 
-	it("still lists and merges a result saved under the earlier refs/octocode/pi/<id> path", async () => {
-		const dir = repo();
-		const home = tmp();
-		const worktree = await createWorktree(dir, "old-1", home);
-		fs.writeFileSync(path.join(worktree.cwd, "src", "a.txt"), "from an earlier version\n");
-		const { ref } = await finishWorktree(worktree);
-		expect(ref).toBe("refs/octocode/old-1");
-		// An earlier version saved this ref under refs/octocode/pi/; a new result sits beside it.
-		git(dir, "update-ref", "refs/octocode/pi/old-1", "refs/octocode/old-1");
-		git(dir, "update-ref", "-d", "refs/octocode/old-1");
-		const fresh = await createWorktree(dir, "new-1", home);
-		fs.writeFileSync(path.join(fresh.cwd, "src", "a.txt"), "new\n");
-		await finishWorktree(fresh);
-		expect(await pendingRefs(dir)).toEqual(["new-1", "old-1"]);
-		expect(await mergeAgent(dir, "old-1")).toMatchObject({
-			ok: true,
-			text: expect.stringContaining("refs/octocode/pi/old-1"),
-		});
-		expect(git(dir, "show", "HEAD:src/a.txt")).toBe("from an earlier version");
-		expect(() => git(dir, "rev-parse", "--verify", "--quiet", "refs/octocode/pi/old-1")).toThrow();
-		expect(await pendingRefs(dir)).toEqual(["new-1"]);
-	});
-
 	it("reports no ref when nothing changed", async () => {
 		const dir = repo();
 		const worktree = await createWorktree(dir, "idle-1", tmp());

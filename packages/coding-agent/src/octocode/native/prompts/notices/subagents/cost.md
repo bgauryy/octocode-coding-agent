@@ -1,1 +1,1 @@
-Subagents have now cost {{delegated}} in this session: {{#if once}}more than{{else}}over {{multiple}} times{{/if}} its own {{own}}. Nothing is stopped. Before you start or continue a subagent, check that the task needs one. Do a small step yourself.
+Subagents have now cost {{delegated}} in this session: {{#if once}}more than{{else}}over {{multiple}} times{{/if}} its own {{own}}. Nothing is stopped. Start or continue a subagent only for work that needs one, on the smallest model that settles it.

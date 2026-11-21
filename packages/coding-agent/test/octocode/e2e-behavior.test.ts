@@ -251,12 +251,12 @@ describe("bash: where a command writes", () => {
 			"tar -cf repo.tar app.ts",
 			"sh -c 'touch inner.txt'",
 			// Octocode's scratch folder loads nothing in later sessions, so it is written without asking.
-			"mkdir -p .octocode/code/temp/x && cp app.ts .octocode/code/temp/x/",
+			"mkdir -p .octocode/agent/temp/x && cp app.ts .octocode/agent/temp/x/",
 		];
 		const results = await oneTurn(run, commands.map(bash));
 		for (const [index, result] of results.entries())
 			expect(result.text.startsWith(NEEDS_APPROVAL), commands[index]).toBe(false);
-		for (const file of ["copy.ts", "sub/a.txt", "repo.tar", "inner.txt", ".octocode/code/temp/x/app.ts"])
+		for (const file of ["copy.ts", "sub/a.txt", "repo.tar", "inner.txt", ".octocode/agent/temp/x/app.ts"])
 			expect(exists(cwd, file), file).toBe(true);
 	}, 60_000);
 

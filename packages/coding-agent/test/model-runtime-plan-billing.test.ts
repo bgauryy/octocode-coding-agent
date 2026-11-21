@@ -71,12 +71,6 @@ describe("plan billing", () => {
 		}
 	});
 
-	it("marks the legacy Codex route deprecated without pausing it", async () => {
-		const runtime = await runtimeWith({});
-		expect(runtime.getProviderPlan("openai-codex")?.deprecated).toContain("/providers openai");
-		expect(runtime.getPlanDisabledReason("openai-codex")).toBeUndefined();
-	});
-
 	it("takes a paused plan's models out of availability and keeps its stored login", async () => {
 		const runtime = await runtimeWith({ "kimi-coding": { type: "api_key", key: "kimi-key" } });
 		expect(runtime.getAvailableSnapshot().some((model) => model.provider === "kimi-coding")).toBe(true);

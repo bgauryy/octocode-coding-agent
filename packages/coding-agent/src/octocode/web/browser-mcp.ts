@@ -50,22 +50,13 @@ export async function browserMetadataRefusal(
 }
 
 /**
- * Browser MCP tools that take control beyond opening pages, each a `browser.control` ask on every call, as the native
- * browser's script and attach are: custom code with full protocol access, and replaying a request.
- */
-const CONTROL: Record<string, string> = {
-	script: "Run custom code against the browser?",
-	api_replay: "Replay a captured request?",
-};
-
-/**
  * The permission a browser MCP call needs beyond the generic MCP class, or undefined when it needs none. A page the
  * agent asks Chrome to open at a private or local address, or under a name that does not resolve here (it may resolve
  * to one in Chrome), is a `net.private` ask with a per-host session grant, like `web`; a non-web URL (`file:`,
  * `chrome:`, `data:`) asks the same way without a grant. Requests the opened page makes itself are not checked here:
  * the browser server's Chrome runs behind a filtering proxy that approves only these hosts
- * (`mcp/src/presets/browser/proxy.ts`). The `CONTROL` tools, the user's real profile or another program as the
- * browser, and raw CDP on downloads are `browser.control`; the `cookies` tool and raw CDP on cookies are
+ * (`mcp/src/presets/browser/proxy.ts`). Page scripts, attaching to the user's browser or another program as the
+ * browser, and raw CDP on downloads are `browser.control`; raw CDP is
  * `browser.cookies`, which no profile permission or spawn grant answers: the user is asked, and one answer can cover the session; files from outside the workspace (`cwd`'s)
  * sent to a page are `upload.outside` (`permission/browser-escalation.ts`). A call that is several of these asks once,
  * naming them all, with no session grant.
@@ -79,11 +70,7 @@ export async function browserMcpRequest(
 	const tool = browserMcpTool(toolName);
 	if (tool === undefined) return undefined;
 	const escalations = browserEscalations(toolName, input, cwd);
-	const control = [
-		...(Object.hasOwn(CONTROL, tool) ? [`${toolName} ${JSON.stringify(input)}`] : []),
-		...escalations.control,
-	];
-	const cookies = [...(tool === "cookies" ? [`${toolName} ${JSON.stringify(input)}`] : []), ...escalations.cookies];
+	const { control, cookies } = escalations;
 	const risky: Array<{ key?: string; what: string }> = [];
 	for (const raw of browserMcpUrls(toolName, input)) {
 		let url: URL;
@@ -124,9 +111,7 @@ export async function browserMcpRequest(
 		...(also.length > 0 ? { also } : {}),
 		title:
 			action === "browser.control"
-				? Object.hasOwn(CONTROL, tool)
-					? CONTROL[tool]
-					: "Take control of the browser?"
+				? "Take control of the browser?"
 				: action === "browser.cookies"
 					? "Read or change the browser's cookies?"
 					: action === "upload.outside"

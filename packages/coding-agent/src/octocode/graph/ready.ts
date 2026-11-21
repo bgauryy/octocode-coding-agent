@@ -1,7 +1,6 @@
 import type { ItemSnap, WorkGraph } from "./model.ts";
 import { nodeId } from "./model.ts";
 
-const UNSTARTED = new Set(["backlog", "todo"]);
 const OPEN = new Set(["backlog", "todo", "ongoing"]);
 const MET = new Set(["done", "closed"]);
 
@@ -29,7 +28,7 @@ function unblockCount(graph: WorkGraph, byRef: ReadonlyMap<string, ItemSnap>, re
 }
 
 /**
- * The items that can start now: not started and not held, every prerequisite done or closed, and no resource they need
+ * The items that can start now: accepted (`todo`; a proposal waits for acceptance) and not held, every prerequisite done or closed, and no resource they need
  * held by another. Ordered by priority (0 first), then by how many open items each unblocks (the longest chain first),
  * then by age, oldest first.
  */
@@ -38,7 +37,7 @@ export function readyItems(graph: WorkGraph, items: readonly ItemSnap[]): ReadyI
 	return items
 		.filter(
 			(item) =>
-				UNSTARTED.has(item.state) &&
+				item.state === "todo" &&
 				item.type !== "epic" &&
 				item.holder === undefined &&
 				graph

@@ -102,7 +102,7 @@ const pixels = createProvider({
 models.setProvider(pixels);
 ```
 
-Built-in image models are read with `getBuiltinImageModel()` / `getBuiltinImageModels()` from `providers/all`; the old global `generateImages()` lives on the [compat entrypoint](providers-and-models.md#migrating-from-the-old-global-api).
+Built-in image models are read with `getBuiltinImageModel()` / `getBuiltinImageModels()` from `providers/all`; the global `generateImages()` lives on the [compat entrypoint](providers-and-models.md#compat-entrypoint).
 
 Some models also support image input:
 

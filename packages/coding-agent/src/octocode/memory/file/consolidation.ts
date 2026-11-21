@@ -10,7 +10,7 @@ import type { MemoryStore } from "../store.ts";
 import { dropCandidates, listCandidates, pendingCandidates, queueCandidates } from "./candidates.ts";
 import { isQuarantined } from "./candidate-tags.ts";
 import type { MemoryOp } from "./consolidate.ts";
-import { lineCap, MEMORY_LINE_MAX_CHARS, memoryLineKey } from "./format.ts";
+import { MEMORY_LINE_MAX_CHARS, memoryLineKey } from "./format.ts";
 import { claimConsolidation, type ConsolidationClaim } from "./lease.ts";
 import {
 	applyPassOps,
@@ -99,7 +99,6 @@ const candidateLine = (memory: Memory): string =>
 function consolidationPrompt(files: readonly PassFile[], candidates: readonly Memory[], date: string): string {
 	return renderPrompt("workflows/memory/consolidate.md", {
 		maxOps: MAX_OPS,
-		maxLines: lineCap(),
 		maxChars: MEMORY_LINE_MAX_CHARS,
 		date,
 		scopes: files.map((file) => `"${file.ref.scope}"`).join(", "),

@@ -25,6 +25,17 @@ export function refuseSecondChild(
 }
 
 /**
+ * A lean child's tools are bash, file, web and messages to its parent, so it cannot note on or close an item: its
+ * coordinator keeps the item and briefs the child without one.
+ */
+export function refuseLeanItem(profile: { lean?: true } | undefined, linked: Pick<ItemLink, "ref"> | undefined): void {
+	if (profile?.lean && linked)
+		throw new Error(
+			`A lean child holds no item (its tools are bash, file, web and messages): keep ${linked.ref} yourself and start the child without \`item\`, or pick a profile with backlog.`,
+		);
+}
+
+/**
  * Holds the item from a call's first check to its claim, so a later call of the same batch is refused at its own first
  * check, even when this call awaits longer before claiming (an isolated call lists saved refs first). The returned
  * function ends the hold; the claim, once taken, refuses later calls through `refuseSecondChild`.

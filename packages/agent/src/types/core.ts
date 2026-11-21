@@ -200,7 +200,7 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any
 	/** Human-readable label for UI display. */
 	label: string;
 	/**
-	 * Optional compatibility shim for raw tool-call arguments before schema validation.
+	 * Optional normalizer for raw tool-call arguments before schema validation.
 	 * Must return an object that matches `TParameters`.
 	 */
 	prepareArguments?: (args: unknown) => Static<TParameters>;

@@ -207,9 +207,6 @@ export function observeSdkResponse(
 				};
 			}
 			if (model.api.endsWith("responses")) {
-				// The Codex backend may end with response.done, which the SDK reads as response.completed.
-				if (model.api === "openai-codex-responses" && parsed.type === "response.done")
-					normalized = { ...parsed, type: "response.completed" };
 				if (
 					parsed.type === "response.output_item.done" &&
 					parsed.item?.type === "function_call" &&
@@ -226,8 +223,6 @@ export function observeSdkResponse(
 				}
 			}
 			yield new TextEncoder().encode(`data: ${JSON.stringify(normalized)}\n\n`);
-			// The Codex backend can hold the body open after its terminal event.
-			if (model.api === "openai-codex-responses" && state.terminal) return;
 		}
 	})();
 	return new Response(

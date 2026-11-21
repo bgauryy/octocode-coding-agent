@@ -1,6 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
 import { allRows, num, type Row } from "../rows.ts";
-import { ITEM_REVIEWS_SCHEMA } from "../schema-sql.ts";
 
 /**
  * Review decisions about items Octocode did not ship (`item_reviews`): a hook, an MCP server or a skill, identified by
@@ -65,18 +64,8 @@ const review = (row: Row): ReviewRow => ({
 	...(typeof row.absent_at === "number" ? { absentAt: row.absent_at } : {}),
 });
 
-const ensured = new WeakSet<DatabaseSync>();
-
-/** Creates the table in a file made before it existed. Once per connection; a no-op on a current file. */
-export function ensure(db: DatabaseSync): void {
-	if (ensured.has(db)) return;
-	db.exec(ITEM_REVIEWS_SCHEMA);
-	ensured.add(db);
-}
-
 /** Every row of the given scopes (`global` and the repository's), oldest first. */
 export function list(db: DatabaseSync, scopes: readonly string[]): ReviewRow[] {
-	ensure(db);
 	if (scopes.length === 0) return [];
 	return allRows<Row>(
 		db.prepare(`SELECT ${COLUMNS} FROM item_reviews WHERE scope IN (${scopes.map(() => "?").join(", ")}) ORDER BY id`),
@@ -85,7 +74,6 @@ export function list(db: DatabaseSync, scopes: readonly string[]): ReviewRow[] {
 }
 
 export function byId(db: DatabaseSync, id: number): ReviewRow | undefined {
-	ensure(db);
 	const row = db.prepare(`SELECT ${COLUMNS} FROM item_reviews WHERE id = ?`).get(id) as Row | undefined;
 	return row ? review(row) : undefined;
 }
@@ -95,7 +83,6 @@ export function byId(db: DatabaseSync, id: number): ReviewRow | undefined {
  * replaces a person's decision about the same content; it does replace one about other content (the item changed).
  */
 export function record(db: DatabaseSync, input: ReviewInput, at: number): void {
-	ensure(db);
 	db.prepare(
 		`INSERT INTO item_reviews (kind, identity, scope, content_hash, decision, rating, findings, label, path, decided_at, decided_via)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -136,7 +123,6 @@ function deleteSnapshot(db: DatabaseSync, key: ReviewKey): void {
 
 /** The approved content stored for each item of `scopes`, by kind, identity and scope; JSON text as `record` got it. */
 export function snapshots(db: DatabaseSync, scopes: readonly string[]): Map<string, string> {
-	ensure(db);
 	const found = new Map<string, string>();
 	if (scopes.length === 0) return found;
 	const rows = allRows<Row>(
@@ -152,7 +138,6 @@ export function snapshots(db: DatabaseSync, scopes: readonly string[]): Map<stri
 
 /** Deletes one decision; the item is reviewed as new at the next load. False when there was none. */
 export function forget(db: DatabaseSync, id: number): boolean {
-	ensure(db);
 	const row = db.prepare("SELECT kind, identity, scope FROM item_reviews WHERE id = ?").get(id) as Row | undefined;
 	if (row) deleteSnapshot(db, { kind: String(row.kind), identity: String(row.identity), scope: String(row.scope) });
 	return db.prepare("DELETE FROM item_reviews WHERE id = ?").run(id).changes > 0;
@@ -165,7 +150,6 @@ export function markPresent(
 	presentIds: readonly number[],
 	at: number,
 ): void {
-	ensure(db);
 	if (scopes.length === 0) return;
 	const inScopes = `scope IN (${scopes.map(() => "?").join(", ")})`;
 	const present = presentIds.length ? `id IN (${presentIds.map(() => "?").join(", ")})` : "0";

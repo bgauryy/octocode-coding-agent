@@ -23,7 +23,9 @@ const CEILINGS: Record<string, Omit<Layers, "freellama">> = {
 	// skills: the octocode-code-review core skill (user request) measured 7,905.
 	main: {
 		system: 23_300,
-		mcpInstructions: 9_700,
+		// Served: this transport cannot add tools mid-conversation, so the browser server's 12 tools are declared thin and its
+		// instructions shown (measured: mcpInstructions 11,974 and mcpTools 46,277, total 107,309; +4,042, +5,735 over a main without it).
+		mcpInstructions: 12_600,
 		skills: 8_300,
 		// Thin declarations carry each field's allowed values, item bounds and required fields.
 		nativeTools: 19_600,
@@ -65,20 +67,24 @@ const CEILINGS: Record<string, Omit<Layers, "freellama">> = {
 		mcpTools: 50_050,
 		total: 84_950,
 	},
+	// The browser server's and the Octocode MCP server's instructions (measured 8,901).
 	browser: {
 		system: 19_550,
-		mcpInstructions: 6_300,
+		mcpInstructions: 9_350,
 		skills: 300,
 		nativeTools: 10_800,
-		mcpTools: 31_550,
-		total: 68_400,
+		// mcpTools measured 32,020.
+		mcpTools: 33_650,
+		// total measured 71,099.
+		total: 74_650,
 	},
 	// No MCP server and no skill catalog.
 	lean: {
 		system: 13_650,
 		mcpInstructions: 0,
 		skills: 0,
-		nativeTools: 6_550,
+		// Declares web since the lean role names it: nativeTools measured 7,034.
+		nativeTools: 7_400,
 		mcpTools: 0,
 		total: 20_150,
 	},

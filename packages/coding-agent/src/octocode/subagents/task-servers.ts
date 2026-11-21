@@ -3,27 +3,29 @@ import { getMcpSessionHandoff, planTaskMcpServers, type TaskMcpServers } from ".
 import { localResearchTools } from "./core-tools.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";
 
-/** The servers a task's `mcp` list gives its child (`Identity.mcpOnly`, `mcpNamed`), with the parent's added servers narrowed to them. */
+/** The servers a child runs (`Identity.mcpOnly`, `mcpNamed`), with the parent's added servers narrowed to them. */
 export interface TaskServers extends TaskMcpServers {
 	named: string[];
 }
 
 /**
- * Resolves the task's `mcp` list against the session's enabled servers: the named ones, plus the servers the child's
- * own tools name (the research floor and a profile's explicit `mcp__<server>__…` entries). Throws a one-line refusal for
- * an unknown or disabled name, for a lean profile (it runs without MCP) and for a resumed child (it keeps its servers).
+ * The MCP servers a child runs: the servers its own tools name (the research floor and a profile's explicit
+ * `mcp__<server>__…` entries) plus those the task's `mcp` list names; every other server of the session, configured or
+ * added, stays with the parent. Undefined for a lean profile, which runs without MCP. Throws a one-line refusal for an
+ * unknown or disabled name, and for a lean profile given a list.
  */
 export function resolveTaskServers(
 	events: EventBus,
-	named: readonly string[],
+	named: readonly string[] | undefined,
 	profile: AgentProfile | undefined,
-	resuming: boolean,
-): TaskServers {
-	if (resuming) throw new Error("resume continues a child with its own servers; mcp does not apply.");
-	if (profile?.lean)
+): TaskServers | undefined {
+	if (profile?.lean) {
+		if (named === undefined) return undefined;
 		throw new Error(`Profile "${profile.name}" is lean and runs without MCP servers; mcp does not apply.`);
+	}
+	const names = named ? [...new Set(named)] : [];
 	const childTools = [...profileTools(profile).split(","), ...localResearchTools()];
-	const planned = planTaskMcpServers(getMcpSessionHandoff(events), [...new Set(named)], childTools);
+	const planned = planTaskMcpServers(getMcpSessionHandoff(events), names, childTools);
 	if (typeof planned === "string") throw new Error(planned);
-	return { ...planned, named: [...new Set(named)] };
+	return { ...planned, named: names };
 }

@@ -13,7 +13,7 @@ test("flags static, type-only, dynamic and re-exported imports of private MCP mo
 		),
 		at("coding-agent/src/main.ts", 'const cli = await import("../../mcp/src/cli.ts");'),
 		at("coding-agent/src/index.ts", 'export { loadMcpConfig } from "../../mcp/src/config.ts";'),
-		at("coding-agent/scripts/export-agent-prompts.ts", 'import { MCPS_SECTION } from "../../mcp/src/section.ts";'),
+		at("coding-agent/scripts/write-agent-prompts.ts", 'import { MCPS_SECTION } from "../../mcp/src/section.ts";'),
 		at("acp/src/server/mcp.ts", 'import "../../../mcp/src/client/index.ts";'),
 	];
 	assert.deepEqual(violations(files), [
@@ -21,7 +21,7 @@ test("flags static, type-only, dynamic and re-exported imports of private MCP mo
 		"coding-agent/src/octocode/hooks/mcp.ts -> mcp/src/hook-caller.ts",
 		"coding-agent/src/main.ts -> mcp/src/cli.ts",
 		"coding-agent/src/index.ts -> mcp/src/config.ts",
-		"coding-agent/scripts/export-agent-prompts.ts -> mcp/src/section.ts",
+		"coding-agent/scripts/write-agent-prompts.ts -> mcp/src/section.ts",
 		"acp/src/server/mcp.ts -> mcp/src/client/index.ts",
 	]);
 });

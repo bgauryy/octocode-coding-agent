@@ -42,7 +42,8 @@ describe("linger front matter", () => {
 		const browser = loadProfiles(tmp(), tmp(), false, {}).get("browser")!;
 		expect(browser.linger).toBe(900);
 		const tools = allowed(browser.tools);
-		expect(tools.slice(0, 2)).toEqual(["mcp__browser__*", "web"]);
+		// Every specialist but lean also gets the research server.
+		expect(tools).toEqual(expect.arrayContaining(["mcp__browser__open", "mcp__octocode__*", "web"]));
 		expect(tools).not.toContain("browser");
 		// Core tools: commands (still read-only through the permission gate), communication and history.
 		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "wait", "file"]));

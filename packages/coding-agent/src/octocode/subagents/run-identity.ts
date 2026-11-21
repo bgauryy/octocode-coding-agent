@@ -3,6 +3,7 @@ import { getMcpSessionHandoff } from "../../../../mcp/src/api.ts";
 import type { Permission } from "../permission/ask.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import { childInUseTools } from "./core-tools.ts";
+import { withBacklogTool } from "./profile-tools.ts";
 import { siblingRoster } from "./siblings.ts";
 import type { ItemLink } from "./item-link.ts";
 import type { askSpawn } from "./profiles.ts";
@@ -36,6 +37,7 @@ export function configureIdentity(
 	if (linked) {
 		run.identity.item = linked.ref;
 		runs.items.set(run.identity.id, linked.ref);
+		run.profile = withBacklogTool(run.profile);
 	}
 	// A lean child reads its skills inlined in the task; it loads none itself.
 	if (!skillPlan.inline) run.identity.skillResources = skillResources;

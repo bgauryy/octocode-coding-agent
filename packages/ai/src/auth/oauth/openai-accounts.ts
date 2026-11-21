@@ -67,9 +67,7 @@ export async function chooseOpenAIAccount(
 export function withOpenAIAccounts(credential: OAuthCredential, previous?: Credential): OAuthCredential {
 	const accounts = openAIAccounts(previous);
 	const current = account(credential);
-	// Legacy stored sessions lack a verified subject; refresh remains compatible,
-	// while the next interactive login creates a verified registration.
-	if (!current) return credential;
+	if (!current) throw new Error("The stored ChatGPT session has no verified account; sign in with ChatGPT again.");
 	const index = accounts.findIndex((entry) => entry.clientId === current.clientId && entry.subject === current.subject);
 	if (index < 0) accounts.push(current);
 	else accounts[index] = current;
@@ -79,15 +77,7 @@ export function withOpenAIAccounts(credential: OAuthCredential, previous?: Crede
 /** Revoke every saved renewable session; retain only non-secret account registrations. */
 export async function logoutOpenAI(credential: OAuthCredential, signal: AbortSignal): Promise<OAuthCredential> {
 	const accounts = openAIAccounts(credential);
-	const sessions = accounts.length
-		? accounts
-		: [
-				{
-					clientId: typeof credential.clientId === "string" ? credential.clientId : "",
-					subject: "",
-					refresh: credential.refresh,
-				},
-			];
+	const sessions = accounts;
 	let unconfirmed = false;
 	for (const entry of sessions) {
 		if (!entry.refresh) continue;

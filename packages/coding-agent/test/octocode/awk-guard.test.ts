@@ -215,7 +215,7 @@ describe("awk's fail-safe allowlist refuses every confirmed bypass", () => {
 /** An isolated child of a fresh main tree: `isolatedTreeRefusal` for `command`, with `MAIN` replaced by that tree. */
 function isolatedRefusal(command: string): string | undefined {
 	const main = repo();
-	const scratch = path.join(main, ".octocode/code/temp/agents/impl-1");
+	const scratch = path.join(main, ".octocode/agent/temp/agents/impl-1");
 	fs.mkdirSync(scratch, { recursive: true });
 	const childEnv = { [SUBAGENT_ENV]: "1", [TEAM_WORKSPACE_ENV]: main, [AGENT_SCRATCH_ENV]: scratch };
 	const event = { toolName: "bash", input: { command: command.replaceAll("MAIN", main) } };

@@ -114,8 +114,6 @@ class Menu implements Component {
 }
 ```
 
-`test/chat-simple.ts` is a full chat example (Markdown messages, loader, editor with autocomplete): `node test/chat-simple.ts`.
-
 ## Development
 
 ```bash
@@ -126,4 +124,4 @@ yarn run test:tmux               # multiplexer tests only
 
 Platform helpers for modifier-key state and clipboard access ship as prebuilds; each page explains how to rebuild it: [macOS](native/darwin/README.md), [Linux](native/linux/README.md), [Windows](native/win32/README.md).
 
-Set `OCTOCODE_TUI_WRITE_LOG` to copy the raw ANSI stream to a file: `OCTOCODE_TUI_WRITE_LOG=/tmp/tui-ansi.log node test/chat-simple.ts`.
+Set `OCTOCODE_TUI_WRITE_LOG` to copy the raw ANSI stream to a file.

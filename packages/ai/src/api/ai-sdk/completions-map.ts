@@ -82,12 +82,7 @@ export function completionsMapping(
 		output: AssistantMessage,
 		stream: AssistantMessageEventStream,
 	): boolean => {
-		if (
-			part.type === "start" &&
-			options.reasoningEffort &&
-			model.reasoning &&
-			(compat.thinkingTokenBudgetField || compat.supportsThinkingTokenBudget)
-		) {
+		if (part.type === "start" && options.reasoningEffort && model.reasoning && compat.thinkingTokenBudgetField) {
 			const requested = clampThinkingBudgetToAnswerRoom(
 				thinkingBudgetForLevel(options.reasoningEffort, options.thinkingBudgets),
 				model.maxTokens,
@@ -245,8 +240,7 @@ function augmentCompletionsRequest(
 					options.maxTokens ?? model.maxTokens,
 				)
 			: undefined;
-		const budgetField =
-			compat.thinkingTokenBudgetField ?? (compat.supportsThinkingTokenBudget ? "thinking_token_budget" : undefined);
+		const budgetField = compat.thinkingTokenBudgetField;
 		if (budgetField && budget !== undefined && budget > 0) body[budgetField] = budget;
 		const template =
 			compat.thinkingFormat === "baseten"

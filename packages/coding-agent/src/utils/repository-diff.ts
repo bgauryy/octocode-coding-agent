@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
-import { WORKSPACE_STATE } from "../storage/workspace.ts";
+import { inAgentState } from "../storage/agent-layout.ts";
 import { EXCLUDE_WORKSPACE_STATE, git as runGit, GitError } from "./git-run.ts";
 
 const MAX_OUTPUT = 128_000;
@@ -66,12 +66,7 @@ async function selectedPath(root: string, cwd: string, selection: string): Promi
 	for (;;) {
 		try {
 			const real = await realpath(existing);
-			if (
-				`${path.sep}${path.relative(root, real).toLowerCase()}${path.sep}`.includes(
-					`${path.sep}${WORKSPACE_STATE}${path.sep}`,
-				)
-			)
-				throw new Error("Repository diff excludes private workspace state.");
+			if (inAgentState(path.relative(root, real))) throw new Error("Repository diff excludes private workspace state.");
 			if (!within(root, real)) throw new Error("The selected path resolves outside the repository.");
 			break;
 		} catch (error) {
@@ -98,7 +93,7 @@ export async function readRepositoryDiff(
 	}
 	const workingDirectory = await realpath(cwd);
 	const selected = selection ? await selectedPath(root, workingDirectory, selection) : undefined;
-	const paths = selected ? [`:(literal)${selected}`, EXCLUDE_WORKSPACE_STATE] : [EXCLUDE_WORKSPACE_STATE];
+	const paths = selected ? [`:(literal)${selected}`, ...EXCLUDE_WORKSPACE_STATE] : [...EXCLUDE_WORKSPACE_STATE];
 	const configuration = await disabledFilters(root, signal);
 	const flags = [
 		"--no-ext-diff",

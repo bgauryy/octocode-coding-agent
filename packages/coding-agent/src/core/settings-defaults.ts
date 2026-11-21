@@ -61,8 +61,6 @@ export const SETTINGS_DEFAULTS = {
 	},
 	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
 	subagents: {
-		/** Deprecated fallback of `monitor.checkInSeconds`; `subagents.silenceMinutes` has no default of its own (`monitor.idleAgentMinutes` has). */
-		checkInSeconds: MONITOR_DEFAULTS.checkInSeconds,
 		wakeHoldSeconds: 0,
 		peerOverlapWake: true,
 		skillCatalog: "all" as "all" | "role",

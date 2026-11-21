@@ -93,7 +93,6 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 				...(log ? { log } : {}),
 			});
 		} else if (message.toolName === "agent" && details.status === "background" && typeof details.id === "string") {
-			// Flat `agent` fields, or the `{type, input}` envelope older sessions recorded.
 			const task = agentCall(input).input;
 			const goal = typeof task.goal === "string" ? flatLine(task.goal) : "";
 			const files = childFiles(details.session);
@@ -103,8 +102,6 @@ export function unreportedWork(entries: readonly unknown[], since?: number): Bac
 			const previous = latestAgent.get(details.id);
 			if (previous) started.delete(previous);
 			latestAgent.set(details.id, key);
-			// Legacy records have no run id: their later launch starts a new report window in transcript order.
-			if (typeof details.runId !== "string") reported.delete(key);
 			started.set(key, {
 				kind: "agent",
 				id: details.id,

@@ -1,8 +1,6 @@
 import fs from "node:fs";
-import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { maintenance, purge, type MaintenanceResult, type PurgeCounts } from "../../../../db/src/api.ts";
-import { getSessionsDir } from "../../config.ts";
 import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { type PurgeKind, type PurgePlan, type PurgeScope, planPurge, type PlanOptions } from "./purge-plan.ts";
 import type { SessionIndex } from "./store.ts";
@@ -24,11 +22,9 @@ export interface PurgeResult {
 
 const KIND_LABEL: Record<PurgeKind, string> = {
 	transcript: "session transcripts",
-	"legacy-transcript": "legacy transcripts",
 	"session-data": "session data folders",
 	temp: "temp entries",
-	scratch: "<root>/.octocode/tmp entries",
-	"old-database": "old octocode.db files",
+	scratch: "<root>/.octocode/agent/tmp entries",
 };
 
 /** What the plan would remove, one line per kind with counts and sizes, then the database and what stays. */
@@ -77,18 +73,12 @@ function vacuumBoth(index: SessionIndex): MaintenanceResult {
 }
 
 /**
- * Removes what `plan` lists, then the database rows (`purge.workspace` per workspace, or `purge.all`), vacuums, and for
- * `all` drops the old database files that were listed. Each path is checked again to lie strictly inside its root; a
+ * Removes what `plan` lists, then the database rows (`purge.workspace` per workspace, or `purge.all`), and vacuums. Each path is checked again to lie strictly inside its root; a
  * path that cannot be removed lands in `failed` and the rest go on. The current session keeps working: the database purge
  * spares all of its rows. Never throws.
  */
-async function applyPurge(
-	index: SessionIndex,
-	plan: PurgePlan,
-	options: PlanOptions & { legacyRoot?: string },
-): Promise<PurgeResult> {
+async function applyPurge(index: SessionIndex, plan: PurgePlan): Promise<PurgeResult> {
 	const result: PurgeResult = { scope: plan.scope, removed: {}, bytes: 0, failed: [], rows: {} };
-	const emptied = new Set<string>();
 	for (const item of plan.items) {
 		if (!strictlyInside(item.root, item.path)) {
 			result.failed.push({ path: item.path, error: "outside its root" });
@@ -98,14 +88,10 @@ async function applyPurge(
 			await fs.promises.rm(item.path, { recursive: true, force: true });
 			result.removed[item.kind] = (result.removed[item.kind] ?? 0) + 1;
 			result.bytes += item.bytes;
-			if (item.kind === "legacy-transcript") emptied.add(path.dirname(item.path));
 		} catch (error) {
 			result.failed.push({ path: item.path, error: errorMessage(error) });
 		}
 	}
-	// An emptied legacy per-folder directory goes too (never the legacy root itself).
-	const legacy = options.legacyRoot ?? getSessionsDir();
-	for (const dir of emptied) if (strictlyInside(legacy, dir)) await fs.promises.rmdir(dir).catch(() => undefined);
 	try {
 		const { db } = index.agent;
 		const mirror = index.agent.mirror.db;
@@ -154,5 +140,5 @@ export async function executePurge(
 	const plan = await planPurge(index, scope, options);
 	const blocked = blockerText(plan);
 	if (blocked) return { refused: blocked };
-	return { result: await applyPurge(index, plan, options) };
+	return { result: await applyPurge(index, plan) };
 }

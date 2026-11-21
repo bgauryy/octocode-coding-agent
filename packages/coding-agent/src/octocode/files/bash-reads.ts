@@ -6,7 +6,7 @@ import type { LineRange } from "./coverage.ts";
 /**
  * Which files a `bash` command showed the model, for the file guard, whichever reader its refusals name. Each fully
  * literal command that prints file text is credited with what it printed: `cat FILE...`, `head [-n N] FILE`,
- * `tail -n +N FILE` and `sed -n 'A,Bp' FILE`, alone or as a segment of a list joined only by `;` or only by `&&` (the
+ * `tail -n +N FILE` and `sed -n 'A,Bp' FILE`, alone or as a segment of a list joined only by `;`/newlines or only by `&&` (the
  * tool succeeded, so each ran), after `cd DIR` steps that relative files resolve against (DIR is `.`, or starts with `/`
  * or `./`, with no `..`: `followableCdTarget`). A list mixing `;` and `&&` credits only its last command after `cd` steps.
  * Besides prints and `cd`, only `echo`, `printf`, `pwd`, `ls`, `true` and `wc` may share the list. A pipe, redirect, `||`, substitution, glob,
@@ -100,10 +100,10 @@ const HARMLESS = new Set(["echo", "printf", "pwd", "ls", "true", "wc"]);
 
 /**
  * `command` split at unquoted `;` and `&&` into segments and the operators between them; undefined when the text holds a
- * backslash or newline, an unterminated quote (where a split could land inside a quoted word) or an empty segment.
+ * backslash or carriage return, an unterminated quote (where a split could land inside a quoted word) or an empty segment.
  */
 function chain(command: string): { segments: string[]; ops: string[] } | undefined {
-	if (/[\\\n\r]/.test(command)) return undefined;
+	if (/[\\\r]/.test(command)) return undefined;
 	const segments: string[] = [];
 	const ops: string[] = [];
 	let quote = "";
@@ -114,6 +114,13 @@ function chain(command: string): { segments: string[]; ops: string[] } | undefin
 			if (char === quote) quote = "";
 		} else if (char === "'" || char === '"') {
 			quote = char;
+		} else if (char === "\n") {
+			// A newline ends a command like `;`; blank lines and the line after a trailing `&&` add no segment.
+			const text = command.slice(start, i).trim();
+			start = i + 1;
+			if (text === "" && (segments.length === 0 || segments.length === ops.length)) continue;
+			segments.push(text);
+			ops.push(";");
 		} else if (char === ";" || (char === "&" && command[i + 1] === "&")) {
 			const op = char === ";" ? ";" : "&&";
 			segments.push(command.slice(start, i).trim());

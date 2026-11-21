@@ -19,7 +19,7 @@ function docsWorkspace(): string {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-docs-"));
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
 	const write = (relative: string, content: string) => {
-		const file = path.join(root, ".octocode", relative);
+		const file = path.join(root, ".octocode", "agent", relative);
 		fs.mkdirSync(path.dirname(file), { recursive: true });
 		fs.writeFileSync(file, content);
 	};
@@ -27,7 +27,8 @@ function docsWorkspace(): string {
 	write("audit-2026-10-27/deep/findings.md", "# Findings\n");
 	write("plans/step.md", "no heading here");
 	write("agent-system-prompts.md", "# Prompts\n");
-	write("skills/octocode-research/skill.md", "# Skill output\n");
+	write("session-data/s1/private.md", "# Private\n");
+	write("worktrees/w/README.md", "# Checkout\n");
 	write("tmp/scratch.md", "# Scratch\n");
 	write("notes.txt", "not markdown");
 	write(".hidden/secret.md", "# Hidden\n");
@@ -37,24 +38,22 @@ function docsWorkspace(): string {
 it("exposes runtime Markdown exports and opted-in agent scratch while keeping private session data out", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-docs-runtime-"));
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
-	const state = path.join(root, ".octocode", "code");
+	const state = path.join(root, ".octocode", "agent");
 	fs.mkdirSync(path.join(state, "temp", "agents"), { recursive: true });
 	fs.mkdirSync(path.join(state, "session-data"), { recursive: true });
 	fs.writeFileSync(path.join(state, "backlog.md"), "# Board");
 	fs.writeFileSync(path.join(state, "temp", "agents", "report.md"), "# Handoff");
 	fs.writeFileSync(path.join(state, "session-data", "private.md"), "# Private");
-	expect(readDocsIndex(root).docs.map((doc) => doc.path)).toEqual([".octocode/code/backlog.md"]);
-	const handoff = ".octocode/code/temp/agents/report.md";
+	expect(readDocsIndex(root).docs.map((doc) => doc.path)).toEqual(["backlog.md"]);
+	const handoff = "temp/agents/report.md";
 	expect(readDocsIndex(root, true).docs.map((doc) => doc.path)).toContain(handoff);
 	expect(readDocFile(root, handoff)).toBeUndefined();
 	expect(readDocFile(root, handoff, true)?.markdown).toBe("# Handoff");
-	expect(readDocFile(root, ".octocode/code/session-data/private.md", true)).toBeUndefined();
-	// The state folder sits inside `.octocode/`; its authored-path spelling must not reach it either.
-	expect(readDocsIndex(root, true).docs.map((doc) => doc.path)).not.toContain("code/backlog.md");
-	expect(readDocFile(root, "code/session-data/private.md", true)).toBeUndefined();
+	expect(readDocFile(root, "session-data/private.md", true)).toBeUndefined();
+	expect(readDocsIndex(root, true).docs.map((doc) => doc.path)).not.toContain("session-data/private.md");
 });
 
-it("lists every Markdown document with kind, title, status and date, except skills/ and tmp/", () => {
+it("lists every Markdown document with kind, title, status and date, except state, checkouts and tmp/", () => {
 	const root = docsWorkspace();
 	const index = readDocsIndex(root);
 	expect(Value.Check(DocsIndexSchema, index)).toBe(true);
@@ -75,12 +74,12 @@ it("lists every Markdown document with kind, title, status and date, except skil
 	expect(docKind("misc/contract.md")).toBe("contract");
 });
 
-it("serves only regular files inside .octocode, never through a symlink or an escaping path", () => {
+it("serves only regular files inside .octocode/agent, never through a symlink or an escaping path", () => {
 	const root = docsWorkspace();
 	const outside = fs.mkdtempSync(path.join(os.tmpdir(), "docs-outside-"));
 	cleanup.push(() => fs.rmSync(outside, { recursive: true, force: true }));
 	fs.writeFileSync(path.join(outside, "secret.md"), "# Secret\n");
-	const base = path.join(root, ".octocode");
+	const base = path.join(root, ".octocode", "agent");
 	fs.symlinkSync(path.join(outside, "secret.md"), path.join(base, "plans", "link.md"));
 	fs.symlinkSync(outside, path.join(base, "linked-dir"));
 	expect(readDocFile(root, "plans/step.md")?.markdown).toBe("no heading here");
@@ -93,7 +92,8 @@ it("serves only regular files inside .octocode, never through a symlink or an es
 		"plans/step.md\0.txt",
 		"notes.txt",
 		".hidden/secret.md",
-		"skills/octocode-research/skill.md",
+		"session-data/s1/private.md",
+		"worktrees/w/README.md",
 		"tmp/scratch.md",
 		"plans\\step.md",
 		"plans",
@@ -123,7 +123,7 @@ it("serves the library and the Mermaid script only through the authenticated boa
 	expect(index.docs).toHaveLength(4);
 	const file = await fetch(`${url.origin}/api/docs/file?path=octocode-rfc-generator/demo/RFC.md`, { headers });
 	expect(((await file.json()) as { markdown: string }).markdown).toContain("# Voice");
-	for (const bad of ["../x.md", "skills/octocode-research/skill.md", "tmp/scratch.md"])
+	for (const bad of ["../x.md", "session-data/s1/private.md", "tmp/scratch.md"])
 		expect((await fetch(`${url.origin}/api/docs/file?path=${encodeURIComponent(bad)}`, { headers })).status, bad).toBe(
 			404,
 		);

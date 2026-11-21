@@ -76,11 +76,11 @@ flowchart LR
   SP --> M["Model request"]
 ```
 
-| Rule                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------------- |
-| An explicit child role decides read-only guidance; a main session without `file` but with Bash or MCP is not read-only |
-| Browser specialists are named only when delegation is available and the main session has no browser tool               |
-| A server that connects mid-run gets its block in the next request                                                      |
-| Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read              |
+| Rule                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An explicit child role decides read-only guidance; a main session without `file` but with Bash or MCP is not read-only                                                    |
+| Browser specialists are named whenever delegation is available, for long, parallel or visual browsing; main does short page tasks itself with the on-demand browser tools |
+| A server that connects mid-run gets its block in the next request                                                                                                         |
+| Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read                                                                 |
 
 Section order and cache tiers: [instructions](../packages/coding-agent/docs/prompts.md). Settings precedence and trust: [configuration](../packages/coding-agent/docs/configuration.md#precedence). Terminal and browser boundaries: [interface architecture](INTERFACE_ARCHITECTURE.md).

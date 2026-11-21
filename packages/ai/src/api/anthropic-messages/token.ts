@@ -29,8 +29,7 @@ export function carriesClaudeSubscriptionToken(
 }
 
 /**
- * Throws the refusal when the key or a header carries a Claude subscription token, so no request is built with it. A
- * token saved before this release reaches here and gets the same message.
+ * Throws the refusal when the key or a header carries a Claude subscription token, so no request is built with it.
  */
 export function refuseClaudeSubscriptionToken(apiKey: string | undefined, headers: ProviderHeaders | undefined): void {
 	if (carriesClaudeSubscriptionToken(apiKey, headers)) throw new Error(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);

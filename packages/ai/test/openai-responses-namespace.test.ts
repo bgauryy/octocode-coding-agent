@@ -197,13 +197,6 @@ describe("OpenAI Responses tool-call namespaces", () => {
 		const targetModels: Model<Api>[] = [
 			{ ...model, id: "gpt-5.2", name: "GPT-5.2" },
 			{ ...model, provider: "azure" },
-			{
-				...model,
-				api: "openai-codex-responses",
-				provider: "openai-codex",
-				id: "gpt-5.3-codex-spark",
-				name: "GPT-5.3 Codex Spark",
-			},
 		];
 
 		for (const targetModel of targetModels) {

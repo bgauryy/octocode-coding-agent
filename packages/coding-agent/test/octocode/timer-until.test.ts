@@ -71,20 +71,8 @@ describe("the closed list of until conditions", () => {
 		expect(parseUntil({ item: { ref: "B1", state: "done" } })).toEqual({ kind: "item", ref: "B1", state: "done" });
 	});
 
-	it("refuses the removed file and port conditions with the command that replaces each", () => {
-		expect(() => parseUntil({ file: { path: "out.txt", is: "exists" } })).toThrow(
-			"until.file was removed; set the wait with on check.result and this command instead: test -e out.txt",
-		);
-		expect(() => parseUntil({ file: { path: "my out.txt", is: "absent" } })).toThrow("test ! -e 'my out.txt'");
-		expect(() => parseUntil({ file: { path: "log.txt" } })).toThrow(/until\.file was removed.*test log\.txt -nt mark/);
-		expect(() => parseUntil({ port: { port: 5173 } })).toThrow(
-			"until.port was removed; set the wait with on check.result and this command instead: nc -z localhost 5173",
-		);
-		expect(() => parseUntil({ port: { port: 80, host: "127.0.0.1" } })).toThrow("nc -z 127.0.0.1 80");
-		// Malformed values still name the replacement, as does a check whose trigger is a removed kind.
-		expect(() => parseUntil({ file: "a" })).toThrow("test path -nt mark");
-		expect(() => parseUntil({ check: "up?", port: { port: 3000 } })).toThrow("nc -z localhost 3000");
-		expect(() => parseUntil({ command: "true", file: { path: "a" } })).toThrow(/until\.file was removed/);
+	it("refuses a condition it does not know, naming the choices", () => {
+		expect(() => parseUntil({ file: { path: "out.txt" } })).toThrow(/until has no condition file; the choices are/);
 	});
 
 	it("check names one trigger from the same list and cannot nest", () => {
@@ -110,7 +98,7 @@ describe("the closed list of until conditions", () => {
 });
 
 describe("deterministic conditions", () => {
-	it("a command replaces the removed file and port waits: it is met when it exits 0", async () => {
+	it("a command is met when it exits 0", async () => {
 		const run = (command: string) => check()({ kind: "command", command }, { cwd: root });
 		expect(await run("test -e out.txt")).toMatchObject({ met: false, exit: 1 });
 		expect(await run("test ! -e out.txt")).toMatchObject({ met: true, exit: 0 });
@@ -760,94 +748,6 @@ describe("gates see a command wherever a wait carries it", () => {
 		expect(untilCommand({ filter: { path: "a" } })).toBeUndefined();
 		expect(untilCommand({ filter: { command: "  " } })).toBeUndefined();
 		expect(untilCommand({})).toBeUndefined();
-	});
-});
-
-describe("a timer stored with a removed condition", () => {
-	/** A row as an earlier version wrote it: the table still accepts the kinds `file` and `port`. */
-	const stored = (kind: "file" | "port" | "check", value: unknown) =>
-		timers.insert(agent.db, {
-			workspaceId,
-			sessionId: "s1",
-			note: "open the app",
-			at: T0,
-			kind: "until",
-			dueAt: T0 + 5000,
-			intervalMs: 5000,
-			condition: {
-				kind,
-				value: typeof value === "string" ? value : JSON.stringify(value),
-				cwd: root,
-				baseline: "absent",
-			},
-			deadlineAt: T0 + 3_600_000,
-		});
-	const run = async (now: number) => {
-		const woken: Array<NonNullable<ReturnType<typeof timers.get>>> = [];
-		const checked = vi.fn(check());
-		const failed = vi.fn();
-		const instance = new TimerScheduler({
-			db: () => agent,
-			sessionId: "s1",
-			now: () => now,
-			check: checked,
-			watch: conditionWatcher(deps()),
-			wake: (each) => woken.push(each),
-			failed,
-		});
-		started.push(instance);
-		instance.refresh();
-		await instance.tick();
-		expect(failed).not.toHaveBeenCalled();
-		expect(checked).not.toHaveBeenCalled();
-		return woken;
-	};
-
-	it("is listed without a crash and stays active until its next check is due", async () => {
-		const row = stored("file", { path: "build.done", is: "exists" });
-		expect(timerLine(row, T0)).toContain("until file (not readable by this version)");
-		expect(await run(T0 + 1000)).toEqual([]);
-		expect(timers.get(agent.db, row.id)).toMatchObject({ status: "active" });
-	});
-
-	it("ends failed at its next check, with the command to set it again, instead of waiting out its deadline", async () => {
-		const file = stored("file", { path: "build.done", is: "exists" });
-		const port = stored("port", { port: 5173, host: "127.0.0.1" });
-		const judged = stored("check", {
-			question: "up?",
-			on: { kind: "port", value: '{"port":8080,"host":"localhost"}' },
-		});
-		const woken = await run(T0 + 6000);
-		expect(woken.map((row) => [row.id, row.status, row.stop_reason])).toEqual([
-			[
-				file.id,
-				"failed",
-				"until.file was removed; set the wait with on check.result and this command instead: test -e build.done",
-			],
-			[
-				port.id,
-				"failed",
-				"until.port was removed; set the wait with on check.result and this command instead: nc -z 127.0.0.1 5173",
-			],
-			[
-				judged.id,
-				"failed",
-				"until.port was removed; set the wait with on check.result and this command instead: nc -z localhost 8080",
-			],
-		]);
-		expect(wakeText(woken[0])).toBe(
-			[
-				`Wait ${file.id} fired: stopped: until.file was removed; set the wait with on check.result and this command instead: test -e build.done (wait failed).`,
-				"Note: open the app",
-			].join("\n"),
-		);
-		expect(timers.activeCount(agent.db, "s1")).toBe(0);
-	});
-
-	it("names the replacement even when the stored text cannot be read", async () => {
-		stored("file", "not json");
-		const [ended] = await run(T0 + 6000);
-		expect(ended).toMatchObject({ status: "failed", stop_reason: expect.stringContaining("test path -nt mark") });
 	});
 });
 

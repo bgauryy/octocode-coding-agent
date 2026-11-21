@@ -6,14 +6,25 @@
  * Usage: node scripts/stage-binary.mjs <output-dir> [--platform <darwin-arm64|linux-x64|windows-x64|...>]
  * Run after `yarn run build` in packages/coding-agent; the platform defaults to this machine.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyNative } from "./copy-native.mjs";
-import { stageCodingAgentSkills } from "./stage-coding-agent-skills.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageDir = join(repoRoot, "packages", "coding-agent");
+
+/** Copy the already-packaged public collection, including references, scripts and assets. */
+export function stageCodingAgentSkills(packageDir, target) {
+	const require = createRequire(join(packageDir, "package.json"));
+	const source = join(dirname(require.resolve("octocode/package.json")), "skills");
+	const names = readdirSync(source).filter((name) => existsSync(join(source, name, "SKILL.md")));
+	if (names.length === 0) throw new Error(`The installed Octocode research package has no skills: ${source}`);
+	rmSync(target, { recursive: true, force: true });
+	cpSync(source, target, { recursive: true, dereference: true });
+	return { source, target, skills: names.sort() };
+}
 
 /** `darwin-arm64`, `linux-x64`, `windows-x64`, ... for this machine. */
 export function currentPlatform() {

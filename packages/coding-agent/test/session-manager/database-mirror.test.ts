@@ -53,12 +53,12 @@ describe("durable workspace transcripts", () => {
 		manager.branch(first);
 		manager.appendCustomEntry("agent_report", { outcome: "done" });
 		const file = manager.getSessionFile()!;
-		expect(file).toContain(join(".octocode", "code", "sessions"));
+		expect(file).toContain(join(".octocode", "agent", "sessions"));
 		const id = manager.getSessionId();
 		await settle();
 		expect(records(id)).toEqual(jsonl(file));
 		expect(sessions.byId(sharedAgentDb().db, id)?.workspace_id).toBe(
-			readFileSync(join(cwd, ".octocode/code/workspace/id"), "utf8").trim(),
+			readFileSync(join(cwd, ".octocode/agent/workspace/id"), "utf8").trim(),
 		);
 		expect((await SessionManager.listAll()).some((s) => s.id === id)).toBe(true);
 

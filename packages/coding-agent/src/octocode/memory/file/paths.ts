@@ -9,19 +9,9 @@ import { workspaceGit } from "../../../utils/git-repository.ts";
  * and the shell from changing it around the `memory` tool. This module creates the folder and asks git about the file.
  */
 
-/**
- * Creates the file's folder; a workspace folder also gets `.gitignore` containing `*` the first time, never replaced,
- * so the file stays out of commits by default.
- */
+/** Creates the file's folder. A workspace file sits in `.octocode/agent/`, where Octocode's own `.gitignore` leaves it tracked. */
 export function ensureMemoryDir(file: MemoryFileRef): void {
-	const dir = path.dirname(file.path);
-	fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-	if (file.scope !== "workspace") return;
-	try {
-		fs.writeFileSync(path.join(dir, ".gitignore"), "*\n", { flag: "wx", mode: 0o600 });
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-	}
+	fs.mkdirSync(path.dirname(file.path), { recursive: true, mode: 0o700 });
 }
 
 /** Whether git tracks the workspace file: then it is repository content, labeled and never written by Octocode. */

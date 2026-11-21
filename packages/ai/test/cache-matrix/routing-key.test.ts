@@ -33,7 +33,6 @@ const anthropicWithAffinity = (): Model<any> => {
 
 const ROUTES: Route[] = [
 	{ id: "xai", headers: ["x-grok-conv-id", "x-client-request-id"], keyField: "prompt_cache_key" },
-	{ id: "codex", headers: ["session-id", "x-client-request-id"], keyField: "prompt_cache_key" },
 	{ id: "completions-explicit", headers: ["x-session-id"], keyField: "prompt_cache_key", keyRetention: "long" },
 	{ id: "responses", headers: ["x-client-request-id"], keyField: "prompt_cache_key" },
 	{ id: "anthropic", headers: ["x-session-id"], model: anthropicWithAffinity },
@@ -80,15 +79,6 @@ describe.each(ROUTES)("routing headers of $id follow the prompt cache key", (rou
 });
 
 describe("header shape", () => {
-	it("keeps a key longer than the OpenAI limit within 64 characters in the body and the Codex headers alike", async () => {
-		const key = `octocode-child-${"a".repeat(80)}`;
-		const wire = await send(ROUTES[1], { sessionId: "s", promptCacheKey: key, cacheRetention: "short" });
-		const sent = wire.payload.prompt_cache_key as string;
-		expect(sent.length).toBeLessThanOrEqual(64);
-		expect(wire.headers.get("session-id")).toBe(sent);
-		expect(wire.headers.get("x-client-request-id")).toBe(sent);
-	});
-
 	it("xAI keeps the conversation id and the request id as separate, present headers", async () => {
 		const wire = await send(ROUTES[0], { sessionId: "s", promptCacheKey: "k", cacheRetention: "short" });
 		expect(wire.headers.has("x-grok-conv-id")).toBe(true);

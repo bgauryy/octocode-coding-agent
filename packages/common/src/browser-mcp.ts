@@ -16,51 +16,57 @@ export interface BrowserMcpCdp {
 	params: Record<string, unknown>;
 }
 
+/** The parameters of a `flow` call that runs a flow (`name` and `params`, no CDP `method`): they fill a plan's placeholders. */
+const flowParamsOf = (input: Record<string, unknown>): Record<string, unknown> =>
+	input.action === "run" && input.method === undefined && isRecord(input.params) ? input.params : {};
+
+/** A page script a browser MCP call runs: an `evaluate` plan step, or a flow's `trigger` parameter. */
+export interface BrowserMcpScript {
+	/** Where the script travels, for a person reading the ask. */
+	source: string;
+}
+
 /**
  * What a browser MCP call hands the browser, from every place the package (`@octocodeai/octocode-chrome-devtools`)
- * reads it: raw CDP commands (the `cdp` tool, plan and step `cdp` operations), page actions (plan and step `act`
- * operations, and the legacy `dom-operations-check` recipe's `DOM_ACTION`/`DOM_VALUE` or `DOM_STEPS` options) and
- * launcher arguments (`args`, which the package appends to any command).
+ * reads it: raw CDP commands (the `cdp` tool, plan `cdp` steps), page actions (plan `act` steps), page scripts (plan
+ * `evaluate` steps and a flow's `trigger` parameter, which a built-in flow runs as an `evaluate` step) and launch
+ * fields (`open`'s `launch`, `attach`). Plans reach the package through `run` and through `flow` (`save` takes one).
  */
 export function browserMcpParts(input: Record<string, unknown>): {
 	cdp: BrowserMcpCdp[];
 	acts: Record<string, unknown>[];
-	args: string[];
+	scripts: BrowserMcpScript[];
+	launch: Record<string, unknown>;
+	attach: boolean;
 } {
 	const cdp: BrowserMcpCdp[] = [];
 	const acts: Record<string, unknown>[] = [];
+	const scripts: BrowserMcpScript[] = [];
 	const addCdp = (method: unknown, params: unknown) => {
 		if (typeof method === "string") cdp.push({ method, params: isRecord(params) ? params : {} });
 	};
-	const step = (value: unknown) => {
-		if (!isRecord(value)) return;
-		if (value.op === "cdp") addCdp(value.method, value.params);
-		else if (value.op === "act") acts.push(value);
-	};
-	if (isRecord(input.plan) && Array.isArray(input.plan.steps)) input.plan.steps.forEach(step);
-	step(input.step);
-	addCdp(input.method, input.params);
-	if (isRecord(input.options)) {
-		const { DOM_ACTION, DOM_VALUE, DOM_STEPS, steps } = input.options;
-		if (DOM_ACTION !== undefined) acts.push({ action: DOM_ACTION, value: DOM_VALUE });
-		for (const listed of [DOM_STEPS, steps]) {
-			let parsed = listed;
-			if (typeof listed === "string")
-				try {
-					parsed = JSON.parse(listed);
-				} catch {
-					continue; // The recipe refuses steps that are not JSON.
-				}
-			if (Array.isArray(parsed)) for (const each of parsed) if (isRecord(each)) acts.push(each);
+	if (isRecord(input.plan) && Array.isArray(input.plan.steps))
+		for (const value of input.plan.steps) {
+			if (!isRecord(value)) continue;
+			if (value.op === "cdp") addCdp(value.method, value.params);
+			else if (value.op === "act") acts.push(value);
+			else if (value.op === "evaluate") scripts.push({ source: "an evaluate step" });
 		}
-	}
-	const args = Array.isArray(input.args) ? input.args.filter((arg): arg is string => typeof arg === "string") : [];
-	return { cdp, acts, args };
+	addCdp(input.method, input.params);
+	const flowParams = flowParamsOf(input);
+	if (flowParams.trigger !== undefined) scripts.push({ source: "the flow's trigger" });
+	return {
+		cdp,
+		acts,
+		scripts,
+		launch: isRecord(input.launch) ? input.launch : {},
+		attach: input.attach === true,
+	};
 }
 
 /**
- * The addresses a browser MCP call asks Chrome to open: `open`'s `url`, a connection's `newTab`, plan and step `goto`
- * URLs, and the URL of a navigating CDP command. Pages the opened page then loads, and links a click follows, are not
+ * The addresses a browser MCP call asks Chrome to open: `open`'s `url`, a connection's `newTab`, a tab group's `urls`,
+ * a flow's `url` parameter, plan `goto` URLs, and the URL of a navigating CDP command. Pages the opened page then loads, and links a click follows, are not
  * known before the call runs.
  */
 export function browserMcpUrls(toolName: string, input: Record<string, unknown>): string[] {
@@ -71,7 +77,9 @@ export function browserMcpUrls(toolName: string, input: Record<string, unknown>)
 	};
 	add(input.url);
 	if (isRecord(input.connection)) add(input.connection.newTab);
-	const steps = [...(isRecord(input.plan) && Array.isArray(input.plan.steps) ? input.plan.steps : []), input.step];
+	if (Array.isArray(input.urls)) input.urls.forEach(add);
+	add(flowParamsOf(input).url);
+	const steps = isRecord(input.plan) && Array.isArray(input.plan.steps) ? input.plan.steps : [];
 	for (const value of steps) if (isRecord(value) && value.op === "goto") add(value.url);
 	for (const { method, params } of browserMcpParts(input).cdp) if (NAVIGATING_CDP.has(method)) add(params.url);
 	return [...new Set(urls)];

@@ -4,7 +4,7 @@ it("projects Claude Bash units without native execution options", () => {
 	expect(
 		hookPayload("claude", {
 			hook_event_name: "PermissionRequest",
-			pi_tool_name: "bash",
+			octocode_tool_name: "bash",
 			tool_input: { command: "x", timeout: 2, background: true, type: "bash" },
 		}).tool_input,
 	).toEqual({ command: "x", timeout: 2000, run_in_background: true });

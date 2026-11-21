@@ -4,8 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
-import { HOME_NAMES } from "../../src/octocode/shared/home.ts";
-import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { pruneNotice } from "../../src/octocode/subagents/prune-notice.ts";
 import { noteMerge } from "../../src/octocode/subagents/ref-link.ts";
 import {
@@ -99,26 +97,6 @@ describe("subagent worktrees of a repository with linked worktrees", () => {
 		orphan(gone.path);
 		git(main, "worktree", "remove", "--force", linked);
 		expect((await pruneWorktrees(main, home)).saved).toEqual([{ agentId: "from-gone" }]);
-	});
-
-	it("still prunes an orphan kept in the folder earlier versions named by the checkout root", async () => {
-		const main = repo();
-		const home = tmp();
-		const legacy = path.join(home, HOME_NAMES.worktrees, shortHash(main));
-		expect(legacy).not.toBe(worktreesDir(main, home));
-		fs.mkdirSync(legacy, { recursive: true });
-		const base = git(main, "rev-parse", "HEAD");
-		const old = path.join(legacy, "legacy-1");
-		git(main, "worktree", "add", "-q", "--detach", old, base);
-		fs.writeFileSync(`${old}.json`, JSON.stringify({ owners: [{ pid: deadPid() }], repo: main, base, createdAt: 1 }));
-		fs.writeFileSync(path.join(old, "a.txt"), "one\nlegacy work\n");
-
-		expect(await pruneWorktrees(main, home)).toEqual({
-			saved: [{ agentId: "legacy-1", ref: "refs/octocode/legacy-1" }],
-			kept: [],
-		});
-		expect(git(main, "show", "refs/octocode/legacy-1:a.txt")).toBe("one\nlegacy work");
-		expect(fs.existsSync(old)).toBe(false);
 	});
 
 	it("keeps an orphan whose record names a different repository", async () => {

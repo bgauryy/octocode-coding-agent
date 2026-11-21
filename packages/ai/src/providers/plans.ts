@@ -49,12 +49,3 @@ export const GITHUB_COPILOT_PLAN: ProviderPlan = {
 	access: "unclear",
 	terms: "https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies",
 };
-
-/** The legacy ChatGPT route through the Codex CLI's client; Sign in with ChatGPT replaces it. */
-export const OPENAI_CODEX_LEGACY_PLAN: ProviderPlan = {
-	billing: "plan",
-	access: "unclear",
-	terms: "https://developers.openai.com/siwc/token-sharing-open-source",
-	deprecated:
-		"OpenAI Codex (legacy) is deprecated. Use Sign in with ChatGPT under the OpenAI provider (/providers openai), the route OpenAI provides for open-source apps.",
-};

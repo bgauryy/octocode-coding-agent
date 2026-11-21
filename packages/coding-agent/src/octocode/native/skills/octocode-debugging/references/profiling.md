@@ -6,7 +6,7 @@ Load for a profiling request or unexplained CPU, memory, latency, I/O or renderi
 
 Record the exact command/action, runtime, build/symbols, input size, duration and machine. Separate cold startup, warm startup, idle, active work and cleanup. For an interactive program, measure the actual terminal/browser interaction: a headless run is a comparison, not proof about rendering. Browser headless mode and CLI non-interactive mode are different controls.
 
-Save local artifacts under `<workspace>/.octocode/octocode-debugging/<capture>/`. Check available commands with `command -v`; use installed tools rather than silently installing or escalating. Profiles may contain paths, code and data. Keep raw artifacts local and read bounded summaries.
+Save local artifacts under `<workspace>/.octocode/agent/octocode-debugging/<capture>/`. Check available commands with `command -v`; use installed tools rather than silently installing or escalating. Profiles may contain paths, code and data. Keep raw artifacts local and read bounded summaries.
 
 First time the unchanged workload (`time <command>` or its runner's duration), without instrumentation. For a comprehensive request, build this coverage checklist and mark unsupported dimensions explicitly:
 
@@ -32,9 +32,9 @@ First time the unchanged workload (`time <command>` or its runner's duration), w
 Create the output directory first. Use the project's TypeScript loader when required.
 
 ```bash
-mkdir -p .octocode/octocode-debugging/run
-node --cpu-prof --cpu-prof-dir=.octocode/octocode-debugging/run app.mjs
-node <skill>/scripts/profile-top.mjs .octocode/octocode-debugging/run --top 15
+mkdir -p .octocode/agent/octocode-debugging/run
+node --cpu-prof --cpu-prof-dir=.octocode/agent/octocode-debugging/run app.mjs
+node <skill>/scripts/profile-top.mjs .octocode/agent/octocode-debugging/run --top 15
 node <skill>/scripts/profile-top.mjs <file.cpuprofile> --sort total --top 15
 ```
 
@@ -43,7 +43,7 @@ node <skill>/scripts/profile-top.mjs <file.cpuprofile> --sort total --top 15
 Record memory separately when possible to measure profiler overhead:
 
 ```bash
-node --heap-prof --heap-prof-dir=.octocode/octocode-debugging/run app.mjs
+node --heap-prof --heap-prof-dir=.octocode/agent/octocode-debugging/run app.mjs
 node <skill>/scripts/profile-top.mjs <file.heapprofile> --top 15
 ```
 
@@ -52,7 +52,7 @@ node <skill>/scripts/profile-top.mjs <file.heapprofile> --top 15
 ### Process, memory and loop timing preload
 
 ```bash
-OCTOCODE_PROFILE_DIR=.octocode/octocode-debugging/run \
+OCTOCODE_PROFILE_DIR=.octocode/agent/octocode-debugging/run \
   OCTOCODE_PROFILE_INTERVAL_MS=1000 \
   node --import <skill>/scripts/node-metrics.mjs app.mjs
 ```
@@ -93,8 +93,8 @@ On macOS, check `xcrun --find xctrace`, then `xcrun xctrace list templates`; cho
 ## Python and Go
 
 ```bash
-python3 -m cProfile -o .octocode/octocode-debugging/run/run.prof app/main.py
-python3 -c "import pstats; pstats.Stats('.octocode/octocode-debugging/run/run.prof').sort_stats('cumtime').print_stats(20)"
+python3 -m cProfile -o .octocode/agent/octocode-debugging/run/run.prof app/main.py
+python3 -c "import pstats; pstats.Stats('.octocode/agent/octocode-debugging/run/run.prof').sort_stats('cumtime').print_stats(20)"
 go test -cpuprofile cpu.out -memprofile mem.out -bench .
 go tool pprof -top cpu.out
 ```

@@ -73,6 +73,7 @@ function connectedCredential(): OAuthCredential {
 		refresh: "old-refresh",
 		expires: 0,
 		clientId: "oaiapp_existing",
+		subject: "user-1",
 		scopes: REQUIRED_SCOPE.split(" "),
 	};
 }

@@ -39,7 +39,7 @@ afterEach(() => {
 	repo.cleanup();
 });
 
-const worktree = (name: string) => path.join(repo.root, ".octocode", "worktrees", name);
+const worktree = (name: string) => path.join(repo.root, ".octocode", "agent", "worktrees", name);
 async function made(name: string): Promise<void> {
 	await worktreeCommand({ env: { ...process.env }, invocation }).handler(`new ${name}`, contextAt(repo.root));
 	notices = [];
@@ -208,7 +208,7 @@ describe("/worktree switch main", () => {
 		const newSession = announce(repo.root);
 		await worktreeCommand().handler(
 			"switch main",
-			contextAt(path.join(repo.root, ".octocode", "worktrees", inside), { newSession }),
+			contextAt(path.join(repo.root, ".octocode", "agent", "worktrees", inside), { newSession }),
 		);
 		expect(newSession).toHaveBeenCalledTimes(1);
 		expect(newSession.mock.calls[0]?.[0]?.cwd).toBe(repo.root);

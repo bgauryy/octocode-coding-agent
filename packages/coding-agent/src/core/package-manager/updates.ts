@@ -8,7 +8,6 @@ import {
 	ensureNpmProject,
 	getInstalledNpmVersion,
 	getLatestNpmVersion,
-	getManagedNpmInstallPath,
 	getNpmInstallArgs,
 	getNpmInstallPath,
 	getNpmInstallRoot,
@@ -122,7 +121,7 @@ async function shouldUpdateNpmSource(
 	source: NpmSource,
 	scope: InstalledSourceScope,
 ): Promise<boolean> {
-	const installedPath = getManagedNpmInstallPath(host, source, scope);
+	const installedPath = getNpmInstallPath(host, source, scope);
 	const installedVersion = existsSync(installedPath) ? getInstalledNpmVersion(installedPath) : undefined;
 	if (!installedVersion) {
 		return true;

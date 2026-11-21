@@ -27,7 +27,6 @@ const MID_CONVO_FLAGS = [
 
 const ROUTES: { provider: string; api: Api; baseUrl: string; prefix?: string }[] = [
 	{ provider: "openai", api: "openai-responses", baseUrl: "https://api.openai.com/v1" },
-	{ provider: "openai-codex", api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" },
 	{ provider: "github-copilot", api: "openai-responses", baseUrl: "https://api.individual.githubcopilot.com" },
 	{ provider: "opencode", api: "openai-responses", baseUrl: "https://opencode.ai/zen/v1" },
 	{ provider: "openrouter", api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1", prefix: "openai/" },

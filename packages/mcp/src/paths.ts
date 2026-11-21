@@ -17,17 +17,7 @@ export function globalMcpConfigPath(agentDir: string): string {
 /** Global MCP files, lowest precedence first; explicit homes and SDK directories do not inherit defaults. */
 export function globalMcpConfigPaths(agentDir: string): string[] {
 	const legacy = hostPaths().legacyConfigDirs(agentDir);
-	const previousNative = usesDefaultAgentDir(agentDir) ? join(agentDir, "mcp.json") : undefined;
-	const compatibilityPaths = legacy.length
-		? [join(homedir(), hostIdentity().configDirName, "agent", "mcp.json"), ...(previousNative ? [previousNative] : [])]
-		: [];
-	return [
-		...new Set([
-			...legacy.reverse().map((dir) => join(dir, "mcp.json")),
-			...compatibilityPaths,
-			globalMcpConfigPath(agentDir),
-		]),
-	];
+	return [...new Set([...legacy.reverse().map((dir) => join(dir, "mcp.json")), globalMcpConfigPath(agentDir)])];
 }
 
 /** The project `mcp.json` that MCP commands write. */

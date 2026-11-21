@@ -186,11 +186,11 @@ const MCP_SKILLS_GENERAL = 30_800;
 /** The researcher (MCP 26,634 + skills 1,430) and the reviewer (skills 1,529). */
 const MCP_SKILLS_FILTERED = 29_600;
 /**
- * The browser child: only the browser server's tools (26,370) beside its local tools (bash, file, web, mcp, wait,
- * agent, skill), no Octocode MCP tool, and an empty skill catalog (261).
- * The browser preset leaves its 12 rarely used tools on demand.
+ * The browser child: the browser server's tools and the Octocode MCP tools (every specialist but lean gets the research
+ * server), beside its local tools (bash, file, web, mcp, wait, agent, skill), and an empty skill catalog: measured
+ * MCP 32,020 + skills 261.
  */
-const MCP_SKILLS_BROWSER = 28_000;
+const MCP_SKILLS_BROWSER = 33_900;
 
 /**
  * Bytes per layer of each agent's first request with no usage data (`measureLayers`), and `loads`: how many tools it
@@ -206,7 +206,8 @@ const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads
 		nativeTools: 18_100,
 		mcpTools: 28_000,
 		total: 73_750,
-		loads: 22,
+		// The built-in browser server's 12 tools are on demand in main (one index line each): 14 + 19 = 33 measured.
+		loads: 35,
 	},
 	general: {
 		system: 11_650,
@@ -246,20 +247,20 @@ const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads
 		total: 54_700,
 		loads: 20,
 	},
-	// The browser preset's on-demand tools (12 of them) moved about 12 KB out of `mcpTools` and into `mcpInstructions`:
-	// the `- name: trigger` index line for each, whose trigger is the browser server's own first sentence, and the
-	// section's one line on loading such a tool (measured 6,433). The other layers are lowered to match.
+	// mcpInstructions holds the browser server's and the Octocode MCP server's instructions (measured 8,901).
 	browser: {
 		system: 10_450,
-		mcpInstructions: 6_750,
-		// The browser server's tools alone (the role declares no Octocode MCP tool): mcpTools measured 26,370, total 52,422, 37 loads.
+		mcpInstructions: 9_350,
+		// The browser server's and the Octocode MCP server's tools: mcpTools measured 32,020.
 		skills: 300,
 		nativeTools: 9_950,
-		mcpTools: 27_700,
-		total: 55_050,
+		mcpTools: 33_650,
+		// total measured 60,929.
+		total: 64_000,
 		loads: 39,
 	},
-	lean: { system: 4_350, mcpInstructions: 0, skills: 0, nativeTools: 6_550, mcpTools: 0, total: 10_850, loads: 0 },
+	// Declares web since the lean role names it: nativeTools measured 7,034, total 11,300, loads 1 (web).
+	lean: { system: 4_350, mcpInstructions: 0, skills: 0, nativeTools: 7_400, mcpTools: 0, total: 11_850, loads: 1 },
 };
 
 /**
@@ -268,13 +269,15 @@ const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads
  * total 53,556 bytes, and 21 tools a first use loads. It lists no skills.
  */
 const LEAN_MAIN_CEILINGS: Omit<Layers, "freellama"> & { loads: number } = {
-	system: 4_750,
+	// system 4,851 since the browser server joined the main session's server list on demand (+101).
+	system: 5_100,
 	mcpInstructions: 6_850,
 	skills: 0,
 	nativeTools: 18_200,
 	mcpTools: 28_000,
 	total: 56_250,
-	loads: 22,
+	// 33 measured: the browser server's 12 on-demand tools join the 21.
+	loads: 35,
 };
 
 /**
@@ -452,7 +455,12 @@ describe("first request with no usage data", () => {
 		const thin = named("main").tools.find((tool) => tool.name === "mcp__octocode__localSearch")!;
 		const full = named("main").deferred!.find((tool) => tool.name === "mcp__octocode__localSearch")!;
 		expect(full.fullBytes).toBeGreaterThan(bytes(thin.name + thin.description + JSON.stringify(thin.parameters)));
-		expect(measureLoads(named("lean"))).toMatchObject({ deferred: 0, fullBytes: 0 });
+		// A lean child defers only its thin web declaration.
+		expect(
+			named("lean")
+				.deferred?.filter((tool) => tool.state === "deferred")
+				.map((tool) => tool.name),
+		).toEqual(["web"]);
 	});
 
 	it("lists no skills to the browser child, whose catalog is empty", () => {
@@ -506,13 +514,12 @@ describe("first request with no usage data", () => {
 		},
 	);
 
-	it("only the browser role declares browser tools, and the lean role has no web tool", () => {
+	it("only the browser role declares browser tools, and the lean role declares exactly bash, file, web and agent", () => {
 		const browser = named("browser").tools.map((tool) => tool.name);
 		expect(browser.some((tool) => tool.startsWith("mcp__browser__"))).toBe(true);
 		expect(browser).toContain("web");
 		const lean = named("lean").tools.map((tool) => tool.name);
-		expect(lean).not.toContain("web");
-		expect(lean.some((tool) => tool.startsWith("mcp__"))).toBe(false);
+		expect([...lean].sort()).toEqual(["agent", "bash", "file", "web"]);
 	});
 
 	it("declares the coordinator's planning tool to no child", () => {

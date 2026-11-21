@@ -16,7 +16,7 @@ export const KIND_LABELS: Record<ReportSummary["kind"], string> = {
 };
 
 const REPORT_PATH =
-	/^(?:.*\/)?\.octocode\/(octocode-rfc-generator|octocode-research|octocode-brainstorming)\/([^/?#]+?)(?:\/([^/?#]+\.md))?\/?$/;
+	/^(?:.*\/)?\.octocode\/agent\/(octocode-rfc-generator|octocode-research|octocode-brainstorming)\/([^/?#]+?)(?:\/([^/?#]+\.md))?\/?$/;
 const DIR_INFO = {
 	"octocode-rfc-generator": { tab: "rfc", kind: "rfc" },
 	"octocode-research": { tab: "research", kind: "research" },

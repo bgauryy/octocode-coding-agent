@@ -4,7 +4,7 @@ import { workspaces } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { isCurrentWorkspace } from "../../storage/workspace.ts";
 import { BacklogStore } from "../backlog/store.ts";
-import { workspaceOctocodeDir } from "../shared/home.ts";
+import { workspaceAgentDir } from "../shared/home.ts";
 import type { SessionRegistry } from "./sessions.ts";
 
 export interface RepoInfo {
@@ -60,7 +60,7 @@ export class RepoCatalog {
 					id: row.id,
 					name: row.name.slice(0, 256),
 					sessions: live.get(row.id)?.sessions ?? 0,
-					hasReports: fs.existsSync(workspaceOctocodeDir(row.root)) && isCurrentWorkspace(row),
+					hasReports: fs.existsSync(workspaceAgentDir(row.root)) && isCurrentWorkspace(row),
 				});
 			}
 		} catch {

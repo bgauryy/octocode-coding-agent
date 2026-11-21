@@ -10,7 +10,6 @@ import {
 } from "./conditions/index.ts";
 import { formatSpan } from "../shared/format.ts";
 import type { AgentEvent } from "../wake/catalog.ts";
-import { removedStored } from "./conditions/removed.ts";
 import { cronFields, cronOf, cronSummary, cronWakeText } from "./cron.ts";
 import { CHECK_CAPS } from "./judge.ts";
 import type { CheckOutcome, TimerCondition } from "./conditions/types.ts";
@@ -134,13 +133,6 @@ export function timerFields(
 export function rowCondition(row: TimerRow): TimerCondition | undefined {
 	return row.condition_kind && row.condition ? decodeCondition(row.condition_kind, row.condition) : undefined;
 }
-
-/**
- * Why an `until` row set by an earlier version can no longer be checked: its condition kind was removed. The note names
- * the `command` to set it with again; the scheduler ends the row with it instead of leaving it to its deadline.
- */
-export const rowRemoved = (row: TimerRow): string | undefined =>
-	row.kind === "until" ? removedStored(row.condition_kind, row.condition) : undefined;
 
 /**
  * A persistent `until` row (`once: false`, a `max_runs` of wakes) wakes when its condition turns true, not while it stays

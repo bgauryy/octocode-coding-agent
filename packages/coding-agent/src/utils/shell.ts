@@ -5,7 +5,7 @@ import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { getAgentDir, getBinDir, getLegacyProviderDirs } from "../config.ts";
+import { getAgentDir, getBinDir, getLegacyConfigDirs } from "../config.ts";
 import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
 import { activeCommandSandbox, rememberLaunch } from "./command-sandbox.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
@@ -291,7 +291,7 @@ export function providerKeyNames(env: NodeJS.ProcessEnv): string[] {
 		for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) names.add(name);
 	// A custom provider's key comes from the variable its `apiKey` or a header names (`$NAME`), in every models.json
 	// the session merges: Octocode's own, then the read-only legacy and Pi folders.
-	for (const dir of [getAgentDir(), ...getLegacyProviderDirs()])
+	for (const dir of [getAgentDir(), ...getLegacyConfigDirs()])
 		for (const name of modelsEnvKeyNames(join(dir, "models.json"))) names.add(name);
 	return [...names];
 }

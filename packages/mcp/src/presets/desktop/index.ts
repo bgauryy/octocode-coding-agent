@@ -5,6 +5,7 @@ import { CUA_DRIVER_PATH_ENV, envFlag, MCP_DESKTOP_ENV } from "@octocodeai/octoc
 import { DESKTOP_BIN, DESKTOP_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerPreset } from "../../preset.ts";
 import { defineDesktopTool } from "./tools.ts";
+import { driverVersion, healthWarnings, versionNotice } from "./health.ts";
 
 /**
  * The tools a desktop task uses every time: list a window, read it, launch an app, act on it and quit it by its menu
@@ -129,6 +130,9 @@ function findDriver(
 export const desktopAvailable = (env: NodeJS.ProcessEnv = process.env): boolean =>
 	findDriver(env).command !== undefined && envFlag(env, MCP_DESKTOP_ENV, true);
 
+/** The health warnings are shown once per process, not on every preset build. */
+let warned = false;
+
 /**
  * Cua Driver as the `desktop` MCP server (`cua-driver mcp`, MIT): it inspects and operates native apps on the user's
  * own desktop. Octocode never installs or bundles it, so the server is enabled only while an executable is found: the
@@ -152,11 +156,20 @@ export function desktopPreset(env: NodeJS.ProcessEnv = process.env): McpServerPr
 				...Object.fromEntries(DESKTOP_RARE_TOOLS.map((tool) => [tool, "onDemand" as const])),
 				...Object.fromEntries(DESKTOP_HIDDEN_TOOLS.map((tool) => [tool, "hidden" as const])),
 			},
+			// The model reads this line (the `<mcps>` block), so it stays plain; warnings for the user go through `takeWarnings`.
 			description: driver.command
 				? "Native desktop apps on this computer: inspect and operate them, with screenshots."
 				: `Native desktop apps through Cua Driver. Not installed: ${driver.problem} (https://cua.ai/docs/cua-driver/quickstart).`,
 		},
 		defineTool: defineDesktopTool,
 		instructionsOnDemand: true,
+		// Once per process, and only for a server that will run: a Driver older than the recorded floor, or a missing macOS permission (which otherwise surfaces as a closed connection). Shown to the user, never the model.
+		takeWarnings: () => {
+			if (warned || !driver.command || !envFlag(env, MCP_DESKTOP_ENV, true)) return [];
+			warned = true;
+			return [versionNotice(driverVersion(driver.command)), ...healthWarnings(driver.command)].filter(
+				(line): line is string => line !== undefined,
+			);
+		},
 	};
 }

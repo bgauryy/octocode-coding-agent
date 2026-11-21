@@ -27,7 +27,7 @@ export function anthropicSdkInput(
 	for (const definition of Object.values(tools))
 		definition.providerOptions = { anthropic: { eagerInputStreaming: compat.supportsEagerToolInputStreaming } };
 	if (inline)
-		tools.__pi_deferred_placeholder__ = tool({
+		tools.__octocode_deferred_placeholder__ = tool({
 			description: "Reserved placeholder. Never available. Never call this.",
 			inputSchema: jsonSchema({ type: "object", properties: {}, required: [] }),
 			providerOptions: { anthropic: { deferLoading: true } },

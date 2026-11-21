@@ -59,10 +59,6 @@ export function settleMember(
 
 /** Check liveness outside the write lock, then validate that identity before running the mutation once. */
 export function memberTransaction<T>(agent: AgentDb, member: Member | undefined, work: (held: boolean) => T): T {
-	if (member) {
-		agents.ensureMailbox(agent.db);
-		agents.ensureSettledStatus(agent.db);
-	}
 	if (!member) return agent.transaction(() => work(false));
 	for (;;) {
 		const observed = agents.processOf(agent.db, member.id);

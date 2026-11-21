@@ -33,7 +33,6 @@ function expectMarkers(entry: WireCase, wire: Wire) {
 	if (entry.keyField && entry.id !== "completions-explicit") expect(wire.payload[entry.keyField]).toBe("wire-session");
 	const header: Partial<Record<WireId, string>> = {
 		xai: "x-grok-conv-id",
-		codex: "session-id",
 		"completions-explicit": "x-session-id",
 		responses: "x-client-request-id",
 	};
@@ -198,6 +197,6 @@ describe("tool-loading modes the matrix relies on", () => {
 	it("only transports that redeclare in place get the redeclared-definition event", () => {
 		expect(
 			WIRE_CASES.filter((entry) => redeclaring(entry)).map((entry) => `${entry.id}:${redeclaring(entry)!.id}`),
-		).toEqual(["anthropic:claude-opus-5-5", "responses:gpt-6-luna", "codex:gpt-5.6-luna"]);
+		).toEqual(["anthropic:claude-opus-5-5", "responses:gpt-6-luna"]);
 	});
 });

@@ -9,9 +9,7 @@ export interface ChangelogEntry {
 }
 
 const GITHUB_REPO = "bgauryy/octocodecode";
-const UPSTREAM_REPO = "earendil-works/pi";
 const CHANGELOG_LINK_BASE_PATH = "packages/coding-agent";
-const LEGACY_REPO_RE = /^https:\/\/github\.com\/(?:badlogic|earendil-works)\/pi-mono(?=\/|$)/;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const INLINE_MARKDOWN_LINK_RE = /(!?\[[^\]\n]+\]\()([^\s)]+)((?:\s+[^)]*)?\))/g;
 
@@ -68,10 +66,8 @@ function isDirectoryTarget(originalPath: string, repositoryPath: string): boolea
 }
 
 function normalizeChangelogLinkTarget(target: string, tag: string): string {
-	let canonicalTarget = target.replace(LEGACY_REPO_RE, `https://github.com/${UPSTREAM_REPO}`);
-	const repoUrl = canonicalTarget.startsWith(`https://github.com/${UPSTREAM_REPO}/`)
-		? `https://github.com/${UPSTREAM_REPO}`
-		: `https://github.com/${GITHUB_REPO}`;
+	let canonicalTarget = target;
+	const repoUrl = `https://github.com/${GITHUB_REPO}`;
 
 	for (const route of ["blob", "tree"]) {
 		for (const branch of ["main", "master"]) {

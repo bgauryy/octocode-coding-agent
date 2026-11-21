@@ -41,7 +41,7 @@ describe("worktreeFooterText", () => {
 	});
 
 	it("names a linked worktree", () => {
-		expect(worktreeFooterText("hotfix", "/r/.octocode/worktrees/hotfix", [])).toBe("worktree hotfix");
+		expect(worktreeFooterText("hotfix", "/r/.octocode/agent/worktrees/hotfix", [])).toBe("worktree hotfix");
 	});
 
 	it("counts agents and the worktrees they are in, in any checkout", () => {
@@ -95,7 +95,7 @@ describe("registerWorktreeFooter", () => {
 	});
 
 	it("shows the folder name in a linked worktree", async () => {
-		const folder = path.join(repo.root, ".octocode", "worktrees", "hotfix");
+		const folder = path.join(repo.root, ".octocode", "agent", "worktrees", "hotfix");
 		sh(repo.root, "worktree", "add", "-q", "-b", "worktree-hotfix", folder);
 		const h = harness();
 		await h.start(folder);
@@ -103,7 +103,7 @@ describe("registerWorktreeFooter", () => {
 	});
 
 	it("follows the team's ticks: writes only when the text changes, and clears it when the agents leave", async () => {
-		const other = path.join(repo.root, ".octocode", "worktrees", "b");
+		const other = path.join(repo.root, ".octocode", "agent", "worktrees", "b");
 		sh(repo.root, "worktree", "add", "-q", "-b", "worktree-b", other);
 		const h = harness();
 		await h.start(repo.root);
@@ -125,7 +125,7 @@ describe("registerWorktreeFooter", () => {
 	});
 
 	it("stops watching, without throwing, when its session was replaced without session_shutdown", async () => {
-		const other = path.join(repo.root, ".octocode", "worktrees", "stale");
+		const other = path.join(repo.root, ".octocode", "agent", "worktrees", "stale");
 		sh(repo.root, "worktree", "add", "-q", "-b", "worktree-stale", other);
 		const h = harness();
 		await h.start(repo.root);

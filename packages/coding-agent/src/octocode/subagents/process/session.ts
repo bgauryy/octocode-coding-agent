@@ -2,14 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { getToolListError } from "../../../core/settings-manager.ts";
 import { privateDir, sessionOutputDir } from "../../shared/home.ts";
-import {
-	type AgentProfile,
-	profileExcludes,
-	profileSelectsBrowser,
-	profileSelectsServer,
-	profileTools,
-} from "../profiles.ts";
-import { BROWSER_SERVER, DESKTOP_SERVER, FREELLAMA_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
+import { type AgentProfile, profileExcludes, profileTools } from "../profiles.ts";
+import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import type { Identity } from "./env.ts";
 import { operatorLimits } from "./operator-limits.ts";
 
@@ -68,8 +62,10 @@ export function buildAgentArgs(
 		"--session-id",
 		session.id,
 	];
-	// The built-in MCP feature serves Octocode's research tools and the user's own MCP servers: every specialist needs
-	// local research. A lean child runs without any MCP server, and so does every child of an operator's `--no-mcp`.
+	// The built-in MCP feature serves Octocode's research tools: every specialist needs local research. Which servers a
+	// child runs is its handoff file's list (`task-servers.ts`): the user's own servers stay with the main session unless
+	// the profile or the task names them. A lean child runs without any MCP server, and so does every child of an
+	// operator's `--no-mcp`.
 	const operator = operatorLimits();
 	if (profile?.lean || operator.noMcp) args.push("--no-mcp");
 	// `model` is already resolved (`provider/id`, optionally `:thinking`); none means the parent's model. The profile's own
@@ -87,23 +83,8 @@ export function buildAgentArgs(
 	if (invalid)
 		throw new Error(`The tools of ${profile?.name ?? "this"} child are invalid (${invalid}); fix the profile's tools.`);
 	args.push("--tools", selection);
-	// The browser server belongs to the profiles that name it (the `browser` specialist): a child whose profile does not
-	// never starts it, whatever turned it on for the main session (`defaultTools`, `defaultActive`, `/mcp assign`). The floor
-	// `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away. The local-model
-	// server (FreeLlama) serves the main session: a child never starts it, and so carries none of its tools or
-	// instructions, unless its profile names the server or its task does (`mcp`).
-	const excluded = [
-		...operator.excludeTools,
-		...profileExcludes(profile?.excludeTools),
-		...(profileSelectsBrowser(profile) ? [] : [`${mcpNamespace(BROWSER_SERVER)}__*`]),
-		// Desktop control follows the same rule: only a profile that names the server (the `desktop` specialist) or a task that lists it starts it.
-		...(profileSelectsServer(profile, DESKTOP_SERVER) || namedServers.includes(DESKTOP_SERVER)
-			? []
-			: [`${mcpNamespace(DESKTOP_SERVER)}__*`]),
-		...(profileSelectsServer(profile, FREELLAMA_SERVER) || namedServers.includes(FREELLAMA_SERVER)
-			? []
-			: [`${mcpNamespace(FREELLAMA_SERVER)}__*`]),
-	];
+	// The floor `profileTools` keeps binds profiles, not the operator: what `--exclude-tools` took away stays away.
+	const excluded = [...operator.excludeTools, ...profileExcludes(profile?.excludeTools)];
 	if (excluded.length > 0) args.push("--exclude-tools", excluded.join(","));
 	if (skillPaths !== undefined) args.push("--no-skills");
 	for (const file of skillPaths ?? []) args.push("--skill", file);

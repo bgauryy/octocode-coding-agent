@@ -18,7 +18,7 @@ function getServiceTierCostMultiplier(model: { id: string }, serviceTier: Servic
 	}
 }
 
-/** Scales a calculated cost by the service tier the response was served at. Shared by Responses and Codex. */
+/** Scales a calculated cost by the service tier the response was served at. */
 export function applyServiceTierPricing(usage: Usage, serviceTier: ServiceTier, model: { id: string }): void {
 	const multiplier = getServiceTierCostMultiplier(model, serviceTier);
 	if (multiplier === 1) return;

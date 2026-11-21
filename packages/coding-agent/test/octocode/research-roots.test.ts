@@ -165,8 +165,8 @@ describe("launch environment with user roots", () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	const sessions = () => [
-		path.join(cwd, ".octocode", "code", "session-data"),
-		path.join(cwd, ".octocode", "code", "temp", "sessions"),
+		path.join(cwd, ".octocode", "agent", "session-data"),
+		path.join(cwd, ".octocode", "agent", "temp", "sessions"),
 	];
 	/** The default server's `ALLOWED_PATHS`, as the host expands its launch templates for a session. */
 	const launchRoots = (skills: string[] = [], projectTrusted = true): string[] => {

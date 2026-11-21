@@ -164,14 +164,13 @@ Built-in API implementations live under `./api/<api-id>`:
 | `anthropic-messages`      | `AnthropicOptions`            |
 | `openai-completions`      | `OpenAICompletionsOptions`    |
 | `openai-responses`        | `OpenAIResponsesOptions`      |
-| `openai-codex-responses`  | `OpenAICodexResponsesOptions` |
 | `azure-openai-responses`  | `AzureOpenAIResponsesOptions` |
 | `google-generative-ai`    | `GoogleOptions`               |
 | `google-vertex`           | `GoogleVertexOptions`         |
 | `mistral-conversations`   | `MistralOptions`              |
 | `bedrock-converse-stream` | `BedrockOptions`              |
 
-Importing an implementation module loads its SDK. The `./api/<id>.lazy` wrappers (used by the provider factories) defer that load to the first request when the runtime or bundler supports dynamic import chunking. Legacy raw API subpaths from older releases (`./anthropic`, `./google`, `./mistral`, `./openai-completions`, ...) were removed; use `@octocodeai/octocode-ai/api/<api-id>`.
+Importing an implementation module loads its SDK. The `./api/<id>.lazy` wrappers (used by the provider factories) defer that load to the first request when the runtime or bundler supports dynamic import chunking.
 
 ## OpenAI Compatibility Settings
 
@@ -223,7 +222,6 @@ interface OpenAICompletionsCompat {
 		| { $var: "thinking.enabled" | "thinking.effort" | "thinking.budget"; omitWhenOff?: boolean }
 	>; // chat_template_args values for thinkingFormat: 'baseten'; use $var for Octocode-controlled thinking values
 	thinkingTokenBudgetField?: "thinking_token_budget" | "thinking_budget" | "thinking_budget_tokens"; // Top-level field that caps reasoning tokens from thinkingBudgets (vLLM / Qwen / llama.cpp). Off by default.
-	supportsThinkingTokenBudget?: boolean; // Alias for thinkingTokenBudgetField: 'thinking_token_budget' (vLLM). Prefer thinkingTokenBudgetField. Default: false.
 	cacheControlFormat?: "anthropic"; // Anthropic-style cache_control on system prompt, last tool, and last user/assistant text content
 	openRouterRouting?: OpenRouterRouting; // OpenRouter routing preferences (default: {})
 	vercelGatewayRouting?: VercelGatewayRouting; // Vercel AI Gateway routing preferences (default: {})
@@ -240,7 +238,7 @@ interface OpenAIResponsesCompat {
 
 OpenAI Responses requests to `xai` also send `x-grok-conv-id` from `sessionId`, as the Chat Completions client does. On explicit-cache models (`supportsExplicitPromptCacheMode`, GPT-5.6+), the request TTL stays at OpenAI's default 30 minutes, which covers each turn's new history; `"none"` sends `{ mode: "explicit" }` with no breakpoints. The leading instructions carry an explicit breakpoint with the instruction retention (`ttl: "12h"` for `long`, also when a `cacheRetention: "long"` alone sets both layers). Azure, whose breakpoints take no `ttl`, keeps `long` history on `prompt_cache_options: { ttl: "12h" }`. Earlier models send `prompt_cache_retention: "24h"` when either layer is `long`; OpenAI charges no cache write for it and keeps entries typically about 30 minutes, at most 24 hours. When `instructionCacheBoundary` names a section of the leading system message, they are split before that section into two `input_text` parts that each carry the breakpoint; an absent or unknown boundary, or a prompt without sections, keeps one part. When `instructionVolatileBoundary` names a section, that section and every later one become a last part without a breakpoint, so a change there rewrites no cached part.
 
-`promptCacheKey` optionally groups related OpenAI, Azure Responses, Codex and Mistral requests for prompt caching without sharing transport sessions. It defaults to `OCTOCODE_PROMPT_CACHE_KEY` when set, then `sessionId`. Simple APIs preserve it. The wire key is capped at 64 characters and omitted when `cacheRetention` is `"none"`; session headers and WebSocket pooling continue to use `sessionId`.
+`promptCacheKey` optionally groups related OpenAI, Azure Responses and Mistral requests for prompt caching without sharing transport sessions. It defaults to `OCTOCODE_PROMPT_CACHE_KEY` when set, then `sessionId`. Simple APIs preserve it. The wire key is capped at 64 characters and omitted when `cacheRetention` is `"none"`; session headers and WebSocket pooling continue to use `sessionId`.
 
 OpenRouter requests send `x-session-id` from `sessionId` when prompt caching is enabled. Chat Completions and Anthropic Messages both auto-detect OpenRouter endpoints unless `sendSessionAffinityHeaders` is explicitly false. On Anthropic-compatible models, `sessionAffinityFormat: "openrouter"` selects `x-session-id`; when unset, the existing `x-session-affinity` format is used. Explicit request headers take precedence over generated headers.
 

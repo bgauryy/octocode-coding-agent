@@ -16,7 +16,7 @@ function below(outer: string, inner: string): string | undefined {
 }
 
 /**
- * Linked worktrees live inside the main checkout (`<main>/.octocode/worktrees/<name>`), so one file has a key in each
+ * Linked worktrees live inside the main checkout (`<main>/.octocode/agent/worktrees/<name>`), so one file has a key in each
  * checkout that contains it. Leases are keyed per checkout, so the same file in two of them would never conflict. This
  * lists, for the request on `key` in `workspace`, the matching request in every other checkout of `team` that holds a
  * live lease and is nested with `workspace` (either one inside the other):

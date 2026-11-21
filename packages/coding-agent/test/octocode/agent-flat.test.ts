@@ -112,13 +112,12 @@ describe("agent with flat fields in a main session", () => {
 		).rejects.toThrow("no input envelope");
 	});
 
-	it("renders flat calls and old envelope transcripts with the mode's own row", async () => {
+	it("renders flat calls with the mode's own row", async () => {
 		const { agent } = await mainSession();
 		const row = (args: Record<string, unknown>) => agent.renderCall(args, theme, { args }).render(120).join("\n");
 		expect(row({ type: "coordinate", action: "stop", subagent: "kid-1", reason: "r" })).toMatch(
 			/Coordinate.*stop kid-1/,
 		);
-		expect(row({ type: "coordinate", input: { action: "stop", id: "kid-1" } })).toMatch(/Coordinate.*stop kid-1/);
 	});
 });
 
@@ -139,8 +138,6 @@ describe("permission and hook policy for flat agent calls", () => {
 		expect(decide("agent.message", { type: "message", to: "parent", message: "m", reason: "r" })).toBe("deny");
 		expect(decide("agent.coordinate", { type: "coordinate", action: "list", reason: "r" })).toBe("deny");
 		expect(decide("agent.coordinate", { type: "message", to: "parent", reason: "r" })).toBe("none");
-		// An old envelope reads the same.
-		expect(decide("Agent(reviewer)", { type: "task", input: { profile: "reviewer" } })).toBe("deny");
 	});
 
 	it("gives hooks the public flat call as Claude Code's Task", () => {

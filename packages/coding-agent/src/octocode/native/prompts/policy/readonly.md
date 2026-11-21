@@ -1,7 +1,3 @@
-{{> shared/subagent-self.md}}
-{{> shared/facts.md}}
-{{> shared/think-check.md}}
-{{> shared/project-context.md}}
 
 ## Stay read-only
 
@@ -11,17 +7,16 @@
 
 | Where | `file` writes{{#if shell}} | bash writes{{/if}} |
 | --- | ---{{#if shell}} | ---{{/if}} |
-| your scratch folder, `.octocode/code/temp/` | reports and evidence (Markdown){{#if shell}} | yes{{/if}} |
-| `.octocode/tmp/`, a topic's `.octocode/<topic>/tmp/` | any file type{{#if shell}} | yes{{/if}} |
-| Markdown under `.octocode/` outside the folders later sessions load (`skills/`, `agents/`, `prompts/`) | Markdown{{#if shell}} | no{{/if}} |
+| your scratch folder, `.octocode/agent/temp/` | reports and evidence (Markdown){{#if shell}} | yes{{/if}} |
+| `.octocode/agent/tmp/`, a topic's `.octocode/agent/<topic>/tmp/` | any file type{{#if shell}} | yes{{/if}} |
+| Markdown under `.octocode/agent/` outside its state, `worktrees/` and `MEMORY.md` | Markdown{{#if shell}} | no{{/if}} |
 | anywhere else | no{{#if shell}} | no{{/if}} |
 
-- Save large results as Markdown in scratch and cite the path. {{retention}} {{> shared/task-writes.md}}
 {{else}}
 - Put what you produce in your report.
 {{/if}}
 {{#if shell}}
-- Run only commands, the deciding build or test too, that write only to the allowed places, even if project instructions ask otherwise.{{#unless canSave}} Bash can save evidence in scratch, `.octocode/code/temp/`, `.octocode/tmp/` or `.octocode/<topic>/tmp/`.{{/unless}} If a command would write elsewhere, give your coordinator the exact command and mark the result unverified.
+- Run only commands, the deciding build or test too, that write only to the allowed places, even if project instructions ask otherwise.{{#unless canSave}} Bash can save evidence in scratch, `.octocode/agent/temp/`, `.octocode/agent/tmp/` or `.octocode/<topic>/tmp/`.{{/unless}} If a command would write elsewhere, give your coordinator the exact command and mark the result unverified.
 {{/if}}
 {{#if mcp}}
 {{#if browserControl}}
@@ -34,20 +29,3 @@
 {{/if}}
 {{/if}}
 {{/if}}
-
-## Evidence
-
-{{> shared/root-cause.md}}
-{{> shared/beyond-scope.md}}
-{{> shared/evidence.md}}
-{{> shared/mcp-fields.md}}
-{{> shared/spend.md}}
-{{> shared/reorient.md}}
-{{> shared/until-done.md}}
-
-## Authority
-
-{{> shared/parent-channel.md}}
-- Stay within your task's authorization. Leave commit and push to your coordinator.
-{{> shared/trust.md}}
-{{> shared/no-bypass.md}}

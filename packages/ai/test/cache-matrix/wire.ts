@@ -13,7 +13,6 @@ export type WireId =
 	| "responses"
 	| "completions-explicit"
 	| "completions-plain"
-	| "codex"
 	| "google"
 	| "vertex"
 	| "xai";
@@ -47,7 +46,6 @@ export interface WireCase {
 	options?: StreamOptions;
 }
 
-const codexToken = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64")}.b`;
 const isLeading = (item: unknown) => ["system", "developer"].includes((item as { role?: string }).role ?? "");
 /** The instruction messages that open a conversation (a system message later on is an update, part of the history). */
 const leading = (items: unknown[] = []) =>
@@ -111,18 +109,6 @@ export const WIRE_CASES: WireCase[] = [
 		tools: (payload) => payload.tools,
 		instructions: (payload) => leading(payload.messages),
 		history: (payload) => rest(payload.messages),
-	},
-	{
-		id: "codex",
-		alt: () => getBuiltinModel("openai-codex", "gpt-5.6-luna"),
-		label: "openai-codex-responses",
-		model: () => getBuiltinModel("openai-codex", "gpt-5.5"),
-		apiKey: codexToken,
-		keyField: "prompt_cache_key",
-		tools: responsesTools,
-		instructions: (payload) => payload.instructions,
-		history: responsesHistory,
-		options: { transport: "sse" },
 	},
 	{
 		id: "google",

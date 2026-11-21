@@ -17,7 +17,7 @@ interface ListState {
 }
 type DocumentState = { path: string; markdown: string } | { path: string; error: string };
 
-/** Markdown under this workspace's `.octocode/` and, in a trusted project, its git-tracked files; read by the authenticated host. */
+/** Markdown under this workspace's `.octocode/agent/` and, in a trusted project, its git-tracked files; read by the authenticated host. */
 export function DocsView({ params, setParams, index }: ViewProps) {
 	const { api } = useLive();
 	const includeTmp = params.tmp === "1";
@@ -93,8 +93,8 @@ function DocsList({
 			<header className="view-head">
 				<h2>Docs</h2>
 				<p className="muted">
-					Markdown under .octocode/ and, in a trusted project, the repository's git-tracked Markdown, grouped by kind
-					and folder, newest first.
+					Markdown under .octocode/agent/ and, in a trusted project, the repository's git-tracked Markdown, grouped by
+					kind and folder, newest first.
 				</p>
 			</header>
 			<search className="docs-filters">
@@ -127,11 +127,13 @@ function DocsList({
 				<ListSkeleton label="Loading documents" rows={6} />
 			) : !shown.length && !list.error ? (
 				<EmptyState
-					title={list.index?.docs.length ? "No document matches these filters." : "No documents under .octocode/ yet."}
+					title={
+						list.index?.docs.length ? "No document matches these filters." : "No documents under .octocode/agent/ yet."
+					}
 				/>
 			) : (
 				<>
-					<DocSource title=".octocode docs" docs={sources.octocode} labeled={labeled} params={params} />
+					<DocSource title=".octocode/agent docs" docs={sources.octocode} labeled={labeled} params={params} />
 					<DocSource title="Repository docs (git-tracked)" docs={sources.repo} labeled params={params} />
 				</>
 			)}

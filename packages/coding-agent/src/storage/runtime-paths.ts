@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { privateDir } from "@octocodeai/octocode-common/file-mode";
 import { globalPaths } from "./state-paths.ts";
+import { AGENT_FOLDERS } from "./agent-layout.ts";
 import { ensureWorkspaceStateDir, workspaceStateDir } from "./workspace.ts";
 
 /**
@@ -43,8 +44,8 @@ export function runtimeTempDir(): string {
 	return currentSessionWorkspace() ? sessionOutputDir("output") : os.tmpdir();
 }
 
-const DURABLE = "session-data";
-const TRANSIENT = path.join("temp", "sessions");
+const DURABLE = AGENT_FOLDERS.sessionData;
+const TRANSIENT = path.join(AGENT_FOLDERS.temp, "sessions");
 
 /** A process used without a workspace keeps its output in its own configured agent home. */
 export function sessionsRoot(env: NodeJS.ProcessEnv = process.env, cwd = currentSessionWorkspace()): string {

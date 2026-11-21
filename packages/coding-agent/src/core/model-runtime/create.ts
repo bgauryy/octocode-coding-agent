@@ -9,7 +9,7 @@ import {
 import * as builtinProviderCatalog from "@octocodeai/octocode-ai/providers/all";
 import { personalizeOpenRouterCatalog } from "@octocodeai/octocode-ai/providers/openrouter";
 import { setUserAgentVersion } from "@octocodeai/octocode-ai/utils/user-agent";
-import { getAgentDir, getLegacyProviderDirs, VERSION } from "../../config.ts";
+import { getAgentDir, getLegacyConfigDirs, VERSION } from "../../config.ts";
 import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage, ReadOnlyAuthStorage } from "../auth-storage.ts";
 import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
@@ -68,7 +68,7 @@ export function createDefaultCredentialStore(
 	const storage = options.readOnlyCredentials
 		? new ReadOnlyAuthStorage(authPath)
 		: DefaultAuthStorage.create(authPath, options.keychain ? { keychain: options.keychain } : undefined);
-	const fallbackDirs = getLegacyProviderDirs(dirname(authPath));
+	const fallbackDirs = getLegacyConfigDirs(dirname(authPath));
 	if (!fallbackDirs.length) return storage;
 	const builtin = new Map(providers.map((provider) => [provider.id, provider]));
 	return new PiFallbackCredentialStore(storage, fallbackDirs, {

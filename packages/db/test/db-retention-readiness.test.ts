@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
+import { encodeMember } from "../src/history-member.ts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { withFileLock } from "../../common/src/file-write-lock.ts";
 import { DAY_MS, HOUR_MS } from "../../common/src/time.ts";
@@ -99,13 +100,14 @@ it("retains source history when the destination archive is locked and archives b
 	configAudits.record(agent.db, { at, actor: "fixture", action: "credential.set", target: "fixture", outcome: "ok" });
 	fs.mkdirSync(agent.archiveDir);
 	const file = path.join(agent.archiveDir, "config-audits-2026-10.jsonl.gz");
-	fs.writeFileSync(file, gzipSync(""));
+	const earlier = '{"db":"config_audits","id":"0","at":1,"row":{"target":"earlier"}}';
+	fs.writeFileSync(file, encodeMember([earlier], 1, 1));
 	await withFileLock(file, async () => {
 		const wait = vi.spyOn(Atomics, "wait");
 		await scheduled();
 		expect(wait).not.toHaveBeenCalled();
 		expect(history.rowsBefore(agent.db, "config_audits", NOW, 10)).toHaveLength(1);
-		expect(gunzipSync(fs.readFileSync(file)).toString()).toBe("");
+		expect(gunzipSync(fs.readFileSync(file)).toString()).not.toContain('"target":"fixture"');
 	});
 	await scheduled(NOW + HOUR_MS);
 	expect(gunzipSync(fs.readFileSync(file)).toString()).toContain('"target":"fixture"');

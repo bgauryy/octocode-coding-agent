@@ -77,7 +77,7 @@ function fileOfScope(
 }
 
 /** The line a note becomes: its title, in the section of its kind, dated `now`. */
-export function lineOfMemory(
+function lineOfMemory(
 	memory: Pick<Memory, "title" | "kind" | "pinned" | "author">,
 	now: Date | number = Date.now(),
 ): MemoryLine {
@@ -181,7 +181,7 @@ async function apply(
 		);
 		// An unchanged file says nothing, unless an op was refused for a reason worth knowing (a repeat, a pin).
 		if (!update.changed) return update.skipped[0] ? `${name} unchanged: ${update.skipped[0].reason}.` : "";
-		const cap = lineCap();
+		const cap = lineCap(file.scope);
 		return `${name}: ${countedLines(update.lines)}/${cap} lines${evicted.length ? `; moved to the archive to fit: ${evicted.join(", ")}` : ""}.`;
 	} catch (error) {
 		if (error instanceof MemoryFileTrackedError) return `${name} not written: ${error.message}`;

@@ -84,10 +84,6 @@
 			"types": "./dist/providers/kimi-coding.d.ts",
 			"import": "./dist/providers/kimi-coding.js"
 		},
-		"./providers/minimax-endpoints": {
-			"types": "./dist/providers/minimax-endpoints.d.ts",
-			"import": "./dist/providers/minimax-endpoints.js"
-		},
 		"./providers/model-schema": {
 			"types": "./dist/providers/model-schema.d.ts",
 			"import": "./dist/providers/model-schema.js"

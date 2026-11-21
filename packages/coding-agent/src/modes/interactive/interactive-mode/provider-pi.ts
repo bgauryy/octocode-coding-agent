@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getLegacyProviderDirs } from "../../../config.ts";
+import { getLegacyConfigDirs } from "../../../config.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
 import { ReadOnlyAuthStorage } from "../../../core/auth-storage/read-only.ts";
 import { providerSourceGate } from "../../../core/provider-sources/gate.ts";
@@ -34,7 +34,7 @@ export async function unsupportedPiSignIn(
 	const runtime = host.session.modelRuntime;
 	const directory = runtime.getConfigurationDirectory();
 	if (!directory || !providerSourceGate.isEnabled("pi") || runtime.getProvider(id)?.auth.oauth) return undefined;
-	for (const dir of getLegacyProviderDirs(directory)) {
+	for (const dir of getLegacyConfigDirs(directory)) {
 		const path = join(dir, "auth.json");
 		// Problems in the file are startup warnings; here they only mean no sign-in.
 		const credential = await new ReadOnlyAuthStorage(path, { onProblem: () => {} }).readRaw(id);

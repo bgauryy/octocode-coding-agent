@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { SessionConfig } from "../workspace/server.ts";
+import type { SessionConfig } from "../workspace/session-config-port.ts";
 import { createConfigRoutes } from "./config-factory.ts";
 import { handleConfigRequest } from "./config-routes.ts";
 import type { NativeToolsLive } from "./tool-exposure.ts";

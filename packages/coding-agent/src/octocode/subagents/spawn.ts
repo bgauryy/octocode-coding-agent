@@ -30,7 +30,7 @@ import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
 import { chainPlan, type QueuedRun, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
-import { holdItem, refuseSecondChild as refuseSecond } from "./second-child.ts";
+import { holdItem, refuseLeanItem, refuseSecondChild as refuseSecond } from "./second-child.ts";
 import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
 import type { Runners } from "./runner-port.ts";
@@ -114,11 +114,10 @@ export async function spawnAgent(
 				ctx,
 				env.getRefused?.(),
 			);
-	// An unknown or disabled server name refuses the task before it claims anything.
-	const taskServers =
-		params.mcp === undefined
-			? undefined
-			: resolveTaskServers(api.channels, params.mcp, plan.profile, resumed !== undefined);
+	refuseLeanItem(plan.profile, linked);
+	// An unknown or disabled server name refuses the task before it claims anything. A resumed child is planned the same
+	// way: its first start's list is not recorded, so a server its task named is named again on resume.
+	const taskServers = resolveTaskServers(api.channels, params.mcp, plan.profile);
 	let reserving = planReservation(team, plan.profile, params);
 	const replan = () => planReservation(team, plan.profile, params);
 	const waitingRow = (waiting: ReservationPlan) => {

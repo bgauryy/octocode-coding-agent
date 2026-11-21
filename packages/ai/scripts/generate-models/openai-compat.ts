@@ -3,7 +3,6 @@ import { withCacheFlags } from "../../src/utils/cache-capabilities.ts";
 import { buildCacheFlagTable } from "./cache-flags.ts";
 import {
 	OPENAI_ADDITIONAL_TOOLS_MODEL_IDS,
-	OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS,
 	OPENAI_MID_CONVO_EFFORT_MODEL_IDS,
 	OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS,
 	OPENAI_TOOL_SEARCH_MODEL_IDS,
@@ -18,7 +17,6 @@ type OpenAICompletionsResolvedCompat = Required<
 	Omit<
 		OpenAICompletionsCompat,
 		| "cacheControlFormat"
-		| "supportsThinkingTokenBudget"
 		| "thinkingTokenBudgetField"
 		| "sessionAffinityFormat"
 		| "vllmPriority"
@@ -182,19 +180,18 @@ export function applyOpenAICompletionsCompatMetadata(model: Model<Api>): void {
 	}
 }
 
-// Responses endpoints verified (OpenAI, ChatGPT Codex backend, GitHub Copilot,
+// Responses endpoints verified (OpenAI, GitHub Copilot,
 // opencode zen) or documented (Azure OpenAI, Cloudflare AI Gateway) to pass
 // OpenAI custom grammar tools through. OpenAI rejects `type: "custom"` tools
 // for pre-GPT-5 models (gpt-4.x, gpt-4o, o-series).
 const OPENAI_GRAMMAR_TOOL_PROVIDERS = new Set([
 	"openai",
-	"openai-codex",
 	"azure",
 	"github-copilot",
 	"opencode",
 	"cloudflare-ai-gateway",
 ]);
-const OPENAI_GRAMMAR_TOOL_APIS = new Set<Api>(["openai-responses", "azure-openai-responses", "openai-codex-responses"]);
+const OPENAI_GRAMMAR_TOOL_APIS = new Set<Api>(["openai-responses", "azure-openai-responses"]);
 
 export function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
 	if (!OPENAI_GRAMMAR_TOOL_APIS.has(model.api) || !OPENAI_GRAMMAR_TOOL_PROVIDERS.has(model.provider)) return;
@@ -205,11 +202,8 @@ export function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
 
 export function applyOpenAIToolSearchMetadata(model: Model<Api>): void {
 	const isOpenAIResponses = model.provider === "openai" && model.api === "openai-responses";
-	const isOpenAICodex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
-	if (!(isOpenAIResponses || isOpenAICodex) || !OPENAI_TOOL_SEARCH_MODEL_IDS.has(model.id)) return;
-	const supportsAdditionalTools =
-		(isOpenAIResponses && OPENAI_ADDITIONAL_TOOLS_MODEL_IDS.has(model.id)) ||
-		(isOpenAICodex && OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(model.id));
+	if (!isOpenAIResponses || !OPENAI_TOOL_SEARCH_MODEL_IDS.has(model.id)) return;
+	const supportsAdditionalTools = OPENAI_ADDITIONAL_TOOLS_MODEL_IDS.has(model.id);
 	model.compat = {
 		...model.compat,
 		...(supportsAdditionalTools ? { supportsAdditionalTools: true } : {}),
@@ -254,12 +248,8 @@ const OPENAI_RESPONSES_PROXY_PROVIDERS = new Set(["opencode", "opencode-go", "gi
 
 export function applyOpenAIResponsesTranscriptMetadata(model: Model<Api>): void {
 	const isOpenAIResponses = model.provider === "openai" && model.api === "openai-responses";
-	const isOpenAICodex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
 	const isProxiedResponses = OPENAI_RESPONSES_PROXY_PROVIDERS.has(model.provider) && model.api === "openai-responses";
-	if (
-		!(isOpenAIResponses || isOpenAICodex || isProxiedResponses) ||
-		!OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(model.id)
-	) {
+	if (!(isOpenAIResponses || isProxiedResponses) || !OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(model.id)) {
 		return;
 	}
 	model.compat = {
@@ -277,8 +267,7 @@ export function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void 
 }
 
 // GPT-6 models accept `configuration_update` input items that change the reasoning effort
-// without changing the cached prompt prefix. Not enabled for openai-codex (Codex CLI keeps it
-// behind a flag that is off by default) or proxies.
+// without changing the cached prompt prefix. Not enabled for proxies.
 export function applyOpenAIMidConvoEffortMetadata(model: Model<Api>): void {
 	if (model.provider !== "openai" || model.api !== "openai-responses") return;
 	if (!OPENAI_MID_CONVO_EFFORT_MODEL_IDS.has(model.id)) return;

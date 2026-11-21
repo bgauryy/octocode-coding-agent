@@ -467,22 +467,6 @@ Content`,
 		});
 	});
 
-	describe("command spawning", () => {
-		it("should preserve argv entries containing spaces", () => {
-			const managerWithInternals = packageManager as unknown as {
-				runCommandSync(command: string, args: string[]): string;
-			};
-			const valueWithSpace = "C:\\Users\\A B\\.pi\\npm";
-			const output = managerWithInternals.runCommandSync(process.execPath, [
-				"-e",
-				"console.log(process.argv[1])",
-				valueWithSpace,
-			]);
-
-			expect(output).toBe(valueWithSpace);
-		});
-	});
-
 	describe("npmCommand with real processes", () => {
 		// Real `git` against local remotes (github.com is redirected to them with `url.<base>.insteadOf`); `npm`, `pnpm`,
 		// `bun`, `corepack` and `mise` are small executables first on PATH that record their argv and working directory.
@@ -902,32 +886,6 @@ process.exit(result.status ?? 1);
 			]);
 		});
 
-		it("should use npmCommand argv for npm root lookup and invalidate cached root when npmCommand changes", () => {
-			const pm = managerWith({ npmCommand: ["mise", "exec", "node@20", "--", "npm"] });
-			const root20 = join(tempDir, "node20", "lib", "node_modules");
-			mkdirSync(join(root20, "@scope", "pkg"), { recursive: true });
-
-			expect(pm.getInstalledPath("npm:@scope/pkg", "user")).toBe(join(root20, "@scope", "pkg"));
-			expect(calls("mise").map((entry) => entry.args)).toEqual([["exec", "node@20", "--", "npm", "root", "-g"]]);
-
-			settingsManager.setNpmCommand(["mise", "exec", "node@22", "--", "npm"]);
-
-			expect(pm.getInstalledPath("npm:@scope/pkg", "user")).toBeUndefined();
-			expect(calls("mise").map((entry) => entry.args)).toEqual([
-				["exec", "node@20", "--", "npm", "root", "-g"],
-				["exec", "node@22", "--", "npm", "root", "-g"],
-			]);
-		});
-
-		/** Install of a package makes its folder under the prefix the call names, as the real tool would. */
-		const materializeScript = (name: string, entry = "extensions/index.ts") => `
-if (args[0] === "install") {
-	const prefix = args[args.indexOf("--prefix") + 1];
-	const dir = require("node:path").join(prefix, "node_modules", ${JSON.stringify(name)});
-	fs.mkdirSync(require("node:path").dirname(require("node:path").join(dir, ${JSON.stringify(entry)})), { recursive: true });
-	fs.writeFileSync(require("node:path").join(dir, "package.json"), JSON.stringify({ name: ${JSON.stringify(name)}, version: "1.0.0" }));
-	fs.writeFileSync(require("node:path").join(dir, ${JSON.stringify(entry)}), "export default function() {};");
-}`;
 		/** An `npm view` answer table: spec (as passed to view) → stdout; a spec without an entry fails like an unreachable registry. */
 		const registry = (table: Record<string, string>, extra = "") => `
 ${extra}
@@ -955,27 +913,6 @@ if (args[0] === "view") {
 			return Math.max(0, ...spans.map((a) => spans.filter((b) => b.start < a.end && a.start < b.end).length));
 		};
 		const viewArgs = (spec: string) => ["view", spec, "version", "--json"];
-
-		it("should resolve wrapped pnpm global package paths from pnpm list output", () => {
-			const pm = managerWith({ npmCommand: ["mise", "exec", "node@20", "--", "pnpm"] });
-			const pnpmRoot = join(tempDir, "pnpm", "global", "v11");
-			const packagePath = join(pnpmRoot, "20-hash", "node_modules", "pnpm-pkg");
-			mkdirSync(packagePath, { recursive: true });
-			withScript(
-				"mise",
-				`if (args.join(" ") === "exec node@20 -- pnpm list -g --depth 0 --json") console.log(JSON.stringify([{ path: ${JSON.stringify(pnpmRoot)}, dependencies: { "pnpm-pkg": { path: ${JSON.stringify(packagePath)} } } }]));
-else process.exit(1);`,
-			);
-
-			expect(pm.getInstalledPath("npm:pnpm-pkg", "user")).toBe(packagePath);
-		});
-
-		it("should ignore malformed legacy pnpm global package lists", () => {
-			const pm = managerWith({ npmCommand: ["pnpm"] });
-			withScript("pnpm", `console.log("not json");`);
-
-			expect(pm.getInstalledPath("npm:pnpm-pkg", "user")).toBeUndefined();
-		});
 
 		it("should emit progress events on install attempt", async () => {
 			process.env.PM_FAIL = "npm";
@@ -1049,37 +986,6 @@ else process.exit(1);`,
 			expect(existsSync(join(root, "package.json"))).toBe(false);
 			expect(JSON.parse(readFileSync(join(installedPath, "package.json"), "utf-8")).version).toBe("2.0.0");
 			expect(calls("npm").map((entry) => entry.args)).toEqual([viewArgs("example")]);
-		});
-
-		it("should migrate legacy user npm installs into the managed npm root during update", async () => {
-			const legacyRoot = join(tempDir, "legacy-global", "node_modules");
-			const legacyPath = join(legacyRoot, "legacy-pkg");
-			const managedPath = join(agentDir, "npm", "node_modules", "legacy-pkg");
-			mkdirSync(legacyPath, { recursive: true });
-			writeFileSync(join(legacyPath, "package.json"), JSON.stringify({ name: "legacy-pkg", version: "1.0.0" }));
-			const pm = managerWith();
-			settingsManager.setPackages(["npm:legacy-pkg"]);
-			withScript(
-				"npm",
-				`if (args[0] === "root" && args.includes("-g")) console.log(${JSON.stringify(legacyRoot)});${materializeScript("legacy-pkg", "package.json")}`,
-			);
-
-			expect(pm.getInstalledPath("npm:legacy-pkg", "user")).toBe(legacyPath);
-
-			await pm.update("npm:legacy-pkg");
-
-			const subcommands = calls("npm").map((entry) => entry.args[0]);
-			expect(subcommands).not.toContain("view");
-			expect(subcommands.filter((each) => each === "install")).toHaveLength(1);
-			expect(calls("npm").find((entry) => entry.args[0] === "install")?.args).toEqual([
-				"install",
-				"legacy-pkg@latest",
-				"--prefix",
-				join(agentDir, "npm"),
-				"--legacy-peer-deps",
-				"--ignore-scripts",
-			]);
-			expect(pm.getInstalledPath("npm:legacy-pkg", "user")).toBe(managedPath);
 		});
 
 		it("should batch npm updates per scope and run git updates in parallel while skipping pinned npm and current packages", async () => {

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { type ArchiveIndexDb, openArchiveIndex } from "../src/db.ts";
@@ -78,7 +77,7 @@ describe("archive index queries", () => {
 		expect(archiveIndex.termCounts(index.db, ["word"])).toEqual([]);
 	});
 
-	it("sets aside an index at an older schema version and starts a new one", () => {
+	it("refuses an index at an older schema version", () => {
 		const file = path.join(tmp(), "archive-index.db");
 		const index = open(file);
 		index.transaction(() => archiveIndex.replaceFile(index.db, stamp("/a"), [passage(0, "word")]));
@@ -89,9 +88,7 @@ describe("archive index queries", () => {
 		raw.exec("PRAGMA user_version = 0");
 		raw.close();
 		// Version 0 with a header id and tables reads as an older Octocode file.
-		const reopened = open(file);
-		expect(archiveIndex.files(reopened.db)).toEqual([]);
-		expect(fs.readdirSync(path.dirname(file)).some((name) => name.includes(".retired"))).toBe(true);
+		expect(() => open(file)).toThrow(/older than this Octocode's/);
 	});
 
 	it("creates the tables without the full-text index where SQLite has no FTS5", () => {

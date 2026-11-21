@@ -62,11 +62,15 @@ describe("Linux: wildcard rules made literal for bubblewrap", () => {
 	});
 
 	it("keeps a deny after a `*` match before it exists, and skips matches that are files where a folder is needed", () => {
-		const root = tree([".octocode/worktrees/one/", ".octocode/worktrees/two/AGENTS.md", ".octocode/worktrees/note"]);
-		const pattern = path.join(root, ".octocode", "worktrees", "*", "AGENTS.md");
+		const root = tree([
+			".octocode/agent/worktrees/one/",
+			".octocode/agent/worktrees/two/AGENTS.md",
+			".octocode/agent/worktrees/note",
+		]);
+		const pattern = path.join(root, ".octocode", "agent", "worktrees", "*", "AGENTS.md");
 		expect(relative(root, literalPaths(pattern, "deny"))).toEqual([
-			".octocode/worktrees/one/AGENTS.md",
-			".octocode/worktrees/two/AGENTS.md",
+			".octocode/agent/worktrees/one/AGENTS.md",
+			".octocode/agent/worktrees/two/AGENTS.md",
 		]);
 	});
 
@@ -105,7 +109,7 @@ describe("Linux: wildcard rules made literal for bubblewrap", () => {
 	});
 
 	it("leaves no wildcard in a session's policy and still protects its repository's hooks", () => {
-		const root = tree([".git/hooks/", "sub/.git/hooks/", ".octocode/worktrees/child/"]);
+		const root = tree([".git/hooks/", "sub/.git/hooks/", ".octocode/agent/worktrees/child/"]);
 		const policy = sandboxPolicy(root, { setting: "on", mode: "workspace", env: mainEnv() });
 		if (!policy) throw new Error("sandbox.mode on must make a policy");
 		const literal = literalPolicy(policy);
@@ -114,7 +118,7 @@ describe("Linux: wildcard rules made literal for bubblewrap", () => {
 			expect.arrayContaining([
 				path.join(root, ".git", "hooks"),
 				path.join(root, "sub", ".git", "hooks"),
-				path.join(root, ".octocode", "worktrees", "child", ".git", "hooks"),
+				path.join(root, ".octocode", "agent", "worktrees", "child", ".git", "hooks"),
 			]),
 		);
 		expect(literal.denyWrite.length).toBeGreaterThanOrEqual(policy.denyWrite.filter((e) => !e.includes("*")).length);

@@ -64,7 +64,6 @@ export const ProviderAuthMethodsSchema = Type.Object(
 				{
 					billing: StringEnum(["plan", "metered"] as const),
 					terms: Type.String({ minLength: 1, maxLength: 2048 }),
-					deprecated: Type.Optional(Type.String({ maxLength: 2048 })),
 					disabled: Type.Optional(Type.String({ maxLength: 2048 })),
 				},
 				{ additionalProperties: false },

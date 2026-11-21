@@ -79,7 +79,7 @@ export function resolveOpenAIResponsesCacheFields(
 		return fields;
 	}
 	if (!breakpointsCarryTtl && toTtl(history, compat) === "12h") fields.prompt_cache_options = { ttl: "12h" };
-	// Instructions that follow a long history (a legacy `cacheRetention: "long"` alone) carry the long tier themselves.
+	// Instructions that follow a long history (`cacheRetention: "long"` alone) carry the long tier themselves.
 	const instructionTier = instructions ?? (breakpointsCarryTtl && history === "long" ? history : undefined);
 	if (instructionTier !== undefined && instructionTier !== "none")
 		fields.instructionCacheTtl = toTtl(instructionTier, compat);

@@ -3,9 +3,6 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { num, type Row } from "../rows.ts";
 import * as runs from "./agent-runs.ts";
-import { ensureMailbox } from "./agent-mailbox.ts";
-import { ensureSettledStatus } from "./agent-status.ts";
-export { ensureMailbox, ensureSettledStatus };
 
 /** The process a member row names: the pid and, where known, its start time, so a reused pid is not taken for it. */
 export interface ProcessIdentity {
@@ -50,8 +47,6 @@ export function refresh(
 	workspace: MemberWorkspace,
 	context?: events.LifecycleContext,
 ): boolean {
-	ensureMailbox(db);
-	ensureSettledStatus(db);
 	const before = events.member(db, member.id);
 	const { changes } = db
 		.prepare(
@@ -112,8 +107,6 @@ export function insert(
 	member: Member,
 	context?: events.LifecycleContext,
 ): boolean {
-	ensureMailbox(db);
-	ensureSettledStatus(db);
 	const row = db
 		.prepare(
 			`INSERT INTO agents (id, team, lease_workspace_id, workspace_id, tmux_pane, role, parent_id, pid, started, status, task, activity, model, joined_at, seen_at, tool_calls, input, cache_read, cache_write, output, cost, unpriced, session_id, cwd, branch, process_title, mailbox)
@@ -239,7 +232,6 @@ export function settle(
 	parent: ProcessIdentity,
 	hint?: string,
 ): boolean {
-	ensureSettledStatus(db);
 	return (
 		db
 			.prepare(

@@ -230,7 +230,7 @@ describe("provenance: untrusted text reaching a consequential sink", () => {
 
 	it("treats a subagent's task as a sink: a page's text reaches another agent's instructions", () => {
 		const { provenance } = setup();
-		provenance.record(result("mcp__browser__snapshot", {}, PAGE), ctx);
+		provenance.record(result("mcp__browser__run", {}, PAGE), ctx);
 		expect(provenance.check(call("agent", { task: SPAN }), ctx)?.why).toMatch(/contains text from/);
 		expect(provenance.check(call("agent", { task: "review the auth module" }), ctx)).toBeUndefined();
 	});

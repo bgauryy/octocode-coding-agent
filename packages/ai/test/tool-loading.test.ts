@@ -20,12 +20,7 @@ function model(api: Api, compat?: Record<string, boolean>): Model<Api> {
 
 describe("getToolLoadingMode", () => {
 	test("is none without mid-conversation system messages, whatever else is declared", () => {
-		for (const api of [
-			"anthropic-messages",
-			"openai-responses",
-			"openai-codex-responses",
-			"openai-completions",
-		] as const) {
+		for (const api of ["anthropic-messages", "openai-responses", "openai-completions"] as const) {
 			expect(
 				getToolLoadingMode(
 					model(api, {
@@ -48,7 +43,7 @@ describe("getToolLoadingMode", () => {
 		).toBe("changes");
 	});
 
-	test.each(["openai-responses", "openai-codex-responses", "azure-openai-responses"] as const)(
+	test.each(["openai-responses", "azure-openai-responses"] as const)(
 		"%s prefers additional tools, then tool search",
 		(api) => {
 			const base = { supportsMidConvoSystemMessages: true };

@@ -58,7 +58,7 @@ import { registerMonitor } from "./monitor/register.ts";
 import { registerMonitorRoom } from "./monitor-room/command.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
 import { Subcommands } from "./shared/commands.ts";
-import { envFlag, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { envFlag, LEAN_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { setCurrentSession } from "./shared/home.ts";
 import { registerTrustCommand } from "./trust/command.ts";
 import { registerSecurityCommand } from "./guard/command.ts";
@@ -278,7 +278,10 @@ export default function octocode(host: FeatureSetup): void {
 				...(externalAccess.enabled ? await externalListing(external, ctx, filters) : []),
 			],
 		);
-	} else if (runners.ids.length > 0) registerChildRunnerTask(runners, permission, agentTool.collect, team);
+	} else if (runners.ids.length > 0 && !envFlag(process.env, LEAN_ENV)) {
+		// A lean child's `agent` reaches its parent and teammates only: it starts no runner task.
+		registerChildRunnerTask(runners, permission, agentTool.collect, team);
+	}
 	registerSkills(api);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);
@@ -291,7 +294,6 @@ export default function octocode(host: FeatureSetup): void {
 	const turn = registerTurnSetup(api, {
 		isSubagent,
 		profiles: () => profiles,
-		canExternal: () => agentTool.has("external"),
 	});
 	const { hooks, sourcePolicy, messaging } = composePolicy(api, {
 		later,

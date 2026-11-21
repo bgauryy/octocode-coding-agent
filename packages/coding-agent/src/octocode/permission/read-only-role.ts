@@ -14,7 +14,8 @@ import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
 import { shellPath } from "./file-access.ts";
-import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
+import { loadedFromAgentDir } from "./later-session-loaded.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import { browserEscalations } from "./browser-escalation.ts";
 import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
 import { DESKTOP_SERVER, isMcpToolName, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
@@ -23,11 +24,10 @@ import { mcpCallChange } from "./mcp-reads.ts";
 /**
  * The permission-layer half of a `readOnly: true` profile (reviewer, researcher, browser): the child's prompt says to
  * investigate and report, and this refuses what would change the repository whatever mode the session is in. It
- * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/code/temp/`, to the throwaway folder
- * `.octocode/tmp/` and to Markdown docs under
- * `.octocode/` except where a later session loads the folder as configuration (`LOADED_BY_LATER_SESSIONS`: skills,
- * subagent profiles, prompts, themes, features, hooks, settings, system prompts): a task names its output path only in
- * its text, so the guard cannot know it, and the documented destinations are `.octocode/<topic>/*.md`. For shell commands it
+ * allows a write to the child's scratch folder (`OCTOCODE_AGENT_SCRATCH`), to `.octocode/agent/temp/`, to the throwaway folder
+ * `.octocode/agent/tmp/` and to Markdown docs under `.octocode/agent/` except its state, checkouts and `MEMORY.md`
+ * (`loadedFromAgentDir`): a task names its output path only in its text, so the guard cannot know
+ * it, and the documented destinations are `.octocode/agent/<topic>/*.md`. For shell commands it
  * refuses what the parse shows as a change anywhere but the temporary folders (`shell/mutation.ts`), programs
  * that write or run code through their options or change remote state (`shell/role-exec.ts`: `gh pr merge`, `man -P`), and any git call
  * but a listed read (`shell/git-forms.ts`), and any `octocode` run (the product starts a session without these limits); it is
@@ -43,21 +43,21 @@ export const readOnlyRole = (env: NodeJS.ProcessEnv = process.env): boolean =>
 	envFlag(env, SUBAGENT_ENV) && envFlag(env, READ_ONLY_ENV);
 
 /**
- * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/code/temp/`, the workspace's
- * throwaway folder `.octocode/tmp/` (`octocodeTmpDir`, which retention expires), a topic's `.octocode/<topic>/tmp/`,
- * or a Markdown doc under `.octocode/` outside the folders later sessions load.
+ * Whether a read-only child may write `target` (canonical): its scratch folder, `.octocode/agent/temp/`, the workspace's
+ * throwaway folder `.octocode/agent/tmp/` (`agentTmpDir`, which retention expires), a topic's `.octocode/agent/<topic>/tmp/`,
+ * or a Markdown doc under `.octocode/agent/` outside its state, checkouts and `MEMORY.md`.
  */
 function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
 	const scratch = env[AGENT_SCRATCH_ENV];
 	if (scratch && canonicalPath(scratch) === scratch && isWithin(target, scratch)) return true;
-	const { dir, tmp } = workspacePaths(cwd);
-	if (canonicalPath(tmp) === tmp && isWithin(target, tmp))
-		return !isWithin(target.toLowerCase(), path.join(tmp, "sessions").toLowerCase());
-	if (canonicalPath(dir) !== dir || !isWithin(target, dir)) return false;
-	const [entry = "", second] = path.relative(canonicalPath(dir), target).split(path.sep);
-	if (LOADED_BY_LATER_SESSIONS.has(entry.toLowerCase())) return false;
-	// Throwaway files go in `.octocode/tmp/`; a skill keeps its run scratch (ledgers, probes) in `.octocode/<topic>/tmp/`.
-	if (entry.toLowerCase() === "tmp" || second?.toLowerCase() === "tmp") return true;
+	const { agent, temp } = workspacePaths(cwd);
+	if (canonicalPath(temp) === temp && isWithin(target, temp))
+		return !isWithin(target.toLowerCase(), path.join(temp, "sessions").toLowerCase());
+	if (canonicalPath(agent) !== agent || !isWithin(target, agent)) return false;
+	const [entry = "", second] = path.relative(canonicalPath(agent), target).split(path.sep);
+	if (loadedFromAgentDir(entry)) return false;
+	// Throwaway files go in `.octocode/agent/tmp/`; a skill keeps its run scratch (ledgers, probes) in `.octocode/agent/<topic>/tmp/`.
+	if (entry.toLowerCase() === AGENT_FOLDERS.tmp || second?.toLowerCase() === AGENT_FOLDERS.tmp) return true;
 	return target.toLowerCase().endsWith(".md");
 }
 
@@ -82,7 +82,7 @@ const throwawayOutside = (target: string): boolean =>
 	[os.tmpdir(), "/tmp", "/var/tmp", "/dev"].some((dir) => isWithin(target, canonicalPath(dir)));
 
 const refusal = (what: string): string =>
-	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octocode/code/temp/\`, \`.octocode/tmp/\`, a topic's \`.octocode/<topic>/tmp/\` or a Markdown doc under \`.octocode/\` (not in a folder later sessions load, such as skills, agents or prompts). The file tool creates missing folders.`;
+	`${what} is refused: this is a read-only role. Investigate and report; write only your scratch folder, \`.octocode/agent/temp/\`, \`.octocode/agent/tmp/\`, a topic's \`.octocode/agent/<topic>/tmp/\` or a Markdown doc under \`.octocode/agent/\` (not its state, \`worktrees/\` or \`MEMORY.md\`). The file tool creates missing folders.`;
 
 /** The refusal for a call a read-only child must not make, or undefined when it may (or this is not a read-only child). */
 export function readOnlyRoleRefusal(

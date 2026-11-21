@@ -98,7 +98,7 @@ describe("vendor credential stores are classified", () => {
 
 	it.each([
 		"octocode auth print-api-key --provider openai",
-		"npx octocode auth print-bearer-token --provider openai-codex",
+		"npx octocode auth print-bearer-token --provider openai",
 		"cat ~/.octocode/octocodecode/auth.json",
 	])("%s is a read of Octocode's own store", (command) => {
 		const hit = credentialHit("bash", { command }, tmp());
@@ -158,7 +158,7 @@ describe("vendor credential reads in each mode", () => {
 		for (const command of [
 			"cat ~/.octocode/octocodecode/auth.json",
 			"octocode auth print-api-key --provider openai",
-			"octocode auth print-bearer-token --provider openai-codex",
+			"octocode auth print-bearer-token --provider openai",
 			"cat ~/.claude/settings.json",
 		])
 			expect(await gate(call("bash", { command }), ctx), command).toBeUndefined();

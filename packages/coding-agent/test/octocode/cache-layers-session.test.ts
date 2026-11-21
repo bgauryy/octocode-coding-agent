@@ -37,6 +37,7 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 	const captured: Captured[] = [];
 	const faux = createFauxCore({
 		provider: "faux-cache",
+		api: "anthropic-messages",
 		models: [{ id: "cache", contextWindow: 200000, maxTokens: 4096 }],
 	});
 	faux.setResponses([fauxAssistantMessage("DONE"), fauxAssistantMessage("AGAIN")]);
@@ -58,7 +59,11 @@ async function twoRequests(agentDir: string, home: string, project: string): Pro
 						api: faux.api,
 						baseUrl: "http://127.0.0.1:0",
 						apiKey: "test",
-						models: faux.models,
+						models: faux.models.map((model) => ({
+							...model,
+							// A flagship model takes tool and system changes after the cached prefix, so on-demand tools stay out of it.
+							compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
+						})),
 						streamSimple: (
 							model: Parameters<typeof faux.streamSimple>[0],
 							context: Parameters<typeof faux.streamSimple>[1],

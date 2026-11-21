@@ -1,1 +1,1 @@
-Add durable work, follow-ups, failures or requested items; edit or find items
+Add durable work, follow-ups, failures, requests; edit or find others'

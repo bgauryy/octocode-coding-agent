@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import type { Readable } from "node:stream";
 import type { GitSource } from "../utils/git.ts";
 import { resolvePath } from "@octocodeai/octocode-common/paths";
-import { runCommand, runCommandCapture, runCommandSync, spawnCaptureCommand } from "./package-manager/commands.ts";
+import { runCommand, runCommandCapture, spawnCaptureCommand } from "./package-manager/commands.ts";
 import {
 	getGitInstallPath,
 	getLocalGitUpdateTarget,
@@ -15,8 +15,6 @@ import {
 } from "./package-manager/git.ts";
 import {
 	getGitDependencyInstallArgs,
-	getGlobalNpmRoot,
-	type GlobalNpmRootCache,
 	getLatestNpmVersion,
 	getNpmInstallPath,
 	getPackageManagerName,
@@ -66,7 +64,6 @@ export class DefaultPackageManager implements PackageManager {
 	private cwd: string;
 	private agentDir: string;
 	private settingsManager: SettingsManager;
-	private readonly globalNpmRootCache: GlobalNpmRootCache = {};
 	private progressCallback: ProgressCallback | undefined;
 	private readonly host: PackageManagerHost;
 
@@ -82,13 +79,11 @@ export class DefaultPackageManager implements PackageManager {
 			withProgress: (...args) => this.withProgress(...args),
 			installParsedSource: (...args) => this.installParsedSource(...args),
 			refreshTemporaryGitSource: (...args) => this.refreshTemporaryGitSource(...args),
-			getGlobalNpmRoot: () => this.getGlobalNpmRoot(),
 			updateGit: (...args) => this.updateGit(...args),
 			gitHasAvailableUpdate: (...args) => this.gitHasAvailableUpdate(...args),
 			getLocalGitUpdateTarget: (...args) => this.getLocalGitUpdateTarget(...args),
 			runCommand: (...args) => this.runCommand(...args),
 			runCommandCapture: (...args) => this.runCommandCapture(...args),
-			runCommandSync: (...args) => this.runCommandSync(...args),
 		};
 	}
 
@@ -275,10 +270,6 @@ export class DefaultPackageManager implements PackageManager {
 		return refreshTemporaryGitSource(this.host, source, sourceStr);
 	}
 
-	private getGlobalNpmRoot(): string {
-		return getGlobalNpmRoot(this.host, this.globalNpmRootCache);
-	}
-
 	private getNpmInstallPath(source: NpmSource, scope: SourceScope): string {
 		return getNpmInstallPath(this.host, source, scope);
 	}
@@ -311,9 +302,5 @@ export class DefaultPackageManager implements PackageManager {
 
 	private runCommand(command: string, args: string[], options?: { cwd?: string }): Promise<void> {
 		return runCommand(command, args, options);
-	}
-
-	private runCommandSync(command: string, args: string[]): string {
-		return runCommandSync(command, args);
 	}
 }

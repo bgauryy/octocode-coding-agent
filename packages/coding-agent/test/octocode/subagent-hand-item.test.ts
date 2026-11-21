@@ -18,12 +18,17 @@ function setup(live: { contextTokens?: number; contextWindow?: number } = {}) {
 	store.update(start.ref, { state: "ongoing" }, backlog.actor);
 	const next = store.add({ ...READY, title: "next", state: "todo", paths: ["src/a/b.ts", "docs"] });
 	const far = store.add({ ...READY, title: "far", state: "todo", paths: ["web"] });
+	const sibStart = store.add({ ...READY, title: "sib start", state: "todo", paths: ["lib"] });
+	store.update(sibStart.ref, { state: "ongoing" }, backlog.actor);
 	const runs = {
 		running: new Map<string, undefined>([
 			["kid", undefined],
 			["sib", undefined],
 		]),
-		items: new Map([["kid", start.ref]]),
+		items: new Map([
+			["kid", start.ref],
+			["sib", sibStart.ref],
+		]),
 		live: new Map([["kid", live]]),
 		handed: new HandedItems(),
 	} as unknown as Parameters<typeof handItem>[0];
@@ -59,6 +64,17 @@ describe("handing an item to a running child", () => {
 		expect(() => handItem(runs, { onItem: () => "old" }, "kid", far.ref, ctx)).toThrow(/with old/);
 		store.update(far.ref, { close: { kind: "wont_do", text: "no" } }, { id: "human", surface: "command" });
 		expect(() => handItem(runs, NOBODY, "kid", far.ref, ctx)).toThrow(/is done/);
+	});
+
+	it("refuses a child started without an item: it has no backlog tool to update the item with", () => {
+		const { ctx, store, next, runs, session } = setup();
+		runs.running.set("plain", undefined);
+		expect(() => handItem(runs, NOBODY, "plain", next.ref, ctx)).toThrow(
+			/started without an item.*agent task and item/,
+		);
+		// Nothing was claimed or granted.
+		expect(store.get(next.ref)).toMatchObject({ state: "todo" });
+		expect(store.get(next.ref)?.assignee).not.toBe(session);
 	});
 
 	it("says when the child's context is not known yet, and undo takes the item back", () => {

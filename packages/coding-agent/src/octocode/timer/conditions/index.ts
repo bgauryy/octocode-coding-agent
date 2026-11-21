@@ -5,7 +5,6 @@ import { checkSpec } from "./check.ts";
 import { commandSpec } from "./command.ts";
 import { itemSpec } from "./item.ts";
 import { landedSpec } from "./landed.ts";
-import { removedUntil } from "./removed.ts";
 import {
 	type BaseCondition,
 	type CheckOutcome,
@@ -67,8 +66,6 @@ function oneKey(value: unknown, kinds: readonly string[]): { kind: string; value
 /** The condition an `until` argument names, or undefined without one; exactly one kind. */
 export function parseUntil(until: unknown): TimerCondition | undefined {
 	if (until === undefined) return undefined;
-	const removed = removedUntil(until);
-	if (removed) throw new Error(removed);
 	if (typeof until === "object" && until !== null && "check" in until && until.check !== undefined) {
 		// `check` is the question; the one other condition beside it is the trigger.
 		const { check: question, ...rest } = until as Record<string, unknown>;

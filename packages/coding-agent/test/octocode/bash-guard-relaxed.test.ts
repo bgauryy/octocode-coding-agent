@@ -27,18 +27,18 @@ function stateGuard(command: string, cwd: string) {
 }
 
 // A working directory two levels below the folder that holds the real state folder: the wrong resolution of
-// `../../.octocode/tmp/f` lands in the state folder, the right one under the working directory.
+// `../../.octocode/agent/tmp/f` lands in the state folder, the right one under the working directory.
 const home = path.dirname(getOctocodeHome());
 const deep = path.join(home, "proj", "sub");
 
 describe("cd following in the state-folder guard", () => {
 	it("lets a write after `cd name` resolve against that folder", () => {
-		expect(stateGuard("cd packages/x && echo hi > ../../.octocode/tmp/f", deep)).toEqual({
+		expect(stateGuard("cd packages/x && echo hi > ../../.octocode/agent/tmp/f", deep)).toEqual({
 			refusal: undefined,
 			uncertain: false,
 		});
 		expect(
-			stateGuard("cd packages/coding-agent && yarn test > ../../.octocode/tmp/log 2>&1", deep).refusal,
+			stateGuard("cd packages/coding-agent && yarn test > ../../.octocode/agent/tmp/log 2>&1", deep).refusal,
 		).toBeUndefined();
 	});
 
@@ -68,17 +68,17 @@ describe("cd following in the state-folder guard", () => {
 describe("cd following in the read-only role and the reservation check", () => {
 	const repo = fs.realpathSync(tmp());
 	fs.mkdirSync(path.join(repo, "packages/x"), { recursive: true });
-	fs.mkdirSync(path.join(repo, ".octocode/code/temp/agents/r"), { recursive: true });
+	fs.mkdirSync(path.join(repo, ".octocode/agent/temp/agents/r"), { recursive: true });
 	const env = {
 		[SUBAGENT_ENV]: "1",
 		[READ_ONLY_ENV]: "1",
-		[AGENT_SCRATCH_ENV]: path.join(repo, ".octocode/code/temp/agents/r"),
+		[AGENT_SCRATCH_ENV]: path.join(repo, ".octocode/agent/temp/agents/r"),
 		[PERMISSION_ENV]: "full",
 	};
 	const refusal = (command: string) => readOnlyRoleRefusal({ toolName: "bash", input: { command } }, repo, env);
 
 	it("lets a read-only role write its allowed folder after `cd name`", () => {
-		expect(refusal("cd packages/x && echo hi > ../../.octocode/tmp/f")).toBeUndefined();
+		expect(refusal("cd packages/x && echo hi > ../../.octocode/agent/tmp/f")).toBeUndefined();
 	});
 
 	it("still refuses a read-only write the cd leads to, and a cd it cannot follow", () => {

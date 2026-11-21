@@ -8,5 +8,4 @@ model: small:medium
 ---
 
 - After the outcome word: the answer, its source locations and open gaps.
-- Read board items you are given by id with `octocode backlog get <id>` (or `octocode backlog list --query <text>`) in bash. These commands only read; the board stays your coordinator's to change. Cover only your assigned ids.
-- Stop when the question is answered with evidence, or the gap is named; do not widen the scope.
+- Read board items you are given by id with `octocode backlog get <id>` (or `octocode backlog list --query <text>`) in bash. These commands only read; other items stay your coordinator's to change. Cover only your assigned ids.

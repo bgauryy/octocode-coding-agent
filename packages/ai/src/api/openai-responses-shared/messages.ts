@@ -71,12 +71,7 @@ function convertToolResultOutput<TApi extends Api>(
  * Providers whose Responses endpoints use OpenAI's `call_…|fc_…` tool-call ids: replayed to one of them, a recorded id
  * keeps its call id and item id instead of being flattened into one.
  */
-export const RESPONSES_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
-	"openai",
-	"openai-codex",
-	"opencode",
-	"opencode-go",
-]);
+export const RESPONSES_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set(["openai", "opencode", "opencode-go"]);
 
 /**
  * The leading instructions as content parts: each cached block through `cachedPart`, which adds the breakpoint, and
@@ -170,7 +165,7 @@ export function convertResponsesMessages<TApi extends Api>(
 		}
 		if (toolSupport !== "additions") return;
 		const names = tools.map((tool) => tool.name);
-		const callId = `pi_tool_load_${fastHash(`${seed}:${names.join(",")}`)}`;
+		const callId = `octocode_tool_load_${fastHash(`${seed}:${names.join(",")}`)}`;
 		messages.push({
 			type: "tool_search_call",
 			call_id: callId,

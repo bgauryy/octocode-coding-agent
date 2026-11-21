@@ -41,7 +41,7 @@ const write = (file: string, text = "x") => {
 function workspace(name: string, ids: string[], pid: number | null = null) {
 	const root = fs.realpathSync(tmp(`octocode-purge-${name}-`));
 	const identity = registeredWorkspace(root, sharedAgentDb());
-	const state = path.join(root, ".octocode", "code");
+	const state = path.join(root, ".octocode", "agent");
 	for (const id of ids) {
 		write(path.join(state, "sessions", `${id}.jsonl`), `${JSON.stringify({ type: "session", id, cwd: root })}\n`);
 		write(path.join(state, "session-data", id, "output", "o.txt"));
@@ -51,7 +51,7 @@ function workspace(name: string, ids: string[], pid: number | null = null) {
 			.run(id, identity.id, pid);
 	}
 	write(path.join(state, "temp", "agents", "child", "report.md"));
-	write(path.join(root, ".octocode", "tmp", "scratch.txt"));
+	write(path.join(root, ".octocode", "agent", "tmp", "scratch.txt"));
 	write(path.join(root, ".octocode", "research", "keep.md"));
 	write(path.join(root, "my-notes.txt"));
 	write(path.join(state, "settings.json"), "{}");
@@ -90,7 +90,7 @@ describe("/purge", () => {
 		expect(fs.existsSync(path.join(here.state, "sessions", "old-2.jsonl"))).toBe(false);
 		expect(fs.existsSync(path.join(here.state, "session-data", "old-1"))).toBe(false);
 		expect(fs.existsSync(path.join(here.state, "temp", "agents"))).toBe(false);
-		expect(fs.existsSync(path.join(here.root, ".octocode", "tmp", "scratch.txt"))).toBe(false);
+		expect(fs.existsSync(path.join(here.root, ".octocode", "agent", "tmp", "scratch.txt"))).toBe(false);
 		// The current session and everything outside the purged roots stay.
 		expect(fs.existsSync(path.join(here.state, "sessions", "cur.jsonl"))).toBe(true);
 		expect(fs.existsSync(path.join(here.state, "session-data", "cur"))).toBe(true);
@@ -102,29 +102,27 @@ describe("/purge", () => {
 			expect(fs.existsSync(path.join(home, file))).toBe(true);
 		// Another workspace is untouched, files and rows alike; this one's other rows are gone and the current session is registered again.
 		expect(fs.existsSync(path.join(other.state, "sessions", "other-1.jsonl"))).toBe(true);
-		expect(fs.existsSync(path.join(other.root, ".octocode", "tmp", "scratch.txt"))).toBe(true);
+		expect(fs.existsSync(path.join(other.root, ".octocode", "agent", "tmp", "scratch.txt"))).toBe(true);
 		expect(rowCount(other.id)).toBe(1);
 		expect(index.get("old-1")).toBeUndefined();
 		expect(index.get("cur")).toBeDefined();
 	});
 
-	it("all removes every workspace, the global root and the old database, and keeps settings and auth", async () => {
+	it("all removes every workspace, and the global root, and keeps settings and auth", async () => {
 		const index = new SessionIndex(sharedAgentDb());
 		const a = workspace("a", ["cur", "a-1"]);
 		const b = workspace("b", ["b-1"]);
 		write(path.join(home, "agent", "sessions", "global-1", "output", "o.txt"));
-		write(path.join(home, "agent", "octocode.db"));
 		write(path.join(home, "auth.json"), "{}");
 
 		const outcome = await executePurge(index, "all", { cwd: a.root, current: "cur" });
 		expect("result" in outcome && outcome.result.failed).toEqual([]);
 
 		expect(fs.existsSync(path.join(b.state, "sessions", "b-1.jsonl"))).toBe(false);
-		expect(fs.existsSync(path.join(b.root, ".octocode", "tmp"))).toBe(true);
-		expect(fs.readdirSync(path.join(b.root, ".octocode", "tmp"))).toEqual([]);
+		expect(fs.existsSync(path.join(b.root, ".octocode", "agent", "tmp"))).toBe(true);
+		expect(fs.readdirSync(path.join(b.root, ".octocode", "agent", "tmp"))).toEqual([]);
 		expect(fs.existsSync(path.join(b.root, ".octocode", "research", "keep.md"))).toBe(true);
 		expect(fs.existsSync(path.join(home, "agent", "sessions", "global-1"))).toBe(false);
-		expect(fs.existsSync(path.join(home, "agent", "octocode.db"))).toBe(false);
 		expect(fs.existsSync(path.join(a.state, "sessions", "cur.jsonl"))).toBe(true);
 		expect(fs.existsSync(path.join(home, "auth.json"))).toBe(true);
 		expect(rowCount(b.id)).toBe(0);

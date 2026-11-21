@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { sameBinding, transcripts, workspaces } from "../../../db/src/api.ts";
+import { workspaces } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import {
@@ -28,13 +28,13 @@ describe("workspace identity", () => {
 		fs.mkdirSync(sub, { recursive: true });
 		expect(readWorkspaceIdentity(sub)).toBeUndefined();
 		expect(workspaceGit(sub)).toBeNull();
-		expect(workspaceStateDir(sub)).toBe(path.join(sub, ".octocode", "code"));
+		expect(workspaceStateDir(sub)).toBe(path.join(sub, ".octocode", "agent"));
 		expect(fs.existsSync(path.join(folder, ".octocode"))).toBe(false);
 		const workspace = workspaceIdentity(folder);
 		expect(workspaceIdentity(sub)).toEqual(workspace);
 		expect(workspaceRoot(sub)).toBe(sub);
 		const nested = path.join(folder, "one");
-		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
+		fs.mkdirSync(path.join(nested, ".octocode", "agent", "workspace"), { recursive: true });
 		expect(workspaceIdentity(sub)).toMatchObject({ root: nested, name: "one" });
 		expect(workspaceIdentity(sub).id).not.toBe(workspace.id);
 	});
@@ -66,44 +66,15 @@ describe("workspace identity", () => {
 		expect(binding.split(":")).toHaveLength(2);
 	});
 
-	it("resolves dev-prefixed and plain bindings without rewriting any stored row", () => {
-		const root = fs.realpathSync(tmp());
-		const file = path.join(tmp(), "legacy.db");
-		const workspace = workspaceIdentity(root);
-		const legacy = `16777229:${workspace.binding}`;
-		const first = openAgentDb(file);
-		workspaces.register(first.db, { ...workspace, binding: legacy });
-		first.db.prepare("INSERT INTO sessions(id,workspace_id) VALUES ('s1',?)").run(workspace.id);
-		first.mirror.db
-			.prepare(
-				"INSERT INTO session_transcripts(session_id,file,header,byte_size,mtime,file_binding) VALUES ('s1','/t.jsonl','{}',1,'1',?)",
-			)
-			.run(legacy);
-		first.close();
-		const stored = (db: ReturnType<typeof openAgentDb>) => ({
-			workspace: db.db.prepare("SELECT binding FROM workspaces").all(),
-			transcript: db.mirror.db.prepare("SELECT file_binding FROM session_transcripts").all(),
-		});
-		const db = openAgentDb(file);
+	it("refuses a workspace ID whose stored binding names another directory", () => {
+		const workspace = workspaceIdentity(fs.realpathSync(tmp()));
+		const db = openAgentDb(path.join(tmp(), "bindings.db"));
 		try {
-			// Opening changed no row: an older reader still finds the format it wrote.
-			expect(stored(db)).toEqual({ workspace: [{ binding: legacy }], transcript: [{ file_binding: legacy }] });
-			// Both formats resolve, and reads report the current format.
+			workspaces.register(db.db, workspace);
 			expect(workspaces.byId(db.db, workspace.id)?.binding).toBe(workspace.binding);
-			expect(transcripts.stamp(db.mirror.db, "s1")?.file_binding).toBe(workspace.binding);
-			expect(() => workspaces.register(db.db, workspace)).not.toThrow();
-			expect(() => workspaces.register(db.db, { ...workspace, binding: legacy })).not.toThrow();
+			expect(() => workspaces.register(db.db, { ...workspace, name: "renamed" })).not.toThrow();
 			expect(() => workspaces.register(db.db, { ...workspace, binding: "1:2" })).toThrow(/different directory/);
-			expect(() => workspaces.register(db.db, { ...workspace, binding: `7:1:2` })).toThrow(/different directory/);
-			// A write for another reason (a rename) keeps the stored binding as it was.
-			workspaces.register(db.db, { ...workspace, name: "renamed" });
-			expect(stored(db).workspace).toEqual([{ binding: legacy }]);
 			expect(workspaces.byId(db.db, workspace.id)).toMatchObject({ name: "renamed", binding: workspace.binding });
-			expect(sameBinding(legacy, workspace.binding)).toBe(true);
-			expect(sameBinding("9:1:2", "1:3")).toBe(false);
-			// New rows are written in the new format.
-			workspaces.register(db.db, { id: "fresh", root: "/f", name: "f", binding: "5:6" });
-			expect(db.db.prepare("SELECT binding FROM workspaces WHERE id='fresh'").get()).toEqual({ binding: "5:6" });
 		} finally {
 			db.close();
 		}
@@ -182,7 +153,7 @@ describe("workspace identity", () => {
 		expect(fs.readdirSync(outside)).toEqual([]);
 		fs.unlinkSync(path.join(root, ".octocode"));
 		const dir = ensureWorkspaceStateDir(root, "session-data/one");
-		expect(dir).toBe(path.join(fs.realpathSync(root), ".octocode", "code", "session-data", "one"));
+		expect(dir).toBe(path.join(fs.realpathSync(root), ".octocode", "agent", "session-data", "one"));
 		for (const input of ["../escape", "sessions/../../escape", "..\\escape", "/absolute"])
 			expect(() => ensureWorkspaceStateDir(root, input)).toThrow(/Invalid workspace state subpath/);
 		const marker = path.join(workspaceStateDir(root), "workspace", "id");
@@ -201,16 +172,19 @@ describe("private workspace data in Git operations", () => {
 		const repo = makeRepo();
 		try {
 			// Even if no user ignore rule exists and the repository explicitly requests copying every runtime file.
-			repo.write(".octocode/code/session-data/private.txt", "private parent session");
+			repo.write(".octocode/agent/session-data/private.txt", "private parent session");
 			expect(await dirtyCounts(repo.root)).toEqual({ dirty: 0, untracked: 0 });
 			expect((await readRepositoryDiff(repo.root)).untracked).toEqual([]);
-			await expect(readUntrackedDiff(repo.root, ".octocode/code/session-data/private.txt")).rejects.toThrow(/private/);
-			repo.write(".worktreeinclude", ".octocode/code/**\n");
+			await expect(readUntrackedDiff(repo.root, ".octocode/agent/session-data/private.txt")).rejects.toThrow(/private/);
+			repo.write(".worktreeinclude", ".octocode/agent/**\n");
 			expect((await copyIncluded(repo.root, tmp())).copied).toEqual([]);
 			const child = await createWorktree(repo.root, "state-isolation", tmp(), true);
-			expect(fs.existsSync(path.join(child.path, ".octocode", "code"))).toBe(false);
-			fs.mkdirSync(path.join(child.path, ".octocode", "code"), { recursive: true });
-			fs.writeFileSync(path.join(child.path, ".octocode", "code", "child-session"), "private child session");
+			expect(fs.existsSync(path.join(child.path, ".octocode", "agent"))).toBe(false);
+			fs.mkdirSync(path.join(child.path, ".octocode", "agent", "sessions"), { recursive: true });
+			fs.writeFileSync(
+				path.join(child.path, ".octocode", "agent", "sessions", "child-session"),
+				"private child session",
+			);
 			fs.writeFileSync(path.join(child.path, "result.txt"), "result");
 			const saved = await finishWorktree(child);
 			expect(sh(repo.root, "diff", "--name-only", "HEAD", saved.ref!)).toBe("result.txt");
@@ -223,9 +197,9 @@ describe("private workspace data in Git operations", () => {
 		const repo = makeRepo();
 		try {
 			workspaceIdentity(repo.root);
-			sh(repo.root, "add", "-f", ".octocode/code/workspace/id");
+			sh(repo.root, "add", "-f", ".octocode/agent/workspace/id");
 			sh(repo.root, "commit", "-qm", "incorrectly staged marker");
-			sh(repo.root, "rm", "--cached", ".octocode/code/workspace/id");
+			sh(repo.root, "rm", "--cached", ".octocode/agent/workspace/id");
 			await expect(createWorktree(repo.root, "stale-id", tmp())).rejects.toThrow(/tracks private workspace state/);
 		} finally {
 			repo.cleanup();
@@ -253,12 +227,12 @@ describe("repeated workspace lookups", () => {
 		}
 		// A declaration made in a folder passed on the way up moves the workspace there.
 		const nested = path.join(root, "one");
-		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
+		fs.mkdirSync(path.join(nested, ".octocode", "agent", "workspace"), { recursive: true });
 		const declared = workspaceIdentity(nested);
 		expect(declared.root).toBe(nested);
 		expect(readWorkspaceIdentity(sub)).toEqual(declared);
 		// A replaced ID file is read again.
-		const idFile = path.join(nested, ".octocode", "code", "workspace", "id");
+		const idFile = path.join(nested, ".octocode", "agent", "workspace", "id");
 		const replacement = "6f1c1d3e-8a1b-4c2d-9e3f-0a1b2c3d4e5f";
 		fs.rmSync(idFile);
 		fs.writeFileSync(idFile, `${replacement}\n`, { mode: 0o600 });
@@ -292,12 +266,12 @@ describe("repeated workspace lookups", () => {
 		}
 		// A declaration made in a folder passed on the way up moves the workspace there.
 		const nested = path.join(root, "one");
-		fs.mkdirSync(path.join(nested, ".octocode", "code", "workspace"), { recursive: true });
+		fs.mkdirSync(path.join(nested, ".octocode", "agent", "workspace"), { recursive: true });
 		const moved = workspaceIdentity(sub);
 		expect(moved.root).toBe(nested);
 		expect(moved.id).not.toBe(first.id);
 		// A replaced ID file is read again.
-		const idFile = path.join(nested, ".octocode", "code", "workspace", "id");
+		const idFile = path.join(nested, ".octocode", "agent", "workspace", "id");
 		const replacement = "6f1c1d3e-8a1b-4c2d-9e3f-0a1b2c3d4e5f";
 		fs.rmSync(idFile);
 		fs.writeFileSync(idFile, `${replacement}\n`, { mode: 0o600 });
@@ -310,7 +284,7 @@ describe("repeated workspace lookups", () => {
 		const again = workspaceIdentity(sub);
 		expect(again).toMatchObject({ root: sub });
 		expect(again.id).not.toBe(first.id);
-		expect(fs.existsSync(path.join(sub, ".octocode", "code", "workspace", "id"))).toBe(true);
+		expect(fs.existsSync(path.join(sub, ".octocode", "agent", "workspace", "id"))).toBe(true);
 	});
 
 	it("does not answer for a root replaced by another folder of the same name", () => {

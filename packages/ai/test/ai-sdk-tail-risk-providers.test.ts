@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { stream as anthropic } from "../src/api/anthropic-messages.ts";
 import { stream as google } from "../src/api/google-generative-ai.ts";
-import { stream as codex } from "../src/api/openai-codex-responses.ts";
 import { stream as responses } from "../src/api/openai-responses.ts";
 import type { Api, AssistantMessageEvent, Model, StreamOptions } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
@@ -64,18 +63,6 @@ const responsesStart = [
 	}),
 	frame({ type: "response.output_text.delta", item_id: "msg_1", output_index: 0, content_index: 0, delta: "hel" }),
 ];
-const responsesCompleted = (type = "response.completed") =>
-	frame({
-		type,
-		response: {
-			id: "resp_1",
-			created_at: 1,
-			model: "test-model",
-			status: "completed",
-			output: [message],
-			usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 },
-		},
-	});
 const googleChunk = (text: string, finishReason?: string) =>
 	frame({
 		candidates: [{ content: { role: "model", parts: [{ text }] }, finishReason, index: 0 }],
@@ -159,22 +146,6 @@ describe.each(cases)("$name tail risks", ({ start, partial, text }) => {
 });
 
 describe("duplicate terminals", () => {
-	it("Codex ignores a response.done that follows response.completed", async () => {
-		const token = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "t" } })).toString("base64")}.b`;
-		const events = codex(model("openai-codex-responses", "openai-codex"), context, {
-			apiKey: token,
-			maxRetries: 0,
-			fetch: async () =>
-				new Response(body([...responsesStart, responsesCompleted(), responsesCompleted("response.done")], "hold"), {
-					headers: sseHeaders,
-				}),
-		});
-		const seen = await collect(events);
-		expect(terminals(seen)).toHaveLength(1);
-		expect(terminals(seen)[0].type).toBe("done");
-		expect((await events.result()).usage).toMatchObject({ input: 10, output: 2 });
-	});
-
 	it("Anthropic counts a repeated message_stop and message_delta once", async () => {
 		const frames = [...anthropicEvents, anthropicEvents[4], anthropicEvents[5]].map(frame);
 		const events = anthropic(model("anthropic-messages", "anthropic"), context, {

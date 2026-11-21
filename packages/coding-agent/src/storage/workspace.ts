@@ -6,8 +6,8 @@ import path from "node:path";
 import { syncDirectorySync } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { getFileStamp, isUnderPath } from "@octocodeai/octocode-common/paths";
+import { AGENT_DIR, AGENT_FOLDERS, AGENT_GITIGNORE, OCTOCODE_DIR } from "./agent-layout.ts";
 
-export const WORKSPACE_STATE = path.join(".octocode", "code");
 const ID = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/;
 
 /** Workspace data follows the nearest declaration. A checkout boundary starts a new workspace. */
@@ -17,7 +17,7 @@ export function workspaceDataRoot(cwd: string): string {
 	for (let dir = start; ; dir = path.dirname(dir)) {
 		// A dotfiles checkout or a declaration in home must never absorb all unrelated projects below it.
 		if (path.dirname(dir) === dir || isUnderPath(home, dir)) return start;
-		if (fs.lstatSync(path.join(dir, WORKSPACE_STATE, "workspace"), { throwIfNoEntry: false })) return dir;
+		if (fs.lstatSync(path.join(dir, AGENT_DIR, AGENT_FOLDERS.marker), { throwIfNoEntry: false })) return dir;
 		if (fs.existsSync(path.join(dir, ".git"))) return dir;
 	}
 }
@@ -29,7 +29,7 @@ function statePath(root: string, subpath: string, create: boolean): string {
 	let dir = root;
 	/** The last directory this call created, if any. */
 	let created: string | undefined;
-	for (const part of [...WORKSPACE_STATE.split(path.sep), ...parts]) {
+	for (const part of [...AGENT_DIR.split(path.sep), ...parts]) {
 		dir = path.join(dir, part);
 		let stat = fs.lstatSync(dir, { throwIfNoEntry: false });
 		if (!stat && create) {
@@ -42,7 +42,7 @@ function statePath(root: string, subpath: string, create: boolean): string {
 			stat = fs.lstatSync(dir);
 		}
 		if (stat && !stat.isDirectory()) throw new Error(`Workspace state requires a real directory: ${dir}`);
-		if (create && stat && dir !== path.join(root, ".octocode") && stat.mode & 0o077 && process.platform !== "win32")
+		if (create && stat && dir !== path.join(root, OCTOCODE_DIR) && stat.mode & 0o077 && process.platform !== "win32")
 			fs.chmodSync(dir, 0o700);
 	}
 	// One flush for the directories this call created, after the last of them: a journaling filesystem commits the
@@ -83,7 +83,7 @@ function readId(file: string): string | undefined {
 
 /** Create the marker without replacing another starter's ID or exposing a partially written one. */
 function declare(root: string): string {
-	const marker = statePath(root, "workspace", true);
+	const marker = statePath(root, AGENT_FOLDERS.marker, true);
 	const file = path.join(marker, "id");
 	const existing = readId(file);
 	if (existing) return existing;
@@ -91,9 +91,13 @@ function declare(root: string): string {
 	const pending = path.join(marker, `.${id}.tmp`);
 	fs.writeFileSync(pending, `${id}\n`, { flag: "wx", mode: 0o600, flush: true });
 	try {
-		// Ignore the ID as well as transcripts and scratch, including in newly created Git worktrees.
+		// Ignore the ID, transcripts and scratch (not `MEMORY.md` or topics), including in newly created Git worktrees.
 		try {
-			fs.writeFileSync(path.join(path.dirname(marker), ".gitignore"), "*\n", { flag: "wx", mode: 0o600, flush: true });
+			fs.writeFileSync(path.join(path.dirname(marker), ".gitignore"), AGENT_GITIGNORE, {
+				flag: "wx",
+				mode: 0o600,
+				flush: true,
+			});
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 		}
@@ -145,7 +149,7 @@ function lookupCheck(cwd: fs.BigIntStats, idFile: string, root: string, passed: 
 	return parts.join("|");
 }
 
-const idFileOf = (root: string) => path.join(root, WORKSPACE_STATE, "workspace", "id");
+const idFileOf = (root: string) => path.join(root, AGENT_DIR, AGENT_FOLDERS.marker, "id");
 
 /** The last lookup from `cwd` while nothing it depended on changed (`lookupCheck`); forgotten otherwise. */
 function remembered(cwd: string, stat: fs.BigIntStats): WorkspaceIdentity | undefined {
@@ -185,7 +189,7 @@ export function readWorkspaceIdentity(cwd: string): WorkspaceIdentity | undefine
 	const last = remembered(cwd, stat);
 	if (last) return last;
 	const root = workspaceDataRoot(cwd);
-	const id = readId(path.join(statePath(root, "workspace", false), "id"));
+	const id = readId(path.join(statePath(root, AGENT_FOLDERS.marker, false), "id"));
 	if (id === undefined) return undefined;
 	const workspace = identity(root, id);
 	remember(cwd, stat, workspace);

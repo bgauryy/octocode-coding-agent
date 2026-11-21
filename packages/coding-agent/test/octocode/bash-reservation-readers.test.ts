@@ -35,7 +35,7 @@ const ALLOWED = [
 	'rg foo "$dir" | head -n 5',
 	'cd "$dir" && rg foo *.md | head -5',
 	'rg foo "$dir" | sort | uniq -c | sort -rn | head -20',
-	"tail -n 40 .octocode/tmp/log",
+	"tail -n 40 .octocode/agent/tmp/log",
 	"sort -u list.txt | uniq -d",
 	"sort -k 2 -t , list.txt",
 	"uniq -c in.txt",

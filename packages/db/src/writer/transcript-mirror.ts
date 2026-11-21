@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { getFileStamp } from "../../../common/src/paths.ts";
 import { parseJsonlLine } from "../../../common/src/jsonl.ts";
-import { bindingKey } from "../binding.ts";
 import type { AgentDb } from "../db.ts";
 import * as forks from "../queries/forks.ts";
 import * as sessions from "../queries/sessions.ts";
@@ -88,7 +87,7 @@ export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand,
 		const bound = () => (previous ? sessions.byId(agent.db, command.sessionId)?.workspace_id : undefined);
 		const level =
 			previous?.file === command.file &&
-			previous.file_binding === bindingKey(command.stamp.binding) &&
+			previous.file_binding === command.stamp.binding &&
 			(command.kind === "sync" && command.entries
 				? previous.byte_size === command.previous?.size && previous.mtime === command.previous.mtime
 				: previous.byte_size === command.stamp.size && previous.mtime === command.stamp.mtime);
@@ -101,16 +100,16 @@ export function runTranscriptCommand(agent: AgentDb, command: TranscriptCommand,
 		if (
 			previous &&
 			previous.file !== command.file &&
-			(fs.existsSync(previous.file) || previous.file_binding !== bindingKey(command.stamp.binding))
+			(fs.existsSync(previous.file) || previous.file_binding !== command.stamp.binding)
 		)
 			throw new Error("Another transcript already uses this session ID");
 		// Inside the write lock: a file deleted or replaced since the command was queued must not get its rows back.
-		if (fileBinding(command.file) !== bindingKey(command.stamp.binding)) return "skipped";
+		if (fileBinding(command.file) !== command.stamp.binding) return "skipped";
 		// The file only grows: rows another process saved from more of this same file are newer than this snapshot.
 		if (
 			command.kind === "save" &&
 			previous?.file === command.file &&
-			previous.file_binding === bindingKey(command.stamp.binding) &&
+			previous.file_binding === command.stamp.binding &&
 			previous.byte_size > command.stamp.size
 		)
 			return "current";

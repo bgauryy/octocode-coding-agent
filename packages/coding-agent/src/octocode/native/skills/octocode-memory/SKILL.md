@@ -1,6 +1,6 @@
 ---
 name: octocode-memory
-description: "Use when the user corrects you, sets a standing decision or says remember, and before changing a memory: where a fact belongs and its wording."
+description: "Use when the user corrects you, sets a standing decision or says remember, or before changing a memory: where a fact belongs and how to word it."
 metadata:
   audience: coordinator
 ---

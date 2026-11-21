@@ -1,27 +1,28 @@
 import fs from "node:fs";
-import { WORKSPACE_STATE } from "../../storage/workspace.ts";
+import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import path from "node:path";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
 import { getOctocodeHome } from "../../config.ts";
+import { globalPaths } from "../../storage/state-paths.ts";
 import { ownWorktreeRoot } from "../worktree-paths/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
-import { LOADED_BY_LATER_SESSIONS } from "./later-session-loaded.ts";
+import { agentStateEntry, LOADED_BY_LATER_SESSIONS, loadedFromAgentDir } from "./later-session-loaded.ts";
 import { memoryFileRefusal } from "./memory-files.ts";
 
 /**
  * Repository folders that load code, hooks or agent instructions in later sessions (git config, Pi, Claude Code, Codex and
  * Agents project config): a change there outlives the session, so it asks like an outside change. `.octocode/` is not
- * here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` ask, and scratch (`.octocode/tmp/`) and report folders
- * (`.octocode/<topic>/`) run unasked.
+ * here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` and `.octocode/agent/`'s in
+ * `loadedFromAgentDir` ask; scratch (`.octocode/agent/tmp/`) and report folders (`.octocode/agent/<topic>/`)
+ * run unasked.
  */
 export const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents"].map((entry) => entry.toLowerCase());
 const OCTOCODE_FOLDER = OCTOCODE_DIR.toLowerCase();
-/** Octocode's scratch folder inside its workspace state: nothing loads it, so a change there does not outlive the session (nested hooks still count). */
-const SCRATCH_AT_ROOT = `${WORKSPACE_STATE.split(path.sep).join("/")}/temp`;
+const AGENT_PREFIX = `${AGENT_DIR.split(path.sep).join("/").toLowerCase()}/`;
 /** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
 export const RUNS_LATER_ANYWHERE = [
 	".git/hooks",
@@ -42,6 +43,8 @@ export const RUNS_LATER_ANYWHERE = [
 /** Whether `relative` (lower-cased, `/`-separated) is the `OCTOCODE_DIR` folder itself or an entry of it that a later session loads. */
 function loadedFromOctocodeDir(relative: string): boolean {
 	if (relative === OCTOCODE_FOLDER) return true;
+	if (relative.startsWith(AGENT_PREFIX))
+		return loadedFromAgentDir(relative.slice(AGENT_PREFIX.length).split("/")[0] ?? "");
 	if (!relative.startsWith(`${OCTOCODE_FOLDER}/`)) return false;
 	return LOADED_BY_LATER_SESSIONS.has(relative.slice(OCTOCODE_FOLDER.length + 1).split("/")[0] ?? "");
 }
@@ -52,11 +55,9 @@ function loadedFromOctocodeDir(relative: string): boolean {
  */
 export function runsLater(file: string, root: string): boolean {
 	const relative = path.relative(root, file).split(path.sep).join("/").toLowerCase();
-	const scratch = relative === SCRATCH_AT_ROOT || relative.startsWith(`${SCRATCH_AT_ROOT}/`);
 	const rooted =
-		!scratch &&
-		(loadedFromOctocodeDir(relative) ||
-			RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`)));
+		loadedFromOctocodeDir(relative) ||
+		RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
 	return (
 		rooted ||
 		RUNS_LATER_ANYWHERE.some((entry) => `/${relative}`.endsWith(`/${entry}`) || `/${relative}`.includes(`/${entry}/`))
@@ -80,10 +81,11 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 }
 
 /**
- * The refusal for a change inside Octocode's state folder (its trust store, agent database, config), in every mode. An
+ * The refusal for a change inside Octocode's state folder (its trust store, config, the global agent state with the agent
+ * database), in every mode. An
  * isolated subagent works in a worktree under the Octocode home, so the home part of the rule does not apply to that
  * one folder when the caller says where the process runs (`cwd`, `ownWorktreeRoot`): not to a sibling's worktree, and
- * not to a checkout's own `.octocode/code` inside it.
+ * not to a checkout's own `.octocode/agent` state inside it.
  */
 export function stateFolderRefusal(
 	file: string,
@@ -94,11 +96,15 @@ export function stateFolderRefusal(
 ): string | undefined {
 	const real = canonicalPath(file);
 	const parts = real.toLowerCase().split(path.sep);
-	const [parent, folder] = WORKSPACE_STATE.split(path.sep);
+	const [parent, folder] = AGENT_DIR.split(path.sep);
 	const state = parts.some(
-		(name, i) => name === parent && parts[i + 1] === folder && (parts[i + 2] !== "temp" || parts[i + 3] === "sessions"),
+		(name, i) =>
+			name === parent &&
+			parts[i + 1] === folder &&
+			((parts[i + 2] !== undefined && agentStateEntry(parts[i + 2])) ||
+				(parts[i + 2] === AGENT_FOLDERS.temp && parts[i + 3] === "sessions")),
 	);
-	if (!state) {
+	if (!state && !isWithin(real, canonicalPath(globalPaths().agentState))) {
 		if (!isWithin(real, canonicalPath(getOctocodeHome()))) return undefined;
 		const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd, env);
 		if (own !== undefined && isWithin(real, own)) return undefined;

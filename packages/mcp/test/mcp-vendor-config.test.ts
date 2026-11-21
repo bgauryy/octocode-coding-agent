@@ -99,8 +99,6 @@ describe("MCP files of other agents", () => {
 			"codex:global",
 			"cursor:global",
 			"octocode:global",
-			"octocode:global",
-			"octocode:global",
 			"pi:project",
 			"codex:project",
 			"cursor:project",
@@ -293,9 +291,9 @@ describe("foreign servers that launch an already loaded program", () => {
 	}
 
 	it("shadows a foreign server with the same command and args under another name", () => {
-		const { home, cwd, agentDir, options, toggles, names } = setup();
+		const { home, cwd, options, toggles, names } = setup();
 		toggles({ "harness:codex": true });
-		write(join(agentDir, "mcp.json"), {
+		write(join(home, ".octocode/mcp.json"), {
 			mcpServers: { octocode: { command: "node", args: ["/srv/octocode/index.js"] } },
 		});
 		codexFiles(home, cwd);
@@ -314,8 +312,8 @@ describe("foreign servers that launch an already loaded program", () => {
 	});
 
 	it("does not dedupe Octocode-format files", () => {
-		const { agentDir, cwd, options, names } = setup();
-		write(join(agentDir, "mcp.json"), { mcpServers: { a: { command: "node", args: ["x.js"] } } });
+		const { home, cwd, options, names } = setup();
+		write(join(home, ".octocode/mcp.json"), { mcpServers: { a: { command: "node", args: ["x.js"] } } });
 		write(join(cwd, ".mcp.json"), { mcpServers: { b: { command: "node", args: ["x.js"] } } });
 		expect(names(loadMcpConfig(options))).toEqual(["a", "b"]);
 	});

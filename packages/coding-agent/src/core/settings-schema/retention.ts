@@ -8,7 +8,7 @@ export const RetentionSettingsSchema = Type.Object(
 			Type.Integer({
 				minimum: 0,
 				description:
-					"Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
+					"Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/agent/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
 				default: SETTINGS_DEFAULTS.retention.days,
 			}),
 		),
@@ -16,7 +16,7 @@ export const RetentionSettingsSchema = Type.Object(
 			Type.Integer({
 				minimum: 0,
 				description:
-					"Days a session transcript (JSONL, in a workspace or the legacy per-folder directories) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
+					"Days a session transcript (JSONL, in a workspace) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
 				default: SETTINGS_DEFAULTS.retention.sessionDays,
 			}),
 		),

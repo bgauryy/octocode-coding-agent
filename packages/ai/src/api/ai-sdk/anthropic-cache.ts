@@ -41,7 +41,7 @@ export function anthropicSdkCache(
 		instructions && initial
 			? splitSystemMessageIntoBlocks(initial, options.instructionCacheBoundary, options.instructionVolatileBoundary)
 			: undefined;
-	const names = Object.keys(tools).filter((name) => name !== "__pi_deferred_placeholder__");
+	const names = Object.keys(tools).filter((name) => name !== "__octocode_deferred_placeholder__");
 	const sharedEnd =
 		instructions && compat.supportsCacheControlOnTools && options.toolCacheBoundary
 			? Math.max(0, names.indexOf(options.toolCacheBoundary))

@@ -34,8 +34,6 @@ interface PromptInputs {
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
 	canUseAgent?: boolean;
-	/** Whether that tool declares its `external` type. */
-	canExternal?: boolean;
 	/** Profile-level read-only role of a subagent (the main session never is one), enforced separately by the permission layer. */
 	readOnly?: boolean;
 	/** Whether a file-writing tool is active (default true): a read-only agent may still save permitted reports and evidence. */
@@ -99,11 +97,12 @@ function policyFlags(input: PromptInputs) {
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
 		childStarted: input.childStarted === true,
-		externalAgent: input.canExternal === true,
 		// Combinations a template reads by name.
 		gitState: !main && shell,
+		// A browser or desktop specialist: code and dependency research routes do not apply to it.
+		controlsApp: input.browserControl === true || input.desktopControl === true,
 		// The scratch sweep's own setting.
-		retention: renderPrompt("policy/scratch.md", { keepsScratch: days === 0, days, oneDay: days === 1 }),
+		retention: renderPrompt("policy/scratch.md", { main, keepsScratch: days === 0, days, oneDay: days === 1 }),
 	};
 }
 

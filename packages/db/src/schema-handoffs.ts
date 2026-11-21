@@ -1,8 +1,8 @@
 /**
  * `item_handoffs`: the backlog items a coordinator handed to a running child after its start (`queries/item-handoffs.ts`),
  * one row per child and item, so the child's own process may update them besides the item it was started for. Rows end
- * with the child's run. Written with IF NOT EXISTS so a file created before the table existed gains it at first use
- * (`itemHandoffs.ensure`) without a schema version change, which would set the whole file aside.
+ * with the child's run. Created with IF NOT EXISTS: an
+ * existing file of this version gains it when it is opened (`COORDINATION_FILE.ensure`).
  */
 export const ITEM_HANDOFFS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS item_handoffs (

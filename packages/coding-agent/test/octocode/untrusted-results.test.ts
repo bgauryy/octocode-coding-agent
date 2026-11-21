@@ -44,7 +44,7 @@ describe("fencing web and MCP results in a request", () => {
 	it("fences web, browser and remote MCP results as data, and leaves the user's workspace reads alone", () => {
 		const messages = [
 			result("web", INJECTION),
-			result("mcp__browser__snapshot", INJECTION),
+			result("mcp__browser__run", INJECTION),
 			result(RESEARCH.other, INJECTION),
 			result(RESEARCH.reader, "const x = 1;"),
 			result(RESEARCH.search, "src/a.ts:1"),

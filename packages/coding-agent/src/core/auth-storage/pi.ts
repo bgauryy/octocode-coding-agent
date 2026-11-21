@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
-import { getAgentDir, getLegacyProviderDirs } from "../../config.ts";
+import { getAgentDir, getLegacyConfigDirs } from "../../config.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 import { ModelConfig } from "../model-config.ts";
@@ -15,7 +15,7 @@ export interface PiProviderCredential extends CredentialInfo {
  * explicit home is set). The same list the credential store reads, so what is listed is what is used.
  */
 function piDirs(): string[] {
-	return getLegacyProviderDirs(getAgentDir());
+	return getLegacyConfigDirs(getAgentDir());
 }
 
 /** Inspect Pi's credential metadata only. Import is an explicit, separate user action. */

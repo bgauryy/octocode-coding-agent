@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { EventBus } from "@octocodeai/octocode-agent-core";
+import { createEventBus, type EventBus } from "@octocodeai/octocode-agent-core";
 import {
 	contentText,
 	createFauxCore,
@@ -13,7 +13,15 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { resolveJsonSchemaStrictSampling } from "@octocodeai/octocode-ai/api/constrained-sampling";
-import { deferredInputSchema, getMcpSessionStatus, type McpServerStatus } from "../../../../mcp/src/api.ts";
+import {
+	deferredInputSchema,
+	getMcpSessionStatus,
+	type McpServerStatus,
+	serializeMcpSessionServers,
+} from "../../../../mcp/src/api.ts";
+import { registerMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
+import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
+import { publishToolRoles, resolveToolRoles } from "../../../../mcp/src/roles.ts";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
 import type { FeatureRegister } from "../../../src/core/features/index.ts";
@@ -40,9 +48,13 @@ import { buildAgentArgs } from "../../../src/octocode/subagents/process/session.
 import { childInUseTools } from "../../../src/octocode/subagents/core-tools.ts";
 import { GENERAL_PROFILE, loadProfiles, type AgentProfile } from "../../../src/octocode/subagents/profiles.ts";
 import { taskSkillPlan, taskSkillText, withRoleSkills } from "../../../src/octocode/subagents/task-skills.ts";
+import { resolveTaskServers } from "../../../src/octocode/subagents/task-servers.ts";
 import { childTaskInput } from "../../../src/octocode/subagents/task-text.ts";
 import { testFeatures } from "../../helpers/features.ts";
 import { nativeFeatureSet } from "../../helpers/native-features.ts";
+
+/** The built-in servers a parent session of these fixtures runs: what a child's task or tools may name. */
+const PARENT_SERVERS = ["octocode", "freellama", "browser", "desktop"];
 
 export const PACKAGE_DIR = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/$/, "");
 
@@ -88,7 +100,7 @@ export interface DeferredTool {
 
 /** The first model request one agent receives, with machine-specific values replaced by fixed ones. */
 export interface AgentContext {
-	/** The folder name under `.octocode/tmp/agent-prompts/`. */
+	/** The folder name under `.octocode/agent/tmp/agent-prompts/`. */
 	name: string;
 	kind: "main" | "child";
 	/** The bundled role a child runs; none for the main session and the generic child. */
@@ -124,7 +136,7 @@ export function fixture(served = false): Fixture {
 	const home = dir("home");
 	const agentDir = dir("agent");
 	const octocodeHome = dir("octocode-home");
-	const scratch = path.join(cwd, ".octocode", "code", "temp", "agents", "child-example");
+	const scratch = path.join(cwd, ".octocode", "agent", "temp", "agents", "child-example");
 	fs.mkdirSync(scratch, { recursive: true });
 	fs.writeFileSync(path.join(cwd, "AGENTS.md"), PROJECT_INSTRUCTIONS);
 	fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: {} }));
@@ -510,7 +522,26 @@ export async function captureChild(
 		}
 		const rolePrompt = withRoleSkills(profile, skillPlan.roleSkills, snapshot)?.prompt;
 		const rolePromptFile = rolePrompt ? writeRolePrompt(rolePrompt, fx.octocodeHome) : undefined;
-		const env = subagentProcessEnv(profile, baseEnv(fx), identity, undefined, rolePromptFile, snapshotFile);
+		// The servers `spawn.ts` plans for the child (`task-servers.ts`), handed over in its server file.
+		// The parent publishes its research roles when its servers load, before any child starts.
+		publishToolRoles(
+			resolveToolRoles(recommendedPresets().flatMap(({ name, config }) => (config ? [{ name, config }] : []))),
+		);
+		const parentServers = createEventBus();
+		registerMcpAddedServers(parentServers, () => ({ servers: {}, stopped: [], available: PARENT_SERVERS }));
+		const planned = resolveTaskServers(parentServers, undefined, profile);
+		const serversText = planned && serializeMcpSessionServers({}, [], planned.only, planned.named);
+		const serversFile = serversText ? path.join(fx.octocodeHome, "mcp-servers.json") : undefined;
+		if (serversFile) fs.writeFileSync(serversFile, serversText!, { mode: 0o600 });
+		const env = subagentProcessEnv(
+			profile,
+			baseEnv(fx),
+			identity,
+			undefined,
+			rolePromptFile,
+			snapshotFile,
+			serversFile,
+		);
 		const skillText = skillPlan.inTask ? taskSkillText(snapshot, skillPlan.inline) : "";
 		const task = withIdentity(
 			childTaskInput(parent.task, { referenced: "", browserMode: profile?.headless, skillText }),

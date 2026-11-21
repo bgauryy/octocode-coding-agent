@@ -44,7 +44,6 @@ const LEVELS = ["none", "short", "long"] as const;
 const PAIRS = LEVELS.flatMap((history) =>
 	LEVELS.map((instructions): [CacheRetention, CacheRetention] => [history, instructions]),
 );
-const codexToken = `a.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test" } })).toString("base64")}.b`;
 
 function assistantCall(model: Model<any>): AssistantMessage {
 	return {
@@ -253,15 +252,6 @@ const ROWS: Row[] = [
 		marks: noBreakpoints,
 		tools: responsesTools,
 		instructions: (payload) => leading(input(payload)),
-	},
-	{
-		name: "openai-codex-responses",
-		model: () => getBuiltinModel("openai-codex", "gpt-5.5"),
-		apiKey: codexToken,
-		routingKeyField: "prompt_cache_key",
-		marks: noBreakpoints,
-		tools: (payload) => payload.tools,
-		instructions: (payload) => payload.instructions,
 	},
 	{
 		name: "mistral-conversations",

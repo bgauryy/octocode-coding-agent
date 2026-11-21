@@ -4,5 +4,5 @@ Bundled with Octocode. It teaches agents to review a repository's backlog like a
 
 - Start at [SKILL.md](SKILL.md): filing and closing items. Grooming: [grooming](references/grooming.md).
 - References: [states and marks](references/states.md), [verdicts and their evidence](references/verdicts.md), [delegating large boards](references/delegation.md).
-- Output: [output.md](output.md). Large reports go under `<workspace>/.octocode/backlog-grooming/<date>/`.
+- Output: [output.md](output.md). Large reports go under `<workspace>/.octocode/agent/backlog-grooming/<date>/`.
 - Setup: none. It uses the `backlog`, `backlogPlan`, `agent` and `askUser` tools, and `git` for timing.

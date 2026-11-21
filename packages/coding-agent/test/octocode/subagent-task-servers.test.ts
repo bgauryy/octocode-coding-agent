@@ -48,7 +48,7 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 
 	it("a named server reaches the child; an unnamed one does not", () => {
 		const events = session(["alpha", "beta", "gamma"], { alpha: stdio, beta: stdio });
-		const plan = resolveTaskServers(events, ["alpha"], undefined, false);
+		const plan = resolveTaskServers(events, ["alpha"], undefined)!;
 		expect(plan.only).toEqual(["alpha"]);
 		expect(plan.named).toEqual(["alpha"]);
 		// The parent's added servers are narrowed before they are written.
@@ -84,32 +84,46 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 
 	it("refuses an unknown or disabled name with one line naming the configured servers", () => {
 		const events = session(["alpha", "beta"]);
-		expect(() => resolveTaskServers(events, ["nope"], undefined, false)).toThrow(
+		expect(() => resolveTaskServers(events, ["nope"], undefined)).toThrow(
 			'Unknown or disabled MCP server "nope"; configured servers: alpha, beta.',
 		);
-		expect(() => resolveTaskServers(session([]), ["nope"], undefined, false)).toThrow("configured servers: none.");
+		expect(() => resolveTaskServers(session([]), ["nope"], undefined)).toThrow("configured servers: none.");
 	});
 
-	it("refuses a lean profile and a resumed child", () => {
+	it("plans no servers for a lean profile and refuses a list for one", () => {
 		const events = session(["alpha"]);
-		expect(() =>
-			resolveTaskServers(events, ["alpha"], { name: "l", description: "", prompt: "", lean: true }, false),
-		).toThrow("lean");
-		expect(() => resolveTaskServers(events, ["alpha"], undefined, true)).toThrow("resume");
+		const lean = { name: "l", description: "", prompt: "", lean: true as const };
+		expect(resolveTaskServers(events, undefined, lean)).toBeUndefined();
+		expect(() => resolveTaskServers(events, ["alpha"], lean)).toThrow("lean");
+	});
+
+	it("without a task list, gives a child only the servers its tools name; the session's others stay with the parent", () => {
+		const events = session(["octocode", "freellama", "mine"], { mine: stdio });
+		const plan = resolveTaskServers(events, undefined, undefined)!;
+		expect(plan.only).not.toContain("freellama");
+		expect(plan.only).not.toContain("mine");
+		// The parent's added servers are left out of the handoff file too.
+		expect(plan.servers).toEqual({});
+		expect(childLeavesOut(plan.only, "mine")).toBe(true);
+		const profile = (tools: string) => ({ name: "p", description: "", prompt: "", tools });
+		expect(resolveTaskServers(events, undefined, profile("bash,file,mcp__freellama__*"))!.only).toContain("freellama");
+		expect(resolveTaskServers(events, ["freellama"], undefined)!.only).toContain("freellama");
+		// A broad mcp__* entry names no server.
+		expect(resolveTaskServers(events, undefined, profile("bash,file,mcp__*"))!.only).not.toContain("freellama");
 	});
 
 	it("keeps the servers the profile names explicitly", () => {
 		const events = session(["alpha", "browser"]);
 		const profile = { name: "b", description: "", prompt: "", tools: "mcp__browser__*" };
-		expect(resolveTaskServers(events, ["alpha"], profile, false).only).toEqual(["alpha", "browser"]);
+		expect(resolveTaskServers(events, ["alpha"], profile)!.only).toEqual(["alpha", "browser"]);
 		// A wildcard over every server names none of them.
-		expect(resolveTaskServers(events, [], { ...profile, tools: "mcp__*" }, false).only).toEqual([]);
+		expect(resolveTaskServers(events, [], { ...profile, tools: "mcp__*" })!.only).toEqual([]);
 	});
 
 	it("activates every tool only of a server the task named; an exact profile entry keeps its one tool", () => {
 		const events = session(["alpha", "beta"]);
 		const profile = { name: "e", description: "", prompt: "", tools: "+mcp__beta__echo" };
-		const plan = resolveTaskServers(events, ["alpha"], profile, false);
+		const plan = resolveTaskServers(events, ["alpha"], profile)!;
 		// Both servers run in the child: the task named alpha, the profile's own entry names beta.
 		expect(plan.only).toEqual(["alpha", "beta"]);
 		expect(plan.named).toEqual(["alpha"]);
@@ -133,7 +147,7 @@ describe("T6: per-task MCP servers (agent task `mcp`)", () => {
 		fs.rmSync(dir, { recursive: true, force: true });
 	});
 
-	it("without the field nothing changes", () => {
+	it("a handoff file without a list leaves nothing out, and the args do not change", () => {
 		expect(serializeMcpSessionServers({})).toBeUndefined();
 		expect(childLeavesOut(undefined, "anything")).toBe(false);
 		const args = buildAgentArgs(undefined, undefined, SESSION, []);

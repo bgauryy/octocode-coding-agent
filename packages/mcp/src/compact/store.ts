@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { hostPaths } from "../host.ts";
 import type { GeneratedMeta } from "./types.ts";
 
@@ -28,8 +28,6 @@ function readSnapshot(dir: string, server: string): (GeneratedMeta & { text?: st
 		const stem = join(dir, fileStem(server));
 		const meta = JSON.parse(readFileSync(`${stem}.json`, "utf8")) as GeneratedMeta & { text?: string };
 		if (typeof meta?.hash !== "string" || typeof meta.generatorVersion !== "number") return undefined;
-		// A file an earlier release stored with description overrides holds rewritten server text: never serve it.
-		if ("overrides" in meta || "authored" in meta) return undefined;
 		return meta;
 	} catch {
 		return undefined;
@@ -44,21 +42,10 @@ export function readGenerated(dir: string, server: string): { text: string; meta
 	return { text, meta };
 }
 
-function writeAtomic(file: string, content: string): void {
-	const temporary = `${file}.${randomUUID()}.tmp`;
-	try {
-		writeFileSync(temporary, content, "utf8");
-		renameSync(temporary, file);
-	} catch (error) {
-		rmSync(temporary, { force: true });
-		throw error;
-	}
-}
-
 /** Publish text and metadata together in JSON. The `.txt` mirror remains available for human inspection. */
 export function writeGenerated(dir: string, server: string, text: string, meta: GeneratedMeta): void {
 	mkdirSync(dir, { recursive: true });
 	const stem = join(dir, fileStem(server));
-	writeAtomic(`${stem}.txt`, text);
-	writeAtomic(`${stem}.json`, `${JSON.stringify({ ...meta, text }, null, "\t")}\n`);
+	atomicWriteFileSync(`${stem}.txt`, text);
+	atomicWriteFileSync(`${stem}.json`, `${JSON.stringify({ ...meta, text }, null, "\t")}\n`);
 }

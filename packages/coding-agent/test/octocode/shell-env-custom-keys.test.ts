@@ -38,7 +38,7 @@ describe("getShellEnv with custom providers", () => {
 		expect(env.UNRELATED_SETTING).toBe("kept");
 	});
 
-	it("drops the variables a header names, and those of the legacy and Pi models.json files the session merges", () => {
+	it("drops the variables a header names, and those of the Pi models.json file the session merges", () => {
 		const home = fs.realpathSync(tmp("octocode-shell-env-home-"));
 		process.env.HOME = home;
 		delete process.env.OCTOCODE_HOME;
@@ -48,11 +48,10 @@ describe("getShellEnv with custom providers", () => {
 			fs.writeFileSync(path.join(home, dir, "models.json"), JSON.stringify({ providers }));
 		};
 		write(".octocode/octocodecode", { own: { apiKey: "$OWN_KEY", headers: { "x-token": "$HEADER_TOKEN" } } });
-		write(".octocode/agent", { legacy: { apiKey: "$LEGACY_KEY" } });
 		write(".pi/agent", { pi: { apiKey: "$PI_KEY" } });
-		for (const name of ["OWN_KEY", "HEADER_TOKEN", "LEGACY_KEY", "PI_KEY"]) process.env[name] = `synthetic-${name}`;
+		for (const name of ["OWN_KEY", "HEADER_TOKEN", "PI_KEY"]) process.env[name] = `synthetic-${name}`;
 		const env = getShellEnv();
-		for (const name of ["OWN_KEY", "HEADER_TOKEN", "LEGACY_KEY", "PI_KEY"]) expect(env[name]).toBeUndefined();
+		for (const name of ["OWN_KEY", "HEADER_TOKEN", "PI_KEY"]) expect(env[name]).toBeUndefined();
 		expect(env.UNRELATED_SETTING).toBe("kept");
 	});
 

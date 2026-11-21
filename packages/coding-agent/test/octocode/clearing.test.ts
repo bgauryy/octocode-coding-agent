@@ -145,13 +145,14 @@ function session(fillerChars: number, usage?: Record<string, number>, compacted 
 describe("clearing counts the requests since the last compaction", () => {
 	// 42 old results of about 1,000 tokens each; the filler decides how much a cleared history writes again.
 	it("does not clear a warm wave that the replies kept from before a compaction would have paid for", async () => {
-		// Counting all 47 replies the rule passes; counting the 33 after the compaction it does not.
-		const wrong = session(190_000, undefined, false);
+		// Counting all 47 replies the rule passes; counting the 33 after the compaction it does not. The results of the last
+		// turns stay in use, so the filler sits inside the band (about 120k-160k characters) where the two counts differ.
+		const wrong = session(150_000, undefined, false);
 		await wrong.warmRequest();
 		expect(wrong.entries).toHaveLength(1);
 		expect((wrong.entries[0].data as { remainingRequests: number }).remainingRequests).toBe(47);
 
-		const s = session(190_000);
+		const s = session(150_000);
 		await s.warmRequest();
 		expect(s.entries).toEqual([]);
 	});

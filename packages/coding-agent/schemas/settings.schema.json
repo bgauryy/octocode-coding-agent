@@ -1331,11 +1331,6 @@
           "description": "Minutes a working agent may make no progress (no model reply or tool event) before the agent responsible for it is told, once per silence: a subagent's parent, or a main session itself (a note and a footer mark). Checked once a minute; an agent waiting on the user, its children or its jobs is excused, and nothing is stopped. 0 turns it off.",
           "default": 5,
           "minimum": 0
-        },
-        "silenceMinutes": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Deprecated: use monitor.idleAgentMinutes, which wins when both are set. Read in its place when it is unset; 0 turns the rule off."
         }
       },
       "additionalProperties": false
@@ -1345,7 +1340,7 @@
       "properties": {
         "file": {
           "type": "boolean",
-          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/octocodecode/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
+          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
           "default": true
         },
         "autoUpdate": {
@@ -1470,7 +1465,7 @@
         "sessionDays": {
           "type": "integer",
           "minimum": 0,
-          "description": "Days a session transcript (JSONL, in a workspace or the legacy per-folder directories) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
+          "description": "Days a session transcript (JSONL, in a workspace) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
           "default": 90
         },
         "archiveAfterDays": {
@@ -1515,17 +1510,6 @@
           "type": "boolean",
           "description": "Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
           "default": true
-        },
-        "checkInSeconds": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Deprecated: use monitor.checkInSeconds, which wins when both are set. Seconds a running subagent and its parent may go without a message before the subagent is asked whether it needs something; 0 turns it off.",
-          "default": 300
-        },
-        "silenceMinutes": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Deprecated: use monitor.idleAgentMinutes. Read only when monitor.idleAgentMinutes and monitor.silenceMinutes are unset: minutes a working agent may make no progress before the agent responsible for it is told; 0 turns it off."
         },
         "wakeHoldSeconds": {
           "type": "number",

@@ -241,7 +241,7 @@ describe("coordinate grant", () => {
 		expect(budgets.usage("a-1")).toEqual({ used: 3, soft: 9, hard: 11 });
 		expect(send).toHaveBeenCalledWith(
 			"a-1",
-			"Your coordinator granted 5 more model requests for this run: you have used 3, your next check is at 9, and the run now stops at 11.",
+			"Your coordinator granted 5 more model requests for this run: you have used 3, and the run now stops at 11.",
 			{ replyRequired: false },
 		);
 		expect(result.content[0]).toMatchObject({

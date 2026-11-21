@@ -222,19 +222,17 @@ describe.runIf(posix)("sweeping fallback socket folders", () => {
 		for (const each of roots.splice(0)) fs.rmSync(each, { recursive: true, force: true });
 	});
 
-	it("removes a dead owner's socket and folder, with and without a pid in the name", async () => {
+	it("removes a dead owner's socket and folder", async () => {
 		const base = root();
-		const withPid = folder(base, `octocode-${uid}-${deadPid()}-AbCdE1`);
-		const earlier = folder(base, `octocode-${uid}-AbCdE2`);
-		killedSocket(withPid);
-		killedSocket(earlier);
-		expect(await sweepSocketFolders({}, [base])).toBe(2);
+		const dead = folder(base, `octocode-${uid}-${deadPid()}-AbCdE1`);
+		killedSocket(dead);
+		expect(await sweepSocketFolders({}, [base])).toBe(1);
 		expect(fs.readdirSync(base)).toEqual([]);
 	});
 
 	it("never touches a live session's socket", async () => {
 		const base = root();
-		const earlier = folder(base, `octocode-${uid}-AbCdE3`);
+		const earlier = folder(base, `octocode-${uid}-${deadPid()}-AbCdE3`);
 		const server = serve();
 		await server.listenUnix(path.join(earlier, "oc-abc123.sock"));
 		// A pid this process cannot see is dead to it, as in another pid namespace sharing the temp directory: its socket still answers.
@@ -271,13 +269,11 @@ describe.runIf(posix)("sweeping fallback socket folders", () => {
 		expect(fs.existsSync(empty)).toBe(true);
 	});
 
-	it("removes an empty folder only when its name proves the owner is gone", async () => {
+	it("removes an empty folder whose named owner is gone", async () => {
 		const base = root();
 		const gone = folder(base, `octocode-${uid}-${deadPid()}-AbCdE7`);
-		const unknown = folder(base, `octocode-${uid}-AbCdE8`);
 		expect(await sweepSocketFolders({}, [base])).toBe(1);
 		expect(fs.existsSync(gone)).toBe(false);
-		expect(fs.existsSync(unknown)).toBe(true);
 	});
 
 	it("leaves everything it cannot prove its own", async () => {
@@ -286,11 +282,11 @@ describe.runIf(posix)("sweeping fallback socket folders", () => {
 			otherUser: folder(base, `octocode-${uid + 1}-AbCdE9`),
 			otherShape: folder(base, `octocode-${uid}-toolongname`),
 			notOurs: folder(base, "someone-else-AbCdEf"),
-			foreignFile: folder(base, `octocode-${uid}-AbCdEa`),
-			foreignSocket: folder(base, `octocode-${uid}-AbCdEb`),
-			extraFile: folder(base, `octocode-${uid}-AbCdEc`),
-			notSocket: folder(base, `octocode-${uid}-AbCdEd`),
-			open: folder(base, `octocode-${uid}-AbCdEe`),
+			foreignFile: folder(base, `octocode-${uid}-${deadPid()}-AbCdEa`),
+			foreignSocket: folder(base, `octocode-${uid}-${deadPid()}-AbCdEb`),
+			extraFile: folder(base, `octocode-${uid}-${deadPid()}-AbCdEc`),
+			notSocket: folder(base, `octocode-${uid}-${deadPid()}-AbCdEd`),
+			open: folder(base, `octocode-${uid}-${deadPid()}-AbCdEe`),
 		};
 		for (const each of [names.otherUser, names.otherShape, names.notOurs]) killedSocket(each);
 		fs.writeFileSync(path.join(names.foreignFile, "notes.txt"), "x");
@@ -302,7 +298,7 @@ describe.runIf(posix)("sweeping fallback socket folders", () => {
 		fs.chmodSync(names.open, 0o755);
 		const target = root();
 		killedSocket(target);
-		fs.symlinkSync(target, path.join(base, `octocode-${uid}-AbCdEg`));
+		fs.symlinkSync(target, path.join(base, `octocode-${uid}-${deadPid()}-AbCdEg`));
 		expect(await sweepSocketFolders({}, [base])).toBe(0);
 		for (const each of Object.values(names)) expect(fs.existsSync(each)).toBe(true);
 		expect(fs.readdirSync(target)).toEqual(["oc-abc123.sock"]);
