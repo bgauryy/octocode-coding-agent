@@ -14,7 +14,9 @@ let root: string;
 const closers: Array<() => Promise<unknown>> = [];
 
 beforeEach(() => {
-	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: T0 });
+	// The clock starts at T0 but keeps running: shutdown code (a process stop, a lock wait) polls `Date.now()` against a
+	// deadline, and a frozen clock never reaches it, so a slow machine would wait out the hook timeout.
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: T0, shouldAdvanceTime: true });
 	root = tmp();
 });
 afterEach(async () => {

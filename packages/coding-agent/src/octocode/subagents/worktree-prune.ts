@@ -6,12 +6,20 @@ import { gitQuiet } from "../../utils/git-run.ts";
 import { getOctocodeHome } from "../../config.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 import { sameProcessAsync } from "../shared/process.ts";
-import { ID_PATTERN, legacyWorktreesDir, ownersOf, repoRoot, worktreesDir } from "./worktree-base.ts";
+import {
+	ID_PATTERN,
+	legacyWorktreesDir,
+	ownersOf,
+	repoRoot,
+	type WorktreeOutputs,
+	worktreesDir,
+} from "./worktree-base.ts";
 import { finishWorktree } from "./worktree-finish.ts";
+import { outputsReport } from "./worktree-outputs.ts";
 
 export interface PruneReport {
-	/** Orphaned worktrees removed after their changes were saved; `ref` is absent when one changed nothing, `patch` is the child's own change as a file when the ref did not take it cleanly, `item` is the backlog item its child worked on. */
-	saved: Array<{ agentId: string; ref?: string; patch?: string; item?: string }>;
+	/** Orphaned worktrees removed after their changes were saved; `ref` is absent when one changed nothing, `patch` is the child's own change as a file when the ref did not take it cleanly, `outputs` the git-ignored files copied to the checkout, `item` is the backlog item its child worked on. */
+	saved: Array<{ agentId: string; ref?: string; patch?: string; item?: string; outputs?: WorktreeOutputs }>;
 	/** Orphaned worktrees kept because their changes could not be saved. */
 	kept: Array<{ agentId: string; error: string }>;
 }
@@ -108,12 +116,13 @@ async function pruneDir(repo: string, key: string, dir: string, report: PruneRep
 		};
 		try {
 			if (!sameRepository(record.repo, key)) throw new Error("Worktree owner record names a different repository");
-			const { ref, conflict } = await finishWorktree(worktree);
+			const { ref, conflict, outputs } = await finishWorktree(worktree);
 			fs.rmSync(claimed, { force: true });
 			report.saved.push({
 				agentId,
 				...(ref ? { ref } : {}),
 				...(conflict ? { patch: conflict.patch } : {}),
+				...(outputs ? { outputs } : {}),
 				...(typeof record.item === "string" ? { item: record.item } : {}),
 			});
 		} catch (error) {
@@ -130,6 +139,10 @@ export function describePrune(report: PruneReport): { text: string; level: "info
 		...(report.saved.length
 			? [
 					`Removed ${report.saved.length} orphaned subagent worktree(s): ${report.saved.map(({ agentId, ref, patch }) => (ref ? `${agentId} (changes on ${ref}${patch ? `, own change as patch ${patch}` : ""})` : `${agentId} (no changes)`)).join(", ")}.`,
+					...report.saved.flatMap(({ agentId, outputs }) => {
+						const text = outputsReport(agentId, outputs).trim();
+						return text ? [`${agentId}: ${text}`] : [];
+					}),
 				]
 			: []),
 		...report.kept.map(({ agentId, error }) => `Kept orphaned subagent worktree ${agentId}: ${error}`),

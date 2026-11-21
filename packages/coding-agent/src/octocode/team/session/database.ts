@@ -9,6 +9,7 @@ import { AGENT_LIFECYCLE_CHANNEL } from "../../shared/agent-lifecycle.ts";
 import { AgentLifecycleBus } from "../lifecycle-bus.ts";
 import type { PeerNoticeHost } from "../peer-left.ts";
 import { TeamStore } from "../store.ts";
+import { patiently } from "../store/patient.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TeamView } from "../ticker.ts";
 
@@ -155,11 +156,14 @@ export class TeamDatabase {
 
 	/** The machine slept (or this process stalled) from `since` to `now`: the existing database gives its members and leases a fresh start. */
 	resumed(since: number, now: number): void {
+		let db: TeamStore | undefined;
 		try {
-			this.existing()?.resume(since, now);
+			db = this.existing();
 		} catch {
-			// Unusable database: the snapshot says why; nothing to repair.
+			return; // Unusable database: the snapshot says why; nothing to repair.
 		}
+		// Another process's write lock delays the repair on a timer, never the tick that noticed the gap.
+		if (db) patiently(db, () => db.resume(since, now)).catch(() => {});
 	}
 
 	/** The newest presence event now: 0 when there is no database or it cannot be read. */

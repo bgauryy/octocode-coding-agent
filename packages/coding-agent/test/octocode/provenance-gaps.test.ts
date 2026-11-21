@@ -69,12 +69,13 @@ describe("provenance: background bash job output (F1)", () => {
 		const log = path.join(cwd, "job.log");
 		fs.writeFileSync(log, output);
 		const job = { id: "j1", command, cwd, log, pid: 1, startedAt: 0, done: Promise.resolve() } as unknown as BashJob;
+		const exit = { code: 0, signal: null, seconds: 3 };
 		const message = {
 			role: "custom",
 			customType: JOB_TYPE,
-			content: jobReport(job, { code: 0, signal: null, seconds: 3 }),
+			content: jobReport(job, exit),
 			display: true,
-			details: jobDetails(job, true),
+			details: jobDetails(job, exit, true),
 			timestamp: 0,
 		};
 		return Promise.all(handlers.map((handler) => handler({ type: "message_end", message }, ctx))).then(() => ({

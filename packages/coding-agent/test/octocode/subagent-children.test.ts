@@ -167,12 +167,12 @@ describe("a finished child's report", () => {
 		expect(resumableChild(entries, "general-failed", new Set()).session.dir).toBe(child.session);
 	});
 
-	it("names its saved transcript whether it succeeded or failed, so the parent can read or resume it", () => {
+	it("names its saved transcript only when it failed; a finished run resumes by its id", () => {
 		const child = scratch("general-ok");
 		const details = { session: { id: "general-ok", dir: child.session, file: child.file } } as Parameters<
 			typeof runFooter
 		>[0];
-		expect(runFooter(details, false)).toContain(`Session general-ok: ${shortPath(child.file)}`);
+		expect(runFooter(details, false).join("\n")).not.toContain("Session");
 		expect(runFooter(details, true)).toContain(`Session general-ok: ${shortPath(child.file)}`);
 		// Before its file is known the id alone says nothing the report does not: only a failure names it.
 		expect(runFooter({ session: { id: "general-ok" } } as Parameters<typeof runFooter>[0], false)).not.toContain(

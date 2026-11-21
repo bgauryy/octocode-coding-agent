@@ -7,7 +7,7 @@ interface QuickRunner {
 }
 
 /** A locked database, also when a caller wrapped SQLite's error in its own. */
-const busy = (error: unknown): boolean =>
+export const busy = (error: unknown): boolean =>
 	isBusy(error) || (error instanceof Error && error.cause !== undefined && busy(error.cause));
 
 /**

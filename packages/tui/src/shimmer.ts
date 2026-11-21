@@ -21,6 +21,12 @@ export interface ShimmerOptions {
 /** Brightness steps a band is quantized to: neighbouring cells of one step share one escape sequence. */
 const STEPS = 8;
 
+/** Dim outside the band, bold at its center, normal weight between. */
+function attributeAnsi(step: number): string {
+	if (step === 0) return "\x1b[22;2m";
+	return step >= STEPS / 2 ? "\x1b[22;1m" : "\x1b[22m";
+}
+
 /**
  * `text` painted with a soft light band sweeping left to right: each cell's color is `base` mixed toward `peak` by
  * a cosine falloff from the band's center. `text` must be plain (no escape sequences). Wide characters count as
@@ -30,6 +36,8 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 	const { base, peak, mode } = options;
 	// Without color a shimmer has nothing to vary.
 	if (text.length === 0 || mode === "none") return text;
+	// 16 colors cannot mix a gradient: the band is bold on dim text instead.
+	const attributes = mode === "16color";
 	const periodMs = Math.max(1, options.periodMs ?? 2000);
 	const halfWidth = Math.max(1, options.halfWidth ?? 5);
 	const padding = Math.max(0, options.padding ?? 10);
@@ -47,7 +55,9 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 		const step = Math.round(glow * STEPS);
 		let code = ansi.get(step);
 		if (code === undefined) {
-			code = foregroundAnsi(step === 0 ? base : mixColors(base, peak, step / STEPS), mode);
+			code = attributes
+				? attributeAnsi(step)
+				: foregroundAnsi(step === 0 ? base : mixColors(base, peak, step / STEPS), mode);
 			ansi.set(step, code);
 		}
 		if (code !== current) {
@@ -57,5 +67,5 @@ export function shimmerText(text: string, options: ShimmerOptions): string {
 		out += char;
 		cell += graphemeWidth(char);
 	}
-	return `${out}\x1b[39m`;
+	return attributes ? `${out}\x1b[22m` : `${out}\x1b[39m`;
 }

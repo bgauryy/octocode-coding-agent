@@ -19,8 +19,9 @@ import { emptyState, noMatchMessage, renderHintLine } from "../../theme/theme-tu
 import { ruleLine } from "../../theme/dynamic-border.ts";
 import { HARNESS_SECTIONS, type HarnessSection } from "./sections.ts";
 import { overviewLine } from "./overview.ts";
-import { itemDetailLines, itemRowLine, pickerRows, type Row, sectionNav } from "./picker-rows.ts";
+import { addRowLine, itemDetailLines, itemRowLine, pickerRows, type Row, sectionNav } from "./picker-rows.ts";
 import { SwitchOnPreview } from "./picker-preview.ts";
+import { type AddSkillActions, AddSkillPage } from "./picker-add-skill.ts";
 
 type LoadState = "loading" | "ready" | "error";
 export interface PickerOptions {
@@ -35,6 +36,8 @@ export interface PickerOptions {
 	retry?: () => void;
 	/** The scanned items a harness row would bring when switched on; shown with Enter to confirm before any write. */
 	preview?: (item: InventoryItem) => string[] | undefined;
+	/** Scan and save for the Skills section's "+ Add skill from a folder" row; absent: the row is not offered. */
+	addSkill?: AddSkillActions;
 	/**
 	 * Opens an MCP server's tools page in `/mcp` on Enter or → (the picker closes first, with `done`); absent: Enter
 	 * switches the server as before.
@@ -61,6 +64,7 @@ export class HarnessPicker implements Component, Focusable {
 	private _focused = false;
 	private details = false;
 	private confirming: { item: InventoryItem; view: SwitchOnPreview } | undefined;
+	private adding: AddSkillPage | undefined;
 	private detailOffset = 0;
 	private detailLength = 0;
 	private visibleRows = 5;
@@ -119,6 +123,7 @@ export class HarnessPicker implements Component, Focusable {
 			this.section,
 			this.search.getValue().trim().toLowerCase(),
 			this.expanded,
+			!!this.options.addSkill,
 		);
 		const kept = this.rows.findIndex((row) =>
 			row.type === "section" ? row.row.section === keep : row.type === "item" && row.item.id === keep,
@@ -200,8 +205,13 @@ export class HarnessPicker implements Component, Focusable {
 	}
 	handleInput(data: string): void {
 		const cancel = this.keys.matches(data, "tui.select.cancel");
-		if (matchesKey(data, "ctrl+c") || (cancel && !this.details && !this.confirming)) {
+		if (matchesKey(data, "ctrl+c") || (cancel && !this.details && !this.confirming && !this.adding)) {
 			this.options.done(this.changed);
+			return;
+		}
+		if (this.adding) {
+			if (this.adding.handleInput(data)) this.adding = undefined;
+			this.options.requestRender();
 			return;
 		}
 		if (this.confirming) {
@@ -261,6 +271,11 @@ export class HarnessPicker implements Component, Focusable {
 		} else if (toggle) {
 			const row = this.rows[this.selected];
 			if (row?.type === "section") this.openSection(row.row.section);
+			else if (row?.type === "add" && this.options.addSkill)
+				this.adding = new AddSkillPage(this.options.addSkill, this.theme, this.keys, (text) => {
+					this.flash = { text, level: "success" };
+					this.changed = true;
+				});
 			else if (this.current) this.toggle(this.current);
 		} else if (this.section !== "overview") {
 			this.search.handleInput(data);
@@ -291,7 +306,7 @@ export class HarnessPicker implements Component, Focusable {
 			push = (line: string) => lines.push(truncateToWidth(line, w, "…"));
 		const rule = ruleLine(w, (text) => t.fg("border", text));
 		push(rule);
-		const open = this.confirming?.view;
+		const open = this.confirming?.view ?? this.adding;
 		if (open) return [...lines, ...open.render(w, height - 2), rule];
 		push(
 			` ${t.fg("accent", t.bold(this.details ? `Harness › ${HARNESS_SECTIONS[this.section].title} › Details` : "Harness"))}${this.details ? "" : t.fg("muted", " · skills, MCPs, hooks and sources")}`,
@@ -356,8 +371,9 @@ export class HarnessPicker implements Component, Focusable {
 							push(`  ${t.fg("muted", line)}`);
 				}
 				for (const [offset, row] of shown.entries()) {
-					if (row.type === "section") {
-						push(overviewLine(row.row, start + offset === this.selected, t));
+					if (row.type === "section" || row.type === "add") {
+						const on = start + offset === this.selected;
+						push(row.type === "section" ? overviewLine(row.row, on, t) : addRowLine(on, t));
 						continue;
 					}
 					if (row.type === "host") {

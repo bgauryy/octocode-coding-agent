@@ -25,8 +25,8 @@ function trimmed(truncation: TruncationResult, lastLineBytes: number): string | 
 }
 
 /**
- * The first line of a foreground bash result, e.g. `[exit 0 · 4.2s · 312 lines · 18 KB]`; a trimmed result adds what
- * was kept and where the full output is, or what the saved file lost to its cap. A command that timed out shows its deadline instead of a duration.
+ * The first line of a foreground bash result, e.g. `[exit 0 · 4.2s]`, or `[exit 0 · 4.2s · no output]`; a trimmed
+ * result adds `312 lines · 18 KB`, what was kept and where the full output is, or what the saved file lost to its cap. A command that timed out shows its deadline instead of a duration.
  */
 export function formatBashHeader(
 	end: BashEnd,
@@ -47,12 +47,13 @@ export function formatBashHeader(
 			: end.kind === "timeout"
 				? [`timed out after ${seconds}`]
 				: [end.kind === "aborted" ? "aborted" : "terminated (no exit code)", seconds];
-	parts.push(
-		output.totalLines === 0
-			? "no output"
-			: `${formatCount(output.totalLines)} ${output.totalLines === 1 ? "line" : "lines"} · ${formatBytes(output.totalBytes, "spaced")}`,
-	);
 	const cut = trimmed(output.truncation, output.lastLineBytes);
+	// Whole output shows its own size; counts matter when part of it was cut or lives in a saved file.
+	if (output.totalLines === 0) parts.push("no output");
+	else if (cut || output.fullOutputPath)
+		parts.push(
+			`${formatCount(output.totalLines)} ${output.totalLines === 1 ? "line" : "lines"} · ${formatBytes(output.totalBytes, "spaced")}`,
+		);
 	if (cut) {
 		parts.push(cut);
 		if (output.fullOutputPath) {

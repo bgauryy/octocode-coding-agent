@@ -5,6 +5,11 @@ import baseConfig from "../../vitest.base.ts";
 export default mergeConfig(
 	baseConfig,
 	defineConfig({
-		test: { environment: "node", include: ["test/**/*.test.ts", "test/**/*.test.tsx"], setupFiles: ["test/setup.ts"] },
+		test: {
+			globalSetup: ["test/bundle-freshness.ts"],
+			environment: "node",
+			include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+			setupFiles: ["test/setup.ts"],
+		},
 	}),
 );

@@ -78,6 +78,12 @@ describe("policy section templates", () => {
 		expect(text).toContain("`desktop`");
 		expect(text).toMatch(/native desktop app/);
 		expect(text).toMatch(/user approves each start/);
+		// How to brief it, and what to do with its answer: the other half of the exchange.
+		expect(text).toMatch(/Brief it with one app, the goal, the state to start from and the proof you need/);
+		expect(text).toMatch(/`blocked` report is a step only the user can take/);
+		expect(text).toMatch(/`message` it to go on/);
+		expect(text).toMatch(/never finish the task yourself with a shell or AppleScript/);
+		expect(text).toMatch(/Check the screenshot path/);
 		expect(text).toMatch(/browser/);
 	});
 

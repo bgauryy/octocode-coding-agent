@@ -1,7 +1,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { SearchField } from "../ui/fields.tsx";
 import { Button } from "../ui/primitives.tsx";
-import type { FeedEvent } from "./application-projection.ts";
+import type { FeedEvent } from "@octocodeai/octocode-projections";
 import { activityCard } from "./model.ts";
 import { ResultCard } from "./ResultCard.tsx";
 

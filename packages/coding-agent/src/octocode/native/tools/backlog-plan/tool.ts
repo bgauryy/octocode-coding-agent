@@ -23,12 +23,13 @@ import {
 	listFields,
 	listParams,
 	runList,
+	runStat,
 } from "../../../backlog/tool-list.ts";
 import { backlogRenderers } from "../../../backlog/tool-render.ts";
 import { type RunParams, runBacklog } from "../../../backlog/tool-run.ts";
 import { checkedEntry, type LinkArgument, linkInput } from "../../../backlog/tool-schema.ts";
 import { oneWrite } from "../../../backlog/tool-support.ts";
-import { BacklogBatchAbortedError } from "../../../backlog/batch-outcome.ts";
+import { BatchAbortedError } from "../../../shared/batch.ts";
 import { backlogPlanPrompt } from "../../../backlog/tool-text.ts";
 
 type Write = "add" | "edit";
@@ -70,8 +71,8 @@ export function registerBacklogPlanTool(
 			defaultActive: !subagent,
 			parameters,
 			validationParameters: withReason(accepted),
-			// A `list` runs beside other reads; a write runs alone in its message and after every earlier write.
-			concurrency: (args) => (args.op === "list" ? "shared" : "exclusive"),
+			// A `list` or `stat` runs beside other reads; a write runs alone in its message and after every earlier write.
+			concurrency: (args) => (args.op === "list" || args.op === "stat" ? "shared" : "exclusive"),
 			async execute(_id, params, signal, _onUpdate, ctx) {
 				signal?.throwIfAborted();
 				// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
@@ -79,7 +80,8 @@ export function registerBacklogPlanTool(
 				const given = Object.entries(args)
 					.filter(([key, value]) => key !== "op" && value !== undefined)
 					.map(([key]) => key);
-				if (args.op === "list") return list(await openBacklogWhenReady(ctx, options, signal), args, given);
+				if (args.op === "list" || args.op === "stat")
+					return list(await openBacklogWhenReady(ctx, options, signal), args, given);
 				const op = args.op;
 				let result;
 				try {
@@ -88,10 +90,7 @@ export function registerBacklogPlanTool(
 						return written(await openBacklogWhenReady(ctx, options, signal), args, op, given, signal);
 					});
 				} catch (error) {
-					if (
-						error instanceof BacklogBatchAbortedError &&
-						(error.result.details.applied || error.result.details.uncertain)
-					) {
+					if (error instanceof BatchAbortedError && (error.result.details.applied || error.result.details.uncertain)) {
 						// A view notification must not erase the durable partial-write receipt.
 						try {
 							options.changed?.(ctx);
@@ -108,17 +107,17 @@ export function registerBacklogPlanTool(
 		}),
 	);
 
-	/** `list`: its own filters only, so an item field sent as a filter is answered with the filter that reads it. */
+	/** `list` or `stat`: their own filters only, so an item field sent as a filter is answered with the filter that reads it. */
 	function list(backlog: Backlog, args: Params, given: readonly string[]) {
 		const other = given.filter((key) => !ALL_FILTERS.includes(key));
 		if (other.length) {
 			const instead = other.map((key) => filterFor(key)).filter(Boolean);
 			throw new Error(
-				`list does not take ${other.join(", ")}: ${instead.length ? `use ${instead.join(", ")}` : `its filters are ${LIST_FILTERS.join(", ")}`}.`,
+				`${args.op} does not take ${other.join(", ")}: ${instead.length ? `use ${instead.join(", ")}` : `its filters are ${LIST_FILTERS.join(", ")}`}.`,
 			);
 		}
-		const { op: _op, items: _items, ...filters } = args;
-		return runList(backlog, listParams(filters));
+		const { op, items: _items, ...filters } = args;
+		return (op === "stat" ? runStat : runList)(backlog, listParams(filters));
 	}
 
 	/**

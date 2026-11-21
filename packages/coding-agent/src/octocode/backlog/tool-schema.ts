@@ -103,7 +103,7 @@ export function completionField(description: string) {
 				summary: { type: "string" },
 				verification: {
 					type: "string",
-					description: "Start passed or not applicable, then name the check",
+					description: "Start passed or n/a, then name the check",
 				},
 				files: { type: "array", items: { type: "string" } },
 				lesson: { type: "string" },

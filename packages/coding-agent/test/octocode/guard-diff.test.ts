@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { renderReport } from "../../src/octocode/guard/report.ts";
+import { renderList, renderReport } from "../../src/octocode/guard/report.ts";
 import { decide, forget, type GuardOptions, resolveReviews } from "../../src/octocode/guard/store.ts";
 import type { ItemFile, ReviewItem } from "../../src/octocode/guard/types.ts";
 import { tmp } from "./helpers.ts";
@@ -87,5 +87,16 @@ describe("security report diff", () => {
 		if (!fresh) throw new Error("no review");
 		expect(fresh.changed).toBe(false);
 		expect(renderReport(fresh)).not.toContain("Changed since");
+	});
+});
+
+describe("security list", () => {
+	it("separates the state from the rating", () => {
+		const changed = approveThen([text("SKILL.md", "a\n")], [text("SKILL.md", "b\n")]);
+		expect(renderList([changed], () => true)).toMatch(/not checked · changed · (LOW|MEDIUM|HIGH|CRITICAL)\b/);
+		forget(changed, options);
+		const [unreviewed] = resolveReviews([item([text("SKILL.md", "c\n")])], options);
+		if (!unreviewed) throw new Error("no review");
+		expect(renderList([unreviewed], () => true)).toMatch(/not checked · (LOW|MEDIUM|HIGH|CRITICAL)\b/);
 	});
 });

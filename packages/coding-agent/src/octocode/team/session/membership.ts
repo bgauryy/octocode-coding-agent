@@ -56,10 +56,13 @@ export function claimName(
  * must not stop a session that never collaborates. It stays unjoined then, and its first team action joins again and reports
  * the same failure (`Team.problem`, `/agents` and the footer show a foreign database at once).
  */
-export function joinAtStart(env: NodeJS.ProcessEnv, join: () => void): void {
-	if (env[AGENT_ID_ENV]) return join();
+export async function joinAtStart(env: NodeJS.ProcessEnv, join: () => Promise<unknown>): Promise<void> {
+	if (env[AGENT_ID_ENV]) {
+		await join();
+		return;
+	}
 	try {
-		join();
+		await join();
 	} catch {
 		/* reported by the first team action; see above */
 	}

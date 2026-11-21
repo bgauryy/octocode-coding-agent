@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type AgentContext, methods } from "@agentclientprotocol/sdk";
 import { withAbort } from "./abort.ts";
+import { toolKind } from "./events.ts";
 import {
 	checkedReplies,
 	type CancelReason,
@@ -131,7 +132,7 @@ async function askApproval(env: AskEnvironment, question: Question): Promise<Rep
 					toolCallId: question.approval?.toolCallId ?? randomUUID(),
 					title: question.question,
 					status: "pending",
-					kind: "other",
+					kind: question.approval?.toolName ? toolKind(question.approval.toolName) : "other",
 					name: question.approval?.toolName,
 					content: [{ type: "content", content: { type: "text", text: targets } }],
 				},

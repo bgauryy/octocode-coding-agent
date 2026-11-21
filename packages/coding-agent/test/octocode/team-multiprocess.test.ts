@@ -123,7 +123,7 @@ describe("joining the team", () => {
 		}
 	});
 
-	it("draws another name when a Team finds its first draw taken, and refuses a chosen name that is held", () => {
+	it("draws another name when a Team finds its first draw taken, and refuses a chosen name that is held", async () => {
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");
 		const store = TeamStore.open(cwd, db);
@@ -152,7 +152,7 @@ describe("joining the team", () => {
 
 		const child = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: db, [AGENT_ID_ENV]: "taken" });
 		// A subagent's name is its parent's choice: it joins at start, and a name a running process holds is an error.
-		expect(() => child.start(fakeCtx({ cwd }))).toThrow(/held by another running agent/);
+		await expect(child.start(fakeCtx({ cwd }))).rejects.toThrow(/held by another running agent/);
 		store.close();
 	});
 

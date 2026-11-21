@@ -2,6 +2,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinDescription } from "../../core/slash-commands.ts";
 import type { CommandContext } from "../../core/features/index.ts";
 import { cancelledText, type Subcommand, say, wordCompletions } from "../shared/commands.ts";
+import { type Notice, noticeText } from "../../theme/notice.ts";
 import { worktreeNames } from "../worktrees/names.ts";
 import { MAIN_CHECKOUT, switchToWorktree } from "../worktrees/switch.ts";
 import { collectRealms, type RealmDependencies } from "./collect.ts";
@@ -28,10 +29,15 @@ async function switchTo(realm: Realm, ctx: CommandContext): Promise<void> {
 async function resumeFrom(realm: Realm, ctx: CommandContext): Promise<void> {
 	if (realm.sessions.length === 0) return say(ctx, `No saved session was started in ${realm.name}.`);
 	if (!ctx.hasUI || !ctx.ui.pickSession) {
-		const rows = realm.sessions.map(
-			(session) => `  ${session.live ? "live" : "saved"} ${session.name ?? "(unnamed)"} · ${session.id}`,
-		);
-		return say(ctx, [`Sessions started in ${realm.name} (open one with /resume all <id>):`, ...rows].join("\n"));
+		const notice: Notice = {
+			title: `Sessions started in ${realm.name}`,
+			rows: realm.sessions.map((session) => [
+				session.live ? "live" : "saved",
+				`${session.name ?? "(unnamed)"} · ${session.id}`,
+			]),
+			hint: "open one with /resume all <id>",
+		};
+		return say(ctx, noticeText(notice));
 	}
 	const picked = await ctx.ui.pickSession({
 		initialScope: "all",

@@ -25,6 +25,12 @@ describe("lintPrompt", () => {
 		expect(rules(agent("a", "Hello }}", ["bash"]), [])).toEqual(["unrendered-marker"]);
 	});
 
+	it("leaves an MCP server's verbatim instructions to that server", () => {
+		const block = '<mcp name="browser" tools="mcp__browser__*">\nwait {after: {text|url}}\n</mcp>';
+		expect(rules(agent("a", `Intro\n\n${block}`, ["bash"]), [])).toEqual([]);
+		expect(rules(agent("a", `Hello {{name}}\n\n${block}`, ["bash"]), [])).toEqual(["unrendered-marker"]);
+	});
+
 	it("flags a backticked tool that only another agent declares", () => {
 		const limited = agent("limited", "Lock with `agent` first, then `bash`.", ["bash"]);
 		const other = agent("other", "", ["bash", "agent"]);

@@ -41,6 +41,8 @@ export class ChildLeases {
 
 	/** Starts that wait for a child to release (`released`): each is called after any release and checks again. */
 	private readonly releaseWaiters = new Set<() => void>();
+	/** Releases whose write has not landed yet: a sibling waiting on one starts only after its rows are gone. */
+	private readonly releasing = new Map<string, Promise<void>>();
 
 	private readonly host: () => ReservationHost;
 	constructor(host: () => ReservationHost) {
@@ -71,7 +73,7 @@ export class ChildLeases {
 	 * `signal` aborts. Holds nothing itself: whoever waits is no part of a deadlock.
 	 */
 	async released(ids: readonly string[], signal?: AbortSignal): Promise<void> {
-		while (ids.some((id) => this.rows.has(id))) {
+		while (ids.some((id) => this.rows.has(id) || this.releasing.has(id))) {
 			signal?.throwIfAborted();
 			await new Promise<void>((resolve, reject) => {
 				const stop = () => {
@@ -130,18 +132,26 @@ export class ChildLeases {
 	 * closing may write its paths until its process exits, so its reservations stay until its run's end calls this. The
 	 * process's own end bounds them: its held rows lapse with it, and the exit hook kills the child's group.
 	 */
-	release(id: string): void {
+	release(id: string): Promise<void> {
+		const pending = this.releasing.get(id);
+		if (pending) return pending;
 		const held = this.rows.get(id);
-		if (!held) return;
+		if (!held) return Promise.resolve();
 		const { row, db } = held;
 		this.rows.delete(id);
-		try {
+		// Another process holding the write lock delays the write on a timer, never on this thread (`patiently`).
+		const done = patiently(db, () => {
 			if (!db.remove(id, Date.now(), row)) db.unlock(id);
-		} catch {
-			// They lapse.
-		} finally {
-			for (const wake of this.releaseWaiters) wake();
-		}
+		})
+			.catch(() => {
+				// They lapse.
+			})
+			.finally(() => {
+				this.releasing.delete(id);
+				for (const wake of this.releaseWaiters) wake();
+			});
+		this.releasing.set(id, done);
+		return done;
 	}
 
 	/** The heartbeat: a child not running yet renews nothing itself. */

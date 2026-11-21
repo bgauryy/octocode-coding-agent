@@ -49,10 +49,10 @@ describe("bash result header and budget", () => {
 	});
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-	it("starts a successful result with exit, time, lines and size, and reports totals in structured content", async () => {
+	it("starts a successful result with exit and time only, and reports totals in structured content", async () => {
 		const bash = createBashTool(dir, { operations: chatty((i) => `row ${i}`, 312) });
 		const result = await bash.execute("c1", { command: "x" });
-		expect(text(result).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s · 312 lines · 2 KB\]$/);
+		expect(text(result).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s\]$/);
 		expect(result.isError).toBeUndefined();
 		expect(result.structuredContent).toMatchObject({ exit_code: 0, total_lines: 312, total_bytes: 2388 });
 	});
@@ -61,13 +61,13 @@ describe("bash result header and budget", () => {
 		const bash = createBashTool(dir, { operations: chatty(() => "boom", 1, 2) });
 		const result = await bash.execute("c2", { command: "x" });
 		expect(result.isError).toBe(true);
-		expect(text(result)).toBe("[exit 2 · 0s · 1 line · 5 B]\nboom\n");
+		expect(text(result)).toBe("[exit 2 · 0s]\nboom\n");
 	});
 
 	it("uses the same header for a timeout and an abort", async () => {
 		for (const [error, header] of [
-			["timeout:900", /^\[timed out after 900s · 1 line · 3 B\]\nhi\n/],
-			["aborted", /^\[aborted · [\d.]+s · 1 line · 3 B\]\nhi\n/],
+			["timeout:900", /^\[timed out after 900s\]\nhi\n/],
+			["aborted", /^\[aborted · [\d.]+s\]\nhi\n/],
 		] as const) {
 			const bash = createBashTool(dir, {
 				operations: {
@@ -135,7 +135,7 @@ describe("bash result header and budget", () => {
 			command: "x",
 			maxOutputTokens: 1_000_000,
 		});
-		expect(text(wide).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s · 1,200 lines · 12 KB\]$/);
+		expect(text(wide).split("\n")[0]).toMatch(/^\[exit 0 · [\d.]+s\]$/);
 	});
 
 	it("says `last 1 line` when only the final line of a very long one fits", async () => {

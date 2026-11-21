@@ -24,6 +24,9 @@ export interface DisplaySettingsApi {
 	getReduceMotion(): boolean | "auto";
 	isReduceMotionActive(): boolean;
 	setReduceMotion(value: boolean | "auto"): void;
+	getLatencyFence(): boolean | "auto";
+	isLatencyFenceActive(): boolean;
+	setLatencyFence(value: boolean | "auto"): void;
 	getEmojiMarks(): boolean;
 	setEmojiMarks(enabled: boolean): void;
 	getTuiMode(): TuiMode;

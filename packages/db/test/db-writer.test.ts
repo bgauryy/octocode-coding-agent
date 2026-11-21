@@ -17,6 +17,7 @@ import {
 	type DbWriterLocations,
 } from "../src/api.ts";
 import { getFileStamp } from "../../common/src/paths.ts";
+import { INLINE_TRANSCRIPT_LIMIT } from "../src/writer/inline-limit.ts";
 import { tmp } from "./helpers.ts";
 
 let dir: string;
@@ -361,6 +362,20 @@ await import(${JSON.stringify(workerEntry)});
 		expect(stats.inlineMaxMs).toBeLessThanOrEqual(stats.inlineMs);
 	});
 
+	it("on this thread, refuses a transcript write too large to run without the worker, and says so", async () => {
+		const db = writer(new URL("./missing-db-writer-entry.ts", import.meta.url));
+		const { file, stamp, records } = sessionFile("s-huge", 1);
+		const command = save("s-huge", file, stamp, records) as Extract<TranscriptCommand, { kind: "save" }>;
+		const [record] = command.records;
+		const huge = { ...command, records: [{ ...record, json: "x".repeat(INLINE_TRANSCRIPT_LIMIT + 1) }] };
+		const failure = await db.submit(huge).catch((error: unknown) => error);
+		expect(writerErrorKind(failure)).toBe("failed");
+		expect(rows("s-huge")).toHaveLength(0);
+		expect(db.stats()).toMatchObject({ mode: "inline", inlineRuns: 0, inlineRefused: 1 });
+		// A write within the bound still runs here.
+		expect(await db.submit(command)).toBe("saved");
+	});
+
 	it("reports a serving worker without a fallback", async () => {
 		const db = writer();
 		const { file, stamp, records } = sessionFile("s-stats", 1);
@@ -373,6 +388,7 @@ await import(${JSON.stringify(workerEntry)});
 			inlineRuns: 0,
 			inlineMs: 0,
 			inlineMaxMs: 0,
+			inlineRefused: 0,
 		});
 	});
 

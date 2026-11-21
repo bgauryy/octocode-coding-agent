@@ -339,6 +339,9 @@ export class McpServerConnection implements McpToolCaller {
 		if (!this.closed) this.backoff.failed();
 		this.state = this.closed ? "closed" : "failed";
 		this.error = this.stderrTail ? `${errorMessage(error)}\n${this.stderrTail}` : errorMessage(error);
+		console.error("DBGERR", this.error);
+		console.error("DBGERR", this.error);
+		console.error("DBGERR", this.error);
 		this.changed();
 		return new Error(`MCP server "${this.entry.name}" failed to connect: ${this.error}`);
 	}

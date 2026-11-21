@@ -143,6 +143,7 @@ export function outbound(host: SendHost, from: string, signal?: AbortSignal) {
  */
 export async function resumeWith(
 	host: SendHost,
+	db: TeamStore,
 	to: string,
 	from: string,
 	store: () => { id: number; message: Message; undo: () => void },
@@ -151,15 +152,16 @@ export async function resumeWith(
 ): Promise<{ id: number; resumed: string } | undefined> {
 	const resumer = host.resumer();
 	if (!resumer) return undefined;
-	const { id, message, undo } = store();
+	// The store and its undo never wait inside SQLite; the undo runs even after an abort, so a cancelled resume leaves no delivery.
+	const { id, message, undo } = await patiently(db, store, signal);
 	let resumed: string | undefined;
 	try {
 		resumed = await resumer(to, text, from, signal, { message });
 	} catch (error) {
-		undo();
+		await patiently(db, undo);
 		throw error;
 	}
-	if (!resumed) undo();
+	if (!resumed) await patiently(db, undo);
 	return resumed ? { id, resumed } : undefined;
 }
 
@@ -268,7 +270,8 @@ export async function sendMessage(
 			// An answer its asker can no longer read: the question closes, so it stops waiting on this agent.
 			if (options.replyTo === undefined || to !== answered?.from)
 				return { error: endedRefusal(host, db, to) ?? targets };
-			db.refs.closeQuestion(options.replyTo, from);
+			const question = options.replyTo;
+			await patiently(db, () => db.refs.closeQuestion(question, from), signal);
 			return { error: `${targets} Its question #${options.replyTo} is closed; nothing was sent.` };
 		}
 		const denied = (await check(to, text, options.replyTo, hookFlags)) ?? ready();
@@ -276,13 +279,18 @@ export async function sendMessage(
 		const delivered = stored();
 		if (typeof delivered !== "string") return delivered;
 		if (relay) {
-			const id = db.refs.relay(from, parent, to, delivered, { replyRequired, ...reply });
+			const id = await patiently(
+				db,
+				() => db.refs.relay(from, parent, to, delivered, { replyRequired, ...reply }),
+				signal,
+			);
 			return id === undefined
 				? { error: `${targets} Your coordinator ${parent} left, so it could not be relayed. Nothing was sent.` }
 				: { sent: [to], id, relayed: parent };
 		}
 		const resumed = await resumeWith(
 			host,
+			db,
 			to,
 			from,
 			() => {

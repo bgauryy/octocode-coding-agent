@@ -228,7 +228,7 @@ describe("deferred declaration", () => {
 		expect(thin.parameters.required).toEqual(["op", "reason"]);
 		// A refused call returns the declared schema with its typed entry, not the looser one calls are validated against.
 		const hint = thin.validationHint({ envelope: false, properties: ["op"] });
-		expect(hint).toContain('"enum":["add","edit","list"]');
+		expect(hint).toContain('"enum":["add","edit","list","stat"]');
 		expect(hint).toContain('"title":{"type":"string"');
 		expect(hint).not.toContain('"items":{"type":"object"}');
 		const work = tools.get("backlog");

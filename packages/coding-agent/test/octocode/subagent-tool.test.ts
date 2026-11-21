@@ -1028,12 +1028,12 @@ describe("agent tool with a scripted child", () => {
 		const answer = s.sent[0];
 		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(answer.message.content).toMatch(
-			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\) · cite as report:[a-z]+-[a-z]+:\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
+			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\) · ran on faux\/model, medium thinking \(this session's model\) · cite as report:[a-z]+-[a-z]+:\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
 		);
-		// The child's words end inside the fence; the footer after it is the parent's.
-		expect(String(answer.message.content)).toMatch(
-			/\nuntrusted-[0-9a-f]{16}>>>\nRan on faux\/model, medium thinking \(this session's model\)\.\n\nSession [^:\n]+: [^\n]+\.jsonl\n\n\(Last screenshot: /,
-		);
+		// The child's words end inside the fence; the footer after it is the parent's. The route is in the header, and a
+		// finished run's session path is left out: its id resumes it.
+		expect(String(answer.message.content)).toMatch(/\nuntrusted-[0-9a-f]{16}>>>\n\(Last screenshot: /);
+		expect(String(answer.message.content)).not.toMatch(/\nSession [^:\n]+: /);
 		const renderer = s.renderers.get("octocode-agent-result");
 		// The report starts with no outcome word: its outcome is unknown, which is not a failure.
 		expect(answer.message.details).not.toHaveProperty("outcome");
@@ -1684,7 +1684,7 @@ describe("runSubagent", () => {
 		const foreground = await s.run({ task: "changed outcome" });
 		expect(foreground.details.outcome).toBe("blocked");
 		expect(foreground.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
-		expect(foreground.content[0].text).toMatch(/^Subagent (\S+) reported blocked · cite as report:\1:/);
+		expect(foreground.content[0].text).toMatch(/^Subagent (\S+) reported blocked · ran on [^\n]+ · cite as report:\1:/);
 		await s.run({ task: "changed outcome", background: true });
 		await vi.waitFor(() => expect(s.sent).toHaveLength(1), { timeout: 10_000 });
 		expect(s.sent[0].message.details.outcome).toBe("blocked");
@@ -1979,7 +1979,11 @@ describe("a child report as the parent model reads it", () => {
 			const lines = text.split("\n");
 			const marker = /^<<<(untrusted-[0-9a-f]{16}) /m.exec(text)![1];
 			const close = lines.lastIndexOf(`${marker}>>>`);
-			expect(lines[0]).toBe(`Subagent ${result.details.id} reported done · cite as report:${result.details.id}:`);
+			expect(lines[0]).toMatch(
+				new RegExp(
+					`^Subagent ${result.details.id} reported done · ran on [^\\n]+ · cite as report:${result.details.id}:$`,
+				),
+			);
 			expect(lines.findIndex((line: string) => line.startsWith("Message #2"))).toBeGreaterThan(1);
 			expect(lines.findIndex((line: string) => line.startsWith("Message #3"))).toBeLessThan(close);
 			expect(text).toContain("<<<untrusted-0000000000000000");
@@ -2000,7 +2004,7 @@ describe("a child report as the parent model reads it", () => {
 		// The header is the parent's: this agent, its role and goal, its statistics. Nothing before the fence is the child's.
 		expect(lines[0]).toMatch(
 			new RegExp(
-				`^Background subagent ${id} \\(general: review auth\\) reported done \\(.*\\) · cite as report:${id}:$`,
+				`^Background subagent ${id} \\(general: review auth\\) reported done \\(.*\\) · ran on .* · cite as report:${id}:$`,
 			),
 		);
 		const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
@@ -2069,9 +2073,7 @@ describe("a child bound to a backlog item", () => {
 		expect(facts.item).toBe("B1");
 		expect(facts.task).toContain("`B1`");
 		// The parent's own line, after the fence, says the report was noted.
-		expect(text).toMatch(
-			/>>>\nRan on faux\/model, medium thinking \(this session's model\)\.\n\nNoted on B1\.\n\nSession [^:\n]+: [^\n]+\.jsonl$/,
-		);
+		expect(text).toMatch(/>>>\nNoted on B1\.$/);
 		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).filter((note) => note.kind === "note");
 		expect(notes().map((note) => note.text)).toEqual([`Report from ${facts.id}: no outcome word.`]);
 

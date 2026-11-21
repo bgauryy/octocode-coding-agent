@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectAppend, markerCount } from "../../../../ai/test/cache-matrix/compare.ts";
 import { PIXEL } from "../../../../ai/test/cache-matrix/transcripts.ts";
 import { WIRE_CASES, type Wire, type WireCase } from "../../../../ai/test/cache-matrix/wire.ts";
-import { lightSessions, replay, replayAll } from "./session-wire.ts";
+import { lightSessions, replay, replayAll, replayOn } from "./session-wire.ts";
 
 /** The header each API routes its cache by, and the body field carrying the shared key. */
 const ROUTING: Partial<Record<WireCase["id"], string[]>> = {
@@ -62,6 +62,26 @@ describe.each(WIRE_CASES)("session through $label", (entry) => {
 		const wire = await replay(s.recorded[0], entry);
 		for (const header of ROUTING[entry.id] ?? []) expect(wire.headers.get(header), header).toBe("octocode-child-0123");
 		expectBudget(entry, wire);
+	});
+
+	it("a model switch on the same provider rewrites the request once, then appends on the new model", async () => {
+		const s = await lightSessions();
+		const manager = s.create();
+		await s.prompt(manager, "first");
+		await s.prompt(manager, "second");
+		await s.prompt(manager, "third", undefined, "m2");
+		await s.prompt(manager, "fourth", undefined, "m2");
+		expect(s.recorded.map((request) => request.ran?.id)).toEqual(["m", "m", "m2", "m2"]);
+		const models: Record<string, ReturnType<WireCase["model"]>> = { m: entry.model(), m2: entry.alt() };
+		const owner = (id: string) => models[id] ?? expect.unreachable(`no wire model for ${id}`);
+		const wires: Wire[] = [];
+		for (const request of s.recorded)
+			wires.push(await replayOn(request, entry, owner(request.ran!.id), (message) => owner(message.model)));
+		const [first, second, switched, continued] = wires;
+		expectAppend(entry, first, second);
+		expect(switched.body).toContain("answer to second");
+		expectBudget(entry, switched);
+		expectAppend(entry, switched, continued);
 	});
 
 	it("an image in the history keeps the prefix of the next request", async () => {

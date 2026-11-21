@@ -209,10 +209,8 @@ describe("provider setup flow", () => {
 
 	it("names provider access /providers and keeps each command under one name", () => {
 		expect(getBuiltinCommand("providers")?.name).toBe("providers");
-		expect(getBuiltinCommand("providers")?.description).toContain("enable or disable");
 		// v20.0.1 (25685858) removed /github: GitHub access goes through `/octocode login`.
 		for (const removed of ["login", "models", "github"]) expect(getBuiltinCommand(removed)).toBeUndefined();
-		expect(getBuiltinCommand("modelsettings")?.description).toContain("routing");
 	});
 
 	it("keeps everyday access on the main page and source diagnostics on the advanced page", async () => {

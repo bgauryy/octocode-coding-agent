@@ -9,6 +9,7 @@ import {
 import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import { surfaceFill } from "../../../theme/bands.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import {
 	ContentAttachmentComponent,
@@ -104,7 +105,7 @@ export class UserMessageComponent extends Container {
 					this.markdownTheme,
 					{
 						color: (content: string) => theme.fg("userMessageText", content),
-						bgColor: (content: string) => theme.bg("userMessageBg", content),
+						bgColor: (content: string) => surfaceFill("user", content),
 					},
 					{
 						preserveOrderedListMarkers: true,

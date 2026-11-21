@@ -495,7 +495,7 @@ describe("Team", () => {
 			const content = childLog[0].message.content;
 			expect(content).toContain(`from your coordinator ${parent.id}`);
 			expect(content).toContain("also check tests");
-			expect(content).toContain(`\`replyTo\` ${(asked as { id: number }).id}`);
+			expect(content).toContain(`(replyTo ${(asked as { id: number }).id})`);
 			expect(childLog[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 			// Awaiting a reply once Octocode puts it in front of the child's model.
 			child.onContext([{ role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: childLog[0].message.details }]);
@@ -745,11 +745,11 @@ describe("Team safety", () => {
 		};
 		const child = started("rpc-child-1", { OCTOCODE_SUBAGENT: "1" });
 		expect(main.members().map((m) => m.id)).toContain("rpc-child-1");
-		child.onAgentSettled();
+		await child.onAgentSettled();
 		expect(main.members().map((m) => m.id)).not.toContain("rpc-child-1");
 		// The same context in a session that is not a subagent is a person watching: it stays, idle.
 		const watched = started("watched-1", {});
-		watched.onAgentSettled();
+		await watched.onAgentSettled();
 		expect(main.members().find((m) => m.id === "watched-1")).toMatchObject({ status: "idle" });
 		watched.stop();
 		child.stop();

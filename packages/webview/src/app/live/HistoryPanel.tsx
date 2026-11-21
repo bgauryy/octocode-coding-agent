@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
-import { ApplicationProjection } from "./application-projection.ts";
+import { ApplicationProjection } from "@octocodeai/octocode-projections";
 import { ActivityHistory } from "./ActivityHistory.tsx";
 import { addHistoryPage, type LoadedHistory, requestHistory, retainEvicted } from "./history-window.ts";
 import { LoadedHistoryList } from "./LoadedHistoryList.tsx";

@@ -38,6 +38,7 @@ export {
 } from "./colors.ts";
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
+export { isScreenReaderMode, setScreenReaderMode } from "./tokens/screen-reader.ts";
 export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
 export {
 	breathe,

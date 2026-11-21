@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { EventBus } from "@octocodeai/octocode-agent-core";
 import {
 	contentText,
 	createFauxCore,
@@ -12,7 +13,7 @@ import {
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
 import { resolveJsonSchemaStrictSampling } from "@octocodeai/octocode-ai/api/constrained-sampling";
-import { deferredInputSchema } from "../../../../mcp/src/api.ts";
+import { deferredInputSchema, getMcpSessionStatus, type McpServerStatus } from "../../../../mcp/src/api.ts";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
 import type { FeatureRegister } from "../../../src/core/features/index.ts";
@@ -52,6 +53,9 @@ const CHILD_GOAL = "[the goal the parent named for this child]";
 
 /** The AGENTS.md every captured agent finds in its working directory, so the `project_context` section is visible. */
 const PROJECT_INSTRUCTIONS = "# Example project\n\nRun `yarn test` before reporting. Keep source files short.\n";
+
+/** Opt-in: capture the `desktop` child with the real Cua Driver (never part of the committed prompts). */
+export const captureDesktop = (): boolean => process.env.OCTOCODE_CAPTURE_DESKTOP === "1";
 
 export interface CapturedTool {
 	name: string;
@@ -160,7 +164,8 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 	for (const [key, value] of Object.entries(process.env)) if (!key.startsWith("OCTOCODE_")) env[key] = value;
 	return {
 		...env,
-		HOME: fx.home,
+		// The Driver's daemon socket lives under the real HOME: the opt-in desktop capture keeps it.
+		HOME: captureDesktop() ? os.homedir() : fx.home,
 		OCTOCODE_CODING_AGENT_DIR: fx.agentDir,
 		OCTOCODE_HOME: fx.octocodeHome,
 		// A headless session denies every ask: the user exported workspace.
@@ -171,6 +176,9 @@ export function baseEnv(fx: Fixture): NodeJS.ProcessEnv {
 		// The FreeLlama server is off unless the user opts in: the fixture capture keeps it off, and a served capture opts in
 		// and replays its recorded listing (`served.ts`).
 		OCTOCODE_MCP_FREELLAMA: fx.served ? "1" : "0",
+		// The captured prompts are committed: a builder with Cua Driver installed must not add the desktop specialist to them.
+		// `OCTOCODE_CAPTURE_DESKTOP=1` leaves it on, to measure the desktop child on a machine that has the Driver.
+		...(captureDesktop() ? { OCTOCODE_CAPTURE_DESKTOP: "1" } : { OCTOCODE_MCP_DESKTOP: "0" }),
 		...(fx.served ? { OCTOCODE_MCP_RECENT_TOOLS: JSON.stringify(childInUseTools(SERVED_RECENT_TOOLS)) } : {}),
 		// The octocode-mcp server lists `securityCheck` and `clasify` only when the user's home enables them, and the
 		// fixture home is empty. A real session declares both: opt in so the capture lists the same tools. The listing
@@ -208,6 +216,16 @@ export interface SessionShape {
 	contextWindow?: number;
 }
 
+/** The real Driver connects in the background: wait (up to 90 s) for it, or fail loudly with its status. */
+async function desktopConnected(status: () => McpServerStatus[]): Promise<void> {
+	const deadline = Date.now() + 90_000;
+	while (status().find((server) => server.name === "desktop")?.state !== "connected") {
+		if (Date.now() > deadline)
+			throw new Error(`OCTOCODE_CAPTURE_DESKTOP=1: desktop did not connect in 90 s: ${JSON.stringify(status())}`);
+		await new Promise((resolve) => setTimeout(resolve, 200));
+	}
+}
+
 /**
  * A real session on the scripted model `faux/faux-1` (200,000-token window), built as the CLI builds it for `shape`, in
  * `sessionManager` (in memory by default). The caller ends it with `end()`, as the product ends a session: features
@@ -225,7 +243,9 @@ export async function scriptedSession(
 		api: "anthropic-messages",
 		models: [{ id: "faux-1", contextWindow: shape.contextWindow ?? 200_000, maxTokens: 4_096 }],
 	});
+	let channels: EventBus | undefined;
 	const provider: FeatureRegister = (api) => {
+		channels = api.channels;
 		api.providers.register("faux", {
 			name: "Faux",
 			api: faux.api,
@@ -268,6 +288,8 @@ export async function scriptedSession(
 	try {
 		await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 		await session.setModel(session.modelRuntime.getModel("faux", "faux-1")!);
+		if (captureDesktop() && shape.tools?.some((name) => name.startsWith("mcp__desktop__")))
+			await desktopConnected(() => (channels ? getMcpSessionStatus(channels) : []));
 	} catch (error) {
 		try {
 			await end();
@@ -537,7 +559,18 @@ export const AGENTS: Array<{ name: string; role?: string; kind: AgentContext["ki
  */
 export async function captureAll(settings?: Record<string, unknown>, served = false): Promise<AgentContext[]> {
 	const contexts: AgentContext[] = [];
-	for (const agent of AGENTS)
+	const agents = captureDesktop()
+		? [
+				...AGENTS,
+				{
+					name: "desktop",
+					role: "desktop",
+					kind: "child" as const,
+					about: "A subagent with the bundled `desktop` role.",
+				},
+			]
+		: AGENTS;
+	for (const agent of agents)
 		contexts.push(
 			agent.kind === "main"
 				? await captureMain(settings, served)

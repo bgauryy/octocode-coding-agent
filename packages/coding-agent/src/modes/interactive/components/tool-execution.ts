@@ -13,6 +13,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import { toolBand } from "../../../theme/bands.ts";
 import { theme } from "../../../theme/theme.ts";
 import { callFallback, rendererFailure, rendererFailureRow, resultFallback } from "./tool-execution/fallback.ts";
 import { withGenericRenderers } from "./tool-execution/generic.ts";
@@ -103,7 +104,7 @@ export class ToolExecutionComponent extends Container {
 		// Always create all shell variants. contentBox is used for default renderer-based composition.
 		// selfRenderContainer is used when the tool renders its own framing.
 		// The band starts at the header row and ends at the last body row: no vertical padding.
-		this.contentBox = new Box(1, 0, (text: string) => theme.bg("toolPendingBg", text));
+		this.contentBox = new Box(1, 0, (text: string) => toolBand("pending", text));
 		this.selfRenderContainer = new Container();
 
 		this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
@@ -292,10 +293,10 @@ export class ToolExecutionComponent extends Container {
 	private updateDisplay(): void {
 		this.displayStale = false;
 		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
+			? (text: string) => toolBand("pending", text)
 			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
+				? (text: string) => toolBand("error", text)
+				: (text: string) => toolBand("success", text);
 
 		let hasContent = false;
 		this.hideComponent = false;

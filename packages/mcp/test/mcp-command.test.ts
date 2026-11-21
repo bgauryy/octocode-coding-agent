@@ -110,6 +110,34 @@ describe("octocode mcp", () => {
 		expect(ok.exitCode).toBe(0);
 	});
 
+	it("lists a server that waits for approval as enabled with state not checked, and does not start it", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
+		dirs.push(agentDir);
+		const marker = join(agentDir, "started");
+		writeFileSync(
+			join(agentDir, "mcp.json"),
+			JSON.stringify({
+				mcpServers: {
+					waiting: {
+						command: process.execPath,
+						args: ["-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "1")`],
+					},
+				},
+			}),
+		);
+		const output: string[] = [];
+		const exitCode = await runMcpCommand(["list"], {
+			presets: [{ ...defaultPreset(), config: undefined }],
+			cwd: agentDir,
+			agentDir,
+			log: (line) => output.push(line),
+			error: (line) => output.push(line),
+		});
+		expect(output.join("\n")).toContain("waiting: not checked (direct, global) · enabled\n");
+		expect(existsSync(marker)).toBe(false);
+		expect(exitCode).toBe(0);
+	});
+
 	it("sends the stored provider token to auth.provider servers, like a session does", async () => {
 		const authorizations: (string | undefined)[] = [];
 		const gateway = createServer((request, response) => {

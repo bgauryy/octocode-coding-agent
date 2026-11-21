@@ -23,3 +23,27 @@ export function refuseSecondChild(
 			`${linked.ref} is with ${parked}, which reported and stays reachable: resume it (\`resume\` ${parked}), or end it with \`coordinate\` action \`stop\` first.`,
 		);
 }
+
+/**
+ * Holds the item from a call's first check to its claim, so a later call of the same batch is refused at its own first
+ * check, even when this call awaits longer before claiming (an isolated call lists saved refs first). The returned
+ * function ends the hold; the claim, once taken, refuses later calls through `refuseSecondChild`.
+ */
+export function holdItem(
+	runs: Pick<AgentRuns, "starting">,
+	linked: Pick<ItemLink, "ref"> | undefined,
+	call: string,
+): () => void {
+	if (!linked) return () => undefined;
+	runs.starting ??= new Map();
+	const starting = runs.starting;
+	const earlier = starting.get(linked.ref);
+	if (earlier !== undefined)
+		throw new Error(
+			`${linked.ref} is being worked on by the child call ${earlier} is starting: wait for its result, then message or resume that child.`,
+		);
+	starting.set(linked.ref, call);
+	return () => {
+		if (starting.get(linked.ref) === call) starting.delete(linked.ref);
+	};
+}

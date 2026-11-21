@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { processAlive } from "../../shared/process.ts";
 import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 
 /**
@@ -23,15 +24,6 @@ const SOCKET_NAME = /^srt-mux-(\d+)-.*\.sock$/;
  * the parent removes on exit. Anyone else (a session started from a command) ignores it.
  */
 export const SOCKET_ROOT_ENV = "OCTOCODE_SANDBOX_SOCKET_ROOT";
-
-function isGone(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return false;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "ESRCH";
-	}
-}
 
 /** The pids whose proxy sockets `dir` and the folders nested in it hold. */
 function socketOwners(dir: string, depth = 0): number[] {
@@ -57,7 +49,7 @@ export function reapOrphanedSocketDirs(root: string = SHORT_ROOT): string[] {
 		const stat = fs.lstatSync(dir, { throwIfNoEntry: false });
 		if (!stat?.isDirectory() || stat.uid !== process.getuid?.()) continue;
 		const owners = socketOwners(dir);
-		if (owners.length === 0 || !owners.every(isGone)) continue;
+		if (owners.length === 0 || !owners.every((pid) => !processAlive(pid))) continue;
 		fs.rmSync(dir, { recursive: true, force: true });
 		removed.push(dir);
 	}

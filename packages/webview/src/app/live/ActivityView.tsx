@@ -8,7 +8,7 @@ import { SegmentedControl } from "../ui/fields.tsx";
 import { AlertIcon, FeedIcon, PauseIcon, PlayIcon, PulseIcon, TerminalIcon } from "../ui/icons.tsx";
 import { Button, cx, EmptyState } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
-import type { UiState } from "../model/ui-state.ts";
+import type { UiState } from "@octocodeai/octocode-contracts";
 import { type ConnectionTone, EVENT_LIMIT, type FeedEntry, groupFeed, runPhase, terminalEntries } from "./model.ts";
 import { RunIndicator } from "./RunIndicator.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";

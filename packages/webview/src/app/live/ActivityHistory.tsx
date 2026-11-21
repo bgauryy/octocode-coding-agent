@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Button } from "../ui/primitives.tsx";
-import { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
+import { ApplicationProjection, type FeedEvent } from "@octocodeai/octocode-projections";
 import { LoadedHistoryList } from "./LoadedHistoryList.tsx";
 import { useLive } from "./session.tsx";
 

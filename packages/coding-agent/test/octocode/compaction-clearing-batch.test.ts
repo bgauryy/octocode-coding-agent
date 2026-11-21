@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLEAR_AT_FREE_POINT_TOKENS, KEEP_RECENT_RESULTS } from "../../src/octocode/compaction/clearing.ts";
+import { KEEP_RECENT_TURNS } from "../../src/octocode/compaction/clearing-recent.ts";
 import { realizedRequestsRatio } from "../../src/octocode/compaction/clearing-cost.ts";
 import { resultDigest } from "../../src/octocode/compaction/clearing-view.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
@@ -112,13 +113,16 @@ const warm = T0 + 900 + 60_000;
 const cold = T0 + 900 + HOUR + 60_000;
 
 describe("clearing batched at points that rewrite the cache anyway", () => {
-	// Twelve old reads: seven past the kept five, about 7,000 tokens: above the free-point floor, below the warm one.
+	// Seven reads older than the last `KEEP_RECENT_TURNS` turns, about 8,400 tokens: above the free-point floor, below the warm one.
+	const OLD_READS = 7;
 	const reads = () =>
-		Array.from({ length: 12 }, (_, i) => exchange("read", { path: `f${i}.ts` }, "r".repeat(3_000))).flat();
+		Array.from({ length: OLD_READS + KEEP_RECENT_TURNS }, (_, i) =>
+			exchange("read", { path: `f${i}.ts` }, "r".repeat(3_000)),
+		).flat();
 
 	it("clears at the first request after a compaction, which writes the history again anyway, and records why", async () => {
 		const messages = [{ role: "user", content: "go", timestamp: T0 }, ...reads()];
-		expect((7 * 3_000) / CHARS_PER_TOKEN).toBeGreaterThan(CLEAR_AT_FREE_POINT_TOKENS);
+		expect((OLD_READS * 3_000) / CHARS_PER_TOKEN).toBeGreaterThan(CLEAR_AT_FREE_POINT_TOKENS);
 		const warmOnly = setup(messages);
 		await warmOnly.request(warm);
 		expect(warmOnly.entries).toEqual([]);
@@ -127,7 +131,7 @@ describe("clearing batched at points that rewrite the cache anyway", () => {
 		expect(compacted.entries).toHaveLength(1);
 		expect(compacted.entries[0].data).toMatchObject({ rewriteAnyway: true, trigger: "compaction", requestsSoFar: 0 });
 		const data = compacted.entries[0].data as { results: unknown[] };
-		expect(data.results).toHaveLength(12 - KEEP_RECENT_RESULTS);
+		expect(data.results).toHaveLength(OLD_READS);
 	});
 
 	it("records an idle gap and a warm wave as their triggers", async () => {
@@ -213,12 +217,17 @@ describe("old file changes", () => {
 			},
 		);
 		const first = write("a");
-		const newest = ["b", "c", "d", "e", "f"].map((name) => write(name));
+		const newest = ["b", "c", "d", "f", "g"].map((name) => write(name));
+		// Calls that clear nothing, so the old changes fall before the last `KEEP_RECENT_TURNS` turns.
+		const between = Array.from({ length: KEEP_RECENT_TURNS - KEEP_RECENT_RESULTS }, () =>
+			exchange("agent", { task: "t" }, "done"),
+		);
 		const messages = [
 			{ role: "user", content: "go", timestamp: T0 },
 			...first,
 			...edit,
 			...failed,
+			...between.flat(),
 			...newest.flat(),
 			reply,
 		];
@@ -262,7 +271,7 @@ describe("the digest in a cleared result's placeholder", () => {
 		const text = Array.from({ length: 400 }, (_, i) => `src/file${i % 3}.ts:${i}:match`).join("\n");
 		const messages = [
 			{ role: "user", content: "go", timestamp: T0 },
-			...Array.from({ length: 8 }, () =>
+			...Array.from({ length: KEEP_RECENT_TURNS + 3 }, () =>
 				exchange("bash", { command: "rg -n match src" }, text, { details: { exitCode: 0 } }),
 			).flat(),
 			reply,

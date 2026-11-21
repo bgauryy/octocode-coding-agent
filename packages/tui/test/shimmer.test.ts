@@ -46,4 +46,13 @@ describe("shimmerText", () => {
 			assert.strictEqual(at(`${family}ab`, now).replace(family, "🐙"), at("🐙ab", now), `now ${now}`);
 		}
 	});
+
+	it("uses dim and bold text instead of colors in 16 colors", () => {
+		const rest = shimmerText("Working", { base, peak, mode: "16color", now: 0, padding: 10, halfWidth: 3 });
+		assert.strictEqual(rest, "\x1b[22;2mWorking\x1b[22m");
+		const band = shimmerText("Working", { base, peak, mode: "16color", now: 1000, padding: 10, halfWidth: 3 });
+		assert.strictEqual(plain(band), "Working");
+		assert.ok(band.includes("\x1b[22;1m") && band.includes("\x1b[22;2m"));
+		assert.ok(!band.includes("\x1b[38"));
+	});
 });

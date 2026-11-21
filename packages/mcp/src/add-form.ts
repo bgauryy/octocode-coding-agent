@@ -1,6 +1,8 @@
 import type { McpAddCommand } from "@octocodeai/octocode-contracts/config";
 import { hostPaths } from "./host.ts";
 import { McpAddError, saveMcpDefinition, type McpAddOptions } from "./add.ts";
+import type { PastedDefinition } from "./add-parse.ts";
+import { confirmScan, scanned } from "./add-scan.ts";
 import type { McpFeatureState } from "./state.ts";
 import type { McpUi } from "./ui.ts";
 
@@ -36,6 +38,13 @@ export async function chooseAddScope(state: McpFeatureState, ui: McpUi): Promise
 		cancelLabel: "cancel",
 	}));
 	return choice === "global" || choice === "workspace" ? choice : undefined;
+}
+
+/** What the scan reads from a typed command: the same shape a pasted definition has. */
+function scannedDefinition(command: McpAddCommand): PastedDefinition {
+	return command.transport === "stdio"
+		? { transport: "stdio", command: command.command, args: command.args ?? [], env: command.env }
+		: { transport: "http", url: command.url, headers: command.headers };
 }
 
 /** The field-by-field form: scope, transport, then fields. A draft stays in the view until save or cancellation. */
@@ -104,6 +113,17 @@ export async function addMcpByFields(state: McpFeatureState, ui: McpUi): Promise
 					? { transport, command: draft.target, args: JSON.parse(draft.args || "[]") as unknown, env: extras }
 					: { transport, url: draft.target.trim(), headers: extras }),
 			} as McpAddCommand;
+			const rated = scanned(state, scope, [{ name: command.name, definition: scannedDefinition(command) }]);
+			if (rated) {
+				// A definition the scan cannot rate is not one the save would accept: never save it unscanned.
+				if (rated.length === 0)
+					throw new McpAddError(
+						"Invalid MCP name or transport configuration. Use an unambiguous name and an HTTP(S) URL or executable command.",
+					);
+				const choice = await confirmScan(ui, rated, "Edit fields", "Your input is preserved");
+				if (choice === "edit") continue;
+				if (choice !== "save") return;
+			}
 			const result = saveMcpDefinition(command, addOptions(state));
 			await ui.menu(() => ({
 				title: "MCP saved",

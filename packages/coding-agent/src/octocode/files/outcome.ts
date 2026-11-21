@@ -16,7 +16,7 @@ export interface BashDetails extends BashToolDetails {
 	moved?: boolean;
 }
 
-/** The status line the core bash tool puts first: `[exit 1 · 0.4s · 12 lines · 3 KB]`, `[timed out after 5s · no output]`. */
+/** The status line the core bash tool puts first: `[exit 1 · 0.4s]`, `[exit 1 · 0.4s · 12 lines · 3 KB · …]` when the output was cut, `[timed out after 5s · no output]`. */
 const BASH_HEADER = /^\[(exit -?\d+|timed out after [^·\]]+|aborted|terminated \(no exit code\))(?: · [^\]]*)?\]$/;
 
 const BASH_STATUS =

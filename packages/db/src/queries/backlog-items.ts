@@ -210,6 +210,25 @@ export function countItems(db: DatabaseSync, filter: ItemFilter): number {
 	return num((db.prepare(`SELECT COUNT(*) AS n FROM backlog b WHERE ${clause}`).get(...args) as { n: number }).n);
 }
 
+/** One group of matching items: a closed item counts in state `closed`, as the filter's states name it. */
+export interface ItemStatRow {
+	state: string;
+	priority: number;
+	type: string;
+	n: number;
+}
+
+/** How many items a filter matches per state, priority and type, in one grouped read. */
+export function statItems(db: DatabaseSync, filter: ItemFilter): ItemStatRow[] {
+	const { clause, args } = whereOf(filter);
+	return allRows<ItemStatRow>(
+		db.prepare(
+			`SELECT CASE WHEN b.state = 'done' AND b.closed IS NOT NULL THEN 'closed' ELSE b.state END AS state, b.priority AS priority, b.type AS type, COUNT(*) AS n FROM backlog b WHERE ${clause} GROUP BY 1, 2, 3`,
+		),
+		...args,
+	);
+}
+
 /** Matching rows in `sort` order (board by default); a negative `limit` is every row. */
 export function listItems(
 	db: DatabaseSync,

@@ -48,16 +48,20 @@ describe("Google public SDK regressions", () => {
 		expect(body.contents[1].parts).toContainEqual(image);
 	});
 
-	it("replays a Vertex URI artifact as a named file without crashing", async () => {
+	it("replays a Vertex URI artifact as a fileData part at its position", async () => {
+		const file = { fileData: { fileUri: "gs://bucket/video", mimeType: "video/mp4" }, thoughtSignature: "signed-file" };
 		const fetch = vi
 			.fn<typeof globalThis.fetch>()
-			.mockResolvedValueOnce(
-				response([candidate([{ fileData: { fileUri: "gs://bucket/video", mimeType: "video/mp4" } }], "STOP")]),
-			)
+			.mockResolvedValueOnce(response([candidate([{ text: "before" }, file, { text: "after" }], "STOP")]))
 			.mockResolvedValueOnce(response([candidate([{ text: "ok" }], "STOP")]));
 		const first = await vertexStream(vertex, context, { apiKey: "test", fetch }).result();
 		expect(first.errorMessage).toBeUndefined();
-		expect(first.content).toContainEqual({ type: "resource", uri: "gs://bucket/video", mimeType: "video/mp4" });
+		expect(first.content).toContainEqual({
+			type: "resource",
+			uri: "gs://bucket/video",
+			mimeType: "video/mp4",
+			thoughtSignature: "signed-file",
+		});
 		const second = await vertexStream(
 			vertex,
 			normalizeContext({ messages: [...context.messages, first, { role: "user", content: "continue", timestamp: 0 }] }),
@@ -66,7 +70,10 @@ describe("Google public SDK regressions", () => {
 		expect(second.errorMessage).toBeUndefined();
 		expect(fetch).toHaveBeenCalledTimes(2);
 		const body = JSON.parse(fetch.mock.calls[1][1]!.body as string);
-		expect(body.contents[1].parts).toContainEqual({ text: "[file: gs://bucket/video (video/mp4)]" });
+		const parts = body.contents[1].parts as Record<string, unknown>[];
+		expect(parts.map((part) => part.text ?? part.fileData)).toEqual(["before", file.fileData, "after"]);
+		expect(parts[1]).toEqual(file);
+		expect(JSON.stringify(body)).not.toContain("octocode-vertex-file");
 	});
 
 	it.each(["error", "abort"] as const)("keeps priced reported usage after reader %s", async (failure) => {

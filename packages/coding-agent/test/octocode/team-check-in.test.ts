@@ -163,7 +163,7 @@ describe("a foreground child's report", () => {
 			foreground: new Map(),
 			groups: new ReportGroups(),
 			reports: { reportingChanged: () => undefined },
-			team: { closeQuestionsTo, audit },
+			team: { closeQuestionsTo, audit, approvals: { noteExited: () => undefined } },
 		};
 		await runForeground(
 			runs as never,
@@ -186,7 +186,7 @@ describe("a foreground child's report", () => {
 			foreground: new Map(),
 			groups: new ReportGroups(),
 			reports: { reportingChanged: () => undefined },
-			team: { closeQuestionsTo, audit },
+			team: { closeQuestionsTo, audit, approvals: { noteExited: () => undefined } },
 		};
 		const result = await runForeground(
 			runs as never,
@@ -208,7 +208,7 @@ describe("a foreground child's report", () => {
 			foreground: new Map(),
 			groups: new ReportGroups(),
 			reports: { reportingChanged: () => undefined },
-			team: { closeQuestionsTo, audit },
+			team: { closeQuestionsTo, audit, approvals: { noteExited: () => undefined } },
 		};
 		await runForeground(
 			runs as never,

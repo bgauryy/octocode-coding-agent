@@ -7,6 +7,7 @@ import { presetEntries } from "../src/preset.ts";
 import { withStructuredText } from "../src/presets/structured-text.ts";
 import { builtinPresets } from "../src/presets/index.ts";
 import { desktopPreset, onPath } from "../src/presets/desktop/index.ts";
+import { boundedWindowRead } from "../src/presets/desktop/tools.ts";
 
 /** A PATH folder holding an executable `cua-driver`. */
 function pathWithDriver(): NodeJS.ProcessEnv {
@@ -35,8 +36,27 @@ describe("desktop MCP preset", () => {
 		// No agent installs software or rewrites Driver's configuration (telemetry included): those tools are removed.
 		for (const tool of ["install_extension", "install_ffmpeg", "set_config"])
 			expect(exposure[tool], tool).toBe("hidden");
-		for (const tool of ["list_apps", "get_window_state", "click", "type_text", "launch_app"])
+		for (const tool of ["get_window_state", "click", "type_text", "launch_app"])
 			expect(exposure[tool], tool).toBeUndefined();
+	});
+
+	it("declares exactly the tools recorded desktop runs used; the other known Driver tools are on demand or removed", () => {
+		const exposure = presetEntries([desktopPreset(pathWithDriver())])[0].config.toolExposure ?? {};
+		const declared = [
+			"list_windows",
+			"get_window_state",
+			"verify_state",
+			"launch_app",
+			"invoke_menu",
+			"click",
+			"type_text",
+			"press_key",
+			"hotkey",
+		];
+		for (const tool of declared) expect(exposure[tool], tool).toBeUndefined();
+		// Not used by a recorded live run: declared on first load, one round trip, instead of ~4,000 characters per request.
+		for (const tool of ["list_apps", "get_desktop_state", "scroll", "set_value"])
+			expect(exposure[tool], tool).toBe("onDemand");
 	});
 
 	it("stays listed but disabled, naming the install page, while cua-driver is not on PATH", () => {
@@ -53,6 +73,29 @@ describe("desktop MCP preset", () => {
 
 	it("is one of the built-in presets", () => {
 		expect(builtinPresets({ PATH: tmp() }).map((preset) => preset.name)).toContain(DESKTOP_SERVER);
+	});
+
+	it("bounds a window read that names no bound, and leaves every other call and every explicit bound alone", () => {
+		expect(boundedWindowRead("get_window_state", { pid: 1, window_id: 2 })).toEqual({
+			pid: 1,
+			window_id: 2,
+			max_depth: 3,
+			max_elements: 40,
+			include_screenshot: false,
+		});
+		// A named bound keeps its own value; the screenshot default still applies unless a picture was asked for.
+		expect(boundedWindowRead("get_window_state", { pid: 1, window_id: 2, max_elements: 400 })).toEqual({
+			pid: 1,
+			window_id: 2,
+			max_elements: 400,
+			include_screenshot: false,
+		});
+		const asked = { pid: 1, window_id: 2, max_elements: 400, include_screenshot: true };
+		expect(boundedWindowRead("get_window_state", asked)).toBe(asked);
+		const saved = { pid: 1, window_id: 2, max_depth: 2, screenshot_out_file: "/x/y.png" };
+		expect(boundedWindowRead("get_window_state", saved)).toBe(saved);
+		const click = { pid: 1, element_token: "s1:2" };
+		expect(boundedWindowRead("click", click)).toBe(click);
 	});
 
 	it("hands the model the data Driver keeps only in structuredContent, such as window ids and element tokens", () => {

@@ -63,17 +63,24 @@ function shippedSkillNames(input: Parameters<typeof configDiscovery.discover>[1]
 	return names;
 }
 
-/** The review items of every skill, hook and MCP server `vendor`'s files define, as the loaders would build them. */
-function vendorItems(vendor: VendorId, options: PreviewOptions): ReviewItem[] {
-	const { cwd, agentDir, home, projectTrusted, settings } = options;
+const discoveryOf = ({ cwd, agentDir, home, projectTrusted }: PreviewOptions) => {
 	installOctocodeDiscovery();
-	const input = discoveryInput({
+	return discoveryInput({
 		cwd,
 		agentDir,
 		projectTrusted,
 		...(home ? { home } : {}),
 		builtinSkillsDir: getOctocodeSkillsDir(),
 	});
+};
+
+/** Names of the skills Octocode ships, for rating a skill that takes one as CRITICAL. */
+export const shippedNames = (options: PreviewOptions): Set<string> => shippedSkillNames(discoveryOf(options));
+
+/** The review items of every skill, hook and MCP server `vendor`'s files define, as the loaders would build them. */
+function vendorItems(vendor: VendorId, options: PreviewOptions): ReviewItem[] {
+	const { cwd, home, projectTrusted, settings, agentDir } = options;
+	const input = discoveryOf(options);
 	const shipped = shippedSkillNames(input);
 	const skills = configDiscovery
 		.discover("skill", input)
@@ -118,7 +125,12 @@ function vendorItems(vendor: VendorId, options: PreviewOptions): ReviewItem[] {
 export function previewSource(harness: string, options: PreviewOptions): SourcePreview | undefined {
 	const target = vendorSwitchTarget(harness);
 	if (!target) return undefined;
-	const rows = vendorItems(target.vendor, options).map((item): PreviewRow => {
+	return previewItems(target.label, vendorItems(target.vendor, options), options.settings);
+}
+
+/** The scanned preview of `items`, worst first: the one scan every add and switch-on path shows. */
+export function previewItems(label: string, items: readonly ReviewItem[], settings: Settings): SourcePreview {
+	const rows = items.map((item): PreviewRow => {
 		const { rating, findings } = scan(item);
 		return {
 			kind: item.kind,
@@ -133,8 +145,8 @@ export function previewSource(harness: string, options: PreviewOptions): SourceP
 			KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
 			a.label.localeCompare(b.label),
 	);
-	const unenforced = (Object.keys(KIND_ORDER) as ReviewKind[]).filter((kind) => !enforces(options.settings, kind));
-	return { label: target.label, rows, unenforced };
+	const unenforced = (Object.keys(KIND_ORDER) as ReviewKind[]).filter((kind) => !enforces(settings, kind));
+	return { label, rows, unenforced };
 }
 
 const count = (rows: readonly PreviewRow[], kind: ReviewKind): string =>

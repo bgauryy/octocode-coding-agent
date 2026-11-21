@@ -116,30 +116,30 @@ describe("team after a suspend", () => {
 });
 
 describe("team leave", () => {
-	it("clears its state even when the database refuses the removal, and a new session can start", () => {
+	it("clears its state even when the database refuses the removal, and a new session can start", async () => {
 		const s = setup();
 		try {
 			expect(s.team.id).toBe(s.id);
 			vi.spyOn(TeamStore.prototype, "remove").mockImplementationOnce(() => {
 				throw new Error("database is locked");
 			});
-			expect(() => s.team.leave()).toThrow("database is locked");
+			await expect(s.team.leave()).rejects.toThrow("database is locked");
 			expect(s.team.id).toBeUndefined();
 			// stop() clears the rest of the state despite the same failure...
 			s.team.join();
 			vi.spyOn(TeamStore.prototype, "remove").mockImplementationOnce(() => {
 				throw new Error("database is closed");
 			});
-			expect(() => s.team.stop()).toThrow("database is closed");
+			await expect(s.team.stop()).rejects.toThrow("database is closed");
 			expect(s.team.id).toBeUndefined();
 			expect(() => s.team.join()).toThrow("before the session starts");
 			// ...and start() binds the new session instead of failing on the old one's removal.
-			s.team.start(s.ctx);
+			await s.team.start(s.ctx);
 			s.team.join();
 			vi.spyOn(TeamStore.prototype, "remove").mockImplementationOnce(() => {
 				throw new Error("database is locked");
 			});
-			expect(() => s.team.start(s.ctx)).not.toThrow();
+			await expect(s.team.start(s.ctx)).resolves.toBeUndefined();
 			const joined = s.team.join().id;
 			expect(joined).toMatch(/^[a-z]+(-[a-z]+)+(-\d+)?$/);
 			expect(s.team.members().map((entry) => entry.id)).toContain(joined);
@@ -314,7 +314,7 @@ describe("team resource bounds", () => {
 			expect(await s.team.send("done-0", "hello")).not.toHaveProperty("error", expect.stringContaining("has finished"));
 			expect(await s.team.send("done-299", "hello")).toHaveProperty("error", expect.stringContaining("has finished"));
 			s.team.stop();
-			s.team.start(s.ctx);
+			await s.team.start(s.ctx);
 			s.team.join();
 			expect(await s.team.send("done-299", "hello")).not.toHaveProperty(
 				"error",

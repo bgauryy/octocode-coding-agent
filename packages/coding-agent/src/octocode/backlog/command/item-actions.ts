@@ -56,10 +56,13 @@ export interface CommandDeps extends BacklogOptions {
 
 /** What the user does to backlog items from `/backlog`: add, edit, move, close, and hand one to the agent. */
 export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
-	/** Runs one store change and repaints; returns the refusal text instead of throwing. */
-	const apply = (ctx: CommandContext, change: () => void): string | undefined => {
+	/**
+	 * Runs one store change in a transaction entered once another process's write lock is free, then repaints; returns
+	 * the refusal text instead of throwing.
+	 */
+	const apply = async (ctx: CommandContext, backlog: Backlog, change: () => void): Promise<string | undefined> => {
 		try {
-			change();
+			await backlog.store.transactionWhenReady(change);
 			deps.changed(ctx);
 			return undefined;
 		} catch (error) {
@@ -67,8 +70,8 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 		}
 	};
 	/** `apply`, telling the user the outcome (`done` on success, the refusal as a warning). */
-	const applyAndSay = (ctx: CommandContext, change: () => void, done?: string): void => {
-		const refused = apply(ctx, change);
+	const applyAndSay = async (ctx: CommandContext, backlog: Backlog, change: () => void, done?: string) => {
+		const refused = await apply(ctx, backlog, change);
 		if (refused) say(ctx, refused, "warning");
 		else if (done) say(ctx, done);
 	};
@@ -111,18 +114,20 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 		}
 		let claimed!: Item;
 		try {
-			backlog.store.dispatch(
-				item.ref,
-				item.version,
-				userActor(backlog),
-				(next) => {
-					claimed = next;
-					api.session.sendUserMessage(
-						prompt(next, backlog.store),
-						ctx.isIdle() ? undefined : { deliverAs: "followUp" },
-					);
-				},
-				asked.fields,
+			await backlog.store.transactionWhenReady(() =>
+				backlog.store.dispatch(
+					item.ref,
+					item.version,
+					userActor(backlog),
+					(next) => {
+						claimed = next;
+						api.session.sendUserMessage(
+							prompt(next, backlog.store),
+							ctx.isIdle() ? undefined : { deliverAs: "followUp" },
+						);
+					},
+					asked.fields,
+				),
 			);
 		} catch (error) {
 			say(ctx, errorMessage(error), "warning");
@@ -167,7 +172,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 			if (!note) return "Reopen cancelled.";
 			patch.note = note;
 		}
-		return apply(ctx, () => backlog.store.update(item.ref, patch, userActor(backlog)));
+		return apply(ctx, backlog, () => backlog.store.update(item.ref, patch, userActor(backlog)));
 	};
 
 	/** Closes `item` (never deletes): asks the kind, the reason and for a duplicate its original; the item keeps its history. */
@@ -179,8 +184,9 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 		const text = (await ctx.ui.input("Reason", "why this item is closed"))?.trim();
 		if (!text) return;
 		const close = { kind: kind as CloseKind, text, ...(of ? { of } : {}) };
-		applyAndSay(
+		await applyAndSay(
 			ctx,
+			backlog,
 			() => backlog.store.update(item.ref, { close, version: item.version, force: true }, userActor(backlog)),
 			`Closed ${item.ref}.`,
 		);
@@ -191,12 +197,14 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 		if (!title) return say(ctx, "Usage: /backlog add <title>", given || !ctx.hasUI ? "warning" : "info");
 		let item: Item;
 		try {
-			item = backlog.store.add({
-				title,
-				state: "todo",
-				createdBy: USER_AUTHOR,
-				sourceSession: backlog.session,
-			});
+			item = await backlog.store.transactionWhenReady(() =>
+				backlog.store.add({
+					title,
+					state: "todo",
+					createdBy: USER_AUTHOR,
+					sourceSession: backlog.session,
+				}),
+			);
 		} catch (error) {
 			return say(ctx, `Not added: ${errorMessage(error)}`, "warning");
 		}
@@ -213,7 +221,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 		if (text === undefined) return;
 		const patch = field.patch(text.trim());
 		if (name === "Title" && !patch.title) return say(ctx, "Not saved: the title is empty.", "warning");
-		applyAndSay(ctx, () =>
+		await applyAndSay(ctx, backlog, () =>
 			backlog.store.update(item.ref, { ...patch, version: item.version, force: true }, userActor(backlog)),
 		);
 	};
@@ -271,7 +279,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 					const priority = await ctx.ui.select(`Priority of ${item.ref}`, [...PRIORITIES]);
 					const index = (PRIORITIES as readonly string[]).indexOf(priority ?? "");
 					if (index >= 0)
-						applyAndSay(ctx, () =>
+						await applyAndSay(ctx, backlog, () =>
 							backlog.store.update(
 								item.ref,
 								{ priority: index, version: item.version, force: true },
@@ -288,7 +296,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 						item.from === undefined ? "B12" : refText(item.from),
 					);
 					if (ref !== undefined)
-						applyAndSay(ctx, () =>
+						await applyAndSay(ctx, backlog, () =>
 							backlog.store.update(
 								item.ref,
 								{ from: ref.trim() === "" ? null : ref.trim(), version: item.version, force: true },

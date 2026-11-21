@@ -82,7 +82,7 @@ describe("closing a backlog item", () => {
 		const { tool, plan, store } = await setup();
 		const ops = (declared: unknown) => (declared as { properties: { op: { enum: string[] } } }).properties.op.enum;
 		expect(ops(tool.parameters)).toEqual(["get", "claim", "note", "done", "close", "step"]);
-		expect(ops(plan.parameters)).toEqual(["add", "edit", "list"]);
+		expect(ops(plan.parameters)).toEqual(["add", "edit", "list", "stat"]);
 		expect((store as unknown as Record<string, unknown>).remove).toBeUndefined();
 	});
 

@@ -37,7 +37,7 @@ export class Inbox {
 		this.generation++;
 		const left = this.seenIds.size > 0 && id ? { id, ids: [...this.seenIds] } : undefined;
 		try {
-			if (db && id) this.record(db, id);
+			if (db && id) db.quick(() => this.record(db, id));
 		} catch {
 			// Busy database: the next `deliver` records them under the id the agent left with.
 			if (left) this.unrecorded = left;

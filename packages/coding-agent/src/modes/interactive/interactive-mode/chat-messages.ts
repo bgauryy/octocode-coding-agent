@@ -3,6 +3,7 @@
  */
 
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import { applicationMessageDisplayed } from "@octocodeai/octocode-projections";
 import { type Component, Spacer } from "@octocodeai/octocode-tui";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import type { SessionEntry } from "../../../core/session-manager.ts";
@@ -88,7 +89,7 @@ export function addMessageToChat(
 			break;
 		}
 		case "custom": {
-			if (message.display) {
+			if (applicationMessageDisplayed(message)) {
 				const renderer = host.session.featureHost.getMessageRenderer(message.customType);
 				const component = new CustomMessageComponent(
 					message,
@@ -107,6 +108,7 @@ export function addMessageToChat(
 				message,
 				host.getMarkdownThemeWithSettings(),
 				host.outputPad,
+				host.ui,
 			);
 			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 			host.chatContainer.addChild(component);
@@ -114,7 +116,12 @@ export function addMessageToChat(
 		}
 		case "branchSummary": {
 			host.chatContainer.addChild(new Spacer(1));
-			const component = new BranchSummaryMessageComponent(message, host.getMarkdownThemeWithSettings(), host.outputPad);
+			const component = new BranchSummaryMessageComponent(
+				message,
+				host.getMarkdownThemeWithSettings(),
+				host.outputPad,
+				host.ui,
+			);
 			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 			host.chatContainer.addChild(component);
 			break;
@@ -140,6 +147,7 @@ export function addMessageToChat(
 					showImages: host.settingsManager.getShowImages(),
 					imageWidthCells: host.settingsManager.getImageWidthCells(),
 					requestRender: () => host.ui.requestRender(),
+					keepScrollbackOnCollapse: () => host.ui.keepScrollbackOnCollapse?.(),
 				},
 			);
 			assistantComponent.setExpanded(host.uiStore.getState().view.toolsExpanded);

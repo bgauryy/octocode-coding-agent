@@ -1,4 +1,5 @@
 import { resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
+import { DEFAULT_THEME_SETTING } from "../src/core/settings-manager/constants.ts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	detectColorFgBgTheme,
@@ -72,5 +73,12 @@ describe("theme setting helpers", () => {
 		expect(resolveThemeSetting("light/dark", "light")).toBe("light");
 		expect(resolveThemeSetting("light/dark", "dark")).toBe("dark");
 		expect(resolveThemeSetting("light/dark/extra", "dark")).toBeUndefined();
+	});
+
+	it("picks octocode-ansi for the default pair on a 16-color terminal only", () => {
+		expect(resolveThemeSetting(DEFAULT_THEME_SETTING, "light", "16color")).toBe("octocode-ansi");
+		expect(resolveThemeSetting(DEFAULT_THEME_SETTING, "dark", "truecolor")).toBe("octocode-dark");
+		expect(resolveThemeSetting("light/dark", "dark", "16color")).toBe("dark");
+		expect(resolveThemeSetting("octocode-dark", "dark", "16color")).toBe("octocode-dark");
 	});
 });

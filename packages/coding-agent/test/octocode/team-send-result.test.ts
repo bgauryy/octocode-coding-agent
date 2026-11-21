@@ -7,8 +7,9 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 /**
- * What `sendMessage` tells the sender about how each recipient meets its message (review 2026-10-31, improvement C4):
- * a woken one acts now, a busy one reads it at its next step, and an idle one only on its next turn.
+ * What `sendMessage` tells the sender about how each recipient meets its message: `Sent #N to X.`, plus a sentence only
+ * for a recipient that will not act on it soon (idle without a wake, stalled, a cooperative runner). The delivery of each
+ * recipient stays in the details.
  */
 
 type FakeMember = ReturnType<typeof fakeHost> & { team: Team; ctx: ReturnType<typeof fakeCtx> };
@@ -72,12 +73,12 @@ describe("sendMessage delivery status", () => {
 		});
 		expect(text(sent)).toMatch(
 			new RegExp(
-				`${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
+				`^Sent #\\d+ to ${b.team.id}\\. ${b.team.id} is idle and will not act on it alone; replyRequired: true asks and wakes\\.`,
 			),
 		);
 	});
 
-	it("says a busy recipient reads it at its next step", async () => {
+	it("says only that it was sent to a busy recipient", async () => {
 		const { a, b } = await pair();
 		await run(a.tools.get("coordinate"), { action: "join" }, a.ctx);
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
@@ -87,10 +88,10 @@ describe("sendMessage delivery status", () => {
 		});
 		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "heads-up", wake: false }, a.ctx);
 		expect(sent.details).toMatchObject({ delivery: { [b.team.id!]: "next-step" } });
-		expect(text(sent)).toMatch(new RegExp(`${b.team.id} reads it at its next step\\.`));
+		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));
 	});
 
-	it("keeps telling a request it is woken and must answer", async () => {
+	it("marks a request as asking for a reply", async () => {
 		const { a, b } = await pair();
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const sent = await run(
@@ -99,19 +100,15 @@ describe("sendMessage delivery status", () => {
 			a.ctx,
 		);
 		expect(sent.details).toMatchObject({ delivery: { [b.team.id!]: "wake" } });
-		expect(text(sent)).toMatch(new RegExp(`as a request: ${b.team.id} is woken and must answer with replyTo \\d+\\.`));
+		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id} \\(reply requested\\)\\.$`));
 	});
 
-	it("wakes an idle recipient with wake: true and says its turn is paced", async () => {
+	it("wakes an idle recipient with wake: true and adds no sentence", async () => {
 		const { a, b } = await pair();
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "please look", wake: true }, a.ctx);
 		expect(sent.details).toMatchObject({ delivery: { [b.team.id!]: "wake" } });
-		expect(text(sent)).toMatch(/as an FYI \(no reply requested\)/);
-		expect(text(sent)).toMatch(/is woken: a turn starts if it is idle/);
-		expect(text(sent)).toMatch(
-			/Agent-started turns are paced \(at most one per 30s; mail meanwhile joins that turn\)\./,
-		);
+		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));
 	});
 
 	it("refuses wake with to: all, and on a forward, sending nothing", async () => {
@@ -169,10 +166,6 @@ describe("sendMessage delivery status", () => {
 			a.ctx,
 		);
 		expect(answer.details).toMatchObject({ to: [b.team.id], delivery: { [b.team.id!]: "wake" } });
-		expect(text(answer)).toMatch(
-			new RegExp(
-				`${b.team.id} is woken: a turn starts if it is idle, otherwise it reads the message at its next step\\.`,
-			),
-		);
+		expect(text(answer)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));
 	});
 });

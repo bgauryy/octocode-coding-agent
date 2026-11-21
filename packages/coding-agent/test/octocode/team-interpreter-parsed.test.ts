@@ -508,10 +508,13 @@ describe("the reservation gate with the shell parse", () => {
 
 	it("gates a 2000-stage pipeline quickly", async () => {
 		const command = `${Array.from({ length: 2000 }, (_, i) => `cat f${i}`).join(" | ")} | python3 -c x`;
-		const started = performance.now();
+		// CPU time of this process (one test file per forked worker; the parser runs in process): wall time also counts
+		// other workers' turns on the CPU.
+		const started = process.cpuUsage();
 		const parsed = await parsedShell(command);
 		const name = unconfinedInterpreter(command, process.env, parsed ?? null);
-		expect(performance.now() - started).toBeLessThan(400);
+		const used = process.cpuUsage(started);
+		expect((used.user + used.system) / 1000).toBeLessThan(400);
 		expect(name).toBe("python3");
 	});
 

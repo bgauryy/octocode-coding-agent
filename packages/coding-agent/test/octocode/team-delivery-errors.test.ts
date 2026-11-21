@@ -30,7 +30,10 @@ describe("startBackground when finish rejects after a successful child", () => {
 			changed: () => undefined,
 			session: 1,
 			read: { track: () => undefined, consume: () => false },
-			team: { audit: { begin: () => undefined, hint: () => undefined, finish: finished } },
+			team: {
+				audit: { begin: () => undefined, hint: () => undefined, finish: finished },
+				approvals: { noteExited: () => undefined },
+			},
 			groups: new ReportGroups(),
 			ended,
 			reports: { reportingChanged: () => undefined, add: (report: Report) => reports.push(report) },

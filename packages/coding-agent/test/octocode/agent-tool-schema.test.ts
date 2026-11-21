@@ -105,6 +105,7 @@ describe("flat agent schema", () => {
 			"subagent",
 			"to",
 			"tasks",
+			"messages",
 		]);
 		expect(schema.properties.task.description).toBe("task: brief");
 		expect(schema.properties.to.description).toBe("message only");

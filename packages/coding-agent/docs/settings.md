@@ -150,6 +150,10 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `terminal.replayRows` | integer | `5000` | Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row. |
 | `terminal.showTerminalProgress` | boolean | `false` | Show OSC 9;4 terminal progress indicators. |
 | `terminal.reduceMotion` | `boolean \| "auto"` | `"auto"` | Freeze spinners, shimmer and glow; elapsed times still tick. "auto" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true. |
+| `terminal.screenReader` | `boolean \| "auto"` | `"auto"` | Screen-reader text mode: words instead of spinner, shimmer and gauge glyphs, and no animation. "auto" follows OCTOCODE_SCREEN_READER (1 or true). |
+| `terminal.latencyFence` | `boolean \| "auto"` | `"auto"` | Probe the terminal's display lag (DSR 5n) and hold streaming frames while it is behind. "auto" is on in a terminal; OCTOCODE_LATENCY_FENCE=0 or 1 overrides the setting. Turn it off if a terminal misbehaves with the probe. |
+| `terminal.surfaceFills` | boolean | `false` | Paint user messages and notice panels with a quiet tint blended into the terminal background instead of the theme's panel colors. |
+| `terminal.toolBands` | boolean | `false` | Tint each tool row with a quiet band blended from its state color into the terminal background. Themes that declare their own tool backgrounds keep them. |
 | `terminal.emojiMarks` | boolean | `false` | Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal. |
 | `terminal.hyperlinks` | `boolean \| "auto"` |  | OSC 8 hyperlinks: `true`, `false` or `auto`. `OCTOCODE_HYPERLINKS` overrides detection. |
 | `terminal.images` | `"kitty" \| "iterm2" \| "auto" \| false` |  | Inline image protocol: `"kitty"`, `"iterm2"`, `"auto"` or `false`. See [terminal images](configuration.md#terminal-images). |

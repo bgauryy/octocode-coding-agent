@@ -1,4 +1,4 @@
-import { type Container, Markdown, type MarkdownTheme, Spacer } from "@octocodeai/octocode-tui";
+import { type Container, Markdown, type MarkdownTheme, Spacer, type TUI } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
 import { skillInstructions } from "../../../octocode/skill/render.ts";
@@ -16,8 +16,13 @@ export class SkillInvocationMessageComponent extends CollapsibleMessageComponent
 	private readonly skillBlock: ParsedSkillBlock;
 	private readonly markdownTheme: MarkdownTheme;
 
-	constructor(skillBlock: ParsedSkillBlock, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {
-		super(outputPad);
+	constructor(
+		skillBlock: ParsedSkillBlock,
+		markdownTheme: MarkdownTheme = getMarkdownTheme(),
+		outputPad = 1,
+		ui?: Pick<TUI, "keepScrollbackOnCollapse">,
+	) {
+		super(outputPad, ui);
 		this.skillBlock = skillBlock;
 		this.markdownTheme = markdownTheme;
 		this.updateDisplay();

@@ -171,6 +171,9 @@ function launchContent(config: Record<string, unknown>): Record<string, unknown>
 		inheritEnv: config.inheritEnv ?? null,
 		install: config.install ?? null,
 		auth: config.auth ?? null,
+		// Only an opt-in is content: an absent or false flag leaves the record as earlier versions wrote it, so servers
+		// approved before the field existed stay approved, while switching the sandbox off asks again.
+		...(config.sandbox === true ? { sandbox: true } : {}),
 	};
 }
 

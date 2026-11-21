@@ -28,6 +28,7 @@ import {
 	type ClearingCost,
 } from "./clearing-cost.ts";
 import { clearedPlaceholder, resultDigest, sessionClearedView } from "./clearing-view.ts";
+import { inRecentUse } from "./clearing-recent.ts";
 import { historyReplaced } from "./history-cache.ts";
 import { untrustedResult } from "./untrusted-results.ts";
 
@@ -38,8 +39,8 @@ export { KEEP_RECENT_RESULTS } from "./clearing-candidates.ts";
  *
  * Before every request, whether it starts a run or follows a tool inside one, the old results of tools whose output can
  * be fetched again, and the payloads of old `file` changes (on disk once they applied), are replaced by placeholders,
- * keeping the newest `KEEP_RECENT_RESULTS` of each (`clearing-candidates.ts`), when they total at least the floor and
- * either:
+ * keeping the newest `KEEP_RECENT_RESULTS` of each (`clearing-candidates.ts`) and, within a size bound, those still in use
+ * (`clearing-recent.ts`), when the rest totals at least the floor and either:
  *
  * - the request rewrites the cache anyway: it was last used (the last reply, or a refresh by Octocode's warmer) longer
  *   ago than its lifetime, a compaction replaced the history, the model changed, or a system update folds into the
@@ -219,7 +220,7 @@ export function clearStaleResults(
 	const floor = rewriteAnyway ? CLEAR_AT_FREE_POINT_TOKENS : CLEAR_AT_LEAST_TOKENS;
 	const messages = contextMessages(ctx);
 	const view = sessionClearedView(ctx.sessionManager);
-	const older = olderCandidates(
+	const counted = olderCandidates(
 		[...clearableResults(messages), ...fileInputs(messages)],
 		sessionCleared(ctx.sessionManager),
 		new Set(view.inputs.keys()),
@@ -227,6 +228,10 @@ export function clearStaleResults(
 	const tokensOf = (list: readonly Candidate[]) =>
 		list.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN;
 	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
+	if (tokensOf(counted) < floor) return;
+	const calls = toolCallArguments(messages);
+	const inUse = inRecentUse(counted, messages, calls);
+	const older = inUse.size === 0 ? counted : counted.filter(({ id }) => !inUse.has(id));
 	if (tokensOf(older) < floor) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));
 	// Tokens from each message to the end, so pricing a run from any start is one lookup.
@@ -254,7 +259,6 @@ export function clearStaleResults(
 	if (chosen.length === 0) return;
 	// One output folder for the batch: resolving it per result repeated the workspace's realpath and folder checks.
 	const outputDir = outputDirOnce();
-	const calls = toolCallArguments(messages);
 	const saved = chosen.flatMap((candidate): Array<{ candidate: Candidate; file: string | undefined }> => {
 		// A `file` payload is on disk already; a result's whole text is saved first.
 		if (candidate.kind === "input") return [{ candidate, file: undefined }];

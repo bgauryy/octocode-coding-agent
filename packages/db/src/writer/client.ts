@@ -15,6 +15,7 @@ import type { TranscriptCommand, TranscriptResult } from "./transcript-mirror.ts
 import type { HistoryWindows, ArchiveAuditQuery, ArchiveRow } from "../history-archive.ts";
 import type { HousekeepingResult } from "../retention.ts";
 import { stopDbWriter } from "./stop.ts";
+import { INLINE_TRANSCRIPT_LIMIT, transcriptChars } from "./inline-limit.ts";
 import {
 	DbWriterBusyError,
 	DbWriterUnavailableError,
@@ -70,6 +71,7 @@ export class DbWriter {
 	private inlineRuns = 0;
 	private inlineMs = 0;
 	private inlineMaxMs = 0;
+	private inlineRefused = 0;
 
 	private readonly locations: DbWriterLocations;
 	private readonly role: DbWriterRole;
@@ -102,6 +104,7 @@ export class DbWriter {
 			inlineRuns: this.inlineRuns,
 			inlineMs: Math.round(this.inlineMs),
 			inlineMaxMs: Math.round(this.inlineMaxMs),
+			inlineRefused: this.inlineRefused,
 		};
 	}
 
@@ -202,6 +205,16 @@ export class DbWriter {
 	private runInline(command: DbWriterCommand): Promise<DbWriterResult> {
 		if (command.kind === "save-file" || command.kind === "archive-history" || command.kind === "archive-audits")
 			return Promise.reject(new DbWriterUnavailableError("Large database maintenance requires the database worker"));
+		const chars = transcriptChars(command);
+		if (chars > INLINE_TRANSCRIPT_LIMIT) {
+			this.inlineRefused += 1;
+			return Promise.reject(
+				new DbWriterCommandError(
+					`A ${Math.ceil(chars / 1024 / 1024)} MB transcript write needs the database worker; it is not run on this thread`,
+					false,
+				),
+			);
+		}
 		const started = performance.now();
 		try {
 			const agent = sharedDatabase(this.locations);

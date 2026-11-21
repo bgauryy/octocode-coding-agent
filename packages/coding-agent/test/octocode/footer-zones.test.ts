@@ -1,5 +1,5 @@
-import { visibleWidth } from "@octocodeai/octocode-tui";
-import { describe, expect, it } from "vitest";
+import { setScreenReaderMode, visibleWidth } from "@octocodeai/octocode-tui";
+import { afterEach, describe, expect, it } from "vitest";
 import type { StatusEntry } from "../../src/core/footer-data-provider.ts";
 import { chipParts } from "../../src/octocode/permission/mode.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
@@ -39,6 +39,17 @@ const busyStatuses = new Map<string, StatusEntry>([
 ]);
 const render = (state: FooterState, statuses: Map<string, StatusEntry>, width: number) =>
 	footerLines(state, "main", statuses, plain, width);
+
+afterEach(() => setScreenReaderMode(false));
+
+describe("screen-reader text mode", () => {
+	it("writes the context gauge as words, with no bar glyphs", () => {
+		setScreenReaderMode(true);
+		const rows = render(idle, idleStatuses, 120);
+		expect(rows.join("\n")).toContain("context 34% of 271k");
+		expect(rows.join("\n")).not.toMatch(/[▰▱]/);
+	});
+});
 
 const pad = (left: string, center: string, right: string, width: number) => {
 	const free = width - visibleWidth(left) - visibleWidth(center) - visibleWidth(right);

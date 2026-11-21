@@ -158,6 +158,7 @@ describe("the parent's side", () => {
 			session: 1,
 			read: { track: () => undefined, consume: () => false },
 			team: {
+				approvals: { noteExited: () => undefined },
 				audit: {
 					hint: (id: string, hint: string) => hints.push([id, hint]),
 					begin: () => undefined,

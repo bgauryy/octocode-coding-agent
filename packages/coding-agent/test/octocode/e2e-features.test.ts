@@ -392,7 +392,8 @@ describe("Native features through the SDK", () => {
 			say("done"),
 		];
 		const t = await run("team", replies);
-		expect(t[1].results[0].text).toMatch(/Joined/i);
+		// The join replies with the member list: this session's row, with the goal it joined with.
+		expect(t[1].results[0].text).toMatch(/^\S+ \(you\) · .*\n {2}goal: main$/m);
 		expect(t[2].results[0]).toMatchObject({ isError: true });
 		expect(t[2].results[0].text).toContain(peer.id);
 		expect(t[3].results[0].text).toMatch(/held\.txt/);
@@ -409,6 +410,11 @@ describe("Native features through the SDK", () => {
 		});
 		expect(turns).toHaveLength(requests);
 		peer.leave();
+		// The peer left with message #1 unread: within a heartbeat this session is told once, without a turn.
+		await vi.waitFor(
+			() => expect(JSON.stringify(session.messages)).toMatch(/Message #1 to \S+ was not read: \S+ left the team first/),
+			{ timeout: 15_000 },
+		);
 	});
 
 	it("runs a subagent and an isolated subagent whose changes /agents merge brings in", async () => {

@@ -42,6 +42,7 @@ import { onlyAllowedReaders } from "../../../team/reservation-readers.ts";
 import { registerTeamEvents } from "../../../team/tools/events.ts";
 import { type PeerRoute, registerMessageRenderer, registerSendMessageTool } from "../../../team/tools/messages.ts";
 import { registerRecordedSpend } from "../../../team/tools/spend.ts";
+import { type CoordinateParams, coordinateSummary, reshapedLeases } from "./text.ts";
 
 const DEFAULT_CHANGES_WINDOW_MIN = 60;
 const DEFAULT_CHANGES_LIMIT = 20;
@@ -57,36 +58,6 @@ type MergeBranch = (
 	ctx: FeatureContext,
 	signal?: AbortSignal,
 ) => Promise<{ ok: boolean; text: string }>;
-
-/** Every field the `coordinate` schema accepts: a subagent's schema has no `id` or `goal` (`stop` and `join` are refused there before they are read). */
-interface CoordinateParams {
-	action: "list" | "join" | "leave" | "lock" | "unlock" | "stop" | "merge" | "grant" | "changes";
-	id?: string;
-	branch?: string;
-	goal?: string;
-	paths?: string[];
-	withinMinutes?: number;
-	limit?: number;
-	requests?: number;
-	reason?: string;
-}
-
-/** One-line `coordinate` call summary: action, id, requests, path target and goal. */
-function coordinateSummary(args: Record<string, unknown>, paths: string[]): string {
-	const { action, id, goal, requests } = args as Partial<CoordinateParams>;
-	return [
-		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-		String(action ?? ""),
-		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-		id === undefined ? "" : String(id),
-		requests === undefined ? "" : `+${String(requests)}`,
-		paths.length > 1 ? plural(paths.length, "path") : (paths[0] ?? ""),
-		// oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- arguments are model output, unvalidated while the call renders
-		goal ? `"${String(goal)}"` : "",
-	]
-		.filter(Boolean)
-		.join(" ");
-}
 
 /**
  * Registers the team tools and events; returns the reservation gate for the tool-call pipeline (`index.ts`).
@@ -232,9 +203,9 @@ function registerCoordinateTool(
 					description:
 						"list: agents, held paths; " +
 						(canStop ? "join: set your goal; leave: unregister; " : "") +
-						"lock: reserve paths, all or none; unlock: release (none named: all); " +
+						"lock: reserve paths (all or none); unlock: release (none: all); " +
 						(canStop
-							? "stop: kill your background child; merge: land an isolated child's work here, or a linked worktree branch (asks user); grant: more model requests for your running child; "
+							? "stop: kill your background child; merge: land an isolated child's work or a linked worktree branch here (asks user); grant: more model requests for your running child; "
 							: "") +
 						"changes: recent agent file changes",
 				}),
@@ -248,13 +219,13 @@ function registerCoordinateTool(
 				...(canStop ? { goal: Type.Optional(Type.String({ description: "join: your task goal" })) } : {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
-						description: 'lock/unlock: files or "dir/". changes: only under these paths',
+						description: 'lock/unlock: files or "dir/"; changes: only under these',
 					}),
 				),
 				withinMinutes: Type.Optional(Type.Integer({ description: "changes: minutes back (default 60)" })),
 				limit: Type.Optional(Type.Integer({ description: "changes: max files (default 20)" })),
 				// The unified `agent` tool passes its call `reason` here: the lock note others see.
-				reason: Type.Optional(Type.String({ description: "lock: what you will change there" })),
+				reason: Type.Optional(Type.String({ description: "lock: what you will change" })),
 			}),
 			async execute(_id, input, signal, _onUpdate, ctx) {
 				// The schema's optional `id` and `goal` depend on the agent, so Octocode infers them as unknown: this is the one place that names them.
@@ -266,7 +237,7 @@ function registerCoordinateTool(
 					const goal = params.goal ? checkGoal(params.goal) : undefined;
 					await team.patiently(() => team.join(goal), signal);
 				} else if (params.action === "leave") {
-					await team.patiently(() => team.leave(), signal);
+					await team.leave();
 					return textResult("Left the team.");
 				} else if (params.action === "lock") {
 					if (!params.paths?.length) throw new Error("lock needs paths.");
@@ -274,14 +245,13 @@ function registerCoordinateTool(
 					const reason = storedText(params.reason, 200) || "editing";
 					const result = await team.patiently(() => team.lock(paths, reason), signal);
 					if (!result.ok) throw new Error(describeConflicts(result.conflicts, now, memberGoals(team.members())));
-					const total =
-						result.held > result.leases.length ? ` You now hold ${plural(result.held, "reservation")}.` : "";
+					const total = result.held > result.leases.length ? ` You hold ${result.held}.` : "";
 					const mine = team.snapshot().members.find((member) => member.id === team.id)?.locks ?? [];
 					const advice = lockAdvice(teamWorkspace(ctx.cwd), mine);
-					return textResult(
-						`Reserved: ${result.leases.map((lease) => (lease.kind === "tree" ? `${lease.path}/` : lease.path)).join(", ")}.${total} Unlock when your edits are done.${advice}`,
-						{ summary: `Reserved ${plural(result.leases.length, "path")}` },
-					);
+					const reserved = `Reserved ${plural(result.leases.length, "path")}`;
+					return textResult(`${reserved}${reshapedLeases(paths, result.leases)}.${total}${advice}`, {
+						summary: reserved,
+					});
 				} else if (params.action === "unlock") {
 					const released = await team.patiently(() => team.unlock(params.paths), signal);
 					return textResult(`Released ${released} reservation(s).`, {
@@ -351,6 +321,7 @@ function registerCoordinateTool(
 					standing,
 					team.stalled(),
 					details,
+					true,
 				);
 				const queued = budgets?.queued?.() ?? [];
 				const waiting = queued.length ? `\n\nQueued children:\n${queued.map((row) => `  ${row}`).join("\n")}` : "";

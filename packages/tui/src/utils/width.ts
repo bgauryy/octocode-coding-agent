@@ -176,6 +176,11 @@ export function visibleWidth(str: string): number {
 		return asciiWidth;
 	}
 
+	if (str.length === 1) {
+		const single = standaloneWidth(str.charCodeAt(0));
+		if (single !== -1) return single;
+	}
+
 	if (!cacheable) {
 		const cached = widthCache.get(str);
 		if (cached !== undefined) return cached;
@@ -208,8 +213,17 @@ export function visibleWidth(str: string): number {
 	}
 
 	let width = 0;
-	for (const { segment } of graphemeSegmenter.segment(clean)) {
-		width += graphemeWidth(segment);
+	let i = 0;
+	while (i < clean.length) {
+		const single = singleCharWidth(clean, i);
+		if (single !== -1) {
+			width += single;
+			i++;
+			continue;
+		}
+		const end = segmentedRunEnd(clean, i);
+		width += segmentedRun(clean.slice(i, end)).width;
+		i = end;
 	}
 
 	rememberWidth(str, width);
@@ -243,6 +257,95 @@ function asciiVisibleWidth(str: string): number {
 	return width;
 }
 
+/**
+ * Width of a code unit that is a grapheme of its own whatever text surrounds it, -1 for any other: printable ASCII,
+ * and the CJK, kana, Hangul syllable and fullwidth characters, none of which is a mark, a joiner or a surrogate. Two such
+ * characters in a row always have a grapheme break between them (no Prepend or CR among them), so text made of them
+ * needs no segmenter, which costs most of the time of measuring and wrapping CJK text.
+ */
+function standaloneWidth(code: number): number {
+	if (code >= 0x20 && code <= 0x7e) return 1;
+	if (code < 0x3000) return -1;
+	// East Asian Width Wide or Fullwidth throughout.
+	if (
+		(code >= 0x4e00 && code <= 0x9fff) || // CJK unified ideographs
+		(code >= 0x3041 && code <= 0x3096) || // Hiragana
+		(code >= 0x309b && code <= 0x30ff) || // Katakana
+		(code >= 0x3400 && code <= 0x4dbf) || // CJK extension A
+		(code >= 0xac00 && code <= 0xd7a3) || // Hangul syllables
+		(code >= 0xff01 && code <= 0xff60) || // fullwidth forms
+		(code >= 0xffe0 && code <= 0xffe6)
+	)
+		return 2;
+	// CJK symbols and punctuation without the tone marks, and unassigned kana before the combining sound marks: these
+	// widths vary.
+	if ((code >= 0x3000 && code <= 0x3029) || (code >= 0x3030 && code <= 0x3040) || code === 0x3097 || code === 0x3098)
+		return eastAsianWidth(code);
+	return -1;
+}
+
+/** Width of the code unit at `i` when it is a grapheme of its own here: standalone, and so is the next one. */
+function singleCharWidth(text: string, i: number): number {
+	const width = standaloneWidth(text.charCodeAt(i));
+	if (width === -1 || i + 1 === text.length || standaloneWidth(text.charCodeAt(i + 1)) !== -1) return width;
+	return -1;
+}
+
+/**
+ * End of the run from `start` that needs the segmenter: up to and including the first standalone character followed by
+ * another standalone character or the end of the text, where a grapheme break is certain. The character before `start`
+ * is standalone and so is `start`'s own, or `start` is where a previous run ended, so a break precedes `start` too.
+ */
+function segmentedRunEnd(text: string, start: number): number {
+	for (let j = start + 1; j < text.length; j++) {
+		if (standaloneWidth(text.charCodeAt(j)) === -1) continue;
+		if (j + 1 === text.length || standaloneWidth(text.charCodeAt(j + 1)) !== -1) return j + 1;
+	}
+	return text.length;
+}
+
+interface SegmentedRun {
+	readonly segments: readonly string[];
+	readonly width: number;
+}
+
+/**
+ * Runs segmented recently. Each `Intl.Segmenter` call has a fixed cost larger than segmenting a short run, and the same
+ * runs (an emoji and the space after it, an accented word) recur across the rows of a transcript. Bounded like
+ * `widthCache`: it starts over when full, and long runs are not kept.
+ */
+const RUN_CACHE_SIZE = 1024;
+const RUN_CACHE_MAX_LENGTH = 64;
+const runCache = new Map<string, SegmentedRun>();
+
+function segmentedRun(run: string): SegmentedRun {
+	const cached = runCache.get(run);
+	if (cached) return cached;
+	const segments: string[] = [];
+	let width = 0;
+	for (const { segment } of graphemeSegmenter.segment(run)) {
+		segments.push(segment);
+		width += graphemeWidth(segment);
+	}
+	const result = { segments, width };
+	if (run.length <= RUN_CACHE_MAX_LENGTH) {
+		if (runCache.size >= RUN_CACHE_SIZE) runCache.clear();
+		runCache.set(run, result);
+	}
+	return result;
+}
+
+/** The grapheme clusters of `text`, as `Intl.Segmenter` splits them, segmenting only the runs that need it. */
 export function* graphemeSegments(text: string): Generator<string> {
-	for (const { segment } of graphemeSegmenter.segment(text)) yield segment;
+	let i = 0;
+	while (i < text.length) {
+		if (singleCharWidth(text, i) !== -1) {
+			yield text[i];
+			i++;
+			continue;
+		}
+		const end = segmentedRunEnd(text, i);
+		yield* segmentedRun(text.slice(i, end)).segments;
+		i = end;
+	}
 }

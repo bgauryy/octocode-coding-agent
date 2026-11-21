@@ -59,7 +59,9 @@ describe("describeWorktrees (the coordinate list Worktrees section)", () => {
 		});
 		const lines = (text ?? "").split("\n");
 		expect(lines[0]).toBe("Worktrees:");
-		expect(text).toMatch(/\n {2}tidy · branch octocode\/tidy · clean · \.octocode\/worktrees\/tidy/u);
+		// A worktree nobody works in or opened is counted, not listed: `/worktree list` shows it.
+		expect(text).not.toContain("tidy");
+		expect(text).toContain("  1 other worktree without agents: /worktree list");
 		expect(text).toMatch(/\n {2}busy · branch octocode\/busy · 1 changed, 1 untracked · \.octocode\/worktrees\/busy/u);
 		expect(text).toContain("      agents: main-aaaaaa (main, idle, pid 99, tmux work:1.0)");
 		expect(text).toContain("      tmux: work:2.0 (zsh, pid 5120)");

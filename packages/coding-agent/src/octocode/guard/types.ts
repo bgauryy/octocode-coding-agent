@@ -77,9 +77,8 @@ export interface Review {
 	approved?: StoredFile[];
 }
 
-/** The badge every surface prints: `approved`, `denied`, `not checked HIGH`, `not checked · changed HIGH`. */
+/** The badge every surface prints: `approved`, `denied`, `not checked · HIGH`, `not checked · changed · HIGH`. */
 export function badge(review: Pick<Review, "word" | "changed" | "rating">): string {
 	if (review.word === "approved") return "approved";
-	const word = review.changed ? `${review.word} · changed` : review.word;
-	return `${word} ${review.rating}`;
+	return [review.word, ...(review.changed ? ["changed"] : []), review.rating].join(" · ");
 }

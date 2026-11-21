@@ -127,6 +127,39 @@ export function list(
 	return { items: enrichItems(db, repo, rows.map(toItem)), total };
 }
 
+/** How many items a listing matches, by state (a closed item counts as `closed`), priority and type. */
+export interface ItemStats {
+	total: number;
+	states: Record<string, number>;
+	priorities: Record<number, number>;
+	types: Record<string, number>;
+}
+
+/**
+ * The counts of the items `list` would return for `query`, without rows, limit or offset. One grouped read; with
+ * `paths`, the matched items are tallied instead, since path matching reads each item's paths, evidence and links.
+ */
+export function stat(db: Db, repo: string, query: ListQuery = {}): ItemStats {
+	const { limit: _limit, offset: _offset, ...every } = query;
+	const groups = pathQueries(query).length
+		? list(db, repo, every).items.map((item) => ({
+				state: item.closed ? "closed" : item.state,
+				priority: item.priority,
+				type: item.type,
+				n: 1,
+			}))
+		: backlog.statItems(db, filterOf(db, repo, every));
+	const stats: ItemStats = { total: 0, states: {}, priorities: {}, types: {} };
+	for (const group of groups) {
+		const n = group.n;
+		stats.total += n;
+		stats.states[group.state] = (stats.states[group.state] ?? 0) + n;
+		stats.priorities[group.priority] = (stats.priorities[group.priority] ?? 0) + n;
+		stats.types[group.type] = (stats.types[group.type] ?? 0) + n;
+	}
+	return stats;
+}
+
 /** How many items sit in each state and how many epics (by the state their items give them): the footer's and the board's counts. */
 export function counts(db: Db, repo: string): BacklogCounts {
 	return summarizeCounts(

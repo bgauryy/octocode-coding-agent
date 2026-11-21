@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type AgentContext, methods } from "@agentclientprotocol/sdk";
 import type { AcpUiRequest } from "../host.ts";
 import { withAbort } from "./abort.ts";
+import { toolKind } from "./events.ts";
 import { reportFailure } from "./failure.ts";
 
 /**
@@ -53,7 +54,7 @@ export async function askPermission(env: PermissionEnvironment, request: SelectR
 						toolCallId: permission.toolCallId ?? randomUUID(),
 						title: request.title,
 						status: "pending",
-						kind: "other",
+						kind: permission.toolName ? toolKind(permission.toolName) : "other",
 						name: permission.toolName,
 						content: [{ type: "content", content: { type: "text", text: permission.targets.join("\n") } }],
 					},

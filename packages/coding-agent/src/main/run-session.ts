@@ -4,10 +4,11 @@
  */
 
 import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import {
 	ACP_WORKER_ENV,
 	envFlag,
+	MCP_DESKTOP_ENV,
 	PERMISSION_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	SUBAGENT_ENV,
@@ -39,6 +40,7 @@ import type { NativeFeatureSet } from "../core/resource-loader/types.ts";
 import { createCliRuntimeFactory } from "./runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./session-manager.ts";
 import {
+	type AppMode,
 	isPlainRuntimeMetadataCommand,
 	prepareInitialMessage,
 	promptForMissingSessionCwd,
@@ -63,6 +65,15 @@ interface SessionRunContext {
 	nativeFeatures: NativeFeatureSet;
 }
 
+/**
+ * Desktop control asks the user before every start. A print or JSON run has nobody to ask, so it has no desktop server
+ * and no desktop specialist, and the subagents it starts inherit that (RPC and ACP runs have a person or a client that
+ * answers, and keep both).
+ */
+function withoutDesktopWhenNobodyCanAnswer(mode: AppMode): void {
+	if (mode === "print" || mode === "json") process.env[MCP_DESKTOP_ENV] = "0";
+}
+
 export async function runSession(
 	args: string[],
 	{ cwd, agentDir, offlineMode, nativeFeatures }: SessionRunContext,
@@ -75,7 +86,7 @@ export async function runSession(
 	if (parsed.permissionMode) process.env[PERMISSION_ENV] = parsed.permissionMode;
 	if (parsed.diagnostics.length > 0) {
 		for (const d of parsed.diagnostics) {
-			const color = d.type === "error" ? chalk.red : chalk.yellow;
+			const color = d.type === "error" ? cliStyle.error : cliStyle.warn;
 			console.error(color(`${d.type === "error" ? "Error" : "Warning"}: ${d.message}`));
 		}
 		if (parsed.diagnostics.some((d) => d.type === "error")) {
@@ -108,7 +119,7 @@ export async function runSession(
 			result = await exportFromFile(parsed.export, outputPath);
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : "Failed to export session";
-			console.error(chalk.red(`Error: ${message}`));
+			console.error(cliStyle.error(`Error: ${message}`));
 			process.exit(1);
 		}
 		console.log(`Exported to: ${result}`);
@@ -116,13 +127,14 @@ export async function runSession(
 	}
 
 	let appMode = resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY);
+	withoutDesktopWhenNobodyCanAnswer(appMode);
 	const shouldTakeOverStdout = appMode !== "interactive" && !isPlainRuntimeMetadataCommand(parsed);
 	if (shouldTakeOverStdout) {
 		takeOverStdout();
 	}
 
 	if (parsed.mode === "rpc" && parsed.fileArgs.length > 0) {
-		console.error(chalk.red("Error: @file arguments are not supported in RPC mode"));
+		console.error(cliStyle.error("Error: @file arguments are not supported in RPC mode"));
 		process.exit(1);
 	}
 
@@ -163,14 +175,14 @@ export async function runSession(
 			}
 			sessionManager = await SessionManager.openAsync(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
 		} else {
-			console.error(chalk.red(new MissingSessionCwdError(missingSessionCwdIssue).message));
+			console.error(cliStyle.error(new MissingSessionCwdError(missingSessionCwdIssue).message));
 			process.exit(1);
 		}
 	}
 	if (parsed.name !== undefined) {
 		const name = normalizeSessionName(parsed.name);
 		if (name === undefined) {
-			console.error(chalk.red("Error: --name requires a non-empty value"));
+			console.error(cliStyle.error("Error: --name requires a non-empty value"));
 			process.exit(1);
 		}
 		sessionManager.appendSessionInfo(name);
@@ -236,6 +248,7 @@ export async function runSession(
 		stdinContent = parsed.noStdin ? undefined : await readPipedStdin();
 		if (stdinContent !== undefined && appMode === "interactive") {
 			appMode = "print";
+			withoutDesktopWhenNobodyCanAnswer(appMode);
 		}
 	}
 	time("readPipedStdin");
@@ -258,13 +271,13 @@ export async function runSession(
 	time("createSession");
 
 	if (appMode !== "interactive" && !session.model) {
-		console.error(chalk.red(formatNoModelsAvailableMessage("cli")));
+		console.error(cliStyle.error(formatNoModelsAvailableMessage("cli")));
 		process.exit(1);
 	}
 
 	const startupBenchmark = isTruthyEnvFlag(process.env.OCTOCODE_STARTUP_BENCHMARK);
 	if (startupBenchmark && appMode !== "interactive") {
-		console.error(chalk.red("Error: OCTOCODE_STARTUP_BENCHMARK only supports interactive mode"));
+		console.error(cliStyle.error("Error: OCTOCODE_STARTUP_BENCHMARK only supports interactive mode"));
 		process.exit(1);
 	}
 

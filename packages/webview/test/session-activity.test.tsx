@@ -5,9 +5,8 @@ import type { ApplicationActivity, ApplicationSnapshot } from "@octocodeai/octoc
 import { act, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ApplicationStream } from "@octocodeai/octocode-projections";
+import { ApplicationProjection, ApplicationStream } from "@octocodeai/octocode-projections";
 import { createBacklogStore } from "../src/app/extension.ts";
-import { ApplicationProjection } from "../src/app/live/application-projection.ts";
 import { HistoryPanel } from "../src/app/live/HistoryPanel.tsx";
 import { ResultCard } from "../src/app/live/ResultCard.tsx";
 import { LiveProvider } from "../src/app/live/session.tsx";

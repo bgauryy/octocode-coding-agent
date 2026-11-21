@@ -89,6 +89,10 @@ flowchart TD
 
 In step 3 an `.octocode/` copy beats a `.pi/` copy. In steps 6 and 7 the order is `.agents`, Pi, Claude Code, Codex, Cursor, and startup prints how many duplicates were skipped. To keep your own version of a bundled skill, put it in your Octocode folder or the project, or list its path in `skills`. `npx octocode skill install` writes copies into `~/.agents/skills/`, `~/.claude/skills/` and `~/.pi/agent/skills/`; those yield to the bundle. `OCTOCODE_EXTRA_SKILLS=0` turns off other tools' folders (steps 6 and 7 outside the Octocode and Pi folders); `--no-skills` turns off all discovery, including the bundle, but still loads `--skill` paths.
 
+### Add a skill folder
+
+In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter the folder (relative paths resolve against the session folder). Octocode scans every skill in it with the [security review](configuration.md#security-review) and shows each rating, worst first, before anything is written; Enter then adds the folder to your user `skills` setting, Esc steps back and writes nothing. Run `/reload` to load it. The skills stay off until you approve them in `/security`.
+
 ### Switch skills on and off
 
 | Command                                            | Effect                                                      |

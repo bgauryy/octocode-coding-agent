@@ -14,6 +14,7 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MessageRenderer } from "../../../core/features/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import { surfaceFill } from "../../../theme/bands.ts";
 
 /**
  * Component that renders a custom message entry from features.
@@ -42,7 +43,7 @@ export class CustomMessageComponent extends Container {
 		this.outputPad = outputPad;
 
 		// The default rendering's band: no vertical padding; the blank row above it is a plain spacer.
-		this.box = new Box(1, 0, (t) => theme.bg("customMessageBg", t));
+		this.box = new Box(1, 0, (t) => surfaceFill("custom", t));
 
 		this.rebuild();
 	}

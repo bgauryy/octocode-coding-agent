@@ -7,10 +7,10 @@
 import { fauxAssistantMessage, getCurrentTools, type TranscriptContext } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { expectAppend } from "../../../../ai/test/cache-matrix/compare.ts";
-import { wireCase } from "../../../../ai/test/cache-matrix/wire.ts";
+import { WIRE_CASES, wireCase, type Wire } from "../../../../ai/test/cache-matrix/wire.ts";
 import { nativeCall } from "../e2e-calls.ts";
 import { withMcpSession, type RecordedRequest } from "./mcp-session.ts";
-import { recordings, replayAll } from "./session-wire.ts";
+import { recordings, replayAll, replayOn } from "./session-wire.ts";
 
 const LOOKUP = "mcp__docs__lookup";
 const call = (args: Record<string, unknown>) =>
@@ -112,4 +112,32 @@ describe("the session's requests through each real adapter", () => {
 			for (let index = 1; index < wires.length; index++) expectAppend(wireCase(id), wires[index - 1], wires[index]);
 		});
 	});
+
+	it.each(WIRE_CASES.map((entry) => entry.id))(
+		"%s: a provider switch rewrites the request once, then appends on the new provider",
+		async (id) => {
+			const target = wireCase(id);
+			// The session starts on another API's provider, as a user switching from it would.
+			const origin = WIRE_CASES[(WIRE_CASES.indexOf(target) + 1) % WIRE_CASES.length];
+			await withMcpSession(async (s) => {
+				await s.prompt("first", SCRIPT);
+				await s.use("plain-2");
+				await s.prompt("second", [fauxAssistantMessage("two")]);
+				await s.prompt("third", [fauxAssistantMessage("three")]);
+				const providers = s.requests.map((request) => request.ran.provider);
+				expect(providers).toEqual(["faux-plain", "faux-plain", "faux-plain-2", "faux-plain-2"]);
+				const on = (provider: string) => (provider === "faux-plain" ? origin : target);
+				const wires: Wire[] = [];
+				for (const request of s.requests) {
+					const entry = on(request.ran.provider);
+					const recorded = { context: request.context, options: { ...request.options }, ran: request.ran };
+					wires.push(await replayOn(recorded, entry, entry.model(), (message) => on(message.provider).model()));
+				}
+				const [loading, loaded, switched, continued] = wires;
+				expectAppend(origin, loading, loaded);
+				expect(switched.body).toContain("one");
+				expectAppend(target, switched, continued);
+			});
+		},
+	);
 });

@@ -16,7 +16,10 @@ it("keeps the launch generation when the ordinary background report path fails",
 		read: { track: () => undefined, consume: () => false },
 		// The run's audit row opens, takes an end hint and closes (`run-audit.ts`, `end-hint.ts`); nothing else of the team
 		// is reached here.
-		team: { audit: { begin: () => undefined, hint: () => undefined, finish: () => undefined } },
+		team: {
+			audit: { begin: () => undefined, hint: () => undefined, finish: () => undefined },
+			approvals: { noteExited: () => undefined },
+		},
 		groups: new ReportGroups(),
 		reports: {
 			reportingChanged: () => undefined,

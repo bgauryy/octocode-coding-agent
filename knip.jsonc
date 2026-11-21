@@ -60,7 +60,8 @@
 			// Platform commands and optional test prerequisites, not npm packages.
 			// `sqlite3` reads Cursor's chat databases in the `resume-external-harness` skill script and its test.
 			// `lldb` and `go` run the `octocode-debugging` skill's commands in its test, skipped where absent.
-			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "sqlite3", "lldb", "go"],
+			// `mkfifo` makes the named pipes the stdin tests read from.
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "sqlite3", "lldb", "go", "mkfifo"],
 			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
 			"entry": [
 				"src/index.ts",

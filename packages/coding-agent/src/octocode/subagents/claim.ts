@@ -8,7 +8,6 @@ import type { ReportStatus } from "../native/prompts/report.ts";
 import { envInt } from "@octocodeai/octocode-common/env";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { deriveAgentRoute, type AgentRoute } from "@octocodeai/octocode-contracts/config";
 import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "./handoff/scratch.ts";
 import { type CacheChoice, childCachePreferences, defaultTaskCache, type Identity } from "./process/env.ts";
@@ -16,6 +15,7 @@ import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
 import { routeThinking } from "../render/route-thinking.ts";
 import { maxRequests } from "./budget.ts";
 import type { Team } from "../team/session.ts";
+import { joinTeamNow, type RunTeamJoin } from "./team-join.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
@@ -163,6 +163,8 @@ export interface AgentRuns {
 	running: Map<string, undefined>; // The ids of the running subagents (a map because the team session reads it as one).
 	/** The backlog item each child was started for (`agent` `item`), by name; an entry of an ended child is dropped when read (`idle-items.ts`). */
 	items: Map<string, string>;
+	/** The items calls are starting children for, by item, with the call id: held from the first check to the claim (`second-child.ts`). */
+	starting?: Map<string, string>;
 	/** The items handed to each running child after its start (`hand-item.ts`); taken back when its run ends. */
 	handed?: HandedItems;
 	/** Their slots under the limit, taken before the spawn ask and given back by `Run.release`. */
@@ -188,6 +190,8 @@ interface AgentParams {
 	profile?: string;
 	model?: string;
 	headless?: boolean;
+	/** Desktop apps the task may control (`DESKTOP_APPS_ENV`). */
+	apps?: readonly string[];
 	background?: boolean;
 	isolate?: boolean;
 	/** The task's hook mode, or the one an earlier run of a resumed child was started with. */
@@ -247,7 +251,7 @@ export type RunPlan = Pick<Run, "profile" | "route">;
  */
 export function planRun(
 	profiles: Map<string, AgentProfile>,
-	params: Pick<AgentParams, "profile" | "model" | "headless" | "background">,
+	params: Pick<AgentParams, "profile" | "model" | "headless" | "apps" | "background">,
 	ctx: Pick<FeatureContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
 ): RunPlan {
@@ -264,6 +268,8 @@ export function planRun(
 			throw new Error("headless requires a browser-enabled profile; use profile: browser.");
 		profile = { ...profile, headless: params.headless };
 	}
+	if (params.apps !== undefined && !profile?.permissions?.includes("desktop.control"))
+		throw new Error("apps requires a profile that controls the desktop; use profile: desktop.");
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model; a task with
 	// neither a model nor a profile takes the default purpose.
 	const available = childAvailable(ctx.modelRegistry, params.model);
@@ -313,22 +319,17 @@ export function planRun(
 export function claimRun(
 	runs: AgentRuns,
 	plan: RunPlan,
-	params: Pick<AgentParams, "goal" | "name" | "sessionId" | "background" | "isolate" | "hooks" | "cache">,
+	params: Pick<AgentParams, "goal" | "name" | "sessionId" | "background" | "isolate" | "hooks" | "cache" | "apps">,
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager"> & Partial<Pick<FeatureContext, "model" | "modelRegistry">>,
 	avoid: Iterable<string> = [],
 	resumed?: Run["identity"],
 	slot: { held: boolean } = { held: true },
+	joined: RunTeamJoin = joinTeamNow(runs.team),
 ): Run {
 	const { cwd } = ctx;
 	const { profile, route } = plan;
 	// Joining gives the child its parent's address for sendMessage; without a usable team database it still runs, alone.
-	let parentId: string | undefined;
-	let teamNote = "";
-	try {
-		parentId = runs.team.join().id;
-	} catch (error) {
-		teamNote = `\n\n(Started without the team: ${errorMessage(error)}. It cannot message you or its teammates.)`;
-	}
+	const { parentId, note: teamNote } = joined;
 	if (params.name && runs.running.has(params.name)) throw new Error(`${params.name} is running.`);
 	// A resumed run continues as the same agent: name, role, goal, scratch folder and permission.
 	const identity: Run["identity"] = resumed ?? {
@@ -344,6 +345,7 @@ export function claimRun(
 	};
 	// A profile's `hooks: false` forbids them; else the task's choice, the mode this child started with, the profile's.
 	identity.hooks = childHookMode(profile?.hooks, params.hooks, resumed?.hooks);
+	if (params.apps?.length) identity.desktopApps = params.apps;
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
 	const childModel = ctx.modelRegistry
 		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)

@@ -30,6 +30,8 @@ import {
 	derived as derivedItems,
 	getItem,
 	list as listItems,
+	stat as itemStats,
+	type ItemStats,
 	liveHolder as holderOf,
 	noteCount as countNotes,
 	notes as itemNotes,
@@ -135,6 +137,11 @@ export class BacklogStore {
 	/** Items in `states` (every state when unset), ongoing first, then by priority and most recently updated; `total` counts past the limit. */
 	list(query: ListQuery = {}): { items: Item[]; total: number; pathMatches?: Map<string, PathMatch> } {
 		return listItems(this.db, this.repo, query);
+	}
+
+	/** The counts of what `list(query)` matches, by state, priority and type, with no rows. */
+	stat(query: ListQuery = {}): ItemStats {
+		return itemStats(this.db, this.repo, query);
 	}
 
 	/** Items per state and epics per derived state (`BacklogCounts`): what the footer shows and the board's header repeats. */

@@ -215,6 +215,39 @@ export function atomicWriteFileSync(file: string, data: string | Uint8Array, opt
 }
 
 /**
+ * `atomicWriteFileSync` for content produced piece by piece, so a large file is never held whole: `produce` writes
+ * chunks through `write` and returns false to leave `file` untouched (the temp file is removed). `beforeCommit` runs after
+ * the temp file is complete and flushed, just before the rename. Returns whether the file was replaced.
+ */
+export function atomicWriteChunksSync(
+	file: string,
+	produce: (write: (chunk: Uint8Array) => void) => boolean,
+	options: AtomicWriteOptions & { mode: number },
+): boolean {
+	const target = writeTargetSync(file);
+	const temp = tempSibling(target);
+	const durable = (options.durability ?? "all") !== "none";
+	let committed = false;
+	try {
+		const fd = fs.openSync(temp, "wx", options.mode);
+		try {
+			fs.fchmodSync(fd, options.mode);
+			if (!produce((chunk) => fs.writeFileSync(fd, chunk))) return false;
+			if (durable) fs.fsyncSync(fd);
+		} finally {
+			fs.closeSync(fd);
+		}
+		options.beforeCommit?.();
+		fs.renameSync(temp, target);
+		committed = true;
+	} finally {
+		if (!committed) fs.rmSync(temp, { force: true });
+	}
+	if (options.durability === undefined || options.durability === "all") syncDirectorySync(path.dirname(target));
+	return true;
+}
+
+/**
  * Replace `file` with `data` atomically. `expectedSha`: a SHA-256 the current content must still have, `null` when
  * the file must still not exist, undefined for no check.
  */

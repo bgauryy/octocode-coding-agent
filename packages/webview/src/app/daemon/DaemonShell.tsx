@@ -137,7 +137,11 @@ export function DaemonShell({ access }: { access: string }) {
 	const securityApi = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
 	const toolsApi = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const route = useHashRoute();
-	const tab = TABS.find((entry) => entry.name === route.name)?.name ?? "sessions";
+	const current = TABS.find((entry) => entry.name === route.name) ?? TABS[0];
+	const tab = current.name;
+	useEffect(() => {
+		document.title = `${current.label} · Octocode`;
+	}, [current.label]);
 	const sessions = usePolled(api.sessions);
 	const repos = usePolled(api.repos);
 	const now = sessions.status === "ready" ? sessions.at : 0;

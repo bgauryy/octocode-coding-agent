@@ -25,7 +25,7 @@ const textOf = (message: BashExecutionMessage): string => {
 it("gives a short result a header and leaves its output whole", async () => {
 	const result = await executeBashWithOperations("echo", process.cwd(), printing("a\nb\nc\n"));
 	expect(result).toMatchObject({ output: "a\nb\nc\n", exitCode: 0, truncated: false, totalLines: 3, totalBytes: 6 });
-	expect(result.header).toMatch(/^\[exit 0 · \d+(\.\d)?s · 3 lines · 6 B\]$/);
+	expect(result.header).toMatch(/^\[exit 0 · \d+(\.\d)?s\]$/);
 });
 
 it("trims `seq 1 5000` to the bash tool's head and tail budget and says where the whole output is", async () => {

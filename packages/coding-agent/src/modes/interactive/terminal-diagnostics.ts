@@ -4,6 +4,7 @@ import {
 	Text,
 	type TUI,
 	type Container,
+	type RenderPacingStats,
 	type OutputTelemetry,
 	type TuiMainScreen,
 } from "@octocodeai/octocode-tui";
@@ -16,7 +17,11 @@ interface DiagnosticHost {
 	chatContainer: Pick<Container, "addChild">;
 	settingsManager: Pick<
 		SettingsManager,
-		"getTerminalCapabilityOverrides" | "isReduceMotionActive" | "getFullscreenCopyOnSelect"
+		| "getTerminalCapabilityOverrides"
+		| "isReduceMotionActive"
+		| "getLatencyFence"
+		| "isLatencyFenceActive"
+		| "getFullscreenCopyOnSelect"
 	>;
 	outputPad: number;
 }
@@ -33,6 +38,32 @@ export function describeTerminalStalls(stalls: OutputTelemetry["stalls"]): strin
 		? `; latest ${latest.ongoing ? "ongoing for" : "lasted"} ${seconds(latest.durationMs)} from ${new Date(latest.startedAt).toLocaleTimeString()}, queue peak ${latest.peakQueuedBytes} bytes, dropped frames ${latest.droppedFrameBytes} bytes, kept ${latest.essentialBytes} bytes`
 		: "";
 	return `Terminal stalls: ${stalls.episodes} (${seconds(stalls.totalMs)} total; the terminal stopped reading output)${detail}`;
+}
+
+type LatencyFenceStats = NonNullable<RenderPacingStats["fence"]>;
+
+/** The fence row of `/debug terminal`: why it is off, or what the probe measured. */
+export function describeLatencyFence(
+	fence: Readonly<LatencyFenceStats> | undefined,
+	active: boolean,
+	setting: boolean | "auto",
+	env: string | undefined,
+): string {
+	if (!active) {
+		const why =
+			env !== undefined && ["0", "false"].includes(env.trim().toLowerCase())
+				? "OCTOCODE_LATENCY_FENCE"
+				: "terminal.latencyFence";
+		return `Latency fence: off (${why}); streaming frames are never held for display lag`;
+	}
+	const source = `${setting}${env === undefined ? "" : `, OCTOCODE_LATENCY_FENCE=${env}`}`;
+	if (!fence) return `Latency fence: on (${source}); no probe sample yet`;
+	const verdict = fence.supported
+		? fence.behind
+			? "behind"
+			: "keeping up"
+		: "unsupported (the terminal ignored the probe)";
+	return `Latency fence: on (${source}); ${verdict}; last RTT ${fence.lastRttMs.toFixed(0)} ms; floor ${fence.floorMs.toFixed(0)} ms; held frames ${fence.heldFrames}`;
 }
 
 /** Aggregate counters only: no transcript, credentials, process enumeration or terminal-specific API. */
@@ -55,6 +86,12 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 		"Clipboard: platform helpers with OSC 52 fallback for remote/headless sessions; OSC 52 delivery is unacknowledged.",
 		`Node output queue: ${terminal.pendingOutputBytes ?? "unavailable"} bytes; peak observed: ${stats.maxPendingOutputBytes} bytes`,
 		...(terminal.getOutputTelemetry ? [describeTerminalStalls(terminal.getOutputTelemetry().stalls)] : []),
+		describeLatencyFence(
+			stats.fence,
+			host.settingsManager.isLatencyFenceActive(),
+			host.settingsManager.getLatencyFence(),
+			process.env.OCTOCODE_LATENCY_FENCE,
+		),
 		`Frames submitted: ${stats.paintedFrames}; deferred: ${stats.deferredFrames}`,
 		`Frame generation/write: last ${stats.lastFrameCostMs.toFixed(2)} ms; peak ${stats.maxFrameCostMs.toFixed(2)} ms`,
 		`Peak input-to-submission: ${stats.maxInputToPaintMs.toFixed(2)} ms; timer lag: ${stats.maxTimerLagMs.toFixed(2)} ms`,

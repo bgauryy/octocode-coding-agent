@@ -272,7 +272,9 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		expect(result.details).toMatchObject({ job: "bash-1", log: job.log, moved: true });
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1);
-		expect(sent[0].message.content).toMatch(/bash-1 finished after [34]s[\s\S]*before\nafter$/);
+		expect(sent[0].message.content).toMatch(
+			/^\[exit 0 · [34]s · log: [^\n]*\]\nBackground bash bash-1 finished: [^\n]*\n[\s\S]*before\nafter$/,
+		);
 		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(jobs.jobs.size).toBe(0);
 	});
@@ -286,7 +288,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 			undefined,
 			ctx,
 		);
-		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 2 lines · 11 B\]\nf\nfinished\n$/);
+		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s\]\nf\nfinished\n$/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 
@@ -295,7 +297,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		const message = await tool
 			.execute("t1", { command: "echo f; sleep 30", background: false, timeout: 1 }, undefined, undefined, ctx)
 			.catch((error: Error) => error.message);
-		expect(message).toMatch(/^\[timed out after 1s · [\s\S]*f[\s\S]*a longer timeout, or with background: true/);
+		expect(message).toMatch(/^\[timed out after 1s\][\s\S]*f[\s\S]*a longer timeout, or with background: true/);
 		expect(jobs.jobs.size).toBe(0);
 		expect(sent).toHaveLength(0);
 	});
@@ -308,7 +310,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 			.catch((error: Error) => error.message);
 		// Past the 1 s threshold, which no longer applies, and stopped at the 2 s the call named.
 		expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
-		expect(message).toMatch(/^\[timed out after 2s · [\s\S]*f[\s\S]*a longer timeout, or with background: true/);
+		expect(message).toMatch(/^\[timed out after 2s\][\s\S]*f[\s\S]*a longer timeout, or with background: true/);
 		expect(jobs.jobs.size).toBe(0);
 		expect(sent).toHaveLength(0);
 	});
@@ -342,7 +344,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 			undefined,
 			off.ctx,
 		);
-		expect(waited.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 2 lines · 11 B\]\noff\nwaited\n$/);
+		expect(waited.content[0].text).toMatch(/^\[exit 0 · [\d.]+s\]\noff\nwaited\n$/);
 		expect(off.jobs.jobs.size).toBe(0);
 	});
 
@@ -378,7 +380,7 @@ describe.runIf(posix)("a user message queued during a foreground command", () =>
 		const { tool, jobs, ctx } = setup({ backgroundAfterSeconds: 0 });
 		ctx.hasPendingMessages = () => true;
 		const result = await tool.execute("t1", { command: "echo quick" }, undefined, undefined, ctx);
-		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 1 line · 6 B\]\nquick\n$/);
+		expect(result.content[0].text).toMatch(/^\[exit 0 · [\d.]+s\]\nquick\n$/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 

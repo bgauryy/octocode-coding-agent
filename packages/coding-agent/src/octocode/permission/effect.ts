@@ -100,6 +100,11 @@ const DEFAULTS: Record<ActionClass, (request: PermissionRequest) => EffectCard> 
 		undo: "none",
 		risk: "your real desktop: any open app, signed-in session or unsaved work; on-screen text is untrusted",
 	}),
+	"desktop.sensitive": (request) => ({
+		effect: `uses a sensitive desktop tool: ${first(request)}`,
+		undo: "none",
+		risk: "the clipboard can hold secrets, and quitting, recording or replaying acts on your real desktop",
+	}),
 	"net.private": (request) => ({
 		effect: `opens ${first(request)}`,
 		undo: "none",

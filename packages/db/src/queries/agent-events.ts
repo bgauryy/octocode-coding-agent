@@ -105,6 +105,21 @@ export function list(
 	).map(decode);
 }
 
+/**
+ * The newest `limit` silence episodes (`update` events with `detail: silent`, written by `agents.noteState`) of the agents
+ * named `names`, at or after `since` (epoch ms), newest first, in any workspace.
+ */
+export function silences(db: DatabaseSync, names: readonly string[], since = 0, limit = 500): EventRow[] {
+	if (names.length === 0) return [];
+	return (
+		db
+			.prepare(
+				`SELECT * FROM agent_events WHERE type = 'update' AND name IN (${names.map(() => "?").join(", ")}) AND time >= ? AND json_extract(data, '$.detail') = 'silent' ORDER BY seq DESC LIMIT ?`,
+			)
+			.all(...names, new Date(since).toISOString(), limit) as Row[]
+	).map(decode);
+}
+
 /** Event rows are append-only. The covering index answers this without loading event payloads. */
 export function latestSequence(db: DatabaseSync, workspace: string): number {
 	return Number(db.prepare("SELECT MAX(seq) AS seq FROM agent_events WHERE workspace_id = ?").get(workspace)?.seq ?? 0);

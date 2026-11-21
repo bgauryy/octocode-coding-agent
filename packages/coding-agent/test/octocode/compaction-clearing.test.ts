@@ -6,6 +6,7 @@ import {
 	CLEAR_AT_LEAST_TOKENS,
 	KEEP_RECENT_RESULTS,
 } from "../../src/octocode/compaction/clearing.ts";
+import { KEEP_IN_USE_TOKENS, KEEP_RECENT_TURNS } from "../../src/octocode/compaction/clearing-recent.ts";
 import { registerCompaction } from "../../src/octocode/compaction/register.ts";
 import { CLEARED_RESULTS_TYPE, contextReads } from "../../src/octocode/files/reads.ts";
 import type { FileGuard } from "../../src/octocode/files/tool/guard.ts";
@@ -28,6 +29,17 @@ const model = {
 };
 /** About 3,300 tokens of text: the 20,000-token bar takes seven of these. */
 const BIG = 10_000;
+/**
+ * The trailing `BIG` results that stay in a session of one call per turn closed by a reply: the newest five, and those
+ * whose call is within the last `KEEP_RECENT_TURNS` turns (the closing reply is one of them), up to `KEEP_IN_USE_TOKENS`.
+ */
+const RECENT =
+	KEEP_RECENT_RESULTS +
+	Math.min(KEEP_RECENT_TURNS - 1 - KEEP_RECENT_RESULTS, Math.floor((KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN) / BIG));
+/** The usual session below: twelve reads, of which the first `OLD` are old enough to clear. */
+const SESSION = 12;
+const OLD = SESSION - RECENT;
+const names = (from: number, to: number) => Array.from({ length: to - from }, (_, index) => `f${from + index}.ts`);
 
 let savedRetention: string | undefined;
 let savedHome: string | undefined;
@@ -186,25 +198,24 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		const perResult = BIG / CHARS_PER_TOKEN;
 		/**
 		 * The first session length (one result per request, plus the closing reply) at which the documented rule
-		 * `T_old × R × N > S_after × W` holds, with `T_old` the results older than the newest five, `N` the requests so far
-		 * and `S_after` about the five kept results (placeholders and short replies are a rounding error here).
+		 * `T_old × R × N > S_after × W` holds, with `T_old` the results older than the `RECENT` kept, `N` the requests so far
+		 * and `S_after` about the kept results (placeholders and short replies are a rounding error here).
 		 */
 		const predicted = (read: number, write: number) => {
-			for (let results = KEEP_RECENT_RESULTS + 1; results < 200; results++) {
-				const old = (results - KEEP_RECENT_RESULTS) * perResult;
-				if (old >= CLEAR_AT_LEAST_TOKENS && old * read * (results + 1) > KEEP_RECENT_RESULTS * perResult * write)
-					return results;
+			for (let results = RECENT + 1; results < 200; results++) {
+				const old = (results - RECENT) * perResult;
+				if (old >= CLEAR_AT_LEAST_TOKENS && old * read * (results + 1) > RECENT * perResult * write) return results;
 			}
 			throw new Error("never pays");
 		};
 		const firstClearing = async (options: Parameters<typeof setup>[1] = {}) => {
-			for (let results = KEEP_RECENT_RESULTS + 1; results < 60; results++) {
+			for (let results = RECENT + 1; results < 60; results++) {
 				const s = setup(idleMessages(reads(results)), options);
 				await s.start(warmAt);
 				if (s.entries.length > 0) {
 					const out = resultTexts(await s.context());
-					expect(out.slice(0, results - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
-					expect(out.slice(-KEEP_RECENT_RESULTS).every((text) => text.length === BIG)).toBe(true);
+					expect(out.slice(0, results - RECENT).every(cleared)).toBe(true);
+					expect(out.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
 					return results;
 				}
 			}
@@ -212,7 +223,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		};
 
 		it("clears once re-sending its old results costs more than rewriting the cache once (no catalog prices: 0.1 read, 2 write for 1 hour)", async () => {
-			expect(predicted(0.1, 2)).toBe(13);
+			expect(predicted(0.1, 2)).toBe(19);
 			expect(await firstClearing()).toBe(predicted(0.1, 2));
 		});
 
@@ -230,16 +241,16 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 	});
 
 	it("after an idle gap past the cache lifetime keeps the newest five and clears older results to saved files", async () => {
-		const items = reads(12);
+		const items = reads(SESSION);
 		const s = setup(idleMessages(items));
 		await s.start(T0 + 100 + HOUR + 1_000);
 		expect(s.entries).toHaveLength(1);
 		expect(s.entries[0].customType).toBe(CLEARED_RESULTS_TYPE);
 		const outcome = resultTexts(await s.context());
-		expect(outcome.slice(0, 12 - KEEP_RECENT_RESULTS).every(cleared)).toBe(true);
-		expect(outcome.slice(-KEEP_RECENT_RESULTS).every((text) => text.length === BIG)).toBe(true);
+		expect(outcome.slice(0, OLD).every(cleared)).toBe(true);
+		expect(outcome.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
 		// Every cleared result is reachable: its placeholder names a file holding the whole text and how to get it back.
-		outcome.slice(0, 12 - KEEP_RECENT_RESULTS).forEach((text, index) => {
+		outcome.slice(0, OLD).forEach((text, index) => {
 			const file = savedPathOf(text)!;
 			expect(fs.readFileSync(path.resolve(file), "utf8")).toBe(String(index % 10).repeat(BIG));
 			expect(text).toMatch(/to save context/);
@@ -253,7 +264,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		const chmod = vi.spyOn(fs, "chmodSync");
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const outcome = resultTexts(await s.context());
-		const clearedTexts = outcome.slice(0, 40 - KEEP_RECENT_RESULTS);
+		const clearedTexts = outcome.slice(0, 40 - RECENT);
 		expect(clearedTexts.every(cleared)).toBe(true);
 		// Same content, same file: the saved copies are named by their hash (ten distinct texts here).
 		const files = clearedTexts.map((text) => savedPathOf(text)!);
@@ -279,50 +290,50 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			return (
 				s.entries.length === 1 &&
 				resultTexts(await s.context())
-					.slice(0, 12 - KEEP_RECENT_RESULTS)
+					.slice(0, OLD)
 					.every(cleared)
 			);
 		};
 
 		it("does not clear for a trailing update on a model that keeps system updates in the history", async () => {
 			for (const update of [sectionUpdate, toolUpdate]) {
-				const s = setup([head, ...idleMessages(reads(12)), update], { model: capable });
+				const s = setup([head, ...idleMessages(reads(SESSION)), update], { model: capable });
 				await s.start(warmAt);
 				expect(s.entries).toEqual([]);
 			}
 		});
 
 		it("clears for a collapsing model whose leading prompt changes, not for one whose leading prompt stays", async () => {
-			expect(await cleared12(setup([head, ...idleMessages(reads(12)), toolUpdate]))).toBe(true);
+			expect(await cleared12(setup([head, ...idleMessages(reads(SESSION)), toolUpdate]))).toBe(true);
 			// A section update becomes a user message after the head: the cached prefix is untouched.
-			const kept = setup([head, ...idleMessages(reads(12)), sectionUpdate]);
+			const kept = setup([head, ...idleMessages(reads(SESSION)), sectionUpdate]);
 			await kept.start(warmAt);
 			expect(kept.entries).toEqual([]);
 		});
 
 		it("clears when a trailing system update folds into the leading prompt, though handlers never see system messages", async () => {
-			const s = setup([head, ...idleMessages(reads(12)), toolUpdate]);
+			const s = setup([head, ...idleMessages(reads(SESSION)), toolUpdate]);
 			await s.start(warmAt);
 			expect(s.entries).toHaveLength(1);
 		});
 
 		it("clears for a model switch", async () => {
 			const switched = { ...reply(T0 + 100), provider: "other", model: "m" };
-			const messages = [{ role: "user", content: "go", timestamp: T0 }, ...flat(reads(12)), switched];
+			const messages = [{ role: "user", content: "go", timestamp: T0 }, ...flat(reads(SESSION)), switched];
 			expect(await cleared12(setup(messages, { model: capable }))).toBe(true);
 		});
 
 		it("clears nothing without a rewrite ahead, and a rewrite clears however little of the window is used", async () => {
-			const warm = setup(idleMessages(reads(12)));
+			const warm = setup(idleMessages(reads(SESSION)));
 			await warm.start(warmAt);
 			expect(warm.entries).toEqual([]);
 			// About 40,000 tokens of a 200,000-token window.
-			expect(await cleared12(setup([head, ...idleMessages(reads(12)), toolUpdate]))).toBe(true);
+			expect(await cleared12(setup([head, ...idleMessages(reads(SESSION)), toolUpdate]))).toBe(true);
 		});
 	});
 
 	it("applies the decision identically on every later request, so the prompt stays byte-stable", async () => {
-		const s = setup(idleMessages(reads(12)));
+		const s = setup(idleMessages(reads(SESSION)));
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const first = JSON.stringify(await s.context());
 		vi.spyOn(Date, "now").mockReturnValue(T0 + 100 + 5 * HOUR);
@@ -336,14 +347,14 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		// The warm floor (`CLEAR_AT_LEAST_TOKENS`) is the higher one: there each clearing also pays a cache write.
 		expect(CLEAR_AT_FREE_POINT_TOKENS).toBeLessThan(CLEAR_AT_LEAST_TOKENS);
 		const perResult = Math.ceil((CLEAR_AT_FREE_POINT_TOKENS * CHARS_PER_TOKEN) / 4) - 100;
-		const below = setup(idleMessages(reads(KEEP_RECENT_RESULTS + 4, perResult)));
+		const below = setup(idleMessages(reads(RECENT + 4, perResult)));
 		await below.start(T0 + 100 + HOUR + 1_000);
 		expect(below.entries).toEqual([]);
 		// Nothing was saved for a clearing that did not happen.
 		expect(
 			fs.readdirSync(process.env.OCTOCODE_HOME!, { recursive: true }).filter((name) => /cleared-/.test(String(name))),
 		).toEqual([]);
-		const atLeast = setup(idleMessages(reads(KEEP_RECENT_RESULTS + 4, perResult + 200)));
+		const atLeast = setup(idleMessages(reads(RECENT + 4, perResult + 200)));
 		await atLeast.start(T0 + 100 + HOUR + 1_000);
 		expect(atLeast.entries).toHaveLength(1);
 	});
@@ -363,7 +374,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			exchange("ls", { path: "." }, textOf(20_000)),
 			exchange("bash", { command: "ls -la" }, textOf(20_000)),
 		];
-		const s = setup([custom, ...flat(keep), ...flat(old), ...flat(reads(KEEP_RECENT_RESULTS)), reply(T0 + 100)]);
+		const s = setup([custom, ...flat(keep), ...flat(old), ...flat(reads(RECENT)), reply(T0 + 100)]);
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const out = await s.context();
 		const byTool = new Map(
@@ -393,7 +404,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			"python3 - <<'EOF'\nprint(1)\nEOF",
 			"cat a.ts | xargs sed -n 1p",
 		].map((command) => exchange("bash", { command }, textOf(20_000)));
-		const s = setup([...flat(writes), ...flat(readsOnly), ...flat(reads(KEEP_RECENT_RESULTS)), reply(T0 + 100)]);
+		const s = setup([...flat(writes), ...flat(readsOnly), ...flat(reads(RECENT)), reply(T0 + 100)]);
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const out = await s.context();
 		const clearedById = new Map(
@@ -416,7 +427,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 				text: `[Old tool result cleared after the prompt cache expired; full output: /x ${"z".repeat(60_000)}]`,
 			},
 		]);
-		const s = setup([...flat([error, image, placeholder]), ...flat(reads(KEEP_RECENT_RESULTS)), reply(T0 + 100)]);
+		const s = setup([...flat([error, image, placeholder]), ...flat(reads(RECENT)), reply(T0 + 100)]);
 		await s.start(T0 + 100 + HOUR + 1_000);
 		// The only older, clearable text is nothing: the three above are excluded, so the bar is not met.
 		expect(s.entries).toEqual([]);
@@ -426,7 +437,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		const blocker = path.join(tmp(), "file-not-folder");
 		fs.writeFileSync(blocker, "");
 		process.env.OCTOCODE_HOME = blocker;
-		const s = setup(idleMessages(reads(12)));
+		const s = setup(idleMessages(reads(SESSION)));
 		await s.start(T0 + 100 + HOUR + 1_000);
 		expect(s.entries).toEqual([]);
 		expect(resultTexts(await s.context()).every((text) => text.length === BIG)).toBe(true);
@@ -434,19 +445,19 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 	});
 
 	it("skips a model with no known cache lifetime and a session with no reply yet", async () => {
-		const unknown = setup(idleMessages(reads(12)), { withModel: false });
+		const unknown = setup(idleMessages(reads(SESSION)), { withModel: false });
 		await unknown.start(T0 + 100 + 10 * HOUR);
 		expect(unknown.entries).toEqual([]);
 		const fresh = setup([
 			{ role: "user", content: "go", timestamp: T0 },
-			...flat(reads(12)).filter((message: any) => message.role === "toolResult"),
+			...flat(reads(SESSION)).filter((message: any) => message.role === "toolResult"),
 		]);
 		await fresh.start(T0 + 10 * HOUR);
 		expect(fresh.entries).toEqual([]);
 	});
 
 	it("applies a persisted decision after a resume, reload or fork (read from the branch), and the file guard stops counting cleared reads", async () => {
-		const items = reads(12);
+		const items = reads(SESSION);
 		const messages = idleMessages(items);
 		const first = setup(messages);
 		await first.start(T0 + 100 + HOUR + 1_000);
@@ -455,11 +466,11 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			priorEntries: [{ type: "custom", id: "old", customType: entry.customType, data: entry.data }],
 		});
 		const out = resultTexts(await resumed.context());
-		expect(out.slice(0, 7).every(cleared)).toBe(true);
-		expect(out.slice(7).every((text) => text.length === BIG)).toBe(true);
+		expect(out.slice(0, OLD).every(cleared)).toBe(true);
+		expect(out.slice(OLD).every((text) => text.length === BIG)).toBe(true);
 		// contextReads (the guard's memory after a resume) omits the cleared reads and keeps the five that stayed.
 		const kept = contextReads(resumed.ctx).map((read) => path.basename(read.file));
-		expect(kept.sort()).toEqual(["f10.ts", "f11.ts", "f7.ts", "f8.ts", "f9.ts"]);
+		expect(kept.sort()).toEqual(names(OLD, SESSION).sort());
 	});
 
 	it("counts a refresh by Octocode's cache warmer as cache use: no clearing while the warmed entry lives", async () => {
@@ -473,7 +484,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			model: "m",
 			usage: { cacheRead: 1000, cacheWrite: 0 },
 		};
-		const s = setup(idleMessages(reads(12)), { priorEntries: [warm] });
+		const s = setup(idleMessages(reads(SESSION)), { priorEntries: [warm] });
 		await s.start(T0 + 100 + HOUR + 1_000);
 		expect(s.entries).toEqual([]);
 		// Once the warmed entry has expired too, clearing goes ahead.
@@ -482,7 +493,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 	});
 
 	it("gives a repeated-read note the placeholder of the result it points at, and never keeps a note among the newest five", async () => {
-		const items = reads(12);
+		const items = reads(SESSION);
 		const notes = items.slice(0, 2).map((item, index) =>
 			exchange(
 				"read",
@@ -496,27 +507,28 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 				{ details: { unchangedOf: item.id } },
 			),
 		);
-		const s = setup(idleMessages([...items, ...notes]));
+		// The notes come before the recent turns: a note within them names its file there, which keeps the original.
+		const s = setup(idleMessages([...items.slice(0, 2), ...notes, ...items.slice(2)]));
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const out = resultTexts(await s.context());
-		// The newest five real results stay whole; the notes do not take their places.
-		expect(out.slice(7, 12).every((text) => text.length === BIG)).toBe(true);
+		// The newest real results stay whole; the notes do not take their places.
+		expect(out.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
 		// Each note now names the saved file of the cleared original instead of pointing "above".
-		expect(out.slice(12)).toEqual([out[0], out[1]]);
-		expect(out.slice(12).every(cleared)).toBe(true);
+		expect(out.slice(2, 4)).toEqual([out[0], out[1]]);
+		expect(out.slice(2, 4).every(cleared)).toBe(true);
 	});
 
 	it("makes the file guard ask for a fresh read of a file whose read was cleared", async () => {
 		const guard = { restore: vi.fn(), forget: vi.fn() };
-		const s = setup(idleMessages(reads(12)), { guard });
+		const s = setup(idleMessages(reads(SESSION)), { guard });
 		await s.start(T0 + 100 + HOUR + 1_000);
 		const forgotten = guard.forget.mock.calls.map(([file]) => path.basename(String(file))).sort();
-		expect(forgotten).toEqual(["f0.ts", "f1.ts", "f2.ts", "f3.ts", "f4.ts", "f5.ts", "f6.ts"]);
+		expect(forgotten).toEqual(names(0, OLD));
 	});
 
 	it("keeps a file known to the guard when a newer read of it is still in context, as a resume would", async () => {
 		const guard = { restore: vi.fn(), forget: vi.fn() };
-		const items = reads(12);
+		const items = reads(SESSION);
 		// f0.ts is read again last: that read is among the newest five and stays whole.
 		const again = exchange("read", { path: "f0.ts" }, textOf(BIG, "z"));
 		const s = setup(idleMessages([...items, again]), { guard });
@@ -538,18 +550,18 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			errorMessage: "Request timed out after 300000ms",
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, ...usage },
 		});
-		const timedOut = setup([...idleMessages(reads(12)), failed({})]);
+		const timedOut = setup([...idleMessages(reads(SESSION)), failed({})]);
 		await timedOut.start(T0 + 200 + HOUR + 1_000);
 		expect(timedOut.entries).toHaveLength(1);
 		expect(timedOut.entries[0].customType).toBe(CLEARED_RESULTS_TYPE);
 		// A failure the provider still billed as a cache read refreshed the entry: past the last good reply's lifetime, nothing is cleared.
-		const read = setup([...idleMessages(reads(12)), failed({ cacheRead: 150_000 })]);
+		const read = setup([...idleMessages(reads(SESSION)), failed({ cacheRead: 150_000 })]);
 		await read.start(T0 + 200 + HOUR - 50);
 		expect(read.entries).toEqual([]);
 	});
 
 	it("clears from the context handler alone, also inside a run after a gap longer than the cache lifetime (a long tool), once", async () => {
-		const s = setup(idleMessages(reads(12)));
+		const s = setup(idleMessages(reads(SESSION)));
 		// Warm: the last reply was a moment ago, so this request clears nothing and the prompt is what it was.
 		await s.start(T0 + 100 + 5_000);
 		expect(s.entries).toEqual([]);
@@ -558,7 +570,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		// The next request of the same run comes after a tool that ran longer than the lifetime: no new prompt, only `context`.
 		const out = resultTexts(await s.start(T0 + 100 + HOUR + 1_000).then(() => s.context()));
 		expect(s.entries).toHaveLength(1);
-		expect(out.slice(0, 7).every(cleared)).toBe(true);
+		expect(out.slice(0, OLD).every(cleared)).toBe(true);
 		// The request after that finds the decision made: nothing more is cleared and the bytes do not change.
 		const first = JSON.stringify(await s.context());
 		await s.start(T0 + 100 + HOUR + 2_000);
@@ -592,7 +604,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			const s = setup([
 				{ role: "user", content: "go", timestamp: T0 },
 				...flat(items),
-				...flat(reads(KEEP_RECENT_RESULTS)),
+				...flat(reads(RECENT)),
 				reply(T0 + 100),
 			]);
 			await s.start(T0 + 100 + HOUR + 1_000);
@@ -625,5 +637,52 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			await s.start(T0 + 100 + HOUR - 1_000);
 			expect(s.entries).toEqual([]);
 		});
+	});
+});
+
+describe("keeping results still in use", () => {
+	const session = (items: Array<{ messages: unknown[] }>, closing = "done") => [
+		{ role: "user", content: "go", timestamp: T0 },
+		...flat(items),
+		{ role: "assistant", content: [{ type: "text", text: closing }], timestamp: T0 + 100 },
+	];
+
+	it("at half the window on a warm cache, keeps a result read a few turns ago and one whose file was named since, and clears old unreferenced ones", async () => {
+		const count = 30;
+		const items = reads(count);
+		// Thirty results of about 4,000 tokens fill 51% of the window.
+		const window = Math.round((count * BIG) / CHARS_PER_TOKEN / 0.51);
+		const s = setup(session(items, "Next: compare f2.ts with the plan."), {
+			model: { ...model, contextWindow: window },
+		});
+		await s.start(T0 + 100 + 60_000);
+		expect(s.entries).toHaveLength(1);
+		expect(s.entries[0].data).toMatchObject({ trigger: "warm", rewriteAnyway: false });
+		const out = resultTexts(await s.context());
+		// Read six turns before the request, past the newest five: it stays.
+		const justRead = count - KEEP_RECENT_RESULTS - 1;
+		expect(out[justRead]).toHaveLength(BIG);
+		expect(out.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
+		// An old read whose file the last turn names stays; the other old reads are cleared.
+		expect(out[2]).toHaveLength(BIG);
+		const old = out.slice(0, count - RECENT).filter((_, index) => index !== 2);
+		expect(old.length).toBeGreaterThan(0);
+		expect(old.every(cleared)).toBe(true);
+	});
+
+	it("keeps results in use only up to their size bound: past it the oldest of them are cleared", async () => {
+		const large = 30_000;
+		const items = reads(SESSION, large);
+		const s = setup(session(items));
+		await s.start(T0 + 100 + HOUR + 1_000);
+		expect(s.entries).toHaveLength(1);
+		const out = resultTexts(await s.context());
+		const fits = Math.floor((KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN) / large);
+		const inWindow = KEEP_RECENT_TURNS - 1 - KEEP_RECENT_RESULTS;
+		// The window holds more than the bound: only the newest that fit stay beside the newest five.
+		expect(fits).toBeLessThan(inWindow);
+		const kept = KEEP_RECENT_RESULTS + fits;
+		expect(out.slice(-kept).every((text) => text.length === large)).toBe(true);
+		expect(out.slice(0, SESSION - kept).every(cleared)).toBe(true);
 	});
 });

@@ -185,7 +185,7 @@ describe("bash tool", () => {
 			expect(result.isError).toBeUndefined();
 			expect(result.content[0].text).toMatch(
 				new RegExp(
-					`^before\\n\\nDid not finish within 1s; moved to the background as bash-1 \\(pid ${job.pid}\\)[^\\n]*\\nLog: .*bash-1-\\d+\\.log\\nCheck: tail -n 40 .*\\nStop: kill -- -${job.pid}\\n\\n\\(foreground commands move to the background after the configured threshold; pass a timeout [^\\n]*\\)$`,
+					`^before\\n\\nDid not finish within 1s; moved to the background as bash-1 \\(pid ${job.pid}\\)[^\\n]*\\nLog: .*bash-1-\\d+\\.log\\nStop: kill -- -${job.pid}\\n\\n\\(foreground commands move to the background after the configured threshold; pass a timeout [^\\n]*\\)$`,
 				),
 			);
 			expect(result.details).toMatchObject({ job: "bash-1", pid: job.pid, log: job.log, moved: true });
@@ -369,7 +369,7 @@ describe("bash tool", () => {
 		// Octocode 0.99 returns a non-zero exit as an error result (with structured output) rather than throwing.
 		const result = await tool.execute("t1", { command: "echo oops; exit 3" }, undefined, undefined, ctx);
 		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toMatch(/^\[exit 3 · [\d.]+s · 1 line · 5 B\]\noops/);
+		expect(result.content[0].text).toMatch(/^\[exit 3 · [\d.]+s\]\noops/);
 		expect(result.structuredContent.exit_code).toBe(3);
 	});
 
@@ -439,7 +439,7 @@ describe("bash tool", () => {
 		const { message, options } = sent[0];
 		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(message.content).toMatch(
-			/^\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2 after \d+s: echo started/,
+			/^\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2: echo started/,
 		);
 		expect(message.content).toMatch(/started\ndone/);
 	});
@@ -513,7 +513,15 @@ describe("bash tool", () => {
 		expect(processAlive(first.pid)).toBe(false);
 		await commands.get("jobs")!.handler("kill nope", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/No background bash job "nope"/);
-		expect(sent[0].message.details).toEqual({ id: "bash-1", command: "sleep 30", log: first.log, quiet: true });
+		expect(sent[0].message.details).toMatchObject({
+			id: "bash-1",
+			command: "sleep 30",
+			log: first.log,
+			quiet: true,
+			how: "stopped (user)",
+			ok: false,
+			interrupted: true,
+		});
 		// The user stopped it: the model learns of it without a turn being started for it (`quiet`).
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 		await fire("session_shutdown", {}, ctx);
@@ -609,7 +617,7 @@ describe("bash tool", () => {
 		await vi.waitFor(() => expect(sent).toHaveLength(2), { timeout: 5_000 });
 		const reports = sent.map((entry) => String(entry.message.content)).sort();
 		expect(
-			reports.some((text) => /finished after .*sleep 0\.3; echo timed-done/.test(text) && text.includes("timed-done")),
+			reports.some((text) => /finished: .*sleep 0\.3; echo timed-done/.test(text) && text.includes("timed-done")),
 		).toBe(true);
 		expect(reports.some((text) => /stopped \(run end\)/.test(text))).toBe(true);
 		expect(jobs.jobs.size).toBe(0);
@@ -691,11 +699,11 @@ describe("bash tool", () => {
 			done: Promise.resolve({ code: 0, signal: null, seconds: 75 }),
 		};
 		expect(jobReport(job, { code: 0, signal: null, seconds: 75 })).toBe(
-			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished after 1m15s: make\n[+1 earlier line in the log]\nlast line`,
+			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished: make\n[+1 earlier line in the log]\nlast line`,
 		);
 		// One rotation keeps the earlier output in `.1`; nothing is said to be dropped.
 		expect(jobReport(job, { code: 0, signal: null, seconds: 75, logRotations: 1 })).toBe(
-			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished after 1m15s: make\nlog rotated at its size cap: job.log.1 is unavailable; earlier output cannot be recovered\n[+1 earlier line in the log]\nlast line`,
+			`[exit 0 · 75s · 2 lines · 5 KB · log: job.log]\nBackground bash bash-9 finished: make\nlog rotated at its size cap: job.log.1 is unavailable; earlier output cannot be recovered\n[+1 earlier line in the log]\nlast line`,
 		);
 		// The tail is the end of the log (not the start of its last few KB), and nothing before it goes uncounted.
 		fs.writeFileSync(log, Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n"));
@@ -729,7 +737,7 @@ describe("bash tool", () => {
 		);
 		expect(header({ code: null, signal: null, seconds: 3 }, "user")).toContain("[stopped (user) · 3s · ");
 		fs.writeFileSync(log, "");
-		expect(header({ code: 0, signal: null, seconds: 1 })).toBe("[exit 0 · 1s · no output · log: job.log]");
+		expect(header({ code: 0, signal: null, seconds: 1 })).toBe("[exit 0 · 1s · log: job.log]");
 	});
 
 	it("drops colors from the reported log tail and shows other terminal escapes as visible escapes", () => {

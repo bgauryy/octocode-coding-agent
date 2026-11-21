@@ -12,7 +12,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
-import { ApplicationProjection, type FeedEvent } from "../src/app/live/application-projection.ts";
+import { ApplicationProjection, type FeedEvent } from "@octocodeai/octocode-projections";
 import { HistoryPanel } from "../src/app/live/HistoryPanel.tsx";
 import { groupFeed, terminalEntries } from "../src/app/live/model.ts";
 import { ResultCard } from "../src/app/live/ResultCard.tsx";

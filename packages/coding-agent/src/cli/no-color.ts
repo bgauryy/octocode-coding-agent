@@ -1,4 +1,4 @@
-import chalk, { chalkStderr } from "chalk";
+import { disableCliColor } from "../utils/cli-style.ts";
 
 /**
  * Turn off ANSI color in CLI output when `NO_COLOR` (https://no-color.org) or `OCTOCODE_NO_COLOR` is non-empty, or
@@ -8,6 +8,5 @@ import chalk, { chalkStderr } from "chalk";
 export function applyNoColor(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): void {
 	if (argv.includes("--no-color")) env.OCTOCODE_NO_COLOR = "1";
 	if (!env.NO_COLOR && !env.OCTOCODE_NO_COLOR) return;
-	chalk.level = 0;
-	chalkStderr.level = 0;
+	disableCliColor();
 }

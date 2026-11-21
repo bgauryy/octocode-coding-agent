@@ -367,8 +367,8 @@ describe("/realm switch and resume", () => {
 		const { ctx, switchSession } = contextAt(repo.root);
 		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
 		expect(switchSession).not.toHaveBeenCalled();
-		expect(stderr).toContain("live fix · s-hot-1");
-		expect(stderr).toContain("/resume all <id>");
+		// Before: "Sessions started in hotfix (open one with /resume all <id>):" then "  live fix · s-hot-1".
+		expect(stderr).toContain("Sessions started in hotfix:\n  live  fix · s-hot-1\n→ open one with /resume all <id>");
 	});
 
 	it("rejects an unknown action", async () => {

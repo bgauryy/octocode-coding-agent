@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import chalk from "chalk";
+import { cliStyle } from "./utils/cli-style.ts";
 import { APP_NAME, detectInstallMethod, getAgentDir, getSelfUpdateCommand, PACKAGE_NAME, VERSION } from "./config.ts";
 import { ModelRuntime } from "./core/model-runtime.ts";
 import { DefaultPackageManager } from "./core/package-manager.ts";
@@ -54,7 +54,7 @@ async function refreshModelCatalogs(agentDir: string): Promise<void> {
 	} finally {
 		clearTimeout(timeout);
 	}
-	console.log(chalk.green("Model catalogs refreshed"));
+	console.log(cliStyle.success("Model catalogs refreshed"));
 }
 
 export async function handlePackageCommand(args: string[]): Promise<boolean> {
@@ -69,37 +69,37 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 	}
 
 	if (options.invalidOption) {
-		console.error(chalk.red(`Unknown option ${options.invalidOption} for "${options.command}".`));
-		console.error(chalk.dim(`Use "${APP_NAME} --help" or "${getPackageCommandUsage(options.command)}".`));
+		console.error(cliStyle.error(`Unknown option ${options.invalidOption} for "${options.command}".`));
+		console.error(cliStyle.dim(`Use "${APP_NAME} --help" or "${getPackageCommandUsage(options.command)}".`));
 		process.exitCode = 1;
 		return true;
 	}
 
 	if (options.missingOptionValue) {
-		console.error(chalk.red(`Missing value for ${options.missingOptionValue}.`));
-		console.error(chalk.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
+		console.error(cliStyle.error(`Missing value for ${options.missingOptionValue}.`));
+		console.error(cliStyle.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
 		process.exitCode = 1;
 		return true;
 	}
 
 	if (options.invalidArgument) {
-		console.error(chalk.red(`Unexpected argument ${options.invalidArgument}.`));
-		console.error(chalk.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
+		console.error(cliStyle.error(`Unexpected argument ${options.invalidArgument}.`));
+		console.error(cliStyle.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
 		process.exitCode = 1;
 		return true;
 	}
 
 	if (options.conflictingOptions) {
-		console.error(chalk.red(options.conflictingOptions));
-		console.error(chalk.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
+		console.error(cliStyle.error(options.conflictingOptions));
+		console.error(cliStyle.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
 		process.exitCode = 1;
 		return true;
 	}
 
 	const source = options.source;
 	if ((options.command === "install" || options.command === "remove") && !source) {
-		console.error(chalk.red(`Missing ${options.command} source.`));
-		console.error(chalk.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
+		console.error(cliStyle.error(`Missing ${options.command} source.`));
+		console.error(cliStyle.dim(`Usage: ${getPackageCommandUsage(options.command)}`));
 		process.exitCode = 1;
 		return true;
 	}
@@ -109,7 +109,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 			await refreshModelCatalogs(getAgentDir());
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : "Unknown model catalog refresh error";
-			console.error(chalk.red(`Error: ${message}`));
+			console.error(cliStyle.error(`Error: ${message}`));
 			process.exitCode = 1;
 		}
 		return true;
@@ -125,7 +125,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 	});
 	reportProjectTrustWarnings(projectTrustWarnings);
 	if (!settingsManager.isProjectTrusted() && writesProjectPackageConfig) {
-		console.error(chalk.red(`${FOLDER_NOT_TRUSTED_HINT} Project package config was not changed.`));
+		console.error(cliStyle.error(`${FOLDER_NOT_TRUSTED_HINT} Project package config was not changed.`));
 		process.exitCode = 1;
 		return true;
 	}
@@ -136,7 +136,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 
 	packageManager.setProgressCallback((event) => {
 		if (event.type === "start") {
-			process.stdout.write(chalk.dim(`${event.message}\n`));
+			process.stdout.write(cliStyle.dim(`${event.message}\n`));
 		}
 	});
 
@@ -144,17 +144,17 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 		switch (options.command) {
 			case "install":
 				await packageManager.installAndPersist(source!, { local: options.local });
-				console.log(chalk.green(`Installed ${source}`));
+				console.log(cliStyle.success(`Installed ${source}`));
 				return true;
 
 			case "remove": {
 				const removed = await packageManager.removeAndPersist(source!, { local: options.local });
 				if (!removed) {
-					console.error(chalk.red(`No matching package found for ${source}`));
+					console.error(cliStyle.error(`No matching package found for ${source}`));
 					process.exitCode = 1;
 					return true;
 				}
-				console.log(chalk.green(`Removed ${source}`));
+				console.log(cliStyle.success(`Removed ${source}`));
 				return true;
 			}
 
@@ -164,7 +164,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 				const projectPackages = configuredPackages.filter((pkg) => pkg.scope === "project");
 
 				if (configuredPackages.length === 0) {
-					console.log(chalk.dim("No packages installed."));
+					console.log(cliStyle.dim("No packages installed."));
 					return true;
 				}
 
@@ -172,12 +172,12 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 					const display = pkg.filtered ? `${pkg.source} (filtered)` : pkg.source;
 					console.log(`  ${display}`);
 					if (pkg.installedPath) {
-						console.log(chalk.dim(`    ${pkg.installedPath}`));
+						console.log(cliStyle.dim(`    ${pkg.installedPath}`));
 					}
 				};
 
 				if (userPackages.length > 0) {
-					console.log(chalk.bold("User packages:"));
+					console.log(cliStyle.heading("User packages:"));
 					for (const pkg of userPackages) {
 						formatPackage(pkg);
 					}
@@ -185,7 +185,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 
 				if (projectPackages.length > 0) {
 					if (userPackages.length > 0) console.log();
-					console.log(chalk.bold("Project packages:"));
+					console.log(cliStyle.heading("Project packages:"));
 					for (const pkg of projectPackages) {
 						formatPackage(pkg);
 					}
@@ -197,22 +197,22 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 			case "update": {
 				const target = options.updateTarget ?? { type: "self" };
 				if (options.showPackagesSkippedNote) {
-					console.log(chalk.dim(`Packages are skipped. Run ${APP_NAME} update --packages to update packages.`));
+					console.log(cliStyle.dim(`Packages are skipped. Run ${APP_NAME} update --packages to update packages.`));
 				}
 				if (updateTargetIncludesPackages(target)) {
 					const updateSource = target.type === "packages" ? target.source : undefined;
 					await packageManager.update(updateSource);
 					if (updateSource) {
-						console.log(chalk.green(`Updated ${updateSource}`));
+						console.log(cliStyle.success(`Updated ${updateSource}`));
 					} else {
-						console.log(chalk.green("Updated packages"));
+						console.log(cliStyle.success("Updated packages"));
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
 					const managedInstallRoot = getActiveManagedInstallRoot();
 					if (managedInstallRoot && options.force) {
 						console.error(
-							chalk.red(
+							cliStyle.error(
 								`Managed ${APP_NAME} installations do not support --force; rerun the installer to repair this installation.`,
 							),
 						);
@@ -228,22 +228,24 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 							printSelfUpdateNote(selfUpdatePlan.note);
 						}
 						try {
-							console.log(chalk.dim(`Updating managed ${APP_NAME} installation...`));
+							console.log(cliStyle.dim(`Updating managed ${APP_NAME} installation...`));
 							await runManagedSelfUpdate(managedInstallRoot, selfUpdatePlan.version);
 						} catch (error: unknown) {
 							const message = error instanceof Error ? error.message : "Unknown managed update error";
-							console.error(chalk.red(`Error: ${message}`));
+							console.error(cliStyle.error(`Error: ${message}`));
 							process.exitCode = 1;
 							return true;
 						}
-						console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+						console.log(cliStyle.success(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
 						return true;
 					}
 
 					const installMethod = detectInstallMethod();
 					if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm") {
-						console.error(chalk.red(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`));
-						console.error(chalk.dim(`Detected install method: ${installMethod}. Update ${APP_NAME} manually.`));
+						console.error(
+							cliStyle.error(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`),
+						);
+						console.error(cliStyle.dim(`Detected install method: ${installMethod}. Update ${APP_NAME} manually.`));
 						process.exitCode = 1;
 						return true;
 					}
@@ -267,7 +269,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 						await runSelfUpdate(selfUpdateCommand);
 					} catch (error: unknown) {
 						const message = error instanceof Error ? error.message : "Unknown package command error";
-						console.error(chalk.red(`Error: ${message}`));
+						console.error(cliStyle.error(`Error: ${message}`));
 						if (installMethod === "pnpm") {
 							printPnpmSelfUpdateMetadataHint();
 						}
@@ -275,14 +277,14 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 						process.exitCode = 1;
 						return true;
 					}
-					console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+					console.log(cliStyle.success(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
 				}
 				return true;
 			}
 		}
 	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : "Unknown package command error";
-		console.error(chalk.red(`Error: ${message}`));
+		console.error(cliStyle.error(`Error: ${message}`));
 		process.exitCode = 1;
 		return true;
 	}

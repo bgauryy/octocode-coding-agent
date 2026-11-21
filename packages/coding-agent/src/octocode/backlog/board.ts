@@ -2,6 +2,7 @@ import { truncateToWidth, type TuiMouseEvent, visibleWidth } from "@octocodeai/o
 import type { BacklogTask, TaskState } from "@octocodeai/octocode-contracts/backlogs";
 import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { ruleLine } from "../../theme/dynamic-border.ts";
 import { onSecond } from "../shared/clock.ts";
@@ -21,16 +22,19 @@ type BoardChoice =
 	| { action: "export" }
 	| { action: "html" };
 
+/** A move's refusal to show, or undefined: at once, or once the write lands. */
+type Moved = string | undefined | Promise<string | undefined>;
+
 interface BoardSource {
 	title: string;
 	/** Fresh items (all states), re-read after every change. */
 	load(): Item[];
 	/** Move an item one column; returns a refusal to show, or undefined. */
-	move(item: Item, state: State): string | undefined;
+	move(item: Item, state: State): Moved;
 	/** Who "you" is, to mark items this session holds. */
 	self: string;
 	/** The repository's open tasks (re-read with the items) and a task's move to a neighbouring state; without it the board shows no tasks. */
-	tasks?: { load(): BacklogTask[]; move(task: BacklogTask, state: TaskState): string | undefined };
+	tasks?: { load(): BacklogTask[]; move(task: BacklogTask, state: TaskState): Moved };
 	/** What blocks or holds each of `items` (`BacklogStore.marks`); without it rows show no marks. */
 	marks?(items: Item[]): ReadonlyMap<string, ItemMarks>;
 	/** Changes whenever any process writes the database (`BacklogStore.revision`); the open board re-reads when it moves. */
@@ -89,6 +93,23 @@ export function showBoard(
 			layout = boardLayout(data, selected);
 			if (at() < 0) select(layout.rows[Math.min(Math.max(0, index), layout.rows.length - 1)]?.key);
 		};
+		/**
+		 * Re-reads at once: a write the database took without waiting has landed by now. One that waits for another
+		 * process's lock shows through the revision watch; its refusal shows once it settles.
+		 */
+		const moved = (outcome: Moved): void => {
+			flash = outcome instanceof Promise ? undefined : outcome;
+			reload();
+			refresh();
+			if (!(outcome instanceof Promise)) return;
+			void outcome
+				.catch((error: unknown) => errorMessage(error))
+				.then((refused) => {
+					if (refused === undefined) return;
+					flash = refused;
+					refresh();
+				});
+		};
 		const step = (by: number) => {
 			const { rows } = layout;
 			if (rows.length > 0) select(rows[Math.min(rows.length - 1, Math.max(0, Math.max(0, at()) + by))]?.key);
@@ -138,7 +159,8 @@ export function showBoard(
 					// → steps toward done, ← back toward todo; a dropped task steps like a todo one.
 					const next = TASK_FLOW[Math.max(0, TASK_FLOW.indexOf(current.task.state)) + (forward ? 1 : -1)];
 					if (!next || !source.tasks) return;
-					flash = source.tasks.move(current.task, next);
+					moved(source.tasks.move(current.task, next));
+					return;
 				} else if (current.item.type === "epic") {
 					// The row shows the state its items give it; stepping the stored one would move it the wrong way.
 					flash = `${current.item.ref} is an epic: its state follows its items.`;
@@ -146,7 +168,8 @@ export function showBoard(
 					// → steps toward done, ← back toward backlog: the same order the sections are drawn in.
 					const next = BOARD_ORDER[BOARD_ORDER.indexOf(current.item.state) + (forward ? 1 : -1)];
 					if (!next) return;
-					flash = source.move(current.item, next);
+					moved(source.move(current.item, next));
+					return;
 				}
 				reload();
 			} else if (keybindings.matches(input, "tui.select.confirm")) {

@@ -129,6 +129,34 @@ export const TerminalSettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.terminal.reduceMotion,
 		}),
 	),
+	screenReader: Type.Optional(
+		Type.Union([Type.Boolean(), Type.Literal("auto")], {
+			description:
+				'Screen-reader text mode: words instead of spinner, shimmer and gauge glyphs, and no animation. "auto" follows OCTOCODE_SCREEN_READER (1 or true).',
+			default: SETTINGS_DEFAULTS.terminal.screenReader,
+		}),
+	),
+	latencyFence: Type.Optional(
+		Type.Union([Type.Boolean(), Type.Literal("auto")], {
+			description:
+				'Probe the terminal\'s display lag (DSR 5n) and hold streaming frames while it is behind. "auto" is on in a terminal; OCTOCODE_LATENCY_FENCE=0 or 1 overrides the setting. Turn it off if a terminal misbehaves with the probe.',
+			default: SETTINGS_DEFAULTS.terminal.latencyFence,
+		}),
+	),
+	surfaceFills: Type.Optional(
+		Type.Boolean({
+			description:
+				"Paint user messages and notice panels with a quiet tint blended into the terminal background instead of the theme's panel colors.",
+			default: SETTINGS_DEFAULTS.terminal.surfaceFills,
+		}),
+	),
+	toolBands: Type.Optional(
+		Type.Boolean({
+			description:
+				"Tint each tool row with a quiet band blended from its state color into the terminal background. Themes that declare their own tool backgrounds keep them.",
+			default: SETTINGS_DEFAULTS.terminal.toolBands,
+		}),
+	),
 	emojiMarks: Type.Optional(
 		Type.Boolean({
 			description:

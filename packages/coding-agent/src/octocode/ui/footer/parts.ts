@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isScreenReaderMode } from "@octocodeai/octocode-tui";
 import { truncateToWidth } from "@octocodeai/octocode-tui/text";
 import { sanitizeTerminalText, styledLine } from "@octocodeai/octocode-common/sanitize";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
@@ -128,7 +129,10 @@ export function healthParts(state: FooterState, theme: FooterPaint): FooterPart[
 			const shown = Math.round(context.percent);
 			const { bar, color } = contextBar(context.percent, alarmPercent(context));
 			const figure = theme.fg(color, usagePercent(context.percent));
-			const gauge = `${label} ${theme.fg(color, bar)} ${figure}`;
+			// A screen reader gets words, not an 8-cell bar of block glyphs.
+			const gauge = isScreenReaderMode()
+				? `${theme.fg("muted", "context")} ${figure}`
+				: `${label} ${theme.fg(color, bar)} ${figure}`;
 			ctx = {
 				...ctx,
 				text: `${gauge} ${window}`,

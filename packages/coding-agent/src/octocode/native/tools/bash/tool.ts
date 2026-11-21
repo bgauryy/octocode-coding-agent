@@ -127,7 +127,7 @@ export function registerBashTool(
 					customType: JOB_TYPE,
 					content: jobReport(job, exit),
 					display: true,
-					details: jobDetails(job, wake),
+					details: jobDetails(job, exit, wake),
 				},
 				{ triggerTurn: wake, deliverAs: "followUp", together: true },
 			);
@@ -189,7 +189,7 @@ export function registerBashTool(
 		current = undefined;
 	});
 	api.renderers.message(JOB_TYPE, (message, { expanded, outputPad }, theme) =>
-		renderJobMessage(contentText(message.content), expanded, theme, outputPad ?? 1),
+		renderJobMessage(contentText(message.content), expanded, theme, outputPad ?? 1, message.details),
 	);
 
 	if (commands) registerJobsCommand(commands, jobs, work, links);

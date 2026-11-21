@@ -114,7 +114,7 @@ describe("durable application receipts", () => {
 		await receipts.begin(command());
 		await receipts.finish("request-one", "completed");
 		const workspace = new WorkspaceCommands(db, "repo", "session-one");
-		workspace.begin({ id: "application:user-selected-id", action: "message", to: "worker", text: "Review this" });
+		await workspace.begin({ id: "application:user-selected-id", action: "message", to: "worker", text: "Review this" });
 		expect(workspace.list()).toEqual([
 			expect.objectContaining({ id: "application:user-selected-id", action: "message", status: "pending" }),
 		]);

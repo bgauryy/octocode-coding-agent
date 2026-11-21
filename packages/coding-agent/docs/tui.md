@@ -141,7 +141,7 @@ All variables: [environment variables](environment-variables.md).
 
 ## When the screen misbehaves
 
-Run `/debug terminal` to see the selected mode, colors, links, images, keyboard protocol, explicit overrides, motion, clipboard limitations, output queue and terminal stalls. It enables aggregate rendering counters until exit; run it again after reproducing the problem. A zero counter can mean that no sample has been collected. It does not read the conversation or probe the clipboard. `/debug` retains the redacted diagnostics-file workflow.
+Run `/debug terminal` to see the selected mode, colors, links, images, keyboard protocol, explicit overrides, motion, clipboard limitations, output queue, the latency fence (supported, behind, last round trip, floor, held frames) and terminal stalls. It enables aggregate rendering counters until exit; run it again after reproducing the problem. A zero counter can mean that no sample has been collected. It does not read the conversation or probe the clipboard. `/debug` retains the redacted diagnostics-file workflow.
 
 | Symptom                                                         | Try                                                                                                                   |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -159,6 +159,7 @@ VS Code draws its terminal with a WebGL renderer, or a DOM renderer when WebGL f
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | VS Code `terminal.integrated.gpuAcceleration` | Keep the default `auto`. `"off"` forces the slow DOM renderer; use it only to work around GPU glyph bugs such as a coloured triangle or black block. |
 | Octocode `terminal.reduceMotion`              | `true` freezes spinners and shimmer, so there is less to repaint. `"auto"` (default) follows `OCTOCODE_REDUCE_MOTION`.                               |
+| Octocode `terminal.latencyFence`              | `"auto"` (default, on) probes display lag with `DSR 5n` and holds streaming frames while the terminal is behind. Set `false`, or `OCTOCODE_LATENCY_FENCE=0`, if a terminal misbehaves with the probe; `OCTOCODE_LATENCY_FENCE=1` forces it on. `/debug terminal` shows its state. |
 | Octocode `tuiMode`                            | `"fullscreen"` (default) or `"regular"`; try `regular` if fullscreen repaints lag.                                                                   |
 
 Values and defaults: [settings](settings.md).

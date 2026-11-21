@@ -17,17 +17,9 @@ import { cutText } from "@octocodeai/octocode-common/text";
 
 /** Deadlines of foreground commands and the text `bash` returns about moved and orphaned jobs. */
 
-/** A shell word for `file`, single-quoted when it holds anything a shell would split or expand; a leading `~/` stays outside the quotes so it still expands. */
-function shellWord(file: string): string {
-	const tilde = file.startsWith(`~${path.sep}`) ? `~${path.sep}` : "";
-	const rest = file.slice(tilde.length);
-	return /^[\w@%+=:,./-]+$/.test(rest) ? file : `${tilde}'${rest.replaceAll("'", `'\\''`)}'`;
-}
-
-/** The three lines that say where a background job logs and how to check and stop it; the Check line runs as shown. */
+/** The two lines that say where a background job logs and how to stop it. */
 export function jobLines(job: BashJob, cwd: string): string[] {
-	const log = shortPath(job.log, cwd);
-	return [`Log: ${log}`, `Check: tail -n 40 ${shellWord(log)}`, `Stop: kill -- -${job.pid}`];
+	return [`Log: ${shortPath(job.log, cwd)}`, `Stop: kill -- -${job.pid}`];
 }
 
 /** Deadline of a foreground command whose call names none, in seconds. */

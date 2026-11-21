@@ -1,1 +1,1 @@
-(reply: `agent` type `message` with `to` {{to}} and `replyTo` {{id}})
+(replyTo {{id}})

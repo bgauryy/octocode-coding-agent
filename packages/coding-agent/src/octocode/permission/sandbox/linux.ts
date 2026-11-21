@@ -33,7 +33,7 @@ export function missingPrograms(errors: readonly string[]): string {
 }
 
 /** What a program run reports; `error` when it could not start or ran past its time. */
-export interface ProbeResult {
+interface ProbeResult {
 	status: number | null;
 	stderr: string;
 	error?: Error;

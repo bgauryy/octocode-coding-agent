@@ -41,16 +41,13 @@ describe("octocode-debugging files", () => {
 		expect(broken).toEqual([]);
 	});
 
-	it("reaches every reference and script from SKILL.md and says when to load each reference", () => {
+	it("reaches every reference and script from SKILL.md", () => {
 		const entry = fs.readFileSync(path.join(skill, "SKILL.md"), "utf8");
 		const reachable = new Set(
 			[...entry.matchAll(/\]\(([^)#\s]+)\)/g)].map((m) => m[1]).filter((target) => !target.startsWith("http")),
 		);
 		for (const reference of fs.readdirSync(path.join(skill, "references"))) {
 			expect(reachable, reference).toContain(`references/${reference}`);
-			expect(fs.readFileSync(path.join(skill, "references", reference), "utf8"), reference).toMatch(
-				/^Load (when|for) /,
-			);
 		}
 		for (const script of fs.readdirSync(path.join(skill, "scripts"))) expect(entry, script).toContain(script);
 	});

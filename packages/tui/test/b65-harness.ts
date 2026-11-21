@@ -1,4 +1,3 @@
-import { performance } from "node:perf_hooks";
 import { Markdown } from "../src/components/markdown.ts";
 import { ScrollView } from "../src/components/scroll-view.ts";
 import { Text } from "../src/components/text.ts";
@@ -29,14 +28,23 @@ export interface FrameSample {
 	readonly totalMs: number;
 }
 
+/**
+ * Milliseconds of this process's CPU time. Frame costs are measured in CPU time, not wall time: the render is one
+ * synchronous call, so the two agree on an idle machine, while other processes' load stretches only the wall clock.
+ */
+function cpuNowMs(): number {
+	const { user, system } = process.cpuUsage();
+	return (user + system) / 1000;
+}
+
 class TimedMarkdown extends Markdown {
 	static ms = 0;
 	override render(width: number): string[] {
-		const start = performance.now();
+		const start = cpuNowMs();
 		try {
 			return super.render(width);
 		} finally {
-			TimedMarkdown.ms += performance.now() - start;
+			TimedMarkdown.ms += cpuNowMs() - start;
 		}
 	}
 }
@@ -44,9 +52,9 @@ class TimedMarkdown extends Markdown {
 class TimedTerminal extends VirtualTerminal {
 	writeMs = 0;
 	override write(data: string): void {
-		const start = performance.now();
+		const start = cpuNowMs();
 		super.write(data);
-		this.writeMs += performance.now() - start;
+		this.writeMs += cpuNowMs() - start;
 	}
 }
 
@@ -134,12 +142,12 @@ export function createHarness(options: HarnessOptions) {
 		};
 		TimedMarkdown.ms = 0;
 		terminal.writeMs = 0;
-		const start = performance.now();
+		const start = cpuNowMs();
 		internals.doRender();
-		const renderMs = performance.now() - start;
+		const renderMs = cpuNowMs() - start;
 		const box = internals.currentLayout && getScrollViewBox(internals.currentLayout, transcript);
 		const screen = internals.previousScreen;
-		const diffStart = performance.now();
+		const diffStart = cpuNowMs();
 		renderAltScreenOutput({
 			screen,
 			previousScreen: previous.screen,
@@ -154,7 +162,7 @@ export function createHarness(options: HarnessOptions) {
 			trimmedRows: internals.trimmedRows,
 			imageRowsMemo: new ImageRowsMemo(),
 		});
-		const diffMs = performance.now() - diffStart;
+		const diffMs = cpuNowMs() - diffStart;
 		const sample: FrameSample = {
 			step,
 			path: box?.materialize ? "virtual" : "exact",
@@ -183,9 +191,9 @@ export function createHarness(options: HarnessOptions) {
 		searchOpen: () => internals.search.activeSearch !== undefined,
 		/** Run `change` (timed as the application update), then paint one frame. */
 		update(name: string, change: () => void): FrameSample {
-			const start = performance.now();
+			const start = cpuNowMs();
 			change();
-			pendingUpdateMs = performance.now() - start;
+			pendingUpdateMs = cpuNowMs() - start;
 			return frame(name);
 		},
 		/** Send terminal input (timed as the application update), then paint one frame. */

@@ -4,7 +4,7 @@ import type { ApplicationMessage, ApplicationSnapshot } from "@octocodeai/octoco
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
-import { ApplicationProjection } from "../src/app/live/application-projection.ts";
+import { ApplicationProjection } from "@octocodeai/octocode-projections";
 import { ResultCard } from "../src/app/live/ResultCard.tsx";
 import { LiveProvider } from "../src/app/live/session.tsx";
 import { FakeSocket } from "./helpers.ts";

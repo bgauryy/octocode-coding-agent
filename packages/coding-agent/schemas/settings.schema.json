@@ -733,6 +733,42 @@
           "description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true.",
           "default": "auto"
         },
+        "screenReader": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Screen-reader text mode: words instead of spinner, shimmer and gauge glyphs, and no animation. \"auto\" follows OCTOCODE_SCREEN_READER (1 or true).",
+          "default": "auto"
+        },
+        "latencyFence": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Probe the terminal's display lag (DSR 5n) and hold streaming frames while it is behind. \"auto\" is on in a terminal; OCTOCODE_LATENCY_FENCE=0 or 1 overrides the setting. Turn it off if a terminal misbehaves with the probe.",
+          "default": "auto"
+        },
+        "surfaceFills": {
+          "type": "boolean",
+          "description": "Paint user messages and notice panels with a quiet tint blended into the terminal background instead of the theme's panel colors.",
+          "default": false
+        },
+        "toolBands": {
+          "type": "boolean",
+          "description": "Tint each tool row with a quiet band blended from its state color into the terminal background. Themes that declare their own tool backgrounds keep them.",
+          "default": false
+        },
         "emojiMarks": {
           "type": "boolean",
           "description": "Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal.",

@@ -15,7 +15,8 @@ function writerText(writer: DbWriterStats): string {
 	const ran = writer.inlineRuns
 		? `; ${writer.inlineRuns} on this thread, ${writer.inlineMs} ms in all, longest ${writer.inlineMaxMs} ms`
 		: "";
-	return `${name} on the main thread (${writer.fallback ? FALLBACK_TEXT[writer.fallback] : "inline"}${ran})`;
+	const refused = writer.inlineRefused ? `; refused ${writer.inlineRefused} too large for this thread` : "";
+	return `${name} on the main thread (${writer.fallback ? FALLBACK_TEXT[writer.fallback] : "inline"}${ran}${refused})`;
 }
 
 /**
@@ -25,10 +26,11 @@ function writerText(writer: DbWriterStats): string {
 export function workersLine(): string {
 	const parts = dbWriterStats().map(writerText);
 	const images = imageResizeStats();
-	if (images.inProcess > 0)
+	if (images.inProcess > 0 || images.inProcessRefused > 0) {
+		const refused = images.inProcessRefused ? `; refused ${images.inProcessRefused} too large for this thread` : "";
 		parts.push(
-			`image resizing on the main thread ${images.inProcess} time${images.inProcess === 1 ? "" : "s"} (longest ${images.inProcessMaxMs} ms${images.lastWorkerError ? `; worker: ${images.lastWorkerError.slice(0, 80)}` : ""})`,
+			`image resizing on the main thread ${images.inProcess} time${images.inProcess === 1 ? "" : "s"} (longest ${images.inProcessMaxMs} ms${refused}${images.lastWorkerError ? `; worker: ${images.lastWorkerError.slice(0, 80)}` : ""})`,
 		);
-	else if (images.worker > 0) parts.push("image resizing in a worker");
+	} else if (images.worker > 0) parts.push("image resizing in a worker");
 	return `Workers: ${parts.length ? parts.join("; ") : "none started"}`;
 }

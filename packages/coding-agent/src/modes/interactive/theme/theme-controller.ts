@@ -1,4 +1,4 @@
-import type { RgbColor, TerminalColors, TUI } from "@octocodeai/octocode-tui";
+import { getTerminalColorMode, type RgbColor, type TerminalColors, type TUI } from "@octocodeai/octocode-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import { SYSTEM_THEME_NAME } from "../../../theme/system-theme.ts";
 import {
@@ -144,7 +144,8 @@ export class InteractiveThemeController {
 	}
 
 	preview(themeSettingOrName: string): void {
-		const themeName = resolveThemeSetting(themeSettingOrName, getTerminalTheme()) ?? this.activeThemeName;
+		const themeName =
+			resolveThemeSetting(themeSettingOrName, getTerminalTheme(), getTerminalColorMode()) ?? this.activeThemeName;
 		if (!themeName) return;
 		if (setTheme(themeName, true).success) {
 			this.ui.invalidate();
@@ -172,7 +173,7 @@ export class InteractiveThemeController {
 
 	/** The theme for the current setting and terminal appearance. Without a setting, Octocode uses the system theme. */
 	private resolveThemeName(): string {
-		return resolveThemeSetting(this.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME;
+		return resolveThemeSetting(this.getThemeSetting(), getTerminalTheme(), getTerminalColorMode()) ?? SYSTEM_THEME_NAME;
 	}
 
 	private applyThemeName(themeName: string, showError = false): ThemeResult {

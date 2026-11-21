@@ -4,7 +4,7 @@
 
 import { access, readFile, stat } from "node:fs/promises";
 import type { ImageContent } from "@octocodeai/octocode-ai";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { openImageFile, resolveUserFilePath } from "../core/image-files.ts";
 import { processImage } from "../utils/image-process.ts";
 import { stripBom } from "@octocodeai/octocode-common/text";
@@ -105,11 +105,11 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 	for (const outcome of outcomes) {
 		switch (outcome.kind) {
 			case "missing":
-				console.error(chalk.red(`Error: File not found: ${outcome.path}`));
+				console.error(cliStyle.error(`Error: File not found: ${outcome.path}`));
 				process.exit(1);
 				break;
 			case "unreadable":
-				console.error(chalk.red(`Error: Could not read file ${outcome.path}: ${outcome.message}`));
+				console.error(cliStyle.error(`Error: Could not read file ${outcome.path}: ${outcome.message}`));
 				process.exit(1);
 				break;
 			case "thrown":

@@ -62,7 +62,7 @@ describe.runIf(posix)("foreground bash process handling", () => {
 				ctx,
 			)
 			.catch((error: Error) => error.message);
-		expect(message).toMatch(/^\[timed out after 1s · 2 lines[\s\S]*ready[\s\S]*cleaned-up/);
+		expect(message).toMatch(/^\[timed out after 1s\][\s\S]*ready[\s\S]*cleaned-up/);
 		expect(message).toMatch(/a longer timeout, or with background: true/);
 	});
 
@@ -87,7 +87,7 @@ describe.runIf(posix)("foreground bash process handling", () => {
 		await until(() => !groupAlive(group));
 		// A command that leaves nothing behind gets no note.
 		const clean = await tool.execute("t2", { command: "echo only" }, undefined, undefined, ctx);
-		expect(clean.content[0].text).toMatch(/^\[exit 0 · [\d.]+s · 1 line · 5 B\]\nonly\n$/);
+		expect(clean.content[0].text).toMatch(/^\[exit 0 · [\d.]+s\]\nonly\n$/);
 	});
 });
 
@@ -133,7 +133,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 		await until(() => sent.length === 1, 8_000);
 		const report = sent[0].message.content as string;
 		expect(report).toMatch(
-			/^\[exit 3 · [23]s · [^\n]*\]\nBackground bash bash-1 failed with exit code 3 after [23]s: echo before; sleep 2/,
+			/^\[exit 3 · [23]s · [^\n]*\]\nBackground bash bash-1 failed with exit code 3: echo before; sleep 2/,
 		);
 		expect(report).toMatch(/before\nafter$/);
 		// Like any background job: reported as a follow-up that wakes an idle session, and gone from the job list.
@@ -147,7 +147,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 		const { tool, sent, ctx } = setup(MOVES);
 		await tool.execute("t1", { command: "echo out; sleep 1.5; echo err >&2" }, undefined, undefined, ctx);
 		await until(() => sent.length === 1, 8_000);
-		expect(sent[0].message.content).toMatch(/bash-1 finished after [12]s[\s\S]*out\nerr$/);
+		expect(sent[0].message.content).toMatch(/Background bash bash-1 finished: [\s\S]*out\nerr$/);
 	});
 
 	it("stops a moved command at session end, with its whole process group", async () => {
@@ -215,7 +215,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 		const { tool, jobs, ctx } = setup(MOVES);
 		for (const command of ["sleep 30", "  sleep 30 && echo done"]) {
 			await expect(tool.execute("t1", { command, timeout: 1 }, undefined, undefined, ctx)).rejects.toThrow(
-				/\[timed out after 1s · /,
+				/\[timed out after 1s/,
 			);
 		}
 		// `sleep` only as a first word: a command that merely mentions it moves.
@@ -244,7 +244,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 			.get("bash")
 			.execute("t1", { command: "echo x; sleep 30" }, undefined, undefined, fakeCtx({ cwd: tmp() }))
 			.catch((error: Error) => error.message);
-		expect(message).toMatch(/^\[timed out after 1s · /);
+		expect(message).toMatch(/^\[timed out after 1s\]/);
 		expect(jobs.jobs.size).toBe(0);
 	});
 });

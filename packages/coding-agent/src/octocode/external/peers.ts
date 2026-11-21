@@ -271,11 +271,9 @@ export class Peers {
 				? `${name} has the message and is still preparing it. You are told if it cannot take it; do not send it again.`
 				: queued === WAITING_FOR_USER
 					? `Waiting for ${name}'s user to allow this message. You are told if it is refused; do not send it again.`
-					: queued === "turn"
-						? `Sent to ${name}, which starts a turn on it.`
-						: `Sent to ${name}, which reads it at its next step.`;
+					: `Sent to ${name}.`;
 		return {
-			text: `${fate} An answer arrives as a message from ${name}.${replyPath}`,
+			text: `${fate}${replyPath}`,
 			details: { to: [name], queued },
 		};
 	}

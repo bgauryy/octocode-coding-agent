@@ -6,6 +6,7 @@ import {
 	type ApplicationTool,
 } from "@octocodeai/octocode-contracts";
 import type { WorkspaceEvent } from "@octocodeai/octocode-contracts/workspace";
+import { applicationMessageDisplayed } from "./selectors.ts";
 
 /** View metadata retains the shared payload; renderers never reconstruct content from a text preview. */
 export type FeedEvent = WorkspaceEvent & {
@@ -56,7 +57,7 @@ export class ApplicationProjection {
 		const linked = new Set<string>();
 		const messages = new Map<string, FeedEvent>();
 		for (const message of snapshot?.messages ?? []) {
-			if (message.display === false || (message.role === "custom" && message.display !== true)) continue;
+			if (!applicationMessageDisplayed(message)) continue;
 			if (message.role === "toolResult" && message.toolCallId !== undefined && toolIds.has(message.toolCallId))
 				continue;
 			const references = new Set(

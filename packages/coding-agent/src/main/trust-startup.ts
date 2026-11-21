@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import type { Args } from "../cli/args.ts";
 import { showFolderTrustPrompt, type TrustChoice, type TrustPromptInput } from "../cli/trust-prompt.ts";
 import type { FolderTrustAsker } from "../core/folder-trust.ts";
@@ -17,7 +17,7 @@ function trustSurface(appMode: AppMode): TrustSurface {
 export function prepareAcpTrust(parsed: Args): void {
 	if (parsed.trust) {
 		console.error(
-			chalk.red(
+			cliStyle.error(
 				"Error: --trust does not apply to ACP: each session's folder must already be trusted. Run: octocode trust add <path>",
 			),
 		);
@@ -64,7 +64,7 @@ export async function gateStartup(input: {
 			appMode === "interactive" ? (question) => showFolderTrustPrompt(input.settingsManager, question) : undefined,
 	});
 	if (result.ok) {
-		if (result.notice) console.error(chalk.yellow(result.notice));
+		if (result.notice) console.error(cliStyle.warn(result.notice));
 		return;
 	}
 	(result.exitCode === 0 ? console.log : console.error)(result.message);

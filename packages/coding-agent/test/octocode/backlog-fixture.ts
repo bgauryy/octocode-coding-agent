@@ -15,11 +15,11 @@ export function fixtureBacklog(agent: () => AgentDb, workspaceId: string, now?: 
 }
 
 /**
- * The tool that takes `op`: `backlogPlan` plans and triages (add, edit, list), `backlog` works one item (get, claim,
+ * The tool that takes `op`: `backlogPlan` plans and triages (add, edit, list, stat), `backlog` works one item (get, claim,
  * note, done, close). The two share no operation name, so a test names the operation and this picks the tool.
  */
 export const backlogToolName = (op: unknown): "backlog" | "backlogPlan" =>
-	op === "add" || op === "edit" || op === "list" ? "backlogPlan" : "backlog";
+	op === "add" || op === "edit" || op === "list" || op === "stat" ? "backlogPlan" : "backlog";
 
 type EntryField = { description?: string; type?: string; enum?: string[]; anyOf?: unknown[]; items?: unknown };
 

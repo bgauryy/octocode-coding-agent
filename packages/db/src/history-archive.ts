@@ -1,14 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import zlib from "node:zlib";
-import { atomicWriteFileSync, sha256, syncDirectorySync } from "../../common/src/atomic-file.ts";
+import { sha256 } from "../../common/src/atomic-file.ts";
 import { withFileLockSync } from "../../common/src/file-write-lock.ts";
 import type { AgentDb } from "./db.ts";
 import { privateDir } from "../../common/src/file-mode.ts";
 import { canonicalPath } from "../../common/src/canonical-path.ts";
 import { DAY_MS } from "../../common/src/time.ts";
 import type { ArchiveRecord, ArchiveRow } from "./history-record.ts";
-import { cachedMonth, monthFiles, readMonth, pruneMonthCache } from "./history-month.ts";
+import { cachedMonth, monthFiles, pruneMonthCache } from "./history-month.ts";
+import { rewriteMonth } from "./history-rewrite.ts";
 import { auditSelection } from "./history-selection.ts";
 export type { ArchiveRecord, ArchiveRow } from "./history-record.ts";
 
@@ -56,79 +56,6 @@ export const archiveSource = (agentDb: Pick<AgentDb, "file">): string =>
 /** `<dir>/<family>-YYYY-MM.jsonl.gz` for the UTC month of `at`. */
 const monthFile = (dir: string, family: Family, at: number) =>
 	path.join(dir, `${family}-${new Date(at).toISOString().slice(0, 7)}.jsonl.gz`);
-
-/**
- * Rewrites one month file with `records` merged in, holding its lock (several Octocode processes may archive at once):
- * one record per database and id, or per receipt snapshot for mutable commands (a stale archiver must not replace a
- * newer receipt). Identical retries are kept once; no record outlives the keep window. Written atomically and owner-only
- * (the rows are as private as the database); a month left empty is removed.
- */
-function rewriteMonth(
-	file: string,
-	records: readonly ArchiveRecord[],
-	now: number,
-	keepMs: number,
-	assertActive: () => void,
-): void {
-	assertActive();
-	withFileLockSync(
-		file,
-		(assertHeld) => {
-			assertActive();
-			const existing = readMonth(file);
-			const merged = new Map<string, ArchiveRecord>();
-			const receipts = path.basename(file).startsWith("workspace-commands-");
-			const key = (record: ArchiveRecord) =>
-				JSON.stringify(receipts ? [record.db, record.id, sha256(JSON.stringify(record.row))] : [record.db, record.id]);
-			let changed = existing.length === 0 && fs.existsSync(file);
-			for (const record of existing) {
-				assertActive();
-				if (record.at < now - keepMs) {
-					changed = true;
-					continue;
-				}
-				const id = key(record);
-				if (merged.has(id)) changed = true;
-				merged.set(id, record);
-			}
-			for (const record of records) {
-				assertActive();
-				if (record.at < now - keepMs) continue;
-				const id = key(record);
-				if (JSON.stringify(merged.get(id)) === JSON.stringify(record)) continue;
-				merged.set(id, record);
-				changed = true;
-			}
-			assertHeld();
-			assertActive();
-			if (!changed) {
-				if (merged.size && (fs.statSync(file).mode & 0o777) !== 0o600) fs.chmodSync(file, 0o600);
-				if (merged.size && records.length) {
-					// A prior writer may have stopped after rename but before flushing its directory entry.
-					const fd = fs.openSync(file, "r");
-					try {
-						fs.fsyncSync(fd);
-					} finally {
-						fs.closeSync(fd);
-					}
-					syncDirectorySync(path.dirname(file));
-				}
-				return;
-			}
-			const kept = [...merged.values()].sort((a, b) => a.at - b.at);
-			if (kept.length === 0) fs.rmSync(file, { force: true });
-			else
-				atomicWriteFileSync(file, zlib.gzipSync(kept.map((record) => `${JSON.stringify(record)}\n`).join("")), {
-					mode: 0o600,
-					beforeCommit: () => {
-						assertActive();
-						assertHeld();
-					},
-				});
-		},
-		{ attempts: 1 },
-	);
-}
 
 /** Adds `records` of `family` to their month files under `dir` (created owner-only). */
 export function appendArchive(

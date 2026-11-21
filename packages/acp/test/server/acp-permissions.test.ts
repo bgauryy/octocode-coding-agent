@@ -58,6 +58,7 @@ describe("ACP permission relay", () => {
 		expect(h.requests).toHaveLength(1);
 		expect(h.requests[0].sessionId).toBe(sessionId);
 		expect(h.requests[0].toolCall.toolCallId).toBe("call-1");
+		expect(h.requests[0].toolCall.kind).toBe("edit");
 		expect(h.requests[0].options.map((option) => option.kind).sort()).toEqual(["allow_once", "reject_once"]);
 		expect(h.workers[0].respondToExtensionUIRequest).toHaveBeenCalledWith({
 			type: "extension_ui_response",

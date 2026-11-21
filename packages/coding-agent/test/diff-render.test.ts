@@ -1,3 +1,4 @@
+import { resetCapabilitiesCache, setCapabilities } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { generateDiffString } from "../src/core/tools/edit-diff.ts";
 import { renderDiff } from "../src/theme/diff.ts";
@@ -59,6 +60,27 @@ describe("renderDiff", () => {
 			const rendered = renderDiff(diff).split("\n");
 			expect(rendered.map(plain)).toEqual(diff.split("\n"));
 			for (const line of rendered) expect(new Set(backgrounds(line)).size).toBe(1);
+		});
+	});
+
+	describe("without tints", () => {
+		it("bolds changed words in 16 colors: no backgrounds, no reverse video", () => {
+			setCapabilities({ images: null, trueColor: false, hyperlinks: false });
+			const previousTerm = process.env.TERM;
+			process.env.TERM = "xterm-16color";
+			try {
+				initTheme("octocode-dark");
+				const { diff } = generateDiffString("let total = 0;\n", "let sum = 0;\n");
+				const added = renderDiff(diff)
+					.split("\n")
+					.find((line) => plain(line).startsWith("+"))!;
+				expect(added).toContain("\x1b[1msum\x1b[22m");
+				expect(added).not.toMatch(/\x1b\[(?:4\d|48;[0-9;]+|7)m/);
+			} finally {
+				if (previousTerm === undefined) delete process.env.TERM;
+				else process.env.TERM = previousTerm;
+				resetCapabilitiesCache();
+			}
 		});
 	});
 

@@ -372,9 +372,7 @@ describe("backlog tool", () => {
 		).toBe("Added B1 [backlog p1] Add memory tool #mem");
 		await t.text({ op: "add", items: [{ why: "Required work", title: "Accepted", goal: "it works", state: "todo" }] });
 		expect(await t.text({ op: "list" })).toBe("B2 [todo p2] Accepted\nB1 [backlog p1] Add memory tool #mem");
-		expect(await t.text({ op: "claim", id: "B1", note: "starting" })).toBe(
-			"Updated B1 [ongoing p1] Add memory tool #mem (you)",
-		);
+		expect(await t.text({ op: "claim", id: "B1", note: "starting" })).toMatch(/^Updated B1 \[ongoing p1\] v\d+$/);
 		const detail = await t.text({ op: "get", id: "b1", changes: true });
 		expect(detail).toContain("B1 [ongoing p1] Add memory tool #mem (you)");
 		expect(detail).toContain("with BM25");
@@ -416,10 +414,10 @@ describe("backlog tool", () => {
 				completion: completed(),
 				note: "fixed; yarn test passes",
 			}),
-		).toBe("Updated B1 [done p2] task");
+		).toMatch(/^Updated B1 \[done p2\] v\d+$/);
 		expect(t.tool.executionMode).toBeUndefined();
 		expect(t.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close", "step"]);
-		expect(t.plan.parameters.properties.op.enum).toEqual(["add", "edit", "list"]);
+		expect(t.plan.parameters.properties.op.enum).toEqual(["add", "edit", "list", "stat"]);
 	});
 
 	it("refuses an add it cannot complete before creating anything, so a retry leaves no duplicate", async () => {
@@ -580,7 +578,7 @@ describe("backlog tool", () => {
 				completion: completed(),
 				note: "done; verified",
 			}),
-		).toBe("Updated B1 [done p2] delegated");
+		).toMatch(/^Updated B1 \[done p2\] v\d+$/);
 		await expect(sub.call({ op: "close", id: "B3", close: { kind: "obsolete", text: "not needed" } })).rejects.toThrow(
 			/not claimed by your coordinator/,
 		);
@@ -602,9 +600,7 @@ describe("backlog tool", () => {
 			goal: "child goal",
 			note: "started",
 		});
-		expect(result).toBe(
-			"Updated B1 [ongoing p2] delegated (coordinator)\n(goal/why kept: your coordinator owns them.)",
-		);
+		expect(result).toMatch(/^Updated B1 \[ongoing p2\] v\d+\n\(goal\/why kept: your coordinator owns them\.\)$/);
 		const item = workspaceStore(sub.cwd).get("B1")!;
 		expect([item.why, item.goal]).toEqual(["Parent reason", "parent goal"]);
 		// The permission rule stands: the other fields stay the parent's, and so does an item it has not claimed.
@@ -715,7 +711,7 @@ describe("backlog tool", () => {
 		expect(await t.text({ op: "list", derivedFrom: "B1", states: ["backlog"] })).toBe(
 			"B2 [backlog p2] Follow-up (from B1)",
 		);
-		expect(await t.text({ op: "edit", items: [{ id: "B2", from: "" }] })).toBe("Updated B2 [backlog p2] Follow-up");
+		expect(await t.text({ op: "edit", items: [{ id: "B2", from: "" }] })).toMatch(/^Updated B2 \[backlog p2\] v\d+$/);
 		await expect(
 			t.call({ op: "add", items: [{ why: "Required work", title: "x", goal: "it works", from: "B9" }] }),
 		).rejects.toThrow(/No backlog item B9 to link from/);
@@ -1205,8 +1201,8 @@ describe("backlog fields: where, why, evidence, plan", () => {
 		expect([...at].sort((a, b) => a - b)).toEqual(at);
 		expect(await t.text({ op: "list" })).toBe("B1 [todo p2] Path search");
 		expect(await t.text({ op: "list", query: "src/backlog/" })).toBe("B1 [todo p2] Path search");
-		expect(await t.text({ op: "edit", items: [{ id: "B1", paths: ["src/x.ts"], plan: "Replace it." }] })).toBe(
-			"Updated B1 [todo p2] Path search",
+		expect(await t.text({ op: "edit", items: [{ id: "B1", paths: ["src/x.ts"], plan: "Replace it." }] })).toMatch(
+			/^Updated B1 \[todo p2\] v\d+$/,
 		);
 		expect(await t.text({ op: "get", id: "B1" })).toContain("Where: src/x.ts\n");
 		expect(await t.text({ op: "get", id: "B1" })).toContain("Plan: Replace it.\n");

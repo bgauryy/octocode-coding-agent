@@ -30,7 +30,7 @@ import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
 import { chainPlan, type QueuedRun, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
-import { refuseSecondChild as refuseSecond } from "./second-child.ts";
+import { holdItem, refuseSecondChild as refuseSecond } from "./second-child.ts";
 import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
 import type { Runners } from "./runner-port.ts";
@@ -42,6 +42,7 @@ import { childCacheGroup, taskSkillPlan, taskSkillText } from "./task-skills.ts"
 import { childTaskInput, taskReferences } from "./task-text.ts";
 import { withItems } from "./task-items.ts";
 import { resolveTaskServers } from "./task-servers.ts";
+import { joinTeamPatiently } from "./team-join.ts";
 import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
 /** What starting a subagent reads of the `agent` tool's registration (`tool.ts`). */
@@ -64,12 +65,10 @@ export interface SpawnEnv {
 }
 
 type AgentParams = Static<ReturnType<typeof agentToolSpec>["parameters"]>;
-
 /**
  * One `agent` task call. A foreground call past the limit waits for a slot, its row saying so. A background call past it
- * returns its id at once and takes the slot detached, tied to the session rather than this turn: the batch that fanned it
- * out would otherwise hold the parent deaf to reports and questions until all but the last few had launched. `mail`: the
- * resume's `task` is a delivered message that names its sender, so it goes without the coordinator's follow-up header.
+ * returns its id at once and takes the slot detached (tied to the session), so a batch never keeps the parent deaf. `mail`:
+ * the resume's `task` is a delivered message naming its sender, so it goes without the coordinator's follow-up header.
  */
 export async function spawnAgent(
 	env: SpawnEnv,
@@ -81,10 +80,11 @@ export async function spawnAgent(
 	mail = false,
 ): Promise<AgentToolResult<RunDetails>> {
 	const { api, runs, permission, lingering } = env;
-	const { team } = runs;
+	const team = runs.team;
 	const generation = runs.session;
 	const current = () => generation === runs.session;
 	const launchSignal = env.withLaunch(signal);
+	const joined = await joinTeamPatiently(team); // first, so one batch's calls still check and claim in order
 	launchSignal.throwIfAborted();
 	const tooDeep = nestingRefusal();
 	if (tooDeep) throw new Error(tooDeep);
@@ -129,33 +129,34 @@ export async function spawnAgent(
 	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands(), roleOnly);
 	const skillResources = api.resources.getSkillResourceSnapshot(skillPlan.names);
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
-	let referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
+	const unhold = holdItem(runs, linked, id); // before any await, so one batch's calls hold their items in call order
 	const slot = { held: false };
-	if (params.background) {
-		// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
-		// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
-		slot.held = !chained && startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
-	} else {
-		// Before a slot: a start that waits for a sibling's paths must not keep others from theirs.
-		reserving = await awaitSiblings(team, reserving, replan, launchSignal, waitingRow, (clear) => clear);
-		await startGate.wait(launchSignal);
-		await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
-		slot.held = true;
-	}
+	let referenced = "";
 	let claimed: Run | undefined;
 	let grants: Awaited<ReturnType<typeof askSpawn>>;
 	let approvedVia: string | undefined;
 	try {
+		referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
+		if (params.background) {
+			// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
+			// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
+			slot.held = !chained && startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
+		} else {
+			// Before a slot: a start that waits for a sibling's paths must not keep others from theirs.
+			reserving = await awaitSiblings(team, reserving, replan, launchSignal, waitingRow, (clear) => clear);
+			await startGate.wait(launchSignal);
+			await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
+			slot.held = true;
+		}
 		grants = await askSpawn(permission, ctx, plan.profile, params.task, launchSignal, api.settings.get().defaultTools, {
 			toolCallId: id,
 			goal,
+			apps: params.apps,
 			answered: (via) => (approvedVia = via),
 		});
-		// An isolated run's name must not repeat a saved ref: `/agents merge <name>` would be ambiguous.
-		const refs = params.isolate ? await pendingRefs(ctx.cwd) : [];
+		const refs = params.isolate ? await pendingRefs(ctx.cwd) : []; // an isolated name repeating one: merge is ambiguous
 		launchSignal.throwIfAborted();
-		// Siblings started while the user was asked (or a slot waited for) now hold paths: from here to the claim nothing
-		// awaits, so what this finds is what the claim reserves against.
+		// Siblings started meanwhile hold paths; past this loop nothing awaits, so the claim reserves against what it finds.
 		reserving = replan();
 		while (reserving.waitOn.length > 0 && !params.background) {
 			waitingRow(reserving);
@@ -166,11 +167,9 @@ export async function spawnAgent(
 			runs.slots.give();
 			slot.held = false;
 		}
-		// Parallel calls of one batch all passed the first check, and a foreground call may have waited long for its slot.
+		// Spend and children changed while this call waited; the item is claimed once the run is (a queued child: when it starts).
 		refuseOverSpend();
 		refuseSecondChild();
-		// The item is claimed only now: everything that could refuse the call has passed. A queued child claims it when it starts.
-		if (!chained) linked?.claim();
 		claimed = claimRun(
 			runs,
 			plan,
@@ -186,10 +185,12 @@ export async function spawnAgent(
 			refs,
 			undefined,
 			slot,
+			joined,
 		);
 		if (resumed) lingering.forget(resumed.child.id);
 		runs.groups.join(claimed.identity.id, params.background === true);
 	} finally {
+		unhold();
 		if (!claimed && slot.held) runs.slots.give();
 	}
 	const run = claimed;
@@ -220,7 +221,7 @@ export async function spawnAgent(
 				queuedChild?.finish();
 			}));
 	let handedOff = false;
-	// From the claim on, every failure goes through `finish`; the item is registered before the reservation's wait (one batch, one child).
+	// Failures go through `finish`. The item: registered before the reservation (one batch, one child), claimed after it.
 	const waitsForSiblings = reserving.waitOn.length > 0;
 	try {
 		configureIdentity(run, runs, api, permission, ctx, {
@@ -237,6 +238,7 @@ export async function spawnAgent(
 			: waitsForSiblings
 				? `\n\n(${waitingText(reserving)}.)`
 				: await takeReservation(team, run, reserving, launchSignal);
+		if (!chained && linked) await linked.claim(launchSignal);
 		const host = env.relayHost(ctx);
 		const session = resumed?.session ?? childSession(run.identity);
 		const details = runDetails(run, session);
@@ -349,11 +351,11 @@ export async function spawnAgent(
 					{ goal, item: linked?.ref, after, details },
 					() =>
 						spawnStillAllowed(permission, ctx, plan.profile, params.task, api.settings.get().defaultTools, approvedVia),
-					() => {
+					async (signal) => {
 						reserving = replan();
 						refuseOverSpend();
 						refuseSecondChild(run.identity.id);
-						linked?.claim();
+						await linked?.claim(signal);
 					},
 				);
 			startBackground(runs, run, details, params.task, whenFree, finish, sessionId, window);

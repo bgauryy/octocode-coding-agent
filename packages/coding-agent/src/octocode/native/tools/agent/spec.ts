@@ -18,7 +18,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 		label: "Agent",
 		description:
 			"Delegate a self-contained task to a fresh session without this conversation. " +
-			`Foreground returns its report; background returns its id and delivers the report later. At most ${maxSubagents()} at once; more wait.`,
+			`Foreground returns its report; background returns its id, the report comes later. At most ${maxSubagents()} at once; more wait.`,
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
@@ -27,7 +27,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "MCP servers added to the profile defaults; omit: the session's servers; empty: profile only",
+					description: "MCP servers added to the profile defaults; omit: session's servers; empty: profile only",
 				}),
 			),
 			goal: Type.Optional(
@@ -37,23 +37,22 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			task: Type.String({
 				description:
-					"Required, also on resume; brief per the octocode-subagents skill. msg#<N> or report:<agent-id> appends that message or report.",
+					"Required, also on resume; brief per the octocode-subagents skill. msg#<N> or report:<agent-id> appends it.",
 			}),
 			item: Type.Optional(
 				Type.String({
-					description: "Your ongoing or an unclaimed item (claimed here); the child updates only it.",
+					description: "An ongoing or unclaimed item (claimed here); the child updates only it.",
 				}),
 			),
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: start after each B<n>, agent:<name> and job:bash-<n> (this session) finishes and lock:full-run is free; a failure holds it.",
+						"With background: start after each B<n>, agent:<name>, job:bash-<n> finishes and lock:full-run is free; a failure holds it.",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
-					description:
-						"Continue this session's finished or stopped child (needs task); a queued or held child starts now.",
+					description: "Continue a finished or stopped child of this session (needs task); a queued one starts now.",
 				}),
 			),
 			profile: Type.Optional(
@@ -66,6 +65,11 @@ export function agentToolSpec(runners: readonly string[] = []) {
 					description: "Browser: false shows the window; default headless",
 				}),
 			),
+			apps: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "Desktop: the only apps it may control",
+				}),
+			),
 			model: Type.Optional(
 				Type.String({
 					description:
@@ -76,12 +80,12 @@ export function agentToolSpec(runners: readonly string[] = []) {
 				// A plain object schema: `Type.Record` would add a `patternProperties` block to every request for the same meaning.
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
-					description: "JSON Schema of the final verdict (details); every node needs type",
+					description: "JSON Schema of the final verdict; every node needs type",
 				}),
 			),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Return at once; the report comes later",
+					description: "Return at once; report later",
 				}),
 			),
 			hooks: Type.Optional(StringEnum(HOOK_MODES, { description: "User hooks (default off)" })),
@@ -93,7 +97,7 @@ export function agentToolSpec(runners: readonly string[] = []) {
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
-					description: "With isolate: start from the working copy",
+					description: "With isolate: start from the working tree",
 				}),
 			),
 			paths: Type.Optional(

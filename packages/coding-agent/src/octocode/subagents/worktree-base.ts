@@ -30,6 +30,13 @@ export interface Worktree {
 	warning?: string;
 }
 
+/** The git-ignored files a child wrote under `.octocode/`, copied to the checkout before its worktree was removed; paths are relative to the checkout. */
+export interface WorktreeOutputs {
+	copied: string[];
+	/** Paths where the checkout held a newer file, so the child's version was saved beside it. */
+	conflicts: string[];
+}
+
 export interface WorktreeResult {
 	/** The private ref holding the subagent's changes; absent when it changed nothing. */
 	ref?: string;
@@ -37,6 +44,8 @@ export interface WorktreeResult {
 	stat?: string;
 	/** Set when the child's changes did not apply to the commit it started from: the ref is the child's own head, built on the parent's working-copy snapshot; `patch` is its own change as a file. */
 	conflict?: { patch: string; reason: string };
+	/** Set when ignored output files were copied or held back (`worktree-outputs.ts`). */
+	outputs?: WorktreeOutputs;
 }
 
 export { worktreesDir } from "../worktree-paths/own-worktree.ts";

@@ -1,6 +1,6 @@
 import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { openBacklog } from "../backlog/context.ts";
+import { openBacklogWhenReady } from "../backlog/context.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { tasks } from "../../../../db/src/api.ts";
@@ -49,11 +49,11 @@ export async function finishChildNotes(
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
 	const item = linked
-		? linked.attach(outcome, agent, isolation.ref, isolation.patch, lingers)
+		? await linked.attach(outcome, agent, isolation.ref, isolation.patch, lingers)
 		: isolation.ref
-			? trackSavedRef(ctx, agent, isolation.ref, isolation.patch)
+			? await trackSavedRef(ctx, agent, isolation.ref, isolation.patch)
 			: "";
-	return `${note}${item}${current() ? adoptChildTasks(ctx, agent) : ""}${steps}`;
+	return `${note}${item}${current() ? await adoptChildTasks(ctx, agent) : ""}${steps}`;
 }
 
 /**
@@ -61,10 +61,12 @@ export async function finishChildNotes(
  * the resume brief shows them and nothing is orphaned. Returns the footer line for the parent (empty when the child left
  * none); never throws: the child's report still arrives.
  */
-export function adoptChildTasks(ctx: Ctx, agent: string): string {
+export async function adoptChildTasks(ctx: Ctx, agent: string): Promise<string> {
 	try {
-		const backlog = openBacklog(ctx, { isSubagent: false });
-		const moved = backlog.store.tasks.adopt(agent, backlog.session, backlog.actor);
+		const backlog = await openBacklogWhenReady(ctx, { isSubagent: false });
+		const moved = await backlog.store.transactionWhenReady(() =>
+			backlog.store.tasks.adopt(agent, backlog.session, backlog.actor),
+		);
 		return moved.length
 			? `\nMoved ${moved.length} open task${moved.length === 1 ? "" : "s"} of ${agent} to this session: ${moved.map((task) => task.ref).join(", ")}.`
 			: "";

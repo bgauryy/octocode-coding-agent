@@ -321,7 +321,9 @@ export function renderInventory(
 				`${"  ".repeat(item.depth + 1)}[${item.locked ? "-" : item.on ? "x" : " "}] ${item.label}${item.detail ? ` — ${item.detail}` : ""}  ${item.id}`,
 			);
 		if (shown.length < rows.length)
-			lines.push(`  … ${rows.length - shown.length} more: /harness list ${host === "mcp" ? "mcp" : "<section or text>"}`);
+			lines.push(
+				`  … ${rows.length - shown.length} more: /harness list ${host === "mcp" ? "mcp" : "<section or text>"}`,
+			);
 	}
 	if (!lines.length) lines.push(full ? EMPTY_INVENTORY : "No items match.");
 	if (full && inventory.stale.length)

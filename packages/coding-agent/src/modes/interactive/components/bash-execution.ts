@@ -59,6 +59,7 @@ export class BashExecutionComponent extends Container {
 	/** `dim` marks `!!` commands, whose output is excluded from the model context; both are neutral, not a state colour. */
 	private readonly colorKey: "dim" | "bashMode";
 	private readonly excludeFromContext: boolean;
+	private readonly ui: Pick<TUI, "keepScrollbackOnCollapse">;
 	private outputPad: number;
 	/** Whether the output has lines the preview hides (or is open): only then does a click toggle it. */
 	private expandable = false;
@@ -67,6 +68,7 @@ export class BashExecutionComponent extends Container {
 
 	constructor(command: string, ui: TUI, excludeFromContext = false, outputPad = 1) {
 		super();
+		this.ui = ui;
 		this.command = command;
 		this.colorKey = excludeFromContext ? "dim" : "bashMode";
 		this.excludeFromContext = excludeFromContext;
@@ -97,6 +99,8 @@ export class BashExecutionComponent extends Container {
 	 * Set whether the output is expanded (shows full output) or collapsed (preview only).
 	 */
 	setExpanded(expanded: boolean): void {
+		// Output that scrolled away stays in scrollback when it collapses; only the screen is repainted.
+		if (this.expanded && !expanded) this.ui.keepScrollbackOnCollapse?.();
 		this.expanded = expanded;
 		this.updateDisplay();
 	}

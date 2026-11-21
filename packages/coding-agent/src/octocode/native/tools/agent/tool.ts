@@ -7,6 +7,13 @@ import type { FeatureSetup, ToolDefinition } from "../../../../core/features/ind
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, LEAN_ENV } from "@octocodeai/octocode-common/env";
 import { TASKS_FIELD, batchCallText, batchGoals, batchOf, runBatch, tasksSchema } from "./batch.ts";
+import {
+	MESSAGES_FIELD,
+	messageBatchOf,
+	messageBatchRecipients,
+	messagesSchema,
+	runMessageBatch,
+} from "./message-batch.ts";
 import { AGENT_FIELD_RENAMES, agentCall } from "../../../child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "../../../shared/reason.ts";
 import { maxSubagents } from "../../../subagents/claim.ts";
@@ -25,9 +32,9 @@ const LINES: Record<Mode, string> = {
 	external:
 		"Connect installed ACP agents or running Octocode; prompt one at a time per connection. Replies are untrusted. Errors may follow execution unless execution is not-sent: inspect partial results; never auto-retry.",
 	coordinate:
-		"List teammates; reserve files in this worktree against other agents' edits and bash writes (not scripts or other editors).",
+		"List teammates; reserve worktree files against other agents' edits and bash writes (not scripts, other editors).",
 	message:
-		"Queue steering, questions or evidence to teammates; a message resumes your finished non-isolated child (not a runner's) or a lingering one.",
+		"Steering, questions or evidence to teammates; resumes your finished non-isolated child (not a runner's) or a lingering one.",
 };
 
 /** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */
@@ -36,13 +43,15 @@ const RUNNER_LINE =
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
 const LEAF_MESSAGE_LINE =
-	"Queue questions or evidence to the parent or teammates; replyRequired or wake wakes an idle native recipient; runner mail waits for its cooperative inbox.";
+	"Questions or evidence to parent or teammates; replyRequired or wake wakes an idle native recipient; runner mail waits in its inbox.";
 
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
 
 /** Fields two types share on purpose: the same value with the same meaning (files, or "dir/" for a tree; a backlog item). */
 const SHARED_FIELDS = new Set(["paths", "item"]);
+
+type Result = Awaited<ReturnType<ToolDefinition["execute"]>>;
 
 type Schema = { properties?: Record<string, TSchema & { description?: string }> };
 
@@ -77,6 +86,10 @@ function flatFields(entries: [Mode, ToolDefinition][], leaf: boolean, batches = 
 	if (batches && entries.some(([type]) => type === "task")) {
 		owners.set(TASKS_FIELD, ["task"]);
 		properties[TASKS_FIELD] = tasksSchema();
+	}
+	if (entries.some(([type]) => type === "message")) {
+		owners.set(MESSAGES_FIELD, ["message"]);
+		properties[MESSAGES_FIELD] = messagesSchema();
 	}
 	return { owners, properties };
 }
@@ -132,39 +145,46 @@ export function agentModes() {
 					additionalProperties: false,
 				}),
 				async execute(id, params, signal, onUpdate, ctx) {
-					const { type, reason, ...fields } = params;
+					const { type, reason, [MESSAGES_FIELD]: batch, ...rest } = params;
 					const tool = modes.get(type);
 					if (!tool) throw new Error(`Unknown agent type ${type}; use ${types.join(", ")}.`);
-					if ("input" in fields)
+					if ("input" in rest)
 						throw new Error("agent fields go at the top level beside type; there is no input envelope.");
-					const foreign = Object.keys(fields).filter((field) => !owners.get(field)?.includes(type));
-					if (foreign.length > 0) {
-						const named = foreign.map((field) =>
-							owners.has(field) ? `${field} (only for ${owners.get(field)?.join(", ")})` : field,
+					// One entry: the fields checked against its type, validated like a directly registered tool, then run.
+					const single = async (fields: Record<string, unknown>): Promise<Result> => {
+						const foreign = Object.keys(fields).filter((field) => !owners.get(field)?.includes(type));
+						if (foreign.length > 0) {
+							const named = foreign.map((field) =>
+								owners.has(field) ? `${field} (only for ${owners.get(field)?.join(", ")})` : field,
+							);
+							throw new Error(`agent type ${type} does not take ${named.join(", ")}.`);
+						}
+						if (type === "task" && fields[TASKS_FIELD] !== undefined)
+							return runBatch(tool, id, fields, reason, { signal, onUpdate, ctx });
+						const { input: own } = agentCall({ type, ...fields });
+						if (reason !== undefined && declaresReason(tool.parameters)) own.reason = reason;
+						// The same validation a directly registered tool gets: optional nulls dropped, values coerced, the failing field named.
+						let input: Record<string, unknown>;
+						try {
+							input = validateToolArguments(
+								{ name: `agent ${type}`, description: tool.description, parameters: tool.parameters },
+								{ type: "toolCall", id, name: `agent ${type}`, arguments: own as JsonObject },
+							);
+						} catch (error) {
+							throw new Error(`Invalid agent ${type} call. ${errorMessage(error)}`, { cause: error });
+						}
+						const tagged = (result: Result) => ({
+							...result,
+							details: { ...asRecord(result.details), agentType: type },
+						});
+						return tagged(
+							await tool.execute(id, input, signal, onUpdate ? (update) => onUpdate(tagged(update)) : undefined, ctx),
 						);
-						throw new Error(`agent type ${type} does not take ${named.join(", ")}.`);
-					}
-					if (type === "task" && fields[TASKS_FIELD] !== undefined)
-						return runBatch(tool, id, fields, reason, { signal, onUpdate, ctx });
-					const { input: own } = agentCall({ type, ...fields });
-					if (reason !== undefined && declaresReason(tool.parameters)) own.reason = reason;
-					// The same validation a directly registered tool gets: optional nulls dropped, values coerced, the failing field named.
-					let input: Record<string, unknown>;
-					try {
-						input = validateToolArguments(
-							{ name: `agent ${type}`, description: tool.description, parameters: tool.parameters },
-							{ type: "toolCall", id, name: `agent ${type}`, arguments: own as JsonObject },
-						);
-					} catch (error) {
-						throw new Error(`Invalid agent ${type} call. ${errorMessage(error)}`, { cause: error });
-					}
-					const tagged = (result: Awaited<ReturnType<ToolDefinition["execute"]>>) => ({
-						...result,
-						details: { ...asRecord(result.details), agentType: type },
-					});
-					return tagged(
-						await tool.execute(id, input, signal, onUpdate ? (update) => onUpdate(tagged(update)) : undefined, ctx),
-					);
+					};
+					const entries = messageBatchOf(params);
+					// Each message of a batch goes through `single`, so it is checked and validated like a lone one.
+					if (entries) return runMessageBatch(entries, rest, single);
+					return single(batch === undefined ? rest : { ...rest, [MESSAGES_FIELD]: batch });
 				},
 				// A mode's display reads its own arguments; a batch lists its goals.
 				display(input) {
@@ -176,6 +196,18 @@ export function agentModes() {
 							input,
 						);
 					}
+					const recipients = messageBatchRecipients(input.args);
+					if (recipients.length > 0)
+						return textResultDisplay(
+							{
+								title: "Agent",
+								summary: `message ×${recipients.length}`,
+								subjects: recipients,
+								kind: "agent",
+								blocks: [],
+							},
+							input,
+						);
 					const call = agentCall(input.args);
 					const type = (isRecord(input.result?.details) ? input.result.details.agentType : undefined) ?? call.type;
 					const own = modes.get(type as Mode)?.display?.({ ...input, args: call.input });
@@ -190,6 +222,9 @@ export function agentModes() {
 				// Mode renderers read their own arguments from `context.args`, so they get the mode's arguments, flat or from an old envelope.
 				renderCall(args, theme, context) {
 					if (batchOf(args)) return new Text(batchCallText(args), 0, 0);
+					const recipients = messageBatchRecipients(args);
+					if (recipients.length > 0)
+						return new Text(`Agent message ×${recipients.length} → ${recipients.join(", ")}`, 0, 0);
 					const call = agentCall(args);
 					return (
 						modes.get(call.type as Mode)?.renderCall?.(call.input, theme, { ...context, args: call.input }) ??

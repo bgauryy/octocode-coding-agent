@@ -1,4 +1,4 @@
-import type { UiState } from "../model/ui-state.ts";
+import type { UiState } from "@octocodeai/octocode-contracts";
 import { cx } from "./primitives.tsx";
 
 /**

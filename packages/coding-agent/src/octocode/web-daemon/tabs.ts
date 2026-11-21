@@ -174,7 +174,8 @@ export class TabHub {
 			if (this.backlogKey(other.scope) === this.backlogKey(tab.scope)) this.sendBacklog(other, cache);
 		const session = tab.scope.session;
 		if (!session) return;
-		await this.workspaceChanged(session.id, true);
+		// The workspace read and the transcript stream are independent: a slow read must not hold the stream back.
+		const workspace = this.workspaceChanged(session.id, true);
 		// Live request frames of this session's agents: the session sends them to the daemon once it is subscribed.
 		tab.profilerOff = session.client.profiler.onUpdate((update) =>
 			this.post(tab, { type: "profiler", data: redactData(update) }),
@@ -183,8 +184,11 @@ export class TabHub {
 		if (tab.socket.readyState !== WebSocket.OPEN) this.releaseProfiler(tab);
 		const connection = session.client.application.connect({ sessionId: session.id, cursor });
 		tab.connection = connection;
-		if (tab.socket.readyState !== WebSocket.OPEN) return connection.close();
-		await pumpApplicationFrames(tab.socket, connection, { access: tab.access });
+		if (tab.socket.readyState !== WebSocket.OPEN) {
+			connection.close();
+			return workspace;
+		}
+		await Promise.all([workspace, pumpApplicationFrames(tab.socket, connection, { access: tab.access })]);
 	}
 
 	/** Stops a tab's profiler frames; the session stops sending them (and polling) once no tab of it is left. */

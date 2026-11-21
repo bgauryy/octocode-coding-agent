@@ -14,6 +14,7 @@ import * as sessionState from "./session-manager/state.ts";
 import {
 	findMostRecentForCwd,
 	forkSessionFile,
+	forkSessionFileAsync,
 	getDefaultSessionDir,
 	resolveOpenedSession,
 } from "./session-manager/storage.ts";
@@ -285,6 +286,31 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 	): SessionManager {
 		const { cwd, dir, sessionFile, sourceFile, sourceId } = forkSessionFile(sourcePath, targetCwd, sessionDir, options);
 		const fork = new SessionManager(cwd, dir, sessionFile, true);
+		recordFork(
+			cwd,
+			fork.getSessionId(),
+			sessionFile,
+			typeof sourcePath === "string" ? { file: sourceFile, expectedId: sourceId } : sourcePath,
+		);
+		return fork;
+	}
+
+	/** `forkFrom` reading the source, writing the fork and opening it without blocking input. */
+	static async forkFromAsync(
+		sourcePath: string | { storedId: string },
+		targetCwd: string,
+		sessionDir?: string,
+		options?: NewSessionOptions,
+		signal?: AbortSignal,
+	): Promise<SessionManager> {
+		const { cwd, dir, sessionFile, sourceFile, sourceId } = await forkSessionFileAsync(
+			sourcePath,
+			targetCwd,
+			sessionDir,
+			options,
+			signal,
+		);
+		const fork = await SessionManager.openAsync(sessionFile, dir, cwd);
 		recordFork(
 			cwd,
 			fork.getSessionId(),

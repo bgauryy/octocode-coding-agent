@@ -86,30 +86,36 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 		const by = openerLabel(paneOpened.get(pane.id), deps.self);
 		return by ? `${paneLabel(pane)} · ${by}` : paneLabel(pane);
 	};
-	const lines: string[] = [];
+	// One block per worktree, its own line first: `coordinate list` keeps only some of them.
+	const blocks = new Map<string, string[]>();
 	const occupied = new Set<string>();
 	for (const status of statuses) {
-		lines.push(
+		const block = [
 			listLine(status, main, status.entry.path === current, openerLabel(opened.get(status.entry.path), deps.self)),
-		);
+		];
+		blocks.set(status.entry.path, block);
 		const here = byRoot.get(status.entry.path);
 		if (here && (here.agents.length > 0 || here.panes.length > 0)) occupied.add(status.entry.path);
 		if (here?.agents.length)
-			lines.push(`      agents: ${here.agents.map((member) => agentLabel(member, panes)).join("; ")}`);
-		if (here?.panes.length) lines.push(`      tmux: ${here.panes.map(paneText).join("; ")}`);
+			block.push(`      agents: ${here.agents.map((member) => agentLabel(member, panes)).join("; ")}`);
+		if (here?.panes.length) block.push(`      tmux: ${here.panes.map(paneText).join("; ")}`);
 		const clis = foreignAt(status.entry.path);
 		if (clis.length > 0) {
 			occupied.add(status.entry.path);
-			lines.push(`      other agent CLIs: ${foreignText(clis)}`);
+			block.push(`      other agent CLIs: ${foreignText(clis)}`);
 		}
 	}
-	if (unplaced.length > 0)
-		lines.push(`  Agents in no listed worktree: ${unplaced.map((member) => agentLabel(member, panes)).join("; ")}`);
+	const tail =
+		unplaced.length > 0
+			? [`  Agents in no listed worktree: ${unplaced.map((member) => agentLabel(member, panes)).join("; ")}`]
+			: [];
 	return {
 		main,
 		statuses,
 		members,
-		lines,
+		lines: [...[...blocks.values()].flat(), ...tail],
+		blocks,
+		tail,
 		occupied,
 		opened,
 		foreign: foreign.some((cli) => innermostWorktree(roots, cli.cwd) !== undefined),
@@ -118,13 +124,22 @@ export async function worktreeLines(cwd: string, deps: SummaryDependencies) {
 
 /**
  * The `Worktrees:` block of `coordinate list`, or undefined when the repository has only its main worktree and nothing
- * runs in tmux. A clean worktree nobody works in is named as ready to close only when the asking session opened it with `/worktree remove`.
+ * runs in tmux. It lists only worktrees an agent, tmux pane or other agent CLI works in, or that this repository's agents
+ * opened; the rest are counted, and `/worktree list` shows them all. A clean worktree nobody works in is named as ready
+ * to close only when the asking session opened it with `/worktree remove`.
  */
 export async function describeWorktrees(cwd: string, deps: SummaryDependencies): Promise<string | undefined> {
 	// Outside a git checkout (or in a bare repository) there are no worktrees to show.
 	if (!(await gitQuiet(cwd, ["rev-parse", "--show-toplevel"]))) return undefined;
-	const { statuses, lines, occupied, opened, foreign } = await worktreeLines(cwd, deps);
+	const { statuses, blocks, tail, occupied, opened, foreign } = await worktreeLines(cwd, deps);
 	if (!statuses.some((status) => !status.main) && !inTmux(deps) && !foreign) return undefined;
+	const shown = [...blocks].filter(([root]) => occupied.has(root) || opened.has(root));
+	const hidden = blocks.size - shown.length;
+	const lines = [
+		...shown.flatMap(([, block]) => block),
+		...tail,
+		...(hidden > 0 ? [`  ${hidden} other worktree${hidden === 1 ? "" : "s"} without agents: /worktree list`] : []),
+	];
 	const idle = statuses
 		.filter((status) => !status.main && status.name && !status.error && !status.entry.prunable)
 		.filter((status) => status.dirty + status.untracked + status.unmerged === 0)

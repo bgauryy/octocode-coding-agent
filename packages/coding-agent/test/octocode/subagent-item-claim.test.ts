@@ -30,48 +30,48 @@ function session() {
 }
 
 describe("agent task `item` for an item this session does not hold", () => {
-	it("checks an unheld todo item first and claims it only when told to, saying so", () => {
+	it("checks an unheld todo item first and claims it only when told to, saying so", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "unheld", state: "todo", createdBy: "user" });
 		const link = itemLink(ctx, "B1")!;
 		expect(backlog.store.get("B1")).toMatchObject({ state: "todo" });
-		link.claim();
-		link.claim();
+		await link.claim();
+		await link.claim();
 		const item = backlog.store.get("B1")!;
 		expect(item).toMatchObject({ state: "ongoing", assignee: "session-test" });
-		expect(link.attach(undefined, "w1")).toContain("Claimed B1 for this session");
+		expect(await link.attach(undefined, "w1")).toContain("Claimed B1 for this session");
 		const notes = backlog.store.notes(item, -1).map((note) => note.text);
 		expect(notes.some((text) => text.includes("delegating it to a subagent"))).toBe(true);
 	});
 
-	it("takes an item this session already holds as it is, without a claim line", () => {
+	it("takes an item this session already holds as it is, without a claim line", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "held", state: "todo", createdBy: "user" });
 		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
-		expect(link.attach(undefined, "w1")).toBe("");
+		await link.claim();
+		expect(await link.attach(undefined, "w1")).toBe("");
 	});
 
-	it("refuses at claim time an item another session took after the check", () => {
+	it("refuses at claim time an item another session took after the check", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "raced", state: "todo", createdBy: "user" });
 		const link = itemLink(ctx, "B1")!;
 		backlog.store.update("B1", { state: "ongoing" }, { id: "other-session" });
-		expect(() => link.claim()).toThrow("B1 is held by other-session, not by this session");
+		await expect(link.claim()).rejects.toThrow("B1 is held by other-session, not by this session");
 	});
 
-	it("links a saved ref on the item, naming the patch file when the ref did not take the change cleanly", () => {
+	it("links a saved ref on the item, naming the patch file when the ref did not take the change cleanly", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "held", state: "todo", createdBy: "user" });
 		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
 		const patch = "/repo/.octocode/tmp/isolate/w1.patch";
 		const notes = () => backlog.store.notes(backlog.store.get("B1")!, -1).map((note) => note.text);
-		expect(itemLink(ctx, "B1")!.attach(undefined, "w1", "refs/octocode/w1", patch)).toContain(
+		expect(await itemLink(ctx, "B1")!.attach(undefined, "w1", "refs/octocode/w1", patch)).toContain(
 			"Linked refs/octocode/w1",
 		);
 		expect(notes().at(-1)).toContain(`its own change is the patch ${patch}`);
-		itemLink(ctx, "B1")!.attach(undefined, "w2", "refs/octocode/w2");
+		await itemLink(ctx, "B1")!.attach(undefined, "w2", "refs/octocode/w2");
 		expect(notes().at(-1)).not.toContain("patch");
 	});
 

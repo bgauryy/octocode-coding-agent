@@ -21,17 +21,17 @@ const ITEM = {
 	id: text("edit: the item"),
 	version: { type: "integer", description: "edit: refused if stale" },
 	title: text("one-line summary"),
-	goal: text("Definition of Done, checkable; add needs it"),
+	goal: text("checkable Definition of Done; add needs it"),
 	why: text("why it matters; add needs it"),
 	type: { type: "string", enum: [...ITEM_TYPES], description: "default feature; epic groups work" },
 	parentId: {
 		anyOf: [{ type: "string" }, { type: "null" }],
-		description: "parent epic id, or an earlier entry's exact title; null clears",
+		description: "epic id or an earlier entry's exact title; null clears",
 	},
-	dependsOn: list("prerequisite item ids, or an earlier entry's exact title; [] clears"),
-	paths: list("files, dirs or components affected"),
+	dependsOn: list("prerequisite ids or earlier entries' exact titles; [] clears"),
+	paths: list("affected files, dirs, components"),
 	evidence: list("observations with source (path:line, command)"),
-	plan: text("approach and steps; blast radius, before -> after"),
+	plan: text("approach, steps; blast radius, before -> after"),
 	priority: { type: "string", enum: [...PRIORITIES], description: "p0 urgent … p3 someday (default p2)" },
 	tags: { type: "array", items: { type: "string" } },
 	from: text('origin item id; "" clears'),
@@ -41,7 +41,7 @@ const ITEM = {
 		enum: [...PLAN_STATES],
 		description: "default backlog; an epic follows its items",
 	},
-	note: text("note to append; a reopen needs one"),
+	note: text("appended note; a reopen needs one"),
 };
 
 /** The item fields by name, for a call that writes one beside `items` or sends one as a list filter. */
@@ -52,11 +52,11 @@ export const EDIT_ENTRY_FIELDS: readonly string[] = ["id", "version", ...ADD_ENT
 /** Fields `backlog` owns, with the operation that takes each: an entry that sends one is told where it goes. */
 export const WORK_FIELDS: Record<string, string> = { completion: "done", close: "close" };
 
-export const PLAN_OPS = ["add", "edit", "list"] as const;
+export const PLAN_OPS = ["add", "edit", "list", "stat"] as const;
 
 /**
  * The declaration of `backlogPlan`: `add` and `edit` write the entries of `items`, each typed, so the model has a
- * contract for every item and a provider's strict tool mode can constrain it; every other field is a `list` filter.
+ * contract for every item and a provider's strict tool mode can constrain it; every other field is a `list` or `stat` filter.
  */
 export function planParameters(ops: string) {
 	return Type.Object(
@@ -65,7 +65,7 @@ export function planParameters(ops: string) {
 			items: Type.Optional(
 				Type.Array(
 					Type.Unsafe<Record<string, unknown>>({ type: "object", properties: ITEM, additionalProperties: false }),
-					{ description: "one entry per item; a refused entry does not stop the rest" },
+					{ description: "one per item; a refused one does not stop the rest" },
 				),
 			),
 			...listFields,

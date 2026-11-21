@@ -46,13 +46,33 @@ flowchart TD
     A[Mark drawn] --> B{Reduced motion?}
     B -- yes --> S[Static glyph in its color]
     B -- no --> C{State}
-    C -- running --> R[Spinner frame every 80 ms; 200 ms for background work]
+    C -- running --> R[Spinner frame every 100 ms after a 200 ms start delay; 200 ms frames for background work]
     C -- waiting --> W[Breathes for 4 s, then holds still]
     C -- done --> D[Glows for 450 ms, then settles]
     C -- other --> S
 ```
 
 A still screen writes nothing: marks that no longer move stop requesting repaints. Elapsed-time counters tick once per second even in reduced motion.
+
+### One running idiom
+
+Running work looks one way: the braille spinner (one cell, `accent`) on the main working line, and a shimmer on its label. Nothing else on screen spins at the same time: tool rows and agent rows use the state light, and a second moving mark never joins the working line.
+
+- The working spinner stays hidden for its first 200 ms, so a short run never flashes one; its cell stays blank so the label does not shift when it appears.
+- Every shimmer shares one epoch (the animation clock's time), so labels sweep in step. A band runs from the terminal's default foreground dimmed toward its background at rest up to the full foreground at its center; with 16 colors, where there is nothing to mix, the band is bold on dim text. With no color, a shimmer is plain text.
+
+### Emphasis
+
+Weight and style carry meaning the color roles do not.
+
+| Style     | Means                                                      |
+| --------- | ---------------------------------------------------------- |
+| Bold      | Identity or state: a title, the selected row, a state word |
+| Dim       | Chrome: separators, key names, fold hints, pending marks   |
+| Italic    | Model-internal text: thinking blocks                       |
+| Underline | Links                                                      |
+
+Use one style per meaning and never stack bold, italic and underline on one run of text.
 
 ### Motion gating
 

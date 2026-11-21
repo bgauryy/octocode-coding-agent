@@ -77,8 +77,10 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 					},
 					move: (item, state) =>
 						state === "done" || item.state === "done"
-							? "Open the item actions to complete or reopen with a result/reason."
-							: apply(ctx, () => backlog.store.update(item.ref, { state, version: item.version }, userActor(backlog))),
+							? Promise.resolve("Open the item actions to complete or reopen with a result/reason.")
+							: apply(ctx, backlog, () =>
+									backlog.store.update(item.ref, { state, version: item.version }, userActor(backlog)),
+								),
 				},
 				selected,
 			);

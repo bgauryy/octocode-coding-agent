@@ -16,6 +16,7 @@ import { runPluginCommand } from "../plugins/marketplace/command.ts";
 import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { confirmAction, successNotice } from "../shared/page.ts";
+import { addSkillActions } from "./add-skill.ts";
 import { HarnessPicker } from "./picker.ts";
 import { HARNESS_SECTIONS, type HarnessSection, sectionOf } from "./sections.ts";
 import { switchHarness, switchOnPreview } from "./vendor-items.ts";
@@ -239,6 +240,13 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 					loading = false;
 				});
 		};
+		const scanOptions = () =>
+			loaded && {
+				cwd: ctx.cwd,
+				agentDir: loaded.agentDir,
+				projectTrusted: ctx.isProjectTrusted(),
+				settings: api.settings.get(),
+			};
 		// MCP switches wait for the list to close: a row toggled back and forth costs nothing, and each server switches once.
 		const pending = new Map<string, { item: InventoryItem; on: boolean; scope: SwitchScope; was: boolean }>();
 		let harnessSwitched = false;
@@ -263,14 +271,14 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 						section,
 						retry: beginLoad,
 						apply,
-						preview: (item) =>
-							loaded &&
-							switchOnPreview(item, {
-								cwd: ctx.cwd,
-								agentDir: loaded.agentDir,
-								projectTrusted: ctx.isProjectTrusted(),
-								settings: api.settings.get(),
-							}),
+						preview: (item) => {
+							const options = scanOptions();
+							return options && switchOnPreview(item, options);
+						},
+						addSkill: addSkillActions(() => {
+							const options = scanOptions();
+							return loaded && options && { manager: loaded.manager, options };
+						}),
 						initialId,
 						...(openTools
 							? {

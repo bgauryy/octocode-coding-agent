@@ -10,7 +10,7 @@ export async function openRunnerBridge(
 	input: RunnerMemberInput,
 	vouch: (id: string, secret: string) => () => void,
 ) {
-	const member = new RunnerMember(host, input, vouch);
+	const member = await RunnerMember.open(host, input, vouch);
 	try {
 		const server = await serveTools({
 			name: "octocode-team",
@@ -31,12 +31,12 @@ export async function openRunnerBridge(
 					try {
 						await server.close();
 					} finally {
-						member.close();
+						await member.close();
 					}
 				})()),
 		};
 	} catch (error) {
-		member.close();
+		await member.close();
 		throw error;
 	}
 }

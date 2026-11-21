@@ -12,7 +12,8 @@
 		".": "./src/api.ts"
 	},
 	"scripts": {
-		"test": "vitest --run"
+		"test": "vitest --run",
+		"bench:archive": "node scripts/bench-archive.ts"
 	},
 	"dependencies": {
 		"@octocodeai/octocode-common": "1.3.0",

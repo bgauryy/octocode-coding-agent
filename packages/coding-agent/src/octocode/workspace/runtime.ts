@@ -25,6 +25,7 @@ import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize"
 import { contentText } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
 import { agentBase, createProfiler, endedRuns, memberTranscript, sessionTranscript } from "../profiler/index.ts";
+import { storedSilences } from "../profiler/silences.ts";
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 
 interface Operations {
@@ -201,10 +202,10 @@ export class WorkspaceRuntime {
 		sessionId: string,
 		signal: AbortSignal,
 	): void {
-		void delivery.catch((error: unknown) => {
+		void delivery.catch(async (error: unknown) => {
 			const message = `Agent request failed: ${redactSecrets(errorMessage(error)).slice(0, 1000)}. ${request.backlogId} remains claimed; inspect activity before retrying.`;
 			try {
-				const receipt = commands.finish(request.id, "failed", message);
+				const receipt = await commands.finish(request.id, "failed", message);
 				if (!signal.aborted && this.sessionId === sessionId) this.publish("command", message, receipt, "failed");
 			} catch {
 				if (!signal.aborted && this.sessionId === sessionId)
@@ -256,6 +257,7 @@ export class WorkspaceRuntime {
 				return [...live.map(agentBase), ...ended.members(skip)];
 			},
 			traffic: () => this.operations.traffic(),
+			silences: (ids) => storedSilences(database().db, ids),
 			sessionTranscript: (id) => sessionTranscript(database().db, id),
 			history: (limit, before) => {
 				const involves = this.operations.involves?.();
@@ -333,7 +335,7 @@ export class WorkspaceRuntime {
 			},
 			execute: async (command) => {
 				active();
-				const existing = commands.begin(command);
+				const existing = await commands.begin(command, signal);
 				if (!existing.fresh) return existing.receipt;
 				let receipt: WorkspaceReceipt;
 				try {
@@ -383,9 +385,9 @@ export class WorkspaceRuntime {
 						if (refused) throw new Error(refused);
 						message = "Stop requested.";
 					}
-					receipt = commands.finish(command.id, "accepted", message);
+					receipt = await commands.finish(command.id, "accepted", message);
 				} catch (error) {
-					receipt = commands.finish(command.id, "failed", redactSecrets(errorMessage(error)));
+					receipt = await commands.finish(command.id, "failed", redactSecrets(errorMessage(error)));
 				}
 				if (!signal.aborted && this.sessionId === sessionId) this.publish("command", receipt.message, receipt);
 				return receipt;

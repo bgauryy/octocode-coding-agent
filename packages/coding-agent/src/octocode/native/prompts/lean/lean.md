@@ -32,7 +32,7 @@
 - Put long output in a file in your scratch folder and cite its path.
 {{/if}}
 {{/unless}}
-- Be brief. Cite what you read or ran (path:line, command, URL); never invent results. Keep observations, inferences and unknowns apart.
+- Be brief and optimal (code, calls, reads). Cite what you read or ran (path:line, command, URL); never invent results. Keep observations, inferences and unknowns apart.
 - Put the bottom line first: the result, then the evidence, unknowns and next step.
 - Each call's `reason`: one sentence of why.
 {{#unless main}}

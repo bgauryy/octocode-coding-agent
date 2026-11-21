@@ -8,6 +8,8 @@ import type { FeatureContext, ToolDefinition } from "../../../../core/features/i
 import { resultBlock, toolHeader } from "../../../render/tool.ts";
 import { clip } from "../../../shared/text.ts";
 import { contentText, textResult } from "../../../shared/util.ts";
+import { batchEntries } from "../../../shared/batch.ts";
+import { withReason } from "../../../shared/reason.ts";
 import type { ConditionDeps } from "../../../timer/conditions/types.ts";
 import { CHECK_CAPS } from "../../../timer/judge.ts";
 import { armUntil, describeCondition, parseUntil } from "../../../timer/conditions/index.ts";
@@ -28,43 +30,63 @@ const text = (description: string) => Type.Optional(Type.String({ description })
 const parameters = Type.Object(
 	{
 		op: StringEnum(["set", "on", "off", "list"] as const),
-		note: text("Required: what to do when woken"),
+		note: text("Required: what to do on waking"),
 		after: Type.Optional(Type.Number({ description: "set: wake once after this many seconds" })),
 		every: Type.Optional(
 			Type.Number({
-				description: `set: wake repeatedly every N seconds (min ${MIN_EVERY_SECONDS}). on: how often to check the event (min ${MIN_CHECK_SECONDS}).`,
+				description: `set: repeat every N seconds (min ${MIN_EVERY_SECONDS}); on: event check interval (min ${MIN_CHECK_SECONDS})`,
 			}),
 		),
 		event: Type.Optional(StringEnum(LISTEN_EVENTS, { description: "on: the event to wait for" })),
 		filter: Type.Optional(
 			Type.Object(
 				{
-					ref: text("Item ids, comma-separated; any one matches"),
-					state: text("Item state: todo, ongoing, done, closed, or ready (every dependency done)"),
+					ref: text("Item ids, comma-separated; any matches"),
+					state: text("todo, ongoing, done, closed, or ready (deps done)"),
 					path: Type.Optional(Type.String()),
 					agent: Type.Optional(Type.String()),
-					epic: text("item.changed: only items under this epic"),
-					change: text("item.changed: change kinds, comma-separated; omit for any"),
+					epic: text("item.changed: items under this epic"),
+					change: text("item.changed: kinds, comma-separated; omit: any"),
 					command: text("Shell command; the wake fires when it exits 0"),
 				},
 				{ additionalProperties: false },
 			),
 		),
-		check: text(
-			"on: a question a small model judges when the event fires (costs a model call); omit to use filter.command alone (free)",
+		check: text("on: judged when the event fires (paid); omit: filter.command alone (free)"),
+		cron: text("set: 5-field local-time cron; replaces after/every"),
+		tz: text("set with cron: IANA zone, e.g. Europe/Paris"),
+		once: Type.Optional(Type.Boolean({ description: "on: stop at the first wake (default); false keeps listening" })),
+		maxRuns: Type.Optional(Type.Integer({ description: "Stop after N wakes (default 20)" })),
+		deadline: Type.Optional(Type.Number({ description: "Seconds until it expires (on: default 3600)" })),
+		id: Type.Optional(Type.Integer({ description: "off: wait to remove (see list)" })),
+		all: Type.Optional(Type.Boolean({ description: "list: include ended; off: remove all" })),
+		items: Type.Optional(
+			Type.Unsafe<object[]>({
+				type: "array",
+				items: { type: "object" },
+				description: "set/on/off: batch entries",
+			}),
 		),
-		cron: text("set: 5-field cron in local time; replaces after and every"),
-		tz: text("set with cron: IANA time zone, e.g. Europe/Paris"),
-		once: Type.Optional(
-			Type.Boolean({ description: "on: stop after the first wake (default); false keeps listening" }),
-		),
-		maxRuns: Type.Optional(Type.Integer({ description: "Stop after this many wakes (default 20)" })),
-		deadline: Type.Optional(Type.Number({ description: "Seconds until the wait expires (on: default 3600)" })),
-		id: Type.Optional(Type.Integer({ description: "off: the wait to remove (see list)" })),
-		all: Type.Optional(Type.Boolean({ description: "list: include ended waits; off: remove every wait" })),
 	},
 	{ additionalProperties: false },
 );
+
+/**
+ * What a call is validated against: the declared fields, with each `items` entry held to the single call's fields, so a
+ * batch is checked as strictly as one call while the declared schema stays short.
+ */
+const validation = (() => {
+	const { op: _op, items: _items, ...single } = parameters.properties;
+	return withReason(
+		Type.Object(
+			{
+				...parameters.properties,
+				items: Type.Optional(Type.Array(Type.Object(single, { additionalProperties: false }), { minItems: 1 })),
+			},
+			{ additionalProperties: false },
+		),
+	);
+})();
 
 type Params = Omit<TimerSetInput, "until"> & {
 	op: "set" | "on" | "off" | "list";
@@ -73,6 +95,8 @@ type Params = Omit<TimerSetInput, "until"> & {
 	check?: string;
 	id?: number;
 	all?: boolean;
+	/** set, on or off: several entries of the single-call fields, each run as its own call. */
+	items?: object[];
 };
 
 /** Where the tool reads and writes: the shared database, this workspace and the owner session. */
@@ -103,6 +127,89 @@ export interface TimerToolDetails {
 }
 
 export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, TimerToolDetails> {
+	/** One set, on or off: the checks each kind of wait needs, then its row; off cancels. */
+	async function write(params: Params, toolCallId: string, signal: AbortSignal | undefined, ctx: FeatureContext) {
+		signal?.throwIfAborted();
+		const { db } = host.db();
+		const session = ctx.sessionManager.getSessionId();
+		const now = host.now();
+		if (params.op === "off") {
+			const result = cancelTimers(db, session, now, params);
+			if (result.changed) host.changed(ctx);
+			return textResult(result.text, result.details);
+		}
+		const listening = params.op === "on";
+		if (!listening && [params.event, params.filter, params.check].some((value) => value !== undefined))
+			throw new Error("event, filter and check belong to on; set wakes after or every seconds.");
+		const given = listening ? untilOfEvent(params.event, params.filter, params.check) : undefined;
+		const backlog = host.deps.backlog;
+		// A backlog wait hears only what changes after it starts: the audit cursor of this moment is stored in it.
+		const until = given && backlog ? armUntil(given, () => backlog.head()) : given;
+		if (timers.activeCount(db, session) >= MAX_ACTIVE)
+			throw new Error(`This session has ${MAX_ACTIVE} active waits, the most it may hold: turn one off first.`);
+		const agent = host.agent();
+		const condition = parseUntil(until);
+		const ended = condition?.kind === "agent" ? host.deps.agentEnd(condition.name) : undefined;
+		if (condition?.kind === "agent" && ended)
+			throw new Error(
+				`${condition.name} already ended (${ended.reason}), so there is nothing to wait for: its report reaches you without a wait. Nothing was set.`,
+			);
+		const missing =
+			condition?.kind === "item" ? condition.ref.split(",").filter((ref) => host.deps.item(ref) === undefined) : [];
+		if (missing.length) throw new Error(`No backlog item ${missing.join(", ")} in this workspace. Nothing was set.`);
+		if (condition?.kind === "landed" && host.deps.item(condition.ref) === undefined)
+			throw new Error(`No backlog item ${condition.ref} in this workspace. Nothing was set.`);
+		if (condition?.kind === "changed") {
+			const unknown = condition.ref?.split(",").filter((ref) => host.deps.item(ref) === undefined) ?? [];
+			if (unknown.length) throw new Error(`No backlog item ${unknown.join(", ")} in this workspace. Nothing was set.`);
+			if (params.once === false)
+				throw new Error("item.changed wakes once: set it again after each wake, from the cursor you read then.");
+		}
+		if (
+			condition?.kind === "landed" &&
+			condition.path !== undefined &&
+			host.deps.reservation(path.resolve(ctx.cwd, condition.path), condition.path) === undefined
+		)
+			throw new Error(
+				`No other agent reserves ${condition.path}, so its release would meet this wait at once: drop path and wait on the item. Nothing was set.`,
+			);
+		if (condition?.kind === "check") {
+			const refusal = await host.checkRefusal(ctx);
+			if (refusal) throw new Error(refusal);
+		}
+		if (params.cron !== undefined) {
+			const spec = parseCron(params.cron, params.tz, now);
+			const refusal = await host.cronRefusal(ctx, describeCron(spec), nextRunAt(spec, 0, now) ?? now);
+			if (refusal) throw new Error(refusal);
+		}
+		signal?.throwIfAborted();
+		const inserted = timers.insert(
+			db,
+			timerFields({ ...params, ...(until ? { until } : {}) }, now, {
+				workspaceId: host.workspaceId(ctx),
+				sessionId: session,
+				...(agent ? { agent } : {}),
+				toolCallId,
+				cwd: ctx.cwd,
+				...(params.cron !== undefined ? { sessionUsd: host.sessionUsd(ctx) } : {}),
+			}),
+		);
+		const spec = cronOf(inserted);
+		if (spec) timers.reschedule(db, inserted.id, settledDue(inserted, now));
+		const timer = spec ? (timers.get(db, inserted.id) ?? inserted) : inserted;
+		host.changed(ctx, timer);
+		const caps =
+			condition?.kind === "check"
+				? `\nJudging is capped: ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perCheckUsd.toFixed(2)} per judgment, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session, 30s apart.`
+				: "";
+		const head = spec
+			? cronSetText(timer, spec, now, host.cronCap())
+			: listening
+				? listeningLine(timer, now)
+				: `Set ${timerLine(timer, now)}`;
+		return textResult(`${head}${caps}`, { timer });
+	}
+
 	return {
 		name: "wait",
 		label: "Wait",
@@ -110,12 +217,13 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		description:
 			"Wake this session with a note: set after/every seconds or a cron schedule; on an event (once:false repeats); off by id; list also shows what wakes you unasked. Free: on check.result with filter.command (`test -e path`) wakes at exit 0. Paid: check, a question a small model judges.",
 		parameters,
+		validationParameters: validation,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();
-			const { db } = host.db();
-			const session = ctx.sessionManager.getSessionId();
-			const now = host.now();
 			if (params.op === "list") {
+				const { db } = host.db();
+				const session = ctx.sessionManager.getSessionId();
+				const now = host.now();
 				const rows = timers.forSession(db, session, params.all === true);
 				const implicit = host.implicit();
 				const text = [
@@ -124,82 +232,17 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 				].join("\n");
 				return textResult(text, { shown: rows.length });
 			}
-			if (params.op === "off") {
-				const result = cancelTimers(db, session, now, params);
-				if (result.changed) host.changed(ctx);
-				return textResult(result.text, result.details);
-			}
-			const listening = params.op === "on";
-			if (!listening && [params.event, params.filter, params.check].some((value) => value !== undefined))
-				throw new Error("event, filter and check belong to on; set wakes after or every seconds.");
-			const given = listening ? untilOfEvent(params.event, params.filter, params.check) : undefined;
-			const backlog = host.deps.backlog;
-			// A backlog wait hears only what changes after it starts: the audit cursor of this moment is stored in it.
-			const until = given && backlog ? armUntil(given, () => backlog.head()) : given;
-			if (timers.activeCount(db, session) >= MAX_ACTIVE)
-				throw new Error(`This session has ${MAX_ACTIVE} active waits, the most it may hold: turn one off first.`);
-			const agent = host.agent();
-			const condition = parseUntil(until);
-			const ended = condition?.kind === "agent" ? host.deps.agentEnd(condition.name) : undefined;
-			if (condition?.kind === "agent" && ended)
-				throw new Error(
-					`${condition.name} already ended (${ended.reason}), so there is nothing to wait for: its report reaches you without a wait. Nothing was set.`,
-				);
-			const missing =
-				condition?.kind === "item" ? condition.ref.split(",").filter((ref) => host.deps.item(ref) === undefined) : [];
-			if (missing.length) throw new Error(`No backlog item ${missing.join(", ")} in this workspace. Nothing was set.`);
-			if (condition?.kind === "landed" && host.deps.item(condition.ref) === undefined)
-				throw new Error(`No backlog item ${condition.ref} in this workspace. Nothing was set.`);
-			if (condition?.kind === "changed") {
-				const unknown = condition.ref?.split(",").filter((ref) => host.deps.item(ref) === undefined) ?? [];
-				if (unknown.length)
-					throw new Error(`No backlog item ${unknown.join(", ")} in this workspace. Nothing was set.`);
-				if (params.once === false)
-					throw new Error("item.changed wakes once: set it again after each wake, from the cursor you read then.");
-			}
-			if (
-				condition?.kind === "landed" &&
-				condition.path !== undefined &&
-				host.deps.reservation(path.resolve(ctx.cwd, condition.path), condition.path) === undefined
-			)
-				throw new Error(
-					`No other agent reserves ${condition.path}, so its release would meet this wait at once: drop path and wait on the item. Nothing was set.`,
-				);
-			if (condition?.kind === "check") {
-				const refusal = await host.checkRefusal(ctx);
-				if (refusal) throw new Error(refusal);
-			}
-			if (params.cron !== undefined) {
-				const spec = parseCron(params.cron, params.tz, now);
-				const refusal = await host.cronRefusal(ctx, describeCron(spec), nextRunAt(spec, 0, now) ?? now);
-				if (refusal) throw new Error(refusal);
-			}
-			signal?.throwIfAborted();
-			const inserted = timers.insert(
-				db,
-				timerFields({ ...params, ...(until ? { until } : {}) }, now, {
-					workspaceId: host.workspaceId(ctx),
-					sessionId: session,
-					...(agent ? { agent } : {}),
-					toolCallId,
-					cwd: ctx.cwd,
-					...(params.cron !== undefined ? { sessionUsd: host.sessionUsd(ctx) } : {}),
-				}),
+			const { items, op, ...shared } = params;
+			if (items === undefined) return write(params, toolCallId, signal, ctx);
+			if (Object.values(shared).some((value) => value !== undefined))
+				throw new Error("items carries each entry's fields: move the others into the entries.");
+			const batch = await batchEntries(
+				items,
+				(entry, index) => ("id" in entry && typeof entry.id === "number" ? `wait ${entry.id}` : `items[${index}]`),
+				(entry) => write({ ...(entry as Omit<Params, "op">), op }, toolCallId, signal, ctx),
+				{ operation: op, verb: op === "off" ? "Cancelled" : "Set", signal },
 			);
-			const spec = cronOf(inserted);
-			if (spec) timers.reschedule(db, inserted.id, settledDue(inserted, now));
-			const timer = spec ? (timers.get(db, inserted.id) ?? inserted) : inserted;
-			host.changed(ctx, timer);
-			const caps =
-				condition?.kind === "check"
-					? `\nJudging is capped: ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perCheckUsd.toFixed(2)} per judgment, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session, 30s apart.`
-					: "";
-			const head = spec
-				? cronSetText(timer, spec, now, host.cronCap())
-				: listening
-					? listeningLine(timer, now)
-					: `Set ${timerLine(timer, now)}`;
-			return textResult(`${head}${caps}`, { timer });
+			return textResult<TimerToolDetails>(contentText(batch.content), {});
 		},
 		display(input) {
 			const { args } = input;

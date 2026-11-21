@@ -45,6 +45,19 @@ export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
 /** `0` keeps the built-in `desktop` MCP server (Cua Driver) unregistered for this process. */
 export const MCP_DESKTOP_ENV = "OCTOCODE_MCP_DESKTOP";
 
+/**
+ * Comma-separated app names (`Cursor,Terminal`) the desktop server may drive although the default denylist refuses them
+ * (`permission/desktop-apps.ts`). Only the user's own environment sets it: an agent's commands cannot change this process.
+ */
+export const DESKTOP_ALLOW_APPS_ENV = "OCTOCODE_DESKTOP_ALLOW_APPS";
+
+/**
+ * Comma-separated app names a desktop subagent's task may control (`Calculator,Notes`). The parent sets it for the child
+ * from the task's `apps` list; the permission layer refuses a desktop call that targets any other app
+ * (`permission/desktop-apps.ts`). The default denylist still applies on top: only `OCTOCODE_DESKTOP_ALLOW_APPS` lifts it.
+ */
+export const DESKTOP_APPS_ENV = "OCTOCODE_DESKTOP_APPS";
+
 /** Disables startup network operations; `--offline` sets it for the process and its children. */
 export const OFFLINE_ENV = "OCTOCODE_OFFLINE";
 

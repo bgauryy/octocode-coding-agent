@@ -6,6 +6,7 @@ import { parentProofValid, userProofValid } from "./proof.ts";
 import { deadLetterText, messageText } from "./routing.ts";
 import { spillIntact } from "./spill.ts";
 import type { TeamStore } from "./store.ts";
+import { busy } from "./store/patient.ts";
 import type { AgentEvent } from "../wake/catalog.ts";
 import { wakeGateOf } from "../wake/gate.ts";
 
@@ -245,7 +246,12 @@ export class Mail {
 					if (!current()) return;
 					this.noticePending = false;
 					this.notified = letters;
-					this.recordNotices(db);
+					try {
+						db.quick(() => this.recordNotices(db));
+					} catch (error) {
+						// A busy database keeps them in `notified`: the next heartbeat's `reportDeadLetters` records them.
+						if (!busy(error)) throw error;
+					}
 				},
 			)
 		)

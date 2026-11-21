@@ -53,18 +53,16 @@ export class Team extends TeamState {
 	}
 
 	/** Bind to the session and join the team: a subagent under the id its parent chose, a main session under the name a resumed session recorded or a new one. */
-	start(ctx: FeatureContext, resumeAs?: string): void {
-		try {
-			this.stop();
-		} catch {
+	start(ctx: FeatureContext, resumeAs?: string): Promise<void> {
+		this.stop().catch(() => {
 			/* the old row stays (locked or closed database) and ages out; stop() cleared the state */
-		}
+		});
 		this.ctx = ctx;
 		this.database.clearProblem();
 		this.activity.resetEarly();
 		this.watchParent();
 		this.name.start(resumeAs);
-		joinAtStart(this.env, () => this.join());
+		return joinAtStart(this.env, () => this.patiently(() => this.join()));
 	}
 
 	/**
@@ -75,7 +73,10 @@ export class Team extends TeamState {
 		this.stopParentWatch ??= watchParentProcess(this.env, () => {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
-			endWithParent((reason) => this.leave(reason));
+			endWithParent((reason) => {
+				// The process exits next: a removal the lock delays is left to the sweep.
+				this.leave(reason).catch(() => {});
+			});
 		});
 	}
 
@@ -113,8 +114,12 @@ export class Team extends TeamState {
 		return this.me;
 	}
 
-	/** Leave the team and release everything held; the database stays open for the next join. State clears first: a refused removal still throws, but leaves nothing stale (the row ages out). */
-	leave(reason?: EndReason, settled = false): void {
+	/**
+	 * Leave the team and release everything held; the database stays open for the next join. State clears first, at once:
+	 * a refused removal still rejects, but leaves nothing stale (the row ages out). Another process's write lock delays
+	 * the removal on a timer, never on this thread.
+	 */
+	leave(reason?: EndReason, settled = false): Promise<void> {
 		const me = this.me;
 		this.me = undefined;
 		this.shownName.set(undefined);
@@ -124,13 +129,17 @@ export class Team extends TeamState {
 		this.delivery.reset(db, me?.id);
 		this.mail.reset();
 		// Only a row that still names this process: a name another process holds now is not ours to remove.
-		if (me && db && !settled) db.remove(me.id, Date.now(), me, reason);
+		if (!me || !db || settled) return Promise.resolve();
+		return patiently(db, () => {
+			db.remove(me.id, Date.now(), me, reason);
+		});
 	}
 
 	/** Leave and let go of the database (session end; the process connection stays open for the next session). */
-	stop(): void {
+	stop(): Promise<void> {
+		let leaving = Promise.resolve();
 		try {
-			this.leave();
+			leaving = this.leave();
 		} finally {
 			this.stopParentWatch?.();
 			this.stopParentWatch = undefined;
@@ -145,6 +154,7 @@ export class Team extends TeamState {
 			this.idle.reset();
 			this.ctx = undefined;
 		}
+		return leaving;
 	}
 
 	/** Call `listener` on every tick with a fresh `view` (shared ticker and cache; watchers never read the database). */
@@ -192,7 +202,7 @@ export class Team extends TeamState {
 	}
 
 	/** Closes this session's open questions to `child`: its report answered them (`references.ts`). */
-	closeQuestionsTo = (child: string): void => refs.closeQuestionsTo(this.sendHost(), child);
+	closeQuestionsTo = (child: string): Promise<void> => refs.closeQuestionsTo(this.sendHost(), child);
 
 	/** Queue a message for the agents `to` resolves to; returns who got it and the message id, or an error text. */
 	async send(
@@ -271,17 +281,19 @@ export class Team extends TeamState {
 	}
 
 	/** Delivers held interrupts first; a headless child then leaves, saying how its run ended, because its parent closes its input. */
-	onAgentSettled(status?: string): void {
+	async onAgentSettled(status?: string): Promise<void> {
 		if (this.mail.settled()) return; // An interrupt stopped the run: its message starts the next turn.
-		if (this.me && this.headless()) {
-			this.activity.flush();
+		const me = this.me;
+		if (me && this.headless()) {
 			const reason = settleReason(status);
 			// Leases the parent reserved stay with the parent until its run ends (`ChildLeases.release`); the row is settled, not retired.
 			const parent = namedParent(this.env);
 			const db = this.database.current;
-			const settled =
-				this.env[PARENT_HOLDS_LEASES_ENV] === "1" && !!parent && !!db && db.settle(this.me.id, this.me, parent, reason);
-			this.leave(reason, settled);
+			const settled = await this.patiently(() => {
+				this.activity.flush(db);
+				return this.env[PARENT_HOLDS_LEASES_ENV] === "1" && !!parent && !!db && db.settle(me.id, me, parent, reason);
+			});
+			await this.leave(reason, settled);
 			return;
 		}
 		// The activity line was cleared by src/ui/activity.ts, which owns it.

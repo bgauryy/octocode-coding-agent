@@ -8,6 +8,7 @@ import type { ResumeRequest } from "../team/session/send.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
 import { followUpText } from "./follow-up.ts";
 import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
+import { joinTeamPatiently } from "./team-join.ts";
 import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
 import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
 import type { AgentProfile } from "./profiles.ts";
@@ -113,7 +114,7 @@ export class Lingering {
 	}
 
 	/** A session reopen restores addresses only; no worker executes until a direct authorized follow-up. */
-	reopen(ctx: FeatureContext): void {
+	async reopen(ctx: FeatureContext): Promise<void> {
 		this.close();
 		const session = ctx.sessionManager.getSessionId();
 		this.sessionId = session;
@@ -121,12 +122,9 @@ export class Lingering {
 		const profiles = this.profiles();
 		const savedWorkers = readParked(session, ctx.cwd);
 		if (savedWorkers.length === 0) return;
-		let parentId: string;
-		try {
-			parentId = this.runs.team.join().id;
-		} catch {
-			return;
-		}
+		const { parentId } = await joinTeamPatiently(this.runs.team);
+		// Without the team, or closed (a session end) while the join waited for another process's lock.
+		if (parentId === undefined || this.sessionId !== session) return;
 		for (const saved of savedWorkers) {
 			const { run } = saved;
 			const current = run.profile?.name ? profiles.get(run.profile.name) : undefined;
@@ -322,7 +320,16 @@ export class Lingering {
 				relay: ctx.hasUI,
 				permission: { mode: permission.mode, grants: [...new Set([...grants, ...permission.childGrants()])] },
 			};
-			run = claimRun(runs, last, { goal: last.identity.goal }, ctx, [], identity);
+			run = claimRun(
+				runs,
+				last,
+				{ goal: last.identity.goal },
+				ctx,
+				[],
+				identity,
+				undefined,
+				await joinTeamPatiently(runs.team),
+			);
 			retaken = await retakeReservation(runs.team, run, launchSignal);
 			launchSignal.throwIfAborted();
 			// Retire the parked address before launching. A crash here never auto-replays uncertain execution.

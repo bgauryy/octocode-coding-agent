@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { selectConfiguration } from "../cli/configuration-selector.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { parseConfigWords, runConfigWords } from "../configuration/command.ts";
@@ -14,7 +14,9 @@ export async function handleConfigCommand(args: string[]): Promise<boolean> {
 	const [command, ...rest] = args;
 	if (command === "config") {
 		console.error(
-			chalk.red(`"${APP_NAME} config" is now "${APP_NAME} configuration". Run "${APP_NAME} configuration --help".`),
+			cliStyle.error(
+				`"${APP_NAME} config" is now "${APP_NAME} configuration". Run "${APP_NAME} configuration --help".`,
+			),
 		);
 		process.exitCode = 1;
 		return true;
@@ -48,7 +50,8 @@ export async function handleConfigCommand(args: string[]): Promise<boolean> {
 	await settingsManager.flush();
 	if (own.json) console.log(JSON.stringify(outcome.json, null, 2));
 	else
-		for (const line of outcome.lines) (outcome.ok ? console.log : console.error)(outcome.ok ? line : chalk.red(line));
+		for (const line of outcome.lines)
+			(outcome.ok ? console.log : console.error)(outcome.ok ? line : cliStyle.error(line));
 	if (!outcome.ok) process.exitCode = 1;
 	return true;
 }

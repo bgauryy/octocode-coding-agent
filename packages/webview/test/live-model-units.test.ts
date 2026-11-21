@@ -3,7 +3,6 @@ import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-con
 import { describe, expect, it } from "vitest";
 import {
 	activityCard,
-	ApplicationProjection,
 	EventInterner,
 	groupFeed,
 	latestProgress,
@@ -67,56 +66,6 @@ describe("activityCard", () => {
 });
 
 describe("projection and merging", () => {
-	it("retains user messages and skips legacy assistant messages with no visible content", () => {
-		const events = new ApplicationProjection().update(
-			{
-				...application,
-				messages: [
-					{ id: "u", role: "user", text: "question", complete: true },
-					{ id: "a1", role: "assistant", text: "   ", complete: true },
-					{ id: "a2", role: "assistant", text: "[Tool call: read]", complete: true },
-					{ id: "a3", role: "assistant", text: "answer", complete: false },
-				],
-			},
-			1,
-		);
-		expect(events.map((item) => [item.type, item.text, (item.details as { status: string }).status])).toEqual([
-			["message", "question", "completed"],
-			["message", "answer", "streaming"],
-		]);
-	});
-
-	it("projects tool status into start/result events and marks failed calls with an outcome", () => {
-		const events = new ApplicationProjection().update(
-			{
-				...application,
-				tools: [
-					{ toolCallId: "a", toolName: "read", text: "", status: "running" },
-					{ toolCallId: "b", toolName: "bash", text: "ok", status: "completed" },
-					{ toolCallId: "c", toolName: "bash", text: "err", status: "failed" },
-				],
-			},
-			1,
-		);
-		expect(events.map((item) => [item.type, item.outcome])).toEqual([
-			["tool.start", undefined],
-			["tool.result", undefined],
-			["tool.result", "failed"],
-		]);
-		expect(new Set(events.map((item) => item.id)).size).toBe(3);
-		expect(events.every((item) => item.id < 0)).toBe(true);
-	});
-
-	it("clears the run when the session stops streaming", () => {
-		const projection = new ApplicationProjection();
-		projection.update(application, 5);
-		expect(projection.run).toEqual({ id: "r", startedAt: 5 });
-		projection.update({ ...application, streaming: false }, 6);
-		expect(projection.run).toBeUndefined();
-		projection.update(undefined, 7);
-		expect(projection.run).toBeUndefined();
-	});
-
 	it("mergeEvents ignores application events when no application session is known", () => {
 		const domain: WorkspaceSnapshot = {
 			sessionId: "s",

@@ -22,6 +22,9 @@ import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
 import { trustFolder } from "./helpers.ts";
 import { nativeCall } from "./e2e-calls.ts";
+import { CHARS_PER_TOKEN } from "../../../ai/src/utils/estimate.ts";
+import { KEEP_RECENT_RESULTS } from "../../src/octocode/compaction/clearing-candidates.ts";
+import { KEEP_IN_USE_TOKENS } from "../../src/octocode/compaction/clearing-recent.ts";
 import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
@@ -700,18 +703,27 @@ describe("with another MCP server and Octocode disabled", () => {
 			.then((turns) => turns.at(-1)!.allResults.slice(-22));
 		expect(results).toHaveLength(22);
 		const cleared = results.filter((result) => result.text.startsWith("[Old tool result cleared"));
-		// The newest five stay whole; every older one is a placeholder that names the file holding its whole text.
-		expect(cleared).toHaveLength(17);
-		expect(results.slice(-5).every((result) => result.text.length > 7_000)).toBe(true);
-		expect(results.slice(-5).some((result) => result.text.startsWith("[Omitted"))).toBe(false);
+		// The newest `KEEP_RECENT_RESULTS` stay whole. Every read came within the last `KEEP_RECENT_TURNS` (clearing-recent.ts) turns, so older
+		// ones are in use and stay whole too while they fit `KEEP_IN_USE_TOKENS`; the rest are placeholders that name the
+		// file holding their whole text.
+		const wholeChars = results.at(-1)!.text.length;
+		expect(wholeChars).toBeGreaterThan(7_000);
+		const keptInUse = Math.floor((KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN) / wholeChars);
+		expect(cleared).toHaveLength(22 - KEEP_RECENT_RESULTS - keptInUse);
+		const whole = results.slice(-(KEEP_RECENT_RESULTS + keptInUse));
+		expect(whole.every((result) => result.text.length === wholeChars)).toBe(true);
+		expect(whole.some((result) => result.text.startsWith("[Omitted"))).toBe(false);
 		for (const result of cleared) expect(result.text).toMatch(/Full output: \S+ \(sha256/);
 		const entries = s.session.sessionManager.getEntries();
 		expect(entries.filter((entry) => entry.type === "context_edit")).toHaveLength(0);
-		// Both requests after the reads find the cache expired, a point where clearing is free: each clears what is old by then.
+		// Both requests after the reads find the cache expired, a point where clearing is free: each clears what is old by
+		// then. After the first 11 reads, those past the newest ones are all in use when they fit the in-use budget, so that
+		// request clears nothing of this run.
+		const firstClears = 11 - KEEP_RECENT_RESULTS > keptInUse;
 		const clearings = entries.filter(
 			(entry) => entry.type === "custom" && entry.customType === "octocode-cleared-results",
 		) as Array<{ data: { trigger: string } }>;
-		expect(clearings.map((entry) => entry.data.trigger)).toEqual(["idle", "idle"]);
+		expect(clearings.map((entry) => entry.data.trigger)).toEqual(firstClears ? ["idle", "idle"] : ["idle"]);
 	});
 
 	it("reports unavailable askUser without inventing an answer or approval", async () => {

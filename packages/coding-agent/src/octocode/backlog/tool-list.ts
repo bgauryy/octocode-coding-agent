@@ -9,6 +9,7 @@ import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { itemLine } from "./format.ts";
 import type { ListQuery } from "./inputs.ts";
+import type { ItemStats } from "./reads.ts";
 import { PRIORITIES } from "./store.ts";
 
 /** A path filter entry as a repository-relative path: an absolute path inside `root` is made relative; separators and `./` are the matcher's. */
@@ -33,7 +34,7 @@ const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo", "backlog"];
  * A filter whose name says what it matches has no description: the declaration is sent on every request.
  */
 export const listFields = {
-	states: Type.Optional(Type.Array(StringEnum(LIST_STATES), { description: "default ongoing, todo, backlog" })),
+	states: Type.Optional(Type.Array(StringEnum(LIST_STATES), { description: "default ongoing/todo/backlog" })),
 	query: Type.Optional(Type.String({ description: "text in any field, or a whole tag" })),
 	ids: Type.Optional(Type.Array(Type.String())),
 	inTitle: Type.Optional(Type.String()),
@@ -44,9 +45,7 @@ export const listFields = {
 	priorityAtLeast: Type.Optional(StringEnum(PRIORITIES)),
 	anyTag: Type.Optional(Type.Array(Type.String())),
 	derivedFrom: Type.Optional(Type.String()),
-	since: Type.Optional(
-		Type.String({ description: "updated (with sort created: created) since an ISO time or age (2h, 7d)" }),
-	),
+	since: Type.Optional(Type.String({ description: "updated (sort created: created) since ISO time or age (2h, 7d)" })),
 	sort: Type.Optional(StringEnum(queries.ITEM_SORTS)),
 	limit: Type.Optional(Type.Integer({ description: `≤${MAX_LIST_LIMIT}, default 15` })),
 	offset: Type.Optional(Type.Integer()),
@@ -173,12 +172,8 @@ function givenFilters(params: ListParams, now: number): Partial<ListParams> {
 	return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined));
 }
 
-/** `list`: one page of the items every given filter matches, with a Next call that repeats the filters. */
-export function runList(
-	{ store, actor, session, repoRoot }: Backlog,
-	params: ListParams,
-	now = Date.now(),
-): { content: Array<{ type: "text"; text: string }>; details: { shown: number; total: number } } {
+/** The store query of a `list` or `stat` call, with the filters, states and page it was built from. */
+function listQuery({ actor, session, repoRoot }: Backlog, params: ListParams, now: number) {
 	const filters = givenFilters(params, now);
 	const ids = filters.id?.split(",");
 	const states = params.states?.length ? params.states : ids ? [...LIST_STATES] : DEFAULT_LIST_STATES;
@@ -217,6 +212,39 @@ export function runList(
 		...(createdSince ? { createdSince: Date.parse(createdSince) } : {}),
 		...(filters.sort ? { sort: filters.sort } : {}),
 	};
+	return { query, filters, states, ids, limit, offset };
+}
+
+/** `stat`: how many items every given filter matches, by state, priority and type, with no rows. */
+export function runStat(
+	backlog: Backlog,
+	params: ListParams,
+	now = Date.now(),
+): { content: Array<{ type: "text"; text: string }>; details: ItemStats } {
+	const { query, states } = listQuery(backlog, params, now);
+	const stats = backlog.store.stat(query);
+	const tally = (counts: Record<string, number>, name: (key: string) => string = (key) => key) =>
+		Object.entries(counts)
+			.sort(([, a], [, b]) => b - a)
+			.map(([key, n]) => `${name(key)} ${n}`)
+			.join(", ") || "none";
+	const text = [
+		`${stats.total} ${states.join("/")} item(s).`,
+		`States: ${tally(stats.states)}`,
+		`Priorities: ${tally(stats.priorities, (key) => PRIORITIES[Number(key)] ?? `p${key}`)}`,
+		`Types: ${tally(stats.types)}`,
+	].join("\n");
+	return textResult(text, stats);
+}
+
+/** `list`: one page of the items every given filter matches, with a Next call that repeats the filters. */
+export function runList(
+	backlog: Backlog,
+	params: ListParams,
+	now = Date.now(),
+): { content: Array<{ type: "text"; text: string }>; details: { shown: number; total: number } } {
+	const { store, actor } = backlog;
+	const { query, filters, states, ids, limit, offset } = listQuery(backlog, params, now);
 	const { items, total, pathMatches } = store.list(query);
 	const marks = store.marks(items, actor.id, actor.owners);
 	const lines = items.map((item) => {

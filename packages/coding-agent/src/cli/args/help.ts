@@ -2,19 +2,19 @@
  * CLI help display
  */
 
-import chalk from "chalk";
+import { cliStyle } from "../../utils/cli-style.ts";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
 import { flagHelpRows } from "./flags.ts";
 
 export function printHelp(): void {
-	console.log(`${chalk.bold(APP_NAME)} - AI coding assistant with native Octocode tools
+	console.log(`${cliStyle.heading(APP_NAME)} - AI coding assistant with native Octocode tools
 
-${chalk.bold("Usage:")}
+${cliStyle.heading("Usage:")}
   ${APP_NAME} [options] [--] [@files...] [messages...]
 
-Inside a session, ${chalk.bold("/help")} lists the slash commands.
+Inside a session, ${cliStyle.heading("/help")} lists the slash commands.
 
-${chalk.bold("Commands:")}
+${cliStyle.heading("Commands:")}
   ${APP_NAME} install <source> [-l]     Install a package (skills, prompts, themes) and add it to settings
   ${APP_NAME} remove <source> [-l]      Remove a package from settings
   ${APP_NAME} update [source|self]      Update Octocode, packages, or model catalogs
@@ -34,12 +34,12 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
   ${APP_NAME} <command> --help          Show command-specific help
 
-${chalk.bold("Options:")}
+${cliStyle.heading("Options:")}
 ${flagHelpRows().join("\n")}
 ${"  --".padEnd(33)}End option parsing; treat remaining arguments as messages/files
 
 
-${chalk.bold("Examples:")}
+${cliStyle.heading("Examples:")}
   # Print a provider API key for an external client
   ${APP_NAME} auth print-api-key --provider openai
 
@@ -114,7 +114,7 @@ ${chalk.bold("Examples:")}
   ${APP_NAME} --export ~/${CONFIG_DIR_NAME}/octocodecode/sessions/--path--/session.jsonl
   ${APP_NAME} --export session.jsonl output.html
 
-${chalk.bold("Environment Variables:")}
+${cliStyle.heading("Environment Variables:")}
   ANTHROPIC_AUTH_TOKEN             - Anthropic bearer auth token
   ANTHROPIC_API_KEY                - Anthropic Claude API key
   ANTHROPIC_OAUTH_TOKEN            - Claude subscription token: refused (connect Claude Code in /providers)
@@ -165,7 +165,7 @@ ${chalk.bold("Environment Variables:")}
   OCTOCODE_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
   OCTOCODE_SHARE_VIEWER_URL              - Base URL for /share command (default: GitHub gist)
 
-${chalk.bold("Built-in Tool Names:")}
+${cliStyle.heading("Built-in Tool Names:")}
   bash       - Execute commands (type: bash or powershell)
   file       - Guarded file edits, writes and deletions
   backlog    - Work a backlog item: read, claim, note, finish, close

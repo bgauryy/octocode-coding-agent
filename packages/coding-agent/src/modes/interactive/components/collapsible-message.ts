@@ -1,5 +1,5 @@
-import { Box, Container, MouseRegion, Spacer } from "@octocodeai/octocode-tui";
-import { theme } from "../../../theme/theme.ts";
+import { Box, Container, MouseRegion, Spacer, type TUI } from "@octocodeai/octocode-tui";
+import { surfaceFill } from "../../../theme/bands.ts";
 
 /**
  * A message on the custom-message background that toggles between collapsed and expanded on a left click or
@@ -9,15 +9,19 @@ import { theme } from "../../../theme/theme.ts";
 export abstract class CollapsibleMessageComponent extends Container {
 	protected expanded = false;
 	private readonly box: Box;
+	private readonly ui?: Pick<TUI, "keepScrollbackOnCollapse">;
 
-	constructor(outputPad: number) {
+	constructor(outputPad: number, ui?: Pick<TUI, "keepScrollbackOnCollapse">) {
 		super();
-		this.box = new Box(outputPad, 0, (t) => theme.bg("customMessageBg", t));
+		this.ui = ui;
+		this.box = new Box(outputPad, 0, (t) => surfaceFill("custom", t));
 		this.addChild(new Spacer(1));
 		this.addChild(this.box);
 	}
 
 	setExpanded(expanded: boolean): void {
+		// A block that scrolled away stays in scrollback when it collapses; only the screen is repainted.
+		if (this.expanded && !expanded) this.ui?.keepScrollbackOnCollapse?.();
 		this.expanded = expanded;
 		this.updateDisplay();
 	}

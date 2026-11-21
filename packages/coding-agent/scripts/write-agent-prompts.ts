@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { captureAll } from "../test/octocode/agent-context/capture.ts";
+import { captureAll, captureDesktop } from "../test/octocode/agent-context/capture.ts";
 import { finalFiles } from "../test/octocode/agent-context/final-prompt.ts";
 import {
 	renderIndex,
@@ -42,6 +42,16 @@ function assertPolicySections(contexts: Awaited<ReturnType<typeof captureAll>>):
 	}
 }
 
+function writeContext(folder: string, context: Awaited<ReturnType<typeof captureAll>>[number]): void {
+	fs.writeFileSync(path.join(folder, "system.md"), renderSystem(context));
+	fs.writeFileSync(path.join(folder, "tools.md"), renderTools(context));
+	fs.writeFileSync(path.join(folder, "messages.md"), renderMessages(context));
+	fs.writeFileSync(
+		path.join(folder, "request.json"),
+		`${JSON.stringify({ system: systemText(context), tools: context.tools, messages: context.messages }, null, "\t")}\n`,
+	);
+}
+
 const { values: options } = parseArgs({
 	options: { "fail-open": { type: "boolean" }, exposure: { type: "string" } },
 	strict: true,
@@ -51,19 +61,24 @@ async function main(): Promise<void> {
 	const exposure = options.exposure;
 	const contexts = await captureAll(exposure ? { mcpExposure: exposure } : undefined);
 	assertPolicySections(contexts);
+	if (captureDesktop()) {
+		// Opt-in desktop capture: only the desktop child, never the committed copy or the other agents' folders.
+		const context = contexts.find((candidate) => candidate.name === "desktop");
+		if (!context) throw new Error("no desktop capture");
+		const folder = path.join(OUTPUT, "desktop");
+		fs.rmSync(folder, { recursive: true, force: true });
+		fs.mkdirSync(folder, { recursive: true });
+		writeContext(folder, context);
+		console.log(`Desktop prompt: ${path.relative(REPOSITORY, folder)}/`);
+		return;
+	}
 	const output = exposure ? `${OUTPUT}-exposure-${exposure.replace(/[^\w-]/g, "-")}` : OUTPUT;
 	const staging = `${output}.${process.pid}`;
 	fs.rmSync(staging, { recursive: true, force: true });
 	for (const context of contexts) {
 		const folder = path.join(staging, context.name);
 		fs.mkdirSync(folder, { recursive: true });
-		fs.writeFileSync(path.join(folder, "system.md"), renderSystem(context));
-		fs.writeFileSync(path.join(folder, "tools.md"), renderTools(context));
-		fs.writeFileSync(path.join(folder, "messages.md"), renderMessages(context));
-		fs.writeFileSync(
-			path.join(folder, "request.json"),
-			`${JSON.stringify({ system: systemText(context), tools: context.tools, messages: context.messages }, null, "\t")}\n`,
-		);
+		writeContext(folder, context);
 	}
 	fs.writeFileSync(path.join(staging, "README.md"), renderIndex());
 	fs.rmSync(output, { recursive: true, force: true });

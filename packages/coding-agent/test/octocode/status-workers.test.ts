@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
 	writers: [] as unknown[],
-	images: { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0 } as Record<string, unknown>,
+	images: { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0, inProcessRefused: 0 } as Record<
+		string,
+		unknown
+	>,
 }));
 
 vi.mock("../../../db/src/api.ts", () => ({ dbWriterStats: () => state.writers }));
@@ -18,13 +21,14 @@ const writer = (overrides: Record<string, unknown>) => ({
 	inlineRuns: 0,
 	inlineMs: 0,
 	inlineMaxMs: 0,
+	inlineRefused: 0,
 	...overrides,
 });
 
 describe("/status workers line", () => {
 	beforeEach(() => {
 		state.writers = [];
-		state.images = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0 };
+		state.images = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0, inProcessRefused: 0 };
 	});
 
 	it("says when nothing started", () => {
@@ -33,7 +37,7 @@ describe("/status workers line", () => {
 
 	it("names writers and image resizing that serve from workers", () => {
 		state.writers = [writer({ pending: 2 }), writer({ role: "mirror" })];
-		state.images = { worker: 3, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0 };
+		state.images = { worker: 3, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0, inProcessRefused: 0 };
 		expect(workersLine()).toBe(
 			"Workers: database writer in a worker (2 pending); transcript writer in a worker; image resizing in a worker",
 		);
@@ -43,9 +47,26 @@ describe("/status workers line", () => {
 		state.writers = [
 			writer({ role: "mirror", mode: "inline", fallback: "load-failed", inlineRuns: 4, inlineMs: 90, inlineMaxMs: 40 }),
 		];
-		state.images = { worker: 0, inProcess: 2, inProcessMs: 300, inProcessMaxMs: 180, lastWorkerError: "no worker" };
+		state.images = {
+			worker: 0,
+			inProcess: 2,
+			inProcessMs: 300,
+			inProcessMaxMs: 180,
+			inProcessRefused: 0,
+			lastWorkerError: "no worker",
+		};
 		expect(workersLine()).toBe(
 			"Workers: transcript writer on the main thread (its worker did not load; 4 on this thread, 90 ms in all, longest 40 ms); image resizing on the main thread 2 times (longest 180 ms; worker: no worker)",
+		);
+	});
+
+	it("counts work refused as too large for the main thread", () => {
+		state.writers = [writer({ role: "mirror", mode: "inline", fallback: "crashed", inlineRefused: 2 })];
+		state.images = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0, inProcessRefused: 1 };
+		const line = workersLine();
+		expect(line).toContain("refused 2 too large for this thread");
+		expect(line).toContain(
+			"image resizing on the main thread 0 times (longest 0 ms; refused 1 too large for this thread)",
 		);
 	});
 });

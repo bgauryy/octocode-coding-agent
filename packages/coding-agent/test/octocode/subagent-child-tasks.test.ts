@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("a finished child's open session tasks", () => {
-	it("reach the session that started it, with a line for the parent, and nothing is left on the child", () => {
+	it("reach the session that started it, with a line for the parent, and nothing is left on the child", async () => {
 		const ctx = fakeCtx({ cwd: tmp() });
 		const parent = openBacklog(ctx, { isSubagent: false });
 		process.env[PARENT_SESSION_ENV] = parent.session;
@@ -27,13 +27,15 @@ describe("a finished child's open session tasks", () => {
 		const done = child.store.tasks.add({ goal: "Read the config" }, child.actor);
 		child.store.tasks.update(done.ref, { state: "done", result: "read" }, child.actor);
 
-		expect(adoptChildTasks(ctx, "kind-otter")).toBe(`\nMoved 1 open task of kind-otter to this session: ${open.ref}.`);
+		expect(await adoptChildTasks(ctx, "kind-otter")).toBe(
+			`\nMoved 1 open task of kind-otter to this session: ${open.ref}.`,
+		);
 		expect(
 			parent.store.tasks.list({ session: parent.session, states: ["todo", "ongoing"] }).map((t) => t.goal),
 		).toEqual(["Check the lockfile"]);
 		expect(parent.store.tasks.list({ session: "kind-otter", states: ["todo", "ongoing"] })).toEqual([]);
 		// A child with nothing open leaves no line.
-		expect(adoptChildTasks(ctx, "kind-otter")).toBe("");
+		expect(await adoptChildTasks(ctx, "kind-otter")).toBe("");
 	});
 
 	it("reports unlinked isolated steps from their own workspace before the worktree disappears", async () => {
@@ -69,7 +71,7 @@ describe("a finished child's open session tasks", () => {
 		expect(footer).toContain("Worktree removed.");
 		expect(fs.existsSync(childCwd)).toBe(false);
 		expect(parent.store.tasks.list({ session: parent.session })).toEqual([]);
-		expect(adoptChildTasks(parentCtx, "kind-otter")).toBe("");
+		expect(await adoptChildTasks(parentCtx, "kind-otter")).toBe("");
 	});
 
 	it("does not declare a workspace when there were no child steps", () => {

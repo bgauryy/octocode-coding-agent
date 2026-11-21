@@ -51,11 +51,22 @@ describe.runIf(process.platform !== "win32")("background job intent", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toContain(`why: ${reason}`);
 		await until(() => sent.length === 1);
 		const report = String(sent[0].message.content);
-		expect(report).toMatch(/Background bash bash-1 finished after \S+: sleep 0\.3; echo done\nWhy: Run the full suite/);
-		// The why is shown as the reason row, not mixed into the output tail.
-		const lines = renderJobMessage(report, false, plainTheme).render(120).join("\n");
+		// The text the model reads does not repeat the why it gave; the details carry it for the row.
+		expect(report).toMatch(/Background bash bash-1 finished: sleep 0\.3; echo done/);
+		expect(report).not.toContain(reason);
+		const details = sent[0].message.details;
+		expect(details).toMatchObject({ id: "bash-1", ok: true, how: "finished", why: reason });
+		const lines = renderJobMessage(report, false, plainTheme, 1, details).render(120).join("\n");
 		expect(lines).toContain(`↳ ${reason}`);
+		expect(lines).toContain("bash-1: sleep 0.3; echo done");
+		expect(lines).toMatch(/finished after \d/);
 		expect(lines).not.toContain("Why:");
+		// A report saved before the details existed still renders from its text.
+		const old =
+			"[exit 0 · 3s · log: a.log]\nBackground bash bash-1 finished after 3s: yarn build\nWhy: Run the full suite\nok";
+		const legacy = renderJobMessage(old, false, plainTheme).render(120).join("\n");
+		expect(legacy).toContain("↳ Run the full suite");
+		expect(legacy).toContain("bash-1: yarn build");
 	});
 
 	it("keeps the why of a foreground command that moved to the background", async () => {

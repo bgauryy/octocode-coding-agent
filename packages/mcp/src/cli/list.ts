@@ -45,13 +45,14 @@ export async function list(
 					scope: entry.scope ?? "global",
 					source: entry.source,
 					...(entry.override ? { override: entry.override, overrideScope: entry.overrideScope ?? "project" } : {}),
-					enabled: isEnabled({ entry }),
+					enabled: entry.config.enabled !== false,
 					exposure: exposureOf(entry),
 					transport: describeTransport(entry),
 					state: entry.withheld ? "not checked" : "disabled",
 					tools: [],
 				};
-				if (!report.enabled) return report;
+				// A withheld server is switched on but not approved: it is listed and never started.
+				if (!isEnabled({ entry })) return report;
 				const connection = createConnection(entry, options, credentials);
 				try {
 					await connection.getClient();
@@ -84,7 +85,9 @@ export async function list(
 			? `No available tool named "${inspect.tool}" on MCP server "${inspect.server}".`
 			: undefined;
 	const errors = [...loaded.errors, ...(missingTool ? [missingTool] : [])];
-	const failed = errors.length > 0 || reports.some((report) => report.enabled && report.state !== "connected");
+	const failed =
+		errors.length > 0 ||
+		reports.some((report) => report.enabled && report.state !== "connected" && report.state !== "not checked");
 
 	if (json) {
 		log(JSON.stringify({ servers: reports, errors, ...(untrustedNote ? { note: untrustedNote } : {}) }, null, 2));

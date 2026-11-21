@@ -275,7 +275,7 @@ describe("the paths the protocol keeps", () => {
 		prompt(parent.run, "go", steps);
 		await reachedStep(endpoint, child, 2, "the child's attempts");
 		const results = resultsOf(endpoint, child);
-		expect(results).toContain("Queued message");
+		expect(results).toMatch(/Sent #\d+ to /);
 		// A process name is refused outright: a child has no route to another process and must ask its parent; nothing is queued.
 		expect(results).toContain("subagents have no route to other processes: nothing was sent");
 		await until(

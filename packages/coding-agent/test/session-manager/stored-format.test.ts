@@ -178,6 +178,13 @@ describe("stored session format", () => {
 		await sessionMirrorSettled();
 		const fromDb = SessionManager.forkFrom({ storedId: session.getSessionId() }, cwd, join(scratch, "db-fork"));
 		expect(whole(fromDb.getEntries())).toEqual(written);
+		const fromDbAsync = await SessionManager.forkFromAsync(
+			{ storedId: session.getSessionId() },
+			cwd,
+			join(scratch, "db-fork-async"),
+		);
+		expect(whole(fromDbAsync.getEntries())).toEqual(written);
+		expect(fromDbAsync.getHeader()?.parentSessionId).toBe(session.getSessionId());
 
 		// A fork, an export and a lone copy each read on their own.
 		const fork = SessionManager.forkFrom(file, cwd, join(scratch, "forks"));

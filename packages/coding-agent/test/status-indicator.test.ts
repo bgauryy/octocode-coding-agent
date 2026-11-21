@@ -1,4 +1,12 @@
-import { animationClock, getKeybindings, setKeybindings, type TUI, visibleWidth } from "@octocodeai/octocode-tui";
+import {
+	animationClock,
+	getKeybindings,
+	MOTION,
+	setScreenReaderMode,
+	setKeybindings,
+	type TUI,
+	visibleWidth,
+} from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
@@ -64,6 +72,7 @@ describe("status indicators", () => {
 		beginRun(1_000_000 - 62_000);
 		const indicator = new WorkingStatusIndicator(tui, `Running subagent ${"goal ".repeat(40)}`);
 		try {
+			vi.setSystemTime(1_000_000 + MOTION.spinnerDelayMs);
 			expect(stripAnsi(indicator.render(120)[1])).toMatch(/^ \S Running subagent goal .*… \(1m02s · esc interrupt\)$/);
 			// Narrow: the interrupt hint goes first, then the detail shrinks; the time stays last.
 			expect(stripAnsi(indicator.render(32)[1])).toMatch(/\(1m02s\)$/);
@@ -103,6 +112,35 @@ describe("status indicators", () => {
 		indicator.dispose();
 	});
 
+	it("says working in words, with no spinner glyph and no animation, in screen-reader mode", () => {
+		initTheme("octocode-dark");
+		vi.useFakeTimers({ now: 1_000_000 + MOTION.spinnerDelayMs });
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		setScreenReaderMode(true);
+		const indicator = new WorkingStatusIndicator(tui, "Writing");
+		try {
+			expect(stripAnsi(indicator.render(80)[1])).toMatch(/^ working: Writing /);
+		} finally {
+			setScreenReaderMode(false);
+			indicator.dispose();
+		}
+	});
+
+	it("hides the spinner for its first moments, then shows it in the same cell", () => {
+		initTheme("octocode-dark");
+		vi.useFakeTimers({ now: 1_000_000 });
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		const indicator = new WorkingStatusIndicator(tui, "Writing");
+		try {
+			const early = stripAnsi(indicator.render(80)[1]);
+			expect(early).toMatch(/^ {3}Writing /);
+			vi.setSystemTime(1_000_000 + MOTION.spinnerDelayMs);
+			expect(stripAnsi(indicator.render(80)[1])).toMatch(/^ \S Writing /);
+		} finally {
+			indicator.dispose();
+		}
+	});
+
 	it("keeps the top border unchanged unless the editor opts in", () => {
 		// The base-color assertion needs a fixed shimmer phase, independent of wall-clock time.
 		vi.useFakeTimers({ now: 0 });
@@ -114,11 +152,14 @@ describe("status indicators", () => {
 		const editor = new CustomEditor(tui, getEditorTheme(), KeybindingsManager.create());
 		const indicator = new WorkingStatusIndicator(tui, "Working");
 		editor.setWorkingStatusIndicator(indicator);
+		// The spinner stays hidden for its first MOTION.spinnerDelayMs.
+		vi.setSystemTime(MOTION.spinnerDelayMs);
 
 		expect(stripAnsi(editor.render(20)[0])).toBe("─".repeat(20));
 		const standaloneLine = indicator.render(20)[1];
 		expect(standaloneLine).toContain(theme.getFgAnsi("accent"));
-		expect(standaloneLine).toContain(theme.getFgAnsi("text"));
+		// The label shimmers between the terminal's default colors, at rest dimmed toward its background.
+		expect(standaloneLine).toMatch(/\x1b\[38;2;\d+;\d+;\d+mW/);
 		indicator.dispose();
 	});
 
@@ -135,6 +176,8 @@ describe("status indicators", () => {
 		editor.borderColor = theme.getThinkingBorderColor("high");
 		const indicator = new WorkingStatusIndicator(tui, "Working", undefined, (text) => editor.borderColor(text));
 		editor.setWorkingStatusIndicator(indicator);
+		// The spinner stays hidden for its first MOTION.spinnerDelayMs: render once the delay has passed.
+		vi.useFakeTimers({ now: Date.now() + MOTION.spinnerDelayMs + 50 });
 
 		const topBorder = editor.render(20)[0];
 		expect(stripAnsi(topBorder)).toBe("── ⠋ Working (0s) ──");
@@ -169,7 +212,7 @@ describe("status indicators", () => {
 				}
 			}
 			// The shared clock ticks on its own cadence: allow a frame past the second.
-			vi.advanceTimersByTime(1100);
+			vi.advanceTimersByTime(1300);
 			expect(stripAnsi(editor.render(120)[0])).toContain("Retrying (1/3) in 2s");
 			editor.setWorkingStatusIndicator(undefined);
 			expect(stripAnsi(editor.render(120)[0])).toBe("─".repeat(120));

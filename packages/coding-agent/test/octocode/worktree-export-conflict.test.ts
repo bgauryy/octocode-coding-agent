@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createWorktree, finishWorktree, isolationReport, mergeAgent } from "../../src/octocode/subagents/worktree.ts";
+import { capStat, conflictFiles } from "../../src/octocode/subagents/worktree-finish.ts";
 import { GIT_TEST_ENV } from "./worktree-fixture.ts";
 import { tmp } from "./helpers.ts";
 
@@ -10,13 +11,14 @@ const git = (cwd: string, ...args: string[]) =>
 	execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_TEST_ENV } }).trim();
 
 /** A repository whose parent has edited `a.txt` without committing, and a child that changed the line after that edit. */
-async function conflictingChild(id: string) {
+async function conflictingChild(id: string, parentFile = false) {
 	const dir = fs.realpathSync(tmp("octocode-wt-conflict-"));
 	git(dir, "init", "-q", "-b", "main");
 	fs.writeFileSync(path.join(dir, "a.txt"), "one\ntwo\nfour\n");
 	git(dir, "add", "-A");
 	git(dir, "commit", "-q", "-m", "init");
 	fs.writeFileSync(path.join(dir, "a.txt"), "one\nTWO\nfour\n");
+	if (parentFile) fs.writeFileSync(path.join(dir, "parent.txt"), "the parent's own uncommitted file\n");
 	const worktree = await createWorktree(dir, id, tmp(), true);
 	fs.writeFileSync(path.join(worktree.path, "a.txt"), "one\nTWO\nthree\nfour\n");
 	const result = await finishWorktree(worktree);
@@ -25,7 +27,7 @@ async function conflictingChild(id: string) {
 
 describe("an isolated child's delta that does not apply to the commit it started from", () => {
 	it("keeps the child's head on the ref and its patch on disk, and names both in the report", async () => {
-		const { dir, worktree, result } = await conflictingChild("export-conflict");
+		const { dir, worktree, result } = await conflictingChild("export-conflict", true);
 		expect(result.ref).toBe("refs/octocode/export-conflict");
 		expect(fs.existsSync(worktree.path)).toBe(false);
 		expect(git(dir, "show", `${result.ref}:a.txt`)).toBe("one\nTWO\nthree\nfour");
@@ -39,6 +41,27 @@ describe("an isolated child's delta that does not apply to the commit it started
 		expect(report).toContain(result.ref);
 		expect(report).toContain(patch);
 		expect(report).not.toContain("could not be saved");
+		// The report's diffstat is the child's own change, not the parent's snapshot, and git's progress lines are gone.
+		expect(result.stat).toContain("a.txt");
+		expect(result.stat).not.toContain("parent.txt");
+		expect(report).toContain("conflict with the commit the run started from in a.txt");
+		expect(report).not.toMatch(/Falling back|did not apply/u);
+	});
+
+	it("names the files git apply could not apply, and caps a long diffstat", () => {
+		expect(
+			conflictFiles(
+				"error: patch failed: a.txt:2\nFalling back to direct application...\nerror: b/c.ts: does not apply\nU a.txt",
+			),
+		).toBe("a.txt, b/c.ts");
+		expect(conflictFiles("fatal: something else\nmore")).toBe("fatal: something else");
+		const rows = Array.from({ length: 25 }, (_, index) => ` f${index}.ts | 1 +`);
+		const capped = capStat([...rows, " 25 files changed, 25 insertions(+)"].join("\n")).split("\n");
+		expect(capped).toHaveLength(22);
+		expect(capped[20]).toBe(" +5 more files");
+		expect(capped[21]).toBe(" 25 files changed, 25 insertions(+)");
+		const short = [...rows.slice(0, 3), " 3 files changed"].join("\n");
+		expect(capStat(short)).toBe(short);
 	});
 
 	it("reports a conflict, not a missing ref, when the main tree has not changed since the snapshot", async () => {

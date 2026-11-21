@@ -39,7 +39,7 @@ export async function callRunnerTeam(member: RunnerMember, call: ServedCall) {
 		throw new Error(`Only ${allowed.join(", ")} apply to ${args.action}.`);
 	let result: unknown;
 	if (args.action === "list") result = member.list(call.signal);
-	else if (args.action === "inbox") result = member.inbox(args.ack ?? [], call.signal);
+	else if (args.action === "inbox") result = await member.inbox(args.ack ?? [], call.signal);
 	else {
 		if (typeof args.message !== "string" || !args.message.trim()) throw new Error("Give the message to send.");
 		result = await member.send(

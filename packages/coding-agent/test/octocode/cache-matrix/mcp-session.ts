@@ -8,6 +8,7 @@ import path from "node:path";
 import {
 	createFauxCore,
 	type fauxAssistantMessage,
+	type Model,
 	type SimpleStreamOptions,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
@@ -25,6 +26,8 @@ type Reply = ReturnType<typeof fauxAssistantMessage>;
 export interface RecordedRequest {
 	context: TranscriptContext;
 	options: SimpleStreamOptions | undefined;
+	/** The scripted model that answered it. */
+	ran: { provider: string; id: string };
 }
 
 const COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -119,10 +122,21 @@ export async function withMcpSession<T>(
 				await use("plain");
 				const requests: RecordedRequest[] = [];
 				const prompt = async (text: string, replies: Reply[]) => {
-					const record = (reply: Reply) => (context: TranscriptContext, options?: SimpleStreamOptions) => {
-						requests.push({ context: structuredClone(context), options: options && { ...options } });
-						return reply;
-					};
+					const record =
+						(reply: Reply) =>
+						(
+							context: TranscriptContext,
+							options: SimpleStreamOptions | undefined,
+							_state: unknown,
+							model: Model<string>,
+						) => {
+							requests.push({
+								context: structuredClone(context),
+								options: options && { ...options },
+								ran: { provider: model.provider, id: model.id },
+							});
+							return reply;
+						};
 					for (const core of Object.values(cores)) core.setResponses(replies.map(record));
 					await session.prompt(text);
 				};

@@ -41,16 +41,30 @@ export function isolatedCheckout(cwd: string): Pick<ResumeOptions, "refExists" |
 	};
 }
 
+/**
+ * Why a saved child cannot be resumed, or undefined. A saved record does not keep a desktop task's `apps` list, so
+ * resuming it would run with no app limit while the start dialog showed none: a new task names its apps again (a desktop
+ * agent that is still reachable takes a `message` and keeps its list).
+ */
+export function resumeRefusal(profile: string): string | undefined {
+	return profile === "desktop"
+		? "A saved desktop task cannot be resumed: start a new desktop task and name its apps in `apps`; a desktop agent that is still reachable takes a `message`."
+		: undefined;
+}
+
 /** `resumableChild` for an `agent` call in `ctx`: not a child running now or still exiting, its worktree from this checkout. */
 export function resumeChild(
 	ctx: { cwd: string; sessionManager: { getEntries(): readonly unknown[] } },
 	id: string,
 	runs: { running: ReadonlyMap<string, unknown>; team: { members(): Member[]; id?: string | undefined } },
 ): ReturnType<typeof resumableChild> {
-	return resumableChild(ctx.sessionManager.getEntries(), id, new Set(runs.running.keys()), {
+	const found = resumableChild(ctx.sessionManager.getEntries(), id, new Set(runs.running.keys()), {
 		stillExiting: exitingChildren(runs.team.members(), runs.team.id),
 		...isolatedCheckout(ctx.cwd),
 	});
+	const refusal = found && resumeRefusal(found.child.profile);
+	if (refusal) throw new Error(refusal);
+	return found;
 }
 
 /**

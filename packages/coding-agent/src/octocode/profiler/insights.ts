@@ -9,6 +9,7 @@ import { cacheFindings } from "./cache-findings.ts";
 import { clearingFindings } from "./clearing-ledger.ts";
 import { num } from "./entries.ts";
 import { latencyFindings } from "./latency-findings.ts";
+import { silenceFindings, type SilenceEpisode } from "./silences.ts";
 import { PERMISSION_WAIT_LABEL, type Lane } from "./timeline.ts";
 
 /** Thresholds of the analysis; each finding below says which one it used. */
@@ -26,6 +27,8 @@ export interface InsightInput {
 	lanes: Lane[];
 	events: readonly ProfileEvent[];
 	messages: readonly ProfileMessage[];
+	/** Silence episodes of the session's agents, grouped by the tool and provider they went quiet behind. */
+	silences?: readonly SilenceEpisode[];
 	now: number;
 }
 
@@ -181,6 +184,7 @@ export function deriveInsights(input: InsightInput): ProfileInsights {
 		...clearingFindings(input.lanes),
 		...eventFindings(input.events),
 		...latencyFindings(input.events, input.lanes),
+		...silenceFindings(input.silences ?? []),
 	];
 	for (const message of input.messages) if (message.state === "dead-lettered") findings.push(deadLetter(message));
 	const costs = input.lanes.map((lane) => {

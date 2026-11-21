@@ -120,7 +120,7 @@ describe("F: item fields written beside op instead of inside an entry", () => {
 		expect(await text({ op: "add", title: "Flat", goal: "g", why: "w", priority: "p1" })).toBe(
 			"Added B4 [backlog p1] Flat",
 		);
-		expect(await text({ op: "edit", id: "B4", tags: ["flat"] })).toBe("Updated B4 [backlog p1] Flat #flat");
+		expect(await text({ op: "edit", id: "B4", tags: ["flat"] })).toMatch(/^Updated B4 \[backlog p1\] v\d+$/);
 		await expect(text({ op: "add", title: "x", items: [{ title: "y", goal: "g", why: "w" }] })).rejects.toThrow(
 			"add with items takes no title beside them: each entry carries its own title.",
 		);

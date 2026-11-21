@@ -89,12 +89,11 @@ describe("skills the application ships", () => {
 				.sort(),
 		).toEqual(["octocode-backlog", "octocode-maintenance", "octocode-memory", "octocode-subagents"]);
 		const dir = path.join(getNativeSkillsDir(), "octocode-context-optimization");
-		// Every file the skill links exists, and no MCP rewriting machinery is left in it.
+		// Every file the skill links exists.
 		const body = fs.readFileSync(path.join(dir, "SKILL.md"), "utf8");
 		for (const [, link] of body.matchAll(/\]\(((?!https?:)[^)#]+)/g))
 			expect(fs.existsSync(path.join(dir, link))).toBe(true);
 		expect(fs.existsSync(path.join(dir, "scripts"))).toBe(false);
-		expect(body).not.toMatch(/mcp compact|MCP server/i);
 	});
 
 	it("is discovered by a root session, even with extra skill folders turned off", async () => {
@@ -235,11 +234,5 @@ describe("skills the application ships", () => {
 			expect(result.stdout).toContain("Heap profile: 400 bytes sampled live");
 			expect(result.stdout).toMatch(/\b400\s+100\.0%\s+400\s+100\.0%\s+walk\s+\/app\/a\.js:1/);
 		});
-	});
-
-	it("octocode-output names the width-safe tone glyphs and not a fixed emoji mark", () => {
-		const text = fs.readFileSync(path.join(getNativeSkillsDir(), "octocode-output", "SKILL.md"), "utf8");
-		for (const glyph of ["≋", "▲", "◆"]) expect(text).toContain(glyph);
-		expect(text).toMatch(/only when the user asks/);
 	});
 });

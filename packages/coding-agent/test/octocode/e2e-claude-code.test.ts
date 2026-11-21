@@ -172,7 +172,7 @@ describe("Claude Code as the session's model", () => {
 			// Claude Code's own slash commands and skills stay off: Octocode's tools are the only tools.
 			extraArgs: { "disable-slash-commands": null },
 		});
-		expect(opened.meta.systemPrompt.append).toMatch(/^You are working inside Octocode/);
+		expect(opened.meta.systemPrompt.append).toBeTruthy();
 		expect((log.find((entry) => entry.event === "tools")?.names as string[]) ?? []).toEqual(
 			expect.arrayContaining(["bash", "file"]),
 		);

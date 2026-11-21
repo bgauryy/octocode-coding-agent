@@ -96,7 +96,7 @@ export function messageText(
 	const footer = outside(message.from)
 		? ""
 		: message.replyRequired
-			? renderPrompt("notices/mail/reply-needed.md", { to: headerText(message.from, 64), id: message.id })
+			? renderPrompt("notices/mail/reply-needed.md", { id: message.id })
 			: renderPrompt("notices/mail/no-reply-needed.md");
 	// sendMessage saves a longer body to a file and sends its start with the path, so a body over the limit comes from a
 	// writer that bypassed it: withheld whole, since a cut instruction can lose the line that changes its meaning.

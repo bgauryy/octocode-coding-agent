@@ -6,38 +6,41 @@ import type { McpServerPreset } from "../../preset.ts";
 import { defineDesktopTool } from "./tools.ts";
 
 /**
- * The tools a desktop task uses every time: see the apps and windows, read one window, launch an app, and act on it.
+ * The tools a desktop task uses every time: list a window, read it, launch an app, act on it and quit it by its menu
+ * (recorded runs used these nine; `invoke_menu` is declared because a tool called before it is declared fails its first
+ * call on argument types, which cost a round and a schema read in three of five runs).
  * Cua Driver 0.30.4 serves 58 tools (about 100,000 characters of descriptions and schemas), so every other tool is left
  * on demand: listed by name and trigger, declared when first loaded or called.
  */
 const DESKTOP_CORE_TOOLS: ReadonlySet<string> = new Set([
-	"list_apps",
 	"list_windows",
 	"get_window_state",
-	"get_desktop_state",
 	"verify_state",
 	"launch_app",
+	"invoke_menu",
 	"click",
 	"type_text",
 	"press_key",
 	"hotkey",
-	"scroll",
-	"set_value",
 ]);
 
 /**
  * Driver tools no agent may call: they install software (`install_extension` fetches the AGPL `cua-perception`
- * extension, `install_ffmpeg` a binary) or rewrite Driver's own configuration (`set_config`, telemetry included). The
- * user does these with `cua-driver` itself; the preset removes the tools.
+ * extension, `install_ffmpeg` a binary) or rewrite Driver's own configuration (`set_config`, telemetry included) or run
+ * script in a page (`page`, the legacy tool the typed `browser_*` tools replace). The user does the first three with
+ * `cua-driver` itself; the preset removes all four.
  */
-const DESKTOP_HIDDEN_TOOLS = ["install_extension", "install_ffmpeg", "set_config"] as const;
+const DESKTOP_HIDDEN_TOOLS = ["install_extension", "install_ffmpeg", "set_config", "page"] as const;
 
 /** The server's tools by name, as of Cua Driver 0.30.4; one it adds later is declared like any MCP tool. */
 const DESKTOP_RARE_TOOLS = [
+	"list_apps",
+	"get_desktop_state",
+	"scroll",
+	"set_value",
 	"kill_app",
 	"bring_to_front",
 	"set_window_frame",
-	"invoke_menu",
 	"double_click",
 	"right_click",
 	"drag",

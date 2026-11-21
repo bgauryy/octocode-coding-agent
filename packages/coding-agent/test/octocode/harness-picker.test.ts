@@ -26,7 +26,7 @@ const row = (kind: InventoryItem["kind"], id: string, on: boolean, detail = "Pro
 });
 const items = [
 	row("skill", "skill:a", true),
-	row("skill", "skill:b", false, "not checked HIGH · Project"),
+	row("skill", "skill:b", false, "not checked · HIGH · Project"),
 	row("skill", "skill:c", true, "approved · Project"),
 	row("mcp", "mcp:one", true),
 ];

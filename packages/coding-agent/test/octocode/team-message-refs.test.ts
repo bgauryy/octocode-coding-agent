@@ -67,7 +67,7 @@ describe("message references (msg#N)", () => {
 			expect(text).toContain("(forwarded by p-1)");
 			expect(text).toContain(`Note from p-1, who forwarded message #${id}`);
 			// A reply goes to the original sender.
-			expect(text).toContain(`\`to\` a-1 and \`replyTo\` ${id}`);
+			expect(text).toContain(`(replyTo ${id})`);
 			expect(store.recent()[0]).toMatchObject({ id, to: ["b-1", "p-1"] });
 		} finally {
 			store.close();

@@ -1,7 +1,6 @@
 import type { ApplicationFrame, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { expect, it } from "vitest";
-import { ApplicationProjection } from "../src/app/live/model.ts";
-import { ApplicationStream } from "@octocodeai/octocode-projections";
+import { ApplicationProjection, ApplicationStream } from "../src/index.ts";
 
 const snapshot: ApplicationSnapshot = {
 	sessionId: "session-a",

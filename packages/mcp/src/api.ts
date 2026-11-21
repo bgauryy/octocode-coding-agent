@@ -19,7 +19,7 @@ export {
 	type McpToolSwitchView,
 	type McpToolWriteScope,
 } from "./host.ts";
-export type { StdioLaunchWrapper, StdioWrappedLaunch } from "./client/transports/stdio-launch.ts";
+export type { StdioWrappedLaunch } from "./client/transports/stdio-launch.ts";
 export { getMcpToolsPage } from "./tools-page.ts";
 export { loadMcpCommand } from "./cli.lazy.ts";
 export { MCP_COMMANDS } from "./cli/commands.ts";
@@ -41,7 +41,7 @@ export { presetEntries } from "./preset.ts";
 export { builtinPresets } from "./presets/index.ts";
 export { desktopAvailable } from "./presets/desktop/index.ts";
 export { recommendedPresets } from "./recommended/index.ts";
-export { mcpGroupLabel, mcpServerSource } from "./group.ts";
+export { mcpGroupLabel } from "./group.ts";
 export { isEnabled } from "./server.ts";
 export { mcpEntryRowInput, mcpRowFacts, mcpRowSummary } from "./row.ts";
 export { MCP_EXPOSURES, McpServerRegistry, validateMcpServerConfig } from "./servers.ts";

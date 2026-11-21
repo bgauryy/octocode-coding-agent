@@ -1,8 +1,8 @@
 import { registerToolDisplays } from "./tool-display.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { type Color, mixColors, SPINNER } from "@octocodeai/octocode-tui";
-import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { animationClock, type Color, MOTION, mixColors, SPINNER } from "@octocodeai/octocode-tui";
+import type { FeatureSetup, FeatureContext, SessionStartEvent } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
 import { stopRowTimers } from "../render/rows.ts";
@@ -83,7 +83,17 @@ export function spinnerFrames(theme: Theme): string[] {
  * `onInvalidate` runs when Octocode invalidates the header: a theme switch does, and Octocode has no theme event for
  * features.
  */
-export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: BacklogCounts) {
+export interface BannerReveal {
+	/** Asks for a repaint of the header. */
+	requestRender(): void;
+	/** Wipe duration (default `BANNER_REVEAL_MS`). */
+	durationMs?: number;
+}
+
+/** The one-time wipe at a fresh start takes this long: long enough to notice, short enough never to delay the prompt. */
+const BANNER_REVEAL_MS = 500;
+
+export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: BacklogCounts, reveal?: BannerReveal) {
 	const status = backlog ? (paint: BannerPaint) => backlogStatusLine(paint, backlog) : undefined;
 	// Read from the theme again on invalidate: Octocode invalidates components when the theme changes.
 	const painted = (): BannerPaint => {
@@ -92,10 +102,34 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: 
 	};
 	let paint = painted();
 	let cached: { width: number; lines: string[] } | undefined;
+	// The wipe repaints every frame until it ends, then the header is static again.
+	const startedAt = Date.now();
+	const durationMs = reveal ? (reveal.durationMs ?? BANNER_REVEAL_MS) : 0;
+	let unsubscribe: (() => void) | undefined;
+	const progress = () => (durationMs > 0 ? Math.min(1, (Date.now() - startedAt) / durationMs) : 1);
+	if (reveal && durationMs > 0) {
+		unsubscribe = animationClock.subscribe(
+			() => {
+				if (progress() >= 1) {
+					unsubscribe?.();
+					unsubscribe = undefined;
+					cached = undefined;
+				}
+				reveal.requestRender();
+			},
+			{ everyMs: MOTION.spinnerMs, kind: "decor" },
+		);
+	}
 	return {
 		render(width: number): string[] {
+			const shown = progress();
+			if (shown < 1) return bannerLines(paint, width, status, shown);
 			if (cached?.width !== width) cached = { width, lines: bannerLines(paint, width, status) };
 			return cached.lines;
+		},
+		dispose(): void {
+			unsubscribe?.();
+			unsubscribe = undefined;
 		},
 		invalidate(): void {
 			cached = undefined;
@@ -124,10 +158,10 @@ export function registerUi(api: FeatureSetup, isSubagent: boolean): void {
 	registerWebNotices(api);
 	let generated = { output: 0, ms: 0 };
 	let messageStartedAt: number | undefined;
-	api.bus.on("session_start", async (_event, ctx) => {
+	api.bus.on("session_start", async (event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(STATUS.speed, undefined);
-		if (ctx.mode === "tui") decorate(ctx);
+		if (ctx.mode === "tui") decorate(ctx, event.reason);
 	});
 	api.bus.on("agent_start", async () => {
 		generated = { output: 0, ms: 0 };
@@ -152,11 +186,33 @@ export function registerUi(api: FeatureSetup, isSubagent: boolean): void {
 	});
 }
 
-function decorate(ctx: FeatureContext): void {
+/** Whether the banner has wiped in this process: it does so once, at the first fresh start. */
+let revealed = false;
+
+/**
+ * Whether the banner wipes in now: once per process, at a fresh start on a terminal (the animation clock is still off a
+ * terminal, in CI and in reduced motion), never when the session already holds messages (resume, continue, fork).
+ */
+function revealAtStart(ctx: FeatureContext, reason: SessionStartEvent["reason"]): boolean {
+	if (revealed || reason !== "startup" || animationClock.isReducedMotion()) return false;
+	if (ctx.sessionManager.getBranch().some((entry) => entry.type === "message")) return false;
+	revealed = true;
+	return true;
+}
+
+function decorate(ctx: FeatureContext, reason: SessionStartEvent["reason"]): void {
 	// The spinner is a painted string: repaint it whenever a theme switch invalidates the header. The backlog counts are
 	// read once per session start; the footer keeps them live.
 	const backlog = startupBacklogCounts(ctx);
-	ctx.ui.setHeader((_tui, current) => bannerHeader(current, () => paintIndicators(ctx), backlog));
+	const wipe = revealAtStart(ctx, reason);
+	ctx.ui.setHeader((tui, current) =>
+		bannerHeader(
+			current,
+			() => paintIndicators(ctx),
+			backlog,
+			wipe ? { requestRender: () => tui.requestRender() } : undefined,
+		),
+	);
 	paintIndicators(ctx);
 }
 

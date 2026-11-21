@@ -4,7 +4,7 @@
 
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { fuzzyFilter } from "@octocodeai/octocode-tui";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import { formatTokens } from "../octocode/shared/format.ts";
@@ -19,7 +19,7 @@ export async function listModels(
 ): Promise<void> {
 	const loadError = modelRuntime.getError();
 	if (loadError) {
-		console.error(chalk.yellow(`Warning: errors loading models.json:\n${loadError}`));
+		console.error(cliStyle.warn(`Warning: errors loading models.json:\n${loadError}`));
 	}
 
 	const models = [...(await modelRuntime.getAvailable(undefined, { signal }))];

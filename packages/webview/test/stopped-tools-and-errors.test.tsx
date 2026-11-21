@@ -4,7 +4,7 @@ import type { ApplicationSnapshot } from "@octocodeai/octocode-contracts";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
-import { ApplicationProjection, type FeedEvent } from "../src/app/live/application-projection.ts";
+import { ApplicationProjection, type FeedEvent } from "@octocodeai/octocode-projections";
 import { activityCard, groupFeed, terminalEntries } from "../src/app/live/model.ts";
 import { ResultCard } from "../src/app/live/ResultCard.tsx";
 import { LiveProvider } from "../src/app/live/session.tsx";

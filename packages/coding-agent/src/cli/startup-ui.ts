@@ -1,4 +1,5 @@
 import {
+	getTerminalColorMode,
 	ProcessTerminal,
 	setCapabilityOverrides,
 	setKeybindings,
@@ -85,7 +86,10 @@ export async function createStartupTui(settingsManager: SettingsManager): Promis
 	setRegisteredThemes(await loadStartupThemes(settingsManager));
 	// The system theme starts in grayscale until the terminal reports its colors.
 	markTerminalColorsPending();
-	initTheme(resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+	initTheme(
+		resolveThemeSetting(settingsManager.getThemeSetting(), getTerminalTheme(), getTerminalColorMode()) ??
+			SYSTEM_THEME_NAME,
+	);
 	setKeybindings(KeybindingsManager.create());
 	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
 	ui.setClearOnShrink(settingsManager.getClearOnShrink());
@@ -96,7 +100,7 @@ export function startStartupTui(ui: TUI, settingsManager: SettingsManager): void
 	ui.start();
 	const themeSetting = settingsManager.getThemeSetting();
 	queryStartupTerminalColors(ui, () => {
-		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme()) ?? SYSTEM_THEME_NAME);
+		setTheme(resolveThemeSetting(themeSetting, getTerminalTheme(), getTerminalColorMode()) ?? SYSTEM_THEME_NAME);
 	});
 }
 

@@ -4,6 +4,7 @@ import {
 	type ToolDisplay,
 	type ToolDisplayBlock,
 } from "@octocodeai/octocode-contracts";
+import { toolDisplayState } from "@octocodeai/octocode-projections";
 import { GLYPH, Markdown, type Component, renderChanged, trackRenderChanges } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { buildToolDisplay } from "../../../../core/application/transcript-display.ts";
@@ -13,7 +14,8 @@ import { resultBlock, toolHeader } from "../../../../octocode/render/tool.ts";
 import { clip, INDENT, linkPath } from "../../../../octocode/shared/text.ts";
 import type { RenderContext } from "../../../../octocode/render/types.ts";
 import { outputLanguage } from "../../../../theme/output-style.ts";
-import { stateMark } from "../../../../theme/status.ts";
+import { stateMark, type UiState } from "../../../../theme/status.ts";
+import { rowStatus } from "./state.ts";
 import { getMarkdownTheme, type Theme } from "../../../../theme/theme.ts";
 import type { ThemeColor } from "../../../../theme/theme-tokens.ts";
 import { renderDiff } from "../../../../theme/diff.ts";
@@ -76,12 +78,14 @@ function blockLines(theme: Theme, block: ToolDisplayBlock, width: number, cwd: s
 	}
 }
 
+const stateOption = (state: UiState | undefined) => (state ? { state } : {});
+
 /** The header row of a call: `<mark> Title(summary) · meta`, with its sub-lines. */
 function renderDisplayCall(display: ToolDisplay, theme: Theme, context: RenderContext): Component {
 	return toolHeader(theme, context, display.title, sanitizeTerminalText(display.summary ?? ""), {
 		...(display.meta?.length ? { meta: sanitizeTerminalText(display.meta.join(" · ")) } : {}),
 		...(display.subjects?.length ? { lines: display.subjects.map((line) => sanitizeTerminalText(line)) } : {}),
-		...(display.state ? { state: display.state } : {}),
+		...stateOption(toolDisplayState({ status: rowStatus(context), display })),
 	});
 }
 
@@ -148,7 +152,7 @@ export function rowDisplay(input: {
 	isPartial: boolean;
 }): ToolDisplay {
 	if (input.live) return input.live;
-	const status = input.isPartial ? "running" : input.result?.isError ? "failed" : "completed";
+	const status = rowStatus({ isPartial: input.isPartial, isError: input.result?.isError });
 	return buildToolDisplay(input.definition?.display, {
 		toolName: input.toolName,
 		args: input.args,

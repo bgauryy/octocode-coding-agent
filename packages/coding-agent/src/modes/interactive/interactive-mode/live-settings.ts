@@ -3,7 +3,7 @@
  * "Interface and session" list calls, run after the catalog has saved the value.
  */
 
-import { animationClock, setEmojiMarks, TuiAltScreen } from "@octocodeai/octocode-tui";
+import { animationClock, setEmojiMarks, setScreenReaderMode, TuiAltScreen } from "@octocodeai/octocode-tui";
 import type { InteractiveModeHost } from "./host.ts";
 
 type ConfigurationHost = Pick<
@@ -74,9 +74,20 @@ const APPLIERS: Readonly<Record<string, Applier>> = {
 		animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
 		return true;
 	},
+	"terminal.latencyFence": (host, value: boolean | "auto") => {
+		host.settingsManager.setLatencyFence(value);
+		host.renderer.setRenderPacing({ latencyFence: host.settingsManager.isLatencyFenceActive() });
+		return true;
+	},
 	"terminal.emojiMarks": (host, value: boolean) => {
 		host.settingsManager.setEmojiMarks(value);
 		setEmojiMarks(value);
+		return true;
+	},
+	"terminal.screenReader": (host, value: boolean | "auto") => {
+		host.settingsManager.setScreenReader(value);
+		setScreenReaderMode(host.settingsManager.isScreenReaderActive());
+		animationClock.setReducedMotion(host.settingsManager.isReduceMotionActive());
 		return true;
 	},
 	tuiMode: (host, value: Parameters<ConfigurationHost["switchTuiMode"]>[0]) => {

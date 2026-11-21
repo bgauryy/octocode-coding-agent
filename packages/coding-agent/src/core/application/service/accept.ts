@@ -58,7 +58,7 @@ export async function acceptApplicationCommand(
 		if (previous) return previous.accepted.then((receipt) => ({ ...receipt }));
 		if (command.action === "abort" && command.runId !== state.getState().runId) throw new Error("Run changed");
 		const images = commandImages(command, host.assets, host.session);
-		reserveReceipt(state);
+		reserveReceipt(state, host.recording.size);
 		if (!receiptStore) return admit(command, fingerprint, images, { id: command.id, status: "accepted" }, host);
 		const accepted = receiptStore
 			.begin(command)

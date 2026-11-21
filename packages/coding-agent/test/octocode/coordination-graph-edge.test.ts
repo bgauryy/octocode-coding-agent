@@ -167,35 +167,37 @@ describe("one item, one child", () => {
 });
 
 describe("a dependency finishing", () => {
-	it("tells the parent, with the child's report, which dependent items are now ready", () => {
+	it("tells the parent, with the child's report, which dependent items are now ready", async () => {
 		const { ctx, backlog } = mainBacklog();
 		const actor = { id: "session-test" };
 		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
 		backlog.store.add({ ...READY, title: "ui", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		backlog.store.add({ ...READY, title: "docs", state: "todo", createdBy: "user", dependsOn: ["B1", "B2"] });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
+		await link.claim();
 		// The child closes its item with a passing check, then reports.
 		backlog.store.update("B1", { state: "done", completion: passed("k1") }, actor);
-		const footer = link.attach({ text: "done", outcome: "done", usage: {} } as never, "worker-1");
+		const footer = await link.attach({ text: "done", outcome: "done", usage: {} } as never, "worker-1");
 		expect(footer).toContain("Noted on B1.");
 		// B2 waited only on B1 and is now free to start; B3 still waits on B2.
 		expect(footer).toMatch(/B2 is ready/);
 		expect(footer).not.toMatch(/B3 is ready/);
 	});
 
-	it("names several newly ready items in one line, and none while the dependency is not done", () => {
+	it("names several newly ready items in one line, and none while the dependency is not done", async () => {
 		const { ctx, backlog } = mainBacklog();
 		const actor = { id: "session-test" };
 		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
 		backlog.store.add({ ...READY, title: "ui", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		backlog.store.add({ ...READY, title: "cli", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
-		expect(link.attach({ text: "partial", outcome: "partial", usage: {} } as never, "worker-1")).not.toMatch(/ready/);
+		await link.claim();
+		expect(await link.attach({ text: "partial", outcome: "partial", usage: {} } as never, "worker-1")).not.toMatch(
+			/ready/,
+		);
 		backlog.store.update("B1", { state: "done", completion: passed("k2") }, actor);
 		// In board order: the most urgent first, then the most recently updated.
-		expect(link.attach({ text: "done", outcome: "done", usage: {} } as never, "worker-1")).toMatch(
+		expect(await link.attach({ text: "done", outcome: "done", usage: {} } as never, "worker-1")).toMatch(
 			/(B2, B3|B3, B2) are ready to start: B1 was their last open prerequisite\./,
 		);
 	});

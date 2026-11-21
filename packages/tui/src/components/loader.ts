@@ -1,4 +1,5 @@
 import { animationClock } from "../tokens/clock.ts";
+import { isScreenReaderMode } from "../tokens/screen-reader.ts";
 import { ELLIPSIS, GLYPH, MOTION, SPINNER } from "../tokens/design.ts";
 import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
@@ -28,6 +29,7 @@ export class Loader extends Text {
 	private spinnerColorFn: (str: string) => string;
 	private messageColorFn: (str: string) => string;
 	private message: string = `Loading${ELLIPSIS}`;
+	private startedAt = 0;
 
 	constructor(
 		ui: TUI,
@@ -49,6 +51,7 @@ export class Loader extends Text {
 	}
 
 	start(): void {
+		this.startedAt = Date.now();
 		this.updateDisplay();
 		this.restartAnimation();
 	}
@@ -97,10 +100,20 @@ export class Loader extends Text {
 	 * of its own.
 	 */
 	protected isAnimated(): boolean {
-		return this.frames.length > 1 && !animationClock.isReducedMotion();
+		return this.frames.length > 1 && !animationClock.isReducedMotion() && !isScreenReaderMode();
+	}
+
+	/** How long a moving indicator stays hidden after `start()`; a loader that wants a delay overrides this. */
+	protected startDelayMs(): number {
+		return 0;
 	}
 
 	protected getRenderedIndicator(): string {
+		// A clock stepped back (negative age) shows the spinner rather than hiding it for the length of the step.
+		const age = Date.now() - this.startedAt;
+		if (this.isAnimated() && age >= 0 && age < this.startDelayMs()) return "";
+		// A screen reader hears the message, not a glyph.
+		if (isScreenReaderMode()) return "";
 		const still = animationClock.isReducedMotion();
 		const frame = still && this.defaultFrames ? GLYPH.running : (this.frames[still ? 0 : this.currentFrame] ?? "");
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);

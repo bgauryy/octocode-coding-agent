@@ -59,6 +59,22 @@ describe("coordinate list", () => {
 		expect(text).toContain("  in /repo/other @ feature");
 		expect(text.match(/ {2}log: /g)).toHaveLength(1);
 	});
+
+	it("leaves the log folders, pid, join time and token counts to /agents in the model's brief view", () => {
+		const a = { ...member("a", "/repo", "main"), toolCalls: 3, input: 1200, output: 300 };
+		const b = member("b", "/repo", "main");
+		const details = new Map(
+			[a, b].map((m) => [m.id, { transcripts: "/repo/logs", shellLogs: "/repo/shell" }] as const),
+		) as unknown as Parameters<typeof describeMembers>[7];
+		const full = describeMembers([a, b], "b", 0, undefined, undefined, undefined, [], details);
+		const brief = describeMembers([a, b], "b", 0, undefined, undefined, undefined, [], details, true);
+		expect(full).toMatch(/ {2}log: /u);
+		expect(full).toMatch(/shell logs: /u);
+		expect(full).toContain(`pid ${process.pid}`);
+		expect(brief).not.toMatch(/ log: |shell logs: |pid \d|joined /u);
+		expect(brief).toContain("3 tool calls");
+		expect(brief.length).toBeLessThan(full.length);
+	});
 });
 
 describe("reservation notes", () => {

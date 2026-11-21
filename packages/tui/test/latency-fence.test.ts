@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { StdinBuffer } from "../src/stdin-buffer.ts";
 import type { Terminal } from "../src/terminal.ts";
 import { animationClock } from "../src/tokens/clock.ts";
@@ -7,11 +7,25 @@ import { FENCE_PROBE, FENCE_REPLY } from "../src/tui/latency-fence.ts";
 import { RenderScheduler } from "../src/tui/render-scheduler.ts";
 import { TerminalQueries } from "../src/tui/terminal-queries.ts";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * The fence and the scheduler run on mocked timers and a mocked `Date`, so machine load cannot stretch a wait: a test
+ * advances virtual time one millisecond at a time, letting each tick's callbacks and queued microtasks run first.
+ */
+const now = () => Date.now();
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+async function wait(ms: number): Promise<void> {
+	for (let elapsed = 0; elapsed < ms; elapsed++) {
+		await flush();
+		mock.timers.tick(1);
+	}
+	await flush();
+}
 
 async function until(condition: () => boolean, what: string): Promise<void> {
-	for (const start = Date.now(); !condition(); await wait(2)) {
-		if (Date.now() - start > 2000) assert.fail(`timed out waiting for ${what}`);
+	for (let elapsed = 0; !condition(); elapsed++) {
+		if (elapsed > 2000) assert.fail(`timed out waiting for ${what}`);
+		await wait(1);
 	}
 }
 
@@ -19,8 +33,12 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 const FAST = { probeIntervalMs: 20, behindAfterMs: 40, recoverBelowMs: 10, unsupportedAfterMs: 150 };
 
 const started: RenderScheduler[] = [];
+beforeEach(() => {
+	mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 1_000_000 });
+});
 afterEach(() => {
 	for (const s of started.splice(0)) s.stop();
+	mock.timers.reset();
 });
 
 function fenced(options: { interactive?: boolean } = {}) {
@@ -34,9 +52,10 @@ function fenced(options: { interactive?: boolean } = {}) {
 	const s = new RenderScheduler({
 		terminal: () => terminal as unknown as Terminal,
 		isStopped: () => false,
-		paint: () => void frames.push(performance.now()),
+		paint: () => void frames.push(now()),
 		interactive: () => options.interactive ?? true,
 		fenceConstants: FAST,
+		now,
 	});
 	s.setPacing({ metrics: true });
 	s.start();

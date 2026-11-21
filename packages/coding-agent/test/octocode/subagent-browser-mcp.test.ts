@@ -126,6 +126,33 @@ describe("browser MCP server in a subagent", () => {
 		const desktop = profiles().get("desktop");
 		expect(desktop?.permissions).toEqual(["desktop.control"]);
 		expect(desktop?.readOnly).toBe(true);
+		// No shell: untrusted screen text must never reach a command line.
+		expect(desktop?.excludeTools).toBe("bash");
+		// The child's half of the exchange: it leads with the outcome, names evidence paths, and says what stays open for a message.
+		expect(desktop?.prompt).toMatch(
+			/outcome word first, then the app, what you did, the screenshot paths and any blocker/,
+		);
+		expect(desktop?.prompt).toMatch(/report `blocked`/);
+		expect(desktop?.linger).toBeGreaterThan(0);
+		// One small image is read inline (an extra request costs more); clasify is for several images or a region, with the call shape that works.
+		expect(desktop?.prompt).toMatch(/attach one small screenshot \(`include_screenshot: true`\)/);
+		expect(desktop?.prompt).toMatch(/ask `clasify` about the file/);
+		expect(desktop?.prompt).toMatch(/"operation":"evaluate","assets":\{"shot"/);
+		expect(desktop?.prompt).toMatch(/search for it with `localSearch`/);
+		// The two cheap habits the live runs lacked: the menu quit's argument shape, and a quit confirmed by the pid's windows.
+		expect(desktop?.prompt).toMatch(/`invoke_menu` takes the numbers `pid` and `window_id` and `path` as a list/);
+		expect(desktop?.prompt).toMatch(/Confirm the quit with `list_windows` for that `pid`, never `list_apps`/);
+		// A keystroke sent while another app is in front lands in that app; a sheet's button is pressed by token.
+		expect(desktop?.prompt).toMatch(/proves the target window is frontmost/);
+		expect(desktop?.prompt).toMatch(/save or confirm sheet belongs to its window/);
 		expect(profileTools(desktop)?.split(",")).toContain("mcp__desktop__*");
+	});
+});
+
+describe("the bundled desktop child", () => {
+	it("is started without a shell, and its consent text claims none", () => {
+		const roles = loadProfiles(tmp(), tmp(), false, {});
+		const args = buildAgentArgs(roles.get("desktop"), undefined, { dir: "/s", id: "a" }, []);
+		expect(args[args.indexOf("--exclude-tools") + 1]?.split(",")).toContain("bash");
 	});
 });

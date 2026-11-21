@@ -11,16 +11,16 @@ import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-log
 import { anchorShrunkTranscript } from "./tui-main-screen/collapse.ts";
 import { FrameFinisher } from "./tui-main-screen/frame-finish.ts";
 import { writeChangedRows, writeDeletedRows } from "./tui-main-screen/frame-write.ts";
+import { collectKittyImageIds, deleteKittyImages, KittyImageRowCache } from "./tui-main-screen/kitty-images.ts";
 import {
-	collectKittyImageIds,
-	deleteKittyImages,
-	KittyImageRowCache,
-	type KittyImageRows,
-} from "./tui-main-screen/kitty-images.ts";
-import { findChangedLineRange, type TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
+	findChangedLineRange,
+	type FrameCommit,
+	type TuiMainScreenRenderState,
+} from "./tui-main-screen/render-diff.ts";
 import { appendFullRenderLines, cursorMoveSequence } from "./tui-main-screen/render-output.ts";
 import { DEFAULT_REPLAY_ROWS, replayTail, ScrollbackPolicy } from "./tui-main-screen/scrollback.ts";
 import { BoundedTerminalWriter } from "./tui-main-screen/terminal-writer.ts";
+import { WidthWarmup } from "./tui-main-screen/width-warmup.ts";
 
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {
@@ -41,6 +41,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	/** The last frame's layout: start rows of its components. */
 	private componentLayout: LayoutRecorder | undefined;
 	private readonly scrollback = new ScrollbackPolicy();
+	private readonly warmup = new WidthWarmup();
 	/** Rows a replay writes at most; 0 writes all of them. */
 	private replayRows = DEFAULT_REPLAY_ROWS;
 	/** A row collapse was announced: the next frame may keep scrollback when the transcript shrank above the screen. */
@@ -93,6 +94,11 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.scrollback.reset();
 	}
 
+	override renderNow(force = false): void {
+		this.warmup.finishOnNextFrame();
+		super.renderNow(force);
+	}
+
 	protected override renderedLines(): readonly string[] {
 		return this.previousLines;
 	}
@@ -122,11 +128,12 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 	protected doRender(): void {
 		if (this.stopped) return;
-		// While a resize waits for its settled frame, paint at the size of the last frame: a width change replays the
-		// whole transcript, so a window drag replays once when it pauses, not at every frame the spinner or a stream asks.
-		const holdSize = this.resizePending && this.previousWidth > 0 && this.previousHeight > 0;
-		const width = holdSize ? this.previousWidth : this.terminal.columns;
-		const height = holdSize ? this.previousHeight : this.terminal.rows;
+		const { columns, rows } = this.terminal;
+		const { previousWidth, previousHeight, resizePending } = this;
+		const next = this.warmup.next(this, { resizePending, columns, rows, previousWidth, previousHeight });
+		if (next.warming) this.requestRender();
+		if (!next.size) return;
+		const { width, height } = next.size;
 		const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
 		const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
 		// The rows measured at the old width are not asked about again: release them before the transcript is laid out.
@@ -350,17 +357,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	 * Place the hardware cursor and remember what the terminal now shows, for the next frame's compare. A frame's
 	 * `output` (open since its `?2026h`) takes the cursor sequence and the `?2026l` and goes out as one write.
 	 */
-	private commitFrame(
-		frame: {
-			newLines: string[];
-			imageRows: KittyImageRows;
-			width: number;
-			height: number;
-			cursorPos: { row: number; col: number } | null;
-			viewportTop: number;
-		},
-		output?: BoundedTerminalWriter,
-	): void {
+	private commitFrame(frame: FrameCommit, output?: BoundedTerminalWriter): void {
 		if (output) {
 			output.append(this.cursorSequence(frame.cursorPos, frame.newLines.length));
 			output.append(END_SYNCHRONIZED_OUTPUT);

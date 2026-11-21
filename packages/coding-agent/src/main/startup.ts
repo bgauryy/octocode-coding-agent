@@ -1,5 +1,5 @@
 import { type ImageContent } from "@octocodeai/octocode-ai";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import type { Args, Mode } from "../cli/args.ts";
 import { processFileArguments } from "../cli/file-processor.ts";
 import { buildInitialMessage } from "../cli/initial-message.ts";
@@ -56,7 +56,8 @@ export async function readPipedStdin(
 
 export function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagnostic[]): void {
 	for (const diagnostic of diagnostics) {
-		const color = diagnostic.type === "error" ? chalk.red : diagnostic.type === "warning" ? chalk.yellow : chalk.dim;
+		const color =
+			diagnostic.type === "error" ? cliStyle.error : diagnostic.type === "warning" ? cliStyle.warn : cliStyle.dim;
 		const prefix = diagnostic.type === "error" ? "Error: " : diagnostic.type === "warning" ? "Warning: " : "";
 		console.error(color(`${prefix}${diagnostic.message}`));
 	}
@@ -65,7 +66,7 @@ export function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagn
 /** A non-interactive run without a prompt has nothing to do: say so and exit 2 instead of succeeding silently. */
 export function requirePrompt(appMode: AppMode, initialMessage: string | undefined, parsed: Args): void {
 	if ((appMode !== "print" && appMode !== "json") || initialMessage?.trim() || parsed.messages.length > 0) return;
-	console.error(chalk.red("Error: no prompt given. Pass a message, an @file, or pipe text on stdin."));
+	console.error(cliStyle.error("Error: no prompt given. Pass a message, an @file, or pipe text on stdin."));
 	process.exit(2);
 }
 

@@ -244,7 +244,7 @@ export async function startWorkspaceWeb(
 				workspaceUpdates();
 				return reply(200, { receipt });
 			}
-			const outcome = applyBoardWrite(backlog.store, input, backlog.session);
+			const outcome = await applyBoardWrite(backlog.store, input, backlog.session);
 			if (!outcome.ok) return reply(400, { error: outcome.error });
 			notifyChanged();
 			broadcast();

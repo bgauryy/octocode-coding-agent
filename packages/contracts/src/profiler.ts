@@ -251,6 +251,7 @@ export const PROFILE_FINDING_KINDS = [
 	"slow-turn-start",
 	"retry-wait",
 	"main-thread-stall",
+	"silence",
 ] as const;
 export type ProfileFindingKind = (typeof PROFILE_FINDING_KINDS)[number];
 

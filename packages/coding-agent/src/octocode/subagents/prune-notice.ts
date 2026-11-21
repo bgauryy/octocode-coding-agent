@@ -1,6 +1,6 @@
 import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { openBacklog } from "../backlog/context.ts";
+import { openBacklogWhenReady } from "../backlog/context.ts";
 import { noteSavedRef } from "./ref-link.ts";
 import { describePrune, pruneWorktrees } from "./worktree.ts";
 
@@ -19,10 +19,10 @@ export async function pruneNotice(
 		if (linked.length === 0) return note;
 		const failures: string[] = [];
 		try {
-			const backlog = openBacklog(ctx, { isSubagent: false });
+			const backlog = await openBacklogWhenReady(ctx, { isSubagent: false });
 			for (const { ref, patch, item } of linked) {
 				try {
-					noteSavedRef(backlog, item, ref, patch);
+					await backlog.store.transactionWhenReady(() => noteSavedRef(backlog, item, ref, patch));
 				} catch (error) {
 					failures.push(`Could not link ${ref} on ${item}: ${errorMessage(error)}`);
 				}

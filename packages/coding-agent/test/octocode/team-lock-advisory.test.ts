@@ -46,7 +46,7 @@ describe("the coordinate lock advisory", () => {
 		const lock = async (paths: string[]) =>
 			(await fake.tools.get("coordinate").execute("c", { action: "lock", paths }, undefined, undefined, ctx)).content[0]
 				.text as string;
-		expect(await lock(["packages/a/src/x.ts"])).toBe("Reserved: packages/a/src/x.ts. Unlock when your edits are done.");
+		expect(await lock(["packages/a/src/x.ts"])).toBe("Reserved 1 path.");
 		expect(await lock(["packages/b/src/y.ts"])).toContain(
 			"You hold paths in 2 packages (packages/a, packages/b): reserve only the files you are editing now",
 		);

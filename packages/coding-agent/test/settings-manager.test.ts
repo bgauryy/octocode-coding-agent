@@ -645,6 +645,54 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("terminal.screenReader", () => {
+		afterEach(() => vi.unstubAllEnvs());
+
+		it("defaults to auto, which follows OCTOCODE_SCREEN_READER and holds motion still", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getScreenReader()).toBe("auto");
+			vi.stubEnv("OCTOCODE_SCREEN_READER", "0");
+			expect(manager.isScreenReaderActive()).toBe(false);
+			vi.stubEnv("OCTOCODE_SCREEN_READER", "1");
+			expect(manager.isScreenReaderActive()).toBe(true);
+			expect(manager.isReduceMotionActive()).toBe(true);
+		});
+
+		it("persists an explicit choice, which wins over the environment and over reduceMotion false", async () => {
+			vi.stubEnv("OCTOCODE_SCREEN_READER", "1");
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.setScreenReader(false);
+			await manager.flush();
+			expect(manager.isScreenReaderActive()).toBe(false);
+			manager.setScreenReader(true);
+			manager.setReduceMotion(false);
+			await manager.flush();
+			expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")).terminal.screenReader).toBe(true);
+			expect(manager.isReduceMotionActive()).toBe(true);
+		});
+	});
+
+	describe("terminal.latencyFence", () => {
+		afterEach(() => vi.unstubAllEnvs());
+
+		it("is on by default, an explicit false turns it off and OCTOCODE_LATENCY_FENCE overrides it", async () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getLatencyFence()).toBe("auto");
+			expect(manager.isLatencyFenceActive()).toBe(true);
+			manager.setLatencyFence(false);
+			await manager.flush();
+			expect(manager.isLatencyFenceActive()).toBe(false);
+			expect(JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")).terminal.latencyFence).toBe(false);
+			vi.stubEnv("OCTOCODE_LATENCY_FENCE", "1");
+			expect(manager.isLatencyFenceActive()).toBe(true);
+			manager.setLatencyFence("auto");
+			vi.stubEnv("OCTOCODE_LATENCY_FENCE", "0");
+			expect(manager.isLatencyFenceActive()).toBe(false);
+			vi.stubEnv("OCTOCODE_LATENCY_FENCE", "auto");
+			expect(manager.isLatencyFenceActive()).toBe(true);
+		});
+	});
+
 	describe("emoji marks", () => {
 		it("are off by default and persist an opt-in", async () => {
 			const manager = SettingsManager.create(projectDir, agentDir);

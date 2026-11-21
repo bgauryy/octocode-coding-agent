@@ -21,6 +21,8 @@ export interface RenderSchedulerHost {
 	interactive?(): boolean;
 	/** Overrides of the latency fence timings, for tests. */
 	fenceConstants?: Partial<LatencyFenceConstants>;
+	/** Milliseconds on a monotonic clock (default `performance.now`); tests drive it with fake timers. */
+	now?(): number;
 }
 
 /**
@@ -54,9 +56,11 @@ export class RenderScheduler {
 	private readonly runtime = new RenderRuntimeMetrics();
 	private readonly fence: LatencyFence;
 	private fenceHoldCounted = false;
+	private readonly now: () => number;
 
 	constructor(host: RenderSchedulerHost) {
 		this.host = host;
+		this.now = host.now ?? (() => performance.now());
 		this.fence = new LatencyFence({
 			write: (data) => this.host.terminal().write(data),
 			isActive: () =>
@@ -65,6 +69,7 @@ export class RenderScheduler {
 				!this.host.terminal().inputDraining &&
 				(this.host.interactive?.() ?? process.stdout.isTTY),
 			constants: host.fenceConstants,
+			now: this.now,
 		});
 	}
 
@@ -120,18 +125,18 @@ export class RenderScheduler {
 	}
 
 	private paint(measure = false): void {
-		const start = measure ? performance.now() : 0;
+		const start = measure ? this.now() : 0;
 		if (this.pacing.metrics) this.samplePendingOutput();
 		this.host.paint();
 		if (!measure) return;
-		this.lastFrameCostMs = performance.now() - start;
+		this.lastFrameCostMs = this.now() - start;
 		if (this.pacing.metrics) {
 			this.samplePendingOutput();
 			this.stats.paintedFrames++;
 			this.stats.lastFrameCostMs = this.lastFrameCostMs;
 			this.stats.maxFrameCostMs = Math.max(this.stats.maxFrameCostMs, this.lastFrameCostMs);
 			if (this.lastInputAt !== undefined) {
-				this.stats.maxInputToPaintMs = Math.max(this.stats.maxInputToPaintMs, performance.now() - this.lastInputAt);
+				this.stats.maxInputToPaintMs = Math.max(this.stats.maxInputToPaintMs, this.now() - this.lastInputAt);
 			}
 		}
 		this.lastInputAt = undefined;
@@ -170,7 +175,7 @@ export class RenderScheduler {
 
 	/** Note keyboard input so the next frame's input-to-submission latency can be measured. */
 	noteInput(): void {
-		if (this.pacing.metrics) this.lastInputAt = performance.now();
+		if (this.pacing.metrics) this.lastInputAt = this.now();
 	}
 
 	paintNow(): void {
@@ -181,7 +186,7 @@ export class RenderScheduler {
 
 	/** Paint now and mark the pending render request as served. */
 	private emitFrame(): void {
-		const start = performance.now();
+		const start = this.now();
 		if (this.pointerFrame && this.pacing.metrics) {
 			this.stats.pointerFrames++;
 			const gap = start - this.lastFrameStartAt;
@@ -193,7 +198,7 @@ export class RenderScheduler {
 		this.paint(this.pacing.metrics || this.pacing.adaptiveCadence);
 		// The streaming interval runs from the end of this frame's write: a slow frame followed by a fast one must not
 		// reach the terminal closer together than the interval. Pointer frames keep the display's period from their start.
-		this.lastRenderAt = performance.now();
+		this.lastRenderAt = this.now();
 		this.fenceHoldCounted = false;
 		this.fence.noteFrame();
 	}
@@ -274,7 +279,7 @@ export class RenderScheduler {
 		this.pointerFrame = true;
 		if (this.immediateRenderScheduled) return;
 		this.cancelTimer();
-		if (performance.now() - this.lastFrameStartAt >= this.interactivePeriod()) this.scheduleImmediate();
+		if (this.now() - this.lastFrameStartAt >= this.interactivePeriod()) this.scheduleImmediate();
 		else this.schedule();
 	}
 
@@ -290,9 +295,9 @@ export class RenderScheduler {
 		}
 		const pointer = this.pointerFrame;
 		const intervalMs = pointer ? this.interactivePeriod() : MIN_RENDER_INTERVAL_MS;
-		const elapsed = performance.now() - (pointer ? this.lastFrameStartAt : this.lastRenderAt);
+		const elapsed = this.now() - (pointer ? this.lastFrameStartAt : this.lastRenderAt);
 		const delay = computeRenderDelayMs(intervalMs, this.lastFrameCostMs, elapsed, this.pacing.adaptiveCadence);
-		const dueAt = this.pacing.metrics ? performance.now() + delay : 0;
+		const dueAt = this.pacing.metrics ? this.now() + delay : 0;
 		const lifecycle = this.lifecycle;
 		const timer = setTimeout(() => {
 			if (this.renderTimer !== timer) return;
@@ -301,11 +306,11 @@ export class RenderScheduler {
 				return;
 			}
 			if (this.pacing.metrics) {
-				this.stats.maxTimerLagMs = Math.max(this.stats.maxTimerLagMs, performance.now() - dueAt);
+				this.stats.maxTimerLagMs = Math.max(this.stats.maxTimerLagMs, this.now() - dueAt);
 			}
 			// Timers count whole milliseconds from the event loop's cached clock and can fire before the period ends:
 			// wait out the rest, so two pointer frames never start closer than the period.
-			if (this.pointerFrame && performance.now() - this.lastFrameStartAt < this.interactivePeriod()) {
+			if (this.pointerFrame && this.now() - this.lastFrameStartAt < this.interactivePeriod()) {
 				this.schedule();
 				return;
 			}

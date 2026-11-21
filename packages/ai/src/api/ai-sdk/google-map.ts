@@ -11,6 +11,7 @@ import { geminiToolSchema } from "./google-schema.ts";
 import { googleSdkMessages } from "./google-messages.ts";
 import { googleTextParts } from "./google-text.ts";
 import { googleRequestIds } from "./google-ids.ts";
+import { restoreVertexFileParts } from "./google-file-refs.ts";
 import { normalizeGoogleUsage, type GoogleUsageMetadata } from "./google-usage.ts";
 import { sdkUsage } from "./events.ts";
 import { calculateCost } from "../../models/model-helpers.ts";
@@ -82,6 +83,7 @@ export function googleSdkMapping(
 		);
 	};
 	const messages = googleSdkMessages(model, collapseSystemMessages(context));
+	const requestIds = googleRequestIds(model.id, messages);
 	return {
 		messages,
 		usage: (usage: LanguageModelUsage) => {
@@ -89,7 +91,10 @@ export function googleSdkMapping(
 			calculateCost(model, result);
 			return result;
 		},
-		augmentRequest: googleRequestIds(model.id, messages),
+		augmentRequest: (body: Record<string, unknown>) => {
+			requestIds(body);
+			if (model.api === "google-vertex") restoreVertexFileParts(body);
+		},
 		tools,
 		toolChoice,
 		includeRawChunks: true,

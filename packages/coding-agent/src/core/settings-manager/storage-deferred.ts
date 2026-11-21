@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, promises as fsp, readFileSync, renameSync, rmSyn
 import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { atomicWriteFileSync, tempSibling, writeTargetSync } from "@octocodeai/octocode-common/atomic-file";
-import { LOCK_ATTEMPTS, LOCK_RETRY_DELAY_MS, lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
+import { LOCK_RETRY_DELAY_MS, lockSyncWithRetry } from "@octocodeai/octocode-common/file-write-lock";
 
 /** A settings change computed in memory and not yet in its file. */
 interface PendingWrite {
@@ -52,13 +52,20 @@ export function noteSettingsWritten(path: string, content: string): void {
 	if (!entry.started) entry.base = content;
 }
 
+/**
+ * How long a deferred write waits for another writer's lock. The wait is asynchronous, so it blocks nothing: a few seconds
+ * cover a holder that the scheduler left idle on a loaded machine, where the synchronous budget (about 200 ms) would drop the write.
+ */
+const LOCK_WAIT_MS = 5_000;
+
 /** The lock without blocking the thread: one attempt at a time, waiting asynchronously between attempts. */
 async function lockSettingsFile(path: string): Promise<() => void> {
-	for (let attempt = 1; ; attempt++) {
+	const deadline = Date.now() + LOCK_WAIT_MS;
+	for (;;) {
 		try {
 			return lockSyncWithRetry(path, { attempts: 1 });
 		} catch (error) {
-			if ((error as { code?: unknown }).code !== "ELOCKED" || attempt >= LOCK_ATTEMPTS) throw error;
+			if ((error as { code?: unknown }).code !== "ELOCKED" || Date.now() >= deadline) throw error;
 			await sleep(LOCK_RETRY_DELAY_MS);
 		}
 	}

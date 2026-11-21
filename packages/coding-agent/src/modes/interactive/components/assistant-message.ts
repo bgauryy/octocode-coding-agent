@@ -248,6 +248,7 @@ export class AssistantMessageComponent extends Container {
 					this.responseOverrides.get(content.id) ?? this.expanded,
 					(expanded) => this.responseOverrides.set(content.id, expanded),
 					isStreaming,
+					this.contentOptions.keepScrollbackOnCollapse,
 				);
 				this.responses.push(response);
 				this.contentContainer.addChild(response);

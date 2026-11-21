@@ -1,7 +1,7 @@
 import { renderPrompt } from "../prompt-template.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
-import chalk from "chalk";
+import { cliStyle } from "../../utils/cli-style.ts";
 import { canonicalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import { CONTEXT_FILE_CANDIDATES } from "../discovery/sources.ts";
@@ -23,7 +23,7 @@ export function resolvePromptInput(input: string | undefined, description: strin
 			return stripBom(readFileSync(input, "utf-8"));
 		} catch (error) {
 			process.stderr.write(
-				`${chalk.yellow(`Warning: Could not read ${description} file ${input}: ${String(error)}`)}\n`,
+				`${cliStyle.warn(`Warning: Could not read ${description} file ${input}: ${String(error)}`)}\n`,
 			);
 			return input;
 		}
@@ -57,7 +57,7 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 					content: capContextFile(filePath, stripBom(readFileSync(filePath, "utf-8"))),
 				};
 			} catch (error) {
-				process.stderr.write(`${chalk.yellow(`Warning: Could not read ${filePath}: ${String(error)}`)}\n`);
+				process.stderr.write(`${cliStyle.warn(`Warning: Could not read ${filePath}: ${String(error)}`)}\n`);
 			}
 		}
 	}

@@ -79,7 +79,7 @@ describe("a headless child whose parent holds its reservations", () => {
 	it("keeps its leases at settle until the parent releases the run, then frees them", async () => {
 		const { store, parent, child } = await run(true);
 		expect(store.lock("peer", A).ok).toBe(false);
-		child.onAgentSettled("completed");
+		await child.onAgentSettled("completed");
 		expect(store.names()).toContain("kid-one");
 		expect(store.list().map((member) => member.id)).not.toContain("kid-one");
 		expect(store.reachable().has("kid-one")).toBe(false);
@@ -91,7 +91,7 @@ describe("a headless child whose parent holds its reservations", () => {
 
 	it("dead-letters mail sent to it after it settled", async () => {
 		const { store, me, child } = await run(true);
-		child.onAgentSettled("completed");
+		await child.onAgentSettled("completed");
 		expect(store.send(me.id, ["kid-one"], "one more thing", { replyRequired: false })).toMatchObject({
 			id: undefined,
 			departed: ["kid-one"],
@@ -102,13 +102,13 @@ describe("a headless child whose parent holds its reservations", () => {
 		const { store, me, child } = await run(true);
 		const sent = store.send(me.id, ["kid-one"], "unread", { replyRequired: false });
 		expect(sent.id).toBeDefined();
-		child.onAgentSettled("completed");
+		await child.onAgentSettled("completed");
 		expect(store.deadLetters(me.id).flatMap((letter) => letter.recipients)).toContain("kid-one");
 	});
 
 	it("still leaves at once when the parent reserved nothing for it", async () => {
 		const { store, child } = await run(false);
-		child.onAgentSettled("completed");
+		await child.onAgentSettled("completed");
 		expect(store.names()).not.toContain("kid-one");
 		expect(store.lock("peer", A).ok).toBe(true);
 	});

@@ -112,7 +112,7 @@ describe("a session tree", () => {
 		expect(resultsOf(endpoint, steps)).not.toContain("cannot read messages yet");
 		await reachedStep(endpoint, sender, 3, "the sender's three sends");
 		const sent = resultsOf(endpoint, sender);
-		expect(sent).toMatch(/Queued message #\d+ for \S+ as an FYI/);
+		expect(sent).toMatch(/Sent #\d+ to \S+\./);
 		expect(sent).toContain(`${outsider} is outside your team; ask your coordinator`);
 		expect(read(store, (db) => db.pending(outsider).map((each) => each.text))).toEqual([]);
 
@@ -167,7 +167,7 @@ describe("a session tree", () => {
 		]);
 		prompt(parent.run, "go", steps);
 		await reachedStep(endpoint, steps, 1, "the stand-up sent");
-		expect(resultsOf(endpoint, steps)).toMatch(/Queued message #1 for \S+, \S+ as a request/);
+		expect(resultsOf(endpoint, steps)).toMatch(/Sent #1 to \S+, \S+ \(reply requested\)\./);
 		await until(() => requestsOf(endpoint, answer).filter((request) => request.step === 1).length >= 2, "both answers");
 		await until(
 			() => (heard(steps).match(/stand-up answer: no blockers/g) ?? []).length >= 2,

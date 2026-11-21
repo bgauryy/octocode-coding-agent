@@ -107,15 +107,25 @@ export type BoardWrite = { ok: true; result: BacklogCommandResult } | { ok: fals
  * applied as the user. `session` is the session whose page sent it; a repository page has none, so a task added there
  * must name its item or session. Store refusals throw (`BacklogError`, `TaskError`) for the caller to answer.
  */
-export function applyBoardWrite(store: BacklogStore, input: unknown, session: string | undefined): BoardWrite {
+export async function applyBoardWrite(
+	store: BacklogStore,
+	input: unknown,
+	session: string | undefined,
+): Promise<BoardWrite> {
+	// A write another process holds the lock for waits on a timer (`transactionWhenReady`), never on this thread.
 	if (typeof input === "object" && input !== null && "command" in input) {
 		if (!Value.Check(BacklogCommandSchema, input)) return { ok: false, error: "Invalid backlog command" };
 		if (session === undefined && input.command === "task.add" && !input.item && !input.session)
 			return { ok: false, error: "Name the item or the session the task belongs to." };
-		return { ok: true, result: applyBacklogCommand(store, input, session ?? "") };
+		const command = input;
+		return {
+			ok: true,
+			result: await store.transactionWhenReady(() => applyBacklogCommand(store, command, session ?? "")),
+		};
 	}
 	if (!Value.Check(BacklogMutationSchema, input)) return { ok: false, error: "Invalid backlog fields" };
 	const shapeError = mutationShapeError(input);
 	if (shapeError) return { ok: false, error: shapeError };
-	return { ok: true, result: applyBacklogMutation(store, input, session) };
+	const mutation = input;
+	return { ok: true, result: await store.transactionWhenReady(() => applyBacklogMutation(store, mutation, session)) };
 }

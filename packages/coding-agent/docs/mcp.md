@@ -27,7 +27,7 @@ In the terminal, open `/mcp` and choose **Add MCP**, or run `/mcp add`. The entr
 
 A Markdown code fence around the paste is removed. An invalid paste is rejected with the JSON path of the problem, never the value. A literal `env` or header value gets a warning: prefer `${VAR}` references. Then choose **Save to**: **Global** or **This workspace** (offered only in a trusted folder; each option shows its file). Each server is shown with its security rating (the static scan `/security` shows later) before it is saved. Servers are saved off and unassigned and stay off until you approve them in `/security` and switch them on in `/harness mcp`.
 
-Submit an empty paste for the field-by-field form (it is not scanned): choose the scope, name the server and choose **Stdio** or **HTTP**.
+Submit an empty paste for the field-by-field form: choose the scope, name the server and choose **Stdio** or **HTTP**. It shows the same security rating before saving, and **Edit fields** returns to the form with your input kept.
 
 **In the web page**, the form has these steps:
 

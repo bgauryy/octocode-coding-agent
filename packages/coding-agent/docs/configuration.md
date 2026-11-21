@@ -374,6 +374,14 @@ A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `O
 
 ## Reduced motion
 
+`terminal.surfaceFills` is `false` by default; `true` paints user messages (6% of the text color on dark, 5% on light) and notice panels (8% of the accent color) as a tint blended into the terminal background instead of the theme's panel colors, so they fit any terminal background. It applies to new rows and changes every row's paint, so the terminal redraws its scrollback once when you turn it on.
+
+`terminal.toolBands` is `false` by default; `true` gives each tool row a quiet background band blended from its state color (muted pending, success, error) into the terminal background, 6% on dark and 8% on light terminals. It applies to new tool rows and changes every row's paint, so the terminal redraws its scrollback once when you turn it on. A theme that sets its own tool backgrounds keeps them.
+
+`terminal.screenReader` is `true`, `false` or `"auto"` (default): screen-reader text mode writes words instead of glyphs. The working line reads `working: <detail> (12s)` with no spinner or shimmer, the footer reads `context 34% of 271k` instead of the `▰▱` gauge, and every decoration stays still (as with reduced motion, which this mode implies). `"auto"` turns it on when `OCTOCODE_SCREEN_READER` is `1` or `true`; an explicit value wins.
+
+`terminal.latencyFence` is `true`, `false` or `"auto"` (default, on): the renderer probes the terminal's display lag and holds streaming frames while it is behind. `OCTOCODE_LATENCY_FENCE=0` or `1` overrides the setting; `/debug terminal` shows whether the fence is on and what it measured.
+
 `terminal.reduceMotion` is `true`, `false` or `"auto"` (default): spinners stay on their first frame and the shimmer is plain; elapsed times and retry countdowns still tick. `"auto"` is still when stdout is not a terminal, when `CI` is set, or when `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`; an explicit value wins. A running mark is a still `◌`. `/configuration` exposes **Reduce motion** and applies it at once.
 
 ```json
@@ -716,7 +724,7 @@ The monitor also owns the nudges about a session's own work. A wake is listed as
 
 `idle-agent` measures a working agent's last model or tool event: a subagent's parent tells it about the child, and a main session, which nobody is above, tells itself. Each silence is told once; the agent's next progress re-arms the rule. An agent waiting on the user's answer, on its own working agents or on its background jobs is not reported.
 
-`stalled-item` measures the work, not the agent: an ongoing item a running subagent was started for counts as stalled after 20 minutes with no note, step or claim on it, no file the subagent changed and no background job for it running. A busy subagent that moves none of these is reported here even when `idle-agent` stays quiet. No model decides it.
+`stalled-item` measures the work, not the agent: an ongoing item a running subagent was started for counts as stalled after 20 minutes with no note, step or claim on it, no file the subagent changed and no background job for it running. A busy subagent that moves none of these is reported here even when `idle-agent` stays quiet. A subagent holding several items works one at a time: while it made a model or tool event in the last 20 minutes, only its most recently moved item is measured. Done or closed items, and subagents whose process has ended, are never named. The check waits while the coordinator is in a turn, so the wake it sends is current when read. No model decides it.
 
 `compaction-prewarm` alerts at most once per compaction cycle (from one successful compaction to the next) when the summary requested ahead of the threshold was billed for nothing (its request failed, it was discarded or a newer one replaced it), when a threshold compaction still waited 10 seconds or more for it, or when the context reached the threshold with no early summary planned. The alert counts as delivered: it reaches the `MonitorAlert` hook, `/monitor` and one warning notice.
 

@@ -91,3 +91,31 @@ describe("daemon workspace refresh ordering", () => {
 		expect(socket.send).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("daemon tab start", () => {
+	it("opens the transcript stream while the workspace snapshot is still being read", async () => {
+		const app = fixture();
+		const { workspace } = app.add("s");
+		const pending = deferred<WorkspaceSnapshot>();
+		workspace.snapshot.mockReturnValue(pending.promise);
+		const connection = Object.assign(
+			{ close: vi.fn(), [Symbol.asyncIterator]: () => ({ next: () => new Promise<never>(() => {}) }) },
+			{},
+		);
+		const connect = vi.fn(() => connection);
+		const internal = app.hub as unknown as {
+			tabs: Set<Record<string, any>>;
+			begin(tab: unknown, cursor: undefined): Promise<void>;
+		};
+		(internal as unknown as { sendBacklog: () => void }).sendBacklog = () => {};
+		const tab = [...internal.tabs][0];
+		tab.scope.session.client.application = { connect };
+		tab.scope.session.client.profiler = { onUpdate: () => () => {}, subscribe: async () => {} };
+		void internal.begin(tab, undefined);
+		await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(workspace.snapshot).toHaveBeenCalledTimes(1));
+		pending.resolve(state("s", "done"));
+		tab.socket.readyState = WebSocket.CLOSED;
+		connection.close.mockImplementation(() => {});
+	});
+});

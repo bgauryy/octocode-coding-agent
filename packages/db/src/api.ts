@@ -91,7 +91,7 @@ export { allRows, num, type Row } from "./rows.ts";
 export { openReadOnlyDb } from "./sqlite.ts";
 export type { AgentRun, RunStart, RunOutcome } from "./queries/agent-runs.ts";
 export type { ResolvedAgent, ItemLinkRef } from "./queries/agent-resolve.ts";
-export type { ItemRow } from "./queries/backlog.ts";
+export type { ItemRow, ItemStatRow } from "./queries/backlog.ts";
 export type { TaskRow } from "./queries/tasks.ts";
 export type { MemoryFilter, MemoryScope, ScopeFilter } from "./queries/memories.ts";
 export type { SessionLinks } from "./queries/session-links.ts";

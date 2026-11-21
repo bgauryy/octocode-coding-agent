@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import type { Args } from "../cli/args.ts";
 import { applyRunFlags, hasRunFlags, runFlagErrors } from "../configuration/run-flags.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
@@ -33,7 +33,7 @@ export async function applyRunConfigurationOrExit(
 		await applyRunConfiguration(parsed, context);
 	} catch (error) {
 		if (!(error instanceof RunConfigurationError)) throw error;
-		for (const line of error.lines) console.error(chalk.red(line));
+		for (const line of error.lines) console.error(cliStyle.error(line));
 		process.exit(1);
 	}
 }

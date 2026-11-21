@@ -103,7 +103,8 @@ async function reserve(team: Team, run: Run, paths: string[], signal?: AbortSign
 	run.identity.reservedPaths = result.paths;
 	const release = run.release;
 	run.release = () => {
-		team.childLeases.release(run.identity.id);
+		// Settles on its own (a write it cannot make lapses); siblings wait on it through `released`.
+		void team.childLeases.release(run.identity.id);
 		release();
 	};
 	return [];

@@ -1,0 +1,29 @@
+{
+ "content": [
+  {
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+   "mimeType": "image/png",
+   "type": "image"
+  },
+  {
+   "text": "desktop screenshot 63x41 px (screen 1728x1117 pts @ 2x)",
+   "type": "text"
+  }
+ ],
+ "structuredContent": {
+  "agent_overlay_capture": {
+   "status": "not_present"
+  },
+  "capture_id": "capture_7e61547b379545fda052dc3adf05931f_0000000000000023",
+  "display": "primary",
+  "platform": "macos",
+  "scale_factor": 2,
+  "screen_height": 1117,
+  "screen_width": 1728,
+  "screenshot_height": 41,
+  "screenshot_mime_type": "image/png",
+  "screenshot_original_height": 2234,
+  "screenshot_original_width": 3456,
+  "screenshot_width": 63
+ }
+}

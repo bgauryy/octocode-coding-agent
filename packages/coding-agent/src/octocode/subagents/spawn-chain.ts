@@ -107,7 +107,7 @@ export function queueRun(
 	}: { goal: string; item: string | undefined; after: readonly Prerequisite[]; details: RunDetails },
 	/** Why the permission policy of the moment no longer allows the start; undefined when it does (`spawnStillAllowed`). */
 	refusal: () => Promise<string | undefined>,
-	prepare: () => void,
+	prepare: (signal: AbortSignal) => Promise<void>,
 ): QueuedRun {
 	const tell = (notice: string, about?: string) => runs.graph?.tell(notice, about);
 	const names = after.map(prerequisiteName);
@@ -117,10 +117,10 @@ export function queueRun(
 		goal,
 		item,
 		after: [...after],
-		prepare: async () => {
+		prepare: async (signal: AbortSignal) => {
 			const why = await refusal();
 			if (why) throw new Error(why);
-			prepare();
+			await prepare(signal);
 		},
 		onHeld: (why) => {
 			if (why === undefined) delete details.held;

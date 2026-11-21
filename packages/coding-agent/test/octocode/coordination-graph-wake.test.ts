@@ -160,14 +160,14 @@ describe("(b) a prerequisite closed as obsolete or wont_do", () => {
 		expect(text).toContain("B4 still waits on B2.");
 	});
 
-	it("rides in the report footer when the child closed its own item", () => {
+	it("rides in the report footer when the child closed its own item", async () => {
 		const { ctx, backlog } = mainBacklog();
 		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
 		backlog.store.add({ ...READY, title: "ui", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
+		await link.claim();
 		backlog.store.update("B1", { close: { kind: "wont_do", text: "not needed" } }, { id: "session-test" });
-		const footer = link.attach({ text: "closed", outcome: "done", usage: {} } as never, "worker-1");
+		const footer = await link.attach({ text: "closed", outcome: "done", usage: {} } as never, "worker-1");
 		expect(footer).toContain("B1 is closed; B2 is now ready.");
 		expect(footer).not.toContain("last open prerequisite");
 		expect(link.notice).toContain("B1 is closed");
@@ -175,24 +175,24 @@ describe("(b) a prerequisite closed as obsolete or wont_do", () => {
 });
 
 describe("(c) a prerequisite whose owner child ended without finishing it", () => {
-	it("names the waiting items and the choices, for a failed or stopped child (no report)", () => {
+	it("names the waiting items and the choices, for a failed or stopped child (no report)", async () => {
 		const { ctx, backlog } = mainBacklog();
 		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
 		backlog.store.add({ ...READY, title: "ui", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		backlog.store.add({ ...READY, title: "cli", state: "todo", createdBy: "user", dependsOn: ["B1"] });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
-		const footer = link.attach(undefined, "worker-1");
+		await link.claim();
+		const footer = await link.attach(undefined, "worker-1");
 		expect(footer).toMatch(/B1's owner worker-1 ended; (B2, B3|B3, B2) wait on it: resume, reassign or close B1\./);
 		expect(link.notice).toContain("B1's owner worker-1 ended");
 	});
 
-	it("says nothing when no open item depends on it", () => {
+	it("says nothing when no open item depends on it", async () => {
 		const { ctx, backlog } = mainBacklog();
 		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
 		const link = itemLink(ctx, "B1")!;
-		link.claim();
-		expect(link.attach(undefined, "worker-1")).not.toContain("ended");
+		await link.claim();
+		expect(await link.attach(undefined, "worker-1")).not.toContain("ended");
 		expect(link.notice).toBeUndefined();
 	});
 

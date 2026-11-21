@@ -7,7 +7,7 @@ import { timedTool } from "../../../render/rows.ts";
 import { withReason } from "../../../shared/reason.ts";
 import { type Backlog, type BacklogOptions, openBacklogWhenReady } from "../../../backlog/context.ts";
 import { parseJsonStrings, splitIds } from "../../../backlog/tool-arguments.ts";
-import { batchGet } from "../../../backlog/tool-batch.ts";
+import { batchGet, batchUpdate } from "../../../backlog/tool-batch.ts";
 import { backlogRenderers } from "../../../backlog/tool-render.ts";
 import { endedSignal } from "../../../backlog/ended-signal.ts";
 import { runBacklog } from "../../../backlog/tool-run.ts";
@@ -45,10 +45,17 @@ interface Params {
 	completion?: Record<string, unknown>;
 	close?: CloseInput;
 	version?: number;
+	items?: Record<string, unknown>[];
 	limit?: number;
 	offset?: number;
 	changes?: boolean;
 	state?: unknown;
+}
+
+/** A write entry's fields: the declared ones but `op` and `items`, each in its legacy-tolerant form. */
+function entryFields<P extends Record<string, unknown>>(properties: P) {
+	const { op: _op, items: _items, ...single } = properties;
+	return { ...single, version: legacyEntityFields.version, completion: legacyEntityFields.completion };
 }
 
 /** Where a call in the tool's old shape (`op` list, add or update) goes now, in one sentence. */
@@ -87,12 +94,19 @@ export function registerBacklogTool(
 		{
 			op: StringEnum(OPS, { description: ops }),
 			id: Type.Optional(Type.String({ description: "B12; get: several; step: T12" })),
-			note: Type.Optional(Type.String({ description: "progress; step: result/check evidence" })),
-			why: Type.Optional(Type.String({ description: "claim: why, if unset" })),
-			goal: Type.Optional(Type.String({ description: "claim: checkable goal, if unset" })),
+			note: Type.Optional(Type.String({ description: "step: result/check evidence" })),
+			why: Type.Optional(Type.String({ description: "claim: if unset" })),
+			goal: Type.Optional(Type.String({ description: "claim: checkable, if unset" })),
 			completion: completionField("done: the result"),
 			close: Type.Optional(closeField),
 			version: Type.Optional(Type.Integer({ description: "refused if stale" })),
+			items: Type.Optional(
+				Type.Unsafe<Record<string, unknown>[]>({
+					type: "array",
+					items: { type: "object" },
+					description: "batch entries",
+				}),
+			),
 		},
 		{ additionalProperties: false },
 	);
@@ -108,6 +122,8 @@ export function registerBacklogTool(
 			changes: Type.Optional(Type.Boolean()),
 			version: legacyEntityFields.version,
 			completion: legacyEntityFields.completion,
+			// Each entry is typed as a single write; `batchUpdate` names an entry's fields its op does not take.
+			items: Type.Optional(Type.Array(Type.Object(entryFields(parameters.properties)), { minItems: 1 })),
 		},
 		{ additionalProperties: true },
 	);
@@ -138,6 +154,19 @@ export function registerBacklogTool(
 					throw new Error(
 						`Unknown backlog fields: ${unknown.join(", ")}: backlog takes ${DECLARED.join(", ")}; other fields change with backlogPlan op edit.`,
 					);
+				if (args.items !== undefined && op !== "get") {
+					const other = given.filter((key) => key !== "items");
+					if (other.length)
+						throw new Error(`items carries each entry's fields: move ${other.join(", ")} into the entries.`);
+					const entries = args.items.map((entry) => parseJsonStrings(entry));
+					try {
+						return await batchUpdate(entries, OP_FIELDS[op], "items", (entry) =>
+							write({ ...(entry as Omit<Params, "op">), op }, op, ctx, signal),
+						);
+					} finally {
+						options.changed?.(ctx); // a refused or cancelled batch may still have applied entries
+					}
+				}
 				const extra = given.filter((key) => !OP_FIELDS[op].includes(key));
 				if (extra.length)
 					throw new Error(
@@ -156,33 +185,37 @@ export function registerBacklogTool(
 					};
 					return ids.length > 1 ? batchGet(ids, read, signal) : read(ids[0]);
 				}
-				if ((op === "done" || op === "close") && args.id) {
-					// The built-in guard, then the TaskCompleted hooks, run before the write, here, in the process that writes; a refusal leaves the item as it is.
-					const backlog = await openBacklogWhenReady(ctx, options, signal);
-					const item = backlog.store.get(args.id);
-					if (item && item.state !== "done") {
-						const held =
-							op === "done" && options.holdings && doneRefusal(backlog.store, item, options.holdings, ctx.cwd);
-						if (held) throw new Error(held);
-						const change = op === "done" ? "done" : "closed";
-						const refusal = await options.completing?.(completionInfo(item, change, args), ctx, signal);
-						if (refusal)
-							throw new Error(
-								`${item.ref} was not ${change === "done" ? "completed" : "closed"}: a TaskCompleted hook refused it: ${refusal}`,
-							);
-					}
-				}
-				const result = await oneWrite(async () => {
-					signal?.throwIfAborted();
-					const backlog = await openBacklogWhenReady(ctx, options, signal);
-					return backlog.store.transactionWhenReady(() => work(backlog, args, op), signal);
-				});
+				const result = await write(args, op, ctx, signal);
 				options.changed?.(ctx);
 				return result;
 			},
 			...backlogRenderers("Backlog"),
 		}),
 	);
+
+	/** One write: the done guard and TaskCompleted hooks, then the store write, alone in its transaction. */
+	async function write(args: Params, op: Exclude<Op, "get">, ctx: FeatureContext, signal?: AbortSignal) {
+		if ((op === "done" || op === "close") && args.id) {
+			// The built-in guard, then the TaskCompleted hooks, run before the write, here, in the process that writes; a refusal leaves the item as it is.
+			const backlog = await openBacklogWhenReady(ctx, options, signal);
+			const item = backlog.store.get(args.id);
+			if (item && item.state !== "done") {
+				const held = op === "done" && options.holdings && doneRefusal(backlog.store, item, options.holdings, ctx.cwd);
+				if (held) throw new Error(held);
+				const change = op === "done" ? "done" : "closed";
+				const refusal = await options.completing?.(completionInfo(item, change, args), ctx, signal);
+				if (refusal)
+					throw new Error(
+						`${item.ref} was not ${change === "done" ? "completed" : "closed"}: a TaskCompleted hook refused it: ${refusal}`,
+					);
+			}
+		}
+		return oneWrite(async () => {
+			signal?.throwIfAborted();
+			const backlog = await openBacklogWhenReady(ctx, options, signal);
+			return backlog.store.transactionWhenReady(() => work(backlog, args, op), signal);
+		});
+	}
 
 	/** Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs). */
 	function work(backlog: Backlog, args: Params, op: Exclude<Op, "get">) {

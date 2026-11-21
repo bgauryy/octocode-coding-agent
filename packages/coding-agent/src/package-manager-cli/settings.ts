@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { grantFolder } from "../octocode/trust/grants.ts";
 import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
@@ -6,13 +6,13 @@ import { resolveFolderTrust } from "../octocode/trust/resolve.ts";
 export function reportSettingsErrors(settingsManager: SettingsManager, context: string): void {
 	const errors = settingsManager.drainErrors();
 	for (const { scope, error } of errors) {
-		console.error(chalk.yellow(`Warning (${context}, ${scope} settings): ${error.message}`));
+		console.error(cliStyle.warn(`Warning (${context}, ${scope} settings): ${error.message}`));
 		if (error.stack) {
-			console.error(chalk.dim(error.stack));
+			console.error(cliStyle.dim(error.stack));
 		}
 	}
 	for (const { scope, message } of settingsManager.drainWarnings()) {
-		console.error(chalk.yellow(`Warning (${context}, ${scope} settings): ${message}`));
+		console.error(cliStyle.warn(`Warning (${context}, ${scope} settings): ${message}`));
 	}
 }
 
@@ -23,7 +23,7 @@ interface CommandSettingsResult {
 
 export function reportProjectTrustWarnings(warnings: readonly string[]): void {
 	for (const warning of warnings) {
-		console.error(chalk.yellow(`Warning: ${warning}`));
+		console.error(cliStyle.warn(`Warning: ${warning}`));
 	}
 }
 

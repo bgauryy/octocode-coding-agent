@@ -15,7 +15,7 @@ import { transcripts } from "../../../../db/src/api.ts";
 import { defaultSessionDirectories, legacySessionDirectoryPath } from "./directories.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../storage/workspace.ts";
-import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import { atomicWriteFileSync, atomicWriteFileUnlocked } from "@octocodeai/octocode-common/atomic-file";
 import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
 import {
 	assertValidSessionId,
@@ -26,7 +26,7 @@ import {
 	parseSessionEntryLine,
 } from "./entries.ts";
 import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
-import { loadSessionFile } from "./file-reader.ts";
+import { loadSessionFile, loadSessionFileAsync } from "./file-reader.ts";
 export { loadSessionFile } from "./file-reader.ts";
 import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
 
@@ -243,36 +243,46 @@ export function resolveOpenedSession(
 	return { cwd, dir, dirFromFile: !sessionDir && !legacy, resolvedPath, preloadedFileEntries };
 }
 
+interface ForkSource {
+	file: string;
+	entries: FileEntry[];
+}
+
+interface ForkResult {
+	cwd: string;
+	dir: string;
+	sessionFile: string;
+	sourceFile: string;
+	sourceId: string;
+}
+
+/** The file of the session a stored id names. */
+function storedSessionFile(storedId: string): string {
+	const old = transcripts.stamp(sharedAgentDb().mirror.db, storedId);
+	if (!old) throw new Error(`No saved transcript for session ${storedId}`);
+	return old.file;
+}
+
 /**
- * Write a forked copy of a session file into the target project's session directory.
- * Returns the arguments `SessionManager.forkFrom()` opens the new session with.
+ * The entries of a stored session. The file is the record: its database copy is stale exactly when a mirror rebuild
+ * failed. The copy serves when the file is gone, or no longer holds this session.
  */
-export function forkSessionFile(
+function storedSessionEntries(storedId: string, onDisk: FileEntry[]): FileEntry[] {
+	if (onDisk[0]?.type === "session" && onDisk[0].id === storedId) return onDisk;
+	const records = transcripts.records(sharedAgentDb().mirror.db, storedId);
+	return decodeSessionRecords(records.map((line) => JSON.parse(line) as FileEntry));
+}
+
+/** Validates the source and builds the fork's file content; the caller writes it. */
+function prepareFork(
 	sourcePath: string | { storedId: string },
+	source: ForkSource,
 	targetCwd: string,
 	sessionDir?: string,
 	options?: NewSessionOptions,
-): { cwd: string; dir: string; sessionFile: string; sourceFile: string; sourceId: string } {
-	let resolvedSourcePath: string;
-	let sourceEntries: FileEntry[];
-	if (typeof sourcePath === "string") {
-		resolvedSourcePath = resolvePath(sourcePath);
-		sourceEntries = loadEntriesFromFile(resolvedSourcePath);
-	} else {
-		const agent = sharedAgentDb();
-		const old = transcripts.stamp(agent.mirror.db, sourcePath.storedId);
-		if (!old) throw new Error(`No saved transcript for session ${sourcePath.storedId}`);
-		resolvedSourcePath = old.file;
-		// The file is the record: its database copy is stale exactly when a mirror rebuild failed. The copy serves when
-		// the file is gone, or no longer holds this session.
-		const onDisk = loadEntriesFromFile(old.file);
-		sourceEntries =
-			onDisk[0]?.type === "session" && onDisk[0].id === sourcePath.storedId
-				? onDisk
-				: decodeSessionRecords(
-						transcripts.records(agent.mirror.db, sourcePath.storedId).map((line) => JSON.parse(line) as FileEntry),
-					);
-	}
+): { fork: ForkResult; content: string } {
+	const resolvedSourcePath = source.file;
+	const sourceEntries = source.entries;
 	const resolvedTargetCwd = resolvePath(targetCwd);
 	if (sourceEntries.length === 0) {
 		throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
@@ -308,13 +318,50 @@ export function forkSessionFile(
 		.lines.map((line) => `${line}\n`)
 		.join("");
 	if (existsSync(newSessionFile)) throw new Error(`Cannot fork: session file already exists: ${newSessionFile}`);
-	atomicWriteFileSync(newSessionFile, content, { mode: 0o600 });
-
 	return {
-		cwd: resolvedTargetCwd,
-		dir,
-		sessionFile: newSessionFile,
-		sourceFile: resolvedSourcePath,
-		sourceId: sourceHeader.id,
+		fork: {
+			cwd: resolvedTargetCwd,
+			dir,
+			sessionFile: newSessionFile,
+			sourceFile: resolvedSourcePath,
+			sourceId: sourceHeader.id,
+		},
+		content,
 	};
+}
+
+/**
+ * Write a forked copy of a session file into the target project's session directory.
+ * Returns the arguments `SessionManager.forkFrom()` opens the new session with.
+ */
+export function forkSessionFile(
+	sourcePath: string | { storedId: string },
+	targetCwd: string,
+	sessionDir?: string,
+	options?: NewSessionOptions,
+): ForkResult {
+	const file = typeof sourcePath === "string" ? resolvePath(sourcePath) : storedSessionFile(sourcePath.storedId);
+	const onDisk = loadEntriesFromFile(file);
+	const entries = typeof sourcePath === "string" ? onDisk : storedSessionEntries(sourcePath.storedId, onDisk);
+	const source = { file, entries };
+	const { fork, content } = prepareFork(sourcePath, source, targetCwd, sessionDir, options);
+	atomicWriteFileSync(fork.sessionFile, content, { mode: 0o600 });
+	return fork;
+}
+
+/** `forkSessionFile` reading the source and writing the fork without blocking input; `signal` cancels before the write. */
+export async function forkSessionFileAsync(
+	sourcePath: string | { storedId: string },
+	targetCwd: string,
+	sessionDir?: string,
+	options?: NewSessionOptions,
+	signal?: AbortSignal,
+): Promise<ForkResult> {
+	const file = typeof sourcePath === "string" ? resolvePath(sourcePath) : storedSessionFile(sourcePath.storedId);
+	const onDisk = (await loadSessionFileAsync(file, signal)).entries;
+	const entries = typeof sourcePath === "string" ? onDisk : storedSessionEntries(sourcePath.storedId, onDisk);
+	const source = { file, entries };
+	const { fork, content } = prepareFork(sourcePath, source, targetCwd, sessionDir, options);
+	await atomicWriteFileUnlocked(fork.sessionFile, content, { mode: 0o600, signal });
+	return fork;
 }

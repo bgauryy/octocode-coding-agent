@@ -77,7 +77,8 @@ const shutdown = vi.fn(async () => {});
 
 const CASES: Record<string, Case> = {
 	// Native features.
-	permissions: { check: says(/Permission mode: workspace/) },
+	// The page opens on the current mode; the sweep dismisses it, which changes nothing.
+	permissions: { check: asks(/Permissions[\s\S]*Mode\s+workspace —[\s\S]*workspace\s+current/) },
 	security: { check: asks(/Security[\s\S]*Not checked[\s\S]*Approved[\s\S]*Denied/) },
 	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run.
 	agents: { check: says(/\(you\) · main[\s\S]*Recent runs/) },

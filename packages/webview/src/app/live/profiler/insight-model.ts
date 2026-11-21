@@ -20,6 +20,7 @@ export const CHECK_LABELS: Record<ProfileFindingKind, string> = {
 	"slow-turn-start": "Slow start from prompt to request",
 	"retry-wait": "Waiting on failed requests and retries",
 	"main-thread-stall": "Event loop blocked",
+	silence: "Agents that went silent",
 };
 
 const SEVERITY_RANK: Record<ProfileFinding["severity"], number> = { high: 0, medium: 1, low: 2 };

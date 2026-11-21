@@ -51,4 +51,6 @@ export interface DbWriterStats {
 	inlineRuns: number;
 	inlineMs: number;
 	inlineMaxMs: number;
+	/** Commands too large to run on the calling thread, refused instead (`INLINE_TRANSCRIPT_LIMIT`). */
+	inlineRefused: number;
 }

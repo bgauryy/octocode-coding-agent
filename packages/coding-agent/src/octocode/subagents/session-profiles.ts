@@ -33,8 +33,9 @@ export function loadSessionProfiles(
 		(name, file, replaced) => shadowed.push(`${name}: ${file} replaces ${replaced}`),
 		{ plugins: effectivePlugins(api.settings.get(), ctx.cwd), onNote: (message) => notes.push(message) },
 	);
-	// The `desktop` specialist drives the built-in server; without Cua Driver it would only waste prompt space and fail.
-	if (!desktopAvailable()) profiles.delete("desktop");
+	// The `desktop` specialist drives the built-in server: without Cua Driver it would only waste prompt space and fail, and a
+	// main session nobody can answer (print, JSON) has no one to approve its start. The specialist's own child keeps its profile.
+	if (!desktopAvailable() || !(isSubagent || interactive(ctx, isSubagent))) profiles.delete("desktop");
 	if (!interactive(ctx, isSubagent)) return { profiles, refused };
 	if (shadowed.length > 0)
 		notify(ctx.ui, `Project subagent profiles replace profiles loaded earlier:\n${shadowed.join("\n")}`, "warning");

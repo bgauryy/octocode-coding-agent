@@ -11,6 +11,7 @@ import { sendMessage, type SendHost } from "./session/send.ts";
 import { HEARTBEAT_MS } from "./session/activity.ts";
 import type { TeamStore } from "./store.ts";
 import { Place } from "./store/place.ts";
+import { patiently } from "./store/patient.ts";
 
 export interface RunnerMemberInput {
 	id: string;
@@ -28,16 +29,35 @@ export class RunnerMember {
 	private readonly db: TeamStore;
 	private readonly parent: Member;
 	private readonly context: FeatureContext;
-	private readonly heartbeat: NodeJS.Timeout;
+	private heartbeat: NodeJS.Timeout | undefined;
 	private readonly signal: AbortSignal | undefined;
 	private readonly secret = randomBytes(32).toString("base64url");
 	private readonly fetched = new Set<number>();
-	private readonly unvouch: () => void;
+	private unvouch: () => void = () => {};
 	private closed = false;
 	private readonly sender: SendHost;
 	private readonly host: SendHost;
 
-	constructor(host: SendHost, input: RunnerMemberInput, vouch: (id: string, secret: string) => () => void) {
+	/**
+	 * Joins the team as this turn's member. Another process holding the write lock delays the join on a timer, never on
+	 * this thread (`patiently`).
+	 */
+	static async open(
+		host: SendHost,
+		input: RunnerMemberInput,
+		vouch: (id: string, secret: string) => () => void,
+	): Promise<RunnerMember> {
+		const runner = new RunnerMember(host, input);
+		const { db, member, parent } = runner;
+		if (!(await patiently(db, () => db.join(member, parent), input.signal)))
+			throw new Error(`The team name ${input.id} is already held.`);
+		runner.unvouch = vouch(input.id, runner.secret);
+		runner.heartbeat = setInterval(() => runner.beat(), HEARTBEAT_MS);
+		runner.heartbeat.unref();
+		return runner;
+	}
+
+	private constructor(host: SendHost, input: RunnerMemberInput) {
 		this.host = host;
 		const parent = host.me(),
 			context = host.ctx();
@@ -63,8 +83,6 @@ export class RunnerMember {
 			sessionId: input.sessionId,
 			mailbox: "pull",
 		};
-		if (!this.db.join(this.member, parent)) throw new Error(`The team name ${input.id} is already held.`);
-		this.unvouch = vouch(input.id, this.secret);
 		this.sender = {
 			...host,
 			me: () => (this.current() ? this.member : undefined),
@@ -77,16 +95,17 @@ export class RunnerMember {
 			signed: () => undefined,
 			signedByParent: () => undefined,
 		};
-		this.heartbeat = setInterval(() => {
-			try {
-				if (!this.current()) return;
-				this.member.updatedAt = Date.now();
-				this.db.save(this.member);
-			} catch {
-				/* A busy database is retried at the next heartbeat. */
-			}
-		}, HEARTBEAT_MS);
-		this.heartbeat.unref();
+	}
+
+	/** Refreshes the row; a busy database is never waited for (`quick`) and is tried again at the next heartbeat. */
+	private beat(): void {
+		try {
+			if (!this.current()) return;
+			this.member.updatedAt = Date.now();
+			this.db.quick(() => this.db.save(this.member));
+		} catch {
+			/* A busy database is retried at the next heartbeat. */
+		}
 	}
 
 	private current(): boolean {
@@ -110,11 +129,15 @@ export class RunnerMember {
 			.map(({ id, role, goal, status, parentId }) => ({ id, role, goal, status, parentId }));
 	}
 
-	inbox(ack: number[], signal?: AbortSignal) {
+	async inbox(ack: number[], signal?: AbortSignal) {
 		this.ready(signal);
 		if (ack.some((id) => !this.fetched.has(id)))
 			throw new Error("Acknowledge only message IDs previously fetched by this mailbox.");
-		this.db.ack(this.member.id, ack);
+		// Another process holding the write lock delays the acknowledgement on a timer, never on this thread.
+		if (ack.length > 0) {
+			await patiently(this.db, () => this.db.ack(this.member.id, ack), signal);
+			this.ready(signal);
+		}
 		for (const id of ack) this.fetched.delete(id);
 		const batch = this.db.pending(this.member.id);
 		for (const message of batch) this.fetched.add(message.id);
@@ -145,13 +168,16 @@ export class RunnerMember {
 		return sendMessage(this.sender, to, text, { ...options, signal: joined });
 	}
 
-	close(): void {
-		if (this.closed) return;
+	/** Stops the mailbox at once; the row's removal waits for another process's write lock on a timer (`patiently`). */
+	close(): Promise<void> {
+		if (this.closed) return Promise.resolve();
 		this.closed = true;
 		clearInterval(this.heartbeat);
 		this.fetched.clear();
 		this.unvouch();
 		// The store removes only the row still naming this process identity.
-		this.db.remove(this.member.id, Date.now(), this.member);
+		return patiently(this.db, () => {
+			this.db.remove(this.member.id, Date.now(), this.member);
+		});
 	}
 }

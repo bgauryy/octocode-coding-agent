@@ -17,14 +17,27 @@ import { providerHealth, spentNothing } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
-import { failedNext, foregroundExtras, PERMISSION_STOP, ranOn, reportMessage, stoppedError } from "./report-text.ts";
+import {
+	failedNext,
+	foregroundExtras,
+	PERMISSION_STOP,
+	ranOn,
+	reportMessage,
+	routeSuffix,
+	stoppedError,
+} from "./report-text.ts";
 import { unavailableResult } from "./result-schema.ts";
 import type { RunDetails } from "./run-types.ts";
 import { beginRun, finishRun, type RunEnd } from "./run-audit.ts";
 import { stopFacts } from "./stop-facts.ts";
+import { evidenceNotes } from "./evidence.ts";
 import { reportFacts, runFooter, withShot } from "./tracking.ts";
 
 type Outcome = Awaited<ReturnType<typeof runSubagent>>;
+
+/** The bundled desktop specialist's reports cite screenshots as proof: the harness opens them (`evidence.ts`). */
+const evidenceFor = (details: RunDetails, text: string): string[] =>
+	details.profile === "desktop" ? evidenceNotes(text, details.startedAt) : [];
 
 /** ` · cite as report:<id>`: how a later task or external prompt passes this report on without retyping it. */
 const citable = (id: string): string => ` · cite as ${reportRef(id)}`;
@@ -40,9 +53,9 @@ function awaitedReply(runs: AgentRuns, id: string, details: RunDetails): Awaited
  * The report answers whatever the parent asked this child and it read: they stop counting as unanswered. Housekeeping on
  * the way to the report, so a failure here costs at most a stale notice and never the report.
  */
-function closeAnswered(runs: AgentRuns, id: string): void {
+async function closeAnswered(runs: AgentRuns, id: string): Promise<void> {
 	try {
-		runs.team.closeQuestionsTo(id);
+		await runs.team.closeQuestionsTo(id);
 	} catch {
 		// The questions stay open; the report is delivered either way.
 	}
@@ -147,7 +160,7 @@ export function startBackground(
 				outcome.error
 					? `Background subagent ${who} failed`
 					: `Background subagent ${who} ${reported ? `reported ${reported}` : "finished"} (${stats})`
-			}${citable(identity.id)}`;
+			}${outcome.error ? "" : routeSuffix(ranOn(run.route, details.ran))}${citable(identity.id)}`;
 			const durationMs = Date.now() - details.startedAt;
 			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details);
 			end = {
@@ -170,15 +183,16 @@ export function startBackground(
 			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
 			const shot = details.shot ? `(Last screenshot: ${shortPath(details.shot)})` : "";
-			if (!outcome.error) closeAnswered(runs, identity.id);
+			if (!outcome.error) await closeAnswered(runs, identity.id);
 			readMailFirst(runs);
 			reports.add({
 				content: reportMessage(head, body, [
 					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
-					// A failure's `next` already names the route.
-					next || ranOn(run.route, details.ran),
+					// A failure's `next` names the route; a success's header does.
+					next,
 					...runFooter(details, Boolean(outcome.error)),
 					shot,
+					...evidenceFor(details, outcome.text),
 					note,
 					reachable,
 				]),
@@ -322,7 +336,7 @@ export async function runForeground(
 		runs.reports.reportingChanged();
 	}
 	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
-	if (!outcome.error) closeAnswered(runs, identity.id);
+	if (!outcome.error) await closeAnswered(runs, identity.id);
 	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
 	finishRun(runs, identity.id, {
@@ -359,11 +373,11 @@ export async function runForeground(
 			{
 				type: "text" as const,
 				text: reportMessage(
-					`${heading || `Subagent ${identity.id} finished`}${citable(identity.id)}`,
+					`${heading || `Subagent ${identity.id} finished`}${routeSuffix(ranOn(run.route, details.ran))}${citable(identity.id)}`,
 					withShot(details, outcome.text || "(subagent returned no text)"),
 					[
 						typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "",
-						ranOn(run.route, details.ran),
+						...evidenceFor(details, outcome.text),
 						note,
 					],
 				),

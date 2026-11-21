@@ -63,7 +63,7 @@ describe("paint timers on the animation clock", () => {
 		advance(1_600);
 		expect(stripAnsi(line())).not.toBe(stripAnsi(frozen));
 		expect(stripAnsi(line()).replace(/\(.*\)/, "")).toBe(stripAnsi(frozen).replace(/\(.*\)/, ""));
-		// Elapsed text repaints about once a second; the 80 ms spinner repaints are gone.
+		// Elapsed text repaints about once a second; the 100 ms spinner repaints are gone.
 		expect(tui.requestRender.mock.calls.length).toBeLessThanOrEqual(3);
 		expect(tui.requestRender.mock.calls.length).toBeGreaterThanOrEqual(2);
 		indicator.dispose();

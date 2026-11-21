@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -66,4 +66,40 @@ it("rejects an already cancelled open and preserves the synchronous missing-file
 		name: "AbortError",
 	});
 	expect((await loadSessionFileAsync(file)).entries).toEqual([]);
+});
+
+it("forks a large session while timers keep firing, matching the synchronous fork, and cancels before writing", async () => {
+	const source = SessionManager.inMemory(dir);
+	const first = source.appendMessage(userMsg("fork 🌊"));
+	source.appendLabelChange(first, "keep");
+	for (let i = 0; i < 20000; i++) source.appendCustomEntry("row", { i, text: "🌊".repeat(40) });
+	const file = join(dir, "source.jsonl");
+	writeFileSync(file, encodeSessionLines([source.getHeader()!, ...source.getEntries()]).lines.join("\n") + "\n");
+
+	const sync = SessionManager.forkFrom(file, dir, join(dir, "sync"));
+	let ticks = 0;
+	const timer = setInterval(() => ticks++, 0);
+	let fork: SessionManager;
+	try {
+		fork = await SessionManager.forkFromAsync(file, dir, join(dir, "async"));
+	} finally {
+		clearInterval(timer);
+	}
+	expect(ticks).toBeGreaterThan(2);
+	expect(fork.getEntries()).toEqual(sync.getEntries());
+	expect(fork.getHeader()?.parentSession).toBe(file);
+	expect(fork.getLabel(first)).toBe("keep");
+	expect(fork.getSessionFile()?.startsWith(join(dir, "async"))).toBe(true);
+
+	const controller = new AbortController();
+	const abort = setTimeout(() => controller.abort(), 5);
+	try {
+		await expect(
+			SessionManager.forkFromAsync(file, dir, join(dir, "cancelled"), undefined, controller.signal),
+		).rejects.toMatchObject({ name: "AbortError" });
+	} finally {
+		clearTimeout(abort);
+	}
+	const cancelled = join(dir, "cancelled");
+	expect(existsSync(cancelled) ? readdirSync(cancelled) : []).toEqual([]);
 });

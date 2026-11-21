@@ -12,6 +12,7 @@ import { ROLE_PROMPT_FILE_ENV } from "../../native/prompts/role.ts";
 import type { ActionClass, PermissionMode } from "../../permission/mode.ts";
 import {
 	BACKLOG_ITEM_ENV,
+	DESKTOP_APPS_ENV,
 	MCP_DEFER_ROLES_ENV,
 	MCP_RECENT_TOOLS_ENV,
 	CACHE_RETENTION_ENV,
@@ -164,6 +165,8 @@ export interface Identity {
 	 * browser control never pass down this way.
 	 */
 	permission?: { mode: PermissionMode; grants: readonly ActionClass[] };
+	/** The apps a desktop task may control (its `apps`): the child's permission layer refuses any other (`DESKTOP_APPS_ENV`). */
+	desktopApps?: readonly string[];
 	/** The parent can ask a person: the child sends its approval dialogs to the parent (`OCTOCODE_PERMISSION_RELAY`) instead of denying them. */
 	relay?: boolean;
 	/** Paths the parent reserved for it (a task's `paths`), as given: its assignment names them, and a follow-up takes them again. */
@@ -240,6 +243,10 @@ export function subagentProcessEnv(
 		// The pid and its start time name this process, so a child never mistakes a later process with the pid for its parent.
 		...(identity ? { [PARENT_PID_ENV]: [process.pid, processStartTime(process.pid)].filter(Boolean).join(" ") } : {}),
 		...(nonceFile ? { [PERMISSION_NONCE_FILE_ENV]: nonceFile } : {}),
+		// Only a profile that controls the desktop gets the list; `planRun` refuses `apps` for any other.
+		...(identity?.desktopApps?.length && profile?.permissions?.includes("desktop.control")
+			? { [DESKTOP_APPS_ENV]: identity.desktopApps.join(",") }
+			: {}),
 		...(identity?.relay ? { [PERMISSION_RELAY_ENV]: "1" } : {}),
 		...(identity?.permission ? { [PERMISSION_ENV]: identity.permission.mode } : {}),
 		...(identity?.permission?.grants.length ? { [PERMISSION_GRANTS_ENV]: identity.permission.grants.join(",") } : {}),

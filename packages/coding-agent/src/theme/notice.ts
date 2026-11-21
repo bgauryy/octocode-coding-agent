@@ -25,7 +25,7 @@ export function noticeText({ title, rows = [], warnings = [], hint }: Notice): s
 	].join("\n");
 }
 
-export type NoticeRole = "text" | "title" | "label" | "path" | "id" | "warning" | "hint";
+type NoticeRole = "text" | "title" | "label" | "path" | "id" | "warning" | "hint";
 export type Paint = (role: NoticeRole, text: string) => string;
 
 const PATH = /(?<![\w/])(?:~|\.{1,2})?\/[\w.@~+-]+(?:\/[\w.@~+-]*)*/g;

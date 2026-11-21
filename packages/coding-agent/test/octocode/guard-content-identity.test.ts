@@ -167,3 +167,25 @@ it("preserves literal credential rotation and pins unresolved executable express
 		scan(server({ API_TOKEN: "!second-command" })).hash,
 	);
 });
+
+const sandboxed = (sandbox?: boolean) =>
+	mcpItem({
+		name: "fixture",
+		source: "mcp.json",
+		scope: "fixture-project",
+		config: { command: "node", args: ["server.cjs"], ...(sandbox === undefined ? {} : { sandbox }) },
+	});
+
+it("asks again when a sandboxed server's sandbox is switched off", () => {
+	const hash = approved(sandboxed(true));
+	changed(sandboxed(false), hash);
+	changed(sandboxed(undefined), hash);
+});
+
+it("keeps a server approved before the sandbox field existed", () => {
+	const hash = approved(sandboxed(undefined));
+	expect(scan(sandboxed(false)).hash).toBe(hash);
+	const result = gate("mcp", [sandboxed(undefined)], { db, enforce: true });
+	expect(result.allowed.has("mcp:fixture")).toBe(true);
+	expect(JSON.stringify(sandboxed(undefined))).not.toContain("sandbox");
+});

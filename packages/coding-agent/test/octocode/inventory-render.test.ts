@@ -1,5 +1,6 @@
 import { visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
+import { stripAnsi } from "../../src/utils/ansi.ts";
 import { type InventoryItem, renderInventory } from "../../src/octocode/harness/inventory.ts";
 
 const item = (index: number, host: InventoryItem["host"] = "skills"): InventoryItem => ({
@@ -30,13 +31,12 @@ describe("renderInventory", () => {
 	});
 
 	for (const width of [60, 100]) {
-		it(`wraps a long path at its separators in ${width} columns`, () => {
-			const rows = renderInventory(inventory([item(1)]))
-				.split("\n")
-				.flatMap((line) => wrapTextWithAnsi(line, width));
+		it(`keeps every row within ${width} columns and the path characters in order`, () => {
+			const text = renderInventory(inventory([item(1)]));
+			const rows = text.split("\n").flatMap((line) => wrapTextWithAnsi(line, width));
 			for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
-			const folderBreaks = rows.filter((row) => row.trimEnd().endsWith("/"));
-			expect(folderBreaks.length).toBeGreaterThan(0);
+			expect(text).toContain("skill:s1");
+			expect(stripAnsi(rows.join("")).replaceAll(" ", "")).toContain(item(1).detail.replaceAll(" ", ""));
 		});
 	}
 });

@@ -37,6 +37,7 @@ const MATRIX: Record<ActionClass, [string, string, string]> = {
 	"browser.control": ["ask", "ask", "allow"],
 	"browser.cookies": ["ask", "ask", "ask"],
 	"desktop.control": ["ask", "ask", "ask"],
+	"desktop.sensitive": ["ask", "ask", "ask"],
 	"net.private": ["ask", "ask", "allow"],
 	"net.shell": ["ask", "ask", "allow"],
 	"upload.outside": ["ask", "ask", "allow"],
@@ -148,10 +149,17 @@ describe("permission modes", () => {
 		expect([...UNGRANTABLE].sort()).toEqual([
 			"browser.control",
 			"desktop.control",
+			"desktop.sensitive",
 			"mcp.destructive",
 			"shell.destructive",
 		]);
-		for (const action of ["browser.control", "desktop.control", "shell.destructive", "mcp.destructive"] as const)
+		for (const action of [
+			"browser.control",
+			"desktop.control",
+			"desktop.sensitive",
+			"shell.destructive",
+			"mcp.destructive",
+		] as const)
 			expect(kindOf(action)).toBeUndefined();
 	});
 

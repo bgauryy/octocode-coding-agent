@@ -3,7 +3,11 @@ import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { FullscreenExitOutput, MermaidRenderingMode, TuiMode, WarningSettings } from "../../settings-schema.ts";
 import type { DisplaySettingsApi } from "../api/display.ts";
 import { DEFAULT_THEME_SETTING } from "../constants.ts";
-import { environmentWantsStillMotion } from "../motion-environment.ts";
+import {
+	environmentLatencyFence,
+	environmentWantsScreenReader,
+	environmentWantsStillMotion,
+} from "../motion-environment.ts";
 import { ResourceSettingsAccessors } from "./resources.ts";
 
 /** Theme, terminal, fullscreen, images, editor and markdown display, and warnings. */
@@ -121,8 +125,10 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 		return typeof value === "boolean" || value === "auto" ? value : SETTINGS_DEFAULTS.terminal.reduceMotion;
 	}
 
-	/** Whether motion is reduced now: an explicit choice wins; `"auto"` is still when the environment asks for it. */
+	/** Whether motion is reduced now: screen-reader mode, else an explicit choice; `"auto"` is still when the environment asks for it. */
 	isReduceMotionActive(): boolean {
+		// Screen-reader text mode holds every decoration still, whatever `reduceMotion` says.
+		if (this.isScreenReaderActive()) return true;
 		const value = this.getReduceMotion();
 		if (value !== "auto") return value;
 		return environmentWantsStillMotion(process.env, process.stdout.isTTY);
@@ -132,6 +138,68 @@ export abstract class DisplaySettingsAccessors extends ResourceSettingsAccessors
 		this.globalSettings.terminal ??= {};
 		this.globalSettings.terminal.reduceMotion = value;
 		this.markModified("terminal", "reduceMotion");
+		this.save();
+	}
+
+	/** The stored choice: `true`, `false` or `"auto"` (follow `OCTOCODE_SCREEN_READER`). */
+	getScreenReader(): boolean | "auto" {
+		const value = this.settings.terminal?.screenReader;
+		return typeof value === "boolean" || value === "auto" ? value : SETTINGS_DEFAULTS.terminal.screenReader;
+	}
+
+	/** Whether screen-reader text mode is on now: an explicit choice wins; `"auto"` follows the environment. */
+	isScreenReaderActive(): boolean {
+		const value = this.getScreenReader();
+		return value === "auto" ? environmentWantsScreenReader(process.env) : value;
+	}
+
+	setScreenReader(value: boolean | "auto"): void {
+		this.globalSettings.terminal ??= {};
+		this.globalSettings.terminal.screenReader = value;
+		this.markModified("terminal", "screenReader");
+		this.save();
+	}
+
+	/** The stored choice: `true`, `false` or `"auto"` (on). */
+	getLatencyFence(): boolean | "auto" {
+		const value = this.settings.terminal?.latencyFence;
+		return typeof value === "boolean" || value === "auto" ? value : SETTINGS_DEFAULTS.terminal.latencyFence;
+	}
+
+	/** Whether the display-lag fence runs: `OCTOCODE_LATENCY_FENCE=0|1` wins, else an explicit setting, else on. */
+	isLatencyFenceActive(): boolean {
+		const fromEnvironment = environmentLatencyFence(process.env);
+		if (fromEnvironment !== undefined) return fromEnvironment;
+		const value = this.getLatencyFence();
+		return value === "auto" ? true : value;
+	}
+
+	setLatencyFence(value: boolean | "auto"): void {
+		this.globalSettings.terminal ??= {};
+		this.globalSettings.terminal.latencyFence = value;
+		this.markModified("terminal", "latencyFence");
+		this.save();
+	}
+
+	getSurfaceFills(): boolean {
+		return this.settings.terminal?.surfaceFills ?? SETTINGS_DEFAULTS.terminal.surfaceFills;
+	}
+
+	setSurfaceFills(enabled: boolean): void {
+		this.globalSettings.terminal ??= {};
+		this.globalSettings.terminal.surfaceFills = enabled;
+		this.markModified("terminal", "surfaceFills");
+		this.save();
+	}
+
+	getToolBands(): boolean {
+		return this.settings.terminal?.toolBands ?? SETTINGS_DEFAULTS.terminal.toolBands;
+	}
+
+	setToolBands(enabled: boolean): void {
+		this.globalSettings.terminal ??= {};
+		this.globalSettings.terminal.toolBands = enabled;
+		this.markModified("terminal", "toolBands");
 		this.save();
 	}
 

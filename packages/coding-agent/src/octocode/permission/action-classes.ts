@@ -12,6 +12,7 @@ export const ACTION_CLASSES = [
 	"browser.control",
 	"browser.cookies",
 	"desktop.control",
+	"desktop.sensitive",
 	"net.private",
 	"net.shell",
 	"upload.outside",
@@ -98,6 +99,11 @@ export const MATRIX: Record<
 		rules: ["ask", "ask", "ask"],
 		noun: "taking control of the desktop",
 		why: "it clicks, types or reads the screen of your real desktop, where every open app and signed-in session is within reach",
+	},
+	"desktop.sensitive": {
+		rules: ["ask", "ask", "ask"],
+		noun: "a sensitive desktop tool",
+		why: "it reads or writes the clipboard, quits an app, records the screen, replays a recording, widens a session or moves files through a browser",
 	},
 	"net.private": {
 		rules: ["ask", "ask", "allow"],

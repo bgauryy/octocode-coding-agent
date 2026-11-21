@@ -194,7 +194,7 @@ describe("terminal add", () => {
 		const host = mcpHost({ cwd, servers: [], presets: [], createTransport });
 		await host.start();
 		const { port } = ui(
-			["field", "global", transport, "save", "done"],
+			["field", "global", transport, "save", "save", "done"],
 			transport === "stdio"
 				? ["", "guided", "nonexistent", '["a b"]', "{}"]
 				: ["", "guided", "https://example.test/mcp", "{}"],

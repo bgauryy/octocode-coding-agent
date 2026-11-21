@@ -1,4 +1,4 @@
-import type { TerminalColors } from "@octocodeai/octocode-tui";
+import type { TerminalColorMode, TerminalColors } from "@octocodeai/octocode-tui";
 import { terminalAppearance } from "./system-theme.ts";
 import type { ThemeAppearance } from "./theme-types.ts";
 
@@ -58,10 +58,17 @@ export function parseAutoThemeSetting(
 	return { lightTheme, darkTheme };
 }
 
+/** The default light/dark pair. `DEFAULT_THEME_SETTING` in settings has the same value. */
+const DEFAULT_AUTO_THEME_PAIR = "octocode-light/octocode-dark";
+/** The theme the default pair becomes on a terminal with 16 colors, where named colors beat guessed hues. */
+const ANSI_THEME_NAME = "octocode-ansi";
+
 export function resolveThemeSetting(
 	themeSetting: string | undefined,
 	terminalTheme: ThemeAppearance,
+	colorMode?: TerminalColorMode,
 ): string | undefined {
+	if (themeSetting === DEFAULT_AUTO_THEME_PAIR && colorMode === "16color") return ANSI_THEME_NAME;
 	const autoTheme = parseAutoThemeSetting(themeSetting);
 	if (autoTheme) {
 		return terminalTheme === "light" ? autoTheme.lightTheme : autoTheme.darkTheme;

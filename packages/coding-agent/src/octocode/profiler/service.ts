@@ -13,6 +13,7 @@ import type {
 import type { FeedCursor, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { EndpointDirectory } from "../team/endpoint.ts";
 import { deriveInsights } from "./insights.ts";
+import type { SilenceEpisode } from "./silences.ts";
 import { allEvents, deriveTimeline, type Lane } from "./timeline.ts";
 import { profileMessages } from "./messages.ts";
 import { sessionIdOf } from "./notices.ts";
@@ -64,6 +65,8 @@ export interface ProfilerSource {
 	 * Absent for stored sources: their agents list without a window.
 	 */
 	contextWindowOf?(provider: string, model: string): number | undefined;
+	/** The silence episodes (lifecycle events) of the agents `agentIds` names; absent: none are recorded. */
+	silences?(agentIds: string[]): SilenceEpisode[];
 	/** Whether the session behind the source has closed; a failing check then ends live updates without a report. */
 	closed?(): boolean;
 }
@@ -307,7 +310,14 @@ export function createProfiler(
 		insights: () => {
 			const input = timelineInput();
 			const { events, messages } = allEvents(input);
-			return deriveInsights({ sessionId: input.sessionId, lanes: input.lanes, events, messages, now: input.now });
+			return deriveInsights({
+				sessionId: input.sessionId,
+				lanes: input.lanes,
+				events,
+				messages,
+				silences: source.silences?.(listed().map(({ base }) => base.id)) ?? [],
+				now: input.now,
+			});
 		},
 		trace: () => {
 			const input = timelineInput();

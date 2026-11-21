@@ -69,6 +69,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("DaemonShell", () => {
+	it("titles the tab after the shown section", async () => {
+		render(<DaemonShell access="tok" />);
+		expect(document.title).toBe("Sessions · Octocode");
+		location.hash = "#repos";
+		await waitFor(() => expect(document.title).toBe("Backlogs · Octocode"));
+	});
+
 	it.each([false, true])("reports whether the live session list was truncated (%s)", async (truncated) => {
 		vi.stubGlobal(
 			"fetch",

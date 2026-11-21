@@ -4,6 +4,7 @@ import type { Api, Model, TranscriptContext } from "../../types.ts";
 import { getSystemMessageText } from "../../utils/text.ts";
 import { getCurrentTools } from "../../utils/transcript.ts";
 import { transformMessages } from "../transform-messages.ts";
+import { vertexFilePlaceholder } from "./google-file-refs.ts";
 
 function replayMetadata(
 	model: Model<Api>,
@@ -93,7 +94,8 @@ export function sdkMessages(model: Model<Api>, context: TranscriptContext): Mode
 								if (model.api === "google-vertex" && !data)
 									return {
 										type: "text" as const,
-										text: `[file: ${uri} (${block.mimeType ?? "application/octet-stream"})]`,
+										text: vertexFilePlaceholder(uri!, block.mimeType ?? "application/octet-stream"),
+										providerOptions: replayMetadata(model, block.thoughtSignature, false),
 									};
 								return {
 									type: "file" as const,

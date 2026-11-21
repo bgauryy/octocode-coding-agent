@@ -115,18 +115,19 @@ const RECEIPT_LIMIT = 1000;
 const RECEIPT_KEEP = 500;
 
 /**
- * Make room for one more command receipt. At the limit the oldest settled receipts go (they only serve repeated-id
+ * Make room for one more command receipt. `recording` counts commands still waiting for their durable receipt: they
+ * hold a slot as much as the stored ones. At the limit the oldest settled receipts go (they only serve repeated-id
  * idempotency) until `RECEIPT_KEEP` remain; receipts of commands still running are never dropped.
  */
-export function reserveReceipt(store: ApplicationStateStore): void {
+export function reserveReceipt(store: ApplicationStateStore, recording = 0): void {
 	const { receipts } = store.getState();
-	if (receipts.size < RECEIPT_LIMIT) return;
+	if (receipts.size + recording < RECEIPT_LIMIT) return;
 	const kept = new Map(receipts);
 	for (const [id, { receipt }] of receipts) {
-		if (kept.size <= RECEIPT_KEEP) break;
+		if (kept.size + recording <= RECEIPT_KEEP) break;
 		if (receipt.status !== "accepted") kept.delete(id);
 	}
-	if (kept.size >= RECEIPT_LIMIT)
+	if (kept.size + recording >= RECEIPT_LIMIT)
 		throw new Error("Command receipt capacity reached; too many commands are still running");
 	store.setState({ receipts: kept });
 }

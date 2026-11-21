@@ -1,68 +1,13 @@
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { contentText, textResult } from "../shared/util.ts";
+import { textResult } from "../shared/util.ts";
+import {
+	appendWrite,
+	attemptWrite,
+	batchSummary,
+	type BatchResult as Batch,
+	type EntryOutcome,
+	type EntryResult as Result,
+} from "../shared/batch.ts";
 import { parseRef } from "./item.ts";
-import { BacklogBatchAbortedError, type BatchOutcome } from "./batch-outcome.ts";
-
-type Result = { content: unknown; details?: unknown };
-type Batch = ReturnType<typeof textResult>;
-type EntryOutcome = { ok: boolean; text: string };
-
-async function attemptWrite(label: string, run: () => Result | Promise<Result>, signal?: AbortSignal) {
-	try {
-		signal?.throwIfAborted();
-		return { ok: true, text: contentText((await run()).content) };
-	} catch (error) {
-		signal?.throwIfAborted();
-		return { ok: false, text: `${visibleControls(label)}: refused - ${errorMessage(error)}` };
-	}
-}
-
-async function appendWrite(
-	rows: EntryOutcome[],
-	operation: "add" | "edit",
-	requested: number,
-	label: string,
-	run: () => Result | Promise<Result>,
-	signal?: AbortSignal,
-): Promise<void> {
-	let started = false;
-	try {
-		rows.push(
-			await attemptWrite(
-				label,
-				() => {
-					started = true;
-					return run();
-				},
-				signal,
-			),
-		);
-	} catch (error) {
-		if (!signal?.aborted || (!rows.length && !started)) throw error;
-		const outcomes: BatchOutcome[] = rows.map((row, index) => ({
-			index,
-			status: row.ok ? "applied" : "refused",
-			text: row.text,
-		}));
-		if (started)
-			outcomes.push({
-				index: rows.length,
-				status: "unknown",
-				text: `${visibleControls(label)}: outcome unknown; inspect stored state before retrying.`,
-			});
-		throw new BacklogBatchAbortedError(operation, requested, outcomes);
-	}
-}
-
-/** The head line and one line per entry. When every entry was refused nothing changed: that is an error result, not a success. */
-function summary(verb: "Added" | "Updated", rows: readonly { ok: boolean; text: string }[]): Batch {
-	const applied = rows.filter((row) => row.ok).length;
-	const head = `${verb} ${applied} of ${rows.length}${applied < rows.length ? `; ${rows.length - applied} refused` : ""}.`;
-	const text = [head, ...rows.map((row) => row.text)].join("\n");
-	if (rows.length > 0 && applied === 0) throw new Error(text);
-	return textResult(text);
-}
 
 /** `get` with several comma-separated ids: each item's record, or its own error row (unknown id). */
 export async function batchGet(
@@ -114,7 +59,7 @@ export async function batchUpdate(
 			signal,
 		);
 	}
-	return summary("Updated", rows);
+	return batchSummary("Updated", rows);
 }
 
 /**
@@ -165,5 +110,5 @@ export async function batchAdd(
 			signal,
 		);
 	}
-	return summary("Added", rows);
+	return batchSummary("Added", rows);
 }

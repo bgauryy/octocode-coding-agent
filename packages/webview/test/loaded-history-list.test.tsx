@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { LoadedHistoryList } from "../src/app/live/LoadedHistoryList.tsx";
 import { LiveProvider } from "../src/app/live/session.tsx";
-import type { FeedEvent } from "../src/app/live/application-projection.ts";
+import type { FeedEvent } from "@octocodeai/octocode-projections";
 import { FakeSocket } from "./helpers.ts";
 
 beforeEach(() => {

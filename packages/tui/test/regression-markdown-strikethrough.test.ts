@@ -18,6 +18,31 @@ class ReferenceTokenizer extends Tokenizer {
 const reference = new Marked();
 reference.setOptions({ tokenizer: new ReferenceTokenizer() });
 
+/** CPU time of this process for one lex, the best of three runs: other processes' load stretches the wall clock. */
+function lexCpuMs(source: string): number {
+	let best = Number.POSITIVE_INFINITY;
+	for (let run = 0; run < 3; run++) {
+		const start = process.cpuUsage();
+		markdownParser.lexer(source);
+		const used = process.cpuUsage(start);
+		best = Math.min(best, (used.user + used.system) / 1000);
+	}
+	return best;
+}
+
+/**
+ * Lexing four times the input must cost about four times the CPU: a linear lexer lands near 4, a quadratic one near
+ * 16. The ratio holds on a loaded machine, where an absolute time budget does not.
+ */
+function assertLinearScaling(make: (units: number) => string, units: number, what: string): void {
+	const small = Math.max(lexCpuMs(make(units)), 1);
+	const large = lexCpuMs(make(units * 4));
+	assert.ok(
+		large / small < 8,
+		`${what}: 4x the input took ${(large / small).toFixed(1)}x the CPU (${small.toFixed(0)} -> ${large.toFixed(0)} ms)`,
+	);
+}
+
 const CORPUS = [
 	"~~done~~",
 	"~~a~~",
@@ -118,21 +143,14 @@ describe("strict strikethrough", () => {
 
 	it("lexes many unclosed openers in linear time", () => {
 		// The reference regex took about 1.8 s for 20,000 openers and 7.2 s for 40,000.
-		const source = "~~a ".repeat(40_000);
-		const start = performance.now();
-		const tokens = markdownParser.lexer(source);
-		const elapsed = performance.now() - start;
-		assert.ok(elapsed < 1000, `took ${elapsed.toFixed(0)} ms`);
+		assertLinearScaling((units) => "~~a ".repeat(units), 10_000, "strikethrough openers");
+		const tokens = markdownParser.lexer("~~a ".repeat(40_000));
 		assert.ok(!JSON.stringify(tokens).includes('"type":"del"'));
 	});
 
 	it("finds inline latex openers in linear time", () => {
 		// Each text step searched the rest of the run for `$`, `\(` and `\[`: 320 KB of "~a b" took 4.6 s.
-		const source = "~a b".repeat(80_000);
-		const start = performance.now();
-		markdownParser.lexer(source);
-		const elapsed = performance.now() - start;
-		assert.ok(elapsed < 1000, `took ${elapsed.toFixed(0)} ms`);
+		assertLinearScaling((units) => "~a b".repeat(units), 20_000, "inline latex openers");
 	});
 
 	it("keeps block math starts identical in nested blocks and at paragraph boundaries", () => {
@@ -152,10 +170,9 @@ describe("strict strikethrough", () => {
 	});
 
 	it("does not rescan the remaining document for block math at every paragraph", () => {
-		const source = "A short paragraph without math.\n\n".repeat(40_000);
-		const start = performance.now();
-		const tokens = markdownParser.lexer(source);
-		assert.ok(performance.now() - start < 1500, "block math lookup must stay linear across paragraphs");
+		const paragraphs = (units: number) => "A short paragraph without math.\n\n".repeat(units);
+		assertLinearScaling(paragraphs, 10_000, "block math lookup across paragraphs");
+		const tokens = markdownParser.lexer(paragraphs(40_000));
 		assert.equal(tokens.filter((token) => token.type === "paragraph").length, 40_000);
 	});
 });

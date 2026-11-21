@@ -4,7 +4,8 @@ import { setCommandSandbox } from "../../../utils/command-sandbox.ts";
 import type { FeatureContext } from "../../../core/features/index.ts";
 import type { Permission } from "../ask.ts";
 import type { PermissionMode } from "../mode.ts";
-import { setOptInSandboxSession } from "./opt-in.ts";
+import { installMcpHost } from "../../../../../mcp/src/api.ts";
+import { mcpSandboxPort, setOptInSandboxSession } from "./opt-in.ts";
 import { sandboxPolicy } from "./policy.ts";
 import { sandboxPrompts } from "./prompts.ts";
 import { type SandboxPrompts, SrtCommandSandbox } from "./srt.ts";
@@ -42,4 +43,5 @@ export function applySessionSandbox(permission: Permission, ctx: FeatureContext)
 	const prompts = sandboxPrompts(permission, ctx);
 	applyCommandSandboxSetting(() => permission.mode, getAgentDir(), process.env, prompts);
 	setOptInSandboxSession(() => permission.mode, prompts);
+	installMcpHost({ sandbox: mcpSandboxPort });
 }

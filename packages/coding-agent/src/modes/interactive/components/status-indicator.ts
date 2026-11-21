@@ -8,6 +8,7 @@ import {
 	SEPARATOR,
 	type TUI,
 	animationClock,
+	isScreenReaderMode,
 	stripTerminalSequences,
 	truncateToWidth,
 	visibleWidth,
@@ -95,6 +96,11 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		);
 	}
 
+	/** A short run never flashes a spinner: it appears once the work has lasted `MOTION.spinnerDelayMs`. */
+	protected override startDelayMs(): number {
+		return MOTION.spinnerDelayMs;
+	}
+
 	override setMessage(message: string): void {
 		this.workingMessage = message;
 		super.setMessage(message);
@@ -118,7 +124,8 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	private compose(width: number, paint: (detail: string) => string, withHint: boolean): string {
 		// Model thinking and tool targets reach this line, so only colours survive.
 		const detail = styledLine(this.workingMessage);
-		const prefix = ` ${this.getRenderedIndicator()} `;
+		// While the spinner is hidden its cell stays blank, so the detail does not shift when it appears.
+		const prefix = isScreenReaderMode() ? " working: " : ` ${this.getRenderedIndicator() || " "} `;
 		const key = withHint ? interruptKey() : "";
 		const paintedSuffix = (hint: boolean) =>
 			theme.fg("dim", ` (${this.elapsed()}`) +

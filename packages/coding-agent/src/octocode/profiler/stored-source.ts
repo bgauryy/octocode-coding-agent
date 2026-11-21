@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { ProfilerSource } from "./service.ts";
+import { storedSilences } from "./silences.ts";
 import { catalogFiles, runMember, runTranscript, sessionRuns } from "./runs.ts";
 import { toTraffic } from "../team/model.ts";
 import type { DepartedAgent, EndpointDirectory } from "../team/endpoint.ts";
@@ -91,6 +92,7 @@ export function storedProfilerSource({ db, session }: StoredProfilerOptions): Pr
 				? correspondence.involving(db, ids, since).map(({ message, deliveries }) => toTraffic(message, deliveries))
 				: [];
 		},
+		silences: (ids) => storedSilences(db, ids, runs.length > 0 ? Math.min(...runs.map((run) => run.startedAt)) : 0),
 		endpoints: () => endpoints,
 		transcript: (agentId) => {
 			const run = latest.get(agentId);

@@ -104,8 +104,11 @@ export async function runCli(sandbox: Sandbox, args: string[], timeoutMs = 60_00
 	}
 }
 
-/** One scripted model reply: assistant text, or a call to a tool. */
-type ScriptedReply = { text: string } | { tool: string; args: Record<string, unknown> };
+/** One scripted model reply: assistant text, a call to a tool, or a provider failure (an HTTP status and error message). */
+type ScriptedReply =
+	| { text: string }
+	| { tool: string; args: Record<string, unknown> }
+	| { status: number; error: string };
 
 export interface ModelServer {
 	url: string;
@@ -150,6 +153,11 @@ export async function startModelServer(script: readonly ScriptedReply[]): Promis
 				if (response.destroyed) return;
 			}
 			const reply: ScriptedReply = script[next++] ?? { text: "done" };
+			if ("status" in reply) {
+				response.writeHead(reply.status, { "content-type": "application/json" });
+				response.end(JSON.stringify({ error: { message: reply.error, type: "scripted_failure" } }));
+				return;
+			}
 			response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
 			response.write(chunk({ role: "assistant" }, null));
 			if ("text" in reply) {

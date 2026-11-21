@@ -10,6 +10,16 @@ export interface TuiMainScreenRenderState {
 	previousViewportTop: number;
 }
 
+/** A painted frame, as the next frame's compare needs it. */
+export interface FrameCommit {
+	newLines: string[];
+	imageRows: KittyImageRows;
+	width: number;
+	height: number;
+	cursorPos: { row: number; col: number } | null;
+	viewportTop: number;
+}
+
 /**
  * Find the first and last changed lines, widened to whole Kitty image blocks; both are -1 when nothing changed.
  * Rows before `fromRow` are not compared: the caller has decided they cannot be redrawn.

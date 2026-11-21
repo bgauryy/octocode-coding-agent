@@ -95,11 +95,6 @@ function load(file: string): { records: ArchiveRecord[]; bytes: number } {
 	};
 }
 
-/** Writers refuse damaged gzip, JSON or record envelopes rather than replacing evidence. */
-export function readMonth(file: string): ArchiveRecord[] {
-	return load(file).records;
-}
-
 /** Synchronous compatibility read; a missing month is empty, a damaged one throws; only small months fit the process-wide decoded-byte and row budgets. */
 export function cachedMonth(file: string): ArchiveRecord[] {
 	const version = stamp(file);

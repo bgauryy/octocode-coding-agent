@@ -8,7 +8,7 @@ import type {
 import { memo, useEffect, useState } from "react";
 import { safeWebLink } from "../../link.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { toolState } from "../model/ui-state.ts";
+import { toolState } from "@octocodeai/octocode-projections";
 import { Button } from "../ui/primitives.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
 import { type AssetLoader, AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";

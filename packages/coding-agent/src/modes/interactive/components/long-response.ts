@@ -25,10 +25,19 @@ export class LongResponse implements Component {
 	private expanded: boolean;
 	private readonly changed: (expanded: boolean) => void;
 	private readonly streaming: boolean;
+	private readonly collapsing?: () => void;
 	private folded?: { rows: string[]; width: number; hint: string; lines: string[] };
 
-	constructor(content: Component, expanded: boolean, changed: (expanded: boolean) => void, streaming = false) {
+	/** `collapsing` runs before a real expanded-to-collapsed change (the screen's `keepScrollbackOnCollapse`). */
+	constructor(
+		content: Component,
+		expanded: boolean,
+		changed: (expanded: boolean) => void,
+		streaming = false,
+		collapsing?: () => void,
+	) {
 		this.content = content;
+		this.collapsing = collapsing;
 		this.expanded = expanded;
 		this.changed = changed;
 		this.streaming = streaming;
@@ -42,6 +51,8 @@ export class LongResponse implements Component {
 	}
 
 	setExpanded(expanded: boolean): void {
+		// Only a folding response shrinks when it collapses.
+		if (this.expanded && !expanded && this.foldable) this.collapsing?.();
 		this.expanded = expanded;
 		renderChanged(this);
 	}

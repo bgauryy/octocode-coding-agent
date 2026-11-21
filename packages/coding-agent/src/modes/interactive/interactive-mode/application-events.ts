@@ -1,5 +1,6 @@
 import type { ApplicationContentBlock, ApplicationEvent, ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
+import { applicationMessageDisplayed } from "@octocodeai/octocode-projections";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import type { ApplicationService } from "../../../core/application/index.ts";
 import { Spacer, Text } from "@octocodeai/octocode-tui";
@@ -73,6 +74,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 		showImages: host.settingsManager.getShowImages(),
 		imageWidthCells: host.settingsManager.getImageWidthCells(),
 		requestRender: () => host.ui.requestRender(),
+		keepScrollbackOnCollapse: () => host.ui.keepScrollbackOnCollapse?.(),
 	});
 	// A rebuild or compaction disposes rendered messages without an event here; drop what left the transcript, so the
 	// maps do not keep disposed components (and their content) alive for the rest of the session. The check reads every
@@ -169,7 +171,11 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 			}
 			case "message.started":
 			case "message.completed":
-				if (event.message.role === "user" || event.message.role === "assistant") showMessage(event.message);
+				if (
+					(event.message.role === "user" || event.message.role === "assistant") &&
+					applicationMessageDisplayed(event.message)
+				)
+					showMessage(event.message);
 				break;
 			case "message.delta": {
 				const previous = messages.get(event.messageId);

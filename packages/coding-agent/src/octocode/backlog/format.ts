@@ -45,11 +45,16 @@ function waitText(item: Item, marks: ItemMarks): string {
  */
 export function itemLine(item: Item, self?: string, parents?: ReadonlySet<string>, marks: ItemMarks = {}): string {
 	const tags = item.tags.map((tag) => ` #${tag}`).join("");
-	const type = item.type === "feature" ? "" : ` ${item.type}`;
 	const parent = item.parentId && !marks.hideParent ? ` ⊂${item.parentId}` : "";
 	const stale = marks.stale ? " (stale: holder ended)" : "";
 	const workers = marks.workers ? ` (worked on by ${marks.workers.map(visibleControls).join(", ")})` : "";
-	return `${item.ref} [${item.closed ? "closed" : item.state} ${priorityName(item.priority)}${type}] ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${workers}${stale}`;
+	return `${itemHead(item)} ${visibleControls(item.title)}${tags}${parent}${fromText(item)}${waitText(item, marks)}${holder(item, self, parents)}${workers}${stale}`;
+}
+
+/** `B14 [ongoing p1 bug]`: the ref, state, priority and type (unless feature) every item line opens with. */
+export function itemHead(item: Item): string {
+	const type = item.type === "feature" ? "" : ` ${item.type}`;
+	return `${item.ref} [${item.closed ? "closed" : item.state} ${priorityName(item.priority)}${type}]`;
 }
 
 const ago = (at: number, now: number) => formatAgo(now - at);

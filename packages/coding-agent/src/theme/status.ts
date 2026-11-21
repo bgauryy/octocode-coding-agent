@@ -169,17 +169,34 @@ export function markFrameMs(state: UiState, options: Pick<MarkOptions, "backgrou
 export interface ShimmerTheme {
 	fg(color: ThemeColor, text: string): string;
 	readonly colors: Readonly<Partial<Record<string, Color>>>;
+	/** The terminal's default colors: the shimmer runs between them. */
+	readonly terminalDefaults?: { readonly foreground: Color; readonly background: Color };
 	readonly appearance?: "dark" | "light";
 	getColorMode(): Parameters<typeof shimmerText>[1]["mode"];
 }
 
+/** How far the resting colour of a shimmer sits from the terminal's foreground toward its background. */
+const SHIMMER_REST = 0.45;
+
 /**
- * `text` with the light band the working line's verb has: `text` colour peaking toward the accent. It is plain `text`
- * colour in reduced motion and in a theme without concrete colours, so every live label dims the same way.
+ * `text` with the light band every live label shares: the terminal's foreground, dimmed toward its background at rest
+ * and full at the band's centre (a theme without the terminal's colours uses its `text` peaking toward the accent;
+ * 16 colors use dim and bold). It is plain `text` colour in reduced motion and in a theme without concrete colours.
  */
 export function liveShimmer(theme: ShimmerTheme, text: string, now?: number): string {
 	try {
 		const { text: base, accent } = theme.colors;
+		const defaults = theme.terminalDefaults;
+		if (!animationClock.isReducedMotion() && defaults) {
+			const { foreground, background } = defaults;
+			const rest = mixColors(foreground, background, SHIMMER_REST);
+			return shimmerText(text, {
+				base: rest,
+				peak: foreground,
+				mode: theme.getColorMode(),
+				...(now === undefined ? {} : { now }),
+			});
+		}
 		if (!animationClock.isReducedMotion() && base && accent) {
 			const peak = mixColors(base, accent, theme.appearance === "light" ? 0.7 : 0.55);
 			return shimmerText(text, { base, peak, mode: theme.getColorMode(), ...(now === undefined ? {} : { now }) });

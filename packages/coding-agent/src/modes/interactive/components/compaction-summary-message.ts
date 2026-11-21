@@ -1,4 +1,4 @@
-import { GLYPH, type MarkdownTheme } from "@octocodeai/octocode-tui";
+import { GLYPH, type MarkdownTheme, type TUI } from "@octocodeai/octocode-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
 import { keptLine, viewSummary } from "../../../core/compaction/summary-view.ts";
 import { formatTokens } from "../../../octocode/shared/format.ts";
@@ -36,7 +36,12 @@ function compactionText(message: CompactionSummaryMessage): SummaryMessageText {
 
 /** A compaction message, collapsed to its token count and where the full record lives until expanded. */
 export class CompactionSummaryMessageComponent extends SummaryMessageComponent {
-	constructor(message: CompactionSummaryMessage, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {
-		super(compactionText(message), markdownTheme, outputPad);
+	constructor(
+		message: CompactionSummaryMessage,
+		markdownTheme: MarkdownTheme = getMarkdownTheme(),
+		outputPad = 1,
+		ui?: Pick<TUI, "keepScrollbackOnCollapse">,
+	) {
+		super(compactionText(message), markdownTheme, outputPad, ui);
 	}
 }

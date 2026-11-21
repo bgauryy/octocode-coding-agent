@@ -10,7 +10,7 @@ import {
 	type Model,
 	modelsAreEqual,
 } from "@octocodeai/octocode-ai";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { minimatch } from "minimatch";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import { defaultModelPerProvider, ownProviderDefault } from "./model-resolver/default-models.ts";
@@ -135,7 +135,7 @@ export async function resolveModelScope(
 ): Promise<ScopedModel[]> {
 	const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(patterns, modelRuntime, options);
 	for (const diagnostic of diagnostics) {
-		process.stderr.write(`${chalk.yellow(`Warning: ${diagnostic.message}`)}\n`);
+		process.stderr.write(`${cliStyle.warn(`Warning: ${diagnostic.message}`)}\n`);
 	}
 	return scopedModels;
 }

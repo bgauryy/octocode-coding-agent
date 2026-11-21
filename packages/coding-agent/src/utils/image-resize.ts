@@ -18,11 +18,19 @@ export interface ImageResizeStats {
 	/** Total and longest time of the resizes run on the calling thread, in milliseconds. */
 	inProcessMs: number;
 	inProcessMaxMs: number;
+	/** Images too large to resize on the calling thread (`IN_PROCESS_RESIZE_LIMIT`), omitted instead. */
+	inProcessRefused: number;
 	/** Why the latest worker attempt failed. */
 	lastWorkerError?: string;
 }
 
-const stats: ImageResizeStats = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0 };
+/**
+ * The largest encoded image resized on the calling thread when no worker can: decoding one larger blocks input and
+ * rendering for seconds. A larger image is omitted as one that cannot be resized.
+ */
+export const IN_PROCESS_RESIZE_LIMIT = 8 * 1024 * 1024;
+
+const stats: ImageResizeStats = { worker: 0, inProcess: 0, inProcessMs: 0, inProcessMaxMs: 0, inProcessRefused: 0 };
 
 /** A copy of this process's resize counts, for status and diagnostics. */
 export function imageResizeStats(): ImageResizeStats {
@@ -131,6 +139,10 @@ export async function resizeImage(
 		return result;
 	} catch (error) {
 		stats.lastWorkerError = error instanceof Error ? error.message : String(error);
+		if (inputBytes.byteLength > IN_PROCESS_RESIZE_LIMIT) {
+			stats.inProcessRefused += 1;
+			return null;
+		}
 		// The fallback blocks the calling thread for the whole decode and encode: counted and timed so it shows.
 		const started = performance.now();
 		try {

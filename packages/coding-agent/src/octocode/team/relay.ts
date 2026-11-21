@@ -131,7 +131,8 @@ export class Relays {
 
 	private fail(db: TeamStore, me: string, message: Message, target: string, reason: string): void {
 		try {
-			db.refs.failRelay(message.id, me, target, reason);
+			// Outside the tick: never waits inside SQLite (`quick`), and a busy write joins the failures the next tick settles.
+			db.quick(() => db.refs.failRelay(message.id, me, target, reason));
 		} catch {
 			// A busy database: the failure is written again on a later tick, so the child is still told.
 			this.unsettled.push({ message, me, target, reason });

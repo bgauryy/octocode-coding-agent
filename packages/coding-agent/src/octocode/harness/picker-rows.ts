@@ -10,17 +10,25 @@ import { HARNESS_SECTIONS, type HarnessSection, sectionCount, sectionOf } from "
 export type Row =
 	| { type: "host"; title: string }
 	| { type: "item"; item: InventoryItem }
-	| { type: "section"; row: OverviewRow };
+	| { type: "section"; row: OverviewRow }
+	/** The Skills section's last row: opens the add-from-a-folder page. */
+	| { type: "add" };
+
+/** The add row: cursor and label. */
+export const addRowLine = (selected: boolean, t: Theme): string =>
+	`${cursorMark(selected)}${t.fg("accent", "+ Add skill from a folder")}`;
 
 /**
  * The rows a section lists. The Overview lists one row per section. Hooks and sources group under their
  * host's heading. A filter matches label, id and detail; without one, a hook shows only inside an open hook file.
+ * `canAddSkill` ends an unfiltered Skills list with the add row.
  */
 export function pickerRows(
 	items: readonly InventoryItem[],
 	section: HarnessSection,
 	query: string,
 	expanded: ReadonlySet<string>,
+	canAddSkill = false,
 ): Row[] {
 	if (section === "overview") return overviewRows(items).map((row) => ({ type: "section", row }));
 	const matches = items.filter(
@@ -30,6 +38,10 @@ export function pickerRows(
 				? [item.label, item.id, item.detail].some((text) => text.toLowerCase().includes(query))
 				: item.kind !== "hook" || expanded.has(item.parents?.[0] ?? "")),
 	);
+	if (section === "skills") {
+		const rows: Row[] = matches.map((item) => ({ type: "item", item }));
+		return canAddSkill && !query ? [...rows, { type: "add" }] : rows;
+	}
 	if (section !== "hooks" && section !== "sources") return matches.map((item) => ({ type: "item", item }));
 	return (Object.keys(HOST_TITLES) as InventoryItem["host"][]).flatMap((host) => {
 		const own = matches.filter((item) => item.host === host);

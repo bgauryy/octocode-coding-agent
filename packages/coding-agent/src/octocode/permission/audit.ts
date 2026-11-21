@@ -29,6 +29,7 @@ export const WARN_ACTIONS: ReadonlySet<string> = new Set<ActionClass>([
 	"browser.control",
 	"browser.cookies",
 	"desktop.control",
+	"desktop.sensitive",
 	"net.private",
 ]);
 

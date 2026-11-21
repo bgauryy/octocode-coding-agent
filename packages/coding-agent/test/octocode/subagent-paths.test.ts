@@ -512,7 +512,7 @@ describe("the child's process taking its row over", () => {
 		expect(s.leases()).toEqual([]);
 	});
 
-	it("lets the child's guard pass its own reservation and refuses a name another process holds", () => {
+	it("lets the child's guard pass its own reservation and refuses a name another process holds", async () => {
 		const s = setup();
 		const started = processStartTime(process.ppid);
 		const parent = { pid: process.ppid, ...(started ? { started } : {}) };
@@ -546,7 +546,7 @@ describe("the child's process taking its row over", () => {
 		});
 		const stranger = new Team(fakeHost().api, { ...process.env, [AGENT_ID_ENV]: "kid-two" });
 		teams.push(stranger);
-		expect(() => stranger.start(s.ctx)).toThrow(/held by another running agent/);
+		await expect(stranger.start(s.ctx)).rejects.toThrow(/held by another running agent/);
 		// A child that could not join still owns what its parent reserved under its name.
 		expect(stranger.reservation(path.join(s.cwd, "b.ts"), "b.ts")).toBeUndefined();
 	});

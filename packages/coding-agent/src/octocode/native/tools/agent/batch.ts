@@ -18,7 +18,7 @@ export function tasksSchema(): TSchema & { description: string } {
 	return {
 		type: "array",
 		items: { type: "object" },
-		description: "task: several at once, each with task fields; top-level ones are defaults",
+		description: "task: several; top-level fields: defaults",
 	} as unknown as TSchema & { description: string };
 }
 

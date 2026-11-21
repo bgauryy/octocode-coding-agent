@@ -6,6 +6,9 @@ import { itemDetail } from "./format.ts";
 import { MAX_LIST_LIMIT } from "./tool-list.ts";
 import type { BacklogAudit } from "@octocodeai/octocode-contracts/snapshot";
 
+/** Notes a `get` shows without `limit`: the latest progress; older ones page in on request. */
+const DEFAULT_NOTES = 3;
+
 export interface GetParams {
 	id: string;
 	offset?: number;
@@ -15,7 +18,8 @@ export interface GetParams {
 }
 
 /**
- * `get` one item: its fields, items, steps, runs and the newest notes (default 10, paged by `limit` and `offset`). The
+ * `get` one item: its fields, items, steps, runs and the newest notes (default the last
+ * `DEFAULT_NOTES`, paged by `limit` and `offset`; the Next line pages the rest). The
  * store's own change rows and the audit trail fill half a typical item's history, so they show only with `changes`;
  * the web board reads them from the snapshot.
  */
@@ -24,7 +28,7 @@ export function getResult(backlog: Backlog, params: GetParams, audits?: BacklogA
 	const item = store.get(params.id);
 	if (!item) throw new Error(`No backlog item ${visibleControls(params.id)}.`);
 	const offset = Math.max(0, Math.floor(params.offset ?? 0));
-	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? 10)));
+	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_NOTES)));
 	const kind = params.changes ? undefined : "note";
 	const total = store.noteCount(item, kind);
 	const notes = store.notes(item, limit, offset, kind);
@@ -45,14 +49,16 @@ export function getResult(backlog: Backlog, params: GetParams, audits?: BacklogA
 		runs: store.runs(item),
 		epicState: store.epicState(item),
 	});
+	const shown = offset + notes.length;
 	const more = {
 		op: "get",
 		id: item.ref,
-		limit,
-		offset: offset + notes.length,
+		// Without a limit, the Next call reads every remaining note at once rather than three at a time.
+		limit: params.limit === undefined ? Math.min(MAX_LIST_LIMIT, total - shown) : limit,
+		offset: shown,
 		...(params.changes ? { changes: true } : {}),
 	};
-	const next = offset + notes.length < total ? `\nNext: backlog ${JSON.stringify(more)}` : "";
+	const next = shown < total ? `\nNext: backlog ${JSON.stringify(more)}` : "";
 	const audit = params.changes ? auditText(audits ?? store.audit(item.ref, AUDIT_SHOWN)) : "";
 	return textResult(`${detail}${audit}${next}`, { item });
 }

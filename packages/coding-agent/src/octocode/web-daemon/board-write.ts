@@ -23,7 +23,7 @@ export async function handleBoardWrite(
 	const input = await readJsonBody(req, reply);
 	if (input === undefined) return;
 	try {
-		const outcome = applyBoardWrite(store, input, session);
+		const outcome = await applyBoardWrite(store, input, session);
 		if (!outcome.ok) return reply(400, { error: outcome.error });
 		reply(200, outcome.result);
 		written?.();

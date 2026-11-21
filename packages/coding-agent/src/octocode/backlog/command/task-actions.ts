@@ -11,8 +11,8 @@ export type TaskOwnerChoice = { item: string } | { session: true };
 
 /** What the user does to tasks from the board: add, change the state, edit the goal, promote a session task. The user acts as the human actor. */
 export function createTaskActions(
-	applyAndSay: (ctx: CommandContext, change: () => void, done?: string) => void,
-	apply: (ctx: CommandContext, change: () => void) => string | undefined,
+	applyAndSay: (ctx: CommandContext, backlog: Backlog, change: () => void, done?: string) => Promise<void>,
+	apply: (ctx: CommandContext, backlog: Backlog, change: () => void) => Promise<string | undefined>,
 ) {
 	const human = (backlog: Backlog) => ({ ...backlog.actor, kind: "human" as const });
 
@@ -23,7 +23,7 @@ export function createTaskActions(
 		if (!goal) return;
 		const target = "item" in owner ? { item: owner.item } : { session: backlog.session };
 		let added: BacklogTask | undefined;
-		applyAndSay(ctx, () => {
+		await applyAndSay(ctx, backlog, () => {
 			added = backlog.store.tasks.add({ goal, ...target }, human(backlog));
 		});
 		if (added) say(ctx, `Added ${taskLine(added)}`);
@@ -41,7 +41,7 @@ export function createTaskActions(
 			result = await ctx.ui.input(state === "done" ? "What was done? (optional)" : "Why dropped? (optional)");
 			if (result === undefined) return "Cancelled.";
 		}
-		return apply(ctx, () => {
+		return apply(ctx, backlog, () => {
 			backlog.store.tasks.update(
 				task.ref,
 				{ state, version: task.version, ...(result?.trim() ? { result: result.trim() } : {}) },
@@ -52,7 +52,7 @@ export function createTaskActions(
 
 	/** The board's ←/→ step: no prompts, so a task moves between todo, ongoing and done in one key. */
 	const step = (ctx: CommandContext, backlog: Backlog, task: BacklogTask, state: TaskState) =>
-		apply(ctx, () => {
+		apply(ctx, backlog, () => {
 			backlog.store.tasks.update(task.ref, { state, version: task.version }, human(backlog));
 		});
 
@@ -73,7 +73,7 @@ export function createTaskActions(
 				run: async () => {
 					const goal = (await ctx.ui.editor(`Edit the goal of ${task.ref}`, task.goal))?.trim();
 					if (!goal) return;
-					applyAndSay(ctx, () => {
+					await applyAndSay(ctx, backlog, () => {
 						backlog.store.tasks.update(task.ref, { goal, version: task.version }, human(backlog));
 					});
 				},
@@ -86,9 +86,9 @@ export function createTaskActions(
 		if (task.owner.kind === "session" && isOpenTask(task.state))
 			choices.push({
 				label: "Promote to a backlog item",
-				run: () => {
+				run: async () => {
 					let promoted: Item | undefined;
-					applyAndSay(ctx, () => {
+					await applyAndSay(ctx, backlog, () => {
 						// The new item is the user's own, as one added with `a` is.
 						promoted = backlog.store.tasks.promote(
 							task.ref,

@@ -43,7 +43,10 @@ export function lintPrompt(context: AgentContext, all: readonly AgentContext[]):
 	const text = systemText(context);
 	const push = (rule: LintFinding["rule"], detail: string) => findings.push({ agent: context.name, rule, detail });
 
-	if (/\{\{|\}\}/.test(text)) push("unrendered-marker", "`{{` or `}}` remains in the rendered prompt");
+	// An MCP server's instructions are its own text, shown verbatim (Octocode ships no overrides): their braces are not
+	// Octocode template markers.
+	const rendered = text.replace(/^<mcp name="[^"]*"[^>]*>\n[\s\S]*?\n<\/mcp>$/gm, "");
+	if (/\{\{|\}\}/.test(rendered)) push("unrendered-marker", "`{{` or `}}` remains in the rendered prompt");
 
 	const own = new Set(context.tools.map((tool) => tool.name));
 	const everyone = new Set(all.flatMap((agent) => agent.tools.map((tool) => tool.name)));

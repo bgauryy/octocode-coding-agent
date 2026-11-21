@@ -93,7 +93,8 @@ export function registerPermissionCommand(
 	const handle = async (args: string, ctx: CommandContext): Promise<void> => {
 		const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
 		const [word = "", rest] = words;
-		if (words.length === 0 && ctx.hasUI) {
+		// The page is a terminal component; RPC hosts and print mode get the status text.
+		if (words.length === 0 && ctx.hasUI && ctx.mode === "tui") {
 			const picked = await pickPermissionsAction(
 				{
 					mode: permission.mode,

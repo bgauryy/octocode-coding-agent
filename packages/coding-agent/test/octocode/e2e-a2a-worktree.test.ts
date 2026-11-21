@@ -101,8 +101,8 @@ describe("isolated children on one team", () => {
 		expect(listed).toMatch(/parent \S+ · worktree \S+\n/);
 
 		const sent = resultsOf(endpoint, implementer);
-		expect(sent).toMatch(/Queued message #1 for \S+ as a request/);
-		expect(sent).toMatch(/Queued message #2 for \S+ as an FYI/);
+		expect(sent).toMatch(/Sent #1 to \S+ \(reply requested\)\./);
+		expect(sent).toMatch(/Sent #2 to \S+\./);
 
 		// Both messages reached the other side: the sibling, the coordinator, and each child's reply.
 		await until(() => heard(researcher).includes("hello researcher from the implementer"), "the sibling's message");

@@ -14,7 +14,7 @@ export interface QueuedSpec {
 	item?: string | undefined;
 	after: Prerequisite[];
 	/** Checks the start against the policy of the moment, claims the child's item and plans its reservation again; throws the refusal when the start no longer passes. */
-	prepare(): void | Promise<void>;
+	prepare(signal: AbortSignal): void | Promise<void>;
 	/** The child became held (`why`) or stopped being held (undefined): the row's state. */
 	onHeld(why: string | undefined): void;
 }
@@ -93,7 +93,7 @@ export function queueChild(
 				}
 				if (!failure) {
 					try {
-						await spec.prepare();
+						await spec.prepare(signal);
 						chain.released(spec.id, seq);
 						return seq === undefined ? {} : { seq };
 					} catch (error) {

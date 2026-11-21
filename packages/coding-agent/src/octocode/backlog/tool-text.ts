@@ -43,8 +43,8 @@ export function backlogPrompt(subagent: boolean): {
 	return {
 		promptSnippet: renderPrompt("tools/backlog/snippet.md"),
 		description:
-			"Work states: backlog proposed, todo accepted, ongoing claimed, done complete. Other live claims: notes only unless delegated. No deletion.",
-		ops: "get: read, follow Next; claim: start; note: progress; step: finish step with result/check note; done: finish item; close: end unneeded item",
+			"States: backlog proposed, todo accepted, ongoing claimed, done. Others' live claims: notes only unless delegated. No deletion.",
+		ops: "get: read, follow Next; claim: start; note: progress; step, done: finish a step, the item; close: end unneeded",
 		promptGuidelines: renderPrompt("tools/backlog/guidelines.md", { subagent }).split("\n"),
 	};
 }
@@ -62,7 +62,7 @@ export function backlogPlanPrompt(): {
 	return {
 		promptSnippet: renderPrompt("tools/backlog-plan/snippet.md"),
 		description:
-			"Plan work. add/edit write items: [{title, goal, why}] or [{id, priority}]. list filters by other fields. Work one item with backlog.",
-		ops: "add: propose items; edit: change their fields; list: follow Next",
+			"Plan work. add/edit write items: [{title, goal, why}] or [{id, priority}]. list/stat filter by other fields. Work one item with backlog.",
+		ops: "add: propose items; edit: change fields; list: follow Next; stat: counts by state/priority/type",
 	};
 }

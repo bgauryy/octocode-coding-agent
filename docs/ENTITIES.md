@@ -109,7 +109,7 @@ Example: `{ "summary": "Added searchable columns", "files": [{ "path": "src/boar
 
 Completions are immutable history: reopening keeps earlier results and a correction appends a replacement. Failed attempts live in runs, reports and notes.
 
-`backlogPlan` applies each entry of an `add` or `edit` batch separately. Cancelling the batch keeps earlier commits and reports applied, refused, uncertain and unattempted entries. Inspect applied and uncertain entries before retrying; replaying the whole batch can create duplicate items.
+`backlogPlan` applies each entry of an `add` or `edit` batch separately. Cancelling the batch keeps earlier commits and reports applied, refused, uncertain and unattempted entries. Inspect applied and uncertain entries before retrying; replaying the whole batch can create duplicate items. `backlog` (`note`, `claim`, `done`, `close`, `step`), `memory` (`set`, `delete`) and `wait` (`set`, `on`, `off`) take the same kind of batch: `items` holds entries of the single call's fields, each runs as its own call, and the reply has one line per entry. `backlogPlan` `stat` takes the `list` filters and returns counts by state, priority and type, with no rows.
 
 ### Checklist steps
 

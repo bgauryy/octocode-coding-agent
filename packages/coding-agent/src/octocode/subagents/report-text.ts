@@ -50,6 +50,10 @@ export function ranOn(route: RunRoute, ran?: RanModel): string {
 	return `Ran on ${routeSummary({ model: level ? withThinking(ran.model, level) : ran.model, via: `fallback from ${planned}${ran.cause ? `: ${ran.cause}` : ""}` })}.`;
 }
 
+/** ` · ran on p/m, low thinking (…)`: a finished report's route, folded into its header line (empty with no route). */
+export const routeSuffix = (line: string): string =>
+	line ? ` · ran on ${line.slice("Ran on ".length).replace(/\.$/u, "")}` : "";
+
 /** What the parent does after a failed subagent; its partial answer, if any, was never checked. */
 export const FAILED_NEXT = renderPrompt("notices/subagents/failed-narrower.md");
 

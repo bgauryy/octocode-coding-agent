@@ -74,7 +74,7 @@ it("renders every built-in tool call with its argument label, status and output"
 	]);
 	expect(byCommand("write notes.txt")).toHaveLength(1);
 	expect(byCommand("read notes.txt")[0].output).toContain("alpha");
-	expect(byCommand("bash printf")[0].output).toMatch(/^\[exit 0 · .* · 2 lines · 8 B\]\none\ntwo$/);
+	expect(byCommand("bash printf")[0].output).toMatch(/^\[exit 0 · [^\]]*\]\none\ntwo$/);
 	expect(byCommand("bash echo broken")[0].output).toMatch(/^\[exit 3 · .*\]\nbroken$/);
 	expect(byCommand("read missing.txt")[0].output.length).toBeGreaterThan(0);
 

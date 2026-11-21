@@ -2,6 +2,8 @@ import type { JobRow } from "../../../../../db/src/api.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { shortPath } from "../../../utils/display-path.ts";
 import { firstLine } from "../../shared/util.ts";
+import { cutText } from "@octocodeai/octocode-common/text";
+import type { JobEnd } from "./message.ts";
 import { ownerAlive } from "../../shared/job-standing.ts";
 import type { JobLedger } from "./ledger.ts";
 
@@ -70,7 +72,36 @@ export function joinedText(row: JobRow, cwd: string, now: number): string {
 	return `joined ${row.job} (running ${formatDuration(now - row.started_at)}, log ${shortPath(row.log, cwd)}); its exit wakes you.${who ? ` Started by ${who}.` : ""} Pass fresh: true to start a new run instead.`;
 }
 
-/** The message a joined job's end sends: the status header, then the `Background bash …` line the job renderer reads. */
+/** The seconds a joined job ran, and how it ended in words, from its ledger row. */
+function joinedEnd(row: JobRow, how: "ended" | "owner gone"): JobEnd {
+	const verdict =
+		how === "owner gone"
+			? "ended without recording how"
+			: row.state === "stopped"
+				? "was stopped"
+				: row.exit_code === 0
+					? "finished"
+					: `failed with exit code ${row.exit_code ?? "?"}`;
+	return {
+		how: verdict,
+		ok: how === "ended" && row.state !== "stopped" && row.exit_code === 0,
+		...(row.state === "stopped" ? { interrupted: true as const } : {}),
+		seconds: Math.round(((row.ended_at ?? row.updated_at) - row.started_at) / 1000),
+	};
+}
+
+/** The details of a joined job's end message, read by the job renderer (`JobEnd` beside the job's identity). */
+export function joinedDetails(row: JobRow, how: "ended" | "owner gone", wake: boolean) {
+	return {
+		id: row.job,
+		command: row.command,
+		log: row.log,
+		...joinedEnd(row, how),
+		...(wake ? {} : { quiet: true as const }),
+	};
+}
+
+/** The message a joined job's end sends: the status header, then the `Background bash …` line. */
 export function joinedReport(row: JobRow, how: "ended" | "owner gone"): string {
 	const status =
 		how === "owner gone" || row.state === "stopped"
@@ -80,14 +111,6 @@ export function joinedReport(row: JobRow, how: "ended" | "owner gone"): string {
 			: row.exit_code === 0
 				? "exit 0"
 				: `exit ${row.exit_code ?? "?"}`;
-	const seconds = Math.round(((row.ended_at ?? row.updated_at) - row.started_at) / 1000);
-	const verdict =
-		how === "owner gone"
-			? "ended without recording how"
-			: row.state === "stopped"
-				? "was stopped"
-				: row.exit_code === 0
-					? "finished"
-					: `failed with exit code ${row.exit_code ?? "?"}`;
-	return `[${status} · ${seconds}s · log: ${shortPath(row.log, row.cwd)}]\nBackground bash ${row.job} ${verdict}: ${firstLine(row.command)}\nYou joined this job instead of starting it${row.agent ? `; it was started by ${row.agent}` : ""}. Read its output in the log.`;
+	const end = joinedEnd(row, how);
+	return `[${status} · ${end.seconds}s · log: ${shortPath(row.log, row.cwd)}]\nBackground bash ${row.job} ${end.how}: ${cutText(firstLine(row.command), 60, { chars: true })}\nYou joined this job instead of starting it${row.agent ? `; it was started by ${row.agent}` : ""}. Read its output in the log.`;
 }

@@ -354,7 +354,7 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			),
 			answers(call("agent", { type: "coordinate", action: "join", joinGoal: "prove it" }), "goal: prove it"),
 			answers(call("agent", { type: "coordinate", action: "list" }), "(you)", "main"),
-			answers(call("agent", { type: "coordinate", action: "lock", paths: ["src/math.ts"] }), "Reserved: src/math.ts"),
+			answers(call("agent", { type: "coordinate", action: "lock", paths: ["src/math.ts"] }), "Reserved 1 path."),
 			answers(call("agent", { type: "coordinate", action: "unlock", paths: ["src/math.ts"] }), "Released 1"),
 			answers(call("agent", { type: "coordinate", action: "changes" }), "bash-effect.txt", "w.txt"),
 			answers(call("agent", { type: "coordinate", action: "leave" }), "Left the team"),
@@ -1000,7 +1000,7 @@ describe("every subagent profile, started through agent", () => {
 				expect(fs.existsSync(path.join(box.project, `ro-${name}.txt`))).toBe(false);
 			} else if (!role.lean) expect(fs.readFileSync(path.join(box.project, `by-${name}.txt`), "utf8")).toBe("x");
 			// Its message reached the parent, and so did its report.
-			expect(results.at(-1)).toContain("Queued message");
+			expect(results.at(-1)).toMatch(/^Sent #\d+ to /);
 			const reachedParent = requestsOf(parent)
 				.at(-1)
 				?.messages.map((message) => message.text)

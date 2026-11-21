@@ -316,7 +316,7 @@ export function spawnRequest(
 	profile: AgentProfile | undefined,
 	task: string,
 	defaultTools: readonly string[] | undefined,
-	origin: { toolCallId?: string; goal?: string },
+	origin: { toolCallId?: string; goal?: string; apps?: readonly string[] },
 ) {
 	const name = profile?.name ?? GENERAL_PROFILE;
 	const reach = profileReach(profile, defaultTools);
@@ -331,12 +331,13 @@ export function spawnRequest(
 	// A declared class that asks even in full (`desktop.control`) makes this spawn that ask too, every time: the child cannot ask,
 	// so this answer is its consent, and no session grant or remembered profile answers it.
 	const alwaysAsk = declared.filter((action) => decide("full", action) === "ask");
+	const desktopScope = origin.apps?.length ? `only: ${origin.apps.join(", ")}` : "only the apps its task names";
 	const request: PermissionRequest = {
 		action: "agent.spawn",
 		...(alwaysAsk.length > 0 ? { also: alwaysAsk } : {}),
 		title: "Start this subagent?",
 		what: [
-			`${name} ${declared.includes("desktop.control") ? "will control your real desktop (only the apps its task names), and " : ""}${may}; other actions follow the child's permission policy.`,
+			`${name} ${declared.includes("desktop.control") ? `will control your real desktop (${desktopScope}), and ` : ""}${may}; other actions follow the child's permission policy.`,
 			...declared.map((action) => `permission it declares: ${action} (${actionNoun(action)})`),
 			`task: ${task}`,
 		],
@@ -371,7 +372,7 @@ export async function askSpawn(
 	signal?: AbortSignal,
 	defaultTools?: readonly string[],
 	/** `answered` hears how the spawn was allowed (`mode`, `grant`, `user`, `hook`), for `spawnStillAllowed` later. */
-	origin: { toolCallId?: string; goal?: string; answered?: (via: string) => void } = {},
+	origin: { toolCallId?: string; goal?: string; apps?: readonly string[]; answered?: (via: string) => void } = {},
 ): Promise<ActionClass[]> {
 	const { request, reach, declared, seen, needsAnswer } = spawnRequest(
 		permission,

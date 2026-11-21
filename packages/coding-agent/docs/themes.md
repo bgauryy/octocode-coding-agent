@@ -41,6 +41,12 @@ Octocode asks the terminal for its colors when it starts. Terminals usually answ
 
 `octocode-colorblind` is a dark theme built on the Okabe-Ito palette. Success and added lines are blue, errors and removed lines are orange, and warnings are yellow, so no state depends on telling red from green. Its text keeps the same 4.5:1 contrast as `octocode-dark`. Select it with `{ "theme": "octocode-colorblind" }`.
 
+## Light colorblind and ANSI themes
+
+`octocode-colorblind-light` is the light counterpart of `octocode-colorblind`: the same Okabe-Ito roles (blue success, orange errors, yellow warnings) darkened for white backgrounds, at the same 4.5:1 contrast.
+
+`octocode-ansi` is a dark theme that uses only the terminal's 16 named colors, so it follows the terminal's own palette (error red is a fixed 256-color red to stay readable on dark backgrounds). Without a `theme` setting, or with the default `octocode-light/octocode-dark` pair, Octocode picks it on a terminal that names itself 16-color. Any other setting is honored as written.
+
 ## Terminals with 16 colors
 
 On a terminal that names itself 16-color (`TERM=linux`, `ansi`, `vt100`, `xterm-color` or `*-16color`) and does not report truecolor, Octocode maps every theme color to the nearest of the 16 ANSI colors. Set `OCTOCODE_TRUE_COLOR=1` to force truecolor.

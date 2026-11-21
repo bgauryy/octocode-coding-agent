@@ -12,7 +12,7 @@ import { timingOf } from "../render/rows.ts";
 import { formatDuration } from "../shared/format.ts";
 import { stateMark } from "../../theme/status.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { parseJobMessage } from "./bash-jobs/message.ts";
+import { parseJobMessage, readJobEnd } from "./bash-jobs/message.ts";
 import { bashOutcome, diffStats, querySize, type BashDetails, type QueryOutcome } from "./outcome.ts";
 
 /**
@@ -122,23 +122,45 @@ export function renderBashResult(
 	);
 }
 
-/** A finished background job: `✓ Bash(bash-1: yarn build) · background`, `↳ <why>`, `⎿  finished after 3s`, its output tail; the status header names its log (format: `bash-jobs/message.ts`). */
-export function renderJobMessage(text: string, expanded: boolean, theme: Theme, outputPad = 1): Component {
-	const { head, why, log, rest } = parseJobMessage(text);
-	const ok = / finished after /.test(head);
-	const stopped = !ok && / stopped \(/.test(head); // killed by the user or at shutdown: interrupted, not failed
-	// "Background bash bash-1 finished after 3s: yarn build" → `✓ Bash(bash-1: yarn build) · background` / `⎿ finished after 3s`.
-	const parts = /^Background bash (\S+) (.+?): (.*)$/.exec(head);
+/**
+ * A finished background job: `✓ Bash(bash-1: yarn build) · background`, `↳ <why>`, `⎿  finished after 3s`, its output tail;
+ * the status header names its log. The row reads the job's `details` (`bash-jobs/message.ts`); a report written before
+ * them is read from its text.
+ */
+export function renderJobMessage(
+	text: string,
+	expanded: boolean,
+	theme: Theme,
+	outputPad = 1,
+	details?: unknown,
+): Component {
+	const parsed = parseJobMessage(text);
+	const end = readJobEnd(details);
+	const facts = isRecord(details) ? details : {};
+	const head = parsed.head;
+	// Legacy text: "Background bash bash-1 finished after 3s: yarn build" → `Bash(bash-1: yarn build)` / `⎿ finished after 3s`.
+	const legacy = end ? null : /^Background bash (\S+) (.+?): (.*)$/.exec(head);
+	const ok = end ? end.ok : / finished after /.test(head);
+	// Killed by the user or at shutdown: interrupted, not failed.
+	const stopped = end ? end.interrupted === true : !ok && / stopped \(/.test(head);
+	const id = typeof facts.id === "string" ? facts.id : legacy?.[1];
+	const command = typeof facts.command === "string" ? facts.command : legacy?.[3];
+	const why = end ? end.why : parsed.why;
+	const log = typeof facts.log === "string" ? facts.log : parsed.log;
+	const summary = end ? `${end.how} after ${formatDuration(end.seconds * 1000)}` : (legacy?.[2] ?? head);
 	const context: RenderContext = { isPartial: false, isError: !ok, expanded, state: stopped ? { stopped: true } : {} };
 	const box = new Box(outputPad, 0); // custom messages are drawn flush left; pad them like a tool row
 	const lines = isInformativeReason(why) ? [theme.fg("toolReason", `↳ ${clip(sanitizeTerminalText(why), 200)}`)] : [];
 	box.addChild(
-		toolHeader(theme, context, "Bash", parts ? `${parts[1]}: ${parts[3]}` : head, { lines, meta: "background" }),
+		toolHeader(theme, context, "Bash", id && command !== undefined ? `${id}: ${command}` : head, {
+			lines,
+			meta: "background",
+		}),
 	);
 	box.addChild(
 		resultBlock(theme, context, {
-			summary: parts?.[2] ?? head,
-			body: rest.join("\n"),
+			summary,
+			body: parsed.rest.join("\n"),
 			tail: true,
 			error: !ok,
 			stopped,

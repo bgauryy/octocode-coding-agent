@@ -314,7 +314,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		const tell = (content: string) =>
 			api.session.sendMessage({ customType: FORK_NOTE_TYPE, content, display: false }, NOTE_SEND);
 		if (forked) await tell(forked);
-		lingering.reopen(ctx);
+		await lingering.reopen(ctx);
 		current = ctx;
 		backlog = undefined;
 		runs.graph?.start();

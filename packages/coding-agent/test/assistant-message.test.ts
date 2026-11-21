@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import {
 	animationClock,
+	MOTION,
 	getKeybindings,
 	setKeybindings,
 	setPointerClicksActive as setTranscriptRowsClickable,
@@ -111,7 +112,7 @@ describe("AssistantMessageComponent", () => {
 			const component = streaming(requestRender);
 			expect(animationClock.isRunning()).toBe(true);
 			const first = component.render(60).join("\n");
-			vi.advanceTimersByTime(80);
+			vi.advanceTimersByTime(MOTION.spinnerMs);
 			const second = component.render(60).join("\n");
 			expect(second).not.toBe(first);
 			expect(stripAnsi(second)).toContain("Thinking…");
@@ -150,7 +151,7 @@ describe("AssistantMessageComponent", () => {
 			animationClock.setReducedMotion(true);
 			const component = streaming(vi.fn());
 			const first = component.render(60).join("\n");
-			vi.advanceTimersByTime(80);
+			vi.advanceTimersByTime(MOTION.spinnerMs);
 			expect(component.render(60).join("\n")).toBe(first);
 			expect(stripAnsi(first)).toContain("◌ Thinking…");
 			expect(animationClock.isRunning()).toBe(false);

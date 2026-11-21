@@ -139,7 +139,12 @@ export class Theme {
 	private readonly dimTokens: ReadonlySet<ThemeColor>;
 	private readonly ownAppearance: ThemeAppearance | undefined;
 	private resolvedColors:
-		| { terminal: TerminalColors; appearance: ThemeAppearance; colors: Readonly<Record<ThemeToken, Color>> }
+		| {
+				terminal: TerminalColors;
+				appearance: ThemeAppearance;
+				colors: Readonly<Record<ThemeToken, Color>>;
+				defaults: { foreground: Color; background: Color };
+		  }
 		| undefined;
 
 	constructor(
@@ -199,6 +204,15 @@ export class Theme {
 	 * tokens are approximated by mixing their color toward the background.
 	 */
 	get colors(): Readonly<Record<ThemeToken, Color>> {
+		return this.resolve().colors;
+	}
+
+	/** The terminal's default foreground and background (a guess by `appearance` until the terminal reports them). */
+	get terminalDefaults(): { readonly foreground: Color; readonly background: Color } {
+		return this.resolve().defaults;
+	}
+
+	private resolve() {
 		const terminal = getTerminalColors();
 		const appearance = this.appearance;
 		if (this.resolvedColors?.terminal !== terminal || this.resolvedColors.appearance !== appearance) {
@@ -213,9 +227,14 @@ export class Theme {
 				const color = colors[token];
 				if (color) colors[token] = mixColors(color, background, 0.4);
 			}
-			this.resolvedColors = { terminal, appearance, colors: Object.freeze(colors as Record<ThemeToken, Color>) };
+			this.resolvedColors = {
+				terminal,
+				appearance,
+				colors: Object.freeze(colors as Record<ThemeToken, Color>),
+				defaults: { foreground, background },
+			};
 		}
-		return this.resolvedColors.colors;
+		return this.resolvedColors;
 	}
 
 	style(text: string, requested: ThemeStyle): string {

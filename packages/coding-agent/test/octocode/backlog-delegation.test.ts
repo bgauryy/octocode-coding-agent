@@ -147,7 +147,7 @@ describe("write rules live in the store", () => {
 		store.update("B2", { state: "ongoing" }, { id: "parent-session" });
 		const sub = setup({ isSubagent: true, agentId: "general-1", parentSession: "parent-session", item: "B2" });
 		await expect(sub.call({ op: "note", id: "B1", note: "x" })).rejects.toThrow(/B1 is not your item/);
-		expect(await sub.text({ op: "note", id: "B2", note: "x" })).toBe("Updated B2 [ongoing p2] two (coordinator)");
+		expect(await sub.text({ op: "note", id: "B2", note: "x" })).toMatch(/^Updated B2 \[ongoing p2\] v\d+$/);
 	});
 });
 

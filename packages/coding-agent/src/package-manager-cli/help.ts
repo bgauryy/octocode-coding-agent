@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import { APP_NAME, APP_TITLE, CONFIG_DIR_NAME, getSettingsPath } from "../config.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
@@ -20,7 +20,7 @@ export function getPackageCommandUsage(command: PackageCommand): string {
 const CONFIG_COMMAND_USAGE = `${APP_NAME} configuration [verb] [args] [-l] [--trust] [--json]`;
 
 export function printConfigCommandHelp(): void {
-	console.log(`${chalk.bold("Usage:")}
+	console.log(`${cliStyle.heading("Usage:")}
   ${CONFIG_COMMAND_USAGE}
 
 Enable, disable, set and add configuration: tools, MCP servers, harnesses, skills, prompts, themes, providers,
@@ -52,7 +52,7 @@ For one run only, use --enable, --disable and --set on ${APP_NAME} itself.
 export function printPackageCommandHelp(command: PackageCommand): void {
 	switch (command) {
 		case "install":
-			console.log(`${chalk.bold("Usage:")}
+			console.log(`${cliStyle.heading("Usage:")}
   ${getPackageCommandUsage("install")}
 
 Install a package and add it to settings.
@@ -72,7 +72,7 @@ Examples:
 			return;
 
 		case "remove":
-			console.log(`${chalk.bold("Usage:")}
+			console.log(`${cliStyle.heading("Usage:")}
   ${getPackageCommandUsage("remove")}
 
 Remove a package and its source from settings.
@@ -87,7 +87,7 @@ Examples:
 			return;
 
 		case "update":
-			console.log(`${chalk.bold("Usage:")}
+			console.log(`${cliStyle.heading("Usage:")}
   ${getPackageCommandUsage("update")}
 
 Update ${APP_TITLE}, installed packages, or model catalogs.
@@ -111,7 +111,7 @@ Short forms:
 			return;
 
 		case "list":
-			console.log(`${chalk.bold("Usage:")}
+			console.log(`${cliStyle.heading("Usage:")}
   ${getPackageCommandUsage("list")}
 
 List installed packages from user and project settings.

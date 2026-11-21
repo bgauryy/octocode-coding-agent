@@ -19,6 +19,9 @@ export interface RenderDiffOptions {
 	filePath?: string;
 }
 
+/** A changed word without tints (16 colors, no color, a theme with its own tool backgrounds) is bold. */
+const BOLD_ON = "\x1b[1m";
+const BOLD_OFF = "\x1b[22m";
 /** Ends a tinted line: the terminal's default background. */
 const DEFAULT_BG = "\x1b[49m";
 /** How strongly a changed line, and a changed word inside it, are tinted toward the diff colour. */
@@ -42,8 +45,9 @@ interface DiffTints {
 function diffTints(): DiffTints | undefined {
 	try {
 		const mode = theme.getColorMode();
-		// Tints are backgrounds: none without color.
-		if (mode === "none") return undefined;
+		// Tints are backgrounds: none without color, and 16 colors have no shade between a terminal's black and its
+		// saturated colors, so a changed word is bold there.
+		if (mode === "none" || mode === "16color") return undefined;
 		if (theme.paintsBackground("toolSuccessBg") || theme.paintsBackground("toolPendingBg")) return undefined;
 		const colors = theme.colors;
 		const base = colors.toolSuccessBg;
@@ -204,15 +208,15 @@ function highlightRows(rows: DiffRow[], language: string | undefined): string[] 
  *
  * Each side of a change block is highlighted as one text, so a comment or string spanning lines colours every line.
  * On themes without tool backgrounds, changed lines get a tinted background and a stronger tint on changed words;
- * otherwise the changed words are inverted. Without a known language the text takes the diff colour.
+ * otherwise, and always in 16 colors or without color, the changed words are bold. Without a known language the text takes the diff colour.
  */
 export function renderDiff(diffText: string, options: RenderDiffOptions = {}): string {
 	const tints = diffTints();
 	// A unified diff (`git diff`'s text) has no line numbers, and names each file in its head.
 	const unified = isUnifiedDiff(diffText);
 	let language = options.filePath ? getLanguageFromPath(options.filePath) : undefined;
-	const wordOn = (sign: "+" | "-") => tints?.word[sign] ?? "\x1b[7m";
-	const wordOff = (sign: "+" | "-") => tints?.line[sign] ?? "\x1b[27m";
+	const wordOn = (sign: "+" | "-") => tints?.word[sign] ?? BOLD_ON;
+	const wordOff = (sign: "+" | "-") => tints?.line[sign] ?? BOLD_OFF;
 	const changedLine = (sign: "+" | "-", row: DiffRow, highlighted?: string, ranges: Range[] = []): string => {
 		const color = sign === "+" ? "toolDiffAdded" : "toolDiffRemoved";
 		const body = highlighted ?? theme.fg(color, row.content);

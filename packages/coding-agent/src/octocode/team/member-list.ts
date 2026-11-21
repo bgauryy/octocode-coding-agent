@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { cutText } from "@octocodeai/octocode-common/text";
-import { formatAgo, formatClock, memberStats } from "../shared/format.ts";
+import { formatAgo, formatClock, formatCost, memberStats, toolCallCount } from "../shared/format.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { plural } from "../shared/text.ts";
 import { firstLine } from "../shared/util.ts";
@@ -40,11 +40,12 @@ function shownFolder(folder: string, here: string | undefined): string {
 	return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : homeTilde(folder);
 }
 
-/** The item, why, transcript and shell-log lines of one member; a line with no data is left out. */
+/** The item, why, transcript and shell-log lines of one member (`brief`: no log lines); a line with no data is left out. */
 function detailLines(
 	details: MemberDetails | undefined,
 	here: string | undefined,
-	logged: Set<string> = new Set(),
+	logged: Set<string>,
+	brief: boolean,
 ): string[] {
 	if (!details) return [];
 	const { item, transcripts, shellLogs, jobs } = details;
@@ -57,8 +58,8 @@ function detailLines(
 		...(item ? [detailLine("item", `B${item.seq} ${firstLine(item.title)}${more}`)] : []),
 		...(jobs?.length ? [detailLine("work:", jobs.map((job) => `${job.id} on ${job.item}`).join(", "))] : []),
 		...(why ? [detailLine("why:", why)] : []),
-		...(transcripts && newFolder ? [detailLine("log:", shownFolder(transcripts, here), true)] : []),
-		...(shellLogs ? [detailLine("shell logs:", shownFolder(shellLogs, here), true)] : []),
+		...(transcripts && newFolder && !brief ? [detailLine("log:", shownFolder(transcripts, here), true)] : []),
+		...(shellLogs && !brief ? [detailLine("shell logs:", shownFolder(shellLogs, here), true)] : []),
 	];
 }
 
@@ -67,7 +68,8 @@ function detailLines(
  * `asks` (by agent id; `/agents` passes it) adds each subagent's questions to its parent. `questions` (`Team.openQuestions`)
  * names each unanswered message by id and sender; without it only their count is shown. `standing` adds the requests of a
  * child this agent started against its limit. `details` (`RunAudit.details`) adds its backlog item and why, transcript
- * folder and shell-log folder.
+ * folder and shell-log folder. `brief` (the model's `coordinate list`) leaves out the log folders, the process line's pid,
+ * join time and token counts: `/agents` shows them.
  */
 export function describeMembers(
 	members: Member[],
@@ -78,6 +80,7 @@ export function describeMembers(
 	standing?: (id: string) => BudgetStanding | undefined,
 	stalled: readonly Member[] = [],
 	details?: ReadonlyMap<string, MemberDetails>,
+	brief = false,
 ): string {
 	const gone = stalled.filter((member) => now - member.updatedAt > STALLED_LISTED_MS);
 	if (members.length === 0 && gone.length === 0) return "No agents have joined in this repository.";
@@ -123,12 +126,14 @@ export function describeMembers(
 				return [
 					`${member.id}${you} · ${member.role} · ${shown}${stalled ? " · stalled" : ""}${model}${parent}${worktree}`,
 					...(member.goal ? [`  goal: ${firstLine(member.goal)}`] : []),
-					`  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
+					brief
+						? `  seen ${formatAgo(now - member.updatedAt)} · ${[toolCallCount(member.toolCalls), formatCost(member)].filter(Boolean).join(" · ")}${requests}`
+						: `  pid ${member.pid}${member.processTitle ? ` (${member.processTitle})` : ""}${member.tmuxPane ? ` · tmux pane ${member.tmuxPane}` : ""} · joined ${formatClock(member.joinedAt)} (${formatAgo(now - member.joinedAt)}) · seen ${formatAgo(now - member.updatedAt)} · ${memberStats(member)}${requests}`,
 					// The viewer's own checkout is the common case and the Worktrees section names it: only a different place is worth a line.
 					...(member.cwd && !(self && member.cwd === self.cwd && member.branch === self.branch)
 						? [`  in ${member.cwd}${member.branch ? ` @ ${member.branch}` : ""}`]
 						: []),
-					...detailLines(details?.get(member.id), here, logged),
+					...detailLines(details?.get(member.id), here, logged, brief),
 					`  ${firstLine(doing)}${output}`,
 					...(stalled
 						? [

@@ -1,6 +1,10 @@
 import { resetCapabilitiesCache, setCapabilities, stripTerminalSequences } from "@octocodeai/octocode-tui";
 import { afterEach, expect, it, vi } from "vitest";
-import { describeTerminalStalls, showTerminalDiagnostics } from "../src/modes/interactive/terminal-diagnostics.ts";
+import {
+	describeLatencyFence,
+	describeTerminalStalls,
+	showTerminalDiagnostics,
+} from "../src/modes/interactive/terminal-diagnostics.ts";
 
 afterEach(() => resetCapabilitiesCache());
 
@@ -27,6 +31,8 @@ it("reports fallback capabilities and aggregate rendering counters without inspe
 			getTerminalCapabilityOverrides: () => ({ hyperlinks: false }),
 			isReduceMotionActive: () => true,
 			getFullscreenCopyOnSelect: () => false,
+			getLatencyFence: () => "auto",
+			isLatencyFenceActive: () => true,
 		},
 	} as unknown as Parameters<typeof showTerminalDiagnostics>[0];
 	showTerminalDiagnostics(host);
@@ -36,6 +42,7 @@ it("reports fallback capabilities and aggregate rendering counters without inspe
 	expect(text).toContain("keyboard: legacy sequences");
 	expect(text).toContain("Node output queue: 0 bytes; peak observed: 12 bytes");
 	expect(text).toContain("zero can mean no sample yet");
+	expect(text).toContain("Latency fence: on (auto); no probe sample yet");
 	expect(host.renderer.setRenderPacing).toHaveBeenCalledWith({ metrics: true });
 });
 
@@ -92,6 +99,8 @@ function diagnosticsText(output: Record<string, number> | undefined): string {
 			getTerminalCapabilityOverrides: () => ({}),
 			isReduceMotionActive: () => false,
 			getFullscreenCopyOnSelect: () => false,
+			getLatencyFence: () => "auto",
+			isLatencyFenceActive: () => true,
 		},
 	} as unknown as Parameters<typeof showTerminalDiagnostics>[0]);
 	return stripTerminalSequences(addChild.mock.calls[0][0].render(200).join("\n"));
@@ -107,4 +116,15 @@ it("reports output telemetry as bytes, as zero, or as unavailable", () => {
 	const absent = diagnosticsText(undefined);
 	expect(absent).toContain("Output written: unavailable");
 	expect(absent).not.toContain("0 bytes in 0 writes");
+});
+
+it("describes the latency fence for every state", () => {
+	const fence = { lastRttMs: 42.4, maxRttMs: 90, floorMs: 12, heldFrames: 7, behind: true, supported: true };
+	expect(describeLatencyFence(undefined, false, false, undefined)).toContain("off (terminal.latencyFence)");
+	expect(describeLatencyFence(undefined, false, "auto", "0")).toContain("off (OCTOCODE_LATENCY_FENCE)");
+	expect(describeLatencyFence(undefined, true, "auto", undefined)).toContain("on (auto); no probe sample yet");
+	const text = describeLatencyFence(fence, true, "auto", "1");
+	expect(text).toContain("OCTOCODE_LATENCY_FENCE=1");
+	expect(text).toContain("behind; last RTT 42 ms; floor 12 ms; held frames 7");
+	expect(describeLatencyFence({ ...fence, supported: false }, true, true, undefined)).toContain("unsupported");
 });

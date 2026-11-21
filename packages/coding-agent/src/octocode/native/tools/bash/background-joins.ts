@@ -5,7 +5,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../../../storage/database.ts";
 import type { BashJobs } from "../../../files/bash-jobs.ts";
 import { JobLedger } from "../../../files/bash-jobs/ledger.ts";
-import { JoinWatch, joinedReport } from "../../../files/bash-jobs/joins.ts";
+import { JoinWatch, joinedDetails, joinedReport } from "../../../files/bash-jobs/joins.ts";
 import type { BashJob, JobExit } from "../../../files/bash-jobs/types.ts";
 import { JOB_TYPE } from "../../../shared/messages.ts";
 import { wakeGateOf } from "../../../wake/gate.ts";
@@ -63,7 +63,7 @@ export function backgroundJoins(
 					customType: JOB_TYPE,
 					content: joinedReport(row, how),
 					display: true,
-					details: { id: row.job, command: row.command, log: row.log, ...(wake ? {} : { quiet: true as const }) },
+					details: joinedDetails(row, how, wake),
 				},
 				{ triggerTurn: wake, deliverAs: "followUp", together: true },
 			);

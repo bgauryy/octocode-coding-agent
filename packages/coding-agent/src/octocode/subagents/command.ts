@@ -249,7 +249,7 @@ export function agentsCommand(
 			// The picker lists every agent of this repository; alone, the listing (this session, recent runs) says more.
 			if (ctx.hasUI && team.members().some((member) => member.id !== team.id)) return pickAgent(team, ctx);
 			const { members, error } = team.snapshot();
-			// The same inputs as `coordinate list`: one renderer, so both views show the item, why and log lines.
+			// The same inputs as `coordinate list`: one renderer; this full view adds the log folders, pid and token counts.
 			const listing = describeMembers(
 				members,
 				team.id,

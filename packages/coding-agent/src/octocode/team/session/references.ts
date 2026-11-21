@@ -5,6 +5,7 @@ import type { Message } from "../model.ts";
 import { outside, resolveTarget } from "../routing.ts";
 import type { StoredRow } from "../store/refs.ts";
 import { MESSAGE_RETENTION_MS } from "../store/limits.ts";
+import { patiently } from "../store/patient.ts";
 import { finishedText, outbound, resumeWith, type SendHost } from "./send.ts";
 
 /** A stored team message as a reference (`msg#N`) shows it: the original sender, id and time, and who holds a delivery. */
@@ -115,6 +116,7 @@ export async function forwardMessage(
 		// The finished agent is resumed with the message; its delivery is recorded as handed over, and removed if the resume fails.
 		const resumed = await resumeWith(
 			host,
+			db,
 			to,
 			by,
 			() => {
@@ -138,12 +140,18 @@ export async function forwardMessage(
 	const notReady = ready();
 	if (notReady) return { error: notReady };
 	// It wakes the recipient when it asks for an answer (owed to the original sender) or comes from outside the team.
-	const { added, departed, already } = db.refs.forward(id, by, recipients, {
-		wake,
-		...(trimmed ? { note: trimmed } : {}),
-		// A parent's note is read as steering, so its forward carries the signature its own messages do.
-		...(by === host.me()?.id ? { sign: (recipient: string) => host.signedByParent(message(recipient)) } : {}),
-	});
+	// Never waits inside SQLite: while another process holds the database the forward is tried again (`patiently`).
+	const { added, departed, already } = await patiently(
+		db,
+		() =>
+			db.refs.forward(id, by, recipients, {
+				wake,
+				...(trimmed ? { note: trimmed } : {}),
+				// A parent's note is read as steering, so its forward carries the signature its own messages do.
+				...(by === host.me()?.id ? { sign: (recipient: string) => host.signedByParent(message(recipient)) } : {}),
+			}),
+		joined,
+	);
 	if (added.length === 0)
 		return {
 			error: [
@@ -158,11 +166,12 @@ export async function forwardMessage(
 }
 
 /** Closes the questions this session put to `child`; housekeeping, so an unreadable database leaves them as they were. */
-export function closeQuestionsTo(host: ReferenceHost, child: string): void {
+export async function closeQuestionsTo(host: ReferenceHost, child: string): Promise<void> {
 	const me = host.me()?.id;
 	if (!me) return;
 	try {
-		host.store().refs.closeQuestionsTo(me, child);
+		const db = host.store();
+		await patiently(db, () => db.refs.closeQuestionsTo(me, child));
 	} catch {
 		/* The report is delivered either way. */
 	}

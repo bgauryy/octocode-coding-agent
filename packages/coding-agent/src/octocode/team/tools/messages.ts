@@ -7,7 +7,6 @@ import { resultBlock, toolHeader } from "../../render/tool.ts";
 import { contentText, firstLine, textResult } from "../../shared/util.ts";
 import type { Team } from "../session.ts";
 import { PARENT_WAITS_ENV } from "../store/env.ts";
-import { WAKE_INTERVAL_MS } from "../wake-pace.ts";
 import { timedTool, timingOf } from "../../render/rows.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { liveEndpoints, type LiveTeam } from "../endpoint-live.ts";
@@ -125,7 +124,7 @@ export function registerSendMessageTool(
 				);
 			return sendToPeer(peers, { ...params, to }, ctx, signal);
 		}
-		const me = team.join();
+		const me = await team.patiently(() => team.join(), signal);
 		if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);
 		if (params.message === undefined) throw new Error("Give message, or forward with a message number.");
 		// The reference leads, so a long message whose tail is saved to a file still delivers it.
@@ -167,61 +166,31 @@ export function registerSendMessageTool(
 		const starting = result.starting?.length
 			? ` Not reached, still starting: ${result.starting.join(", ")}; send again once they have joined.`
 			: "";
-		const recipients = result.sent.join(", ");
-		// Told as it meets each recipient, so a sender knows an idle one will not act on an FYI alone, and which one is not answering.
+		// Only what differs from a plain delivery is told: a woken or busy recipient needs no sentence.
 		const delivery = result.delivery ?? {};
 		const group = (status: string) => result.sent.filter((recipient) => delivery[recipient] === status);
-		const pull = group("pull");
 		const fate = (who: string[], one: string, many: string) =>
 			who.length === 0 ? "" : `${who.join(", ")} ${who.length > 1 ? many : one}`;
-		const stalled = fate(
-			group("stalled"),
-			"has not been seen for over a minute: the message waits, and you are told if it never recovers (it then becomes a dead letter).",
-			"have not been seen for over a minute: the message waits, and you are told if they never recover (it then becomes a dead letter).",
-		);
-		// An answer to the recipient's own question is never paced; any other agent-started turn is.
-		const pace =
-			params.replyTo === undefined && group("wake").length > 0
-				? `Agent-started turns are paced (at most one per ${WAKE_INTERVAL_MS / 1000}s; mail meanwhile joins that turn).`
-				: "";
-		if (params.replyRequired === true)
-			return textResult(
-				`Queued message #${result.id} for ${recipients} as a request: ${pull.length ? `${pull.join(", ")} must fetch their cooperative inbox; no turn is started there` : `${recipients} ${result.sent.length > 1 ? "are" : "is"} woken`} and must answer with replyTo ${result.id}.${departed}${starting}${[
-					pace,
-					stalled,
-				]
-					.filter(Boolean)
-					.map((part) => ` ${part}`)
-					.join("")}${waits}`,
-				details,
-			);
-		const fates = [
-			pull.length
-				? `${pull.join(", ")} reads it only when it fetches its cooperative runner inbox; this does not wake or resume the task.`
-				: "",
+		const notes = [
 			fate(
-				group("wake"),
-				"is woken: a turn starts if it is idle, otherwise it reads the message at its next step.",
-				"are woken: a turn starts for each idle one, otherwise they read the message at their next steps.",
+				group("pull"),
+				"reads it only when it fetches its cooperative runner inbox; no turn starts there.",
+				"read it only when they fetch their cooperative runner inboxes; no turn starts there.",
 			),
-			pace,
-			fate(group("next-step"), "reads it at its next step.", "read it at their next steps."),
 			fate(
 				group("queued-quiet"),
-				"is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes.",
-				"are idle: they read this on their next turn and will not act on it alone; replyRequired: true asks and wakes.",
+				"is idle and will not act on it alone; replyRequired: true asks and wakes.",
+				"are idle and will not act on it alone; replyRequired: true asks and wakes.",
 			),
-			stalled,
-		]
-			.filter(Boolean)
-			.join(" ");
+			fate(
+				group("stalled"),
+				"has not been seen for over a minute: the message waits, and you are told if it never recovers (it then becomes a dead letter).",
+				"have not been seen for over a minute: the message waits, and you are told if they never recover (it then becomes a dead letter).",
+			),
+		].filter(Boolean);
+		const asked = params.replyRequired === true ? " (reply requested)" : "";
 		return textResult(
-			[`Queued message #${result.id} for ${recipients} as an FYI (no reply requested).`, fates]
-				.filter(Boolean)
-				.join(" ") +
-				departed +
-				starting +
-				waits,
+			[`Sent #${result.id} to ${result.sent.join(", ")}${asked}.`, ...notes].join(" ") + departed + starting + waits,
 			details,
 		);
 	};
@@ -237,47 +206,45 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Or an Octocode process name; from a linked worktree, "coordinator": the main checkout session.'
-							: 'Agent id, role or "parent" in your tree; parent relays beyond it. "all": whole tree. Omit with replyTo: its sender.',
+							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Or an Octocode process name, or "coordinator" from a linked worktree: the main checkout session.'
+							: 'Agent id, role or "parent" in your tree (parent relays beyond); "all": whole tree; omit with replyTo: its sender.',
 					}),
 				),
 				message: Type.Optional(Type.String()),
 				item: Type.Optional(
 					Type.String({
-						description: "Backlog item to hand to the running child `to` names (claimed if unclaimed)",
+						description: "Backlog item for the running child `to` names (claimed if unclaimed)",
 					}),
 				),
 				attach: Type.Optional(
 					Type.String({
-						description: "Text file in your worktree (≤64 KB) sent by reference; the recipient writes it by sha256",
+						description: "Worktree text file ≤64 KB, by reference; recipient writes it by sha256",
 					}),
 				),
 				forward: Type.Optional(
 					Type.Integer({
-						description:
-							"Stored message # passed on unchanged (message: a note); replies go to its sender. Teammates only",
+						description: "Message # passed on as is (message: a note); replies go to its sender. Teammates only",
 					}),
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: asks for an answer, waking each recipient (all: whole tree); default: FYI",
+						description: "true: ask for an answer, waking each recipient (all: whole tree); else FYI",
 					}),
 				),
 				wake: Type.Optional(
 					Type.Boolean({
-						description:
-							"Default: starts an idle named agent's turn, paced; false: read at its next turn. Not with to: all",
+						description: "Default: an idle named agent starts a paced turn; false: read next turn. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message number answered: wakes the asker, closes its ask. Teammates only",
+						description: "Message # answered: wakes the asker, closes its ask. Teammates only",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
 						description:
-							"true: stop its current step (starter only; with to: all, only your subagents); default: its next step. Teammates only",
+							"true: stop its current step (to: all stops only your subagents); default: next step. Teammates only",
 					}),
 				),
 			}),

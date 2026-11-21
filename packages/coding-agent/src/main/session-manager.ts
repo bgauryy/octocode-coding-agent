@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { transcripts } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../storage/database.ts";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
@@ -94,7 +94,7 @@ async function resolveSessionPath(sessionArg: string, cwd: string, sessionDir?: 
 
 /** Session ids start with a timestamp, so short prefixes collide; picking one would append to the wrong conversation. */
 function refuseAmbiguousPrefix(arg: string, candidates: readonly SessionHeaderInfo[]): never {
-	console.error(chalk.red(`Error: '${arg}' matches ${candidates.length} sessions. Use more of the id:`));
+	console.error(cliStyle.error(`Error: '${arg}' matches ${candidates.length} sessions. Use more of the id:`));
 	for (const candidate of candidates) console.error(`  ${candidate.id}  ${candidate.cwd}`);
 	process.exit(1);
 }
@@ -128,7 +128,7 @@ export function validateForkFlags(parsed: Args): void {
 	].filter((flag): flag is string => flag !== undefined);
 
 	if (conflictingFlags.length > 0) {
-		console.error(chalk.red(`Error: --fork cannot be combined with ${conflictingFlags.join(", ")}`));
+		console.error(cliStyle.error(`Error: --fork cannot be combined with ${conflictingFlags.join(", ")}`));
 		process.exit(1);
 	}
 }
@@ -142,7 +142,7 @@ export function validateSessionIdFlags(parsed: Args): void {
 			parsed.sessionId !== undefined ? "--session-id" : undefined,
 		].filter((flag): flag is string => flag !== undefined);
 		if (selectors.length > 0) {
-			console.error(chalk.red(`Error: --no-session cannot be combined with ${selectors.join(", ")}`));
+			console.error(cliStyle.error(`Error: --no-session cannot be combined with ${selectors.join(", ")}`));
 			process.exit(1);
 		}
 	}
@@ -155,7 +155,7 @@ export function validateSessionIdFlags(parsed: Args): void {
 	].filter((flag): flag is string => flag !== undefined);
 
 	if (conflictingFlags.length > 0) {
-		console.error(chalk.red(`Error: --session-id cannot be combined with ${conflictingFlags.join(", ")}`));
+		console.error(cliStyle.error(`Error: --session-id cannot be combined with ${conflictingFlags.join(", ")}`));
 		process.exit(1);
 	}
 
@@ -163,7 +163,7 @@ export function validateSessionIdFlags(parsed: Args): void {
 		assertValidSessionId(parsed.sessionId);
 	} catch (error: unknown) {
 		const message = errorMessage(error);
-		console.error(chalk.red(`Error: ${message}`));
+		console.error(cliStyle.error(`Error: ${message}`));
 		process.exit(1);
 	}
 }
@@ -173,22 +173,22 @@ async function openSessionOrExit(path: string, sessionDir?: string): Promise<Ses
 		return await SessionManager.openAsync(path, sessionDir);
 	} catch (error: unknown) {
 		const message = errorMessage(error);
-		console.error(chalk.red(`Error: ${message}`));
+		console.error(cliStyle.error(`Error: ${message}`));
 		process.exit(1);
 	}
 }
 
-function forkSessionOrExit(
+async function forkSessionOrExit(
 	sourcePath: string | { storedId: string },
 	cwd: string,
 	sessionDir?: string,
 	sessionId?: string,
-): SessionManager {
+): Promise<SessionManager> {
 	try {
-		return SessionManager.forkFrom(sourcePath, cwd, sessionDir, { id: sessionId });
+		return await SessionManager.forkFromAsync(sourcePath, cwd, sessionDir, { id: sessionId });
 	} catch (error: unknown) {
 		const message = errorMessage(error);
-		console.error(chalk.red(`Error: ${message}`));
+		console.error(cliStyle.error(`Error: ${message}`));
 		process.exit(1);
 	}
 }
@@ -207,7 +207,7 @@ async function confirmSessionNotRunning(
 	if (runningPid === undefined) return;
 	if (!isInteractiveStart(parsed)) {
 		console.error(
-			chalk.red(
+			cliStyle.error(
 				`Error: Another Octocode process (pid ${runningPid}) has this session open: ${sessionFile}. Close it, or fork the session with --fork.`,
 			),
 		);
@@ -223,7 +223,7 @@ async function confirmSessionNotRunning(
 			],
 		);
 		if (!confirmed) {
-			console.log(chalk.dim("Resume cancelled"));
+			console.log(cliStyle.dim("Resume cancelled"));
 			process.exit(0);
 		}
 	} finally {
@@ -245,7 +245,7 @@ export async function createSessionManager(
 		if (parsed.sessionId) {
 			const existingTarget = await findSessionFileAnywhere(parsed.sessionId, sessionDir);
 			if (existingTarget) {
-				console.error(chalk.red(`Session already exists with id '${parsed.sessionId}': ${existingTarget}`));
+				console.error(cliStyle.error(`Session already exists with id '${parsed.sessionId}': ${existingTarget}`));
 				process.exit(1);
 			}
 		}
@@ -265,7 +265,7 @@ export async function createSessionManager(
 				return refuseAmbiguousPrefix(resolved.arg, resolved.candidates);
 
 			case "not_found":
-				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
+				console.error(cliStyle.error(`No session found matching '${resolved.arg}'`));
 				process.exit(1);
 		}
 	}
@@ -283,16 +283,16 @@ export async function createSessionManager(
 			case "stored": {
 				if (!isInteractiveStart(parsed)) {
 					console.error(
-						chalk.red(
+						cliStyle.error(
 							`Error: Session '${parsed.session}' was saved in another project folder: ${resolved.path}. Nothing was opened. Fork it into this folder with --fork ${parsed.session}.`,
 						),
 					);
 					process.exit(1);
 				}
-				console.log(chalk.yellow(`Saved session found at ${resolved.path}`));
+				console.log(cliStyle.warn(`Saved session found at ${resolved.path}`));
 				const shouldFork = await promptConfirm("Fork this session into current directory?");
 				if (!shouldFork) {
-					console.log(chalk.dim("Aborted."));
+					console.log(cliStyle.dim("Aborted."));
 					process.exit(0);
 				}
 				return forkSessionOrExit(
@@ -306,7 +306,7 @@ export async function createSessionManager(
 				return refuseAmbiguousPrefix(resolved.arg, resolved.candidates);
 
 			case "not_found":
-				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
+				console.error(cliStyle.error(`No session found matching '${resolved.arg}'`));
 				process.exit(1);
 		}
 	}
@@ -314,7 +314,7 @@ export async function createSessionManager(
 	if (parsed.resume) {
 		if (!isInteractiveStart(parsed)) {
 			console.error(
-				chalk.red(
+				cliStyle.error(
 					"Error: --resume without an id opens a session picker, which needs a terminal. Use --resume <id>, --continue, or --fork <id> to copy a session from another folder.",
 				),
 			);
@@ -327,7 +327,7 @@ export async function createSessionManager(
 				settingsManager,
 			);
 			if (!selectedPath) {
-				console.log(chalk.dim("No session selected"));
+				console.log(cliStyle.dim("No session selected"));
 				process.exit(0);
 			}
 			return await SessionManager.openAsync(selectedPath, sessionDir);
@@ -351,14 +351,14 @@ export async function createSessionManager(
 		const elsewhere = await findSessionFileAnywhere(parsed.sessionId, sessionDir);
 		if (elsewhere) {
 			console.error(
-				chalk.red(
+				cliStyle.error(
 					`Error: Session id '${parsed.sessionId}' already exists in another project folder: ${elsewhere}. Use --session ${parsed.sessionId} to open or fork it here.`,
 				),
 			);
 			process.exit(1);
 		}
 		console.error(
-			chalk.yellow(
+			cliStyle.warn(
 				`Warning: No project session found with id '${parsed.sessionId}'; creating a new session with that id.`,
 			),
 		);

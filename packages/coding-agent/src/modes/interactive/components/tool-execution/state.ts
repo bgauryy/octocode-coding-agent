@@ -1,3 +1,4 @@
+import type { ToolStateInput } from "@octocodeai/octocode-projections";
 import type { ToolExecutionResult } from "./types.ts";
 
 /**
@@ -51,3 +52,7 @@ export function samePhase(a: ToolPhase, b: ToolPhase): boolean {
 		(a.phase === b.phase && phaseResult(a) === phaseResult(b) && phaseExecutionStarted(a) === phaseExecutionStarted(b))
 	);
 }
+
+/** The status the application stream would report for a row with these flags: what the shared tool state reads. */
+export const rowStatus = (flags: { isPartial?: boolean; isError?: boolean }): NonNullable<ToolStateInput["status"]> =>
+	flags.isPartial !== false ? "running" : flags.isError ? "failed" : "completed";

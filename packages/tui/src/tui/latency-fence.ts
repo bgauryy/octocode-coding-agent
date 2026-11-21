@@ -59,6 +59,8 @@ export interface LatencyFenceHost {
 	/** Whether probing is allowed now: a running TUI on a TTY with the fence switched on. */
 	isActive(): boolean;
 	constants?: Partial<LatencyFenceConstants>;
+	/** Milliseconds on a monotonic clock (default `performance.now`). */
+	now?(): number;
 }
 
 /**
@@ -90,8 +92,11 @@ export class LatencyFence {
 	private holdTimer: NodeJS.Timeout | undefined;
 	private readonly counters = { lastRttMs: 0, maxRttMs: 0, heldFrames: 0 };
 
+	private readonly now: () => number;
+
 	constructor(host: LatencyFenceHost) {
 		this.host = host;
+		this.now = host.now ?? (() => performance.now());
 		this.c = { ...LATENCY_FENCE_CONSTANTS, ...host.constants };
 	}
 
@@ -121,7 +126,7 @@ export class LatencyFence {
 	reply(): void {
 		const sent = this.sentAt.shift();
 		if (sent === undefined) return;
-		const rtt = performance.now() - sent;
+		const rtt = this.now() - sent;
 		this.answered = true;
 		this.counters.lastRttMs = rtt;
 		this.counters.maxRttMs = Math.max(this.counters.maxRttMs, rtt);
@@ -152,7 +157,7 @@ export class LatencyFence {
 
 	private pump(): void {
 		if (!this.framePending || this.outstandingSince !== undefined || this.probeTimer) return;
-		const wait = this.lastProbeAt + this.c.probeIntervalMs - performance.now();
+		const wait = this.lastProbeAt + this.c.probeIntervalMs - this.now();
 		if (wait > 0) {
 			this.probeTimer = setTimeout(() => {
 				this.probeTimer = undefined;
@@ -163,7 +168,7 @@ export class LatencyFence {
 		}
 		if (this.unsupported || !this.host.isActive()) return;
 		this.framePending = false;
-		this.outstandingSince = performance.now();
+		this.outstandingSince = this.now();
 		this.lastProbeAt = this.outstandingSince;
 		this.sentAt.push(this.outstandingSince);
 		if (this.sentAt.length > MAX_UNANSWERED) this.sentAt.shift();

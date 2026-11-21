@@ -3,7 +3,7 @@ import type { State, BacklogAudit } from "@octocodeai/octocode-contracts/snapsho
 import { storedText } from "@octocodeai/octocode-common/sanitize";
 import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
-import { itemLine } from "./format.ts";
+import { itemHead, itemLine } from "./format.ts";
 import { BacklogError } from "./item.ts";
 import { checkMerged } from "./merge-gate.ts";
 import { endedNotice } from "./graph-notice.ts";
@@ -188,5 +188,6 @@ export function runBacklog(backlog: Backlog, args: RunParams, options: RunOption
 	const review = reopened ? store.reviewNeeded(item) : [];
 	const flagged = review.length ? `\nNeeds review (done): ${review.join(", ")}.` : "";
 	const graph = subagent ? "" : endedNotice(backlog, item, before, options.queued); // a child's report carries it instead
-	return textResult(`Updated ${itemLine(item, actor.id, actor.owners)}${note}${flagged}${graph}`, { item });
+	// The caller named the item: the head and the version a later write's `version` needs are enough.
+	return textResult(`Updated ${itemHead(item)} v${item.version}${note}${flagged}${graph}`, { item });
 }

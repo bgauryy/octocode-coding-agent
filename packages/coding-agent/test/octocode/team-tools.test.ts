@@ -109,10 +109,10 @@ describe("team tools on a fake Octocode", () => {
 		expect(joined).toContain(a.team.id!);
 		await expect(run(coordinate, { action: "lock" }, a.ctx)).rejects.toThrow("lock needs paths.");
 		expect(text(await run(coordinate, { action: "lock", paths: ["src/a.ts", "lib/"], reason: "auth" }, a.ctx))).toBe(
-			"Reserved: src/a.ts, lib/. Unlock when your edits are done.",
+			"Reserved 2 paths.",
 		);
 		expect(text(await run(coordinate, { action: "lock", paths: ["src/b.ts"] }, a.ctx))).toBe(
-			"Reserved: src/b.ts. You now hold 3 reservations. Unlock when your edits are done.",
+			"Reserved 1 path. You hold 3.",
 		);
 		await run(coordinate, { action: "unlock", paths: ["src/b.ts"] }, a.ctx);
 
@@ -203,9 +203,7 @@ describe("team tools on a fake Octocode", () => {
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const send = a.tools.get("sendMessage");
 		const sent = await run(send, { to: b.team.id, message: "please review src/a.ts", replyRequired: false }, a.ctx);
-		expect(text(sent)).toMatch(
-			new RegExp(`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is woken`),
-		);
+		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));
 		expect(sent.details).toMatchObject({ to: [b.team.id] });
 		await vi.waitFor(
 			() => expect(b.sent.some((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE)).toBe(true),
@@ -232,7 +230,7 @@ describe("team tools on a fake Octocode", () => {
 		// A message with wake: false goes out as an FYI, and the sender is told it will not act on it alone.
 		expect(text(sent)).toMatch(
 			new RegExp(
-				`Queued message #\\d+ for ${b.team.id} as an FYI \\(no reply requested\\)\\. ${b.team.id} is idle: it reads this on its next turn and will not act on it alone; replyRequired: true asks and wakes\\.`,
+				`^Sent #\\d+ to ${b.team.id}\\. ${b.team.id} is idle and will not act on it alone; replyRequired: true asks and wakes\\.`,
 			),
 		);
 		const mail = (agent: typeof a) =>
@@ -248,13 +246,9 @@ describe("team tools on a fake Octocode", () => {
 		await vi.waitFor(() => expect(mail(a)).toHaveLength(1), { timeout: 5_000 });
 		expect(mail(a)[0]).toMatchObject({ from: b.team.id, text: "src/a.ts", replyRequired: false });
 
-		// A request says who must answer and how.
+		// A request is marked as one; the recipient's mail carries the replyTo hint.
 		const asked = await run(send, { to: b.team.id, message: "which file now?", replyRequired: true }, a.ctx);
-		expect(text(asked)).toMatch(
-			new RegExp(
-				`Queued message #${asked.details.id} for ${b.team.id} as a request: ${b.team.id} is woken and must answer with replyTo ${asked.details.id}\\.`,
-			),
-		);
+		expect(text(asked)).toBe(`Sent #${asked.details.id} to ${b.team.id} (reply requested).`);
 		await vi.waitFor(() => expect(mail(b)).toHaveLength(2), { timeout: 5_000 });
 		expect(mail(b)[1]).toMatchObject({ text: "which file now?", replyRequired: true });
 

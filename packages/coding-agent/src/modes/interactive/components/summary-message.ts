@@ -1,4 +1,4 @@
-import { type Container, Markdown, type MarkdownTheme, Spacer, Text } from "@octocodeai/octocode-tui";
+import { type Container, Markdown, type MarkdownTheme, Spacer, Text, type TUI } from "@octocodeai/octocode-tui";
 import { MessageHead } from "./message-head.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { theme } from "../../../theme/theme.ts";
@@ -23,8 +23,13 @@ export class SummaryMessageComponent extends CollapsibleMessageComponent {
 	private readonly text: SummaryMessageText;
 	private readonly markdownTheme: MarkdownTheme;
 
-	constructor(text: SummaryMessageText, markdownTheme: MarkdownTheme, outputPad: number) {
-		super(outputPad);
+	constructor(
+		text: SummaryMessageText,
+		markdownTheme: MarkdownTheme,
+		outputPad: number,
+		ui?: Pick<TUI, "keepScrollbackOnCollapse">,
+	) {
+		super(outputPad, ui);
 		this.text = text;
 		this.markdownTheme = markdownTheme;
 		this.updateDisplay();

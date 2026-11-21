@@ -1,5 +1,5 @@
 import { type MarkdownTheme, Markdown } from "@octocodeai/octocode-tui";
-import chalk from "chalk";
+import { cliStyle } from "../utils/cli-style.ts";
 import {
 	APP_NAME,
 	getPackageDir,
@@ -17,20 +17,20 @@ import {
 } from "../utils/windows-self-update.ts";
 
 const SELF_UPDATE_NOTE_MARKDOWN_THEME: MarkdownTheme = {
-	heading: (text) => chalk.bold(chalk.yellow(text)),
-	link: (text) => chalk.cyan(text),
-	linkUrl: (text) => chalk.dim(text),
-	code: (text) => chalk.yellow(text),
-	codeBlock: (text) => chalk.dim(text),
-	codeBlockBorder: (text) => chalk.dim(text),
-	quote: (text) => chalk.dim(text),
-	quoteBorder: (text) => chalk.dim(text),
-	hr: (text) => chalk.dim(text),
-	listBullet: (text) => chalk.yellow(text),
-	bold: (text) => chalk.bold(text),
-	italic: (text) => chalk.italic(text),
-	strikethrough: (text) => chalk.strikethrough(text),
-	underline: (text) => chalk.underline(text),
+	heading: (text) => cliStyle.heading(cliStyle.warn(text)),
+	link: (text) => cliStyle.link(text),
+	linkUrl: (text) => cliStyle.dim(text),
+	code: (text) => cliStyle.warn(text),
+	codeBlock: (text) => cliStyle.dim(text),
+	codeBlockBorder: (text) => cliStyle.dim(text),
+	quote: (text) => cliStyle.dim(text),
+	quoteBorder: (text) => cliStyle.dim(text),
+	hr: (text) => cliStyle.dim(text),
+	listBullet: (text) => cliStyle.warn(text),
+	bold: (text) => cliStyle.heading(text),
+	italic: (text) => cliStyle.italic(text),
+	strikethrough: (text) => cliStyle.strikethrough(text),
+	underline: (text) => cliStyle.underline(text),
 };
 
 export function printSelfUpdateUnavailable(
@@ -48,12 +48,12 @@ export function printSelfUpdateUnavailable(
 }
 
 export function printSelfUpdateFallback(command: SelfUpdateCommand): void {
-	console.error(chalk.dim(`If this keeps failing, run this command yourself: ${command.display}`));
+	console.error(cliStyle.dim(`If this keeps failing, run this command yourself: ${command.display}`));
 }
 
 export function printPnpmSelfUpdateMetadataHint(): void {
-	console.error(chalk.yellow("If pnpm reports missing package versions, its cached registry metadata may be stale."));
-	console.error(chalk.yellow(`Run \`pnpm store prune\` and retry \`${APP_NAME} update --self\`.`));
+	console.error(cliStyle.warn("If pnpm reports missing package versions, its cached registry metadata may be stale."));
+	console.error(cliStyle.warn(`Run \`pnpm store prune\` and retry \`${APP_NAME} update --self\`.`));
 }
 
 export function printSelfUpdateNote(note: string): void {
@@ -63,7 +63,7 @@ export function printSelfUpdateNote(note: string): void {
 	}
 
 	console.log();
-	console.log(chalk.bold(chalk.yellow("Update note")));
+	console.log(cliStyle.heading(cliStyle.warn("Update note")));
 	try {
 		const width = Math.max(20, process.stdout.columns ?? 80);
 		const renderedLines = new Markdown(trimmedNote, 0, 0, SELF_UPDATE_NOTE_MARKDOWN_THEME)
@@ -109,12 +109,12 @@ export async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan>
 		};
 	}
 
-	console.log(chalk.green(`${APP_NAME} is already up to date (v${VERSION})`));
+	console.log(cliStyle.success(`${APP_NAME} is already up to date (v${VERSION})`));
 	return { packageName, installSpec, version: latestRelease.version, shouldRun: false };
 }
 
 export async function runSelfUpdate(command: SelfUpdateCommand): Promise<void> {
-	console.log(chalk.dim(`Updating ${APP_NAME} with ${command.display}...`));
+	console.log(cliStyle.dim(`Updating ${APP_NAME} with ${command.display}...`));
 	for (const step of command.steps ?? [command]) {
 		await new Promise<void>((resolve, reject) => {
 			const child = spawnProcess(step.command, step.args, {

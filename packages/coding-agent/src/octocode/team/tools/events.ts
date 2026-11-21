@@ -22,7 +22,7 @@ export function registerTeamEvents(
 			// The shutdown's reason (`reload`, `quit`…) names what stopped the subagents in their reports.
 			await beforeLeave?.(event.reason);
 		} finally {
-			team.stop();
+			await team.stop();
 		}
 	});
 	api.bus.on("agent_start", async () => {

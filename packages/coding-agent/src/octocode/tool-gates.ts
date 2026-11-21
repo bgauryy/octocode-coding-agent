@@ -19,7 +19,7 @@ import { forgetCheck, recordCheck } from "./shared/locks.ts";
 import type { snapshotLocalReads } from "./shared/local-reads.ts";
 import { snapshotReadCall } from "./files/read-continuations.ts";
 import { untilCommand } from "./shared/until-command.ts";
-import { desktopMcpRequest } from "./permission/desktop-mcp.ts";
+import { desktopMcpRequest, desktopRefusal } from "./permission/desktop-mcp.ts";
 import { browserMcpRequest, browserMetadataRefusal } from "./web/browser-mcp.ts";
 import { protectedBranch } from "./worktrees/default-branch.ts";
 
@@ -124,7 +124,9 @@ export function registerToolGates(
 	const reservation = asBash(collab.reservationGate);
 	// A browser MCP call that opens a cloud metadata address: an invariant in every mode, on every entry path.
 	const metadata: Gate = async (event) => {
-		const reason = await browserMetadataRefusal(event.toolName, event.input);
+		const reason =
+			(await browserMetadataRefusal(event.toolName, event.input)) ??
+			(await desktopRefusal(event.toolName, event.input));
 		return reason ? { block: true, reason } : undefined;
 	};
 	// An ask of the git-state step is no invariant: only its refusals stop a rewritten command here.
@@ -143,7 +145,7 @@ export function registerToolGates(
 			permission,
 			provenance,
 			network: async (toolName, input, cwd) =>
-				desktopMcpRequest(toolName, input) ?? (await browserMcpRequest(toolName, input, undefined, cwd)),
+				(await desktopMcpRequest(toolName, input, cwd)) ?? (await browserMcpRequest(toolName, input, undefined, cwd)),
 			annotations: annotationsOf,
 			protectedBranch,
 			replacement: {

@@ -87,6 +87,21 @@ describe("deferred settings writes", () => {
 		expect(manager.drainErrors()).toEqual([]);
 	});
 
+	it("still writes when the other writer holds the lock longer than the synchronous retry budget", async () => {
+		const { agentDir, cwd, file } = folders();
+		mkdirSync(agentDir, { recursive: true });
+		const release = lockfile.lockSync(file, { realpath: false });
+		const manager = SettingsManager.create(cwd, agentDir);
+		manager.setTheme("slow-holder");
+		const flushed = manager.flush();
+		// A loaded machine can keep the holder away for well over the ~200 ms a blocking wait allows.
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		release();
+		await flushed;
+		expect(readSettings(file).theme).toBe("slow-holder");
+		expect(manager.drainErrors()).toEqual([]);
+	});
+
 	it("commits a pending write when the process exits without waiting for it", () => {
 		const { agentDir, cwd, file } = folders();
 		const child = runChild(agentDir, cwd, `manager.setHideThinkingBlock(true); manager.setTheme("light");`);

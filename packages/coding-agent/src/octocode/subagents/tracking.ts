@@ -85,15 +85,15 @@ export const reportFacts = (
 };
 
 /**
- * The run's trusted footer lines: its compactions, its questions to the parent, and where its conversation is saved
- * (once its transcript exists, or by id when it failed): the parent reads it there, or continues it (`resume`).
+ * The run's trusted footer lines: its compactions, its questions to the parent, and, when it failed, where its
+ * conversation is saved: the parent reads it there. A finished run's id (in the header) is enough to `resume` it.
  */
 export const runFooter = (details: RunDetails, failed: boolean): string[] => [
 	compactionNote(details),
 	archiveNote(details),
 	asksNote(details.asks),
 	details.editedAfterVerify ? renderPrompt("notices/subagents/verify-stale.md") : "",
-	failed || details.session?.file ? sessionNote(details) : "",
+	failed ? sessionNote(details) : "",
 ];
 
 /** The prompt tokens (uncached, cache reads and writes) of an assistant reply, when it reports its usage. */

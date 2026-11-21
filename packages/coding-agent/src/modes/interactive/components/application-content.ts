@@ -18,6 +18,8 @@ export interface ContentOptions {
 	showImages?: boolean;
 	imageWidthCells?: number;
 	requestRender?: () => void;
+	/** The screen's `keepScrollbackOnCollapse`: a row about to collapse keeps what scrolled away in scrollback. */
+	keepScrollbackOnCollapse?: () => void;
 }
 
 /** Full JSON is loaded only when a preview carries a reference; repeated deltas reuse the same decoded asset. */

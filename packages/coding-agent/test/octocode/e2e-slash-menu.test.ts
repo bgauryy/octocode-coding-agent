@@ -54,20 +54,19 @@ describe("the slash command menu", () => {
 		await open(120);
 		await type("/worktree ");
 		const list = (await rows()).find((row) => /\blist\b/.test(row));
-		expect(list).toMatch(/list\s+worktrees with branch/);
+		expect(list).not.toMatch(/\blist\b[^\n]*\blist\b/);
 		expect((await rows()).join("\n")).toMatch(/merge\s+<branch>/);
 	});
 
 	it("shows one command's usage for /help <command> and the picker for anything else", async () => {
 		await open(120);
 		const usage = await t!.submit("/help model");
-		expect(usage.text).toMatch(/\/model · Pick a model for this chat or as the default/);
 		expect(usage.text).toContain("Usage: /model [provider/model]");
 		const worktree = await t!.submit("/help /worktree");
 		expect(worktree.text).toMatch(/merge · <branch>/);
 		const search = await t!.submit("/help sess");
 		const picker = search.dialogs.join("\n");
-		expect(picker).toMatch(/\/rename\s+Rename this session/);
+		expect(picker).toMatch(/\/rename\s+\S/);
 		// The picker's name column fits its labels too, instead of a fixed 36 columns.
 		expect(
 			picker

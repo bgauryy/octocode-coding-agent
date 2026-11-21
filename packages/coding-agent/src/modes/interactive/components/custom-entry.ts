@@ -4,6 +4,7 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { EntryRenderer } from "../../../core/features/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
+import { surfaceFill } from "../../../theme/bands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 /**
@@ -67,7 +68,7 @@ export class CustomEntryComponent extends Container {
 		try {
 			component = this.renderer(this.entry, { expanded: this._expanded }, theme);
 		} catch (error) {
-			const box = new Box(this.outputPad, 1, (text) => theme.bg("customMessageBg", text));
+			const box = new Box(this.outputPad, 1, (text) => surfaceFill("custom", text));
 			box.addChild(new Text(theme.fg("error", this.failure(error)), 0, 0));
 			component = box;
 		}

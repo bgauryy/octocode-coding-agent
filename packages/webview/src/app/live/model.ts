@@ -1,11 +1,10 @@
-import { applicationNotice, type ApplicationSnapshot } from "@octocodeai/octocode-contracts";
+import { applicationNotice, type ApplicationSnapshot, type UiState } from "@octocodeai/octocode-contracts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { stripTerminalSequences } from "@octocodeai/octocode-common/ansi";
-import type { UiState } from "../model/ui-state.ts";
-import type { FeedEvent } from "./application-projection.ts";
+import type { FeedEvent } from "@octocodeai/octocode-projections";
 import { type JobPhase, jobPhaseOf, jobWords } from "./phase-words.ts";
-export { ApplicationProjection, type FeedEvent } from "./application-projection.ts";
+export { ApplicationProjection, type FeedEvent } from "@octocodeai/octocode-projections";
 
 export type Tone = "success" | "danger" | "accent" | "warning" | "agent" | "neutral";
 interface ActivityCard {

@@ -183,6 +183,8 @@ describe("workspace runtime boundary", () => {
 					}),
 			});
 			const pending = app.connection.execute({ id: "message-1", action: "message", to: "worker", text: "Check this" });
+			// Delivery starts once the command's receipt is recorded.
+			await vi.waitFor(() => expect(signal).toBeDefined());
 			expect(signal.aborted).toBe(false);
 			if (event === "session_start") {
 				app.session.sessionId = "replacement";
@@ -211,6 +213,8 @@ describe("workspace runtime boundary", () => {
 				}),
 		});
 		const pending = app.connection.execute({ id: "message-1", action: "message", to: "worker", text: "Check this" });
+		// Delivery starts once the command's receipt is recorded.
+		await vi.waitFor(() => expect(signal).toBeDefined());
 		app.connection.close();
 		expect(signal.aborted).toBe(false);
 		resolve({ sent: ["worker"], id: 1 });

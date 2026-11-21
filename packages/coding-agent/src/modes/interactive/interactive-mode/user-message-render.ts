@@ -41,7 +41,12 @@ export function addApplicationUserMessage(
 		? undefined
 		: parseSkillBlock(sanitizeTerminalText(text));
 	if (skill) {
-		const component = new SkillInvocationMessageComponent(skill, host.getMarkdownThemeWithSettings(), host.outputPad);
+		const component = new SkillInvocationMessageComponent(
+			skill,
+			host.getMarkdownThemeWithSettings(),
+			host.outputPad,
+			host.ui,
+		);
 		component.setExpanded(host.uiStore.getState().view.toolsExpanded);
 		host.chatContainer.addChild(component);
 		if (skill.userMessage) {

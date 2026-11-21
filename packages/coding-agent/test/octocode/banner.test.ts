@@ -16,6 +16,18 @@ const counts = (
 const plain: BannerPaint = { fg: (_color, text) => text };
 const NOTICE = `BETA version ; please assign issues here ${ISSUES_URL}`;
 
+describe("banner reveal", () => {
+	it("wipes the art in from the left at constant height, then settles on the full banner", () => {
+		const full = bannerLines(plain, 120);
+		const half = bannerLines(plain, 120, undefined, 0.5);
+		expect(half).toHaveLength(full.length);
+		expect(half[0]).toBe(full[0].slice(0, 28).padEnd(full[0].length, " "));
+		expect(half[2]).toBe("");
+		expect(bannerLines(plain, 120, undefined, 0)[0].trim()).toBe("");
+		expect(bannerLines(plain, 120, undefined, 1)).toEqual(full);
+	});
+});
+
 describe('banner "OCTOCODE AGENT"', () => {
 	it("is only the half-block art and the beta notice", () => {
 		const lines = bannerLines(plain, 120);

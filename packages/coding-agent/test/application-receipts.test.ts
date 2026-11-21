@@ -40,4 +40,11 @@ describe("command receipt capacity", () => {
 		const store = fill(1000, "accepted");
 		expect(() => reserveReceipt(store)).toThrow("Command receipt capacity reached");
 	});
+
+	it("counts commands still waiting for their receipt toward the limit", () => {
+		expect(() => reserveReceipt(fill(0), 1000)).toThrow("Command receipt capacity reached");
+		const store = fill(600);
+		reserveReceipt(store, 400);
+		expect(store.getState().receipts.size).toBe(100);
+	});
 });
