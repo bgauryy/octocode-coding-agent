@@ -51,7 +51,9 @@ export default function setup(): () => Promise<void> {
 		process.exitCode = 1;
 		throw new Error(
 			[
-				...(opened.length > 0 ? ["Tests resolved the real agent database (file, pid, caller):", ...opened] : []),
+				...(opened.length > 0
+					? ["Tests resolved the real agent database or provider configuration (file, pid, caller):", ...opened]
+					: []),
 				...(daemons.length > 0
 					? ["Web daemons outlived the run (stopped now; pid, command):", ...daemons.map(describe)]
 					: []),

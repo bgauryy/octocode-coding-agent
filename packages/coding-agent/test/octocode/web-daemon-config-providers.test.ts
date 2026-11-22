@@ -64,6 +64,50 @@ describe("providers from configuration", () => {
 		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);
 		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
 	});
+	it("keeps a valid Pi entry visible when another entry is malformed", async () => {
+		write(path.join(piDir, "auth.json"), { anthropic: { type: "api_key", key: SECRET }, invalid: 0 });
+		const snapshot = await snapshotOf();
+		expect(snapshot.credentialsError).toMatch(/Pi credentials/);
+		expect(row(snapshot, "anthropic")?.configured).toBe(true);
+		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
+	});
+
+	it("reports the winning model definition when a lower-priority file also has a key", async () => {
+		write(path.join(agentDir, "models.json"), {
+			providers: {
+				"model-only": { models: [{ id: "m" }] },
+				"unset-key": { apiKey: "$OCTOCODE_MISSING_TEST_KEY" },
+			},
+		});
+		write(path.join(piDir, "models.json"), {
+			providers: {
+				"model-only": { apiKey: SECRET },
+				"unset-key": { apiKey: SECRET },
+			},
+		});
+		write(path.join(piDir, "auth.json"), { "unset-key": { type: "api_key", key: SECRET } });
+		const snapshot = await snapshotOf();
+		expect(row(snapshot, "model-only")?.configured).toBe(false);
+		expect(row(snapshot, "unset-key")?.configured).toBe(false);
+	});
+
+	it("shows only usable inherited credentials and honors a local sign-out", async () => {
+		write(path.join(agentDir, "auth.json"), {
+			openai: { type: "oauth", access: "", refresh: "", expires: 0, signedOut: true },
+		});
+		write(path.join(piDir, "auth.json"), {
+			openai: { type: "api_key", key: SECRET },
+			anthropic: { type: "oauth", access: "fixture", refresh: "fixture", expires: 1 },
+			cerebras: { type: "api_key", key: "!fixture-helper" },
+			groq: { type: "api_key", key: "$OCTOCODE_MISSING_TEST_KEY" },
+		});
+		const snapshot = await snapshotOf();
+		for (const id of ["openai", "anthropic", "cerebras", "groq"]) {
+			expect(row(snapshot, id)?.configured, id).toBe(false);
+		}
+		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
+	});
+
 	it("lists Pi's models.json and auth.json providers with their origin and never a value", async () => {
 		const snapshot = await snapshotOf();
 		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);

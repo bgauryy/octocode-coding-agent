@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+import { stripBom } from "@octocodeai/octocode-common/text";
 import { stripJsonComments } from "@octocodeai/octocode-common/json";
 
 /**
@@ -36,15 +37,26 @@ const PROVIDER_FILES: Record<string, (parsed: Record<string, unknown>) => unknow
 };
 
 function providerIds(file: string, pick: (parsed: Record<string, unknown>) => unknown): string[] | undefined {
+	let content: string;
 	try {
-		const parsed: unknown = JSON.parse(stripJsonComments(readFileSync(file, "utf8")));
-		if (typeof parsed !== "object" || parsed === null) return undefined;
-		const providers = pick(parsed as Record<string, unknown>);
-		return typeof providers === "object" && providers !== null ? Object.keys(providers) : [];
-	} catch {
-		// Missing, unreadable or mid-write: nothing to compare.
-		return undefined;
+		content = readFileSync(file, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		throw error;
 	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(stripJsonComments(stripBom(content)));
+	} catch {
+		throw new Error(`Could not verify provider IDs: ${file} contains invalid JSON.`);
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+		throw new Error(`Could not verify provider IDs: ${file} must contain an object.`);
+	const providers = pick(parsed as Record<string, unknown>);
+	if (providers === undefined) return [];
+	if (!providers || typeof providers !== "object" || Array.isArray(providers))
+		throw new Error(`Could not verify provider IDs: invalid provider map in ${file}.`);
+	return Object.keys(providers);
 }
 
 function providerSnapshot(): Map<string, string[] | undefined> {

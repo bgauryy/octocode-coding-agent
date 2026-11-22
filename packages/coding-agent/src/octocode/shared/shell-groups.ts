@@ -25,13 +25,13 @@ export function recordShellGroup(pid: number | undefined, env: NodeJS.ProcessEnv
 	const file = env[SHELL_GROUPS_FILE_ENV];
 	if (!file || !validPid(pid) || process.platform === "win32") return;
 	const started = processStartTime(pid);
-	// A shell that already ended leaves nothing to stop; without a start time it could not be told from a reused pid.
-	if (!started) return;
-	try {
-		fs.appendFileSync(file, `${JSON.stringify({ pid, started } satisfies ShellGroup)}\n`, { mode: PRIVATE_FILE_MODE });
-	} catch {
-		// The parent then cannot stop this group after a crash; the child still stops it when it ends in order.
-	}
+	if (!started) throw new Error(`Could not identify shell group ${pid} before starting its command`);
+	fs.appendFileSync(file, `${JSON.stringify({ pid, started } satisfies ShellGroup)}\n`, { mode: PRIVATE_FILE_MODE });
+}
+
+/** Only a subagent on POSIX needs a parent-visible record before the shell starts. */
+export function shellGroupRegistration(): ((pid: number) => void) | undefined {
+	return process.platform !== "win32" && process.env[SHELL_GROUPS_FILE_ENV] ? recordShellGroup : undefined;
 }
 
 function readGroups(file: string): ShellGroup[] {

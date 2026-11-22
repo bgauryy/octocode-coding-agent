@@ -27,3 +27,13 @@ export function readJsonFile<T = unknown>(file: string, options?: { fallback: T 
 		throw error;
 	}
 }
+
+/**
+ * Where a JSON parse failed, without the text around it: the engine's message quotes the file (`Unexpected token 's',
+ * "sk-…" is not valid JSON`), and the file holds keys.
+ */
+export function jsonErrorLocation(error: unknown): string {
+	const match = /at position (\d+)(?: \(line (\d+) column (\d+)\))?/.exec(error instanceof Error ? error.message : "");
+	if (!match) return "invalid JSON";
+	return match[2] ? `invalid JSON at line ${match[2]}, column ${match[3]}` : `invalid JSON at position ${match[1]}`;
+}

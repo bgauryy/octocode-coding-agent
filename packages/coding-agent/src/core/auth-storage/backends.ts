@@ -1,3 +1,4 @@
+import { refuseRealProviderFile } from "../../storage/state-paths.ts";
 /**
  * Lock-guarded storage backends for auth.json content: the file backend and an in-memory one for tests and SDK hosts.
  */
@@ -72,6 +73,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 	}
 
 	private ensureParentDir(): void {
+		refuseRealProviderFile(this.authPath);
 		const dir = dirname(this.authPath);
 		if (!existsSync(dir)) {
 			mkdirSync(dir, { recursive: true, mode: 0o700 });

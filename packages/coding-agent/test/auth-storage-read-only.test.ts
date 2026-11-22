@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ReadOnlyAuthStorage } from "../src/core/auth-storage/read-only.ts";
@@ -17,6 +18,25 @@ describe("read-only credential resolution", () => {
 		clearConfigValueCache();
 		rmSync(directory, { recursive: true, force: true });
 	});
+
+	test.each(["fixture-private-value", JSON.stringify({ example: { type: "fixture-private-value" } })])(
+		"keeps malformed credential values out of diagnostics",
+		async (content) => {
+			writeFileSync(path, content);
+			const readers = [
+				new ReadOnlyAuthStorage(path).list(),
+				AuthStorage.create(path).modify("example", async () => undefined),
+			];
+			for (const result of await Promise.allSettled(readers)) {
+				expect(result.status).toBe("rejected");
+				if (result.status === "rejected") {
+					expect(inspect(result.reason)).toMatch(/auth.json/);
+					expect(inspect(result.reason)).not.toContain("fixture-private-value");
+				}
+			}
+			expect(readFileSync(path, "utf8")).toBe(content);
+		},
+	);
 
 	test("resolves an API key command without writing credentials", async () => {
 		const credential = { type: "api_key", key: "!printf read-only-command-value" };

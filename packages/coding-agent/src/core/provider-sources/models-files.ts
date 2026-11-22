@@ -59,7 +59,7 @@ export async function customModelsFiles(
 			const details: CustomModelsFile["details"] = {};
 			let unreadable = false;
 			if (exists && load) {
-				const config = await ModelConfig.loadFile(path);
+				const config = await ModelConfig.loadFile(path, { fallback: origin === "Pi" });
 				if (config.isUnreadable()) unreadable = true;
 				else {
 					defines = [...config.getProviderIds()];

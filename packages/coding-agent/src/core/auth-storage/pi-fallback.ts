@@ -1,10 +1,17 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@octocodeai/octocode-ai";
+import {
+	type AuthOperationOptions,
+	type Credential,
+	type CredentialInfo,
+	type CredentialStore,
+} from "@octocodeai/octocode-ai";
 import type { AuthStorage, HeldCredential } from "../auth-storage.ts";
-import { isCommandConfigValue, resolveConfigValue } from "../config-value.ts";
+import { resolveConfigValue } from "../config-value.ts";
 import { providerSourceGate } from "../provider-sources/gate.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
+
+import { usablePiCredential } from "./validation.ts";
 
 interface FallbackCredentialOptions {
 	/**
@@ -86,9 +93,7 @@ export class PiFallbackCredentialStore implements CredentialStore {
 		if (await this.options.ownsKey?.(providerId)) return undefined;
 		for (const path of this.piAuthPaths) {
 			const credential = await this.file(path).readRaw(providerId, options);
-			if (!credential) continue;
-			if (credential.type === "api_key" && credential.key && isCommandConfigValue(credential.key)) continue;
-			if (credential.type === "oauth" && this.options.supportsOAuth?.(providerId) === false) continue;
+			if (!usablePiCredential(credential, this.options.supportsOAuth?.(providerId))) continue;
 			return { credential, path };
 		}
 		return undefined;
@@ -106,12 +111,26 @@ export class PiFallbackCredentialStore implements CredentialStore {
 	}
 
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
-		const entries = new Map((await this.primary.list(options)).map((entry) => [entry.providerId, entry]));
-		for (const providerId of entries.keys()) this.origins.delete(providerId);
+		const entries = new Map<string, CredentialInfo>();
+		const excluded = new Set<string>();
+		for (const entry of await this.primary.listStored(options)) {
+			this.origins.delete(entry.providerId);
+			if (entry.signedOut) excluded.add(entry.providerId);
+			else entries.set(entry.providerId, entry);
+		}
 		for (const path of this.isEnabled() ? this.piAuthPaths : []) {
-			for (const entry of await this.file(path).list(options)) {
-				if (entries.has(entry.providerId)) continue;
-				if (await this.readPi(entry.providerId, options)) entries.set(entry.providerId, entry);
+			const file = this.file(path);
+			for (const entry of await file.list(options)) {
+				const id = entry.providerId;
+				if (entries.has(id) || excluded.has(id)) continue;
+				if (await this.options.ownsKey?.(id)) {
+					excluded.add(id);
+					this.origins.delete(id);
+					continue;
+				}
+				if (!usablePiCredential(await file.readRaw(id, options), this.options.supportsOAuth?.(id))) continue;
+				entries.set(id, entry);
+				this.origins.set(id, path);
 			}
 		}
 		return [...entries.values()];

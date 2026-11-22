@@ -48,7 +48,7 @@ function manager() {
 	};
 	let disabled: string[] = [];
 	let hiddenModels: Record<string, string[]> = {};
-	let configDir: string | undefined = "/home/test/.octocode";
+	let configDir: string | undefined = sourceEnvironment().agentDir;
 	const runtime = {
 		getReloadError: () => undefined,
 		getConfigurationDirectory: () => configDir,
@@ -247,7 +247,7 @@ describe("provider setup flow", () => {
 		// Sign in with ChatGPT on OpenAI superseded the legacy Codex provider.
 		expect(diagnostic).toMatch(/Codex CLI +~\/\.codex → sign in with OpenAI(?! Codex)/);
 		expect(diagnostic).toContain("Octocode models.json");
-		expect(diagnostic).toContain("/home/test/.octocode/models.json");
+		expect(textOf(advanced, 320)).toContain(join(sourceEnvironment().agentDir, "models.json"));
 		expect(value.showLoginDialog).not.toHaveBeenCalled();
 		advanced.handleInput(ESC);
 		(await pageAt(value, 2)).handleInput(ESC);

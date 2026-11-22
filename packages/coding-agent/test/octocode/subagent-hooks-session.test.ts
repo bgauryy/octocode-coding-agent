@@ -394,6 +394,9 @@ it.each(["codex", "claude"] as const)(
 				const result = await f.run();
 				expect(result.error, JSON.stringify(result)).toBeUndefined();
 				expect(f.requests).toHaveLength(turn * 2);
+				const messages = f.requests.at(-1)?.messages as Array<{ role: string; content: unknown }>;
+				const output = messages.filter((message) => message.role === "tool").at(-1)?.content;
+				expect(JSON.stringify(output)).toContain("CHILD_TOOL_OUTPUT");
 				const records = f.records(),
 					childFile = childSessionFile(f.childSession);
 				for (const event of ["UserPromptSubmit", "PreToolUse", "PostToolUse"]) {
@@ -415,7 +418,6 @@ it.each(["codex", "claude"] as const)(
 					expect(stops.at(-1)!.transcript_path).toBe(f.parent.getSessionFile());
 					expect(stops.at(-1)!.agent_transcript_path).toBe(childFile);
 				}
-				expect(JSON.stringify(f.requests.at(-1))).toContain("CHILD_TOOL_OUTPUT");
 			}
 		} finally {
 			await f.close();

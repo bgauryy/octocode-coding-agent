@@ -13,16 +13,17 @@ import {
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
-import { getModelsPath } from "../config.ts";
+import { getModelsPath, providerFallbackDirs } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
-import { stripJsonComments } from "@octocodeai/octocode-common/json";
+import { jsonErrorLocation, stripJsonComments } from "@octocodeai/octocode-common/json";
 import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credentials";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelsJsonWarnings, type ModelsJsonFieldNames } from "./model-config/warnings.ts";
+import { isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { officialEntryProblem } from "./model-config/builtin-guard.ts";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
@@ -156,6 +157,16 @@ export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
 export type ModelsJsonProvider = Static<typeof ProviderConfigSchema>;
 
+function usesSecretCommand(provider: ModelsJsonProvider): boolean {
+	const commandHeader = (headers?: Record<string, string>) => Object.values(headers ?? {}).some(isCommandConfigValue);
+	return (
+		(!!provider.apiKey && isCommandConfigValue(provider.apiKey)) ||
+		commandHeader(provider.headers) ||
+		(provider.models ?? []).some((model) => commandHeader(model.headers)) ||
+		Object.values(provider.modelOverrides ?? {}).some((model) => commandHeader(model.headers))
+	);
+}
+
 /** Every baseUrl that carries a credential, as `providers.<id>.baseUrl` paths and what is wrong; never the URL itself. */
 function baseUrlCredentialErrors(providers: Record<string, ModelsJsonProvider>): string[] {
 	const errors: string[] = [];
@@ -181,16 +192,6 @@ function deepFreeze<T>(value: T): T {
 	if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
 	for (const child of Object.values(value)) deepFreeze(child);
 	return Object.freeze(value);
-}
-
-/**
- * Where a JSON parse failed, without the text around it: the engine's message quotes the file (`Unexpected token 's',
- * "sk-…" is not valid JSON`), and the file holds keys.
- */
-function jsonErrorLocation(error: unknown): string {
-	const match = /at position (\d+)(?: \(line (\d+) column (\d+)\))?/.exec(errorMessage(error));
-	if (!match) return "invalid JSON";
-	return match[2] ? `invalid JSON at line ${match[2]}, column ${match[3]}` : `invalid JSON at position ${match[1]}`;
 }
 
 /** One immutable load of models.json. */
@@ -224,7 +225,7 @@ export class ModelConfig {
 				cwd: process.cwd(),
 				agentDir: dirname(getModelsPath()),
 				projectTrusted: false,
-				...(providerSourceGate.isEnabled("pi") ? {} : { piRoots: [] }),
+				piRoots: providerSourceGate.isEnabled("pi") ? providerFallbackDirs() : [],
 			});
 			for (const item of configDiscovery.discover("model", input)) {
 				if (item.loaded && resolve(item.provenance.path) !== resolve(modelsJsonPath)) paths.push(item.provenance.path);
@@ -294,7 +295,10 @@ export class ModelConfig {
 		const providers = new Map<string, ModelsJsonProvider>();
 		const refusals: string[] = [];
 		for (const [providerId, provider] of Object.entries(parsed.providers)) {
-			const problem = officialEntryProblem(providerId, provider, path);
+			const problem =
+				options?.fallback && usesSecretCommand(provider)
+					? `Skipped provider "${providerId}" in ${path}: configure its secret command directly in Octocode.`
+					: officialEntryProblem(providerId, provider, path);
 			if (problem) {
 				refusals.push(problem);
 				continue;

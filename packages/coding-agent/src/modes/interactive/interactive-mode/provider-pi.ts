@@ -1,9 +1,8 @@
 import { join } from "node:path";
-import { getLegacyConfigDirs } from "../../../config.ts";
+import { providerFallbackDirs } from "../../../config.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
 import { ReadOnlyAuthStorage } from "../../../core/auth-storage/read-only.ts";
 import { providerSourceGate } from "../../../core/provider-sources/gate.ts";
-import { discoveryInput } from "../../../core/discovery/service.ts";
 import {
 	listPiProviderCredentials,
 	listPiModelProviders,
@@ -17,9 +16,7 @@ import { confirmAction, successNotice } from "./provider-ui.ts";
 /** Pi's configuration folders, empty when Pi discovery is off (explicit Octocode home or SDK directory). */
 export function piConfigDirs(host: Pick<ProviderManagerHost, "session">): string[] {
 	const directory = host.session.modelRuntime.getConfigurationDirectory();
-	return directory
-		? [...discoveryInput({ cwd: process.cwd(), agentDir: directory, projectTrusted: false }).piRoots]
-		: [];
+	return directory ? providerFallbackDirs(directory) : [];
 }
 
 /**
@@ -34,7 +31,7 @@ export async function unsupportedPiSignIn(
 	const runtime = host.session.modelRuntime;
 	const directory = runtime.getConfigurationDirectory();
 	if (!directory || !providerSourceGate.isEnabled("pi") || runtime.getProvider(id)?.auth.oauth) return undefined;
-	for (const dir of getLegacyConfigDirs(directory)) {
+	for (const dir of providerFallbackDirs(directory)) {
 		const path = join(dir, "auth.json");
 		// Problems in the file are startup warnings; here they only mean no sign-in.
 		const credential = await new ReadOnlyAuthStorage(path, { onProblem: () => {} }).readRaw(id);

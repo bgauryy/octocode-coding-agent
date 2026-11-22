@@ -1,6 +1,7 @@
+import { usesCredentialCommand } from "./validation.ts";
 import { join } from "node:path";
-import type { CredentialInfo } from "@octocodeai/octocode-ai";
-import { getAgentDir, getLegacyConfigDirs } from "../../config.ts";
+import type { Credential, CredentialInfo } from "@octocodeai/octocode-ai";
+import { getAgentDir, providerFallbackDirs } from "../../config.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { ReadOnlyAuthStorage } from "./read-only.ts";
 import { ModelConfig } from "../model-config.ts";
@@ -15,19 +16,28 @@ export interface PiProviderCredential extends CredentialInfo {
  * explicit home is set). The same list the credential store reads, so what is listed is what is used.
  */
 function piDirs(): string[] {
-	return getLegacyConfigDirs(getAgentDir());
+	return providerFallbackDirs(getAgentDir());
 }
 
 /** Inspect Pi's credential metadata only. Import is an explicit, separate user action. */
-export async function listPiProviderCredentials(dirs = piDirs()): Promise<PiProviderCredential[]> {
+export async function listPiProviderCredentials(
+	dirs = piDirs(),
+	options: { eligible?: (id: string, credential: Credential) => boolean; onProblem?: (message: string) => void } = {},
+): Promise<PiProviderCredential[]> {
 	const entries = new Map<string, PiProviderCredential>();
 	for (const dir of dirs) {
 		const authPath = join(dir, "auth.json");
-		const metadata = await new ReadOnlyAuthStorage(authPath).list().catch(() => {
+		const store = new ReadOnlyAuthStorage(authPath, { onProblem: options.onProblem });
+		const metadata = await store.list().catch(() => {
 			throw new Error(`Could not read Pi credentials at ${authPath}. Check the auth.json format.`);
 		});
 		for (const entry of metadata) {
-			if (!entries.has(entry.providerId)) entries.set(entry.providerId, { ...entry, authPath });
+			if (entries.has(entry.providerId)) continue;
+			if (options.eligible) {
+				const raw = await store.readRaw(entry.providerId);
+				if (!raw || !options.eligible(entry.providerId, raw)) continue;
+			}
+			entries.set(entry.providerId, { ...entry, authPath });
 		}
 	}
 	return [...entries.values()];
@@ -40,7 +50,7 @@ export async function readPiProviderCredential(entry: PiProviderCredential, reso
 	});
 	if (!credential) throw new Error("The Pi credential was removed. Reopen /providers pi.");
 	if (credential.type !== entry.type) throw new Error("The Pi credential changed. Reopen /providers pi.");
-	if (credential.type === "api_key" && credential.key?.startsWith("!")) {
+	if (usesCredentialCommand(credential)) {
 		throw new Error(
 			"Pi uses a secret command. Configure this provider directly in /providers; its command was not executed.",
 		);
@@ -57,7 +67,12 @@ export async function readPiProviderCredential(entry: PiProviderCredential, reso
 export async function listPiModelProviders(dirs?: string[]): Promise<Map<string, string>> {
 	const providers = new Map<string, string>();
 	// Pi's model files as discovery lists them (existing files, in precedence order), unless the caller names the folders.
-	const input = discoveryInput({ cwd: process.cwd(), agentDir: getAgentDir(), projectTrusted: false });
+	const input = discoveryInput({
+		cwd: process.cwd(),
+		agentDir: getAgentDir(),
+		projectTrusted: false,
+		piRoots: piDirs(),
+	});
 	const files = dirs
 		? dirs.map((dir) => join(dir, "models.json"))
 		: configDiscovery

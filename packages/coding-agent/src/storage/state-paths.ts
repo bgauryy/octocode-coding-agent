@@ -1,3 +1,4 @@
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -120,6 +121,25 @@ const inside = (parent: string, file: string): boolean => {
 function refuseRealHomeDatabase(file: string, env: NodeJS.ProcessEnv): void {
 	if (!underTest(env)) return;
 	if (!protectedHomes(env).some((home) => inside(path.join(home, CONFIG_DIR_NAME), file))) return;
+	throw realHomeError(file, env, "agent database");
+}
+
+/** A read through the writable auth backend can create a file or a lock, so check before opening it. */
+export function refuseRealProviderFile(file: string, env = process.env): void {
+	if (!underTest(env)) return;
+	const target = canonicalPath(file);
+	const locations = [file, target];
+	for (const home of protectedHomes(env)) {
+		for (const name of [CONFIG_DIR_NAME, ".pi"]) {
+			const root = path.join(home, name);
+			if (locations.some((location) => inside(root, location) || inside(canonicalPath(root), location))) {
+				throw realHomeError(file, env, "provider configuration");
+			}
+		}
+	}
+}
+
+function realHomeError(file: string, env: NodeJS.ProcessEnv, kind: string): Error {
 	const record = pick(env, TEST_GUARD_FILE_ENV);
 	if (record) {
 		try {
@@ -131,5 +151,5 @@ function refuseRealHomeDatabase(file: string, env: NodeJS.ProcessEnv): void {
 			// The throw below still fails the caller.
 		}
 	}
-	throw new Error(`A test resolved the real agent database (${file}); isolate HOME/OCTOCODE_HOME/OCTOCODE_AGENT_DB.`);
+	return new Error(`A test resolved the real ${kind} (${file}); isolate HOME/OCTOCODE_HOME/OCTOCODE_AGENT_DB.`);
 }

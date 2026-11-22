@@ -20,7 +20,7 @@ import { shortPath } from "../../utils/display-path.ts";
 import { privateDir, sessionOutputDir } from "../shared/home.ts";
 import { groupAlive, killTree, processStartTime, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
-import { recordShellGroup } from "../shared/shell-groups.ts";
+import { shellGroupRegistration } from "../shared/shell-groups.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
 import { sessionBashDirs } from "./bash-jobs/records.ts";
 import { type JobRecord, recordFile } from "../shared/job-records.ts";
@@ -98,6 +98,7 @@ export class BashJobs {
 		const id = this.reserveId();
 		const child = await spawnShell(shell, shellScript(command, settings), {
 			cwd,
+			registerGroup: shellGroupRegistration(),
 			env: nonInteractiveEnv({ ...env, [OWNER_JOB_ENV]: id }),
 			unsandboxed,
 		});
@@ -219,8 +220,6 @@ export class BashJobs {
 		} catch {
 			// Without its record only this Octocode can stop the job.
 		}
-		// A subagent's parent stops the job if this child dies without doing so (`shared/shell-groups.ts`).
-		recordShellGroup(pid);
 		// The job, and its output pipes, must not keep a print run's process alive; session_shutdown stops it.
 		child.unref();
 		const pipes = [child.stdout, child.stderr].filter((pipe) => pipe !== null) as Socket[];

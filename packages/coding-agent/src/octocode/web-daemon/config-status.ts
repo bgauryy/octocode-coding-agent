@@ -10,7 +10,8 @@
  */
 
 import { join } from "node:path";
-import type { Credential, ProviderAuth } from "@octocodeai/octocode-ai";
+import { usablePiCredential } from "../../core/auth-storage/validation.ts";
+import type { Credential, Provider, ProviderAuth } from "@octocodeai/octocode-ai";
 import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
 import { Value } from "typebox/value";
@@ -29,7 +30,7 @@ import {
 import { ReadOnlyAuthStorage } from "../../core/auth-storage/read-only.ts";
 import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/keychain.ts";
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
-import { discoveryInput } from "../../core/discovery/service.ts";
+import { providerFallbackDirs } from "../../config.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { providerTemplateInfos } from "./provider-template-infos.ts";
 import { readProviderOrigins, type ProviderOriginsView } from "./provider-origins.ts";
@@ -96,11 +97,13 @@ export function classify(
 	}
 	// "$NAME" is a reference to a variable, not a stored key; it counts only while the variable is set.
 	const names = getConfigValueEnvVarNames(key);
+	if (names.some((name) => !isSet(name, credential, env))) return [];
 	if (names.length === 0) return [{ kind: "auth-json" }];
-	return names.filter((name) => isSet(name, credential, env)).map((envVar) => ({ kind: "env", envVar }));
+	return names.map((envVar) => ({ kind: "env", envVar }));
 }
 
 interface StoredSources {
+	owned: Set<string>;
 	byProvider: Map<string, CredentialSourceStatus[]>;
 	/** The host saved with each provider's key, when it has one. */
 	hosts: Map<string, SavedHost>;
@@ -116,16 +119,19 @@ async function readStoredSources(
 	const hosts = new Map<string, SavedHost>();
 	try {
 		const store = new ReadOnlyAuthStorage(join(agentDir, "auth.json"));
-		for (const { providerId } of await store.list()) {
+		const metadata = store.listStored();
+		const owned = new Set(metadata.map((entry) => entry.providerId));
+		for (const { providerId, signedOut } of metadata) {
+			if (signedOut) continue;
 			const credential = await store.readRaw(providerId);
 			if (!credential) continue;
 			byProvider.set(providerId, classify(providerId, credential, matchers, env));
 			const host = await savedHost(providerId, credential, matchers);
 			if (host) hosts.set(providerId, host);
 		}
-		return { byProvider, hosts };
+		return { byProvider, hosts, owned };
 	} catch {
-		return { byProvider: new Map(), hosts: new Map(), error: CREDENTIALS_ERROR };
+		return { byProvider: new Map(), hosts: new Map(), owned: new Set(), error: CREDENTIALS_ERROR };
 	}
 }
 
@@ -181,22 +187,25 @@ function authMethods(auth: ProviderAuth | undefined): ProviderAuthMethods | unde
 }
 
 function providerRows(
+	providers: ReadonlyMap<string, Provider>,
 	stored: StoredSources,
 	origins: ProviderOriginsView,
 	env: NodeJS.ProcessEnv,
 	hiddenModels: Record<string, string[]>,
 ): ProviderCredentialStatus[] {
-	const providers = new Map(builtinProviders().map((provider) => [provider.id, provider]));
 	const known = new Map([...providers].map(([id, provider]) => [id, provider.name]));
 	const extra = new Set([...stored.byProvider.keys(), ...origins.origins.keys(), ...origins.disabled]);
 	const ids = [...known.keys(), ...[...extra].filter((id) => !known.has(id)).sort()];
 	return ids.map((provider) => {
 		const sources = mergeSources(stored.byProvider.get(provider) ?? [], envSources(provider, env));
 		const found = origins.origins.get(provider) ?? [];
-		// A models.json entry counts only when it sets a usable key: a definition alone says nothing about credentials,
-		// and a key naming an unset environment variable gives none.
+		// The first model definition wins as a whole. An own key also takes precedence over Pi's auth.json.
+		const model = found.find((origin) => origin.file === "models-json");
+		const inheritedAuth = found.some((origin) => origin.product === "pi" && origin.file === "auth-json");
 		const configured =
-			sources.length > 0 || found.some((origin) => origin.file === "auth-json" || (origin.hasKey && !origin.keyUnset));
+			sources.length > 0 ||
+			!!(model?.hasKey && !model.keyUnset) ||
+			(inheritedAuth && !(model?.product === "octocode" && model.hasKey));
 		const custom = origins.custom.get(provider);
 		const name = known.get(provider) ?? custom?.name;
 		const models = custom?.models.slice(0, 64) ?? [];
@@ -253,13 +262,13 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 	const settingsErrors: SettingsFileError[] = manager
 		.drainErrors()
 		.map(({ scope }) => ({ scope: scope === "project" ? "workspace" : "global", message: SETTINGS_ERROR }));
+	const definitions = new Map(builtinProviders().map((provider) => [provider.id, provider]));
 	const origins = await readProviderOrigins({
+		acceptPiCredential: (id, credential) =>
+			!stored.owned.has(id) &&
+			usablePiCredential(credential, definitions.get(id)?.auth.oauth !== undefined || !definitions.has(id), env),
 		agentDir: options.agentDir,
-		// The fallback folders the runtime reads credentials and models from: Pi's.
-		piDirs: options.piDirs ?? [
-			...discoveryInput({ cwd: options.cwd ?? options.agentDir, agentDir: options.agentDir, projectTrusted: false })
-				.piRoots,
-		],
+		piDirs: options.piDirs ?? providerFallbackDirs(options.agentDir, options.home, env),
 		...(options.home ? { home: options.home } : {}),
 		// Only entries that give a usable credential: signed-out, keyless and unset-reference entries are not an origin.
 		octocodeAuthIds: [...stored.byProvider].filter(([, sources]) => sources.length > 0).map(([id]) => id),
@@ -272,7 +281,7 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		protocolVersion: CONFIG_PROTOCOL_VERSION,
 		generatedAt: Date.now(),
 		keychainAvailable: keychain !== undefined && keychain !== null,
-		providers: providerRows(stored, origins, env, manager.getHiddenModels()),
+		providers: providerRows(definitions, stored, origins, env, manager.getHiddenModels()),
 		providerTemplates: providerTemplateInfos(),
 		modelsPath: join(options.agentDir, "models.json"),
 		sources: origins.sources,

@@ -235,6 +235,26 @@ export function getLegacyConfigDirs(agentDir = getAgentDir()): string[] {
 	return [join(homedir(), ".pi", "agent"), join(homedir(), ".pi")];
 }
 
+/** Credential and model fallbacks only. The Octocode Pi extension stored these files in the older Octocode folders. */
+export function providerFallbackDirs(
+	agentDir = getAgentDir(),
+	home = homedir(),
+	env: NodeJS.ProcessEnv = process.env,
+): string[] {
+	if (
+		env[ENV_AGENT_DIR]?.trim() ||
+		env.OCTOCODE_HOME?.trim() ||
+		resolve(agentDir) !== resolve(getOctocodeHome(env, home))
+	)
+		return [];
+	return [
+		join(home, CONFIG_DIR_NAME, "agent"),
+		join(home, CONFIG_DIR_NAME),
+		join(home, ".pi", "agent"),
+		join(home, ".pi"),
+	];
+}
+
 export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");
 }

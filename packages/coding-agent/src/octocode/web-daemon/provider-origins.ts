@@ -5,6 +5,7 @@
  * entry sets an `apiKey` are read; no key, reference or command text leaves this module.
  */
 
+import type { Credential } from "@octocodeai/octocode-ai";
 import type { ProviderOrigin, ProviderSourceState } from "@octocodeai/octocode-contracts/config";
 import { listPiProviderCredentials } from "../../core/auth-storage/pi.ts";
 import { describeProviderSources } from "../../core/provider-sources/registry.ts";
@@ -22,6 +23,7 @@ export interface ProviderOriginsView {
 }
 
 export interface ProviderOriginsOptions {
+	acceptPiCredential(id: string, credential: Credential): boolean;
 	agentDir: string;
 	/** Pi's configuration folders in precedence order, as discovery lists them. */
 	piDirs: readonly string[];
@@ -42,6 +44,8 @@ export interface CustomProviderInfo extends CustomProviderDetails {
 export async function readProviderOrigins(options: ProviderOriginsOptions): Promise<ProviderOriginsView> {
 	const { settings } = options;
 	const described = describeProviderSources(settings.getProviderSources(), {
+		piDirs: options.piDirs,
+		env: options.env,
 		agentDir: options.agentDir,
 		...(options.home ? { home: options.home } : {}),
 	});
@@ -64,12 +68,13 @@ export async function readProviderOrigins(options: ProviderOriginsOptions): Prom
 	for (const id of options.octocodeAuthIds) add(id, { product: "octocode", file: "auth-json" });
 	let error: string | undefined;
 	if (piOn) {
-		try {
-			for (const entry of await listPiProviderCredentials([...options.piDirs]))
-				add(entry.providerId, { product: "pi", file: "auth-json" });
-		} catch {
-			error = "A Pi auth.json could not be read; its credentials are not shown.";
-		}
+		const entries = await listPiProviderCredentials([...options.piDirs], {
+			eligible: options.acceptPiCredential,
+			onProblem: () => {
+				error = "Some Pi credentials could not be read. Other entries remain available.";
+			},
+		});
+		for (const entry of entries) add(entry.providerId, { product: "pi", file: "auth-json" });
 	}
 	const files = await customModelsFiles({ ownDir: options.agentDir, piDirs: options.piDirs }, piOn, options.env);
 	const custom = new Map<string, CustomProviderInfo>();

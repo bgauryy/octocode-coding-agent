@@ -1,3 +1,4 @@
+import { providerFallbackDirs } from "../../../config.ts";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { listPiProviderCredentials } from "../../../core/auth-storage/pi.ts";
@@ -29,18 +30,19 @@ interface SourcesView {
 
 async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnvironment): Promise<SourcesView> {
 	const { settingsManager } = ctx.host.session;
-	const sources = describeProviderSources(settingsManager.getProviderSources(), environment);
+	const ownDir = ctx.host.session.modelRuntime.getConfigurationDirectory();
+	const piDirs =
+		environment?.piDirs ?? (ownDir ? providerFallbackDirs(ownDir, environment?.home, environment?.env) : []);
+	const sources = describeProviderSources(settingsManager.getProviderSources(), {
+		...environment,
+		agentDir: ownDir,
+		piDirs,
+	});
 	const piOn = sources.find((source) => source.id === "pi")?.state.enabled ?? true;
 	return {
 		sources,
 		tools: detectLocalTools(environment),
-		files: await customModelsFiles(
-			{
-				ownDir: ctx.host.session.modelRuntime.getConfigurationDirectory(),
-				piDirs: piConfigDirs(ctx.host),
-			},
-			piOn,
-		),
+		files: await customModelsFiles({ ownDir, piDirs }, piOn, environment?.env),
 	};
 }
 

@@ -4,7 +4,6 @@
  */
 
 import {
-	isActiveCredential,
 	type AuthOperationOptions,
 	type Credential,
 	type CredentialInfo,
@@ -14,7 +13,6 @@ import { join } from "node:path";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { getFileRevision, normalizePath } from "@octocodeai/octocode-common/paths";
-import { stripBom } from "@octocodeai/octocode-common/text";
 import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
 import {
 	type AuthStorageBackend,
@@ -32,7 +30,7 @@ import {
 	resolveKeychainOAuthAsync,
 } from "./auth-storage/keychain-oauth.ts";
 import { resolveConfigValueAsync } from "./config-value.ts";
-import { invalidEntryReason } from "./auth-storage/validation.ts";
+import { parseStorageData, storedCredentials, type StoredCredentialInfo } from "./auth-storage/validation.ts";
 
 export {
 	type AuthStorageBackend,
@@ -145,21 +143,6 @@ export class AuthStorage implements CredentialStore {
 		}
 	}
 
-	private parseStorageData(content: string | undefined): AuthStorageData {
-		if (!content) {
-			return {};
-		}
-		const parsed: unknown = JSON.parse(stripBom(content));
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-			throw new Error("Invalid auth.json: expected an object");
-		}
-		for (const [provider, credential] of Object.entries(parsed)) {
-			const reason = invalidEntryReason(credential);
-			if (reason) throw new Error(`Invalid auth.json credential for provider "${provider}": ${reason}`);
-		}
-		return parsed as AuthStorageData;
-	}
-
 	private updateReadState(data: AuthStorageData, revision?: string): void {
 		this.readState.data = data;
 		this.readState.revision = revision;
@@ -177,7 +160,7 @@ export class AuthStorage implements CredentialStore {
 				revision = this.authPath ? getFileRevision(this.authPath) : undefined;
 				return { result: undefined };
 			});
-			this.updateReadState(this.parseStorageData(content), revision);
+			this.updateReadState(parseStorageData(content), revision);
 		} catch {
 			// Preserve the last valid in-memory snapshot.
 		}
@@ -185,7 +168,7 @@ export class AuthStorage implements CredentialStore {
 
 	private async reloadFromStorageAsync(options?: AuthOperationOptions): Promise<AuthStorageData> {
 		return this.storage.withLockAsync(async (content) => {
-			const currentData = this.parseStorageData(content);
+			const currentData = parseStorageData(content);
 			const revision = this.authPath ? getFileRevision(this.authPath) : undefined;
 			this.updateReadState(currentData, revision);
 			return { result: currentData };
@@ -284,14 +267,14 @@ export class AuthStorage implements CredentialStore {
 		const held = (state: LockFailureState): HeldCredential => {
 			if (state === "unreadable") return state;
 			try {
-				return { credential: ownCredential(this.parseStorageData(state.content), provider) };
+				return { credential: ownCredential(parseStorageData(state.content), provider) };
 			} catch {
 				return "unreadable";
 			}
 		};
 		const result = await this.storage.withLockAsync(
 			async (content) => {
-				const currentData = this.parseStorageData(content);
+				const currentData = parseStorageData(content);
 				previous = ownCredential(currentData, provider);
 				stored = previous;
 				const current = resolveKeychainOAuth(previous, true);
@@ -320,7 +303,7 @@ export class AuthStorage implements CredentialStore {
 		let latestData = this.readState.data;
 		let previous: Credential | undefined;
 		await this.storage.withLockAsync(async (content) => {
-			const currentData = this.parseStorageData(content);
+			const currentData = parseStorageData(content);
 			previous = ownCredential(currentData, provider);
 			delete currentData[provider];
 			latestData = currentData;
@@ -353,7 +336,7 @@ export class AuthStorage implements CredentialStore {
 		try {
 			let latestData = this.readState.data;
 			await this.storage.withLockAsync(async (content) => {
-				const currentData = this.parseStorageData(content);
+				const currentData = parseStorageData(content);
 				if (Object.hasOwn(currentData, provider)) return { result: undefined };
 				latestData = { ...currentData, [provider]: previous };
 				return { result: undefined, next: JSON.stringify(latestData, null, 2) };
@@ -387,12 +370,14 @@ export class AuthStorage implements CredentialStore {
 		);
 	}
 
+	async listStored(options?: AuthOperationOptions): Promise<StoredCredentialInfo[]> {
+		const data = await this.readLatestData(options);
+		options?.signal?.throwIfAborted();
+		return storedCredentials(data);
+	}
+
 	/** List credential metadata without resolving configured key values. */
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
-		const entries = Object.entries(await this.readLatestData(options));
-		options?.signal?.throwIfAborted();
-		return entries
-			.filter(([, credential]) => isActiveCredential(credential))
-			.map(([providerId, credential]) => ({ providerId, type: credential.type }));
+		return (await this.listStored(options)).filter((entry) => !entry.signedOut);
 	}
 }

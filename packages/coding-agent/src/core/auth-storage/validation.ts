@@ -1,3 +1,19 @@
+import type { AuthStorageData } from "./backends.ts";
+import { isActiveCredential, type Credential, type CredentialInfo } from "@octocodeai/octocode-ai";
+import { isCommandConfigValue, isConfigValueConfigured } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { jsonErrorLocation } from "@octocodeai/octocode-common/json";
+import { stripBom } from "@octocodeai/octocode-common/text";
+
+/** Parser diagnostics for a credential file must never quote its contents, including in the error cause. */
+export function parseAuthJson(content: string): unknown {
+	try {
+		return JSON.parse(stripBom(content));
+	} catch (error) {
+		if (!(error instanceof SyntaxError)) throw error;
+		throw new SyntaxError(`Invalid auth.json: ${jsonErrorLocation(error)}`);
+	}
+}
+
 /** Why a credential entry is not one Octocode reads, or undefined when it is. */
 export function invalidEntryReason(credential: unknown): string | undefined {
 	if (typeof credential !== "object" || credential === null || Array.isArray(credential)) return "not an object";
@@ -32,5 +48,52 @@ export function invalidEntryReason(credential: unknown): string | undefined {
 			Number.isFinite(value.expires);
 		return valid ? undefined : "an oauth entry needs string access and refresh tokens and a numeric expires";
 	}
-	return typeof value.type === "string" ? `type "${value.type}" is not api_key or oauth` : "it has no type";
+	return typeof value.type === "string" ? "the credential type must be api_key or oauth" : "it has no type";
+}
+
+/** Only Octocode's own configuration may supply a command for a credential. */
+export function usesCredentialCommand(credential: Credential): boolean {
+	return (
+		(credential.type === "api_key" && !!credential.key && isCommandConfigValue(credential.key)) ||
+		(typeof credential.keychain === "string" && isCommandConfigValue(credential.keychain))
+	);
+}
+
+export function parseStorageData(content: string | undefined): AuthStorageData {
+	if (!content) {
+		return {};
+	}
+	const parsed: unknown = parseAuthJson(content);
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error("Invalid auth.json: expected an object");
+	}
+	for (const [provider, credential] of Object.entries(parsed)) {
+		const reason = invalidEntryReason(credential);
+		if (reason) throw new Error(`Invalid auth.json credential for provider "${provider}": ${reason}`);
+	}
+	return parsed as AuthStorageData;
+}
+
+export type StoredCredentialInfo = CredentialInfo & { signedOut?: true };
+
+/** Metadata for merging credential sources, including the local markers that suppress an inherited sign-in. */
+export function storedCredentials(data: AuthStorageData): StoredCredentialInfo[] {
+	return Object.entries(data).map(([providerId, credential]) => ({
+		providerId,
+		type: credential.type,
+		...(isActiveCredential(credential) ? {} : { signedOut: true as const }),
+	}));
+}
+
+/** Metadata-only gate shared by runtime discovery and the web provider list. */
+export function usablePiCredential(
+	credential: Credential | undefined,
+	supportsOAuth = true,
+	env?: NodeJS.ProcessEnv,
+): credential is Credential {
+	if (!isActiveCredential(credential) || usesCredentialCommand(credential)) return false;
+	if (credential.type === "oauth") return supportsOAuth;
+	return (
+		!credential.key || isConfigValueConfigured(credential.key, { ...env, ...credential.env } as Record<string, string>)
+	);
 }

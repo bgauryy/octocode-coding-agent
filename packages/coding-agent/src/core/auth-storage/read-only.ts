@@ -1,5 +1,4 @@
 import {
-	isActiveCredential,
 	type AuthOperationOptions,
 	type Credential,
 	type CredentialInfo,
@@ -12,8 +11,8 @@ import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { resolveConfigValueAsync } from "../config-value.ts";
 import type { AuthStorageData } from "./backends.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { readJsonFile } from "@octocodeai/octocode-common/json";
-import { invalidEntryReason } from "./validation.ts";
+import { readFileSync } from "node:fs";
+import { invalidEntryReason, parseAuthJson, storedCredentials, type StoredCredentialInfo } from "./validation.ts";
 import { resolveKeychainOAuthAsync } from "./keychain-oauth.ts";
 
 interface ReadOnlyAuthStorageOptions {
@@ -48,7 +47,7 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 
 		let parsed: unknown;
 		try {
-			parsed = readJsonFile(path);
+			parsed = parseAuthJson(readFileSync(path, "utf8"));
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 				this.data = {};
@@ -107,16 +106,13 @@ export class ReadOnlyAuthStorage implements CredentialStore {
 		};
 	}
 
+	listStored(options?: AuthOperationOptions): StoredCredentialInfo[] {
+		options?.signal?.throwIfAborted();
+		return storedCredentials(this.load());
+	}
+
 	async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
-		options?.signal?.throwIfAborted();
-		const credentials = Object.entries(this.load())
-			.filter(([, credential]) => isActiveCredential(credential))
-			.map(([providerId, credential]) => ({
-				providerId,
-				type: credential.type,
-			}));
-		options?.signal?.throwIfAborted();
-		return credentials;
+		return this.listStored(options).filter((entry) => !entry.signedOut);
 	}
 
 	async modify(

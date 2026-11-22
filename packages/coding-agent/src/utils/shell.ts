@@ -1,3 +1,4 @@
+import { spawnRegistered } from "./registered-spawn.ts";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
@@ -5,7 +6,7 @@ import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
 import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { getAgentDir, getBinDir, getLegacyConfigDirs } from "../config.ts";
+import { getAgentDir, getBinDir, providerFallbackDirs } from "../config.ts";
 import { modelsEnvKeyNames } from "../core/models-json-keys.ts";
 import { activeCommandSandbox, rememberLaunch } from "./command-sandbox.ts";
 import { adoptTree, prepareTree, signalTree } from "./process-tree.ts";
@@ -211,7 +212,12 @@ export function leadsProcessGroup(): boolean {
 export async function spawnShell(
 	shell: ShellConfig,
 	command: string,
-	{ cwd, env, unsandboxed = false }: { cwd: string; env: NodeJS.ProcessEnv; unsandboxed?: boolean },
+	{
+		cwd,
+		env,
+		unsandboxed = false,
+		registerGroup,
+	}: { cwd: string; env: NodeJS.ProcessEnv; unsandboxed?: boolean; registerGroup?: (pid: number) => void },
 ): Promise<ChildProcess> {
 	const viaStdin = shell.commandTransport === "stdin";
 	const sandbox = unsandboxed ? undefined : activeCommandSandbox();
@@ -219,13 +225,19 @@ export async function spawnShell(
 	await prepareTree();
 	let child: ChildProcess;
 	try {
-		child = spawn(launch?.file ?? shell.shell, launch?.args ?? (viaStdin ? shell.args : [...shell.args, command]), {
+		const file = launch?.file ?? shell.shell;
+		const args = launch?.args ?? (viaStdin ? shell.args : [...shell.args, command]);
+		const options = {
 			cwd,
 			detached: leadsProcessGroup(),
 			env: launch ? { ...env, ...launch.env } : env,
-			stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"],
+			stdio: [viaStdin ? "pipe" : "ignore", "pipe", "pipe"] as Array<"pipe" | "ignore">,
 			windowsHide: true,
-		});
+		};
+		child =
+			registerGroup && options.detached
+				? spawnRegistered(file, args, options, registerGroup)
+				: spawn(file, args, options);
 	} catch (error) {
 		launch?.release();
 		throw error;
@@ -291,7 +303,7 @@ export function providerKeyNames(env: NodeJS.ProcessEnv): string[] {
 		for (const name of findEnvKeys(provider.id, env as Record<string, string>) ?? []) names.add(name);
 	// A custom provider's key comes from the variable its `apiKey` or a header names (`$NAME`), in every models.json
 	// the session merges: Octocode's own, then the read-only legacy and Pi folders.
-	for (const dir of [getAgentDir(), ...getLegacyConfigDirs()])
+	for (const dir of [getAgentDir(), ...providerFallbackDirs()])
 		for (const name of modelsEnvKeyNames(join(dir, "models.json"))) names.add(name);
 	return [...names];
 }

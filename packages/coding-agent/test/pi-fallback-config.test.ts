@@ -53,6 +53,35 @@ function createRuntime(): Promise<ModelRuntime> {
 const available = (runtime: ModelRuntime) => new Set(runtime.getAvailableSnapshot().map((model) => model.provider));
 
 describe("fallback auth.json", () => {
+	it("lists the credential actually selected and respects a subsequent local sign-out", async () => {
+		const dirs = [join(home, ".pi", "agent"), join(home, ".pi")];
+		write(join(dirs[0], "auth.json"), { example: { type: "oauth", access: "a", refresh: "r", expires: 1 } });
+		write(join(dirs[1], "auth.json"), { example: { type: "api_key", key: "fixture" } });
+		const store = new PiFallbackCredentialStore(AuthStorage.inMemory(), dirs, { supportsOAuth: () => false });
+		expect(await store.list()).toEqual([{ providerId: "example", type: "api_key" }]);
+		await store.delete("example");
+		expect(await store.list()).toEqual([]);
+	});
+
+	it("skips external model definitions that require a secret command, leaving other definitions available", async () => {
+		const path = join(home, ".pi", "models.json");
+		const header = { "X-Auth": "!fixture-helper" };
+		write(path, {
+			providers: {
+				safe: { apiKey: "$FIXTURE_KEY" },
+				key: { apiKey: "!fixture-helper" },
+				headers: { headers: header },
+				model: { models: [{ id: "m", headers: header }] },
+				override: { modelOverrides: { m: { headers: header } } },
+			},
+		});
+		const inherited = await ModelConfig.loadFile(path, { fallback: true });
+		expect([...inherited.getProviderIds()]).toEqual(["safe"]);
+		expect(inherited.getWarnings()).toHaveLength(4);
+		const own = await ModelConfig.loadFile(path);
+		expect([...own.getProviderIds()]).toHaveLength(5);
+	});
+
 	it("skips an unrecognized entry in Pi's auth.json and keeps the other entries", async () => {
 		const piAuth = join(home, ".pi", "agent", "auth.json");
 		write(piAuth, {
@@ -81,7 +110,7 @@ describe("fallback auth.json", () => {
 			line.startsWith("Skipped"),
 		);
 		expect(startup).toEqual([
-			`Skipped the "future" entry in ${piAuth}: type "session-token" is not api_key or oauth. Its other entries are still used.`,
+			`Skipped the "future" entry in ${piAuth}: the credential type must be api_key or oauth. Its other entries are still used.`,
 			`Skipped ${legacyAuth}: it could not be read as JSON, so none of its credentials are used.`,
 		]);
 		const store = new PiFallbackCredentialStore(AuthStorage.create(join(agentDir, "auth.json")), [

@@ -248,7 +248,17 @@ export function registerSendMessageTool(
 								["reply", "done", "item.state", "job.exit", "agent.ended"].map((each) => Type.Literal(each)),
 								{ description: "What settles it; reply is replyRequired" },
 							),
-							filter: Type.Optional(Type.Record(Type.String(), Type.String(), { description: "ref, state, job" })),
+							filter: Type.Optional(
+								Type.Object(
+									{
+										ref: Type.Optional(Type.String()),
+										state: Type.Optional(Type.String()),
+										job: Type.Optional(Type.String()),
+										agent: Type.Optional(Type.String()),
+									},
+									{ description: "Event fields it must match" },
+								),
+							),
 							note: Type.Optional(Type.String()),
 							timeoutMinutes: Type.Optional(Type.Integer({ description: "Else 10 (reply) or 60" })),
 						},

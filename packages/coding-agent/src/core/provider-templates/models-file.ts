@@ -1,3 +1,4 @@
+import { refuseRealProviderFile } from "../../storage/state-paths.ts";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Compile } from "typebox/compile";
@@ -19,6 +20,7 @@ export async function rewriteProviders(
 	change: (providers: Record<string, unknown>) => Record<string, unknown>,
 	snippet: string,
 ): Promise<void> {
+	refuseRealProviderFile(file);
 	let text: string | undefined;
 	try {
 		text = await readFile(file, "utf8");

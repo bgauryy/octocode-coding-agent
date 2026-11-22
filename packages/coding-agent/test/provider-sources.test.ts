@@ -87,6 +87,8 @@ describe("Pi source", () => {
 	it("loads Octocode and Pi model files with default runtime paths and keeps Octocode on when Pi is disabled", async () => {
 		const roots = [
 			["octocode", join(home, ".octocode", "octocodecode")],
+			["legacy-agent", join(home, ".octocode", "agent")],
+			["legacy-root", join(home, ".octocode")],
 			["pi-agent", join(home, ".pi", "agent")],
 			["pi-root", join(home, ".pi")],
 		] as const;
@@ -119,6 +121,17 @@ describe("Pi source", () => {
 		expect(providers(registry)).toContain("default-octocode");
 		expect(providers(registry)).toContain("default-shared");
 		for (const [id] of roots.slice(1)) expect(providers(registry)).not.toContain(`default-${id}`);
+	});
+
+	it("uses legacy Octocode credentials read-only and hides external sources in an explicit home", async () => {
+		const file = join(home, ".octocode", "agent", "auth.json");
+		write(file, JSON.stringify({ cerebras: { type: "api_key", key: "fixture-key" } }));
+		const runtime = await createRuntime();
+		expect(providers(new ModelRegistry(runtime))).toContain("cerebras");
+		vi.stubEnv("OCTOCODE_HOME", join(home, "isolated"));
+		const source = describeProviderSources({}).find((entry) => entry.id === "pi");
+		expect(source?.state.present).toBe(false);
+		expect(source?.paths).toEqual([]);
 	});
 
 	it("hides Pi-only credentials and models.json providers when off, and restores them when on", async () => {

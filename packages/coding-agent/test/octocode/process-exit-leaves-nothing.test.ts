@@ -42,6 +42,23 @@ describe.runIf(process.platform !== "win32")("a run that ends while it holds bac
 		{ end: "a crash", signal: "SIGUSR2" as const, code: 1 },
 	])("leaves no process behind after $end", async ({ signal, code }) => {
 		const box = sandbox(endpoint);
+		if (signal === "SIGUSR2") {
+			// Keep the child's process identity read in flight long enough to observe a command that starts before registration.
+			const bin = path.join(box.root, "bin");
+			fs.mkdirSync(bin);
+			fs.writeFileSync(
+				path.join(bin, "ps"),
+				[
+					"#!/bin/sh",
+					'PATH="$OCTOCODE_TEST_SYSTEM_PATH"',
+					'if [ -n "$OCTOCODE_SHELL_GROUPS_FILE" ] && [ "$2" = lstart= ]; then sleep 0.6; fi',
+					'exec ps "$@"',
+				].join("\n"),
+				{ mode: 0o700 },
+			);
+			box.env.OCTOCODE_TEST_SYSTEM_PATH = box.env.PATH ?? process.env.PATH;
+			box.env.PATH = bin + path.delimiter + box.env.OCTOCODE_TEST_SYSTEM_PATH;
+		}
 		const crash = path.join(box.root, "crash.mjs");
 		fs.writeFileSync(crash, 'process.on("SIGUSR2", () => setImmediate(() => { throw new Error("test crash"); }));\n');
 		box.env.NODE_OPTIONS = `--import ${JSON.stringify(crash)}`;

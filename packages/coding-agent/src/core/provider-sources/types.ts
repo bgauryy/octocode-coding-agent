@@ -61,4 +61,5 @@ export interface ProviderSourceEnvironment {
 	fs?: ProviderSourceFs;
 	/** Octocode's agent directory, for the `octocode` source paths. */
 	agentDir?: string;
+	piDirs?: readonly string[];
 }

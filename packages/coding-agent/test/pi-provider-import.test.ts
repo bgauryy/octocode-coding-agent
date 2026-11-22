@@ -66,6 +66,21 @@ describe("explicit Pi provider import", () => {
 		await expect(readPiProviderCredential(entries[0])).rejects.toThrow("command was not executed");
 	});
 
+	it("refuses imported keychain command references before they reach Octocode's credential store", async () => {
+		const root = fixture();
+		writeFileSync(
+			join(root, "auth.json"),
+			JSON.stringify({
+				host: { type: "api_key", keychain: "!fixture-helper" },
+				account: { type: "oauth", keychain: "!fixture-helper", access: "", refresh: "", expires: 0 },
+			}),
+		);
+		const entries = await listPiProviderCredentials([root]);
+		expect(entries).toHaveLength(2);
+		for (const entry of entries)
+			await expect(readPiProviderCredential(entry)).rejects.toThrow("command was not executed");
+	});
+
 	it("keeps automatic discovery disabled for explicit homes", async () => {
 		vi.stubEnv("OCTOCODE_HOME", fixture());
 		expect(await listPiProviderCredentials()).toEqual([]);

@@ -6,7 +6,7 @@ import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveBashShell, spawnShell } from "../../utils/shell.ts";
 import { RefusalWatch, sandboxDenials } from "../../utils/command-sandbox.ts";
 import { groupAlive, groupMembers, KILL_GRACE_MS, killTree } from "../shared/process.ts";
-import { recordShellGroup } from "../shared/shell-groups.ts";
+import { shellGroupRegistration } from "../shared/shell-groups.ts";
 import { recordForegroundGroup } from "./bash-groups.ts";
 import { signalTree } from "../../utils/process-tree.ts";
 import { firstLine } from "../shared/util.ts";
@@ -79,7 +79,6 @@ function track(pid: number, command: string): void {
 	syncExitHook();
 	// An exit hook never runs after SIGKILL: a subagent's parent then stops the group (`shared/shell-groups.ts`), and the
 	// next Octocode stops a top-level one's.
-	recordShellGroup(pid);
 	ownerRecords.set(pid, recordForegroundGroup(pid, command));
 }
 
@@ -250,6 +249,7 @@ export function foregroundOperations(
 				throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
 			const child = await spawnShell(resolveBashShell(settings), command, {
 				cwd,
+				registerGroup: shellGroupRegistration(),
 				env: nonInteractiveEnv(env ?? process.env),
 				unsandboxed,
 			});
