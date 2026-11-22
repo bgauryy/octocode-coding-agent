@@ -124,6 +124,7 @@ export async function spawnAgent(
 	// Held in the turn of the `chainPlan` check (nothing awaits between), so calls started together see each other's place.
 	const place = chained ? runs.chain!.reserve(linked?.ref, after) : undefined;
 	const slot = { held: false };
+	const held = startGate.holds(plan.route); // a slot goes to this start only once its provider is not cooling down
 	let referenced = "";
 	let claimed: Run | undefined;
 	let grants: Awaited<ReturnType<typeof askSpawn>>;
@@ -134,14 +135,13 @@ export async function spawnAgent(
 		if (!chained)
 			referenced = [referenced, await chainHandoff(runs, handoff, ctx, artifactAccess)].filter(Boolean).join("\n\n");
 		if (params.background) {
-			// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
+			// Its provider cools down from a rate limit (`rate-gate.ts`): the start would meet it too, so this one queues.
 			// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
-			slot.held = !chained && startGate.remainingMs() === 0 && reserving.waitOn.length === 0 && runs.slots.tryTake();
+			slot.held = !chained && reserving.waitOn.length === 0 && runs.slots.tryTake(held);
 		} else {
 			// Before a slot: a start that waits for a sibling's paths must not keep others from theirs.
 			reserving = await awaitSiblings(team, reserving, replan, launchSignal, waitingRow, (clear) => clear);
-			await startGate.wait(launchSignal);
-			await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)));
+			await runs.slots.take(launchSignal, (running) => onUpdate?.(waitingUpdate(params.profile, goal, running)), held);
 			slot.held = true;
 		}
 		grants = await askSpawn(permission, ctx, plan.profile, params.task, launchSignal, api.settings.get().defaultTools, {
@@ -246,7 +246,7 @@ export async function spawnAgent(
 		const isolated = params.isolate === true || resumed?.worktree !== undefined;
 		const lingers = !runner && params.background === true && !isolated;
 		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
-		const prefix = childCacheGroup(run);
+		const prefix = childCacheGroup(run, run.model);
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
 		const begin = async (beginSignal: AbortSignal) => {
@@ -330,8 +330,7 @@ export async function spawnAgent(
 						takeReservation(team, run, clear, queueSignal),
 					);
 				}
-				await startGate.wait(queueSignal);
-				await runs.slots.take(queueSignal);
+				await runs.slots.take(queueSignal, undefined, held);
 				slot.held = true;
 				queueSignal.throwIfAborted();
 				const started = await begin(queueSignal);

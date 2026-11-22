@@ -25,6 +25,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelsJsonWarnings, type ModelsJsonFieldNames } from "./model-config/warnings.ts";
 import { isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { officialEntryProblem } from "./model-config/builtin-guard.ts";
+import { type ModelsProject, projectShadowWarning, untrustedProjectModelsWarning } from "./model-config/project.ts";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
 const SamplingParamsByThinkingLevelSchema = Type.Object(
@@ -216,37 +217,74 @@ export class ModelConfig {
 		this.refusals = refusals;
 	}
 
-	static async load(modelsJsonPath: string | undefined): Promise<ModelConfig> {
+	/**
+	 * Octocode's own models.json merged with the project's and Pi's. The first definition of a provider wins, in the
+	 * order discovery ranks the files: Octocode's project file, Pi's project file, Octocode's global file, Pi's global
+	 * files. So a trusted project overrides the global files for the same provider id (its `baseUrl` and `models`
+	 * included) and Octocode's file outranks Pi's at each scope. A project file of a folder that is not trusted is not read;
+	 * a warning says so.
+	 */
+	static async load(modelsJsonPath: string | undefined, project?: ModelsProject): Promise<ModelConfig> {
 		if (!modelsJsonPath) return new ModelConfig(new Map());
-		const paths = [modelsJsonPath];
+		let paths = [modelsJsonPath];
+		// Files read as Pi's (an official provider id in them is skipped with a warning, not refused).
+		const fallbackFiles = new Set<string>();
+		const projectFiles = new Set<string>();
+		const notices: string[] = [];
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
-			// Octocode's file first, then Pi's: the first definition of a provider wins.
 			const input = discoveryInput({
-				cwd: process.cwd(),
+				cwd: project?.cwd ?? process.cwd(),
 				agentDir: dirname(getModelsPath()),
-				projectTrusted: false,
+				projectTrusted: project?.isTrusted() ?? false,
+				includeUntrusted: project !== undefined,
 				piRoots: providerSourceGate.isEnabled("pi") ? providerFallbackDirs() : [],
 			});
-			for (const item of configDiscovery.discover("model", input)) {
-				if (item.loaded && resolve(item.provenance.path) !== resolve(modelsJsonPath)) paths.push(item.provenance.path);
+			const own = resolve(modelsJsonPath);
+			const ranked: string[] = [];
+			for (const { loaded, provenance } of configDiscovery.discover("model", input)) {
+				if (!loaded) {
+					if (provenance.notLoaded === "untrusted")
+						notices.push(untrustedProjectModelsWarning(provenance.path, input.cwd));
+					continue;
+				}
+				ranked.push(provenance.path);
+				if (provenance.product === "pi") fallbackFiles.add(provenance.path);
+				if (provenance.scope === "project") projectFiles.add(provenance.path);
 			}
+			// Octocode's global file is always read, even when it does not exist yet; it keeps its rank among the others.
+			paths = ranked.some((file) => resolve(file) === own) ? ranked : [...ranked, modelsJsonPath];
 		}
 		const providers = new Map<string, ModelsJsonProvider>();
 		const files = new Map<string, string>();
 		const errors: string[] = [];
-		const warnings: string[] = [];
+		const warnings: string[] = [...notices];
 		const refusals: string[] = [];
 		// Files load concurrently; merging walks them in precedence order, so the first definition still wins and
 		// errors and warnings keep file order. Pi's files are never ours to fix: an official id there is a warning.
-		const configs = await Promise.all(paths.map((file, index) => ModelConfig.loadFile(file, { fallback: index > 0 })));
-		for (const config of configs) {
-			if (config.error) errors.push(config.error);
+		const configs = await Promise.all(
+			paths.map((file) => ModelConfig.loadFile(file, { fallback: fallbackFiles.has(file) })),
+		);
+		for (const [index, config] of configs.entries()) {
+			const isProject = projectFiles.has(paths[index]!);
+			// An unreadable project file is skipped, not fatal: the global providers keep loading.
+			if (config.error) {
+				if (isProject) warnings.push(`Project models.json skipped: ${config.error}`);
+				else errors.push(config.error);
+			}
 			warnings.push(...config.warnings);
 			refusals.push(...config.refusals);
 			for (const [id, provider] of config.providers) {
-				if (providers.has(id)) continue;
-				providers.set(id, provider);
 				const file = config.files.get(id);
+				const winner = providers.get(id);
+				if (winner) {
+					const winnerFile = files.get(id);
+					if (!isProject && winnerFile && projectFiles.has(winnerFile))
+						warnings.push(
+							projectShadowWarning(id, winnerFile, file ?? paths[index]!, winner.baseUrl, provider.baseUrl),
+						);
+					continue;
+				}
+				providers.set(id, provider);
 				if (file) files.set(id, file);
 			}
 		}

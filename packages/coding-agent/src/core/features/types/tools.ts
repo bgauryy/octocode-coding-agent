@@ -6,7 +6,7 @@ import type {
 	AgentToolUpdateCallback,
 	ToolExecutionMode,
 } from "@octocodeai/octocode-agent-core";
-import type { ConstrainedSamplingConfig } from "@octocodeai/octocode-ai";
+import type { ConstrainedSamplingConfig, Tool } from "@octocodeai/octocode-ai";
 import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
@@ -194,7 +194,7 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	 * Text appended to this tool's validation failures, such as its typed signature. `envelope` is true when every
 	 * problem is at the top level of the arguments. Never sent to the provider.
 	 */
-	validationHint?: (failure: { envelope: boolean; properties: string[] }) => string | undefined;
+	validationHint?: Tool["validationHint"];
 	/** False: arguments are validated as the model sent them and reach `execute` unchanged, with no coercion (MCP tools). */
 	coerceArguments?: false;
 	/**

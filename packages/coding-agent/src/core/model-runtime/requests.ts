@@ -54,6 +54,7 @@ import { formatAuthRefreshFailedMessage } from "../auth-guidance.ts";
 import type { resolveConfiguredCache } from "../cache-configuration.ts";
 import { resolveConfiguredModelHeaders } from "../provider-composer.ts";
 import { isVirtualModel, type ModelRoute, type ModelRouteReason } from "../virtual-models.ts";
+import { type CooldownRequestOptions, cooldownStep } from "./cooldown-request.ts";
 import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeAuthOverrides } from "./types.ts";
@@ -69,6 +70,8 @@ export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
 	resolveCache?: (model: Model<Api>) => CacheOptions;
 	/** Names of the declared tools whose definition is `roleVariant`: the tool cache breakpoint sits before the first. */
 	roleVariantTools?: ReadonlySet<string>;
+	/** Hears when the request waits out its provider's rate-limit cool-down (`cooldown-request.ts`), and when it is over. */
+	onCooldownWait?: CooldownRequestOptions["onCooldownWait"];
 };
 
 /**
@@ -189,15 +192,23 @@ export function streamChatModel<TApi extends Api>(
 	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools">,
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
-	return lazyStream(model, async () => {
-		assertChatModel(model);
-		assertImageRequestContext(model, transcript.messages);
-		const prepared = await prepareModelRequest(host, model, {
-			...options,
-			...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
-		});
-		return prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>);
-	});
+	const cooldown = cooldownStep(model, options);
+	return lazyStream(
+		model,
+		async () => {
+			assertChatModel(model);
+			assertImageRequestContext(model, transcript.messages);
+			const prepared = await prepareModelRequest(host, model, {
+				...options,
+				...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
+			});
+			return (
+				(await cooldown.ready()) ??
+				prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>)
+			);
+		},
+		cooldown.observer,
+	);
 }
 
 export function streamSimpleChatModel(
@@ -227,16 +238,23 @@ export function streamSimpleChatModel(
 			return host.streamSimple(route.model, context, { ...rest, ...auth, maxTokens, reasoning });
 		});
 	}
-	return lazyStream(model, async () => {
-		assertChatModel(model);
-		assertImageRequestContext(model, transcript.messages);
-		const { resolveCache, roleVariantTools, ...requestOptions } = options ?? {};
-		const prepared = await prepareModelRequest(host, model, {
-			...requestOptions,
-			...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
-		});
-		return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
-	});
+	// A physical request waits out its provider's cool-down once its auth resolved, so a missing credential still fails at
+	// once; a virtual one waits in the request it routes to.
+	const { resolveCache, roleVariantTools, onCooldownWait: _onCooldownWait, ...requestOptions } = options ?? {};
+	const cooldown = cooldownStep(model, options);
+	return lazyStream(
+		model,
+		async () => {
+			assertChatModel(model);
+			assertImageRequestContext(model, transcript.messages);
+			const prepared = await prepareModelRequest(host, model, {
+				...requestOptions,
+				...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
+			});
+			return (await cooldown.ready()) ?? prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
+		},
+		cooldown.observer,
+	);
 }
 
 export function streamDeferredResponse(

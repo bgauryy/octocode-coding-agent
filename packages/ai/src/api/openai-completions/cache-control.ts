@@ -7,7 +7,8 @@ import type {
 	ChatCompletionToolMessageParam,
 	ChatCompletionContentPartText,
 } from "../ai-sdk/openai-wire-types.ts";
-import type { CacheRetention } from "../../types.ts";
+import type { CacheRetention, Model } from "../../types.ts";
+import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { instructionBlockTexts, keepsToolBreakpoint, type InstructionBlocks } from "../../utils/instruction-split.ts";
 import {
 	countCacheBreakpoints,
@@ -25,6 +26,37 @@ type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
 type ChatCompletionToolWithCacheControl = ChatCompletionTool & {
 	cache_control?: OpenAICompatCacheControl;
 };
+
+/** Claude models this process already told that they send no cache markers. */
+const reportedUnmarkedClaude = new Set<string>();
+
+/**
+ * The one-time notice for a Claude model on Chat Completions that sends no cache markers: Claude caches only what
+ * `cache_control` marks, so every turn is billed in full. The format is never turned on here, since only the user
+ * knows whether their gateway forwards the field: OpenRouter's `anthropic/` ids are detected, but a LiteLLM or other
+ * proxy has no fixed host, and a server that validates its request body rejects an unknown field. Undefined after the
+ * model's first notice in this process, with caching off, with markers on, or for a model that names no Claude.
+ */
+export function takeUnmarkedClaudeNotice(
+	model: Pick<Model<"openai-completions">, "provider" | "id" | "name">,
+	compat: Pick<ResolvedOpenAICompletionsCompat, "cacheControlFormat">,
+	cacheRetention: CacheRetention,
+): AssistantMessageDiagnostic | undefined {
+	if (cacheRetention === "none" || compat.cacheControlFormat === "anthropic") return undefined;
+	if (!/claude/i.test(`${model.id} ${model.name}`)) return undefined;
+	const key = `${model.provider}/${model.id}`;
+	if (reportedUnmarkedClaude.has(key)) return undefined;
+	reportedUnmarkedClaude.add(key);
+	return {
+		type: "cache_unavailable",
+		timestamp: Date.now(),
+		details: {
+			reason: "no_cache_markers",
+			model: key,
+			fix: 'This Claude model gets no cache_control markers, so nothing is cached. If the gateway forwards Anthropic cache_control fields (LiteLLM documents it), set "compat": { "cacheControlFormat": "anthropic" } on the model in models.json.',
+		},
+	};
+}
 
 export function getCompatCacheControl(
 	compat: ResolvedOpenAICompletionsCompat,
@@ -48,6 +80,10 @@ export function getCompatCacheControl(
  * a marker. A second cached block replaces the tools-only marker: the base block's marker already covers the tools
  * that precede it, so the marker count never exceeds four. Without a leading string prompt equal to the blocks
  * joined, the prompt stays one block.
+ *
+ * With `toolCacheBoundary` (the first tool roles declare differently), the tool marker goes on the tool before it, so
+ * an agent of one role reads the tool prefix another role wrote; with two cached blocks it takes the base block's
+ * marker, as in the Anthropic adapter. A boundary that names the first tool or no tool changes nothing.
  */
 export function applyAnthropicCacheControl(
 	messages: ChatCompletionMessageParam[],
@@ -55,11 +91,21 @@ export function applyAnthropicCacheControl(
 	cacheControl: OpenAICompatCacheControl | undefined,
 	instructionCacheControl: OpenAICompatCacheControl | undefined,
 	splitSystem?: InstructionBlocks,
+	toolCacheBoundary?: string,
 ): void {
 	if (instructionCacheControl) {
-		const split = splitSystem && addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl);
+		const sharedEnd = toolCacheBoundary
+			? Math.max(
+					0,
+					(tools ?? []).findIndex((tool) => toolName(tool) === toolCacheBoundary),
+				)
+			: 0;
+		const sharedTool = sharedEnd > 0 ? tools?.[sharedEnd - 1] : undefined;
+		const split =
+			splitSystem && addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl, !!sharedTool);
 		if (!split) addCacheControlToSystemPrompt(messages, instructionCacheControl);
-		if (!split || keepsToolBreakpoint(splitSystem)) addCacheControlToLastTool(tools, instructionCacheControl);
+		if (sharedTool) markTool(sharedTool, instructionCacheControl);
+		else if (!split || keepsToolBreakpoint(splitSystem)) addCacheControlToLastTool(tools, instructionCacheControl);
 	}
 	if (cacheControl) {
 		addCacheControlToLastConversationMessage(messages, cacheControl);
@@ -84,15 +130,20 @@ function addHistoryLookbackBreakpoint(
 	if (message.role === "user" || message.role === "tool") addCacheControlToMessage(message, cacheControl);
 }
 
+/** `sharedTools`: a shared-tool marker takes the base block's slot when there are two cached blocks. */
 function addSplitCacheControlToSystemPrompt(
 	messages: ChatCompletionMessageParam[],
 	blocks: InstructionBlocks,
 	cacheControl: OpenAICompatCacheControl,
+	sharedTools: boolean,
 ): boolean {
 	const message = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
 	if (!message || message.content !== instructionBlockTexts(blocks).join("")) return false;
+	const skipBase = sharedTools && blocks.cached.length > 1;
 	message.content = [
-		...blocks.cached.map((text) => ({ type: "text", text, cache_control: cacheControl })),
+		...blocks.cached.map((text, index) =>
+			skipBase && index === 0 ? { type: "text", text } : { type: "text", text, cache_control: cacheControl },
+		),
 		...(blocks.volatile === undefined ? [] : [{ type: "text", text: blocks.volatile }]),
 	] as ChatCompletionTextPartWithCacheControl[];
 	return true;
@@ -132,8 +183,15 @@ function addCacheControlToLastTool(
 		return;
 	}
 
-	const lastTool = tools[tools.length - 1] as ChatCompletionToolWithCacheControl;
-	lastTool.cache_control = cacheControl;
+	markTool(tools[tools.length - 1], cacheControl);
+}
+
+function markTool(tool: ChatCompletionTool, cacheControl: OpenAICompatCacheControl): void {
+	(tool as ChatCompletionToolWithCacheControl).cache_control = cacheControl;
+}
+
+function toolName(tool: ChatCompletionTool): string {
+	return tool.type === "function" ? tool.function.name : tool.custom.name;
 }
 
 function addCacheControlToInstructionMessage(

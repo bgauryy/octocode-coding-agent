@@ -72,6 +72,13 @@ const routes: Array<[string, string, () => Record<string, unknown>]> = (() => {
 		["macOS keychain read", "bash", { command: "security find-generic-password -s octocode -a openai -w" }],
 		["keychain read by its path", "bash", { command: "/usr/bin/security find-generic-password -a openai -w" }],
 		["secret-tool lookup", "bash", { command: "secret-tool lookup service octocode account openai" }],
+		[
+			"Windows Credential Manager read",
+			"bash",
+			{ command: "powershell.exe -NoProfile -NonInteractive -EncodedCommand AAAA" },
+		],
+		["encoded command by prefix", "bash", { command: "pwsh -NoProfile -enc AAAA" }],
+		["encoded command, short flag", "powershell", { command: "powershell -e AAAA" }],
 		["powershell Get-Content", "powershell", { command: `Get-Content ${store}` }],
 		["research file fetch", "mcp__octocode__localFetch", { queries: [{ path: store }] }],
 		[
@@ -139,6 +146,8 @@ describe("credential store reads", () => {
 				["bash", { command: `cat ${path.join(cwd, "notes.txt")} | wc -l` }],
 				["bash", { command: `cat ${other}` }],
 				["bash", { command: "security list-keychains" }],
+				["bash", { command: "powershell -NoProfile -Command Get-Date" }],
+				["bash", { command: "pwsh -ExecutionPolicy Bypass -File build.ps1" }],
 				["bash", { command: "rg find-generic-password packages/security/" }],
 				["bash", { command: `cat ${path.join(cwd, "auth.json")}` }],
 				["mcp__octocode__localFetch", { queries: [{ path: other }] }],

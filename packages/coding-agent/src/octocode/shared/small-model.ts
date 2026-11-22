@@ -1,4 +1,5 @@
 import type { Usage } from "@octocodeai/octocode-ai";
+import type { SideRetry } from "./side-retry.ts";
 
 /** A reply's text, the `provider/id` that wrote it and what the call used and cost (so a caller can record the spend). */
 export type SmallCallResult =
@@ -11,8 +12,11 @@ export type SmallCallResult =
  * is the session's feature context, which each feature names (`shared/` reaches no host type).
  */
 export interface SmallModel<Context> {
-	/** One tool-less call to the cheaper model; never rejects (an `error` names the cause). */
-	call(ctx: Context, options: { text: string; signal: AbortSignal; maxTokens: number }): Promise<SmallCallResult>;
+	/** One tool-less call to the cheaper model, retried within `retry` when given; never rejects (an `error` names the cause). */
+	call(
+		ctx: Context,
+		options: { text: string; signal: AbortSignal; maxTokens: number; retry?: SideRetry },
+	): Promise<SmallCallResult>;
 	/** The `provider/id` the route resolves to for this session, or undefined when no cheaper model exists. */
 	label(ctx: Context): string | undefined;
 }

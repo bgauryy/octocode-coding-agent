@@ -225,7 +225,15 @@ async function executeToolCallsParallel(
 		}
 	}
 
-	const orderedFinalizedCalls = await Promise.all(finalizedCalls.map(async (entry) => entry));
+	const pending = finalizedCalls.map(async (entry) => entry);
+	let orderedFinalizedCalls: AgentToolCallOutcome[];
+	try {
+		orderedFinalizedCalls = await Promise.all(pending);
+	} catch (error) {
+		// A failed call leaves the others running: their owner stops them and waits for them to end.
+		config.onAbandonedTools?.(allEnded(pending));
+		throw error;
+	}
 	const messages: ToolResultMessage[] = [];
 	for (const finalized of orderedFinalizedCalls) {
 		const toolResultMessage = createToolResultMessage(finalized);
@@ -237,6 +245,11 @@ async function executeToolCallsParallel(
 		messages,
 		terminate: shouldTerminateToolBatch(orderedFinalizedCalls),
 	};
+}
+
+/** Resolves once every call has ended, however it ended. */
+async function allEnded(calls: readonly Promise<unknown>[]): Promise<void> {
+	await Promise.allSettled(calls);
 }
 
 /** Execute and finalize one prepared call, emitting its end; a call reached after an abort reports "Operation aborted". */

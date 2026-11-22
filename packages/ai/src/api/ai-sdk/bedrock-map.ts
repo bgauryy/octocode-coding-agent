@@ -15,7 +15,9 @@ import {
 	supportsToolCachePoint,
 	isNovaExplicitCacheModel,
 	isAnthropicClaudeModel,
+	isUnrecognizedCacheProfile,
 } from "../bedrock-converse-stream/model-match.ts";
+import { appendAssistantMessageDiagnostic, type AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { longCacheTtl, supportsThinkingSignature } from "../bedrock-converse-stream/model-support.ts";
 import { transformMessages } from "../transform-messages.ts";
 import { fitToolCallId } from "../tool-call-id.ts";
@@ -28,6 +30,22 @@ import { bedrockNetworkFetch, bedrockSdkModel } from "./bedrock-provider.ts";
 import { appendBedrockFailureDiagnostic, formatBedrockError } from "../bedrock-converse-stream/errors.ts";
 import { parseRetryAfterMs } from "../../utils/retry.ts";
 import type { SdkMapping } from "./stream.ts";
+
+/** Profiles whose missing cache points this process already reported: once per profile, not on every reply. */
+const reportedUncachedProfiles = new Set<string>();
+
+/** The one-time notice that an application inference profile runs uncached, with the fix. */
+function uncachedProfileDiagnostic(model: Model<"bedrock-converse-stream">): AssistantMessageDiagnostic {
+	return {
+		type: "cache_unavailable",
+		timestamp: Date.now(),
+		details: {
+			reason: "unrecognized_inference_profile",
+			model: model.id,
+			fix: 'Neither the profile ARN nor its name names a model that takes cache points, so none are sent. If it serves Claude or Amazon Nova, set the model\'s "name" in models.json to that model (for example "Claude Sonnet 4.5"), or set AWS_BEDROCK_FORCE_CACHE=1.',
+		},
+	};
+}
 
 export function bedrockSdkMapping(
 	model: Model<"bedrock-converse-stream">,
@@ -90,24 +108,35 @@ export function bedrockSdkMapping(
 		value !== "none" && supportsPromptCaching(model, options.env)
 			? { bedrock: { cachePoint: { type: "default", ...longCacheTtl(model, value) } } }
 			: undefined;
+	const uncachedProfile =
+		(retention.history !== "none" || retention.instructions !== "none") &&
+		!reportedUncachedProfiles.has(model.id) &&
+		isUnrecognizedCacheProfile(model, options.env);
+	const names = syntheticTools ? [] : Object.keys(tools);
+	const toolPoints = names.length > 0 && supportsToolCachePoint(model) && point(retention.instructions) !== undefined;
+	// The end of the tools every role declares alike: its point lets an agent of one role read the tool prefix another
+	// role wrote, and takes the base block's slot when the prompt is split, as on Anthropic (`anthropic-cache.ts`).
+	const sharedEnd = toolPoints && options.toolCacheBoundary ? Math.max(0, names.indexOf(options.toolCacheBoundary)) : 0;
 	const initial = getInitialSystemMessage(normalized.messages);
 	const split = initial
 		? splitSystemMessageIntoBlocks(initial, options.instructionCacheBoundary, options.instructionVolatileBoundary)
 		: undefined;
 	const systemIndex = messages.findIndex((m) => m.role === "system");
 	if (systemIndex >= 0 && split) {
-		const system: ModelMessage[] = split.cached.map((content) => ({
+		const system: ModelMessage[] = split.cached.map((content, index) => ({
 			role: "system",
 			content,
-			providerOptions: point(retention.instructions),
+			providerOptions:
+				sharedEnd > 0 && split.cached.length > 1 && index === 0 ? undefined : point(retention.instructions),
 		}));
 		if (split.volatile !== undefined) system.push({ role: "system", content: split.volatile });
 		messages.splice(systemIndex, 1, ...system);
 	} else if (systemIndex >= 0) messages[systemIndex].providerOptions = point(retention.instructions);
 	const toolCachePoint =
-		!syntheticTools && Object.keys(tools).length && keepsToolBreakpoint(split) && supportsToolCachePoint(model)
+		toolPoints && (sharedEnd > 0 || keepsToolBreakpoint(split))
 			? point(retention.instructions)?.bedrock.cachePoint
 			: undefined;
+	const sharedTool = sharedEnd > 0 ? names[sharedEnd - 1] : undefined;
 	const last = messages.at(-1);
 	if (last?.role === "user" || last?.role === "tool") {
 		last.providerOptions = point(history);
@@ -176,8 +205,13 @@ export function bedrockSdkMapping(
 				const schema = entry.toolSpec?.inputSchema?.json;
 				if (!entry.toolSpec?.strict && schema?.required?.length === 0) delete schema.required;
 			}
-			const config = body.toolConfig as { tools?: unknown[] } | undefined;
-			if (toolCachePoint && config?.tools?.length) config.tools.push({ cachePoint: toolCachePoint });
+			const config = body.toolConfig as
+				| { tools?: { toolSpec?: { name?: string }; cachePoint?: typeof toolCachePoint }[] }
+				| undefined;
+			if (toolCachePoint && config?.tools?.length) {
+				const after = sharedTool ? config.tools.findIndex((entry) => entry.toolSpec?.name === sharedTool) + 1 : 0;
+				config.tools.splice(after > 0 ? after : config.tools.length, 0, { cachePoint: toolCachePoint });
+			}
 		},
 		toolChoice:
 			options.toolChoice === "any"
@@ -200,6 +234,10 @@ export function bedrockSdkMapping(
 		onPart(part, output, stream) {
 			if (part.type === "finish" && part.rawFinishReason === "model_context_window_exceeded")
 				part.finishReason = "length";
+			if (part.type === "finish" && uncachedProfile && !reportedUncachedProfiles.has(model.id)) {
+				reportedUncachedProfiles.add(model.id);
+				appendAssistantMessageDiagnostic(output, uncachedProfileDiagnostic(model));
+			}
 			if (part.type === "error" && rich.handledError(part.error)) return true;
 			if (
 				(part.type === "text-start" || part.type === "text-delta" || part.type === "text-end") &&

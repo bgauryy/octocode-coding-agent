@@ -1,3 +1,4 @@
+import { inputRoomTokens } from "./settings.ts";
 import { renderPrompt } from "../prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -174,6 +175,7 @@ export function projectionAfterCompaction(
 }
 
 type FinalizeOptions = {
+	maxInputTokens?: number;
 	branchEntries: SessionEntry[];
 	contextWindow: number;
 	reserveTokens: number;
@@ -229,7 +231,7 @@ function finalizeWithFiles(candidate: CompactionResult, options: FinalizeOptions
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
 	const projectedTokens = projectAfterCompaction(branchEntries, result.firstKeptEntryId, result.tokensBefore);
-	const available = contextWindow - reserveTokens;
+	const available = inputRoomTokens(contextWindow, reserveTokens, options.maxInputTokens);
 	const summaryBudget = Math.min(
 		reserveTokens > 0 ? inlineSummaryTokens(reserveTokens) : available,
 		available - projectedTokens(""),

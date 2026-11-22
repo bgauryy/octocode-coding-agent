@@ -1,48 +1,44 @@
-import { isRateLimitedText } from "../../core/agent-session/retry.ts";
 import { sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
+import { type ProviderCooldowns, providerCooldowns } from "../../core/model-runtime/provider-cooldown.ts";
+
+/** The provider a run's requests go to: its routed model's (`provider/id[:thinking]`), else the parent session's. */
+export function routeProvider(route: { model?: string; parent?: string }): string | undefined {
+	const model = route.model ?? route.parent;
+	const slash = model?.indexOf("/") ?? -1;
+	return slash > 0 ? model!.slice(0, slash) : undefined;
+}
 
 /**
- * Shared pause for starting subagents after one failed on a provider rate limit. Every child uses the same key, so the
- * next child would meet the same throttle: new starts wait briefly instead, and each further rate-limit failure within
- * the cool-down window doubles the pause up to a cap. The child already retried with the provider's `retry-after` before
- * it failed, so this only spaces out the launches that follow.
+ * Holds subagent starts on a provider while it cools down from a rate limit. The cool-down is the one every model
+ * request start waits on (`provider-cooldown.ts`): recorded by whichever request met the limit (this session's, a child's
+ * or a peer's in another terminal) and shared through the agent database, so several siblings failing on one throttle
+ * pause it once. A child started now would only wait inside its first request and be released with all the others at
+ * once; a cool-down on one provider never holds a child routed to another.
  */
-
-const INITIAL_PAUSE_MS = 5_000;
-const MAX_PAUSE_MS = 30_000;
-/** A failure this long after the previous pause ended starts the backoff over. */
-const FORGET_AFTER_MS = 60_000;
-
 export class StartGate {
-	private until = 0;
-	private pauseMs = 0;
-	private readonly now: () => number;
+	private readonly cooldowns: Pick<ProviderCooldowns, "remainingMs">;
 
-	constructor(now: () => number = Date.now) {
-		this.now = now;
+	constructor(cooldowns: Pick<ProviderCooldowns, "remainingMs"> = providerCooldowns) {
+		this.cooldowns = cooldowns;
 	}
 
-	/** Records a failed child's error text; only a rate limit pauses new starts. */
-	noteFailure(error: string | undefined): void {
-		if (!error || !isRateLimitedText(error)) return;
-		const now = this.now();
-		this.pauseMs = now - this.until > FORGET_AFTER_MS ? INITIAL_PAUSE_MS : Math.min(this.pauseMs * 2, MAX_PAUSE_MS);
-		this.until = now + this.pauseMs;
+	/** Milliseconds a run on `route` must still wait before it starts: what is left of its provider's cool-down. */
+	holds(route: { model?: string; parent?: string }): () => number {
+		const provider = routeProvider(route);
+		return () => (provider ? this.cooldowns.remainingMs(provider) : 0);
 	}
 
-	/** Milliseconds until a new child may start; 0 when no pause is active. */
-	remainingMs(): number {
-		return Math.max(0, this.until - this.now());
-	}
-
-	/** Waits out an active pause; the signal (Esc, a turn abort) gives up the wait. */
-	async wait(signal?: AbortSignal): Promise<void> {
-		signal?.throwIfAborted();
-		const remaining = this.remainingMs();
-		if (remaining > 0)
+	/** Waits until `route`'s provider is not cooling down, looking again after each wait; the signal gives up the wait. */
+	async wait(route: { model?: string; parent?: string }, signal?: AbortSignal): Promise<void> {
+		const held = this.holds(route);
+		for (;;) {
+			signal?.throwIfAborted();
+			const remaining = held();
+			if (remaining <= 0) return;
 			await sleepUnlessAborted(remaining, signal, () => new Error("Cancelled while waiting out a rate limit."));
+		}
 	}
 }
 
-/** One gate per parent process: its subagents share the provider key and so the limit. */
+/** The gate of this process's subagent starts. */
 export const startGate = new StartGate();

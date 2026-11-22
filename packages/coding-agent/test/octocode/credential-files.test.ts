@@ -40,6 +40,14 @@ describe("credential reads of models.json", () => {
 		).toBeDefined();
 	});
 
+	it("asks for the session folder's project models.json that holds a literal apiKey, not process.cwd()'s", () => {
+		const project = tmp();
+		fs.mkdirSync(path.join(project, ".octocode"));
+		fs.writeFileSync(path.join(project, ".octocode", "models.json"), models("sk-synthetic-literal"));
+		expect(credentialRead("bash", { command: "cat .octocode/models.json" }, project)).toBeDefined();
+		expect(credentialRead("bash", { command: "cat .octocode/models.json" }, tmp())).toBeUndefined();
+	});
+
 	it.each(["$CUSTOM_KEY", "${CUSTOM_KEY}", "!pass show custom"])(
 		"does not ask when apiKey is a reference: %s",
 		(value) => {

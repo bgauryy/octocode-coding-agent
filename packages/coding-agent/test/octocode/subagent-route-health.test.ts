@@ -13,7 +13,7 @@ const available = [
 	parent,
 	{ provider: "other", id: "mid", cost: { input: 4, output: 16 } },
 	{ provider: "cheap", id: "tiny", cost: { input: 0.1, output: 0.4 } },
-].map((model) => ({ ...model, reasoning: true }) as ModelRef);
+].map((model) => ({ ...model, reasoning: true }));
 const refusedCheap = (provider: string) => provider === "cheap";
 
 describe("routing and provider health (B347 P2-5)", () => {

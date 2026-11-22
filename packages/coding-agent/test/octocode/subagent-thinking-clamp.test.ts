@@ -11,15 +11,14 @@ import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
 import { meteredBilling, asSetup } from "./fake-host.ts";
 
-const model = (id: string, input: number, extra: object = {}): ModelRef =>
-	({
-		provider: "p",
-		id,
-		cost: { input, output: input * 4 },
-		contextWindow: 200_000,
-		reasoning: true,
-		...extra,
-	}) as ModelRef;
+const model = (id: string, input: number, extra: object = {}): ModelRef => ({
+	provider: "p",
+	id,
+	cost: { input, output: input * 4 },
+	contextWindow: 200_000,
+	reasoning: true,
+	...extra,
+});
 // `beam-free` cannot turn thinking off or run minimal, as opencode-go's model does.
 const beam = model("beam-free", 0.1, { thinkingLevelMap: { off: null, minimal: null } });
 const big = model("big", 10);

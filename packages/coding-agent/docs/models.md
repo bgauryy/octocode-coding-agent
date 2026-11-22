@@ -39,6 +39,16 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 - The compact picker shows context, output limits, image/reasoning support and billing. **Ctrl+D** toggles full identifiers, names, catalog prices and cache lifetimes; **PgUp/PgDn** scroll those details. A time-limited price (`cost.until` with `cost.after`) shows today's rates. For subscription routes, catalog API prices are reference estimates. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
+### Model defaults
+
+| Setting | How Octocode chooses it |
+| --- | --- |
+| Context and output | A custom model uses its explicit `contextWindow` and `maxTokens`, then matching bundled model values. An unknown custom model defaults to 128,000 context tokens and 16,384 output tokens. The default session budget is the smaller of 300,000 tokens and 90% of the model’s context window. Use `/context` to change it. When the endpoint declares a separate prompt ceiling, compaction uses the smaller of that ceiling and the working window after reserving reply space. Set `inputLimits.maxInputTokens` in a custom model entry to supply that ceiling. The simple chat adapters cap it at the model’s output ceiling and leave room for the estimated transcript. |
+| Thinking and effort | The agent starts with `high` unless a saved choice, model setting or launch option applies. The model’s supported levels determine the effective choice. The adapter sends the control its route accepts, such as an on/off switch, named effort, or token budget. A provider-managed model can have no selectable levels. |
+| Prompt caching | The agent requests short retention for conversation history and long retention for instructions. The endpoint and model determine whether that becomes a cache marker, a key, automatic caching, or no cache control. Cache read and write prices describe billing. Configure retention separately. |
+
+The bundled catalog takes provider-specific facts from models.dev and the supported gateway catalogs. For a custom endpoint, check the values with `/model`. The coordinator’s `models` tool uses the configured reasoning capability, including when its optional models.dev lookup is offline.
+
 ### List models by size
 
 When the provider refuses a specific model for your account or endpoint, Octocode leaves it out of the current session’s model choices for five minutes. Other models on the same provider stay available. Reconnecting the provider or a successful access check restores the model immediately. Your saved defaults and enabled models stay in settings.

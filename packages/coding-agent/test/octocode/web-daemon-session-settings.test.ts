@@ -22,12 +22,12 @@ afterEach(async () => {
 const REPO_KEY = "0b6c5f0e-63a8-4a34-9b8c-4f3e7d0f6a11";
 const JSON_HEADERS = { "content-type": "application/json" };
 
-/** What the running session declares: `web` deferred, `archive` direct, and one MCP server it registered itself. */
+/** What the running session declares: `models` deferred, `archive` direct, and one MCP server it registered itself. */
 const DECLARED: AttachToolStates = sessionToolStates(
 	{
-		names: ["read", "web", "archive"],
+		names: ["read", "models", "archive"],
 		declared: new Map([
-			["web", true],
+			["models", true],
 			["archive", false],
 		]),
 	},
@@ -85,7 +85,7 @@ describe("an attached session's Settings on the daemon page", () => {
 		expect(scoped.status).toBe(200);
 		const live = (await scoped.json()) as ToolExposureList;
 		expect(live.live).toBe(true);
-		expect(row(live, "native", "web")).toMatchObject({ state: "deferred" });
+		expect(row(live, "native", "models")).toMatchObject({ state: "deferred" });
 		expect(row(live, "native", "archive")).toMatchObject({ state: "direct" });
 		expect(row(live, "native", "read")).toMatchObject({ state: "direct", decidedBy: "core" });
 		expect(live.groups.find((group) => group.name === "ext")).toMatchObject({ pinnable: false });
@@ -99,7 +99,7 @@ describe("an attached session's Settings on the daemon page", () => {
 		// A pin from the session's page answers with the session's states too.
 		const pinned = await call(server.token, "/s/sess-1/api/admin/config/tools", {
 			kind: "native",
-			tool: "web",
+			tool: "models",
 			pin: "direct",
 			scope: "global",
 			repoId: "session",
@@ -108,7 +108,7 @@ describe("an attached session's Settings on the daemon page", () => {
 		const after = (await pinned.json()) as ToolExposureList;
 		expect(after.live).toBe(true);
 		// The running session keeps what it declared; the pin waits for the next session.
-		expect(row(after, "native", "web")).toMatchObject({ pin: "direct", state: "deferred" });
+		expect(row(after, "native", "models")).toMatchObject({ pin: "direct", state: "deferred" });
 	});
 
 	it("resolves only the session's own workspace and keeps admin routes to the launch token", async () => {

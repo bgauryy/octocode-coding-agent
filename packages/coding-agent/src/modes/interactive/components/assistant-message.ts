@@ -70,6 +70,8 @@ export class AssistantMessageComponent extends Container {
 	private liveLabel: LiveThinkingLabel | undefined;
 	/** Whether a tool row already showed the interrupt; decided once, when the message first reads as interrupted. */
 	private interruptShownByTool: boolean | undefined;
+	/** A failed attempt the session sent again: its error is not the turn's outcome. */
+	private retried = false;
 
 	constructor(
 		message?: AssistantMessage,
@@ -219,6 +221,14 @@ export class AssistantMessageComponent extends Container {
 		if (!isStreaming) this.rebuildContent();
 	}
 
+	/** Marks a failed attempt as one the session retried (`retried-attempts.ts`); a message that did not fail stays as it is. */
+	markRetried(retried = true): void {
+		if (this.retried === retried || this.lastMessage?.stopReason !== "error") return;
+		this.retried = retried;
+		this.contentDirty = true;
+		renderChanged(this);
+	}
+
 	private addResponse(id: string, body: Component): void {
 		const response = new LongResponse(
 			body,
@@ -364,8 +374,11 @@ export class AssistantMessageComponent extends Container {
 			);
 		} else if (message.stopReason === "error" && !isAbortWording(message.errorMessage)) {
 			const errorMsg = sanitizeTerminalText(message.errorMessage || "Unknown error");
+			const line = this.retried
+				? theme.fg("dim", `Retried after error: ${errorMsg}`)
+				: theme.fg("error", `Error: ${errorMsg}`);
 			this.contentContainer.addChild(new Spacer(1));
-			this.addResponse(`${message.id}:error`, new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
+			this.addResponse(`${message.id}:error`, new Text(line, this.outputPad, 0));
 		} else if (!hasToolCalls && (message.stopReason === "aborted" || message.stopReason === "error")) {
 			// A tool row that already says `aborted` is the one statement of the interrupt.
 			this.interruptShownByTool ??= toolInterruptShown();

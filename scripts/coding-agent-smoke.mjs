@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { nativeResolverEntry } from "./local-dependencies.mjs";
 
 /** The directory of a dependency as the installed package resolves it at run time. A release's `exports` may hide its package.json, so look through the lookup paths. */
 function installedPackageDir(packageDir, name) {
@@ -45,9 +46,11 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		if (!existsSync(profileDir) || !readdirSync(profileDir).some((name) => name.endsWith(".md"))) {
 			throw new Error("Installed Octocode package is missing bundled subagent profiles");
 		}
-		// The policy prompt is Markdown read at runtime (`getNativeDir`); without it every session fails to build its prompt.
-		if (!existsSync(join(packageDir, "dist/octocode/native/prompts/policy/work.md"))) {
-			throw new Error("Installed Octocode package is missing the bundled prompt instructions");
+		const policySource = new URL("../packages/coding-agent/src/octocode/native/prompts/policy/", import.meta.url);
+		for (const file of readdirSync(policySource).filter((name) => name.endsWith(".md") && name !== "README.md")) {
+			if (!existsSync(join(packageDir, "dist/octocode/native/prompts/policy", file))) {
+				throw new Error(`Installed Octocode package is missing the bundled prompt instructions in ${file}`);
+			}
 		}
 		for (const skill of ["octocode-context-optimization", "octocode-debugging", "resume-external-harness"]) {
 			if (!existsSync(join(packageDir, `dist/octocode/native/skills/${skill}/SKILL.md`))) {
@@ -61,6 +64,7 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 		const mcpBin = typeof mcpManifest.bin === "string" ? mcpManifest.bin : mcpManifest.bin?.["octocode-mcp"];
 		if (!mcpBin || !existsSync(join(mcpDir, mcpBin)))
 			throw new Error("Installed Octocode is missing its MCP executable");
+		const args = [entry, codingAgentName];
 		if (strictRuntime) {
 			// The research skills the agent lists by default come from the installed octocode package (`getBundledSkillsDir`).
 			const skillsDir = join(installedPackageDir(packageDir, "octocode"), "skills");
@@ -69,20 +73,13 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 				!readdirSync(skillsDir).some((name) => existsSync(join(skillsDir, name, "SKILL.md")))
 			)
 				throw new Error("Installed Octocode is missing the bundled research skills");
+			const preset = JSON.parse(
+				readFileSync(new URL("../packages/mcp/src/recommended/octocode.json", import.meta.url)),
+			);
+			args.push(join(mcpDir, mcpBin), ...preset.roles.reader, ...preset.roles.search, ...preset.roles.readOnly);
 		}
-		// Every public entry, imported as a consumer does: a runtime dependency the bundle left out fails here. The build
-		// rejects any other unresolved import, so the bundled internals need no separate import check.
-		writeFileSync(
-			entry,
-			`import assert from "node:assert/strict";
-import { RpcClient, runRpcMode, runPrintMode, main } from "${codingAgentName}";
-import { McpClient, StdioTransport } from "${codingAgentName}/mcp";
-import { McpOAuthProvider } from "${codingAgentName}/mcp/oauth";
-for (const entry of [RpcClient, runRpcMode, runPrintMode, main]) assert.equal(typeof entry, "function");
-for (const entry of [McpClient, StdioTransport, McpOAuthProvider]) assert.equal(typeof entry, "function");
-`,
-		);
-		execFileSync(runtime, [entry], { cwd: directory, env, stdio: ["inherit", "pipe", "pipe"], timeout: 30_000 });
+		copyFileSync(new URL("./coding-agent-consumer-smoke.mjs", import.meta.url), entry);
+		execFileSync(runtime, args, { cwd: directory, env, stdio: ["inherit", "pipe", "pipe"], timeout: 30_000 });
 		const version = execFileSync(runtime, [join(packageDir, manifest.bin.octocode), "--version"], {
 			cwd: directory,
 			encoding: "utf8",
@@ -100,18 +97,19 @@ for (const entry of [McpClient, StdioTransport, McpOAuthProvider]) assert.equal(
 		});
 		if (!apiHelp.includes("octocode-api list")) throw new Error("Installed Octocode API CLI did not show usage");
 		if (strictRuntime) {
+			const options = { cwd: directory, env, stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 };
 			for (const kind of ["research", "native"]) {
 				const manifestName = kind === "research" ? "octocode" : "@octocodeai/octocode-native";
-				const siblingDir = join(directory, "node_modules", manifestName);
+				const siblingDir = installedPackageDir(packageDir, manifestName);
 				const sibling = JSON.parse(readFileSync(join(siblingDir, "package.json"), "utf8"));
+				if (kind === "native" && sibling.bin === undefined) {
+					const resolver = createRequire(import.meta.url)(join(siblingDir, nativeResolverEntry));
+					execFileSync(resolver.resolveNativeBinaryPath(), ["--help"], options);
+					continue;
+				}
 				const bin = typeof sibling.bin === "string" ? sibling.bin : sibling.bin?.octocode;
 				if (!bin || !existsSync(join(siblingDir, bin))) throw new Error(`Installed ${kind} executable is missing`);
-				execFileSync(runtime, [join(siblingDir, bin), "--help"], {
-					cwd: directory,
-					env,
-					stdio: ["ignore", "pipe", "pipe"],
-					timeout: 30_000,
-				});
+				execFileSync(runtime, [join(siblingDir, bin), "--help"], options);
 			}
 		}
 	} finally {

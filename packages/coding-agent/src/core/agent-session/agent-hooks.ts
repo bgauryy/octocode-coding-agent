@@ -64,10 +64,11 @@ function requestTokens(host: AgentHooksHost, projection: ReadonlySessionProjecti
 function assertFitsWindow(host: AgentHooksHost, model: Model<any>): void {
 	if (!host.run.windowUnfit || !(model.contextWindow > 0)) return;
 	const tokens = requestTokens(host, host.session.sessionManager.readSessionProjection(), model);
-	if (tokens <= model.contextWindow) return;
+	const limit = Math.min(model.contextWindow, model.inputLimits?.maxInputTokens ?? Infinity);
+	if (tokens <= limit) return;
 	throw new Error(
 		`The context is about ${tokens.toLocaleString("en-US")} tokens, more than ${model.id}'s ` +
-			`${model.contextWindow.toLocaleString("en-US")}-token window, and compaction could not make it fit: ` +
+			`${limit.toLocaleString("en-US")}-token ${limit < model.contextWindow ? "input limit" : "window"}, and compaction could not make it fit: ` +
 			host.run.windowUnfit,
 	);
 }

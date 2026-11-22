@@ -109,9 +109,6 @@ export function createInteractiveModeHost(
 
 		autoCompactionEscapeHandler: undefined,
 
-		// Auto-retry state
-		retryEscapeHandler: undefined,
-
 		// Shutdown state
 		shutdownRequested: false,
 

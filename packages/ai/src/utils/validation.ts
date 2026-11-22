@@ -2,7 +2,7 @@ import { Compile } from "typebox/compile";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
 import { parseStringifiedContainers } from "./stringified-containers.ts";
-import { failingProperties, formatValidationFailure } from "./validation-errors.ts";
+import { validationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
 import { getToolValidator, getValidator } from "./validation-compiler.ts";
 
@@ -373,27 +373,4 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		args = recovered;
 	}
 	throw validationFailure(tool, toolCall, validator, args, schema);
-}
-
-/** The error for arguments `validator` rejects: each problem, then the tool's `validationHint`. */
-function validationFailure(
-	tool: Tool,
-	toolCall: ToolCall,
-	validator: ReturnType<typeof getToolValidator>,
-	args: unknown,
-	schema: unknown,
-): Error {
-	const errors = [...validator.Errors(args)];
-	const failure = formatValidationFailure(toolCall.name, errors, toolCall.arguments, schema);
-	// An envelope mistake: properties the root does not allow, with no problem inside a nested value. A `boolean` error
-	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
-	const located = errors.filter((error) => error.keyword !== "boolean");
-	const hint = tool.validationHint?.({
-		arguments: toolCall.arguments,
-		properties: failingProperties(located),
-		envelope:
-			located.every((error) => error.instancePath === "") &&
-			located.some((error) => error.keyword === "additionalProperties"),
-	});
-	return new Error(hint ? `${failure}\n\n${hint}` : failure);
 }

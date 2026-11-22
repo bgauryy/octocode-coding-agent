@@ -19,7 +19,8 @@ import {
 	PendingMessageQueue,
 	reduceAgentState,
 } from "./agent/state.ts";
-import { runAgentLoop, runAgentLoopContinue, runFailureMessage } from "./agent-loop.ts";
+import { type ActiveRun, reportRunFailure, settleAbandonedTools } from "./agent/run-end.ts";
+import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
 	AgentEvent,
@@ -40,14 +41,6 @@ import type {
 export type { AgentOptions } from "./agent/options.ts";
 export type { AgentInitialState } from "./agent/state.ts";
 export type { QueueMode } from "./types.ts";
-
-type ActiveRun = {
-	promise: Promise<void>;
-	resolve: () => void;
-	abortController: AbortController;
-	/** The loop already emitted `agent_end`; a later failure must not end the run a second time. */
-	ended?: boolean;
-};
 
 /**
  * Stateful wrapper around the low-level agent loop.
@@ -328,7 +321,9 @@ export class Agent {
 	}
 
 	private createLoopConfig(options: { skipInitialSteeringPoll?: boolean } = {}): AgentLoopConfig {
-		return createAgentLoopConfig(this, this._state, this.steeringQueue, this.followUpQueue, options);
+		const run = this.activeRun;
+		const config = createAgentLoopConfig(this, this._state, this.steeringQueue, this.followUpQueue, options);
+		return { ...config, onAbandonedTools: (settled) => run?.abandoned.push(settled) };
 	}
 
 	private async runWithLifecycle(
@@ -343,37 +338,32 @@ export class Agent {
 		const promise = new Promise<void>((resolve) => {
 			resolvePromise = resolve;
 		});
-		const run: ActiveRun = { promise, resolve: resolvePromise, abortController };
+		const run: ActiveRun = { promise, resolve: resolvePromise, abortController, abandoned: [] };
 		this.activeRun = run;
 		const emit = (event: AgentEvent) => this.processEvents(event, run);
+		const loopEmit = (event: AgentEvent) =>
+			run.loopFailed ? Promise.reject(new Error("Agent event emitted after its loop failed")) : emit(event);
 
 		this._state.isStreaming = true;
 		this._state.streamingMessage = undefined;
 		this._state.errorMessage = undefined;
 
 		try {
-			await executor(abortController.signal, emit);
+			await executor(abortController.signal, loopEmit);
 		} catch (error) {
-			if (run.ended) this._state.errorMessage = error instanceof Error ? error.message : String(error);
-			else await this.handleRunFailure(error, abortController.signal.aborted, emit);
-			// Stop the run's other work (parallel tools still running) before going idle; the failure is reported first,
-			// as a failed run, not an aborted one.
-			abortController.abort();
+			run.loopFailed = true;
+			try {
+				if (run.ended) this._state.errorMessage = error instanceof Error ? error.message : String(error);
+				else await reportRunFailure(this._state.model, error, abortController.signal.aborted, emit);
+			} finally {
+				// Stop the run's other work (parallel tools still running) before going idle, even when reporting failed; the
+				// failure is reported first, as a failed run, not an aborted one. Calls that honour the abort end before idle.
+				abortController.abort();
+				await settleAbandonedTools(run.abandoned);
+			}
 		} finally {
 			this.finishRun();
 		}
-	}
-
-	private async handleRunFailure(
-		error: unknown,
-		aborted: boolean,
-		emit: (event: AgentEvent) => Promise<void>,
-	): Promise<void> {
-		const failureMessage = runFailureMessage(this._state.model, error, aborted);
-		await emit({ type: "message_start", message: failureMessage });
-		await emit({ type: "message_end", message: failureMessage });
-		await emit({ type: "turn_end", message: failureMessage, toolResults: [] });
-		await emit({ type: "agent_end", messages: [failureMessage] });
 	}
 
 	private finishRun(): void {

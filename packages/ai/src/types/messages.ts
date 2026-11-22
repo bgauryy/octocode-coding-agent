@@ -1,3 +1,4 @@
+import type { ToolValidationFailure } from "./tool-validation.ts";
 import type { TSchema } from "typebox";
 import type { ModelThinkingLevel } from "../providers/model-schema.ts";
 import type { AssistantMessageDiagnostic } from "../utils/diagnostics.ts";
@@ -298,16 +299,6 @@ export type ConstrainedSamplingConfig =
 			type: "grammar";
 			variants: GrammarVariants;
 	  };
-
-/** What a tool's `validationHint` is told about the failure it follows. */
-interface ToolValidationFailure {
-	/** Every problem is at the top level of the arguments, none inside a nested value. */
-	envelope: boolean;
-	/** Top-level properties the problems sit at or under, by name. */
-	properties: string[];
-	/** The arguments as the model sent them. */
-	arguments?: unknown;
-}
 
 export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;

@@ -1,4 +1,4 @@
-import { type Api, type Model, resolveModelCapabilities } from "@octocodeai/octocode-ai";
+import { type Api, type Model, type ProviderEnv, resolveModelCapabilities } from "@octocodeai/octocode-ai";
 import { getAnthropicCompat } from "@octocodeai/octocode-ai/api/anthropic-messages/compat";
 import type {
 	CacheWarmingDecisionEvent,
@@ -94,12 +94,12 @@ export class PromptCacheLifetimes {
 	 * (`resolveModelCapabilities`, which read a declared `promptCache` first), the tiers the cache warmer plans with. A
 	 * marker model without a long tier gets its short tier as the long one, the lifetime its long requests are sent with.
 	 */
-	of(model: CacheModel | undefined): PromptCache | undefined {
+	of(model: CacheModel | undefined, env?: ProviderEnv): PromptCache | undefined {
 		if (!model) return undefined;
 		const key = keyOf(model);
 		if (this.caching.has(key) && (!model.promptCache || this.supplied.has(key)))
 			return inferredPromptCache(model, !this.shortOnly.has(key));
-		const { mechanism, lifetimes, longInstructionsOnly } = resolveModelCapabilities(model as Model<Api>).cache;
+		const { mechanism, lifetimes, longInstructionsOnly } = resolveModelCapabilities(model as Model<Api>, env).cache;
 		if (Object.keys(lifetimes).length === 0) return undefined;
 		// A marker adapter sends long history at the short lifetime where the endpoint has no long tier, and OpenAI
 		// explicit mode keeps long history on the request's short TTL (its long tier is for instruction breakpoints).

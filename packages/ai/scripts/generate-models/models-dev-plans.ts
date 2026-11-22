@@ -1,3 +1,4 @@
+import { modelsDevLimits } from "./models-dev-limits.ts";
 import type { Model, OpenAICompletionsCompat } from "../../src/types.ts";
 import { assertExactModelIds } from "../model-data.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
@@ -15,7 +16,6 @@ import { getModelsDevCost } from "./pricing.ts";
 import { createKimiCodingModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog, ModelsDevModel } from "./types.ts";
-import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** models.dev subscription and token plans: MiniMax, Kimi For Coding, Moonshot AI, Xiaomi MiMo and Qwen Token Plan. */
 export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any>[]): void {
@@ -46,8 +46,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 					reasoning: m.reasoning === true,
 					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					cost: getModelsDevCost(m.cost),
-					contextWindow: nonZeroOr(4096, m.limit?.context),
-					maxTokens: nonZeroOr(4096, m.limit?.output),
+					...modelsDevLimits(m.limit),
 					...(thinkingLevelMap ? { thinkingLevelMap, compat: { forceAdaptiveThinking: true } } : {}),
 				});
 			}
@@ -96,8 +95,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 							cacheRead: m.cost?.cache_read ?? 0,
 							cacheWrite: m.cost?.cache_write ?? 0,
 						},
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 				compat,
 			});
 			recordModelsDevReasoningOptions(provider, modelId, m);
@@ -164,8 +162,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				...(m.reasoning === true ? { thinkingLevelMap: xiaomiThinkingLevelMap } : {}),
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 		}
 	}
@@ -228,8 +225,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			emittedModelIds?.add(modelId);
 		}

@@ -6,7 +6,7 @@ import type { RunRoute } from "./claim.ts";
 import type { RanModel } from "./event-ran.ts";
 import { routeSummary } from "./model.ts";
 import { routeThinking, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
-import { isCredentialError } from "@octocodeai/octocode-ai";
+import { isCredentialError, isRateLimitedText, isRetryableErrorText } from "@octocodeai/octocode-ai";
 import { BILLING_ERROR, refusedBeforeWork } from "./provider-health.ts";
 import type { RunDetails } from "./run-types.ts";
 import { runFooter } from "./tracking.ts";
@@ -72,15 +72,15 @@ function refusalKind(error: string, nothingSpent: boolean): "billing" | "credent
 	return undefined;
 }
 
-/** The provider throttled the request: every concurrent run shares its limit, so an immediate retry hits it again. */
-const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests|overloaded/i;
-
 const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("/")));
 
 /**
  * What the parent does after a failed subagent, then the model it ran on and what chose it. When the provider refused
  * the route (no funds, the credential, the request or the model), a narrower task cannot help: the advice names this
- * session's model to pass as `model` or what to fix, by cause.
+ * session's model to pass as `model` or what to fix, by cause. A rate limit and a transient failure (overloaded, a
+ * dropped connection) are the shared classifiers' verdicts, the ones the start gate and the session retry act on: every
+ * concurrent run shares a rate limit, so that advice says to start fewer; a transient failure outlasted the child's own
+ * retries, so its advice says to wait or move to another provider.
  */
 export function failedNext(
 	route: RunRoute,
@@ -96,7 +96,8 @@ export function failedNext(
 		billing: kind === "billing",
 		credential: kind === "credential",
 		request: kind === "request",
-		rateLimited: RATE_LIMITED.test(error),
+		rateLimited: isRateLimitedText(error),
+		transient: isRetryableErrorText(error),
 		narrower: FAILED_NEXT,
 		other: Boolean(route.parent) && provider !== providerOf(route.parent ?? ""),
 		parent: route.parent,

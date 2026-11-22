@@ -150,7 +150,7 @@ it("places every settings route under the page's scope and leaves the daemon's o
 	expect(last().url).toBe(`/s/sess-1${DAEMON_ROUTES.configTools}?repoId=session`);
 	await api.config("session");
 	expect(last().url).toBe(`/s/sess-1${DAEMON_ROUTES.config}?repoId=session`);
-	await api.pinTool({ kind: "native", tool: "web", pin: "deferred", scope: "global" });
+	await api.pinTool({ kind: "native", tool: "archive", pin: "deferred", scope: "global" });
 	expect(last()).toMatchObject({ url: `/s/sess-1${DAEMON_ROUTES.configTools}`, method: "POST" });
 	await api.saveSetting({ key: "x" } as never);
 	expect(last().url).toBe(`/s/sess-1${DAEMON_ROUTES.configSettings}`);

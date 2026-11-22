@@ -78,7 +78,8 @@ export function supportsToolCachePoint(model: Model<"bedrock-converse-stream">):
  *
  * For application inference profiles (whose ARNs don't contain the model name),
  * also checks model.name which is user-controlled via models.json or registerProvider.
- * As a last resort, set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points.
+ * As a last resort, set AWS_BEDROCK_FORCE_CACHE=1 to enable cache points. A profile that matches neither gets a
+ * one-time `cache_unavailable` diagnostic on its reply ({@link isUnrecognizedCacheProfile}).
  * Amazon Nova models AWS lists for explicit caching take cache points too ({@link isNovaExplicitCacheModel}).
  */
 export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, env?: ProviderEnv): boolean {
@@ -99,6 +100,18 @@ export function supportsPromptCaching(model: Model<"bedrock-converse-stream">, e
 	if (candidates.some((s) => s.includes("claude-3-7-sonnet"))) return true;
 	if (candidates.some((s) => s.includes("claude-3-5-haiku"))) return true;
 	return false;
+}
+
+/** An application inference profile's ARN, which names no model: only the profile's `name` can. */
+const APPLICATION_PROFILE_ARN = /:application-inference-profile\//;
+
+/**
+ * Whether `model` is an application inference profile that gets no cache points because neither its ARN nor its name
+ * names a model that takes them: the one case where caching is off for a reason the user's models.json can fix (a
+ * `name` such as "Claude Sonnet 4.5", see {@link supportsPromptCaching}).
+ */
+export function isUnrecognizedCacheProfile(model: Model<"bedrock-converse-stream">, env?: ProviderEnv): boolean {
+	return APPLICATION_PROFILE_ARN.test(model.id) && !supportsPromptCaching(model, env);
 }
 
 /**
@@ -128,6 +141,6 @@ function supportsOneHourCacheTtl(modelId: string, modelName?: string): boolean {
 export function bedrockSupportsLongCacheRetention(model: Model<"bedrock-converse-stream">): boolean {
 	return (
 		model.compat?.supportsLongCacheRetention ??
-		(!isNovaExplicitCacheModel(model) && supportsOneHourCacheTtl(model.id, model.name))
+		(isAnthropicClaudeModel(model) && !isNovaExplicitCacheModel(model) && supportsOneHourCacheTtl(model.id, model.name))
 	);
 }

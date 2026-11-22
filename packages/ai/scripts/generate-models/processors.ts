@@ -1,3 +1,4 @@
+import { modelsDevLimits } from "./models-dev-limits.ts";
 import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
 import { withGoogleVertexPricing } from "../../src/utils/google-vertex-pricing.ts";
 import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
@@ -61,8 +62,7 @@ export function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 					...(supportsReasoningEffort ? { supportsReasoningEffort: true } : {}),
 					...(!ZAI_TOOL_STREAM_UNSUPPORTED_MODELS.has(modelId) ? { zaiToolStream: true } : {}),
 				},
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			recordModelsDevReasoningOptions(provider, modelId, m);
 		}
@@ -158,8 +158,7 @@ export function processBasetenModels(provider: ModelsDevProvider | undefined): M
 			input: supportsImageInput ? ["text", "image"] : ["text"],
 			cost: getModelsDevCost(model.cost),
 			compat,
-			contextWindow: nonZeroOr(4096, model.limit?.context),
-			maxTokens: nonZeroOr(4096, model.limit?.output),
+			...modelsDevLimits(model.limit),
 		});
 	}
 
@@ -190,8 +189,7 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 				input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(source.cost),
-				contextWindow: nonZeroOr(4096, source.limit?.context),
-				maxTokens: nonZeroOr(4096, source.limit?.output),
+				...modelsDevLimits(source.limit),
 			});
 		}
 	}
@@ -232,8 +230,7 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 						cacheWrite: 0,
 						...(cost.tiers ? { tiers: cost.tiers.map((tier) => ({ ...tier, cacheWrite: 0 })) } : {}),
 					},
-					contextWindow: nonZeroOr(4096, source.limit?.context),
-					maxTokens: nonZeroOr(4096, source.limit?.output),
+					...modelsDevLimits(source.limit),
 				}),
 			);
 		}
@@ -276,8 +273,7 @@ export function processFireworksModels(provider: ModelsDevProvider | undefined):
 			reasoning: model.reasoning === true,
 			input,
 			cost: getModelsDevCost(model.cost),
-			contextWindow: nonZeroOr(4096, model.limit?.context),
-			maxTokens: nonZeroOr(4096, model.limit?.output),
+			...modelsDevLimits(model.limit),
 		};
 
 		if (modelId.includes("glm-")) {
@@ -364,8 +360,7 @@ export function createKimiCodingModels(kimiModels: Record<string, ModelsDevModel
 				cacheRead: nonZeroOr(0, m.cost?.cache_read, impliedCost?.cacheRead),
 				cacheWrite: nonZeroOr(0, m.cost?.cache_write, impliedCost?.cacheWrite),
 			},
-			contextWindow: nonZeroOr(4096, m.limit?.context),
-			maxTokens: nonZeroOr(4096, m.limit?.output),
+			...modelsDevLimits(m.limit),
 			// Kimi Code reports every model as always-thinking.
 			thinkingLevelMap: { ...effortLevels, off: null },
 		});

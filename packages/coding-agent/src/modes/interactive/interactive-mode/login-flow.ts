@@ -3,6 +3,7 @@
  */
 
 import { removeProviderCredential } from "./provider-actions.ts";
+import { showModelsPage } from "./models-page.ts";
 import { showProviderManager } from "./provider-manager.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { type AuthSelectorProvider, OAuthSelectorComponent } from "../components/oauth-selector.ts";
@@ -59,6 +60,11 @@ async function getLogoutProviderOptions(host: ProviderManagerHost): Promise<Auth
 			};
 		})
 		.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** `/models`: the per-provider models page. */
+export async function handleModelsCommand(host: ProviderManagerHost): Promise<void> {
+	await showModelsPage(host);
 }
 
 export async function handleProvidersCommand(host: ProviderManagerHost, providerRef?: string): Promise<void> {

@@ -39,19 +39,25 @@ function providerRow(entry: ProviderEntry): PageRow {
 export interface ProviderRowGroups {
 	attention: PageRow[];
 	ready: PageRow[];
+	/** Built-in providers with no credential and no definition yet: open one to sign in or add a key. */
+	available: PageRow[];
 	off: PageRow[];
 	/** Badge states on screen, for the page legend. */
 	states: BadgeState[];
 }
 
-/** The listed providers of a snapshot, grouped for the main page. */
+/** Every provider of a snapshot, grouped for the main page; the unlisted ones are the Available group. */
 export function providerRows(snapshot: ProviderSnapshot): ProviderRowGroups {
-	const groups: ProviderRowGroups = { attention: [], ready: [], off: [], states: [] };
+	const groups: ProviderRowGroups = { attention: [], ready: [], available: [], off: [], states: [] };
 	for (const entry of snapshot.providers) {
-		if (!entry.listed) continue;
-		groups[entry.state === "ready" ? "ready" : entry.state === "disabled" ? "off" : "attention"].push(
-			providerRow(entry),
-		);
+		const group = !entry.listed
+			? "available"
+			: entry.state === "ready"
+				? "ready"
+				: entry.state === "disabled"
+					? "off"
+					: "attention";
+		groups[group].push(providerRow(entry));
 		groups.states.push(BADGE_OF[entry.state]);
 	}
 	return groups;

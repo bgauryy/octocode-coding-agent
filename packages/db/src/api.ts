@@ -50,6 +50,7 @@ export * as expire from "./queries/expire.ts";
 export * as timers from "./queries/timers.ts";
 export * as jobs from "./queries/jobs.ts";
 export * as shellHistory from "./queries/shell-history.ts";
+export * as providerCooldowns from "./queries/provider-cooldowns.ts";
 export {
 	type AgentDb,
 	type Db,

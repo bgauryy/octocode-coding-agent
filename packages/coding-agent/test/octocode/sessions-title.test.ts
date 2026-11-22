@@ -178,6 +178,27 @@ describe("auto session titles", () => {
 		expect(failing.complete).toHaveBeenCalledTimes(1);
 	});
 
+	it("retries a rate-limited title call once, then keeps the fallback title", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const limited = () => ({ content: [], stopReason: "error", errorMessage: "429 Too Many Requests" }) as never;
+			const throttled = setup({ complete: async () => limited() });
+			await throttled.endTurn();
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(throttled.complete).toHaveBeenCalledTimes(2);
+			expect(throttled.manager.getSessionName()).toBeUndefined();
+
+			const replies = [limited(), replyOf("Fix login redirect bug")];
+			const recovered = setup({ complete: async () => replies.shift() });
+			await recovered.endTurn();
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(recovered.complete).toHaveBeenCalledTimes(2);
+			expect(recovered.manager.getSessionName()).toBe("Fix login redirect bug");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("titles a session still unnamed at its compaction from the summary's goal, once", async () => {
 		const replies = ["NONE", "Migrate trust store names"];
 		const { manager, fake, ctx, endTurn, complete, settle } = setup({

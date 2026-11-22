@@ -93,6 +93,12 @@ const ModelImageInputLimitsSchema = Type.Object({
 });
 
 export const ModelInputLimitsSchema = Type.Object({
+	maxInputTokens: Type.Optional(
+		Type.Integer({
+			minimum: 1,
+			description: "Maximum prompt tokens accepted independently of the combined context window.",
+		}),
+	),
 	maxRequestBytes: Type.Optional(
 		Type.Integer({ minimum: 1, description: "Maximum serialized provider request size in bytes." }),
 	),

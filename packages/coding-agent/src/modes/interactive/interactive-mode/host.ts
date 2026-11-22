@@ -145,6 +145,7 @@ export interface InteractiveModeMethods {
 	handleHotkeysCommand(): void;
 	handleImportCommand(text: string): Promise<void>;
 	handleProvidersCommand(providerRef?: string): Promise<void>;
+	handleModelsCommand(): Promise<void>;
 	handleModelCommand(searchTerm?: string): Promise<void>;
 	handleNameCommand(text: string): void;
 	handleReloadCommand(): Promise<void>;

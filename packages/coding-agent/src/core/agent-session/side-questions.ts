@@ -1,3 +1,4 @@
+import { inputRoomTokens } from "../compaction/settings.ts";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
@@ -105,7 +106,11 @@ export class SideQuestions {
 			controller.signal.throwIfAborted();
 			const maxTokens = Math.min(4096, request.model.maxTokens || 4096, Math.floor(request.model.contextWindow / 4));
 			const budget =
-				Math.floor((request.model.contextWindow - maxTokens) * CHARS_PER_TOKEN * 0.65) -
+				Math.floor(
+					inputRoomTokens(request.model.contextWindow, maxTokens, request.model.inputLimits?.maxInputTokens) *
+						CHARS_PER_TOKEN *
+						0.65,
+				) -
 				SIDE_QUESTION_SYSTEM_PROMPT.length -
 				256;
 			const transcript = serializeMessages(messages);

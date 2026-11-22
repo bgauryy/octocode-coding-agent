@@ -73,6 +73,9 @@ describe("AgentSession auto-compaction queue resume", () => {
 	});
 
 	it("removes queued input by message identity rather than matching text", async () => {
+		// Queued input waits only while a run holds it; idle, it would start a run of its own.
+		const run = Reflect.get(session, "_run") as { active: boolean };
+		run.active = true;
 		await session.steer("same");
 		await session.followUp("same");
 		const handle = Reflect.get(session, "_handleAgentEvent");
@@ -86,6 +89,8 @@ describe("AgentSession auto-compaction queue resume", () => {
 		await handle({ type: "message_start", message: queued });
 		expect(session.getSteeringMessages()).toEqual([]);
 		expect(session.getFollowUpMessages()).toEqual(["same"]);
+		session.clearQueue();
+		run.active = false;
 	});
 
 	it.each([

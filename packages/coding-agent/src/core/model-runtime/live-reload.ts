@@ -1,5 +1,8 @@
 import { getFileRevision } from "@octocodeai/octocode-common/paths";
 import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
+import type { ModelsProject } from "../model-config/project.ts";
+import { projectModelsPaths } from "../model-config/project.ts";
+import { providerSourceGate } from "../provider-sources/gate.ts";
 import type { RuntimeCredentials } from "../runtime-credentials.ts";
 
 /** Quiet time after the last file event before a reload runs: a user edits models.json and auth.json together. */
@@ -8,6 +11,8 @@ const DEBOUNCE_MS = 150;
 export interface LiveReloadOptions {
 	/** models.json path; undefined when the runtime has none. */
 	readonly modelsPath: string | undefined;
+	/** Its models.json files (Octocode's, and Pi's when that source is on) are followed too, also while missing. */
+	readonly project?: ModelsProject;
 	readonly credentials: RuntimeCredentials;
 	/** The full local reload (models.json, providers, availability). */
 	readonly reload: () => Promise<unknown>;
@@ -31,18 +36,23 @@ export class RuntimeLiveReload {
 	constructor(options: LiveReloadOptions) {
 		this.options = options;
 		this.stops.push(options.credentials.watch(() => this.schedule()));
-		const { modelsPath } = options;
-		if (modelsPath) {
-			let seen = getFileRevision(modelsPath);
-			this.stops.push(
-				watchFileChanges(modelsPath, () => {
-					const revision = getFileRevision(modelsPath);
-					if (revision === seen) return;
-					seen = revision;
-					this.schedule();
-				}),
-			);
-		}
+		const projectFiles = options.project
+			? projectModelsPaths(options.project.cwd, providerSourceGate.isEnabled("pi"))
+			: [];
+		for (const file of [options.modelsPath, ...projectFiles]) if (file) this.follow(file);
+	}
+
+	/** Schedules a reload when `file`'s revision changes. */
+	private follow(file: string): void {
+		let seen = getFileRevision(file);
+		this.stops.push(
+			watchFileChanges(file, () => {
+				const revision = getFileRevision(file);
+				if (revision === seen) return;
+				seen = revision;
+				this.schedule();
+			}),
+		);
 	}
 
 	/** Stop both watchers and any pending reload. A reload already running finishes. Repeated calls do nothing. */

@@ -6,9 +6,6 @@
 import { getAnthropicCompat } from "../api/anthropic-messages/compat.ts";
 import {
 	bedrockSupportsLongCacheRetention,
-	isAnthropicClaudeModel,
-	isNovaExplicitCacheModel,
-	supportsAdaptiveThinking,
 	supportsPromptCaching,
 } from "../api/bedrock-converse-stream/model-match.ts";
 import {
@@ -16,18 +13,13 @@ import {
 	azureSupportsInstructionBreakpoints,
 	azureSupportsLongCacheRetention,
 } from "../api/azure-openai-config.ts";
-import { usesGoogleThinkingLevel } from "../api/ai-sdk/google-thinking-format.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
 import type { Api, Model, ModelThinkingLevel, ProviderEnv } from "../types.ts";
 import { matchesHost } from "../utils/provider-host.ts";
-import { getSupportedThinkingLevels } from "./model-helpers.ts";
+import { resolveModelThinking, thinkingControl, type ThinkingControl } from "./thinking.ts";
 
-/**
- * How thinking is requested: `effort` names a level, `budget` sends a token budget, `level` is Gemini's discrete
- * `thinkingLevel`, and `managed` means the provider controls reasoning without user-selectable levels.
- */
-export type ThinkingControl = "none" | "effort" | "budget" | "level" | "managed";
+export type { ThinkingControl } from "./thinking.ts";
 
 /**
  * How a prompt prefix is cached: `markers` are Anthropic-style breakpoints with 5-minute and 1-hour tiers, `key` is a
@@ -51,6 +43,7 @@ export interface ModelCapabilities {
 	/** The model's capacity in tokens; a session's working budget is applied separately. */
 	contextWindow: number;
 	maxOutputTokens: number;
+	maxInputTokens?: number;
 	input: Model<Api>["input"];
 	thinking: { control: ThinkingControl; levels: ModelThinkingLevel[]; canDisable: boolean };
 	cache: {
@@ -85,41 +78,16 @@ const EXPLICIT_LIFETIMES = { short: 1800, long: 43_200 } as const;
 const EXTENDED_KEY_LIFETIME = { typical: 1800, upTo: 86_400 } as const;
 
 export function resolveModelCapabilities(model: Model<Api>, env?: ProviderEnv): ModelCapabilities {
-	const levels = getSupportedThinkingLevels(model);
 	return {
 		contextWindow: model.contextWindow,
 		maxOutputTokens: model.maxTokens,
+		...(model.inputLimits?.maxInputTokens !== undefined && model.inputLimits.maxInputTokens < model.contextWindow
+			? { maxInputTokens: model.inputLimits.maxInputTokens }
+			: {}),
 		input: model.input,
-		thinking: {
-			control: levels.length === 0 ? "managed" : thinkingControl(model),
-			levels,
-			canDisable: levels.includes("off"),
-		},
+		thinking: resolveModelThinking(model),
 		cache: cacheCapability(model, env),
 	};
-}
-
-function thinkingControl(model: Model<Api>): ThinkingControl {
-	if (!model.reasoning) return "none";
-	switch (model.api) {
-		case "anthropic-messages":
-			return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking ? "effort" : "budget";
-		case "bedrock-converse-stream":
-			return isAnthropicClaudeModel(model as Model<"bedrock-converse-stream">) &&
-				!supportsAdaptiveThinking(model.id, model.name)
-				? "budget"
-				: "effort";
-		case "google-generative-ai":
-		case "google-vertex":
-			return usesGoogleThinkingLevel(model as Model<"google-generative-ai">) ? "level" : "budget";
-		case "openai-completions": {
-			const compat = getCompletionsCompat(model as Model<"openai-completions">);
-			if (compat.thinkingTokenBudgetField) return "budget";
-			return compat.supportsReasoningEffort ? "effort" : "none";
-		}
-		default:
-			return "effort";
-	}
 }
 
 function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilities["cache"] {
@@ -202,10 +170,7 @@ function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {
 			return servesNonAnthropicUpstream(model) ? "implicit" : "markers";
 		case "bedrock-converse-stream": {
 			const bedrock = model as Model<"bedrock-converse-stream">;
-			return (isAnthropicClaudeModel(bedrock) || isNovaExplicitCacheModel(bedrock)) &&
-				supportsPromptCaching(bedrock, env)
-				? "markers"
-				: "implicit";
+			return supportsPromptCaching(bedrock, env) ? "markers" : "implicit";
 		}
 		case "openai-completions":
 			return getCompletionsCompat(model as Model<"openai-completions">).cacheControlFormat === "anthropic"

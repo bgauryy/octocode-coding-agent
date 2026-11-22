@@ -100,6 +100,8 @@ export function addAzureModels(allModels: Model<any>[]): void {
 				cacheRead: model.cost.cacheRead,
 				cacheWrite: model.cost.cacheWrite,
 			},
+			// The OpenAI endpoint's prompt ceiling is not a limit on an Azure deployment.
+			inputLimits: undefined,
 			contextWindow: AZURE_CONTEXT_WINDOW_OVERRIDES[model.id] ?? model.contextWindow,
 		}));
 	// Reasoning options are recorded per provider, and thinking-level maps are derived from them after

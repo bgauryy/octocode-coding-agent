@@ -1,5 +1,5 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeatureContext } from "../../src/core/features/index.ts";
 import { callSmallModel } from "../../src/octocode/subagents/small-call.ts";
 
@@ -39,7 +39,11 @@ const call = (
 };
 
 describe("callSmallModel", () => {
-	it("calls the cheaper model the small purpose resolves to, with no cache and the key", async () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("calls the cheaper model the small purpose resolves to, with no cache", async () => {
 		const { complete, result } = call(ctx([parent, cheap]));
 		expect(await result).toEqual({
 			text: "ok",
@@ -49,7 +53,46 @@ describe("callSmallModel", () => {
 			usage: fauxAssistantMessage("ok").usage,
 		});
 		expect(complete.mock.calls[0][0].id).toBe("cheap");
-		expect(complete.mock.calls[0][2]).toMatchObject({ maxTokens: 64, cacheRetention: "none", apiKey: "k" });
+		expect(complete.mock.calls[0][2]).toMatchObject({ maxTokens: 64, cacheRetention: "none" });
+	});
+
+	it("sends through the session's model runtime, which resolves the credential for each attempt", async () => {
+		const streamSimple = vi.fn(() => ({ result: async () => fauxAssistantMessage("ok") }));
+		const context = {
+			model: parent,
+			modelRegistry: {
+				getAvailable: () => [parent, cheap],
+				getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }),
+				streamSimple,
+			},
+		} as unknown as FeatureContext;
+		const signal = new AbortController().signal;
+		expect(await callSmallModel(context, { text: "hi", signal, maxTokens: 64 })).toMatchObject({ model: "p/cheap" });
+		expect(streamSimple).toHaveBeenCalledTimes(1);
+		const [target, , options] = streamSimple.mock.calls[0] as unknown as [{ id: string }, unknown, object];
+		expect(target.id).toBe("cheap");
+		expect(options).toEqual({ signal, maxTokens: 64, cacheRetention: "none" });
+	});
+
+	it("retries a rate limit within the caller's budget, and not at all without one", async () => {
+		vi.useFakeTimers();
+		const limited = fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 Too Many Requests" });
+		const scripted = () => vi.fn().mockResolvedValueOnce(limited).mockResolvedValue(fauxAssistantMessage("ok"));
+		const options = { text: "hi", signal: new AbortController().signal, maxTokens: 8 };
+		const retried = scripted();
+		const pending = callSmallModel(ctx([parent, cheap]), {
+			...options,
+			retry: { retries: 1, maxWaitMs: 5_000 },
+			complete: retried,
+		});
+		await vi.runAllTimersAsync();
+		expect(await pending).toMatchObject({ text: "ok" });
+		expect(retried).toHaveBeenCalledTimes(2);
+		const once = scripted();
+		expect(await callSmallModel(ctx([parent, cheap]), { ...options, complete: once })).toEqual({
+			error: "429 Too Many Requests",
+		});
+		expect(once).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns the reply's usage and cost so a caller can record the spend", async () => {

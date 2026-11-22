@@ -40,8 +40,7 @@ describe("detectKeychain", () => {
 		expect(detectKeychain("linux", missing)).toBeUndefined();
 	});
 
-	test("has no backend on Windows or other platforms", () => {
-		expect(detectKeychain("win32", available)).toBeUndefined();
+	test("has no backend on other platforms", () => {
 		expect(detectKeychain("freebsd", available)).toBeUndefined();
 	});
 });

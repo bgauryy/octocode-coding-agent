@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import type { Api, Model } from "@octocodeai/octocode-ai";
+import { childRunPromptCacheKey } from "../../core/cache-key-group.ts";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { SlashCommandInfo } from "../../core/slash-commands.ts";
@@ -112,11 +114,14 @@ export function childPromptCacheKey(prefix: string): string {
 }
 
 /**
- * Puts `run` in its cache group: its prefix (for the stagger) and the group key its process receives. Everything
- * that fixes the child's prompt prefix goes in, so children that cannot share an entry do not share a group; children
- * of other parent sessions with the same prefix share it.
+ * Puts `run` in its cache group: the key its process receives, and the stagger key it returns. Everything that fixes
+ * the child's prompt prefix goes in, so children that cannot share an entry do not share a group; children of other
+ * parent sessions with the same prefix share it. Where the key routes (`model` on OpenAI's API before GPT-5.6) the run
+ * takes a shard of the group's key until `run.release` (`childRunPromptCacheKey`), and staggers only with the siblings
+ * on its shard: a request on another key is routed elsewhere and cannot read the entry its first sibling wrote. With
+ * no `model` the key is not sharded.
  */
-export function childCacheGroup(run: Run): string {
+export function childCacheGroup(run: Run, model?: Model<Api>): string {
 	const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, {
 		tools: profileTools(run.profile),
 		lean: run.profile?.lean,
@@ -126,6 +131,13 @@ export function childCacheGroup(run: Run): string {
 			...(run.identity.mcpOnly ?? []).map((name) => `only:${name}`),
 		],
 	});
-	run.identity.promptCacheKey = childPromptCacheKey(prefix);
-	return prefix;
+	const group = childPromptCacheKey(prefix);
+	const { key, shard, release } = childRunPromptCacheKey(group, model, run.identity.sessionId ?? run.identity.id);
+	run.identity.promptCacheKey = key;
+	const releaseRun = run.release;
+	run.release = () => {
+		release();
+		releaseRun();
+	};
+	return shard === 0 ? prefix : `${prefix}\0${shard}`;
 }

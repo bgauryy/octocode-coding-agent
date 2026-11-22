@@ -3,6 +3,7 @@
  * limit, a refused credential, or an outage that outlasted the retries.
  */
 
+import { inputRoomTokens } from "../compaction/settings.ts";
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { isCredentialError, isModelAccessError, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
@@ -158,7 +159,12 @@ export class SessionFallback {
 			if (!model) continue;
 			// A window too small would compact first on the exhausted model, which fails on the same limit.
 			const reserve = session.settingsManager.getCompactionReserveTokens(model);
-			if (tokens !== undefined && model.contextWindow > 0 && tokens > model.contextWindow - reserve) continue;
+			if (
+				tokens !== undefined &&
+				model.contextWindow > 0 &&
+				tokens > inputRoomTokens(model.contextWindow, reserve, model.inputLimits?.maxInputTokens)
+			)
+				continue;
 			if (!(await session.modelRuntime.checkAuth(model.provider))) continue;
 			return { model, thinking: parsed.thinking };
 		}

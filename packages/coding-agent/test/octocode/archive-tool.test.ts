@@ -21,7 +21,7 @@ import {
 } from "../../src/octocode/history/archive.ts";
 import { PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
-import { setCurrentSession } from "../../src/octocode/shared/home.ts";
+import { agentTmpDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -235,6 +235,22 @@ describe("the archive tool", () => {
 		expect(read.text).toMatch(/Lines \d+–\d+ of \d+; next: line \d+\.$/);
 		const narrowed = await call({ ...why, query: "login", file: archiveFolder("sib") });
 		expect(narrowed.details).toMatchObject({ hits: 1, files: 1 });
+	});
+
+	it("resolves relative paths in the current archive and refuses absolute scratch paths", async () => {
+		const cwd = repo();
+		fileFor("me", "archived segment", cwd);
+		const file = "1-e-me.md";
+		const scratch = path.join(agentTmpDir(cwd), file);
+		fs.mkdirSync(path.dirname(scratch), { recursive: true });
+		fs.writeFileSync(scratch, "scratch segment");
+		fs.writeFileSync(path.join(cwd, file), "workspace segment");
+		const call = tool(cwd);
+		const get = (target: string) => call({ ...why, op: "get", source: "sessions", file: target });
+		const relative = await get(file);
+		expect(relative.text).toContain("archived segment");
+		expect((await get(path.join(archiveFolder(), file))).text).toBe(relative.text);
+		await expect(get(scratch)).rejects.toThrow(/not in the history this session may read/);
 	});
 
 	it("pages a long search and continues it by one cursor only", async () => {

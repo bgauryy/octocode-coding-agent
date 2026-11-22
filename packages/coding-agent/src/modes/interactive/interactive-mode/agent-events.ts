@@ -30,7 +30,6 @@ type AgentEventsHost = Pick<
 	| "addMessageToChat"
 	| "chatContainer"
 	| "clearStatusIndicator"
-	| "defaultEditor"
 	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
@@ -49,7 +48,6 @@ type AgentEventsHost = Pick<
 	| "pendingTools"
 	| "programStatus"
 	| "renderSessionEntries"
-	| "retryEscapeHandler"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
@@ -109,12 +107,6 @@ export async function handleEvent(host: AgentEventsHost, event: AgentSessionEven
 	switch (event.type) {
 		case "agent_start":
 			host.pendingTools.clear();
-			// Restore main escape handler if retry handler is still active
-			// (retry success event fires later, but we need main handler now)
-			if (host.retryEscapeHandler) {
-				host.defaultEditor.onEscape = host.retryEscapeHandler;
-				host.retryEscapeHandler = undefined;
-			}
 			break;
 
 		case "turn_start":

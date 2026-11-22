@@ -262,6 +262,29 @@ describe("provider health", () => {
 		expect(describeHealth(health.get("key"))).toContain("✗ credential refused (check");
 	});
 
+	it("stops at a rate limit, since the provider's other models share the key, and reports it as rate limited", async () => {
+		const health = new ProviderHealth();
+		const tried: string[] = [];
+		const registry = {
+			streamSimple: (target: Model<Api>) => {
+				tried.push(target.id);
+				return {
+					result: async () => ({ stopReason: "error", errorMessage: '429 {"error":{"type":"rate_limit_error"}}' }),
+				} as never;
+			},
+		};
+		const available = ["a", "b", "c"].map((id, index) => model("busy", id, index + 1, 1));
+		await checkProviders(registry, checkCandidates(available, undefined), health);
+		expect(tried).toEqual(["a"]);
+		const line = describeHealth(health.get("busy"));
+		expect(line).toMatch(/⚠ rate limited \(check, .*\): .*429.* wait, then check again/);
+		expect(line).not.toMatch(/✗|check failed|\/providers/);
+		// Routing still uses the provider: a throttle refuses nothing.
+		expect(health.refused("busy")).toBe(false);
+		health.noteRun("busy/a", "429 Too Many Requests");
+		expect(health.refused("busy", "a")).toBe(false);
+	});
+
 	it("records nothing when the caller cancels the check", async () => {
 		const health = new ProviderHealth();
 		const controller = new AbortController();

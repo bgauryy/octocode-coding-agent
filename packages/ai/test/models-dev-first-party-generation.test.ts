@@ -3,7 +3,7 @@ import { addModelsDevFirstPartyModels } from "../scripts/generate-models/models-
 import type { ModelsDevModel } from "../scripts/generate-models/types.ts";
 import type { Api, Model } from "../src/types.ts";
 
-function entry(id: string, status?: string): ModelsDevModel {
+function entry(id: string, status?: ModelsDevModel["status"]): ModelsDevModel {
 	return {
 		id,
 		name: id,
@@ -29,6 +29,20 @@ function bedrockIds(catalog: Record<string, ModelsDevModel>): string[] {
 }
 
 describe("models.dev first-party generation", () => {
+	it("preserves the prompt ceiling independently of the combined window and output cap", () => {
+		const models: Model<Api>[] = [];
+		const id = "custom-model";
+		addModelsDevFirstPartyModels(
+			{ openai: { models: { [id]: { ...entry(id), limit: { context: 100000, input: 70000, output: 40000 } } } } },
+			models,
+		);
+		expect(models[0]).toMatchObject({
+			contextWindow: 100000,
+			maxTokens: 40000,
+			inputLimits: { maxInputTokens: 70000 },
+		});
+	});
+
 	// models.dev marks Opus 4.1 and Sonnet 4.5 deprecated while AWS still serves them; a deprecated mark alone keeps them.
 	it("keeps Bedrock models that models.dev marks deprecated but AWS still serves", () => {
 		const ids = [

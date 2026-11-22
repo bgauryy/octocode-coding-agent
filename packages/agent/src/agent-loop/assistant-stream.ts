@@ -1,6 +1,35 @@
 import { type AssistantMessage, type AssistantMessageEvent, normalizeContext } from "@octocodeai/octocode-ai";
+import { createAbortError } from "@octocodeai/octocode-ai/utils/abort";
+import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import type { AgentContext, AgentLoopConfig, StreamFn } from "../types.ts";
 import type { AgentEventSink } from "./events.ts";
+
+/**
+ * The reply a provider gives a request whose signal already aborted, made without preparing or sending one: no
+ * context transform, API key, cache warming or provider call. It ends the turn the way a provider's aborted reply does.
+ */
+export async function abortedAssistantResponse(
+	context: AgentContext,
+	config: AgentLoopConfig,
+	emit: AgentEventSink,
+): Promise<AssistantMessage> {
+	const message: AssistantMessage = {
+		role: "assistant",
+		content: [],
+		api: config.model.api,
+		provider: config.model.provider,
+		model: config.model.id,
+		usage: createEmptyUsage(),
+		stopReason: "aborted",
+		errorMessage: createAbortError().message,
+		timestamp: Date.now(),
+		thinkingLevel: config.reasoning ?? "off",
+	};
+	context.messages.push(message);
+	await emit({ type: "message_start", message: { ...message } });
+	await emit({ type: "message_end", message });
+	return message;
+}
 
 /**
  * Stream an assistant response from the LLM.

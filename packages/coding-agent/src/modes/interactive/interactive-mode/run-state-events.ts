@@ -14,11 +14,12 @@ import {
 	OfflineRetryStatusIndicator,
 	RetryStatusIndicator,
 } from "../components/status-indicator.ts";
-import { modelWaitText, offlineRetryText } from "../../../core/agent-session/model-wait.ts";
+import { cooldownWaitText, modelWaitText, offlineRetryText } from "../../../core/agent-session/model-wait.ts";
 import { theme } from "../../../theme/theme.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { phaseKeepsJobGoing } from "./session-phase.ts";
+import { markRetriedAttempt } from "./retried-attempts.ts";
 
 type RetryScheduledEvent = Extract<AgentSessionEvent, { type: "auto_retry_start" | "summarization_retry_scheduled" }>;
 
@@ -46,7 +47,6 @@ export type RunStateEventsHost = Pick<
 	| "flushCompactionQueue"
 	| "pendingTools"
 	| "renderSessionEntries"
-	| "retryEscapeHandler"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
@@ -127,10 +127,16 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "model_wait": {
-			// The working indicator says the model is quiet; it returns to its own message when the model answers or the request ends.
+			// The working indicator says the model is quiet, or that the request waits out its provider's rate-limit cool-down;
+			// it returns to its own message when the model answers, the request goes out or it ends.
 			if (host.activeStatusIndicator?.kind === "working") {
+				const cooldownS = event.cooldown && Math.max(1, Math.ceil((event.cooldown.until - Date.now()) / 1000));
 				host.activeStatusIndicator.setMessage(
-					event.idleMs > 0 ? modelWaitText(event.idleMs) : (host.workingMessage ?? host.defaultWorkingMessage),
+					event.cooldown
+						? `${cooldownWaitText(event.cooldown.provider)} (${cooldownS}s)`
+						: event.idleMs > 0
+							? modelWaitText(event.idleMs)
+							: (host.workingMessage ?? host.defaultWorkingMessage),
 				);
 				host.ui.requestRender();
 			}
@@ -190,24 +196,22 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "auto_retry_start": {
-			// Each attempt emits a start; save the original handler only for the first one.
-			host.retryEscapeHandler ??= host.defaultEditor.onEscape;
-			host.defaultEditor.onEscape = () => {
-				getApplicationPort(host.session).invoke("abortRetry");
-			};
+			// Escape keeps its own handler: the run is still going while it waits to retry, so Escape stops it as any Stop
+			// does (queued messages back to the editor), instead of cancelling only the wait.
 			host.showStatusIndicator(retryIndicator(host, event));
+			// The attempt that failed is sent again: its error reads as retried, not as the turn's outcome.
+			markRetriedAttempt(host.chatContainer);
 			host.ui.requestRender();
 			break;
 		}
 
 		case "auto_retry_end": {
-			if (host.retryEscapeHandler) {
-				host.defaultEditor.onEscape = host.retryEscapeHandler;
-				host.retryEscapeHandler = undefined;
-			}
 			host.clearStatusIndicator("retry");
 			// Show error only on final failure (success shows normal response)
-			if (!event.success) {
+			if (event.cancelledBeforeRetry) {
+				markRetriedAttempt(host.chatContainer, false);
+				host.showStatus("Retry cancelled");
+			} else if (!event.success) {
 				host.showError(`Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`);
 			}
 			host.ui.requestRender();

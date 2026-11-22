@@ -6,6 +6,7 @@ import {
 	driverVersion,
 	healthWarnings,
 	MIN_DRIVER_VERSION,
+	takeDriverWarnings,
 	versionNotice,
 } from "../src/presets/desktop/health.ts";
 
@@ -40,6 +41,42 @@ describe("the desktop preset's version floor", () => {
 		expect(driverVersion("x", answering({ "--version": { stdout: "cua-driver 0.56.4\n", status: 0 } }))).toBe("0.56.4");
 		expect(driverVersion("x", answering({ "--version": { stdout: "boom", status: 1 } }))).toBeUndefined();
 		expect(driverVersion("x", answering({}))).toBeUndefined();
+	});
+});
+
+describe("desktop version probe retries", () => {
+	it("reads a real executable's version through the process runner", () => {
+		expect(driverVersion(process.execPath)).toBe(process.versions.node);
+	});
+
+	it("backs off after a timeout, recovers on a later drain and announces the version only once", () => {
+		let versions = 0;
+		let permissions = 0;
+		const runner: DriverRunner = (_command, args) => {
+			if (args[0] !== "--version") {
+				permissions++;
+				return { stdout: "{}", status: 0 };
+			}
+			return ++versions === 1 ? undefined : { stdout: "cua-driver 0.20.0", status: 0 };
+		};
+		expect(takeDriverWarnings("transient-driver", runner, 1000)).toEqual([]);
+		expect(takeDriverWarnings("transient-driver", runner, 59999)).toEqual([]);
+		expect(versions).toBe(1);
+		expect(takeDriverWarnings("transient-driver", runner, 61000).join(" ")).toContain("0.20.0 is older");
+		expect(takeDriverWarnings("transient-driver", runner, 200000)).toEqual([]);
+		expect(versions).toBe(2);
+		expect(permissions).toBe(process.platform === "darwin" ? 1 : 0);
+	});
+
+	it("bounds repeated failed version probes even when the driver stays unavailable", () => {
+		let versions = 0;
+		const runner: DriverRunner = (_command, args) => {
+			if (args[0] === "--version") versions++;
+			return undefined;
+		};
+		for (const time of [0, 1, 60000, 120000, 180000, 600000, 3600000])
+			expect(takeDriverWarnings("unavailable-driver", runner, time)).toEqual([]);
+		expect(versions).toBe(3);
 	});
 });
 

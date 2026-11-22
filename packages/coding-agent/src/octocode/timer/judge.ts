@@ -1,5 +1,5 @@
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
-import type { Usage } from "@octocodeai/octocode-ai";
+import { isRetryableErrorText, type Usage } from "@octocodeai/octocode-ai";
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { SmallModel as SmallModelOf } from "../shared/small-model.ts";
 import type { JudgeOutcome, JudgeRequest } from "./conditions/types.ts";
@@ -15,7 +15,7 @@ export const CHECK_CAPS = {
 	evidenceChars: 6000,
 	maxTokens: 400,
 	timeoutMs: 60_000,
-	/** Failed calls in a row that end the wait. */
+	/** Failed calls in a row that end the wait; a rate limit or transient failure is not counted. */
 	maxErrors: 2,
 } as const;
 
@@ -122,6 +122,9 @@ export class Judge {
 		if ("error" in reply) {
 			// A failed call still counts toward the gap, and the evidence stays unjudged.
 			this.last.set(request.id, { hash: previous?.hash ?? "", at: now });
+			// A rate limit or transient failure (the session retry's classifier) clears by itself: the next tick asks again.
+			if (isRetryableErrorText(reply.error))
+				return { verdict: "skipped", reason: `the judging model failed for now: ${reply.error}` };
 			const failed = (this.errors.get(request.id) ?? 0) + 1;
 			this.errors.set(request.id, failed);
 			if (failed >= CHECK_CAPS.maxErrors)

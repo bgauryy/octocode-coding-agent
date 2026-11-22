@@ -1,3 +1,4 @@
+import { Models } from "@opencode-ai/models";
 import type { ClassifierModel, Model } from "../../src/types.ts";
 import { getAiGatewayCost } from "../ai-gateway-pricing.ts";
 import { buildOpenRouterCatalog, type OpenRouterCatalog, type OpenRouterModelListItem } from "../openrouter-catalog.ts";
@@ -15,9 +16,15 @@ import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 const CATALOG_FETCH_TIMEOUT_MS = 60_000;
 
+export const modelsDev = Models.make();
+
+export function catalogRequestOptions(): { signal: AbortSignal } {
+	return { signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS) };
+}
+
 /** GET an upstream catalog; a stalled server fails the run after a minute instead of undici's five-minute defaults. */
-export function fetchCatalog(url: string): Promise<Response> {
-	return fetch(url, { signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS) });
+function fetchCatalog(url: string): Promise<Response> {
+	return fetch(url, catalogRequestOptions());
 }
 
 async function fetchCatalogRows<T>(source: string, url: string): Promise<T[]> {

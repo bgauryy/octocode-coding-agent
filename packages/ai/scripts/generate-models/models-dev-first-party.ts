@@ -1,3 +1,4 @@
+import { modelsDevLimits } from "./models-dev-limits.ts";
 import {
 	CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL,
 	CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
@@ -14,7 +15,6 @@ import { getModelsDevCost } from "./pricing.ts";
 import { processGoogleModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
-import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 function getBedrockBaseUrl(modelId: string): string {
 	return modelId.startsWith("eu.")
@@ -55,8 +55,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models (#10326).
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 				...(m.structured_output === true && { compat: { supportsStrictMode: true } }),
 			});
 			recordModelsDevReasoningOptions("amazon-bedrock" as const, id, m);
@@ -78,8 +77,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			recordModelsDevReasoningOptions("anthropic", modelId, m);
 		}
@@ -104,8 +102,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			recordModelsDevReasoningOptions("openai", modelId, m);
 		}
@@ -126,8 +123,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			recordModelsDevReasoningOptions("groq", modelId, m);
 		}
@@ -148,8 +144,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 			});
 			recordModelsDevReasoningOptions("cerebras", modelId, m);
 		}
@@ -170,8 +165,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 				compat: { sendSessionAffinityHeaders: true },
 			});
 			recordModelsDevReasoningOptions("cloudflare-workers-ai", modelId, m);
@@ -227,8 +221,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 				...(compat ? { compat } : {}),
 			});
 			recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);
@@ -257,8 +250,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				reasoning: m.reasoning === true,
 				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
-				contextWindow: nonZeroOr(4096, m.limit?.context),
-				maxTokens: nonZeroOr(4096, m.limit?.output),
+				...modelsDevLimits(m.limit),
 				compat: { sendSessionAffinityHeaders: true },
 			});
 			recordModelsDevReasoningOptions("cloudflare-ai-gateway", id, m);

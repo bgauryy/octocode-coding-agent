@@ -14,8 +14,7 @@ export interface RetrySettings {
 }
 
 /** The model fields the compaction policy reads. */
-export type CompactionPolicyModel = Pick<Model<string>, "provider" | "id"> &
-	Pick<CompactionModel, "contextWindow" | "reasoning" | "compat">;
+export type CompactionPolicyModel = Pick<Model<string>, "provider" | "id"> & CompactionModel;
 
 /** Compaction, branch summaries, retries, request timeouts and prompt caching. */
 export interface RuntimeSettingsApi {

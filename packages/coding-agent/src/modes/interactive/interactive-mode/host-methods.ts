@@ -121,6 +121,7 @@ export const interactiveModeMethodImplementations: InteractiveModeMethodImplemen
 	handleHotkeysCommand: infoCommands.handleHotkeysCommand,
 	handleImportCommand: sessionCommands.handleImportCommand,
 	handleProvidersCommand: loginFlow.handleProvidersCommand,
+	handleModelsCommand: loginFlow.handleModelsCommand,
 	handleModelCommand: modelControls.handleModelCommand,
 	handleNameCommand: sessionCommands.handleNameCommand,
 	handleReloadCommand: sessionCommands.handleReloadCommand,

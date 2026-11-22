@@ -1,11 +1,11 @@
-import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CUA_DRIVER_PATH_ENV, envFlag, MCP_DESKTOP_ENV } from "@octocodeai/octocode-common/env";
+import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { DESKTOP_BIN, DESKTOP_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import type { McpServerPreset } from "../../preset.ts";
 import { defineDesktopTool } from "./tools.ts";
-import { driverVersion, healthWarnings, versionNotice } from "./health.ts";
+import { type DriverRunner, takeDriverWarnings } from "./health.ts";
 
 /**
  * The tools a desktop task uses every time: list a window, read it, launch an app, act on it and quit it by its menu
@@ -87,51 +87,32 @@ const DESKTOP_RARE_TOOLS = [
 	"parse_visual_regions",
 ].filter((name) => !DESKTOP_CORE_TOOLS.has(name) && !(DESKTOP_HIDDEN_TOOLS as readonly string[]).includes(name));
 
-/** Whether `command` is an executable file in a `PATH` folder (`.exe`, `.cmd` and `.bat` count on Windows). */
-export function onPath(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
-	const extensions = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
-	for (const folder of (env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
-		for (const extension of extensions) {
-			try {
-				accessSync(path.join(folder, command + extension), constants.X_OK);
-				return true;
-			} catch {
-				// Not in this folder.
-			}
-		}
-	}
-	return false;
-}
-
 /**
  * The Cua Driver executable to start: the file `OCTOCODE_CUA_DRIVER_PATH` names (an explicit choice, so a wrong value is
  * reported, never replaced by a `PATH` lookup), else `cua-driver` on `PATH`. `problem` says why there is none.
  */
 function findDriver(
 	env: NodeJS.ProcessEnv,
-): { command: string; problem?: undefined } | { command?: undefined; problem: string } {
+):
+	| { command: string; executable: string; problem?: undefined }
+	| { command?: undefined; executable?: undefined; problem: string } {
 	const named = env[CUA_DRIVER_PATH_ENV]?.trim();
 	if (named) {
 		const file = named === "~" || named.startsWith("~/") ? path.join(os.homedir(), named.slice(1)) : named;
 		if (!path.isAbsolute(file))
 			return { problem: `${CUA_DRIVER_PATH_ENV} must be an absolute path (it is "${named}")` };
-		try {
-			accessSync(file, constants.X_OK);
-			if (statSync(file).isFile()) return { command: file };
-		} catch {
-			// Reported below.
-		}
+		if (findOnPath(file, env)) return { command: file, executable: file };
 		return { problem: `${CUA_DRIVER_PATH_ENV} points at ${file}, which is not an executable file` };
 	}
-	return onPath(DESKTOP_BIN, env) ? { command: DESKTOP_BIN } : { problem: `${DESKTOP_BIN} is not on PATH` };
+	const executable = findOnPath(DESKTOP_BIN, env);
+	return executable
+		? { command: DESKTOP_BIN, executable: path.resolve(executable) }
+		: { problem: `${DESKTOP_BIN} is not on PATH` };
 }
 
 /** Whether the built-in `desktop` server is enabled here: a Cua Driver executable is found and `OCTOCODE_MCP_DESKTOP` is not `0`. */
 export const desktopAvailable = (env: NodeJS.ProcessEnv = process.env): boolean =>
 	findDriver(env).command !== undefined && envFlag(env, MCP_DESKTOP_ENV, true);
-
-/** The health warnings are shown once per process, not on every preset build. */
-let warned = false;
 
 /**
  * Cua Driver as the `desktop` MCP server (`cua-driver mcp`, MIT): it inspects and operates native apps on the user's
@@ -142,7 +123,7 @@ let warned = false;
  * (`permission/desktop-mcp.ts`). The launch never passes `--grant existing-profile`; a user's own `desktop` server in
  * `mcp.json` replaces this one.
  */
-export function desktopPreset(env: NodeJS.ProcessEnv = process.env): McpServerPreset {
+export function desktopPreset(env: NodeJS.ProcessEnv = process.env, runner?: DriverRunner): McpServerPreset {
 	const driver = findDriver(env);
 	return {
 		name: DESKTOP_SERVER,
@@ -164,12 +145,7 @@ export function desktopPreset(env: NodeJS.ProcessEnv = process.env): McpServerPr
 		defineTool: defineDesktopTool,
 		instructionsOnDemand: true,
 		// Once per process, and only for a server that will run: a Driver older than the recorded floor, or a missing macOS permission (which otherwise surfaces as a closed connection). Shown to the user, never the model.
-		takeWarnings: () => {
-			if (warned || !driver.command || !envFlag(env, MCP_DESKTOP_ENV, true)) return [];
-			warned = true;
-			return [versionNotice(driverVersion(driver.command)), ...healthWarnings(driver.command)].filter(
-				(line): line is string => line !== undefined,
-			);
-		},
+		takeWarnings: () =>
+			driver.executable && envFlag(env, MCP_DESKTOP_ENV, true) ? takeDriverWarnings(driver.executable, runner) : [],
 	};
 }

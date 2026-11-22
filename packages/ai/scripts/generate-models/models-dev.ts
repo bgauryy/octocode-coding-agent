@@ -1,20 +1,15 @@
+import type { ModelsDevCatalog } from "./types.ts";
 import type { Model } from "../../src/types.ts";
-import { fetchCatalog, fetchNvidiaNimModelIds } from "./fetchers.ts";
+import { fetchNvidiaNimModelIds } from "./fetchers.ts";
 import { addModelsDevFirstPartyModels } from "./models-dev-first-party.ts";
 import { addModelsDevGatewayModels } from "./models-dev-gateways.ts";
 import { addModelsDevHostedModels } from "./models-dev-hosted.ts";
 import { addModelsDevPlanModels } from "./models-dev-plans.ts";
 import { refreshesProvider } from "./options.ts";
-import type { ModelsDevCatalog } from "./types.ts";
 
 /** The models.dev chat catalog, built provider by provider. */
 
-export async function loadModelsDevData(): Promise<Model<any>[]> {
-	console.log("Fetching models from models.dev API...");
-	const response = await fetchCatalog("https://models.dev/api.json");
-	if (!response.ok) throw new Error(`models.dev API returned ${response.status}`);
-	const data = (await response.json()) as ModelsDevCatalog;
-
+export async function loadModelsDevData(data: ModelsDevCatalog): Promise<Model<any>[]> {
 	const models: Model<any>[] = [];
 	const nvidiaNimModelIds =
 		refreshesProvider("nvidia") && data.nvidia?.models ? await fetchNvidiaNimModelIds() : new Map<string, string>();

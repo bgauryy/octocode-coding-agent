@@ -1,3 +1,4 @@
+import { inputRoomTokens } from "../../core/compaction/settings.ts";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { estimateTokens } from "../../core/compaction/index.ts";
@@ -62,13 +63,17 @@ export const THRASH_MESSAGE =
  * window less the room Octocode keeps for a reply (`reserveTokens`), and the previous model could still read all of it.
  */
 export function needsDownshiftCompaction(
-	previous: Pick<Model<Api>, "contextWindow"> | undefined,
-	next: Pick<Model<Api>, "contextWindow">,
+	previous: Pick<Model<Api>, "contextWindow" | "inputLimits"> | undefined,
+	next: Pick<Model<Api>, "contextWindow" | "inputLimits">,
 	tokens: number | null | undefined,
 	reserveTokens: number,
 ): boolean {
 	if (!previous || tokens === null || tokens === undefined || next.contextWindow <= 0) return false;
-	return next.contextWindow < previous.contextWindow && tokens > next.contextWindow - reserveTokens;
+	const available = inputRoomTokens(next.contextWindow, reserveTokens, next.inputLimits?.maxInputTokens);
+	return (
+		available < inputRoomTokens(previous.contextWindow, reserveTokens, previous.inputLimits?.maxInputTokens) &&
+		tokens > available
+	);
 }
 
 /** The characters of the tool definitions declared to the model (name, description, parameters, guidelines of the active tools). */

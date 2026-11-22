@@ -139,13 +139,16 @@ describe("the skill list", () => {
 	}
 
 	it("does not depend on the order the skill folders were written", async () => {
-		const skills = tmp("skills-");
+		const skills = fs.realpathSync(tmp("skills-"));
 		writeSkills(skills, NAMES);
 		const forward = await skillsSection(skills);
 		writeSkills(skills, [...NAMES].reverse());
 		const backward = await skillsSection(skills);
-		// Not vacuous: all four skills are listed.
-		for (const name of NAMES) expect(forward).toContain(name);
+		const listedFiles = forward
+			.split("\n")
+			.filter((line) => line.includes("SKILL.md:"))
+			.map((line) => line.split(": ")[0]);
+		expect(listedFiles).toEqual(NAMES.map((name) => path.join(skills, name, "SKILL.md")));
 		expect(backward).toBe(forward);
 	});
 });

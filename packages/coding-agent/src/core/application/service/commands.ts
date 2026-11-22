@@ -7,7 +7,7 @@ import {
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { ApplicationServiceError } from "./delivery.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { ImageContent } from "@octocodeai/octocode-ai";
 import { withInputOrigin } from "../../input-origin.ts";
 import type { ApplicationAssets } from "../assets.ts";
@@ -42,11 +42,17 @@ export function commandImages(
 export function invokeCommand(
 	command: ApplicationCommand,
 	images: ImageContent[] | undefined,
-	session: Pick<ApplicationSession, "abort" | "prompt" | "steer" | "followUp" | "answerDialog" | "holdDialog">,
+	session: Pick<
+		ApplicationSession,
+		"abort" | "clearQueue" | "prompt" | "steer" | "followUp" | "answerDialog" | "holdDialog"
+	>,
 ): unknown {
 	switch (command.action) {
-		case "abort":
-			return session.abort();
+		case "abort": {
+			// A Stop withdraws the queued input (`AgentSession.abort`): the receipt gives it back to the client that sent it.
+			const { steering, followUp } = session.clearQueue();
+			return session.abort().then((): Withdrawn => ({ withdrawn: [...steering, ...followUp] }));
+		}
 		// /web text is typed by the user, so image files it names attach too.
 		case "prompt":
 			return session.prompt(command.text, { images, attachImagePaths: true });
@@ -67,6 +73,15 @@ export function invokeCommand(
 		default:
 			return session[command.action](command.text, images, { attachImagePaths: true });
 	}
+}
+
+/** What an accepted Stop resolves to. */
+interface Withdrawn {
+	withdrawn: string[];
+}
+
+function isWithdrawn(value: unknown): value is Withdrawn {
+	return isRecord(value) && Array.isArray(value.withdrawn);
 }
 
 /** What dispatching an accepted command needs of the application service. */
@@ -98,9 +113,10 @@ export function dispatchCommand(dispatch: CommandDispatch): void {
 	// The outcome is saved before it is published; that save waits for another process's write lock without blocking.
 	Promise.resolve(work)
 		.then(
-			async () => {
+			async (result) => {
 				if (!dispatch.isCurrent()) return;
 				receipt.status = "completed";
+				if (isWithdrawn(result) && result.withdrawn.length > 0) receipt.withdrawn = result.withdrawn;
 				await receiptStore?.finish(command.id, "completed");
 				if (!dispatch.isCurrent()) return;
 				dispatch.publishDomain({

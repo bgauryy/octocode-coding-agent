@@ -8,6 +8,7 @@
  * word for word, including what the run added in between.
  */
 
+import { inputRoomTokens } from "../compaction/settings.ts";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import {
 	type CompactionPreparation,
@@ -18,6 +19,7 @@ import {
 	type SummaryRequestPolicy,
 } from "../compaction/index.ts";
 import type { FeatureHost } from "../features/index.ts";
+import { providerCooldowns } from "../model-runtime/provider-cooldown.ts";
 import type { SessionEntry, SessionManager } from "../session-manager.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
 
@@ -41,6 +43,7 @@ const targetOf = (model: Model<any>, settings: CompactionSettings, forced?: stri
 		model.id,
 		model.contextWindow,
 		settings.reserveTokens,
+		settings.maxInputTokens,
 		settings.keepRecentTokens,
 		forced,
 	]);
@@ -88,10 +91,16 @@ export class CompactionPrewarm {
 		const window = model.contextWindow;
 		if (this.plan || !settings.enabled || !(window > 0)) return false;
 		if (shouldCompact(tokens, window, settings)) return false;
-		return tokens > window - settings.reserveTokens - prewarmLeadTokens(window);
+		return (
+			tokens > inputRoomTokens(window, settings.reserveTokens, settings.maxInputTokens) - prewarmLeadTokens(window)
+		);
 	}
 
-	/** Fixes the plan for the branch as it is now and tells features; does nothing when nothing can be summarized. */
+	/**
+	 * Fixes the plan for the branch as it is now and tells features; does nothing when nothing can be summarized, or while
+	 * the model's provider cools down from a rate limit: the early request and its retries would run beside the turn's
+	 * into the same throttle. The next request past the cool-down plans then, and the compaction requests its own summary.
+	 */
 	start(
 		sessionManager: SessionManager,
 		runner: FeatureHost,
@@ -100,6 +109,7 @@ export class CompactionPrewarm {
 		summaryRequest: SummaryRequestPolicy,
 	): void {
 		if (this.plan || !runner.hasHandlers("session_compact_prewarm")) return;
+		if (providerCooldowns.remainingMs(model.provider) > 0) return;
 		const branchEntries = sessionManager.getBranch();
 		const leaf = branchEntries[branchEntries.length - 1];
 		let preparation: CompactionPreparation | undefined;

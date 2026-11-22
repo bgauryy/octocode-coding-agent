@@ -9,7 +9,7 @@ import type { TokenModel } from "@octocodeai/octocode-ai/utils/estimate";
 import type { SessionEntry } from "../session-manager.ts";
 import { inlineSummaryTokens, projectAfterCompaction, summaryTargetTokens } from "./checkpoint.ts";
 import { type CompactionPreparation, prepareCompaction } from "./compaction.ts";
-import { replyFloorTokens } from "./settings.ts";
+import { inputRoomTokens, replyFloorTokens } from "./settings.ts";
 
 /** The compaction cannot fit the target window whatever it keeps; raised before any model call. */
 export class CompactionFitError extends Error {}
@@ -57,7 +57,7 @@ export function fitCompactionToWindow(
 ): CompactionPreparation {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return preparation;
 	const { settings } = preparation;
-	const available = contextWindow - settings.reserveTokens;
+	const available = inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens);
 	const retainedBy = (candidate: CompactionPreparation) =>
 		projectAfterCompaction(branchEntries, candidate.firstKeptEntryId, 0, target.model)("");
 	const room = summaryRoomTokens(settings.reserveTokens, available);
@@ -67,7 +67,13 @@ export function fitCompactionToWindow(
 	const checkpoint = Math.max(room, summaryTargetTokens(inlineSummaryTokens(settings.reserveTokens)));
 	const besideIncoming =
 		incoming > 0
-			? contextWindow - replyFloorTokens(settings.reserveTokens, target.model?.maxTokens) - incoming - checkpoint
+			? inputRoomTokens(
+					contextWindow,
+					replyFloorTokens(settings.reserveTokens, target.model?.maxTokens),
+					settings.maxInputTokens,
+				) -
+				incoming -
+				checkpoint
 			: Number.POSITIVE_INFINITY;
 	let retained = retainedBy(preparation);
 	if (retained < available && retained <= besideIncoming) return preparation;
@@ -91,7 +97,8 @@ export function fitCompactionToWindow(
 			retained = retainedBy(fitted);
 		}
 	}
-	if (retained >= available) throw new CompactionFitError(cannotFit(retained, contextWindow, settings.reserveTokens));
+	if (retained >= available)
+		throw new CompactionFitError(cannotFit(retained, contextWindow, settings.reserveTokens, settings.maxInputTokens));
 	return fitted;
 }
 
@@ -101,11 +108,14 @@ function endsWithFailedTurn(branchEntries: SessionEntry[]): boolean {
 	return last?.type === "message" && last.message.role === "assistant" && last.message.stopReason === "error";
 }
 
-function cannotFit(retained: number, contextWindow: number, reserveTokens: number): string {
+function cannotFit(retained: number, contextWindow: number, reserveTokens: number, maxInputTokens?: number): string {
+	const limit =
+		maxInputTokens !== undefined && maxInputTokens < contextWindow - reserveTokens
+			? `${maxInputTokens.toLocaleString("en-US")}-token input limit`
+			: `${contextWindow.toLocaleString("en-US")}-token window (${reserveTokens.toLocaleString("en-US")} reserved for the reply)`;
 	return (
 		`the system prompt, tools and newest turn alone take about ${retained.toLocaleString("en-US")} tokens, ` +
-		`which leaves no room for a summary in this model's ${contextWindow.toLocaleString("en-US")}-token window ` +
-		`(${reserveTokens.toLocaleString("en-US")} reserved for the reply). Switch to a model with a larger window, ` +
+		`which leaves no room for a summary in this model's ${limit}. Switch to a model with a larger window, ` +
 		"or start a new session with /new."
 	);
 }

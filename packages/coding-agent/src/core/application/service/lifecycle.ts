@@ -1,21 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type { ApplicationEvent } from "@octocodeai/octocode-contracts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
-import { modelWaitText, offlineRetryText, retryText } from "../../agent-session/model-wait.ts";
+import { cooldownWaitText, modelWaitText, offlineRetryText, retryText } from "../../agent-session/model-wait.ts";
 import type { ApplicationRuntimeState } from "../state.ts";
 import { queuePreview } from "./projection.ts";
 
 type ShownStatus = Pick<ApplicationRuntimeState, "status" | "statusDetail" | "statusUntil">;
 
 /**
- * The session's `status` from the causes that overlap: a compaction, a retry and a quiet model request. A compaction
- * wins, then a retry that still waits out its delay, then a quiet request, then a retry whose attempt is already out.
+ * The session's `status` from the causes that overlap: a compaction, a retry, a request waiting out its provider's
+ * rate-limit cool-down and a quiet model request. A compaction wins, then a retry that still waits out its delay, then
+ * the cool-down (shown as retrying, until it ends), then a quiet request, then a retry whose attempt is already out.
  * So a quiet request never hides a compaction or a pending retry, and when it ends the status goes back to what it was.
  */
 export class SessionStatusTracker {
 	private compacting = false;
 	private retry: { detail: string; until: number } | undefined;
 	private quiet: string | undefined;
+	private cooldown: { detail: string; until: number } | undefined;
 
 	/** Takes the status causes `event` changes; returns the status event when what `shown` says must change. */
 	next(event: AgentSessionEvent, shown: ShownStatus): ApplicationEvent | undefined {
@@ -40,6 +42,10 @@ export class SessionStatusTracker {
 				break;
 			case "model_wait":
 				this.quiet = event.idleMs > 0 ? modelWaitText(event.idleMs) : undefined;
+				this.cooldown = event.cooldown && {
+					detail: cooldownWaitText(event.cooldown.provider),
+					until: event.cooldown.until,
+				};
 				break;
 			default:
 				return undefined;
@@ -54,6 +60,7 @@ export class SessionStatusTracker {
 		if (this.compacting) return { status: "compacting" };
 		const retry = this.retry && { status: "retrying" as const, detail: this.retry.detail, until: this.retry.until };
 		if (retry && retry.until > Date.now()) return retry;
+		if (this.cooldown) return { status: "retrying", detail: this.cooldown.detail, until: this.cooldown.until };
 		if (this.quiet) return { status: "stalled", detail: this.quiet };
 		return retry ?? { status: "idle" };
 	}

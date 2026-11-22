@@ -1,8 +1,8 @@
 import { contentText, normalizeContext } from "@octocodeai/octocode-ai";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai/compat";
-import { completeSimple } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { retrySideCall, type SideRetry } from "../shared/side-retry.ts";
 import type { SmallCallResult } from "../shared/small-model.ts";
 import { currentCatalog } from "./catalog.ts";
 import { resolveTierChoice } from "./model.ts";
@@ -20,6 +20,9 @@ export interface SmallCallOptions {
 	maxTokens: number;
 	/** With no cheaper model to resolve, call the session's own model instead of giving up. */
 	fallbackToSession?: boolean;
+	/** Retries of a rate limit or transient failure; none when unset. */
+	retry?: SideRetry;
+	/** Sends the request in place of the session's model runtime (tests). */
 	complete?: CompleteSmall;
 }
 
@@ -42,8 +45,10 @@ export function smallModelLabel(ctx: FeatureContext): string | undefined {
 /**
  * One call to the cheapest capable model the `small` purpose resolves to among the session's available models: no tools,
  * no cache. Without such a model (the session model's price is unknown, or nothing cheaper is connected) it uses the
- * session's own model when `fallbackToSession` is set, else fails. Never rejects: a missing model, failed
- * authentication, a failed or aborted call and an empty reply each give `{ error }` naming the cause.
+ * session's own model when `fallbackToSession` is set, else fails. Each attempt goes through the session's model runtime,
+ * the entry the session's own requests use, which resolves the credential and a virtual model's route. Never rejects: a
+ * missing model, failed authentication, a failed or aborted call and an empty reply each give `{ error }` naming the
+ * cause.
  */
 export async function callSmallModel(ctx: FeatureContext, options: SmallCallOptions): Promise<SmallCallResult> {
 	try {
@@ -55,22 +60,21 @@ export async function callSmallModel(ctx: FeatureContext, options: SmallCallOpti
 			(chosen && available.find((each) => each.provider === chosen.provider && each.id === chosen.id)) ??
 			(options.fallbackToSession ? session : undefined);
 		if (!model) return { error: "no cheaper model is available" };
+		// Checked first so a missing credential names the model and costs no request; the runtime resolves it per attempt.
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (!auth.ok) return { error: `${model.provider}/${model.id} is not authenticated` };
-		const reply = await (options.complete ?? completeSimple)(
-			model,
-			normalizeContext({
-				messages: [{ role: "user", content: [{ type: "text", text: options.text }], timestamp: Date.now() }],
-			}),
-			{
-				signal: options.signal,
-				maxTokens: options.maxTokens,
-				cacheRetention: "none",
-				...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
-				...(auth.headers ? { headers: auth.headers } : {}),
-				...(auth.env ? { env: auth.env } : {}),
-			},
-		);
+		const send: CompleteSmall =
+			options.complete ??
+			((target, context, request) => ctx.modelRegistry.streamSimple(target, context, request).result());
+		const context = normalizeContext({
+			messages: [{ role: "user", content: [{ type: "text", text: options.text }], timestamp: Date.now() }],
+		});
+		const request: SimpleStreamOptions = {
+			signal: options.signal,
+			maxTokens: options.maxTokens,
+			cacheRetention: "none",
+		};
+		const reply = await retrySideCall(() => send(model, context, request), options.retry, options.signal);
 		const label = `${model.provider}/${model.id}`;
 		if (reply.stopReason === "aborted") return { error: "the call was cancelled" };
 		if (reply.stopReason === "error") return { error: reply.errorMessage || `${label} returned an error` };

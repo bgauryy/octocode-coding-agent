@@ -125,11 +125,10 @@ export const SCENARIOS: Scenario[] = [
 	},
 	{
 		id: "native-web-control-pinned-direct",
-		title: "control: the same ask with web pinned direct, to tell a missed load from a model that prefers bash",
+		title: "control: the same ask, to tell a missed web call from a model that prefers bash",
 		prompts: [
 			"What does the page at https://example.com say? I need the live content, so check it rather than recalling it.",
 		],
-		settings: { nativeToolExposure: { web: "direct" } },
 		rubric: [
 			{
 				id: "used-web",

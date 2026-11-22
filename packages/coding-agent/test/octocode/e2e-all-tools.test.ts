@@ -967,6 +967,12 @@ describe("every subagent profile, started through agent", () => {
 	];
 	let box: Sandbox;
 	let parent: Step[];
+	const parentMessages = () =>
+		requestsOf(parent)
+			.flatMap((request) =>
+				request.messages.filter((message) => message.role !== "system").map((message) => message.text),
+			)
+			.join("\n");
 
 	beforeAll(async () => {
 		box = repository();
@@ -977,11 +983,26 @@ describe("every subagent profile, started through agent", () => {
 					goal: `run as ${label(role)}`,
 					task: script(childOf(role)),
 					...(role.name ? { profile: role.name } : {}),
+					...(role.lean ? { background: true } : {}),
 				}),
 			),
 			{ text: "parent-final-text" },
 		];
-		const run = box.start(["-p", script(parent)]);
+		// A foreground child may hand its report over to the background after 15s. Keep the real parent
+		// alive until every report has reached its model, through either delivery path.
+		const run = box.start(["--mode", "rpc"], { stdin: "pipe" });
+		try {
+			await until(() => run.stdout().includes('"type":"rpc_ready"'), "profile coordinator to start");
+			run.process.stdin?.write(`${JSON.stringify({ id: "profiles", type: "prompt", message: script(parent) })}\n`);
+			await until(() => {
+				const transcript = parentMessages();
+				return profiles.every(
+					(role) => transcript.includes(`report-of-${label(role)}`) && transcript.includes(`note-from-${label(role)}`),
+				);
+			}, "all profile notes and reports to reach the coordinator");
+		} finally {
+			run.process.stdin?.end();
+		}
 		await expectCleanRun(run);
 	});
 
@@ -1029,12 +1050,9 @@ describe("every subagent profile, started through agent", () => {
 			} else if (!role.lean) expect(fs.readFileSync(path.join(box.project, `by-${name}.txt`), "utf8")).toBe("x");
 			// Its message reached the parent, and so did its report.
 			expect(results.at(-1)).toMatch(/^Sent #\d+ to /);
-			const reachedParent = requestsOf(parent)
-				.at(-1)
-				?.messages.map((message) => message.text)
-				.join("\n");
+			const reachedParent = parentMessages();
 			expect(reachedParent).toContain(`note-from-${name}`);
-			expect(lastResults(parent).join("\n")).toContain(`report-of-${name}`);
+			expect(reachedParent).toContain(`report-of-${name}`);
 		},
 	);
 

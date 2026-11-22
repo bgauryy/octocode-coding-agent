@@ -44,6 +44,7 @@ export type {
 	KnownProvider,
 	ProviderId,
 } from "./types/ids.ts";
+export type { ToolValidationFailure } from "./types/tool-validation.ts";
 export type { JsonObject, JsonRepresentation, JsonValue } from "./types/json.ts";
 export type { ContentAnnotation, MediaContent, ResourceContent, UnsupportedContent } from "./types/content.ts";
 export type {

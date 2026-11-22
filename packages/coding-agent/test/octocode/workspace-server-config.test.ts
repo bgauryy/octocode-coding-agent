@@ -20,8 +20,8 @@ vi.mock("../../src/octocode/workspace/server.ts", async (original) => {
 				args[3],
 				args[4],
 				createSessionConfig({ name: "repo", root: args[0].repoRoot }, process.env, () => ({
-					names: ["bash", "web"],
-					declared: new Map([["web", true]]),
+					names: ["bash", "archive"],
+					declared: new Map([["archive", true]]),
 				})),
 			),
 	};
@@ -80,23 +80,28 @@ describe("per-session settings routes", () => {
 			)?.tools;
 		expect(native(listed.body)).toEqual(
 			expect.arrayContaining([
-				{ name: "web", state: "deferred", decidedBy: "usage", audit: expect.objectContaining({ reason: "unused" }) },
+				{
+					name: "archive",
+					state: "deferred",
+					decidedBy: "usage",
+					audit: expect.objectContaining({ reason: "unused" }),
+				},
 				{ name: "bash", state: "direct", decidedBy: "core" },
 			]),
 		);
 
-		const pin = { kind: "native", tool: "web", pin: "direct", scope: "global" };
+		const pin = { kind: "native", tool: "archive", pin: "direct", scope: "global" };
 		const refused = await app.request(DAEMON_ROUTES.configTools, pin, { headers: { authorization: "" } });
 		expect(refused.status).toBe(401);
 		const file = path.join(root, "agent", "settings.json");
 		expect(fs.existsSync(file)).toBe(false);
 		const pinned = await app.request(DAEMON_ROUTES.configTools, pin);
 		expect(pinned.status).toBe(200);
-		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ nativeToolExposure: { web: "direct" } });
+		expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ nativeToolExposure: { archive: "direct" } });
 		// The session declared it deferred when it registered the tool; the pin waits for the next session.
 		expect(native(pinned.body)).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ name: "web", pin: "direct", state: "deferred", decidedBy: "usage" }),
+				expect.objectContaining({ name: "archive", pin: "direct", state: "deferred", decidedBy: "usage" }),
 			]),
 		);
 	});

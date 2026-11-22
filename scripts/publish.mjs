@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Publishes @octocodeai/octocode-agent, the only public package. Run through `yarn run publish` (or `publish:dry`), which
+ * Publishes @octocodeai/octocode-agent. The agentic testkit has its own release. Run through `yarn run publish` (or `publish:dry`), which
  * builds and checks first. Every gate runs before anything reaches npm:
- * one public package, a clean tree, the exact dependency versions on npm, a verified tarball with a clean manifest, and a
+ * one agent release target, a clean tree, the exact dependency versions on npm, a verified tarball with a clean manifest, and a
  * real install and session from that tarball. `--use name@version` tries another dependency version in a dry run.
  */
 import { execFileSync } from "node:child_process";
@@ -46,12 +46,14 @@ function refuse(reason) {
 }
 
 const repoRoot = process.cwd();
-const publicPackages = getPublicWorkspacePackages();
-if (publicPackages.length !== 1 || publicPackages[0].name !== codingAgentName)
+const releasePackages = getPublicWorkspacePackages().filter(
+	(pkg) => pkg.name !== "@octocodeai/octocode-agentic-testkit",
+);
+if (releasePackages.length !== 1 || releasePackages[0].name !== codingAgentName)
 	refuse(
-		`${codingAgentName} must be the only public package, found: ${publicPackages.map((pkg) => pkg.name).join(", ")}`,
+		`expected ${codingAgentName} as the sole agent release target, found: ${releasePackages.map((pkg) => pkg.name).join(", ")}`,
 	);
-const [pkg] = publicPackages;
+const [pkg] = releasePackages;
 console.log(`Publishing ${pkg.name}@${pkg.version}${dryRun ? " (dry run)" : ""}\n`);
 
 const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).trim();

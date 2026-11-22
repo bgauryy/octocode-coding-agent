@@ -38,3 +38,18 @@ and the quickstart test from the README, and runs them.
 - The `octocode-agent` adapter drives this repository's built CLI bundle.
 - The repository config sets `TESTKIT_REPORT_DIR` to the repository's `.octocode/tmp`; guards, `yarn measure` and
   `yarn test:triggers` are run-tier tools for this repository's agents.
+
+## MCP tool-call replay
+
+From the repository root, run the Octocode host adapter with synthetic streamed responses on the Bedrock Converse
+and OpenAI Completions protocols. Both use injected fetch and an in-memory MCP server. The cases cover full and
+thin declarations, a loaded contract, and a restored contract.
+
+```sh
+yarn workspace @octocodeai/octocode-mcp vitest run test/mcp-tool-call-replay.test.ts
+```
+
+Set `MCP_REPLAY_REPORT` to a writable file path to save the synthetic stage records, counts by declaration state,
+model-family token estimates, and local elapsed time. Cache read and write counts are unavailable offline.
+The script fixes the ratio of malformed calls to controls in each state. Measuring a model's own error rate
+requires generated calls.

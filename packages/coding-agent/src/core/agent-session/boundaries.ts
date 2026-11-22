@@ -105,7 +105,7 @@ export class SessionBoundaries {
 	 * projected context, so the pair stays together whether the attempt comes from the current run or a resumed
 	 * session; an unpaired tool result fails the next request.
 	 */
-	omitRecoveryAttempt(message: AssistantMessage): void {
+	omitRecoveryAttempt(message: AssistantMessage): string | undefined {
 		const { session } = this.host;
 		const toolCallIds = new Set(message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])));
 		// A context edit replaces the projected copy, so match it by source entry as well.
@@ -120,7 +120,7 @@ export class SessionBoundaries {
 			if (m.role === "toolResult" && toolCallIds.has(m.toolCallId)) toolResults.push(m);
 		}
 		const targets = [message, ...toolResults];
-		const targetIds = targets.map((target) => this.findPersistedMessageEntryId(target));
+		const targetIds = [entryId, ...toolResults.map((target) => this.findPersistedMessageEntryId(target))];
 		const unresolvedProjectedTarget = targets.some(
 			(target, index) => targetIds[index] === undefined && session.agent.state.messages.includes(target),
 		);
@@ -134,6 +134,7 @@ export class SessionBoundaries {
 			if (entry) this.host.emit({ type: "entry_appended", entry });
 		}
 		this.refreshFinalizedContext();
+		return entryId;
 	}
 
 	async dispatchTurnEnd(message: AssistantMessage, toolResults: ToolResultMessage[]): Promise<boolean> {

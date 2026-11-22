@@ -1,3 +1,4 @@
+import { MAX_ECHOED_ARGUMENTS_CHARS } from "@octocodeai/octocode-ai";
 import { toolProgressText, type ToolDisplay } from "@octocodeai/octocode-contracts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { liftedProperties } from "@octocodeai/octocode-ai/utils/json-schema-shape";
@@ -13,7 +14,7 @@ import { deferredParameters } from "./deferred-schema.ts";
 import { declaredExposure } from "./exposure.ts";
 import { firstSentence, thinParameters } from "./presentation/declaration.ts";
 import { correctedCalls } from "./presentation/repeat-echo.ts";
-import { envelopeHint, queriesCap } from "./presentation/validation-hint.ts";
+import { envelopeHint, queriesCap, siblingHint } from "./presentation/validation-hint.ts";
 import { labelParts, renderMcpCall } from "./presentation/call-row.ts";
 import { renderMcpResult } from "./presentation/result-row.ts";
 import {
@@ -132,18 +133,26 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		// Shown after a failed validation, for every tool: a failure at the top level (a native `reason`, `type` or
 		// `timeout` sent to a server that does not declare it) names the accepted call shape; any other names the working
 		// next step for an over-long `queries` batch, and a compact tool adds its typed signature.
-		validationHint: ({ envelope, properties, arguments: sent }) => {
+		validationHint: (failure) => {
+			const { envelope, properties, arguments: sent, unexpected } = failure;
 			// The same failing call twice in a row also gets the corrected call, built from what the model sent.
-			const signature = JSON.stringify([sent, properties]);
-			const repeated = signature === lastFailure;
-			lastFailure = signature;
-			const echo = repeated ? correctedCalls(tool.inputSchema, sent, properties) : undefined;
+			const signature = JSON.stringify(sent);
+			const repeated = signature !== undefined && signature === lastFailure;
+			lastFailure = signature && signature.length <= MAX_ECHOED_ARGUMENTS_CHARS ? signature : undefined;
+			const echo = repeated ? correctedCalls(tool.inputSchema, failure) : undefined;
 			const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
-			if (shape) return echo ? `${shape}\n\n${echo}` : shape;
+			if (shape && shape.length <= MAX_ECHOED_ARGUMENTS_CHARS) return echo ? `${shape}\n\n${echo}` : shape;
+			const fields = siblingHint(tool.inputSchema, unexpected);
 			const block = compact?.signature();
 			const cap = queriesCap(tool.inputSchema);
 			const hints = [
-				cap === undefined || !properties.includes("queries")
+				fields,
+				cap === undefined ||
+				cap <= 0 ||
+				!isRecord(sent) ||
+				!Array.isArray(sent.queries) ||
+				sent.queries.length <= cap ||
+				!properties.includes("queries")
 					? ""
 					: `queries holds at most ${cap}; split into calls of ${cap} or fewer, run them in the same turn.`,
 				block

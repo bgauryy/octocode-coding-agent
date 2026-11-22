@@ -72,7 +72,7 @@ export interface HeadlessOptions {
 	env?: Record<string, string>;
 	/** Runs in the repository before the session starts (files, symlinks, commits). */
 	setup?: (paths: { root: string; cwd: string; home: string; outside: string }) => void;
-	/** Loads AGENTS.md files and the skills under these folders (each a folder of `<name>/SKILL.md`), which a headless run skips by default. */
+	/** Opt into AGENTS.md files or supply the complete skill fixture (`<name>/SKILL.md` under each folder). Omit skillPaths to use normal discovery. */
 	resources?: { contextFiles?: boolean; skillPaths?: string[] };
 }
 
@@ -134,7 +134,7 @@ export async function headless(options: HeadlessOptions = {}) {
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: !options.resources?.contextFiles,
-		...(options.resources?.skillPaths ? { additionalSkillPaths: options.resources.skillPaths } : {}),
+		...(options.resources?.skillPaths ? { noSkills: true, additionalSkillPaths: options.resources.skillPaths } : {}),
 	});
 	await resourceLoader.reload();
 	const { session } = await createTestSession({

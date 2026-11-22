@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
+import { customModelsFiles } from "../../src/core/provider-sources/models-files.ts";
 import { ModelConfig } from "../../src/core/model-config.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createSandbox, type Sandbox, write } from "./fixtures.ts";
@@ -51,6 +52,103 @@ describe("models.json through discovery", () => {
 			["pi", true],
 			["pi", true],
 		]);
+	});
+});
+
+describe("project models.json", () => {
+	const projectFile = () => join(sandbox.cwd, ".octocode", "models.json");
+	const globalFile = () => join(sandbox.agentDir, "models.json");
+	const project = (trusted: boolean) => ({ cwd: sandbox.cwd, isTrusted: () => trusted });
+
+	it("loads in a trusted project, and the project provider overrides the global one", async () => {
+		write(globalFile(), provider("shared", "http://global.test/v1"));
+		write(projectFile(), provider("shared", "http://project.test/v1"));
+		const config = await ModelConfig.load(globalFile(), project(true));
+		expect(config.getProvider("shared")?.baseUrl).toBe("http://project.test/v1");
+		expect(config.getProviderFile("shared")).toBe(projectFile());
+	});
+
+	it("is not read in an untrusted project and says so", async () => {
+		write(globalFile(), provider("shared", "http://global.test/v1"));
+		write(projectFile(), provider("shared", "http://project.test/v1"));
+		const config = await ModelConfig.load(globalFile(), project(false));
+		expect(config.getProvider("shared")?.baseUrl).toBe("http://global.test/v1");
+		expect(config.getWarnings().join("\n")).toContain("not trusted");
+	});
+
+	it("follows trust changes on the next load", async () => {
+		write(projectFile(), provider("only-project"));
+		let trusted = false;
+		const live = { cwd: sandbox.cwd, isTrusted: () => trusted };
+		expect((await ModelConfig.load(globalFile(), live)).getProvider("only-project")).toBeUndefined();
+		trusted = true;
+		expect((await ModelConfig.load(globalFile(), live)).getProvider("only-project")).toBeDefined();
+	});
+
+	it("rejects a credential in a project baseUrl", async () => {
+		write(projectFile(), provider("leaky", "http://user:secret@host.test/v1"));
+		const config = await ModelConfig.load(globalFile(), project(true));
+		expect(config.getProvider("leaky")).toBeUndefined();
+		expect(config.getWarnings().join("\n")).toContain("baseUrl must not carry credentials");
+	});
+
+	it("warns when a project provider replaces a global one, naming hosts only", async () => {
+		write(globalFile(), provider("shared", "http://global.test/v1"));
+		write(projectFile(), provider("shared", "http://evil.test/v1?k=1"));
+		const config = await ModelConfig.load(globalFile(), project(true));
+		const warning = config.getWarnings().find((w) => w.includes("replaces"));
+		expect(warning).toContain('"shared"');
+		expect(warning).toContain(projectFile());
+		expect(warning).toContain(globalFile());
+		expect(warning).toContain("evil.test");
+		expect(warning).not.toContain("k=1");
+	});
+
+	it("skips an invalid project file with a warning and keeps global providers", async () => {
+		write(globalFile(), provider("g"));
+		write(projectFile(), "{ not json");
+		const config = await ModelConfig.load(globalFile(), project(true));
+		expect(config.isUnreadable()).toBe(false);
+		expect(config.getProviderIds()).toEqual(["g"]);
+		expect(config.getWarnings().join("\n")).toContain(projectFile());
+		write(projectFile(), JSON.stringify({ providers: 5 }));
+		const schema = await ModelConfig.load(globalFile(), project(true));
+		expect(schema.getProviderIds()).toEqual(["g"]);
+		expect(schema.getWarnings().join("\n")).toContain("Invalid models.json schema");
+	});
+
+	it("tells an untrusted user to trust and restart, not to /reload", async () => {
+		write(projectFile(), provider("p"));
+		const warning = (await ModelConfig.load(globalFile(), project(false))).getWarnings().join("\n");
+		expect(warning).toContain("octocode trust add");
+		expect(warning).not.toContain("/reload");
+	});
+
+	it("lists project files with scope and trust", async () => {
+		write(globalFile(), provider("g"));
+		write(projectFile(), provider("p"));
+		const files = await customModelsFiles(
+			{ ownDir: sandbox.agentDir, piDirs: [], project: { cwd: sandbox.cwd, trusted: false } },
+			false,
+			{},
+		);
+		expect(files.map((f) => [f.scope, f.trusted, f.exists, f.defines])).toEqual([
+			["project", false, true, []],
+			["global", true, true, ["g"]],
+		]);
+		const trusted = await customModelsFiles(
+			{ ownDir: sandbox.agentDir, piDirs: [], project: { cwd: sandbox.cwd, trusted: true } },
+			false,
+			{},
+		);
+		expect(trusted[0]).toMatchObject({ scope: "project", trusted: true, defines: ["p"], shadows: [] });
+		write(projectFile(), provider("g"));
+		const shadowing = await customModelsFiles(
+			{ ownDir: sandbox.agentDir, piDirs: [], project: { cwd: sandbox.cwd, trusted: true } },
+			false,
+			{},
+		);
+		expect(shadowing[0]?.shadows).toEqual(["g"]);
 	});
 });
 

@@ -8,10 +8,6 @@ import type { McpServerEntry } from "../src/config.ts";
 import { DEFAULT_MCP_PRESENTATION, McpPresentation } from "../src/presentation/index.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
 
-/**
- * `declared` presentation (the default): each tool's declaration carries the server's own description and full input
- * JSON Schema, and the prompt's block holds the server's instructions only. Deferred tools keep their index lines.
- */
 const echo = join(import.meta.dirname, "../../coding-agent/test/octocode/fixtures/echo-mcp.mjs");
 const hosts: ReturnType<typeof mcpHost>[] = [];
 const host = (servers?: McpServerEntry[], options: Parameters<typeof mcpHost>[0] = {}) => {
@@ -45,12 +41,19 @@ const declarations = (h: ReturnType<typeof mcpHost>) =>
 	);
 
 describe("declared MCP presentation", () => {
-	it("is the default", () => {
+	it("starts an open tool thin with its full validation schema under the defaults, even when frequently used", async () => {
 		expect(DEFAULT_MCP_PRESENTATION).toBe("declared");
+		const { h } = host([entry("docs")], { recentTools: new Set(["docs/shout"]) });
+		await h.start();
+		await h.prompt();
+		const tool = h.state.findServer("docs")!.connection!.tools.find((item) => item.name === "shout")!;
+		const declared = h.tools.get("mcp__docs__shout")!;
+		expect(declared.description).toBe(tool.description);
+		expect(declared.parameters).not.toEqual(tool.inputSchema);
+		expect(declared.validationParameters).toEqual(tool.inputSchema);
 	});
 
 	it("declares each tool with the server's description and full input schema, and the block holds instructions only", async () => {
-		// Every tool direct: the bundled server follows the deferred default (`mcpExposure: "recent"`) like any other.
 		const { h, agentDir } = host(undefined, { exposure: "direct" });
 		await h.start();
 		const { mcps } = await h.prompt();

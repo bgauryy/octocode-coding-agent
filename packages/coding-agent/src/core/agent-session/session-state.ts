@@ -5,6 +5,7 @@
  * `AgentSessionApi` (`./api.ts`).
  */
 
+import { inputRoomTokens } from "../compaction/settings.ts";
 import type { AgentMessage, AgentState, Agent, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmingStatus } from "../cache-warmer.ts";
@@ -204,6 +205,9 @@ export abstract class AgentSessionState {
 			model,
 			this.routedModel?.thinkingLevel ?? this.thinkingLevel,
 		);
-		return { ...usage, compactionThreshold: Math.max(0, usage.contextWindow - settings.reserveTokens) };
+		return {
+			...usage,
+			compactionThreshold: inputRoomTokens(usage.contextWindow, settings.reserveTokens, settings.maxInputTokens),
+		};
 	}
 }

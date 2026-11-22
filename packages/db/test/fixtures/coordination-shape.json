@@ -378,6 +378,11 @@
       "children TEXT NOT NULL DEFAULT '[]'",
       "cwd TEXT"
     ],
+    "provider_cooldowns": [
+      "provider TEXT NOT NULL PK1",
+      "until_ms INTEGER NOT NULL",
+      "pause_ms INTEGER NOT NULL"
+    ],
     "session_forks": [
       "child_id TEXT PK1",
       "parent_id TEXT NOT NULL",

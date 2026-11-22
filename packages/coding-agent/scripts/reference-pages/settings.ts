@@ -58,6 +58,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 	},
 	{
 		heading: "Sessions, queues and tools",
+		intro: "For MCP declaration states and overrides, see [tool exposure](configuration.md#tool-exposure).",
 		fields: [
 			"sessionDir",
 			"retention",

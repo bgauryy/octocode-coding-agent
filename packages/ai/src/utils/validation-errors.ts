@@ -1,4 +1,6 @@
 import type { TLocalizedValidationError } from "typebox/error";
+import type { Tool, ToolCall, ToolValidationFailure } from "../types.ts";
+import type { getToolValidator } from "./validation-compiler.ts";
 import { describeReceivedArguments } from "./json-parse.ts";
 
 /** Dotted path of a schema validation error, naming the missing property for `required`; "root" for the whole value. */
@@ -36,16 +38,27 @@ function formatAllowed(values: unknown[]): string {
 	return unique.length === 1 ? `expected ${unique[0]}` : `expected one of ${unique.join(", ")}`;
 }
 
+function unexpectedNames(error: ValidationError): string[] | undefined {
+	if (error.keyword === "additionalProperties" || error.keyword === "unevaluatedProperties")
+		return (error.params as Record<string, string[]>)[error.keyword];
+	return undefined;
+}
+
 function describeError(error: ValidationError): string {
 	const path = formatValidationPath(error);
 	const allowed = allowedValues(error);
 	if (allowed) return `${path}: ${formatAllowed(allowed)}`;
-	if (error.keyword === "additionalProperties") {
-		const names = (error.params as { additionalProperties?: string[] }).additionalProperties;
-		if (names?.length)
-			return `${path}: unexpected ${names.length === 1 ? "property" : "properties"} ${names.join(", ")}`;
-	}
+	const names = unexpectedNames(error);
+	if (names?.length) return `${path}: unexpected ${names.length === 1 ? "property" : "properties"} ${names.join(", ")}`;
 	return `${path}: ${error.message}`;
+}
+
+/** Array elements can fail at the same schema path. Keep each element's alternatives with its own union. */
+function insideUnion(error: ValidationError, union: ValidationError, schemaPrefix: string): boolean {
+	return (
+		error.schemaPath.startsWith(schemaPrefix) &&
+		(error.instancePath === union.instancePath || error.instancePath.startsWith(`${union.instancePath}/`))
+	);
 }
 
 /** Errors of each alternative of a union error, keyed by alternative index. */
@@ -53,7 +66,7 @@ function alternativesOf(union: ValidationError, errors: ValidationError[]): Map<
 	const prefix = `${union.schemaPath}/${union.keyword}/`;
 	const byAlternative = new Map<number, ValidationError[]>();
 	for (const error of errors) {
-		if (!error.schemaPath.startsWith(prefix) || error.instancePath.length < union.instancePath.length) continue;
+		if (!insideUnion(error, union, prefix)) continue;
 		const index = Number.parseInt(error.schemaPath.slice(prefix.length), 10);
 		if (Number.isNaN(index)) continue;
 		byAlternative.set(index, [...(byAlternative.get(index) ?? []), error]);
@@ -66,9 +79,9 @@ function alternativesOf(union: ValidationError, errors: ValidationError[]): Map<
  * allowed; otherwise the errors of the alternative the value came closest to (the discriminator
  * matched, then the fewest errors).
  */
-function summarizeUnion(union: ValidationError, errors: ValidationError[]): string[] {
+function summarizeUnion(union: ValidationError, errors: ValidationError[], describe: typeof describeError): string[] {
 	const alternatives = [...alternativesOf(union, errors).values()];
-	if (alternatives.length === 0) return [describeError(union)];
+	if (alternatives.length === 0) return [describe(union)];
 	const literalErrors = alternatives.map((errs) => errs.find((error) => allowedValues(error)));
 	const [first] = literalErrors;
 	if (first && literalErrors.every((error) => error?.instancePath === first.instancePath)) {
@@ -83,19 +96,19 @@ function summarizeUnion(union: ValidationError, errors: ValidationError[]): stri
 			? b
 			: a,
 	);
-	return summarizeValidationErrors(best);
+	return summarizeValidationErrors(best, describe);
 }
 
 /** Readable lines for validation errors: failing paths with allowed values, without per-alternative union noise. */
-function summarizeValidationErrors(errors: ValidationError[]): string[] {
+function summarizeValidationErrors(errors: ValidationError[], describe: typeof describeError): string[] {
 	const consumed = new Set<ValidationError>();
 	const unions = errors.filter(isUnion).sort((a, b) => a.schemaPath.length - b.schemaPath.length);
 	const replacement = new Map<ValidationError, string[]>();
 	for (const union of unions) {
 		if (consumed.has(union)) continue;
 		const prefix = `${union.schemaPath}/${union.keyword}/`;
-		for (const error of errors) if (error.schemaPath.startsWith(prefix)) consumed.add(error);
-		replacement.set(union, summarizeUnion(union, errors));
+		for (const error of errors) if (insideUnion(error, union, prefix)) consumed.add(error);
+		replacement.set(union, summarizeUnion(union, errors, describe));
 	}
 	const lines: string[] = [];
 	const literalLines = new Map<string, { index: number; values: unknown[]; path: string }>();
@@ -116,7 +129,7 @@ function summarizeValidationErrors(errors: ValidationError[]): string[] {
 			}
 			continue;
 		}
-		lines.push(...(replacement.get(error) ?? [describeError(error)]));
+		lines.push(...(replacement.get(error) ?? [describe(error)]));
 	}
 	for (const { index, values, path } of literalLines.values()) lines[index] = `${path}: ${formatAllowed(values)}`;
 	return [...new Set(lines)];
@@ -151,30 +164,64 @@ function misplacedFieldLines(errors: ValidationError[], schema: unknown, args: u
 	return [...new Set(lines)];
 }
 
-/** Message body for a failed validation: the problems, then a capped echo of the arguments. */
-export function formatValidationFailure(
-	toolName: string,
-	errors: ValidationError[],
-	args: unknown,
-	schema?: unknown,
-): string {
-	const lines = [...misplacedFieldLines(errors, schema, args), ...summarizeValidationErrors(errors)].map(
-		(line) => `  - ${line}`,
-	);
-	const problems = lines.join("\n") || "Unknown validation error";
-	const received = describeReceivedArguments(JSON.stringify(args) ?? "undefined");
-	return `Validation failed for tool "${toolName}":\n${problems}\n\n${received}`;
-}
-
 /** The top-level properties the problems sit at or under; an unexpected root property counts by its own name. */
-export function failingProperties(errors: ValidationError[]): string[] {
+function failingProperties(errors: ValidationError[]): string[] {
 	const names = new Set<string>();
 	for (const error of errors) {
 		const [, top] = error.instancePath.split("/");
 		if (top) names.add(top);
-		else
-			for (const name of (error.params as { additionalProperties?: string[] }).additionalProperties ?? [])
-				names.add(name);
+		else for (const name of unexpectedNames(error) ?? []) names.add(name);
 	}
 	return [...names];
+}
+
+/** A validator may stop midway through a union's errors. Its partial branch cannot identify the accepted fields. */
+function reportedBranch(error: ValidationError, errors: ValidationError[]): boolean {
+	for (const branch of error.schemaPath.matchAll(/\/(oneOf|anyOf)\/\d+(?=\/|$)/g)) {
+		const path = error.schemaPath.slice(0, branch.index);
+		if (
+			!errors.some(
+				(union) => union.schemaPath === path && union.keyword === branch[1] && insideUnion(error, union, path),
+			)
+		)
+			return false;
+	}
+	return true;
+}
+
+/** The error for arguments `validator` rejects: each problem, then the tool's `validationHint`. */
+export function validationFailure(
+	tool: Tool,
+	toolCall: ToolCall,
+	validator: ReturnType<typeof getToolValidator>,
+	args: unknown,
+	schema: unknown,
+): Error {
+	const errors = [...validator.Errors(args)];
+	const unexpected: NonNullable<ToolValidationFailure["unexpected"]> = [];
+	const problems = summarizeValidationErrors(errors, (error) => {
+		const names = unexpectedNames(error);
+		if (names?.length)
+			unexpected.push({
+				instancePath: error.instancePath,
+				...(reportedBranch(error, errors) ? { schemaPath: error.schemaPath } : {}),
+				names,
+			});
+		return describeError(error);
+	});
+	const lines = [...misplacedFieldLines(errors, schema, toolCall.arguments), ...problems].map((line) => `  - ${line}`);
+	const received = describeReceivedArguments(JSON.stringify(toolCall.arguments) ?? "undefined");
+	const failure = `Validation failed for tool "${toolCall.name}":\n${lines.join("\n") || "Unknown validation error"}\n\n${received}`;
+	// An envelope mistake: properties the root does not allow, with no problem inside a nested value. A `boolean` error
+	// ("schema is false") sits at the unexpected property itself; its sibling at the object names it.
+	const located = errors.filter((error) => error.keyword !== "boolean");
+	const hint = tool.validationHint?.({
+		arguments: toolCall.arguments,
+		properties: failingProperties(located),
+		unexpected,
+		accepts: (example) => validator.Check(example),
+		envelope:
+			located.every((error) => error.instancePath === "") && located.some((error) => unexpectedNames(error)?.length),
+	});
+	return new Error(hint ? `${failure}\n\n${hint}` : failure);
 }

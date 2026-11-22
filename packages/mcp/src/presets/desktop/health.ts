@@ -31,15 +31,10 @@ export function compareVersions(a: string, b: string): number {
 	return 0;
 }
 
-const versions = new Map<string, string | undefined>();
-
-/** The version `command --version` prints (`cua-driver 0.30.4` gives `0.30.4`), or undefined when it does not answer. Remembered per command. */
+/** The version printed by the selected executable, when its probe succeeds. */
 export function driverVersion(command: string, runner: DriverRunner = run): string | undefined {
-	if (runner === run && versions.has(command)) return versions.get(command);
 	const answer = runner(command, ["--version"]);
-	const version = answer?.status === 0 ? /(\d+\.\d+\.\d+\S*)/.exec(answer.stdout)?.[1] : undefined;
-	if (runner === run) versions.set(command, version);
-	return version;
+	return answer?.status === 0 ? /(\d+\.\d+\.\d+\S*)/.exec(answer.stdout)?.[1] : undefined;
 }
 
 /** One line for the `/mcp` row when the Driver is older than the recorded floor, else undefined (an unknown version says nothing). */
@@ -78,4 +73,20 @@ export function healthWarnings(
 		: [
 				`Cua Driver has no ${missing.join(" or ")} permission, so desktop control will fail: run \`cua-driver permissions grant\` and approve the dialogs.`,
 			];
+}
+
+const probes = new Map<string, { attempts: number; next: number }>();
+const RETRY_DELAY_MS = 60_000;
+const MAX_VERSION_ATTEMPTS = 3;
+
+/** Each executable announces its warnings once. An inconclusive version can be retried on a later warning drain. */
+export function takeDriverWarnings(command: string, runner: DriverRunner = run, now = Date.now()): string[] {
+	const previous = probes.get(command);
+	if (previous && now < previous.next) return [];
+	const version = driverVersion(command, runner);
+	const attempts = (previous?.attempts ?? 0) + 1;
+	const next = version || attempts >= MAX_VERSION_ATTEMPTS ? Infinity : now + RETRY_DELAY_MS * attempts;
+	probes.set(command, { attempts, next });
+	const notice = versionNotice(version);
+	return [...(notice ? [notice] : []), ...(previous ? [] : healthWarnings(command, process.platform, runner))];
 }

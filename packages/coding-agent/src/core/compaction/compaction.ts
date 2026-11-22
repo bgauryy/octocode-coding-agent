@@ -16,7 +16,7 @@ import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
 import { generateTurnPrefixSummary } from "./bounded-summary.ts";
 import { ledgerDetails, type LiftedBullet } from "./ledger.ts";
-import { replyFloorTokens } from "./settings.ts";
+import { inputRoomTokens, replyFloorTokens } from "./settings.ts";
 import { generateSummaryWithUsage } from "./summarization.ts";
 import type { SummaryFocus } from "./summary-focus.ts";
 import { withTurnContext } from "./summary-format.ts";
@@ -89,6 +89,7 @@ function getMessagesFromProjectedEntryForCompaction(entry: ProjectedSessionEntry
 // ============================================================================
 
 export interface CompactionSettings {
+	maxInputTokens?: number;
 	enabled: boolean;
 	reserveTokens: number;
 	keepRecentTokens: number;
@@ -102,7 +103,7 @@ export interface CompactionSettings {
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled || !(contextWindow > 0)) return false;
-	return contextTokens > contextWindow - settings.reserveTokens;
+	return contextTokens > inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens);
 }
 
 /**
@@ -117,7 +118,10 @@ export function exceedsContextWindow(
 	maxOutputTokens?: number,
 ): boolean {
 	if (!settings.enabled || !(contextWindow > 0)) return false;
-	return contextTokens + replyFloorTokens(settings.reserveTokens, maxOutputTokens) > contextWindow;
+	return (
+		contextTokens >
+		inputRoomTokens(contextWindow, replyFloorTokens(settings.reserveTokens, maxOutputTokens), settings.maxInputTokens)
+	);
 }
 
 // Compaction Preparation (for features)

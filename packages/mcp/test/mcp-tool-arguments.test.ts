@@ -61,6 +61,46 @@ describe("MCP tool arguments", () => {
 		expect(sent).toEqual([args]);
 	});
 
+	it("refuses invented names on each attempt, identifies sibling fields and forwards only the valid control", async () => {
+		const sent: Record<string, unknown>[] = [];
+		const tool = define(
+			{
+				...OCTOCODE,
+				$defs: {
+					query: {
+						...ITEM,
+						properties: {
+							...ITEM.properties,
+							maxDepth: { type: "integer" },
+							testCode: { enum: ["include", "exclude"] },
+						},
+					},
+				},
+			},
+			sent,
+		);
+		const run = async (args: Record<string, unknown>) =>
+			tool.execute("c", validate(tool, args), undefined, undefined, {} as never);
+		for (const key of ["maxDepthValue", "testCodeinclude"]) {
+			const args = { queries: [{ path: "a", [key]: 3 }] };
+			for (let attempt = 0; attempt < 2; attempt++) {
+				const refusal = await run(args).then(
+					() => {
+						throw new Error("expected refusal");
+					},
+					(error: Error) => error.message,
+				);
+				expect(refusal).toContain(`queries.0: unexpected property ${key}`);
+				expect(refusal).toContain("Declared fields at /queries/0: path, reasoning, maxDepth, testCode.");
+				expect(refusal).not.toMatch(/Send this call|split into calls/);
+			}
+		}
+		expect(sent).toEqual([]);
+		const valid = { queries: [{ path: "a", maxDepth: 3, testCode: "include" }] };
+		await run(valid);
+		expect(sent).toEqual([valid]);
+	});
+
 	it("keeps a reason the server declares", () => {
 		const tool = define({ type: "object", properties: { reason: { type: "string" } }, additionalProperties: false });
 		expect(validate(tool, { reason: "r" })).toEqual({ reason: "r" });
@@ -78,4 +118,57 @@ describe("MCP tool arguments", () => {
 			expect(() => validate(tool, args)).toThrow(/mcp__octocode__localFetch/);
 		}
 	});
+});
+
+it("reports the selected branch for each array element, including a referenced item union", () => {
+	const tool = define({
+		...OCTOCODE,
+		$defs: {
+			query: {
+				oneOf: ["file", "tree"].map((op) => ({
+					type: "object",
+					properties: { op: { const: op }, [op]: { type: "string" } },
+					required: ["op"],
+					unevaluatedProperties: false,
+				})),
+			},
+		},
+	});
+	const args = {
+		queries: [
+			{ op: "file", fileValue: "a" },
+			{ op: "tree", treeValue: "b" },
+		],
+	};
+	const failure = () => validate(tool, args);
+	expect(failure).toThrow(/queries\.0: unexpected property fileValue/);
+	expect(failure).toThrow(/queries\.1: unexpected property treeValue/);
+	expect(failure).toThrow(/Declared fields at \/queries\/0: op, file\./);
+	expect(failure).toThrow(/Declared fields at \/queries\/1: op, tree\./);
+});
+
+it("withholds sibling names from an incomplete union at the validator's error limit", () => {
+	const tool = define({
+		...OCTOCODE,
+		$defs: {
+			query: {
+				oneOf: ["file", "tree"].map((op) => ({
+					type: "object",
+					properties: { op: { const: op }, [op]: { type: "string" } },
+					required: ["op"],
+					additionalProperties: false,
+				})),
+			},
+		},
+	});
+	const run = () =>
+		validate(tool, {
+			queries: [
+				{ op: "file", a: 1 },
+				{ op: "tree", b: 1 },
+			],
+		});
+	expect(run).toThrow(/Declared fields at \/queries\/0: op, file\./);
+	expect(run).toThrow(/Load the full schema/);
+	expect(run).not.toThrow(/Declared fields at \/queries\/1: op, file\./);
 });

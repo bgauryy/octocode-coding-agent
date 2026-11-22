@@ -25,8 +25,8 @@ const nativeTool = (name: string) => ({
 });
 const settings = (value: object) => asSetup({ getSettings: () => value }) as never;
 /** Pinned, so no test reads the usage record of a real agent directory. */
-const DEFERRED = { nativeToolExposure: { web: "deferred", archive: "deferred" } };
-const DIRECT = { nativeToolExposure: { web: "direct" } };
+const DEFERRED = { nativeToolExposure: { models: "deferred", archive: "deferred" } };
+const DIRECT = { nativeToolExposure: { models: "direct" } };
 const serverSchema = {
 	type: "object",
 	properties: { queries: { type: "array", items: { type: "object", properties: { pattern: { type: "string" } } } } },
@@ -46,10 +46,10 @@ const mcpTool = (name: string, deferred: boolean) =>
 
 describe("schemas of deferred tools after a compaction", () => {
 	it("keeps the full schema beside a deferred declaration only", () => {
-		const web = withNativeDeferral(settings(DEFERRED), nativeTool("web") as never);
-		expect(deferredInputSchema(web.parameters)).toBe(web.validationParameters);
+		const plan = withNativeDeferral(settings(DEFERRED), nativeTool("models") as never);
+		expect(deferredInputSchema(plan.parameters)).toBe(plan.validationParameters);
 		expect(
-			deferredInputSchema(withNativeDeferral(settings(DIRECT), nativeTool("web") as never).parameters),
+			deferredInputSchema(withNativeDeferral(settings(DIRECT), nativeTool("models") as never).parameters),
 		).toBeUndefined();
 		// An MCP tool remembers the server's schema as the server gave it; a thin tool its block describes does not.
 		expect(deferredInputSchema(mcpTool("mcp__octocode__localSearch", true).parameters)).toBe(serverSchema);
@@ -63,50 +63,50 @@ describe("schemas of deferred tools after a compaction", () => {
 	});
 
 	it("lists the tools a session called, most recent first, each once", () => {
-		expect(calledTools([call("web", "bash"), { role: "user", content: "next" }, call("archive"), call("web")])).toEqual(
-			["web", "archive", "bash"],
-		);
-		expect(calledTools([{ role: "toolResult", toolName: "web", content: [] }, "text", null])).toEqual([]);
+		expect(
+			calledTools([call("models", "bash"), { role: "user", content: "next" }, call("archive"), call("models")]),
+		).toEqual(["models", "archive", "bash"]);
+		expect(calledTools([{ role: "toolResult", toolName: "models", content: [] }, "text", null])).toEqual([]);
 	});
 
 	it("restores whole schemas of called, active, deferred tools within the budget", () => {
-		const web = withNativeDeferral(settings(DEFERRED), nativeTool("web") as never);
+		const plan = withNativeDeferral(settings(DEFERRED), nativeTool("models") as never);
 		const search = mcpTool("mcp__octocode__localSearch", true);
 		const declared = [
-			web,
+			plan,
 			search,
 			nativeTool("bash"),
 			withNativeDeferral(settings(DEFERRED), nativeTool("archive") as never),
 		];
-		const active = ["web", "mcp__octocode__localSearch", "bash"];
-		const called = ["mcp__octocode__localSearch", "bash", "web", "archive", "gone"];
+		const active = ["models", "mcp__octocode__localSearch", "bash"];
+		const called = ["mcp__octocode__localSearch", "bash", "models", "archive", "gone"];
 		const restored = restoredSchemas(declared, active, called, RESTORE_SCHEMAS_CHARS)!;
 		// `bash` is declared in full, `archive` is not active, `gone` is not declared.
-		expect(restored.tools).toEqual(["mcp__octocode__localSearch", "web"]);
+		expect(restored.tools).toEqual(["mcp__octocode__localSearch", "models"]);
 		expect(restored.omitted).toEqual([]);
 		expect(restored.content).toMatch(/^\[After compaction\]/);
 		expect(restored.content).toContain(`mcp__octocode__localSearch\n${JSON.stringify(serverSchema)}`);
-		expect(restored.content).toContain(`web\n${JSON.stringify(web.validationParameters)}`);
+		expect(restored.content).toContain(`models\n${JSON.stringify(plan.validationParameters)}`);
 		// A schema that does not fit is left out whole and named; the next one that fits still comes back.
 		const tight = restoredSchemas(declared, active, called, restored.content.length - 10)!;
 		expect(tight.tools).toEqual(["mcp__octocode__localSearch"]);
-		expect(tight.omitted).toEqual(["web"]);
+		expect(tight.omitted).toEqual(["models"]);
 		expect(tight.content).not.toContain('"op"');
 		expect(restoredSchemas(declared, active, ["bash", "gone"], RESTORE_SCHEMAS_CHARS)).toBeUndefined();
 		expect(restoredSchemas(declared, active, called, 50)).toBeUndefined();
 	});
 
 	it("sends one hidden message after a compaction and does not repeat schemas the kept context still shows", async () => {
-		const web = withNativeDeferral(settings(DEFERRED), nativeTool("web") as never);
+		const plan = withNativeDeferral(settings(DEFERRED), nativeTool("models") as never);
 		const search = mcpTool("mcp__octocode__localSearch", true);
 		const sent: Array<{ message: Record<string, unknown>; options: unknown }> = [];
 		const api = asSetup({
-			getAllTools: () => [web, search] as never,
-			getActiveTools: () => ["web", "mcp__octocode__localSearch"],
+			getAllTools: () => [plan, search] as never,
+			getActiveTools: () => ["models", "mcp__octocode__localSearch"],
 			sendMessage: (message: Record<string, unknown>, options: unknown) => void sent.push({ message, options }),
 		});
 		const context: unknown[] = [];
-		const branch = [call("web"), call("mcp__octocode__localSearch")];
+		const branch = [call("models"), call("mcp__octocode__localSearch")];
 		const ctx = {
 			model: { contextWindow: 200_000 },
 			sessionManager: {
@@ -116,12 +116,12 @@ describe("schemas of deferred tools after a compaction", () => {
 				}),
 			},
 		} as never;
-		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual(["mcp__octocode__localSearch", "web"]);
+		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual(["mcp__octocode__localSearch", "models"]);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({
 			customType: RESTORED_SCHEMAS_TYPE,
 			display: false,
-			details: { tools: ["mcp__octocode__localSearch", "web"] },
+			details: { tools: ["mcp__octocode__localSearch", "models"] },
 		});
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		// The next compaction kept that message in its tail: nothing is sent again until another deferred tool is called.
@@ -133,7 +133,7 @@ describe("schemas of deferred tools after a compaction", () => {
 		context.length = 0;
 		expect(await restoreDeferredSchemas(api as never, ctx)).toEqual([]);
 		// A small window lowers the budget: a schema that no longer fits is not cut.
-		branch.splice(0, branch.length, call("web"));
+		branch.splice(0, branch.length, call("models"));
 		expect(
 			await restoreDeferredSchemas(api as never, { ...(ctx as object), model: { contextWindow: 1000 } } as never),
 		).toEqual([]);

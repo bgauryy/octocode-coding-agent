@@ -50,6 +50,7 @@ import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
 import { messageResumer } from "./message-resume.ts";
 import { spawnAgent } from "./spawn.ts";
+import { startGate } from "./rate-gate.ts";
 import type { SpawnEnv } from "./spawn-env.ts";
 import { recordRun, runDetails, tracker } from "./tracking.ts";
 import type { QaReviewer } from "../backlog/qa-gate.ts";
@@ -219,21 +220,15 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
 			const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 			const host = relayHost(ctx);
+			const onProgress = track(undefined);
+			const child = { task: message, args, cwd: ctx.cwd, profile: run.profile, identity: run.identity, host };
+			// Answered at once, its slot held: the child starts once its provider is not cooling down (`rate-gate.ts`).
 			const launch = (signal: AbortSignal) =>
 				record(
 					run,
 					details,
 					session,
-					runSubagent({
-						task: message,
-						args,
-						cwd: ctx.cwd,
-						profile: run.profile,
-						identity: run.identity,
-						signal,
-						onProgress: track(undefined),
-						host,
-					}),
+					startGate.wait(run.route, signal).then(() => runSubagent({ ...child, signal, onProgress })),
 				);
 			startBackground(
 				runs,

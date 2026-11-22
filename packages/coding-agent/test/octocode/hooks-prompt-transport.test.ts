@@ -164,3 +164,29 @@ it("routes evaluation through the configured model owner without tools or recurs
 	expect(stream.mock.calls[0]?.[1]).not.toHaveProperty("tools");
 	await expect(evaluate({ prompt: "check", signal, model: "missing" })).rejects.toThrow("model");
 });
+it("retries a rate-limited evaluation briefly, and throws the failure that remains", async () => {
+	vi.useFakeTimers();
+	try {
+		const model = { provider: "test", id: "judge" };
+		const limited = { stopReason: "error", content: [], errorMessage: "429 Too Many Requests" };
+		const answered = { stopReason: "stop", content: [{ type: "text", text: '{"ok":true}' }] };
+		const replies = [limited, answered];
+		const stream = vi.fn(() => ({ result: async () => replies.shift() ?? limited }));
+		const evaluate = createPromptEvaluator({
+			model,
+			modelRegistry: { getAll: () => [model], streamSimple: stream },
+		} as never);
+		const signal = new AbortController().signal;
+		const recovered = evaluate({ prompt: "check", signal });
+		await vi.runAllTimersAsync();
+		expect(await recovered).toBe('{"ok":true}');
+		expect(stream).toHaveBeenCalledTimes(2);
+		const failed = evaluate({ prompt: "check", signal }).catch((error: Error) => error.message);
+		await vi.runAllTimersAsync();
+		expect(await failed).toBe("429 Too Many Requests");
+		// The first call and two retries, within a few seconds.
+		expect(stream).toHaveBeenCalledTimes(5);
+	} finally {
+		vi.useRealTimers();
+	}
+});

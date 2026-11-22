@@ -21,6 +21,17 @@ export function modelWaitText(idleMs: number): string {
 	return `Model not answering for ${seconds(idleMs)}`;
 }
 
+/** A request waiting out its provider's rate-limit cool-down: whose, and until when (ms since the epoch). */
+export interface CooldownWait {
+	provider: string;
+	until: number;
+}
+
+/** The line that says a request waits for its provider's rate limit; when it goes out travels beside it. */
+export function cooldownWaitText(provider: string): string {
+	return `Waiting out ${provider} rate limit`;
+}
+
 /** The line that names the retry; when it starts travels beside it, so a client can count down. */
 export function retryText(attempt: number, maxAttempts: number): string {
 	return maxAttempts > 0 ? `Retry ${attempt} of ${maxAttempts}` : `Retry ${attempt}`;
@@ -58,12 +69,15 @@ export class ModelWaitWatch {
 	/** The request out now was already reported as stalled: a later silence of the same request is not news. */
 	private stallReported = false;
 
-	/** `emit` receives the quiet time in ms, and 0 once the quiet ends. */
-	private readonly emit: (idleMs: number) => void;
+	/** The request waits out its provider's rate-limit cool-down and has not gone out. */
+	private cooling = false;
+
+	/** `emit` receives the quiet time in ms, and 0 once the quiet ends; with `cooldown`, the wait for a cool-down. */
+	private readonly emit: (idleMs: number, cooldown?: CooldownWait) => void;
 	/** `stalled` receives the quiet time the first time a request's silence is shown, at most once per request. */
 	private readonly stalled: ((idleMs: number) => void) | undefined;
 
-	constructor(emit: (idleMs: number) => void, stalled?: (idleMs: number) => void) {
+	constructor(emit: (idleMs: number, cooldown?: CooldownWait) => void, stalled?: (idleMs: number) => void) {
 		this.emit = emit;
 		this.stalled = stalled;
 	}
@@ -73,6 +87,26 @@ export class ModelWaitWatch {
 		this.stallReported = false;
 		this.active();
 		if (!this.timer) this.schedule(MODEL_WAIT_AFTER_MS);
+	}
+
+	/**
+	 * The request waits out its provider's cool-down (`wait`), or that wait is over (`undefined`) and it goes out now. The
+	 * wait is shown as such and never counts as the model's silence, which counts from when the request goes out.
+	 */
+	cooldown(wait: CooldownWait | undefined): void {
+		if (wait) {
+			clearTimeout(this.timer);
+			this.timer = undefined;
+			this.lastActivity = 0;
+			this.shown = false;
+			this.cooling = true;
+			this.emit(0, wait);
+			return;
+		}
+		if (!this.cooling) return;
+		this.cooling = false;
+		this.emit(0);
+		this.requestSent();
 	}
 
 	/** A stream event of the request proves it is answering; a finished message, turn or run ends the wait. */
@@ -99,6 +133,10 @@ export class ModelWaitWatch {
 		clearTimeout(this.timer);
 		this.timer = undefined;
 		this.lastActivity = 0;
+		if (this.cooling) {
+			this.cooling = false;
+			this.emit(0);
+		}
 		this.unshow();
 	}
 

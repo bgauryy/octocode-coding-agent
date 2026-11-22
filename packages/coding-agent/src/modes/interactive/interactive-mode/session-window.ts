@@ -12,6 +12,7 @@ import { SessionWindowIndex } from "./session-window-index.ts";
 import type { SessionRenderOptions } from "./session-render-options.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { hasLiveFold } from "./live-window.ts";
+import { retriedAttemptIds } from "./retried-attempts.ts";
 
 /** Entries rendered by a rebuild, and added by each "load earlier". */
 export const RESUME_WINDOW_ENTRIES = 200;
@@ -31,6 +32,8 @@ interface WindowState {
 	entries: SessionEntry[];
 	index: SessionWindowIndex;
 	gaps: Gap[];
+	/** The retried attempts of all entries: an attempt and the edit that set it aside may fall in different ranges. */
+	retriedIds: ReadonlySet<string>;
 }
 const windows = new WeakMap<Container, WindowState>();
 
@@ -113,11 +116,16 @@ export function renderWindowedEntries(
 		floor,
 		options.liveToolIds ?? (options.liveTools && new Set(options.liveTools.keys())),
 	);
-	const state: WindowState = { entries, index, gaps: [] };
+	const retriedIds = options.retriedIds ?? retriedAttemptIds(entries);
+	const state: WindowState = { entries, index, gaps: [], retriedIds };
 	const seeds = [...range(Math.max(floor, entries.length - limit), entries.length), ...index.liveOwners.values()];
 	if (floor) seeds.push(0);
 	const selected = index.select(seeds);
-	state.gaps = renderInterval(host, state, 0, entries.length, selected, { ...options, toolState: new Map() });
+	state.gaps = renderInterval(host, state, 0, entries.length, selected, {
+		...options,
+		toolState: new Map(),
+		retriedIds,
+	});
 	if (state.gaps.length) windows.set(host.chatContainer, state);
 }
 
@@ -166,7 +174,10 @@ export function loadEarlierMessages(host: LoadEarlierHost): boolean {
 			if (!selectedGap) host.chatContainer.children.push(child);
 			else {
 				const { hidden, indices } = selectedGap;
-				replacements.set(hidden, renderInterval(host, state, hidden.start, hidden.end, indices, { toolState }));
+				replacements.set(
+					hidden,
+					renderInterval(host, state, hidden.start, hidden.end, indices, { toolState, retriedIds: state.retriedIds }),
+				);
 			}
 		}
 		state.gaps = state.gaps.flatMap((hidden) => replacements.get(hidden) ?? [hidden]);

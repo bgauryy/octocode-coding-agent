@@ -497,17 +497,25 @@ describe("subagents", () => {
 
 	it("advises waiting or running fewer at once after a provider rate limit, not a narrower task", () => {
 		const route = { model: "a/claude-haiku", parent: "a/claude-opus", via: "profile researcher: small" };
-		for (const error of [
-			"Error: 429 Quota or rate limit exceeded",
-			"Too Many Requests",
-			"overloaded_error: Overloaded",
-		]) {
+		for (const error of ["Error: 429 Quota or rate limit exceeded", "Too Many Requests"]) {
 			const text = failedNext(route, error, false);
 			expect(text, error).not.toContain(FAILED_NEXT);
-			expect(text, error).toMatch(/wait/i);
+			expect(text, error).toMatch(/rate-limited.*wait.*fewer subagents/i);
 			expect(text, error).toContain("Ran on a/claude-haiku");
 		}
 		expect(failedNext(route, "tool crashed", false)).toContain(FAILED_NEXT);
+	});
+
+	it("words an overloaded or dropped provider as a transient failure, not a rate limit", () => {
+		const same = { model: "a/claude-haiku", parent: "a/claude-opus" };
+		const other = { model: "b/glm", parent: "a/claude-opus" };
+		for (const error of ["overloaded_error: Overloaded", "529 Overloaded", "socket hang up"]) {
+			const text = failedNext(same, error, false);
+			expect(text, error).not.toContain(FAILED_NEXT);
+			expect(text, error).not.toMatch(/rate-limited|fewer subagents/);
+			expect(text, error).toMatch(/wait.*another provider's model/i);
+		}
+		expect(failedNext(other, "529 Overloaded", false)).toMatch(/retry with model: "a\/claude-opus"/i);
 	});
 
 	it("makes a call past the limit wait for a slot, first come first served, and lets it give up", async () => {

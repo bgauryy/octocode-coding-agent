@@ -2,6 +2,7 @@ import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { HookEvent } from "./catalog.ts";
 import { type HookPrompt, type HookRun, HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
+import { INTERACTIVE_RETRY, retrySideCall } from "../shared/side-retry.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -10,6 +11,10 @@ export type PromptEvaluator = (request: { prompt: string; model?: string; signal
 
 const HOOK_EVALUATION_SYSTEM_PROMPT = renderPrompt("hooks/evaluation.md");
 
+/**
+ * Evaluates a prompt hook on its model (the session's when it names none). The turn waits on it, so a rate limit or
+ * transient failure gets a short retry within the hook's own timeout; a failure that remains throws.
+ */
 export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "modelRegistry">): PromptEvaluator {
 	return async (request) => {
 		const candidates = request.model
@@ -19,16 +24,15 @@ export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "model
 			: [];
 		const model = request.model ? (candidates.length === 1 ? candidates[0] : undefined) : ctx.model;
 		if (!model) throw new Error("Prompt hook model is unavailable or ambiguous");
-		const response = await ctx.modelRegistry
-			.streamSimple(
-				model,
-				{
-					systemPrompt: HOOK_EVALUATION_SYSTEM_PROMPT,
-					messages: [{ role: "user", content: request.prompt, timestamp: Date.now() }],
-				},
-				{ signal: request.signal, maxTokens: 1024 },
-			)
-			.result();
+		const context = {
+			systemPrompt: HOOK_EVALUATION_SYSTEM_PROMPT,
+			messages: [{ role: "user" as const, content: request.prompt, timestamp: Date.now() }],
+		};
+		const response = await retrySideCall(
+			() => ctx.modelRegistry.streamSimple(model, context, { signal: request.signal, maxTokens: 1024 }).result(),
+			INTERACTIVE_RETRY,
+			request.signal,
+		);
 		if (response.stopReason === "error" || response.stopReason === "aborted")
 			throw new Error(response.errorMessage || "Prompt evaluation failed");
 		return response.content

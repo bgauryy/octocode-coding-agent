@@ -52,8 +52,12 @@ export type AgentSessionEvent =
 			elapsedMs: number;
 			receivedChars: number;
 	  }
-	/** A model request has sent nothing for `idleMs` (refreshed every few seconds); 0 once it answers or ends. */
-	| { type: "model_wait"; idleMs: number }
+	/**
+	 * A model request has sent nothing for `idleMs` (refreshed every few seconds); 0 once it answers or ends. With
+	 * `cooldown`, the request has not gone out yet: it waits until `until` (ms since the epoch) for `provider`'s rate-limit
+	 * cool-down, and its silence counts from when it goes out; the next `model_wait` without it ends that wait.
+	 */
+	| { type: "model_wait"; idleMs: number; cooldown?: { provider: string; until: number } }
 	| { type: "entry_appended"; entry: SessionEntry }
 	| { type: "session_info_changed"; name: string | undefined; source?: SessionNameSource }
 	| { type: "session_context_changed" }
@@ -81,6 +85,7 @@ export type AgentSessionEvent =
 			success: boolean;
 			attempt: number;
 			finalError?: string;
+			cancelledBeforeRetry?: true;
 			/** How long the machine was offline, when the series ended an outage. */
 			offlineMs?: number;
 	  }
@@ -150,6 +155,8 @@ export interface AgentSessionConfig {
 	baseToolsOverride?: Record<string, AgentTool>;
 	/** Mutable ref used by Agent to access the current FeatureHost */
 	featureHostRef?: { current?: FeatureHost };
+	/** Set by the session: hears when one of its turn's requests waits out a provider's rate-limit cool-down, and its end. */
+	cooldownWaitRef?: { current?: (wait: { provider: string; until: number } | undefined) => void };
 	/** Session start event metadata emitted when features bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
 }
@@ -231,3 +238,6 @@ export interface PendingUserInput {
 	/** Set when the input is not what its source implies: a held message released after a compaction is "queued". */
 	origin?: InputOrigin;
 }
+
+/** Custom session entry whose data is the failed message ID when a retry wait was cancelled. */
+export const RETRY_CANCELLED_ENTRY = "octocode-retry-cancelled";

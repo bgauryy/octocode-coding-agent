@@ -6,8 +6,8 @@ import setup from "./vitest.tmp.global.ts";
  */
 let teardown: (() => Promise<void>) | undefined;
 
-export function globalSetup(): void {
-	teardown = setup();
+export async function globalSetup(): Promise<void> {
+	teardown = await setup();
 }
 
 export async function globalTeardown(): Promise<void> {

@@ -46,8 +46,10 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 		}
 
 		case "abort": {
+			// A Stop withdraws the queued input (`AgentSession.abort`): the response gives it back for the client to restore.
+			const withdrawn = host.session.clearQueue();
 			await host.session.abort();
-			return success(id, "abort");
+			return success(id, "abort", withdrawn);
 		}
 
 		case "clear_queue": {

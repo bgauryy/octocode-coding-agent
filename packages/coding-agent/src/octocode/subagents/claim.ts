@@ -1,8 +1,11 @@
 import { configuredSubagentModels } from "./configured-models.ts";
 import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
-import { maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
+import type { Api, Model } from "@octocodeai/octocode-ai";
+import { MAX_SUBAGENTS_ENV } from "./concurrency.ts";
 export { machineSubagents, maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
+import type { Slots } from "./slots.ts";
+export { Slots } from "./slots.ts";
 import { modelAvailableToChild, modelEnabled, sessionOnlyProvider } from "./task-model-visibility.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
@@ -79,55 +82,6 @@ export function subagentLimitError(active: Iterable<string>, limit: number): str
 	return `${ids.length} subagents are already running${ids.length ? ` (${ids.join(", ")})` : ""}; the limit is ${limit}. Wait for one to finish (background answers arrive as messages), pass the work to a running subagent with \`agent\` type \`message\`, or do it yourself. The limit is set by ${MAX_SUBAGENTS_ENV}.`;
 }
 
-/**
- * Subagent slots under `maxSubagents()`. A call past the limit waits, first come first served, until a run gives its
- * slot back; its signal (Esc, a turn abort) gives up the wait. A slot given back passes straight to the next waiter.
- */
-export class Slots {
-	private taken = 0;
-	private readonly waiting: Array<() => void> = [];
-
-	private readonly limit: () => number;
-	constructor(limit: () => number = maxSubagents) {
-		this.limit = limit;
-	}
-
-	/** Takes a free slot without waiting; false when all are in use or someone already waits. */
-	tryTake(): boolean {
-		if (this.waiting.length > 0 || this.taken >= this.limit()) return false;
-		this.taken += 1;
-		return true;
-	}
-
-	/** Takes a slot, waiting while all are in use; `onWait` hears how many run when the wait begins. */
-	async take(signal: AbortSignal | undefined, onWait?: (running: number) => void): Promise<void> {
-		signal?.throwIfAborted();
-		if (this.tryTake()) return;
-		onWait?.(this.taken);
-		await new Promise<void>((resolve, reject) => {
-			const grant = () => {
-				signal?.removeEventListener("abort", cancel);
-				resolve();
-			};
-			const cancel = () => {
-				const index = this.waiting.indexOf(grant);
-				if (index >= 0) this.waiting.splice(index, 1);
-				reject(new Error("Cancelled while waiting for a subagent slot."));
-			};
-			this.waiting.push(grant);
-			signal?.addEventListener("abort", cancel, { once: true });
-			// onWait may abort synchronously before the listener is installed.
-			if (signal?.aborted) cancel();
-		});
-	}
-
-	give(): void {
-		const next = this.waiting.shift();
-		if (next) next();
-		else this.taken = Math.max(0, this.taken - 1);
-	}
-}
-
 /** State of one agent tool registration; a replaced session starts clean. */
 export interface AgentRuns {
 	api: FeatureSetup;
@@ -188,6 +142,8 @@ export interface Run {
 	profile: AgentProfile | undefined;
 	/** The model it runs on (the parent's when nothing else routes); `fallback` is the profile's unavailable preference. */
 	route: RunRoute;
+	/** The model the run resolves to among the available ones (the parent's when nothing else routes); absent without a registry. */
+	model?: Model<Api>;
 	/** How the model's provider is billed (`deriveAgentRoute`); absent when the registry could not say. */
 	agentRoute?: AgentRoute;
 	/** Why the run starts without the team (its database is unusable), for the result. */
@@ -387,5 +343,13 @@ export function claimRun(
 		childModel && ctx.modelRegistry?.billedBySubscription
 			? deriveAgentRoute({ subscription: ctx.modelRegistry.billedBySubscription(childModel.provider, "child") })
 			: undefined;
-	return { identity, profile, route, ...(agentRoute ? { agentRoute } : {}), teamNote, release };
+	return {
+		identity,
+		profile,
+		route,
+		...(childModel ? { model: childModel } : {}),
+		...(agentRoute ? { agentRoute } : {}),
+		teamNote,
+		release,
+	};
 }

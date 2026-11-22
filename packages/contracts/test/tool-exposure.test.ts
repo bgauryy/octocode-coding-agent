@@ -12,7 +12,7 @@ const list: ToolExposureList = {
 			name: "native",
 			pinnable: true,
 			tools: [
-				{ name: "web", pin: "deferred", state: "deferred", decidedBy: "pin" },
+				{ name: "archive", pin: "deferred", state: "deferred", decidedBy: "pin" },
 				{ name: "bash", state: "direct", decidedBy: "core" },
 			],
 		},
@@ -31,8 +31,10 @@ describe("tool exposure contract", () => {
 	it("accepts the read model and refuses a state, a reason or a field it does not know", () => {
 		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
 		const withRow = (row: unknown) => ({ ...list, groups: [{ ...list.groups[0], tools: [row] }] });
-		expect(Value.Check(ToolExposureListSchema, withRow({ name: "web", state: "full", decidedBy: "pin" }))).toBe(false);
-		expect(Value.Check(ToolExposureListSchema, withRow({ name: "web", state: "direct", decidedBy: "luck" }))).toBe(
+		expect(Value.Check(ToolExposureListSchema, withRow({ name: "archive", state: "full", decidedBy: "pin" }))).toBe(
+			false,
+		);
+		expect(Value.Check(ToolExposureListSchema, withRow({ name: "archive", state: "direct", decidedBy: "luck" }))).toBe(
 			false,
 		);
 		expect(Value.Check(ToolExposureListSchema, withRow({ name: "a\nb", state: "direct", decidedBy: "pin" }))).toBe(
@@ -44,7 +46,7 @@ describe("tool exposure contract", () => {
 	it("accepts the usage decider with an audit and refuses an audit that is out of range or has unknown fields", () => {
 		const audit = { declared: 25, called: 0, used: 0, refused: 0, rate: 0, reason: "unused", bytesSaved: 812 };
 		const withRow = (row: unknown) => ({ ...list, groups: [{ ...list.groups[0], tools: [row] }] });
-		const row = { name: "web", state: "deferred", decidedBy: "usage", audit };
+		const row = { name: "archive", state: "deferred", decidedBy: "usage", audit };
 		expect(Value.Check(ToolExposureListSchema, withRow(row))).toBe(true);
 		for (const bad of [
 			{ ...audit, rate: 2 },
@@ -59,7 +61,7 @@ describe("tool exposure contract", () => {
 		for (const command of [
 			{ kind: "mcp", server: "docs", tool: "search", pin: "hidden", scope: "global" },
 			{ kind: "mcp", server: "docs", tool: "search", pin: null, scope: "workspace", repoId: "session" },
-			{ kind: "native", tool: "web", pin: "deferred", scope: "global" },
+			{ kind: "native", tool: "archive", pin: "deferred", scope: "global" },
 			{ kind: "native", tool: "backlogPlan", pin: null, scope: "global" },
 			{ kind: "native", tool: "memory", pin: "direct", scope: "global" },
 			{ kind: "native", tool: "notify", pin: "deferred", scope: "global" },
@@ -74,11 +76,11 @@ describe("tool exposure contract", () => {
 			{ kind: "mcp", server: "docs", tool: "a\nb", pin: "direct", scope: "global" },
 			{ kind: "mcp", tool: "search", pin: "direct", scope: "global" },
 			{ kind: "native", tool: "bash", pin: "deferred", scope: "global" },
-			{ kind: "native", tool: "web", pin: "hidden", scope: "global" },
-			{ kind: "native", tool: "web", pin: "direct", scope: "project" },
-			{ kind: "native", tool: "web", pin: "direct", scope: "workspace", repoId: "../etc" },
-			{ kind: "native", tool: "web", pin: "direct", scope: "global", path: "/tmp/settings.json" },
-			{ kind: "native", tool: "web", scope: "global" },
+			{ kind: "native", tool: "archive", pin: "hidden", scope: "global" },
+			{ kind: "native", tool: "archive", pin: "direct", scope: "project" },
+			{ kind: "native", tool: "archive", pin: "direct", scope: "workspace", repoId: "../etc" },
+			{ kind: "native", tool: "archive", pin: "direct", scope: "global", path: "/tmp/settings.json" },
+			{ kind: "native", tool: "archive", scope: "global" },
 		])
 			expect(Value.Check(ToolPinCommandSchema, command), JSON.stringify(command)).toBe(false);
 	});

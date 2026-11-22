@@ -4,6 +4,7 @@ import {
 	type Api,
 	isCredentialError,
 	isModelAccessError,
+	isRateLimitedText,
 	isUsageLimitError,
 	type Model,
 	type Usage,
@@ -190,6 +191,9 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	const billing = !modelAccess && BILLING_ERROR.test(detail);
 	const limited = !modelAccess && !billing && !isCredentialError(detail) && isUsageLimitError(detail);
 	const refused = billing || limited || credentialRefused(detail);
+	// A throttle (the shared classifier's rate limit) is not a broken provider: it clears by waiting.
+	if (!refused && isRateLimitedText(detail))
+		return ` ⚠ rate limited (${source}, ${when}): ${detail} — wait, then check again`;
 	const label = billing
 		? "out of funds"
 		: limited
@@ -293,8 +297,9 @@ async function tinyRequest(
 /**
  * Check each provider and record whether it answered: by its model list where the provider has one, otherwise with one
  * tiny request. An entry may list several models of one provider: a refusal that is not about the credential tries the
- * next, since one model can be closed to an account that others serve. Providers run in parallel with a 20 s bound each;
- * results of a check the caller cancelled are not recorded.
+ * next, since one model can be closed to an account that others serve; a rate limit stops there, since every model of
+ * the provider shares the throttled key. Providers run in parallel with a 20 s bound each; results of a check the caller
+ * cancelled are not recorded.
  */
 export async function checkProviders(
 	registry: CheckRegistry,
@@ -323,7 +328,7 @@ export async function checkProviders(
 				for (const candidate of candidates) {
 					const refused = await tinyRequest(registry, candidate, bounded);
 					error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
-					if (!refused || credentialRefused(refused) || bounded.aborted) break;
+					if (!refused || credentialRefused(refused) || isRateLimitedText(refused) || bounded.aborted) break;
 				}
 				if (signal?.aborted) return;
 				if (error && bounded.aborted) error = `no answer within ${CHECK_TIMEOUT_MS / 1000} s (${error})`;

@@ -73,6 +73,18 @@ describe("skill listing budget", () => {
 			),
 		).not.toMatch(/\([^)]*$/);
 		expect(skillSummary("Short one.")).toBe("Short one.");
+		// A conjunction after a closed parenthesis is a clause break: the line never ends mid-clause.
+		expect(
+			skillSummary(
+				"Use to file, update, split, close or groom backlog items (what an item needs, research plans, follow-ups) or run a sprint review: close done items.",
+			),
+		).toBe("Use to file, update, split, close or groom backlog items (what an item needs, research plans, follow-ups)");
+		// No balanced clause break in the second half: cut before the open parenthesis, not inside it.
+		expect(
+			skillSummary(
+				"Use when the user asks for maintenance or a health sweep (dependencies, dead code, stale docs, lint drift, flaky tests, retention, worktrees, caches).",
+			),
+		).toBe("Use when the user asks for maintenance or a health sweep");
 	});
 
 	it("counts only the skills a model may load", () => {

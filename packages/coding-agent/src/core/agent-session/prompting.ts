@@ -1,6 +1,7 @@
 /** Sending user and custom messages to a session: start a run, queue into the current one, or append. */
 
-import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
+import type { ImageContent } from "@octocodeai/octocode-ai/compat";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
 	carriesClaudeSubscriptionToken,
 	CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL,
@@ -11,7 +12,6 @@ import {
 	formatNoApiKeyFoundMessage,
 	formatNoModelSelectedMessage,
 } from "../auth-guidance.ts";
-import { withInputOrigin } from "../input-origin.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionCompaction } from "./compaction-control.ts";
 import type { SessionInternals } from "./host.ts";
@@ -23,6 +23,7 @@ import {
 	throwIfFeatureCommand,
 	tryExecuteFeatureCommand,
 } from "./prompt-expansion.ts";
+import { startQueuedInput } from "./queued-start.ts";
 import type { SessionRunLoop } from "./run-loop.ts";
 import type { PendingUserInput, PromptOptions, QueuedInputDisposition, QueuedInputOptions } from "./types.ts";
 import { checkSessionDispatch, hasSessionDispatch } from "./dispatch.ts";
@@ -59,7 +60,8 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 
 	// Manual compaction runs with no agent run, but its summary must not race a turn: input waits in the queues an
 	// automatic compaction uses and is delivered by `releaseHeldInput` once the compaction ends.
-	const holding = session.isStreaming || host.compaction.isManualRunning;
+	const isHolding = () => session.isStreaming || host.compaction.isManualRunning;
+	const holding = isHolding();
 	const behavior = options?.streamingBehavior ?? (host.compaction.isManualRunning ? "followUp" : undefined);
 
 	// Emit input event for feature interception (before skill/template expansion)
@@ -92,25 +94,55 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		source: options?.source ?? "interactive",
 		expandedPaths,
 	};
-	const queueInput = async (mode: "steer" | "followUp"): Promise<void> => {
-		const queued = attachImagePaths
-			? await attachPromptPathImages(host, expandedText, currentImages, true)
-			: { text: expandedText, images: currentImages };
-		checkSessionDispatch(session);
-		await host.inputs.queue(mode, queued.text, queued.images, { ...input, images: queued.images });
-		preflightResult?.("queued");
-	};
 	// If streaming, queue via steer() or followUp() based on option
-	if (holding) {
-		if (!behavior) {
-			throw new Error(
-				"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
-			);
+	if (holding && !behavior) {
+		throw new Error(
+			"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+		);
+	}
+	// Input handlers, the auth check and image reads await, so a run may start or end meanwhile (a second prompt, a
+	// triggered custom message, released held input). Whether the message joins the run that holds input or starts its
+	// own is decided where it is queued or started, with no await in between: queued after its run ended, it would wait
+	// for an unrelated prompt and land after it. Queued input carries its images normalized; a run normalizes its own.
+	let queued: { text: string; images: ImageContent[] | undefined } | undefined;
+	let started: { text: string; images: ImageContent[] | undefined } | undefined;
+	let ready = false;
+	for (;;) {
+		checkSessionDispatch(session);
+		if (isHolding()) {
+			if (!queued) {
+				queued = attachImagePaths
+					? await attachPromptPathImages(host, expandedText, currentImages, true)
+					: { text: expandedText, images: currentImages };
+				continue;
+			}
+			await host.inputs.queue(behavior ?? "followUp", queued.text, queued.images, { ...input, images: queued.images });
+			preflightResult?.("queued");
+			return;
 		}
-		await queueInput(behavior === "followUp" ? "followUp" : "steer");
+		if (!ready) {
+			await assertCanStart(host);
+			ready = true;
+			continue;
+		}
+		const prepared =
+			queued ?? started ?? (attachImagePaths ? undefined : { text: expandedText, images: currentImages });
+		if (!prepared) {
+			started = await attachPromptPathImages(host, expandedText, currentImages, false);
+			continue;
+		}
+		await host.runLoop.startRun(
+			{ messageType: "user", prompt: prepared.text, images: prepared.images },
+			() => preflightResult?.("started"),
+			{ ...input, images: prepared.images },
+		);
 		return;
 	}
+}
 
+/** A run can start: a model is selected and its provider has credentials; otherwise the error says what to set up. */
+async function assertCanStart(host: PromptingHost): Promise<void> {
+	const { session } = host;
 	// Validate model
 	if (!session.model) {
 		throw new AuthRequiredError(formatNoModelSelectedMessage());
@@ -121,38 +153,19 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		session.modelRuntime.hasConfiguredAuth(session.model.provider) ||
 		(await session.modelRuntime.checkAuth(session.model.provider)) !== undefined;
 	checkSessionDispatch(session);
-	if (!hasConfiguredAuth) {
-		// Catalog availability hides rejected credentials; preserve their request diagnostic before calling them missing.
-		if (session.model.api === "anthropic-messages") {
-			const resolved = await session.modelRuntime.getAuth(session.model);
-			checkSessionDispatch(session);
-			if (
-				carriesClaudeSubscriptionToken(resolved?.auth.apiKey, { ...session.model.headers, ...resolved?.auth.headers })
-			)
-				throw new AuthRequiredError(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
-		}
-		const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
-		if (isOAuth) {
-			throw new AuthRequiredError(formatAuthExpiredMessage(session.model.provider));
-		}
-		throw new AuthRequiredError(formatNoApiKeyFoundMessage(session.model.provider));
+	if (hasConfiguredAuth) return;
+	// Catalog availability hides rejected credentials; preserve their request diagnostic before calling them missing.
+	if (session.model.api === "anthropic-messages") {
+		const resolved = await session.modelRuntime.getAuth(session.model);
+		checkSessionDispatch(session);
+		if (carriesClaudeSubscriptionToken(resolved?.auth.apiKey, { ...session.model.headers, ...resolved?.auth.headers }))
+			throw new AuthRequiredError(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
 	}
-
-	const started = attachImagePaths
-		? await attachPromptPathImages(host, expandedText, currentImages, false)
-		: { text: expandedText, images: currentImages };
-	checkSessionDispatch(session);
-	// Input handlers, the auth check and image reads await, so another submission (a second prompt, a triggered custom
-	// message, released held input) may have started a run meanwhile. Deliver after that run instead of starting a second.
-	if (session.isStreaming || host.compaction.isManualRunning) {
-		await queueInput(options?.streamingBehavior ?? "followUp");
-		return;
+	const isOAuth = session.modelRuntime.isUsingOAuth(session.model.provider);
+	if (isOAuth) {
+		throw new AuthRequiredError(formatAuthExpiredMessage(session.model.provider));
 	}
-	await host.runLoop.startRun(
-		{ messageType: "user", prompt: started.text, images: started.images },
-		() => preflightResult?.("started"),
-		{ ...input, images: started.images },
-	);
+	throw new AuthRequiredError(formatNoApiKeyFoundMessage(session.model.provider));
 }
 
 export async function queueUserInput(
@@ -185,6 +198,8 @@ export async function queueUserInput(
 			: { text: expandedText, images: processedInput.images };
 	const input: PendingUserInput = { text: processedInput.text, images: queued.images, source, expandedPaths };
 	await host.inputs.queue(behavior, queued.text, queued.images, input);
+	// Queued with no run to deliver it (none was running, or it ended while the input was prepared): it starts one.
+	releaseQueuedInput(host);
 	return "queued";
 }
 
@@ -236,52 +251,28 @@ export async function sendCustomMessage<T = unknown>(
 }
 
 /**
- * A manual compaction ended (saved, failed or cancelled): deliver what waited for it. One run starts with the first queued
- * message (steering before follow-ups); the agent loop delivers the rest of both queues in order. Held custom messages with
- * nothing queued are written now, behind the compaction entry. Nothing starts when a run or another submission is already
- * under way: the queues are drained by it.
+ * Deliver input that waits in the queues with nothing to deliver it: a manual compaction ended (saved, failed or
+ * cancelled), input was queued with no run, or a submission ended without starting one. One run starts with the first
+ * queued message (steering before follow-ups); the agent loop delivers the rest of both queues in order. Held custom
+ * messages with nothing queued are written now, behind the compaction entry. Nothing starts when a run, a manual
+ * compaction or another submission is already under way (the queues are drained by it), or once the session is being
+ * replaced or shut down (its interface carries the queue over).
  */
 export async function releaseHeldInput(host: PromptingHost): Promise<void> {
 	const { session, run, inputs } = host;
-	if (run.active || hasSessionDispatch(session)) return;
-	const next = session.agent.peekQueuedMessages()[0];
-	if (!next) {
+	if (run.active || hasSessionDispatch(session) || host.compaction.isManualRunning || host.runLoop.retiring) return;
+	if (!session.agent.hasQueuedMessages()) {
 		inputs.flushPendingCustomMessages();
 		return;
 	}
-	session.agent.removeQueuedMessage(next);
-	const sentFrom = inputs.consumeQueuedUserMessage(next);
-	if (next.role !== "user") {
-		if (next.role !== "custom") return;
-		await host.runLoop.startRun({ messageType: "custom", message: next });
-		return;
-	}
-	const { text, images } = splitUserContent(next.content);
-	const input = inputs.getUserInput(next);
-	// The run this starts is the queued message's: it carries the origin the message was sent from.
-	const start = () =>
-		host.runLoop.startRun(
-			{ messageType: "user", prompt: text, images },
-			undefined,
-			input ? { ...input, origin: "queued" } : { text, images, source: "interactive", origin: "queued" },
-		);
-	await (sentFrom ? withInputOrigin(sentFrom, start) : start());
+	await startQueuedInput({ session, inputs, startRun: (...args) => host.runLoop.startRun(...args) });
 }
 
-export function splitUserContent(content: string | (TextContent | ImageContent)[]): {
-	text: string;
-	images: ImageContent[] | undefined;
-} {
-	if (typeof content === "string") return { text: content, images: undefined };
-	const textParts: string[] = [];
-	let images: ImageContent[] | undefined = [];
-	for (const part of content) {
-		if (part.type === "text") {
-			textParts.push(part.text);
-		} else {
-			images.push(part);
-		}
-	}
-	if (images.length === 0) images = undefined;
-	return { text: textParts.join("\n"), images };
+/** `releaseHeldInput` without waiting for the run it starts; a run that fails is reported as a feature error. */
+export function releaseQueuedInput(host: PromptingHost): void {
+	// While agent_settled handlers run, the settling run delivers what waits once they are done.
+	if (host.run.active || host.run.isEmittingAgentSettled || !host.session.agent.hasQueuedMessages()) return;
+	releaseHeldInput(host).catch((error: unknown) => {
+		host.session.featureHost.emitError({ source: "<queue>", event: "queued_input", error: errorMessage(error) });
+	});
 }

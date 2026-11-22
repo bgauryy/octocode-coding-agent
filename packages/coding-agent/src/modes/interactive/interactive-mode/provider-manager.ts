@@ -7,6 +7,7 @@ import { type BadgeState } from "../../../theme/page-kit.ts";
 import { testAllProviders } from "./provider-test.ts";
 import { isProviderDisabled, setProviderEnabled } from "./provider-actions.ts";
 import { showProviderDetail } from "./provider-detail.ts";
+import { chooseProviderModels } from "./provider-models-page.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
 import {
@@ -18,7 +19,7 @@ import {
 } from "./provider-runners.ts";
 import { type PageContext, showSignIn } from "./provider-signin.ts";
 import { showProviderTemplates } from "./provider-template.ts";
-import { showSourcesPage } from "./provider-sources-page.ts";
+import { loadModelFiles, modelFileRows, showSourcesPage } from "./provider-sources-page.ts";
 import { providerRows } from "./provider-rows.ts";
 import { showPage } from "./provider-ui.ts";
 
@@ -36,9 +37,9 @@ export interface ProviderManagerOptions {
 }
 
 /**
- * `/providers`: Needs attention, Ready, Off, then the Add rows and Advanced. All provider state comes from one
- * snapshot, rebuilt each time the list shows. `query` opens a provider's page when it names one (Escape then returns
- * to the list), `pi` the Pi import list, and anything else the sign-in picker filtered by it.
+ * `/providers`: the models.json files, Needs attention, Ready, Available (built-ins not set up yet), Off, then the
+ * Add rows and Advanced. All provider state comes from one snapshot, rebuilt each time the list shows. `query`
+ * opens a provider's page when it names one (Escape then returns to the list), `pi` the Pi import list, and anything else the sign-in picker filtered by it.
  */
 export async function showProviderManager(
 	host: ProviderManagerHost,
@@ -106,9 +107,12 @@ export async function showProviderManager(
 		}
 		const rows = providerRows(snapshot);
 		const runnerStates: BadgeState[] = runners.length ? ["ready", "off"] : [];
+		const { files } = await loadModelFiles(ctx, options.sourceEnvironment);
 		const sections: PageSection[] = [
+			{ heading: "Model files", rows: modelFileRows(files), empty: "no models.json found" },
 			...(rows.attention.length ? [{ heading: "Needs attention", rows: rows.attention }] : []),
 			{ heading: "Ready", rows: rows.ready, empty: "none yet — choose + Provider" },
+			...(rows.available.length ? [{ heading: "Available", rows: rows.available }] : []),
 			...(rows.off.length ? [{ heading: "Off", rows: rows.off }] : []),
 			runnerSection(runners, settingsManager.getExternalAgents(), settingsManager.getEnabledExternalAgents()),
 			{
@@ -153,6 +157,8 @@ export async function showProviderManager(
 			},
 		];
 		const reloadError = runtime.getReloadError();
+		// The files lead the page, but the cursor starts on the first provider: that is what Enter is for.
+		initialId ??= [...rows.attention, ...rows.ready, ...rows.off, ...rows.available][0]?.id;
 		const choice = await showPage(host, {
 			title: "AI providers",
 			notes: [
@@ -187,10 +193,16 @@ export async function showProviderManager(
 				await testAllProviders(host);
 			} else if (choice.id === ADVANCED_ROW)
 				result = await showSourcesPage(ctx, snapshot.saved, options.sourceEnvironment);
+			else if (kind === "models") result = await showSourcesPage(ctx, snapshot.saved, options.sourceEnvironment);
 			else if (kind === "provider") {
 				const entry = snapshot.entry(key);
 				if (choice.key) setProviderEnabled(host, key, entry?.name ?? key, isProviderDisabled(host, key));
-				else result = await showProviderDetail(ctx, key, refresh);
+				else {
+					// A ready provider opens on its model chooser; closing it lands on the provider's page.
+					if (entry?.state === "ready" && runtime.getModels(key).length > 0)
+						await chooseProviderModels(host, key, entry.name);
+					result = await showProviderDetail(ctx, key, refresh);
+				}
 			} else if (kind === "runner") {
 				if (choice.key) {
 					const selected = settingsManager.getEnabledExternalAgents();

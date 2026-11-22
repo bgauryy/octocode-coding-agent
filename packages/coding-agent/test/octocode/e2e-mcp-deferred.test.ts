@@ -23,18 +23,18 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * A workspace MCP server with `exposure: "deferred"` on a scripted model: the first request lists the server's purpose
- * and tool triggers only, the model loads the tool's full text with the `mcp` tool, then calls the tool. Every request
+ * and tool triggers only, the model loads the tool's full text, receives a local rejection, and corrects the call. Every request
  * keeps the same system prompt and declarations: the loaded text arrives as a tool result, never in the prefix.
  */
-const SERVER = path.join(import.meta.dirname, "fixtures", "echo-secret-mcp.mjs");
-const TOKEN = "EXT-MCP-OK-7731";
+const SERVER = path.join(import.meta.dirname, "fixtures", "echo-mcp.mjs");
+const TOOL = "mcp__echo__pick";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
 	for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-it("loads a deferred tool's text on demand, then calls it, without changing the cached prefix", async () => {
+it("loads a deferred contract and corrects a rejected nested field without changing the cached prefix", async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "octocode-e2e-deferred-"));
 	const cwd = path.join(root, "project");
 	const agentDir = path.join(root, "agent");
@@ -46,11 +46,11 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 		JSON.stringify({
 			mcpServers: {
 				octocode: { command: "false", enabled: false },
-				secretecho: {
+				echo: {
 					command: process.execPath,
 					args: [SERVER],
 					exposure: "deferred",
-					description: "Reads the secret echo service token.",
+					description: "Echo test queries.",
 				},
 			},
 		}),
@@ -122,20 +122,24 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 	};
 	faux.setResponses([
 		step(
-			fauxAssistantMessage(
-				[fauxToolCall("mcp", { intent: "tools", server: "secretecho", tool: "echo_secret", reason: "load" })],
-				{ stopReason: "toolUse" },
-			),
+			fauxAssistantMessage([fauxToolCall("mcp", { intent: "tools", server: "echo", tool: "pick", reason: "load" })], {
+				stopReason: "toolUse",
+			}),
 		),
 		step(
-			fauxAssistantMessage([fauxToolCall("mcp__secretecho__echo_secret", {})], {
+			fauxAssistantMessage([fauxToolCall(TOOL, { queries: [{ operation: "tree", depthValue: 2 }] })], {
+				stopReason: "toolUse",
+			}),
+		),
+		step(
+			fauxAssistantMessage([fauxToolCall(TOOL, { queries: [{ operation: "tree", depth: 2 }] })], {
 				stopReason: "toolUse",
 			}),
 		),
 		step(fauxAssistantMessage("done")),
 	]);
-	await agent.prompt("What does the secret echo service return?");
-	expect(requests).toHaveLength(3);
+	await agent.prompt("Echo a tree query with depth 2.");
+	expect(requests).toHaveLength(4);
 
 	// The first request: a thin declaration and an index block that keeps the server's instructions.
 	const prefix = (context: TranscriptContext) =>
@@ -146,27 +150,29 @@ it("loads a deferred tool's text on demand, then calls it, without changing the 
 	const raw = (getCurrentSystemMessage(requests[0].messages)?.sections ?? {}) as Record<string, string>;
 	// The head and each server's `mcps:<server>` block, joined.
 	const sections = { ...raw, mcps: sectionFamilyText(raw, "mcps") };
-	expect(getCurrentTools(requests[0].messages).map((tool) => tool.name)).toContain("mcp__secretecho__echo_secret");
-	expect(sections.mcps).toContain(
-		'<mcp name="secretecho" tools="mcp__secretecho__*">\nReads the secret echo service token.\nSecret echo service. Call echo_secret to read the service token.\n- echo_secret\n</mcp>',
-	);
+	expect(getCurrentTools(requests[0].messages).map((tool) => tool.name)).toContain(TOOL);
+	expect(sections.mcps).toContain('<mcp name="echo" tools="mcp__echo__*">\nEcho test queries.\nEcho test server.');
+	expect(sections.mcps).toContain("\n- pick\n");
 	expect(sections.mcps).not.toContain("declare namespace");
 	expect(sections.mcps).not.toContain("additionalProperties");
 
 	// The load returned the full upstream description and schema as a tool result.
 	const results = agent.messages.filter((message) => message.role === "toolResult");
 	expect(results[0]).toMatchObject({ toolName: "mcp", isError: false });
-	expect(JSON.stringify(results[0]?.content)).toContain(
-		"echo_secret [deferred] — Return the secret echo service token.",
-	);
+	expect(JSON.stringify(results[0]?.content)).toContain("pick [deferred] — Echo union queries back");
 	expect(JSON.stringify(results[0]?.content)).toContain("additionalProperties");
 
-	// The call ran and its result reached the model.
-	expect(results[1]).toMatchObject({ toolName: "mcp__secretecho__echo_secret", isError: false });
-	expect(JSON.stringify(results[1]?.content)).toContain(TOKEN);
-	expect(JSON.stringify(requests[2].messages.filter((message) => message.role === "toolResult"))).toContain(TOKEN);
+	// The next request sees the refusal. The corrected call returns exactly the nested query the server received.
+	expect(results).toHaveLength(3);
+	expect(results[1]).toMatchObject({ toolName: TOOL, isError: true });
+	expect(JSON.stringify(requests[2].messages.filter((message) => message.role === "toolResult"))).toContain(
+		"depthValue",
+	);
+	expect(results[2]).toMatchObject({ toolName: TOOL, isError: false });
+	const echoed = '[{"operation":"tree","depth":2}]';
+	expect(results[2].content).toContainEqual({ type: "text", text: echoed });
+	const delivered = requests[3].messages.findLast((message) => message.role === "toolResult");
+	expect(delivered?.content).toContainEqual({ type: "text", text: expect.stringContaining(echoed) });
 
-	// T5: every request carries the same system prompt and declarations.
-	expect(prefix(requests[1])).toBe(prefix(requests[0]));
-	expect(prefix(requests[2])).toBe(prefix(requests[0]));
+	for (const request of requests.slice(1)) expect(prefix(request)).toBe(prefix(requests[0]));
 });

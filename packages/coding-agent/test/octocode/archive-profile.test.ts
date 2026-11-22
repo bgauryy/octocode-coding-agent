@@ -199,6 +199,34 @@ describe("archive tool, source profile", () => {
 		setCurrentSession(undefined);
 	});
 
+	it("reports local MCP validation outcomes and compactions beside the request that preceded them", async () => {
+		const toolName = "mcp__example__lookup";
+		const content = [
+			{ type: "text", text: `Validation failed for tool "${toolName}":\n  - root: unexpected property` },
+		];
+		const outcome = (ms: number, fields: Record<string, unknown>) =>
+			line(ms, {
+				type: "message",
+				message: { role: "toolResult", toolName, isError: true, content, ...fields },
+			});
+		const file = transcript("outcomes", [
+			reply(0, { cacheRead: 3000 }),
+			outcome(10, {}),
+			outcome(20, { details: { server: "example", tool: "lookup" } }),
+			outcome(30, { isError: false }),
+			outcome(40, { toolName: "archive" }),
+			line(50, { type: "compaction", summary: "summary" }),
+			reply(60, { cacheRead: 2000 }),
+		]);
+		stored("sess-main", file, T + 11_000);
+		const query = { sessionId: "sess-main", agentId: "steady-main" };
+		expect(await profile(query)).toContain("MCP validation errors 1/3 results, compactions 1");
+		const detail = await profile({ ...query, request: 0 });
+		expect(detail).toContain("MCP validation errors 1/3 results, compactions 1");
+		expect(detail).toContain("read 3.0k");
+		expect(await profile({ ...query, request: 1 })).not.toContain("After request");
+	});
+
 	it("names an unknown session, agent or request", async () => {
 		await expect(profile({ sessionId: "nope" })).rejects.toThrow("No session nope.");
 		await expect(profile({ sessionId: "sess-main", agentId: "ghost" })).rejects.toThrow("No agent ghost");

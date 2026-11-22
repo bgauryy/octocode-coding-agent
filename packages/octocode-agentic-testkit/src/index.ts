@@ -92,3 +92,4 @@ export { findSuspicious, SUSPICIOUS_RULES, type SuspiciousMatch, type Suspicious
 export { redTeamAttacks } from "./redteam/attacks.ts";
 export { runAttack, type AttackRun, type RunAttackOptions } from "./redteam/run.ts";
 export type { Attack, AttackKind, ForbiddenCall, Lure } from "./redteam/types.ts";
+export { firstToolCallDifference, type ToolCallStages } from "./tool-call-replay.ts";

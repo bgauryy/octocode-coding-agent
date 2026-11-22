@@ -139,7 +139,11 @@ export interface AgentSessionPromptingApi {
 	 */
 	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput;
 
-	/** Abort the current operation; internal cancellation and replacement do not emit interruption hooks. */
+	/**
+	 * Abort the current operation; internal cancellation and replacement do not emit interruption hooks. A user Stop
+	 * (`"interrupted"`, the default) also clears the steering and follow-up queues; take them first with `clearQueue()`
+	 * to give the text back to its user.
+	 */
 	abort(reason?: "interrupted" | "peer" | "replacement" | "shutdown" | "internal"): Promise<void>;
 
 	waitForIdle(): Promise<void>;
@@ -178,9 +182,7 @@ export interface AgentSessionRecoveryApi {
 
 	readonly autoCompactionEnabled: boolean;
 
-	/**
-	 * Cancel in-progress retry.
-	 */
+	/** Cancel the retry wait in progress, which ends the run like a Stop: no fallback model, compaction or queued input follows. */
 	abortRetry(): void;
 
 	/** Whether auto-retry is currently in progress */

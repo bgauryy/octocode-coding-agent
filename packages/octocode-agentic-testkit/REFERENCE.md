@@ -354,6 +354,13 @@ without printing the key.
 
 ## Outputs
 
+### Tool-call replay
+
+`firstToolCallDifference(expected, stages)` compares one scripted call against its intended JSON arguments. Capture
+the raw argument deltas, parsed assistant arguments, prepared host arguments, validation result, and each invocation
+the server receives. The result names the first differing boundary, or `none` for an unchanged accepted control.
+If a malformed assistant call is the first observation and the raw deltas are unavailable, the result is `unknown`.
+
 ### The trace
 
 `gw.trace` holds everything the checks read:

@@ -13,6 +13,7 @@ import {
 	effectiveBaseUrl,
 	removeCustomProvider,
 } from "./provider-custom-edit.ts";
+import { moveKeyToKeychain } from "./provider-move-key.ts";
 import { chooseProviderModels } from "./provider-models-page.ts";
 import { unsupportedPiSignIn } from "./provider-pi.ts";
 import { providerBadge } from "./provider-rows.ts";
@@ -66,6 +67,12 @@ export async function showProviderDetail(
 		: undefined;
 	// A credential that configures nothing: the fix comes first.
 	if (removal && entry.state === "orphaned") actions.set(...removal);
+	// Enter on a provider lands here first: pick its models in one step.
+	if (catalogSize > 0 && entry.state !== "orphaned") {
+		actions.set("Choose models — tick which of this provider's models /model, Ctrl+P and subagents may use", {
+			run: () => chooseProviderModels(host, id, name),
+		});
+	}
 	if (entry.models > 0) {
 		if (!disabled)
 			actions.set("Set as default provider for new chats", {
@@ -95,11 +102,6 @@ export async function showProviderDetail(
 				applyBedrockAccessCheck(runtime, model, access.get(model), generation);
 				host.showStatus(`${modelId}: ${access.get(model)}`);
 			},
-		});
-	}
-	if (catalogSize > 0) {
-		actions.set("Choose models — tick which of this provider's models /model, Ctrl+P and subagents may use", {
-			run: () => chooseProviderModels(host, id, name),
 		});
 	}
 	if (runtime.getProviderAuthStatus(id).configured && entry.models > 0) {
@@ -142,6 +144,13 @@ export async function showProviderDetail(
 			actions.set("Remove this custom provider from models.json", {
 				run: async () => {
 					await removeCustomProvider(host, id, name, path, entry.stored !== undefined);
+				},
+			});
+		}
+		if (origin === "Octocode" && runtime.getProviderAuthStatus(id).source === "models_json_key") {
+			actions.set("Move key to keychain — models.json keeps only a reference", {
+				run: async () => {
+					await moveKeyToKeychain(host, id, name, path);
 				},
 			});
 		}

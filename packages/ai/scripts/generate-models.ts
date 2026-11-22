@@ -10,9 +10,15 @@ import { addAzureModels, addMissingAliasModels } from "./generate-models/aliases
 import { buildProviderCatalogs, sortProviderCatalogs } from "./generate-models/catalog.ts";
 import { loadModelsDevClassifierModels } from "./generate-models/classifiers.ts";
 import { XAI_BUILTIN_EXCLUDED_MODEL_IDS } from "./generate-models/constants.ts";
-import { fetchAiGatewayModels, fetchOpenRouterModels } from "./generate-models/fetchers.ts";
+import {
+	catalogRequestOptions,
+	modelsDev,
+	fetchAiGatewayModels,
+	fetchOpenRouterModels,
+} from "./generate-models/fetchers.ts";
 import { addDeepSeekAndAntLingModels, addMissingOpenAiModels } from "./generate-models/manual-models.ts";
 import { applyImageInputMetadata, applyPromptCacheMetadata } from "./generate-models/metadata.ts";
+import { modelsDevLimits } from "./generate-models/models-dev-limits.ts";
 import { loadModelsDevData } from "./generate-models/models-dev.ts";
 import {
 	applyOpenAICompletionsCompatMetadata,
@@ -46,7 +52,10 @@ async function generateModels() {
 	const modelsDevOwners = KNOWN_PROVIDER_IDS.filter(
 		(id) => !otherSources.has(id) && (refreshesProvider(id) || (id === "openai" && refreshesProvider("azure"))),
 	);
-	const modelsDevModels = modelsDevOwners.length ? await loadModelsDevData() : [];
+	const needsCatalog = modelsDevOwners.length > 0 || refreshesProvider("openrouter");
+	if (needsCatalog) console.log("Fetching models from models.dev API...");
+	const upstream = needsCatalog ? await modelsDev.providers(catalogRequestOptions()) : undefined;
+	const modelsDevModels = upstream && modelsDevOwners.length ? await loadModelsDevData(upstream) : [];
 	const populated = new Set(modelsDevModels.map((model) => model.provider));
 	const missing = modelsDevOwners.filter((id) => !populated.has(id));
 	if (missing.length) throw new Error(`models.dev returned no usable chat models for: ${missing.join(", ")}`);
@@ -72,6 +81,14 @@ async function generateModels() {
 	addAzureModels(allModels);
 
 	for (const model of allModels) {
+		// Gateway and deployment lists supply their own context window. Only supplement an exact, matching route.
+		if (model.provider === "azure" || model.provider === "openrouter") {
+			const limit = upstream?.[model.provider]?.models?.[model.id]?.limit;
+			if (limit && limit.context === model.contextWindow) {
+				const { inputLimits } = modelsDevLimits(limit);
+				if (inputLimits) model.inputLimits = { ...model.inputLimits, ...inputLimits };
+			}
+		}
 		applyOpenAICompletionsCompatMetadata(model);
 		applyAnthropicMessagesCompatMetadata(model);
 		applyModelsDevReasoningOptionMetadata(model);

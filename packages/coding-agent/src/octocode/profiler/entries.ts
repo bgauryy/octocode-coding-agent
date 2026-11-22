@@ -1,3 +1,5 @@
+import type { ProfileRequestOutcomes } from "@octocodeai/octocode-contracts/profiler";
+import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { createHash } from "node:crypto";
 import { collectCacheMisses, type CacheMiss } from "../../core/cache-stats.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
@@ -22,6 +24,7 @@ export interface Prepared {
 	 * just before it. Entries without parent links follow file order.
 	 */
 	previous: Array<number | undefined>;
+	outcomes: Map<number, ProfileRequestOutcomes>;
 	/** Misses `core/cache-stats.ts` counts, keyed by the assistant entry's position. */
 	misses: Map<number, CacheMiss>;
 }
@@ -71,10 +74,33 @@ function requestMessage(entry: Entry): Record<string, unknown> | undefined {
 	return promptTokens(asRecord(message.usage)) > 0 ? message : undefined;
 }
 
+/** Count completed MCP results and compactions as the existing parent-link traversal visits them. */
+function recordOutcome(outcomes: Map<number, ProfileRequestOutcomes>, request: number, entry: Entry): void {
+	const result = asRecord(entry.message);
+	const toolName = str(result.toolName, "");
+	const mcp = entry.type === "message" && result.role === "toolResult" && isMcpToolName(toolName);
+	if (!mcp && entry.type !== "compaction") return;
+	let counts = outcomes.get(request);
+	if (!counts) {
+		counts = { mcpResults: 0, validationErrors: 0, compactions: 0 };
+		outcomes.set(request, counts);
+	}
+	if (!mcp) {
+		counts.compactions++;
+		return;
+	}
+	counts.mcpResults++;
+	if (result.isError !== true || typeof asRecord(result.details).server === "string") return;
+	const text = Array.isArray(result.content) ? asRecord(result.content[0]).text : result.content;
+	if (typeof text === "string" && text.startsWith(`Validation failed for tool "${toolName}":\n`))
+		counts.validationErrors++;
+}
+
 export function prepare(entries: Entry[]): Prepared {
 	const byId = new Map<string, number>();
 	const requests: number[] = [];
 	const previous: Array<number | undefined> = [];
+	const outcomes = new Map<number, ProfileRequestOutcomes>();
 	// The latest request on the path ending at each entry.
 	const latest = new Map<string, number | undefined>();
 	let filed: number | undefined;
@@ -86,7 +112,10 @@ export function prepare(entries: Entry[]): Prepared {
 		const message = requestMessage(entry);
 		filed = message ? requests.length : before;
 		if (typeof entry.id === "string") latest.set(entry.id, filed);
-		if (!message) return;
+		if (!message) {
+			if (before !== undefined) recordOutcome(outcomes, before, entry);
+			return;
+		}
 		previous.push(before);
 		// The miss scan reads `usage.cost`; an entry written without one counts as free.
 		const usage = asRecord(message.usage);
@@ -101,5 +130,5 @@ export function prepare(entries: Entry[]): Prepared {
 		const miss = found.get(entries[position].message as never);
 		if (miss) misses.set(position, miss);
 	}
-	return { entries, byId, requests, previous, misses };
+	return { entries, byId, requests, previous, misses, outcomes };
 }

@@ -42,11 +42,12 @@ it.each(["custom", "user"] as const)(
 			await h.session.bindFeatures({});
 			h.setResponses([
 				fauxAssistantMessage([fauxToolCall("hold", {})], { stopReason: "toolUse" }),
-				(_context, options) => {
-					expect(options?.signal?.aborted).toBe(true);
-					return fauxAssistantMessage("");
+				(context, options) => {
+					// The interrupted run records its aborted reply locally. This request belongs to the follow-up.
+					expect(options?.signal?.aborted).toBe(false);
+					expect(context.messages.at(-1)).toMatchObject({ role: "user" });
+					return fauxAssistantMessage("redirected");
 				},
-				fauxAssistantMessage("redirected"),
 			]);
 			const running = h.session.prompt("work");
 			await entered.promise;
@@ -54,6 +55,9 @@ it.each(["custom", "user"] as const)(
 			release.resolve();
 			await Promise.all([running, aborting]);
 			await vi.waitFor(() => expect(getAssistantTexts(h)).toContain("redirected"));
+			expect(
+				h.session.messages.filter((message) => message.role === "assistant").map((message) => message.stopReason),
+			).toEqual(["toolUse", "aborted", "stop"]);
 			expect(hasSessionDispatch(h.session)).toBe(false);
 		} finally {
 			release.resolve();

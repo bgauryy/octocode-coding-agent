@@ -6,7 +6,7 @@ import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import { presetEntries } from "../src/preset.ts";
 import { withStructuredText } from "../src/presets/structured-text.ts";
 import { builtinPresets } from "../src/presets/index.ts";
-import { desktopAvailable, desktopPreset, onPath } from "../src/presets/desktop/index.ts";
+import { desktopAvailable, desktopPreset } from "../src/presets/desktop/index.ts";
 import { boundedWindowRead } from "../src/presets/desktop/tools.ts";
 
 /** A PATH folder holding an executable `cua-driver`. */
@@ -116,7 +116,7 @@ describe("desktop MCP preset", () => {
 		const [entry] = presetEntries([desktopPreset({ PATH: tmp() })]);
 		expect(entry.config.enabled).toBe(false);
 		expect(entry.config.description).toMatch(/not installed.*cua\.ai/i);
-		expect(onPath(DESKTOP_BIN, { PATH: tmp() })).toBe(false);
+		expect(desktopAvailable({ PATH: tmp() })).toBe(false);
 	});
 
 	it("is not enabled when OCTOCODE_MCP_DESKTOP=0, even with the binary installed", () => {
@@ -163,20 +163,39 @@ describe("desktop MCP preset", () => {
 
 describe("the desktop preset's user warnings", () => {
 	it("keeps the description the model reads plain and speaks to the user through takeWarnings, once", () => {
-		const folder = tmp();
-		mkdirSync(folder, { recursive: true });
-		const driver = join(folder, "old-driver");
-		writeFileSync(driver, '#!/bin/sh\ncase "$1" in --version) echo "cua-driver 0.20.0";; *) exit 1;; esac\n');
-		chmodSync(driver, 0o755);
-		const preset = desktopPreset({ PATH: tmp(), OCTOCODE_CUA_DRIVER_PATH: driver });
+		const configured = pathWithDriver();
+		const driver = join(configured.PATH!, DESKTOP_BIN);
+		const env = { PATH: tmp(), OCTOCODE_CUA_DRIVER_PATH: driver };
+		const preset = desktopPreset(env, (command, args) => {
+			expect(command).toBe(driver);
+			return { stdout: args[0] === "--version" ? "cua-driver 0.20.0" : "{}", status: 0 };
+		});
 		expect(presetEntries([preset])[0].config.description).not.toMatch(/older|0\.20/);
 		const first = preset.takeWarnings?.() ?? [];
 		expect(first.join(" ")).toMatch(/Cua Driver 0\.20\.0 is older than 0\.30\.4/);
 		expect(preset.takeWarnings?.() ?? []).toEqual([]);
 	});
 
+	it("probes the executable found on each supplied PATH and deduplicates across rebuilt presets", () => {
+		for (const version of ["0.20.1", "0.20.2"]) {
+			const env = pathWithDriver();
+			const seen: string[] = [];
+			const runner = (command: string, args: string[]) => {
+				seen.push(command);
+				return { stdout: args[0] === "--version" ? `cua-driver ${version}` : "{}", status: 0 };
+			};
+			expect(desktopPreset(env, runner).takeWarnings?.().join(" ")).toContain(version);
+			expect(new Set(seen)).toEqual(new Set([join(env.PATH!, DESKTOP_BIN)]));
+			const calls = seen.length;
+			expect(desktopPreset(env, runner).takeWarnings?.()).toEqual([]);
+			expect(seen).toHaveLength(calls);
+		}
+	});
+
 	it("says nothing for a disabled server", () => {
-		const preset = desktopPreset({ PATH: tmp(), OCTOCODE_MCP_DESKTOP: "0" });
+		const preset = desktopPreset({ ...pathWithDriver(), OCTOCODE_MCP_DESKTOP: "0" }, () => {
+			throw new Error("disabled desktop probes must stay off");
+		});
 		expect(preset.takeWarnings?.() ?? []).toEqual([]);
 	});
 });

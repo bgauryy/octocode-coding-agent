@@ -145,6 +145,7 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		{
 			branchEntries: host.sessionManager.getBranch(),
 			contextWindow: run.contextWindow,
+			maxInputTokens: preparation.settings.maxInputTokens,
 			reserveTokens: run.reserveTokens,
 			sessionFile: host.sessionManager.getSessionFile(),
 		},

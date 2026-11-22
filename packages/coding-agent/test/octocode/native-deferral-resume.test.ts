@@ -25,7 +25,7 @@ import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
- * Deferred native tools (`web`, `archive`, `models`, `backlogPlan`) are decided when the tools register, from this
+ * Deferred native tools (`archive`, `models`, `backlogPlan`) are decided when the tools register, from this
  * folder's record of recent use. The declarations are part of the provider's cached prefix: a resumed, reloaded or forked
  * session declares them as the session did before, whatever the folder used since; a new session reads the record.
  */
@@ -60,12 +60,14 @@ async function ask(): Promise<Declared> {
 }
 
 const rebind = () => runtime.session.bindFeatures({ mode: "rpc", shutdownHandler: () => undefined } as never);
-const web = (declared: Declared) =>
-	(JSON.parse(declared.tools) as Array<{ name: string; parameters: unknown }>).find((tool) => tool.name === "web");
+const plan = (declared: Declared) =>
+	(JSON.parse(declared.tools) as Array<{ name: string; parameters: unknown }>).find(
+		(tool) => tool.name === "backlogPlan",
+	);
 
-/** This folder calls `web`, as another session in it would. */
+/** This folder calls `backlogPlan`, as another session in it would. */
 function folderUsesWeb(): void {
-	new RecentUseRecorder(() => path.join(agentDir, "tool-use.json")).record(cwd, "native/web");
+	new RecentUseRecorder(() => path.join(agentDir, "tool-use.json")).record(cwd, "native/backlogPlan");
 }
 
 beforeAll(async () => {
@@ -138,9 +140,9 @@ describe("deferred native tools across a session's starts", () => {
 	it("declares them again, byte for byte, on resume, reload and fork; a new session reads the folder's record", async () => {
 		const first = await ask();
 		const file = runtime.session.sessionFile!;
-		// Nothing in this folder called `web` yet: it is declared deferred.
-		expect(web(first)).toBeDefined();
-		expect(JSON.stringify(web(first))).toContain("reason");
+		// Nothing in this folder called `backlogPlan` yet: it is declared deferred.
+		expect(plan(first)).toBeDefined();
+		expect(JSON.stringify(plan(first))).toContain("reason");
 
 		folderUsesWeb();
 
@@ -165,22 +167,22 @@ describe("deferred native tools across a session's starts", () => {
 		await runtime.newSession();
 		await rebind();
 		const fresh = await ask();
-		// The folder called `web` since: a new session declares it in full.
+		// The folder called `backlogPlan` since: a new session declares it in full.
 		expect(fresh.tools).not.toBe(first.tools);
-		expect(JSON.stringify(web(fresh)).length).toBeGreaterThan(JSON.stringify(web(first)).length);
+		expect(JSON.stringify(plan(fresh)).length).toBeGreaterThan(JSON.stringify(plan(first)).length);
 	}, 120_000);
 
 	it("lets a pin or a setting other than recent decide, on a new session and on resume", async () => {
 		// Only the full form carries field notes; the deferred form keeps names and types.
-		const direct = (declared: Declared) => JSON.stringify(web(declared)?.parameters).includes('"description"');
+		const direct = (declared: Declared) => JSON.stringify(plan(declared)?.parameters).includes('"description"');
 		await runtime.newSession();
 		await rebind();
 		const recent = await ask();
-		// The folder called `web` in the test above: declared in full.
+		// The folder called `backlogPlan` in the test above: declared in full.
 		expect(direct(recent)).toBe(true);
 		const file = runtime.session.sessionFile!;
 
-		settingsManager.applyOverrides({ nativeToolExposure: { web: "deferred" } } as never, { durable: true });
+		settingsManager.applyOverrides({ nativeToolExposure: { backlogPlan: "deferred" } } as never, { durable: true });
 		await runtime.newSession();
 		await rebind();
 		expect(direct(await ask())).toBe(false);
@@ -193,10 +195,10 @@ describe("deferred native tools across a session's starts", () => {
 		await runtime.newSession();
 		await rebind();
 		const all = await ask();
-		// The pin still decides `web`; the setting declares the other deferrable tools in full.
+		// The pin still decides `backlogPlan`; the setting declares the other deferrable tools in full.
 		expect(direct(all)).toBe(false);
 		const tools = JSON.parse(all.tools) as Array<{ name: string; parameters: unknown }>;
-		for (const name of ["archive", "models", "backlogPlan"])
+		for (const name of ["archive", "models"])
 			expect(JSON.stringify(tools.find((tool) => tool.name === name)?.parameters)).toContain('"description"');
 	}, 120_000);
 });

@@ -1,3 +1,7 @@
+import type { ToolValidationFailure } from "@octocodeai/octocode-ai";
+import { resolveLocalRef } from "@octocodeai/octocode-ai/utils/json-schema-shape";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+
 /** The objects a tool's root schema accepts: its alternatives (`anyOf`/`oneOf`) or the schema itself. */
 function rootShapes(schema: Record<string, unknown>): Record<string, unknown>[] {
 	const branches = schema.anyOf ?? schema.oneOf;
@@ -56,4 +60,47 @@ export function envelopeHint(toolName: string, schema: Record<string, unknown>):
 			? ` Other declared fields: ${[...optional].join(", ")}; follow the server's schema for each form.`
 			: "";
 	return `${toolName} requires ${forms.join(" or ")} at the top level.${extra}`;
+}
+
+/** Field names at the actual rejecting schema, including a selected union branch or local reference. */
+export function siblingHint(
+	schema: Record<string, unknown>,
+	unexpected: ToolValidationFailure["unexpected"],
+): string | undefined {
+	const lines = new Set<string>();
+	let length = 0;
+	for (const { instancePath, schemaPath } of unexpected ?? []) {
+		if (!schemaPath) {
+			lines.add("Load the full schema for the remaining rejected fields.");
+			continue;
+		}
+		let node: unknown = resolveLocalRef(schema, schema);
+		for (const segment of schemaPath.split("/").slice(1)) {
+			const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+			if (!node || typeof node !== "object" || !Object.hasOwn(node, key)) {
+				node = undefined;
+				break;
+			}
+			node = resolveLocalRef((node as Record<string, unknown>)[key], schema);
+		}
+		if (!isRecord(node) || !isRecord(node.properties)) continue;
+		const fields = Object.keys(node.properties);
+		if (!fields.length) continue;
+		const prefix = `Declared fields at ${instancePath || "root"}: `;
+		const shown: string[] = [];
+		let size = prefix.length;
+		for (const field of fields) {
+			size += field.length + 2;
+			if (length + size > 1000) {
+				if (shown.length) lines.add(`${prefix}${shown.join(", ")}.`);
+				lines.add("Load the full schema for all fields.");
+				return [...lines].join("\n");
+			}
+			shown.push(field);
+		}
+		const line = `${prefix}${shown.join(", ")}.`;
+		if (!lines.has(line)) length += line.length + 1;
+		lines.add(line);
+	}
+	return [...lines].join("\n") || (unexpected?.length ? "Load the full schema for the rejected fields." : undefined);
 }

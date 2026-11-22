@@ -76,6 +76,11 @@ export async function createRig(options: RigOptions = {}): Promise<Rig> {
 			},
 		};
 	}
+	// The suite pins the unheld gate, as it pins the loop's window above: a case that holds sets its own window.
+	harnessOptions.settings = {
+		...harnessOptions.settings,
+		subagents: { wakeHoldSeconds: 0, ...harnessOptions.settings?.subagents },
+	};
 	let captured: FeatureSetup | undefined;
 	let context: FeatureContext | undefined;
 	const harness = await createHarness({

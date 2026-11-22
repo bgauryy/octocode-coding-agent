@@ -1,4 +1,9 @@
-import { type CompactionThinking, builtInCompactionSettings } from "../../core/compaction/settings.ts";
+import {
+	type CompactionThinking,
+	type CompactionModel,
+	builtInCompactionSettings,
+	inputRoomTokens,
+} from "../../core/compaction/settings.ts";
 import type { SetupPick } from "../../core/features/index.ts";
 
 /** The session's thinking level and custom budgets, which size the compaction reserve. */
@@ -16,8 +21,8 @@ export function reserveTokensFor(
 }
 
 export function autoCompactAt(
-	model: { provider: string; id: string; contextWindow: number },
+	model: CompactionModel & { provider: string; id: string; contextWindow: number },
 	thinking?: CompactionThinking,
 ): number {
-	return Math.max(0, model.contextWindow - builtInCompactionSettings(model, thinking).reserveTokens);
+	return inputRoomTokens(model.contextWindow, reserveTokensFor(model, thinking), model.inputLimits?.maxInputTokens);
 }

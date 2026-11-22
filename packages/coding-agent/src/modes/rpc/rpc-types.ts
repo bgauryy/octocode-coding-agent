@@ -107,7 +107,14 @@ export type RpcResponse =
 			success: true;
 			data: { disposition: QueuedInputDisposition };
 	  }
-	| { id?: string; type: "response"; command: "abort"; success: true }
+	| {
+			id?: string;
+			type: "response";
+			command: "abort";
+			success: true;
+			/** The queued input a user Stop withdrew, for the client to give back to its user. */
+			data: { steering: string[]; followUp: string[] };
+	  }
 	| {
 			id?: string;
 			type: "response";

@@ -436,6 +436,22 @@ describe("the agentic check", () => {
 		expect(await j.judge.judge(ask())).toMatchObject({ verdict: "stop", reason: expect.stringContaining("2 times") });
 	});
 
+	it("does not count a rate limit or a transient failure toward the failures that end the wait", async () => {
+		const j = judging([
+			new Error("429 Too Many Requests"),
+			new Error("boom"),
+			new Error("503 Service Unavailable: overloaded"),
+			new Error("429 rate limit exceeded"),
+			new Error("boom"),
+		]);
+		for (let call = 0; call < 4; call++) {
+			expect(await j.judge.judge(ask())).toMatchObject({ verdict: "skipped" });
+			j.advance(60_000);
+		}
+		expect(await j.judge.judge(ask())).toMatchObject({ verdict: "stop", reason: expect.stringContaining("2 times") });
+		expect(j.complete).toHaveBeenCalledTimes(5);
+	});
+
 	it("is off unless allowed", async () => {
 		const j = judging([]);
 		const off = new Judge({ ...j.host, allowed: () => false });

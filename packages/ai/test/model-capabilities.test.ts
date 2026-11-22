@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveModelCapabilities } from "../src/models/capabilities.ts";
+import { getSupportedThinkingLevels } from "../src/models/model-helpers.ts";
 import { builtinModels } from "../src/providers/all.ts";
 import { withCacheCapabilities } from "../src/utils/cache-capabilities.ts";
 import type { Api, Model } from "../src/types.ts";
@@ -26,6 +27,12 @@ describe("model capabilities", () => {
 		expect(caps).toMatchObject({ contextWindow: 200_000, maxOutputTokens: 32_000, input: ["text", "image"] });
 	});
 
+	it("shows a separate prompt ceiling only while it restricts the selected context", () => {
+		const route = model("openai-responses", { inputLimits: { maxInputTokens: 100_000 } });
+		expect(resolveModelCapabilities(route).maxInputTokens).toBe(100_000);
+		expect(resolveModelCapabilities({ ...route, contextWindow: 64_000 }).maxInputTokens).toBeUndefined();
+	});
+
 	it.each([
 		["Anthropic adaptive", model("anthropic-messages", { compat: { forceAdaptiveThinking: true } }), "effort"],
 		["Anthropic budget", model("anthropic-messages"), "budget"],
@@ -35,6 +42,28 @@ describe("model capabilities", () => {
 		["Gemini 3 level", model("google-generative-ai", { id: "gemini-3.1-pro-preview" }), "level"],
 		["Gemini 2.5 budget", model("google-generative-ai", { id: "gemini-2.5-pro" }), "budget"],
 		["OpenAI Responses", model("openai-responses"), "effort"],
+		[
+			"Qwen template toggle",
+			model("openai-completions", { compat: { thinkingFormat: "qwen-chat-template", supportsReasoningEffort: true } }),
+			"toggle",
+		],
+		[
+			"OpenRouter nested effort",
+			model("openai-completions", { compat: { thinkingFormat: "openrouter", supportsReasoningEffort: false } }),
+			"effort",
+		],
+		[
+			"Together toggle",
+			model("openai-completions", { compat: { thinkingFormat: "together", supportsReasoningEffort: false } }),
+			"toggle",
+		],
+		[
+			"Gateway template budget",
+			model("openai-completions", {
+				compat: { thinkingFormat: "chat-template", chatTemplateKwargs: { budget: { $var: "thinking.budget" } } },
+			}),
+			"budget",
+		],
 		["Completions with effort", model("openai-completions", { compat: { supportsReasoningEffort: true } }), "effort"],
 		[
 			"Completions with token budget",
@@ -44,6 +73,13 @@ describe("model capabilities", () => {
 		["non-reasoning", model("openai-responses", { reasoning: false }), "none"],
 	] as const)("derives %s thinking control", (_name, input, control) => {
 		expect(resolveModelCapabilities(input).thinking.control).toBe(control);
+	});
+
+	it("offers no thinking selector when the route has no wire control, and honors a custom route override", () => {
+		const entry = model("openai-completions", { compat: { supportsReasoningEffort: false } });
+		expect(getSupportedThinkingLevels(entry)).toEqual([]);
+		expect(resolveModelCapabilities(entry).thinking).toEqual({ control: "managed", levels: [], canDisable: false });
+		expect(getSupportedThinkingLevels({ ...entry, compat: { supportsReasoningEffort: true } })).toContain("high");
 	});
 
 	it("lists supported thinking levels and whether thinking can be turned off", () => {
@@ -198,7 +234,9 @@ describe("model capabilities", () => {
 					(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const).every(
 						(level) => entry.thinkingLevelMap?.[level] === null,
 					);
-				if (managed) {
+				if (managed || caps.thinking.control === "managed") {
+					expect(entry.reasoning).toBe(true);
+					expect(getSupportedThinkingLevels(entry)).toEqual([]);
 					expect(caps.thinking, `${entry.provider}/${entry.id}`).toEqual({
 						control: "managed",
 						levels: [],

@@ -124,7 +124,7 @@ An `askUser` call may set `timeout` (seconds) for a routine go-on question, such
 
 ## Web workspace and memory
 
-[Web workspace](web-workspace.md) covers `/web` (the user-level web daemon's page for every session, with the session's own server as the fallback when the daemon cannot start), the Activity view, the backlog board, the Docs view and the Profiler; [memory](memory.md) covers notes and `/memory`. People read profile data with `octocode profile`; coordinators and subagents read it with `archive`, `op: "list", source: "profile"`. The tool is read-only and works without opening the web. Add `agentId` for requests and `request` for one request's layers; follow its cursor for more results. Lifecycle events and error searches remain coordinator-only.
+[Web workspace](web-workspace.md) covers `/web` (the user-level web daemon's page for every session, with the session's own server as the fallback when the daemon cannot start), the Activity view, the backlog board, the Docs view and the Profiler; [memory](memory.md) covers notes and `/memory`. People read profile data with `octocode profile`; coordinators and subagents read it with `archive`, `op: "list", source: "profile"`. The tool is read-only and works without opening the web. Add `agentId` for requests or `agentId` and `request` for a single request’s tool and system token estimates and cache reads and writes. Request rows also show subsequent compactions and the share of recorded MCP results carrying a local validation error. Follow the cursor for more results. Lifecycle events and error searches remain coordinator-only.
 
 ### Where a turn's time goes
 

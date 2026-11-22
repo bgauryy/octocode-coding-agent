@@ -34,7 +34,7 @@ export const rpcCommandDescriptions: Readonly<Record<string, string>> = {
 	follow_up:
 		"Queue a message for after the agent stops. On an idle session it answers `queued` and starts nothing, as `steer` does.",
 	abort:
-		"Stop the current run. For terminal shutdown preparation, `holdShutdown: true` keeps extension-requested graceful exit pending until stdin closes, so the caller can capture descendant ownership after work stops. This cannot be undone: later commands other than `abort` are rejected; pending responses and extension UI replies still complete. EOF, termination signals and parent-loss cleanup remain active. Omit the field for ordinary abort.",
+		"Stop the current run. The stop also clears the steering and follow-up queues; the response's `data` (`steering`, `followUp`) gives the withdrawn text back so the client can restore it to its user. For terminal shutdown preparation, `holdShutdown: true` keeps extension-requested graceful exit pending until stdin closes, so the caller can capture descendant ownership after work stops. This cannot be undone: later commands other than `abort` are rejected; pending responses and extension UI replies still complete. EOF, termination signals and parent-loss cleanup remain active. Omit the field for ordinary abort.",
 	clear_queue: "Drop all queued steering and follow-up messages; returns what was dropped.",
 	get_queue: "List queued inputs with their `queueId` values.",
 	edit_queued: "Replace the text of a queued input; `data.outcome` is `replaced`, `removed` or `missing`.",
@@ -56,7 +56,8 @@ export const rpcCommandDescriptions: Readonly<Record<string, string>> = {
 	compact: "Run compaction now; `customInstructions` is limited in length by the schema.",
 	set_auto_retry:
 		"Enable or disable automatic retry of transient failures for this session. Settings files are not changed, and a new session starts from settings again.",
-	abort_retry: "Cancel a pending automatic retry wait.",
+	abort_retry:
+		"Cancel a pending automatic retry wait. This ends the run: no fallback model, compaction or queued input follows.",
 	bash: "Run a shell command as the user would with `!`; `excludeFromContext` keeps its output out of the model context. The response data carries what the model gets: `header` (`[exit 0 · 4.2s · 312 lines · 18 KB]`, with what was trimmed and the full-output path when the output exceeded the `bashOutputMaxBytes` budget), the trimmed `output`, `totalLines`, `totalBytes` and `wallTimeSeconds`.",
 	abort_bash: "Stop a command started with `bash`.",
 	get_session_stats: "Token, cost and message statistics for the session.",

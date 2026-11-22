@@ -67,11 +67,19 @@ export function mayRetry(
 	return attempt <= maxRetries || elapsedMs < windowMs;
 }
 
+/** The wait a failure's provider asked for (`retry-after`), or 0 when it named none. */
+function askedDelayMs(failure: Pick<AssistantMessage, "retryAfterMs">): number {
+	const requested = failure.retryAfterMs;
+	return requested !== undefined && requested > 0 ? requested : 0;
+}
+
 /**
- * Delay before retry number `attempt`. A failure that clears by waiting waits up to half again the backoff, so parallel
- * subagents hit by one outage or quota spread their retries, and never less than the provider's `retry-after`; the
- * result is capped by `maxAgentDelayMs`, and an attempt past the configured ones is pulled into what is left of the
- * window. Any other error keeps the exact exponential backoff.
+ * Delay before retry number `attempt`; never less than the provider's `retry-after`, since a retry sent sooner is
+ * refused again. A failure that clears by waiting waits up to half again the backoff, so parallel subagents hit by one
+ * outage or quota spread their retries, plus up to 1 s over a provider's wait. `maxAgentDelayMs` caps the backoff and the
+ * spread, never the provider's wait: a wait past the cap is no retry at all ({@link retryAfterBeyondCap}). An attempt past
+ * the configured ones is pulled into what is left of the window, but not below the provider's wait. Any other error
+ * keeps the exact exponential backoff.
  */
 export function retryDelayFor(
 	policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs" | "maxRetries">,
@@ -86,23 +94,37 @@ export function retryDelayFor(
 		const spread = Math.round(backoffMs + (backoffMs / 2) * random());
 		return Math.min(spread, OFFLINE_MAX_GAP_MS, Math.max(0, OFFLINE_WINDOW_MS - elapsedMs));
 	}
-	if (!clearsWithWaiting(failure.errorMessage ?? "")) return backoffMs;
+	const asked = askedDelayMs(failure);
+	if (!clearsWithWaiting(failure.errorMessage ?? "")) return Math.max(backoffMs, asked);
 	const cap =
 		policy.maxAgentDelayMs === undefined ? Number.POSITIVE_INFINITY : Math.max(backoffMs, policy.maxAgentDelayMs);
 	const spread = Math.round(backoffMs + (backoffMs / 2) * random());
-	const requested = failure.retryAfterMs;
-	const asked = requested !== undefined && requested > 0 ? requested : 0;
 	const providerDelay = asked > 0 ? asked + Math.round(RETRY_AFTER_SPREAD_MS * random()) : 0;
-	const delayMs = Math.min(Math.max(spread, providerDelay), cap);
+	const delayMs = Math.max(Math.min(Math.max(spread, providerDelay), cap), asked);
 	if (attempt <= policy.maxRetries) return delayMs;
-	// The window never pulls a retry in below what the provider asked for: an earlier retry would only fail again.
 	const leftMs = Math.max(0, RATE_LIMIT_WINDOW_MS - elapsedMs);
-	return Math.max(Math.min(delayMs, leftMs), Math.min(asked, cap));
+	return Math.max(Math.min(delayMs, leftMs), asked);
+}
+
+/**
+ * Why a retryable failure is final at once: its provider asked for a wait longer than `maxAgentDelayMs` (default
+ * {@link DEFAULT_MAX_RETRY_DELAY_MS}). No retry goes out before the provider's time and none waits past the cap, so
+ * the failure ends the series with this note on its message. Undefined when the wait fits the cap or none was asked.
+ */
+export function retryAfterBeyondCap(
+	policy: Pick<RetryPolicy, "maxAgentDelayMs">,
+	failure: Pick<AssistantMessage, "retryAfterMs">,
+): string | undefined {
+	const asked = askedDelayMs(failure);
+	const cap = policy.maxAgentDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
+	if (asked <= Math.max(0, cap)) return undefined;
+	return `The provider asked to wait ${Math.ceil(asked / 1000)}s before a retry, longer than retry.maxAgentDelayMs (${Math.ceil(Math.max(0, cap) / 1000)}s), so it was not retried.`;
 }
 
 /**
  * Retry policy: bounded attempts with exponential backoff (`baseDelayMs * 2^(attempt-1)`).
- * `maxAgentDelayMs` caps each computed delay and defaults to 60 seconds.
+ * `maxAgentDelayMs` caps each delay this side computes and is the longest provider-requested wait a retry waits out
+ * (a longer one ends the series, {@link retryAfterBeyondCap}); it defaults to 60 seconds.
  * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`, `maxAgentDelayMs`) in coding-agent; kept
  * here so the classifier and the policy-driven retry loop live together and stay reusable
  * by the SDK and other callers.
@@ -113,7 +135,7 @@ export interface RetryPolicy {
 	maxRetries: number;
 	/** Base delay in ms. Per-attempt delay is `baseDelayMs * 2^(attempt-1)` before jitter. */
 	baseDelayMs: number;
-	/** Optional cap for agent-level retry delays in ms. Defaults to 60 seconds. */
+	/** Cap for agent-level retry delays in ms, and the longest provider `retry-after` waited out. Defaults to 60 seconds. */
 	maxAgentDelayMs?: number;
 	/** Wait between retries while the machine is offline. Defaults to {@link DEFAULT_OFFLINE_INTERVAL_MS}. */
 	offlineIntervalMs?: number;
@@ -247,7 +269,8 @@ export interface RetryCallbacks {
  *   Aborts during the backoff sleep are normalized to an aborted `AssistantMessage`
  *   too, so callers do not need to care when cancellation happened.
  * - A non-retryable error (per {@link isRetryableAssistantError}, including quota/
- *   billing exhaustion) is returned immediately so deterministic errors fail fast.
+ *   billing exhaustion) is returned immediately so deterministic errors fail fast, and so is one whose
+ *   provider asked for a wait past `maxAgentDelayMs` ({@link retryAfterBeyondCap}).
  * - Otherwise retries by the same policy as an agent turn ({@link mayRetry}, {@link retryDelayFor}), emitting
  *   `onRetryScheduled` before each sleep, `onRetryAttemptStart` after each sleep before
  *   the retried call starts, and `onRetryFinished` once at the end (whether the loop
@@ -298,13 +321,16 @@ export async function retryAssistantCall(
 			firstFailureAt = undefined;
 		}
 		const elapsedMs = firstFailureAt === undefined ? 0 : Date.now() - firstFailureAt;
+		const beyondCap = retryable && offline?.kind !== "wait" ? retryAfterBeyondCap(policy!, response) : undefined;
 		if (
 			!retryable ||
 			offline?.kind === "stop" ||
+			beyondCap !== undefined ||
 			(offline?.kind !== "wait" && !mayRetry(attempt + 1, maxRetries, errorText, elapsedMs, Date.now() - startedAt))
 		) {
-			if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
-			return response;
+			const final = beyondCap ? { ...response, errorMessage: `${errorText}\n${beyondCap}` } : response;
+			if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt, final.errorMessage);
+			return final;
 		}
 
 		attempt++;

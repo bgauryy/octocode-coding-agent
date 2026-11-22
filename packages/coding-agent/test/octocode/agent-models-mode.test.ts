@@ -91,7 +91,9 @@ describe("models tool", () => {
 			"This session: anthropic/claude-opus · thinking high · context budget 180k of 200k capacity.",
 		);
 		expect(text).toMatch(/anthropic\/claude-haiku · \$1\/\$5 · 200k · tools, images.*estimated size.* · \?/);
-		expect(text).toContain("Session only (child tasks cannot inherit these credentials): opencode/qwen-coder");
+		const [runnable, parentOnly] = text.split("Parent session only:");
+		expect(runnable).not.toContain("opencode/qwen-coder");
+		expect(parentOnly).toMatch(/opencode\/qwen-coder[^\n]*tasks cannot inherit --api-key/);
 	});
 
 	it("names each provider's kind on its row", async () => {
@@ -117,6 +119,8 @@ describe("models tool", () => {
 
 	it("lists every matching enabled model across pages and filters the same inventory by size", async () => {
 		const { run } = mode();
+		for (const offset of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1])
+			await expect(run({ offset })).rejects.toThrow(/offset must be a nonnegative safe integer/);
 		const large = Array.from({ length: 105 }, (_, index) =>
 			m("gateway", `mini-${String(index).padStart(3, "0")}`, 1, 2),
 		);
@@ -151,7 +155,7 @@ describe("models tool", () => {
 		]);
 		expect(text).toMatch(/^anthropic\/claude-haiku · .* · ✓$/m);
 		expect(text).toMatch(/^anthropic\/claude-opus · .* · ✓$/m);
-		expect(text).toContain("Session only (child tasks cannot inherit these credentials): opencode/qwen-coder");
+		expect(text).toMatch(/opencode\/qwen-coder[^\n]*session only \(tasks cannot inherit --api-key\)/);
 		const details = await run({ provider: "opencode" });
 		expect(details.match(/credential refused/g)).toHaveLength(1);
 		expect(details).toContain("401 api_key_expired — fix with /providers");

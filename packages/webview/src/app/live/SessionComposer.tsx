@@ -91,6 +91,22 @@ function SessionComposerForSession() {
 	const stopKey = `abort:${session?.sessionId ?? ""}:${session?.runId ?? ""}`;
 	const stopRequest = useStore(workspace, (state) => state.requests[stopKey]);
 	const stopState = session?.receipts.find((receipt) => receipt.id === stopRequest?.id) ?? stopRequest;
+	// A Stop withdraws the queued messages; its completed receipt gives them back to the message box, once, before any draft.
+	const restoreKey = `abort-restore:${session?.sessionId ?? ""}`;
+	const restore = useStore(workspace, (state) => state.requests[restoreKey]);
+	const stopped =
+		restore?.status === "pending"
+			? session?.receipts.find((receipt) => receipt.id === restore.id && receipt.status !== "accepted")
+			: undefined;
+	useEffect(() => {
+		if (!stopped || !restore) return;
+		const state = workspace.getState();
+		state.setRequest(restoreKey, { ...restore, status: "accepted" });
+		if (!stopped.withdrawn?.length) return;
+		const current = state.drafts[draftKey];
+		const text = [...stopped.withdrawn, current?.text ?? ""].filter((part) => part.trim()).join("\n\n");
+		state.setDraft(draftKey, { ...current, text, id: crypto.randomUUID() });
+	}, [stopped, restore, restoreKey, draftKey, workspace]);
 	const announcement = useRunAnnouncement(session);
 	if (!session || !connection) return null;
 
@@ -183,6 +199,7 @@ function SessionComposerForSession() {
 			sessionStore.getState().application?.sessionId === session.sessionId &&
 			sessionStore.getState().connection === connection;
 		workspace.getState().setRequest(stopKey, { id, status: "sending", message: "Stopping…" });
+		workspace.getState().setRequest(restoreKey, { id, status: "pending", message: "" });
 		try {
 			const receipt = await connection.execute({
 				id,

@@ -196,6 +196,12 @@ export function createSessionCollaborators(
 	};
 	const prompting: PromptingHost = { ...base, inputs, compaction, runLoop, limitsModel: () => models.limitsModel() };
 	held.prompting = prompting;
+	const modelWait = new ModelWaitWatch(
+		(idleMs, cooldown) => base.emit({ type: "model_wait", idleMs, ...(cooldown ? { cooldown } : {}) }),
+		(idleMs) => emitModelStall(base.session.featureHost, idleMs),
+	);
+	// A turn's request that waits out its provider's rate-limit cool-down says so, instead of reading as a silent model.
+	if (config.cooldownWaitRef) config.cooldownWaitRef.current = (wait) => modelWait.cooldown(wait);
 	return {
 		models,
 		tools,
@@ -222,10 +228,7 @@ export function createSessionCollaborators(
 			...base,
 			inputs,
 			retry,
-			modelWait: new ModelWaitWatch(
-				(idleMs) => base.emit({ type: "model_wait", idleMs }),
-				(idleMs) => emitModelStall(base.session.featureHost, idleMs),
-			),
+			modelWait,
 			boundaries,
 			toolCalls,
 			emitFeatureEvent: seams.emitFeatureEvent,

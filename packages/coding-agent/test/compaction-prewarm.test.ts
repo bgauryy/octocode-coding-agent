@@ -1,6 +1,7 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CompactionPrewarm, prewarmLeadTokens } from "../src/core/agent-session/compaction-prewarm.ts";
+import { providerCooldowns } from "../src/core/model-runtime/provider-cooldown.ts";
 import type { SessionCompactPrewarmEvent } from "../src/core/features/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { prepareCompaction } from "../src/core/compaction/index.ts";
@@ -55,6 +56,24 @@ describe("compaction prewarm", () => {
 		prewarm.reset();
 		expect(events[0].signal.aborted).toBe(true);
 		expect(prewarm.due(threshold - 1, model, settings)).toBe(true);
+	});
+
+	it("plans nothing while the model's provider cools down from a rate limit, and plans once it is over", () => {
+		const { events, prewarm, manager } = setup();
+		const cooling = { provider: "prewarm-cooling", id: "m", contextWindow: 100_000 } as never;
+		const runner = { hasHandlers: () => true, emit: async (event: never) => void events.push(event) } as never;
+		providerCooldowns.record("prewarm-cooling", { retryAfterMs: 60_000 });
+		prewarm.start(manager, runner, cooling, settings, policy);
+		expect(events).toHaveLength(0);
+		expect(prewarm.due(threshold - 1, cooling, settings)).toBe(true);
+		const later = Date.now() + 61_000;
+		const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+		try {
+			prewarm.start(manager, runner, cooling, settings, policy);
+		} finally {
+			clock.mockRestore();
+		}
+		expect(events).toHaveLength(1);
 	});
 
 	it("drops the plan, aborting its request, when the model or the settings changed", () => {

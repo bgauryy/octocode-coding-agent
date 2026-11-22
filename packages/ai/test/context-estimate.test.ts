@@ -49,6 +49,13 @@ const model: Model<"openai-responses"> = {
 };
 
 describe("context token estimation", () => {
+	it.each([200_000, 0])("honors the model output ceiling with context window %i", (contextWindow) => {
+		const smallOutput = { ...model, contextWindow, maxTokens: 4_000 };
+		const context = normalizeContext({ messages: [] });
+		expect(buildBaseOptions(smallOutput, context, { maxTokens: 9_000 }).maxTokens).toBe(4_000);
+		expect(buildBaseOptions(smallOutput, context, { maxTokens: 1_000 }).maxTokens).toBe(1_000);
+	});
+
 	// Regression for #10497: large new inputs need more room than chars/4 allows. Without a model family the ratio is
 	// the densest measured, 2.5 characters per token (Claude).
 	it("reserves 2.5 characters per token for new text when limiting output", () => {

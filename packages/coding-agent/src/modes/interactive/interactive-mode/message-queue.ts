@@ -152,18 +152,18 @@ export function clearAllQueues(host: MessageQueueHost): { steering: string[]; fo
 	};
 }
 
+/**
+ * Queued messages back to the editor; with `abort`, the run stops too. A Stop withdraws the queued input itself
+ * (`AgentSession.abort`); taking it first, in the same tick, puts it in the editor at once, before the run has ended.
+ */
 export function restoreQueuedMessagesToEditor(host: MessageQueueHost, options?: { abort?: boolean }): number {
 	const { steering, followUp } = host.clearAllQueues();
 	const allQueued = [...steering, ...followUp];
-	if (allQueued.length === 0) {
-		if (options?.abort) {
-			void getApplicationPort(host.session).invoke("abort");
-		}
-		return 0;
-	}
-	prependToEditorDraft(host.editor, allQueued.join("\n\n"));
+	if (allQueued.length > 0) prependToEditorDraft(host.editor, allQueued.join("\n\n"));
 	if (options?.abort) {
-		void getApplicationPort(host.session).invoke("abort");
+		getApplicationPort(host.session)
+			.invoke("abort")
+			.catch((error: unknown) => host.showError(`The run could not be stopped: ${errorMessage(error)}`));
 	}
 	return allQueued.length;
 }

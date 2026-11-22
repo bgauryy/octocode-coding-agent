@@ -6,7 +6,9 @@ import type { ConfigAdapter, ConfigContext, ConfigEntry } from "../types.ts";
 
 /** Built-in providers, those models.json defines, and any already disabled: the ids the /providers page shows. */
 async function knownProviders(ctx: ConfigContext, disabled: readonly string[]): Promise<string[]> {
-	const custom = (await ModelConfig.load(join(ctx.agentDir, "models.json"))).getProviderIds();
+	// Trusted project models.json files add providers too; an untrusted folder's files are not read.
+	const project = { cwd: ctx.cwd, isTrusted: () => ctx.projectTrusted };
+	const custom = (await ModelConfig.load(join(ctx.agentDir, "models.json"), project)).getProviderIds();
 	return [...new Set([...getBuiltinProviders(), ...custom, ...disabled])];
 }
 

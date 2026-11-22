@@ -5,8 +5,14 @@ import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { RoutingWatch, withReplacedProfileModels } from "../../src/octocode/subagents/routing-watch.ts";
 import { visibleModels } from "../../src/core/provider-models.ts";
 
-const m = (provider: string, id: string, input: number, output: number): ModelRef =>
-	({ provider, id, cost: { input, output }, contextWindow: 200_000, input: ["text"], reasoning: true }) as ModelRef;
+const m = (provider: string, id: string, input: number, output: number): ModelRef => ({
+	provider,
+	id,
+	cost: { input, output },
+	contextWindow: 200_000,
+	input: ["text"],
+	reasoning: true,
+});
 const opus = m("p", "opus", 4, 20);
 const sonnet = m("p", "sonnet", 2, 10);
 const haiku = m("p", "haiku", 0.1, 0.5);

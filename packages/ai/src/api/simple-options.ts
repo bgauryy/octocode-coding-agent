@@ -22,9 +22,10 @@ const MIN_MAX_TOKENS = 1;
  * a safety margin still fit the window.
  */
 export function clampMaxTokensToContext(model: Model<Api>, context: TranscriptContext, maxTokens: number): number {
-	if (model.contextWindow <= 0) return Math.max(MIN_MAX_TOKENS, maxTokens);
+	const outputLimit = Math.max(MIN_MAX_TOKENS, Math.min(maxTokens, model.maxTokens));
+	if (model.contextWindow <= 0) return outputLimit;
 	const available = model.contextWindow - estimateContextTokens(context, model).tokens - CONTEXT_SAFETY_TOKENS;
-	return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
+	return Math.min(outputLimit, Math.max(MIN_MAX_TOKENS, available));
 }
 
 export function resolveSamplingParams(

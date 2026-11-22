@@ -202,6 +202,7 @@ export function deriveRequests(entries: Entry[], opts: DeriveOptions): ProfileRe
 		const group = grouped ? cacheGroupAt(prepared, position) : undefined;
 		const providerReason = providerMissReason(message);
 		const firstBreak = broke < 0 ? undefined : starts[broke];
+		const outcomes = prepared.outcomes.get(k);
 		result.push({
 			agentId: opts.agentId,
 			index: k,
@@ -211,6 +212,7 @@ export function deriveRequests(entries: Entry[], opts: DeriveOptions): ProfileRe
 			...(message.provider ? { provider: str(message.provider, "") } : {}),
 			usage,
 			layers,
+			...(outcomes ? { outcomes } : {}),
 			...(firstBreak !== undefined ? { firstBreak } : {}),
 			...(miss
 				? { missReason: cacheMissLabel(miss, before === undefined ? undefined : cacheLifetimeMs(prepared, before)) }

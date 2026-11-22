@@ -116,6 +116,17 @@ function compaction(models: TestModel[]) {
 }
 
 describe("request size", () => {
+	it("plans forced cache points on an unnamed Bedrock profile at the short lifetime", () => {
+		const lifetimes = new PromptCacheLifetimes();
+		const route = {
+			id: "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/opaque",
+			provider: "amazon-bedrock",
+			api: "bedrock-converse-stream" as const,
+		};
+		expect(lifetimes.of(route, { AWS_BEDROCK_FORCE_CACHE: "0" })).toBeUndefined();
+		expect(lifetimes.of(route, { AWS_BEDROCK_FORCE_CACHE: "1" })).toEqual({ short: 300, long: 300 });
+	});
+
 	it("counts what the provider is sent: text, thinking with its signature, tool-call arguments and images", () => {
 		const entries = [
 			{

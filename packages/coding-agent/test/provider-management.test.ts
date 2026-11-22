@@ -57,7 +57,7 @@ function manager() {
 		}),
 		getProviders: () => [provider, codex, anthropic],
 		getProvider: (id: string) => [provider, codex, anthropic].find((entry) => entry.id === id),
-		getModels: () => [{ id: "one" }],
+		getModels: () => [{ id: "one", name: "One", provider: "openai" }],
 		getAvailableSnapshot: () => [{ provider: "openai", id: "one" }],
 		getProviderAuthStatus: (id: string) => ({
 			configured: id === "openai",
@@ -79,7 +79,9 @@ function manager() {
 		session: {
 			modelRuntime: runtime,
 			model: { provider: "openai", id: "one" },
+			sessionManager: { getCwd: () => tmpdir() },
 			settingsManager: {
+				isProjectTrusted: () => false,
 				saveDefaultModelSelection: vi.fn(),
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
@@ -104,7 +106,7 @@ function manager() {
 		showStatus: vi.fn(),
 		showError: vi.fn(),
 		updateAvailableProviderCount: vi.fn(),
-		ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn(), terminal: { rows: 40 } },
+		ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn(), terminal: { rows: 90 } },
 		getLoginProviderOptions: () => getLoginProviderOptions(createFakeHost(value)),
 	};
 	return {
@@ -122,6 +124,15 @@ type Fixture = ReturnType<typeof manager>;
 const DOWN = "\x1b[B";
 const ENTER = "\r";
 const ESC = "\x1b";
+
+/** Enter on a ready provider opens its model chooser first; closing it lands on the provider's page (page 2). */
+async function openReadyProvider(value: Fixture["value"], list: { handleInput(data: string): void }) {
+	list.handleInput(ENTER);
+	const chooser = await pageAt(value, 1);
+	expect(textOf(chooser)).toContain("choose models");
+	chooser.handleInput(ESC);
+	return pageAt(value, 2);
+}
 
 /** The nth page `showSelector` was asked to open, built the way the host builds it. */
 async function pageAt(value: Fixture["value"], index: number) {
@@ -217,7 +228,7 @@ describe("provider setup flow", () => {
 	it("names provider access /providers and keeps each command under one name", () => {
 		expect(getBuiltinCommand("providers")?.name).toBe("providers");
 		// v20.0.1 (25685858) removed /github: GitHub access goes through `/octocode login`.
-		for (const removed of ["login", "models", "github"]) expect(getBuiltinCommand(removed)).toBeUndefined();
+		for (const removed of ["login", "github"]) expect(getBuiltinCommand(removed)).toBeUndefined();
 	});
 
 	it("keeps everyday access on the main page and source diagnostics on the advanced page", async () => {
@@ -225,7 +236,13 @@ describe("provider setup flow", () => {
 		mkdirSync(join(home, ".codex"));
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const page = await pageAt(value, 0);
-		const output = textOf(page);
+		// The page scrolls (14 rows at a time): read it to the end.
+		let output = textOf(page);
+		for (let step = 0; step < 60; step++) {
+			page.handleInput(DOWN);
+			output += `\n${textOf(page)}`;
+		}
+		page.handleInput("\x1b[A".repeat(60));
 		const at = ["Ready", "External agents", "Add", "Advanced"].map((heading) =>
 			output.search(new RegExp(`^ ${heading}$`, "m")),
 		);
@@ -354,12 +371,11 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		expect(textOf(list)).toMatch(/OpenAI +subscription · OPENAI_API_KEY · defined in built-in · 1 model/);
-		list.handleInput(ENTER);
-		const detail = await pageAt(value, 1);
+		const detail = await openReadyProvider(value, list);
 		expect(textOf(detail)).toMatch(/Status +✓ ready · subscription · OPENAI_API_KEY/);
 		expect(textOf(detail)).not.toContain("✓ ready · API key");
 		detail.handleInput(ESC);
-		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await pageAt(value, 3).then((page) => page.handleInput(ESC));
 		await run;
 	});
 
@@ -368,11 +384,10 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
 		expect(textOf(list)).toMatch(/OpenAI +API key · OPENAI_API_KEY/);
-		list.handleInput(ENTER);
-		const detail = await pageAt(value, 1);
+		const detail = await openReadyProvider(value, list);
 		expect(textOf(detail)).toMatch(/Status +✓ ready · API key/);
 		detail.handleInput(ESC);
-		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await pageAt(value, 3).then((page) => page.handleInput(ESC));
 		await run;
 	});
 
@@ -404,11 +419,10 @@ describe("provider setup flow", () => {
 		const { host, value } = manager();
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const list = await pageAt(value, 0);
-		list.handleInput(ENTER);
-		const detail = await pageAt(value, 1);
+		const detail = await openReadyProvider(value, list);
 		expect(textOf(detail)).not.toMatch(/Billing|Plan terms/);
 		detail.handleInput(ESC);
-		await pageAt(value, 2).then((page) => page.handleInput(ESC));
+		await pageAt(value, 3).then((page) => page.handleInput(ESC));
 		await run;
 	});
 
@@ -458,8 +472,8 @@ describe("provider setup flow", () => {
 					/Choose a model|Choose models|Sign in|API key$|Remove|Disable/.test(line) && !/Status|Models/.test(line),
 			);
 		expect(actions.map((line) => line.replace(/^\s*[›▸]?\s*/, "").trim())).toEqual([
-			"Choose a model for this chat",
 			"Choose models — tick which of this provider's models /model, Ctrl+P and subagents may use",
+			"Choose a model for this chat",
 			"Sign in — OpenAI account",
 			"Replace API key",
 			"Remove saved credential",
@@ -570,7 +584,7 @@ describe("provider setup flow", () => {
 		const page = await pageAt(value, 0);
 		expect(textOf(page)).toContain("Needs attention");
 		expect(textOf(page)).toMatch(
-			/gone-gateway +credential in .* but no provider defines it · remove the credential, or define the provider in .*✗ broken/,
+			/gone-gateway.*✗ broken\n.*credential in .* but no provider defines it · remove the credential, or define the provider in /,
 		);
 		expect(textOf(page)).not.toContain("Signed in");
 		page.handleInput(ESC);

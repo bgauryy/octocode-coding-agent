@@ -1,18 +1,15 @@
 import { CLOUDFLARE_WORKERS_AI_REST_BASE_URL } from "../../src/api/cloudflare.ts";
 import { getOpenCodeBaseUrl } from "../../src/providers/opencode-endpoints.ts";
 import type { ClassifierModel } from "../../src/types.ts";
-import { fetchCatalog } from "./fetchers.ts";
+import { catalogRequestOptions, modelsDev } from "./fetchers.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
-import type { ModelsDevMetadata } from "./types.ts";
 import { nonZeroOr } from "../../src/utils/non-zero.ts";
 
 /** Classifier models: the models.dev decision catalog and the hand-listed OpenCode, Workers AI and OpenAI models. */
 
 export async function loadModelsDevClassifierModels(): Promise<ClassifierModel<"typesafe-system-one">[]> {
 	console.log("Fetching classifier models from models.dev API...");
-	const response = await fetchCatalog("https://models.dev/models.json?type=decision");
-	if (!response.ok) throw new Error(`models.dev classifier API returned ${response.status}`);
-	const data = (await response.json()) as Record<string, ModelsDevMetadata>;
+	const data = await modelsDev.models({ ...catalogRequestOptions(), modelTypes: ["decision"] });
 	const metadata = data["typesafe/jev-latest"];
 	if (!metadata || metadata.type !== "decision") {
 		throw new Error("models.dev did not return decision model typesafe/jev-latest");

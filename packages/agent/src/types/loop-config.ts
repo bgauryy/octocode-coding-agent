@@ -271,13 +271,14 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * Called immediately before every conversational provider request, including the first.
 	 * Pending messages have already been appended. The returned context, model, and thinking level
 	 * replace the runtime values for this and later requests in the run. This hook does not poll queues.
+	 * Not called once the run's signal aborted: that turn ends with an aborted reply and sends no request.
 	 */
 	prepareRequest?: PrepareRequest;
 
 	/**
 	 * Called after `turn_end` when the loop will continue, immediately before the next turn starts.
 	 * Return replacement context/model/thinking state or messages to append to affect that turn.
-	 * Return undefined to keep using the current context/config.
+	 * Return undefined to keep using the current context/config. Not called once the run's signal aborted.
 	 */
 	prepareNextTurn?: (
 		context: PrepareNextTurnContext,
@@ -366,6 +367,12 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 
 	/** Receives a tool-update listener that threw or rejected; defaults to one line on `process.stderr`. */
 	onListenerError?: ListenerErrorReporter;
+
+	/**
+	 * Called when a parallel tool batch fails while some of its calls still run: `settled` resolves once every call of
+	 * the batch has ended. The loop does not stop them; the owner of the signal aborts it and may wait on `settled`.
+	 */
+	onAbandonedTools?: (settled: Promise<void>) => void;
 }
 
 /**

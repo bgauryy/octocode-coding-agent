@@ -24,9 +24,9 @@ import {
  * gone; so are the e2e suites' tmux sockets whose test process is gone, at both ends of a run. The run's home (`VITEST_TEST_USER_HOME`) sits beside the temporary directory, never inside it: the folder trust
  * gate ignores a trusted subtree that contains the home folder, and tests trust the temporary directory.
  */
-export default function setup(): () => Promise<void> {
+export default async function setup(): Promise<() => Promise<void>> {
 	const parent = tmpdir();
-	sweepStaleRunDirs(parent);
+	await sweepStaleRunDirs(parent);
 	sweepStaleTmuxSockets();
 	const dir = makeRunDir(parent);
 	const userHome = makeRunDir(parent);

@@ -1,3 +1,4 @@
+import { inputRoomTokens } from "./settings.ts";
 import type { CompactionSettings } from "./compaction.ts";
 
 /** In the new event loop, compact at a step boundary shortly before the usual compaction limit.
@@ -11,6 +12,6 @@ export function shouldStopForCompaction(
 	settings: CompactionSettings,
 ): boolean {
 	if (!settings.enabled || !(contextWindow > 0)) return false;
-	const limit = contextWindow - settings.reserveTokens;
+	const limit = inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens);
 	return limit > 0 && contextTokens >= COMPACTION_STOP_AT * limit;
 }

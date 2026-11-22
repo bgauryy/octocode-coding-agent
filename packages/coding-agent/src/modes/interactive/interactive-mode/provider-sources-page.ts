@@ -28,7 +28,11 @@ interface SourcesView {
 	files: CustomModelsFile[];
 }
 
-async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnvironment): Promise<SourcesView> {
+/** The sources and the models.json files they lead to. Shared with the main `/providers` page. */
+export async function loadModelFiles(
+	ctx: PageContext,
+	environment?: ProviderSourceEnvironment,
+): Promise<Pick<SourcesView, "sources" | "files">> {
 	const { settingsManager } = ctx.host.session;
 	const ownDir = ctx.host.session.modelRuntime.getConfigurationDirectory();
 	const piDirs =
@@ -39,11 +43,12 @@ async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnv
 		piDirs,
 	});
 	const piOn = sources.find((source) => source.id === "pi")?.state.enabled ?? true;
-	return {
-		sources,
-		tools: detectLocalTools(environment),
-		files: await customModelsFiles({ ownDir, piDirs }, piOn, environment?.env),
-	};
+	const project = { cwd: ctx.host.session.sessionManager.getCwd(), trusted: settingsManager.isProjectTrusted() };
+	return { sources, files: await customModelsFiles({ ownDir, piDirs, project }, piOn, environment?.env) };
+}
+
+async function loadSourcesView(ctx: PageContext, environment?: ProviderSourceEnvironment): Promise<SourcesView> {
+	return { ...(await loadModelFiles(ctx, environment)), tools: detectLocalTools(environment) };
 }
 
 const sourceRowId = (id: string): string => `source:${id}`;
@@ -76,22 +81,46 @@ function toolRow(ctx: PageContext, tool: DetectedTool): PageRow {
 	};
 }
 
-function fileRow(file: CustomModelsFile, index: number): PageRow {
+export function fileRow(file: CustomModelsFile, index: number): PageRow {
 	const defines = file.defines.length ? ` · defines ${file.defines.join(", ")}` : "";
-	return {
+	const base = {
 		id: fileRowId(index),
-		name: `${file.origin} models.json`,
-		detail: `${file.path}${defines}`,
-		...(file.unreadable
-			? {
-					badge: badge("broken").text,
-					tone: badge("broken").tone,
-					detail: `${file.path} · unreadable; fix or remove the file`,
-				}
-			: file.exists
-				? {}
-				: { badge: badge("off").text, tone: badge("off").tone, detail: `${file.path} · not found` }),
+		name: `${file.origin}${file.scope === "project" ? " project" : ""} models.json`,
 	};
+	if (file.scope === "project" && !file.trusted)
+		return {
+			...base,
+			detail: `${file.path} · not read — trust this folder to use it: run octocode trust add <folder>, then start a new session`,
+			badge: badge("off").text,
+			tone: badge("off").tone,
+		};
+	if (file.unreadable)
+		return {
+			...base,
+			detail: `${file.path} · unreadable; fix or remove the file`,
+			badge: badge("broken").text,
+			tone: badge("broken").tone,
+		};
+	if (!file.exists)
+		return { ...base, detail: `${file.path} · not found`, badge: badge("off").text, tone: badge("off").tone };
+	const shadows = file.shadows?.length ? ` · replaces global: ${file.shadows.join(", ")}` : "";
+	return { ...base, detail: `${file.path}${defines}${shadows}` };
+}
+
+/**
+ * The main page's rows for the models.json files: project files that exist (an untrusted one is shown with its
+ * warning), Octocode's global file always, Pi's global only when found (the folders Pi searches that hold nothing
+ * collapse into one row). A row's id indexes `files`, so opening one leads to the sources page.
+ */
+export function modelFileRows(files: readonly CustomModelsFile[]): PageRow[] {
+	const rows = files.flatMap((file, index) => {
+		const show = file.scope === "project" ? file.exists : file.origin === "Octocode" || file.exists;
+		return show ? [fileRow(file, index)] : [];
+	});
+	const globalPi = files.flatMap((file, index) => (file.origin === "Pi" && file.scope === "global" ? [index] : []));
+	if (globalPi.length && !globalPi.some((index) => files[index].exists))
+		rows.push(fileRow(files[globalPi[0]], globalPi[0]));
+	return rows;
 }
 
 /** File-level diagnostics are separate from everyday provider access. */

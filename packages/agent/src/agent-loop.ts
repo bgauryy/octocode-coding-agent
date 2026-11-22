@@ -5,7 +5,7 @@
 
 import { type AssistantMessage, EventStream, type ToolResultMessage } from "@octocodeai/octocode-ai";
 import { createEmptyUsage } from "@octocodeai/octocode-ai/utils/assistant-message";
-import { streamAssistantResponse } from "./agent-loop/assistant-stream.ts";
+import { abortedAssistantResponse, streamAssistantResponse } from "./agent-loop/assistant-stream.ts";
 import { EarlyToolCalls } from "./agent-loop/early-start.ts";
 import type { AgentEventSink } from "./agent-loop/events.ts";
 import { inputCommitter } from "./agent-loop/input.ts";
@@ -220,7 +220,8 @@ async function runLoop(
 			const selected = pendingMessages.length > 0;
 			if (selected) config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
 			if (lastCompletedTurn) {
-				const nextTurnSnapshot = await config.prepareNextTurn?.(lastCompletedTurn);
+				// A run aborted during its tools goes on only to record the interruption: its next turn is not prepared.
+				const nextTurnSnapshot = signal?.aborted ? undefined : await config.prepareNextTurn?.(lastCompletedTurn);
 				if (nextTurnSnapshot) {
 					currentContext = nextTurnSnapshot.context ?? currentContext;
 					preparedMessages = nextTurnSnapshot.messages ?? [];
@@ -259,41 +260,34 @@ async function runLoop(
 				return;
 			}
 
-			const preparedRequest = await prepareProviderRequest(
-				currentContext,
-				config,
-				newMessages,
-				emit,
-				inputSelected,
-				signal,
-			);
-			currentContext = preparedRequest.context;
-			config = preparedRequest.config;
-			if (preparedRequest.stop) {
+			// Once the run aborted, no request is prepared or sent: the turn ends with the aborted reply a provider gives.
+			const preparedRequest = signal?.aborted
+				? undefined
+				: await prepareProviderRequest(currentContext, config, newMessages, emit, inputSelected, signal);
+			if (preparedRequest) ({ context: currentContext, config } = preparedRequest);
+			if (preparedRequest?.stop) {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
-			const requestUpdate = preparedRequest.update;
+			const requestUpdate = preparedRequest?.update;
+			const aborted = signal?.aborted === true;
 
 			// Stream assistant response
 			// Early starts (opt-in, parallel only): settled calls the host allows run while the message still streams.
 			const early =
-				config.earlyStart && config.toolExecution !== "sequential"
+				!aborted && config.earlyStart && config.toolExecution !== "sequential"
 					? new EarlyToolCalls(currentContext, config, config.earlyStart, signal)
 					: undefined;
 			// A throw while streaming or running the batch must not leave early runs going or the signal linked.
 			const requestConfig = requestUpdate?.toolChoice ? { ...config, toolChoice: requestUpdate.toolChoice } : config;
-			const message = await streamAssistantResponse(
-				currentContext,
-				requestConfig,
-				signal,
-				emit,
-				streamFunction,
-				(event) => early?.observe(event),
-			).catch((error: unknown) => {
-				early?.discard();
-				throw error;
-			});
+			const message = aborted
+				? await abortedAssistantResponse(currentContext, config, emit)
+				: await streamAssistantResponse(currentContext, requestConfig, signal, emit, streamFunction, (event) =>
+						early?.observe(event),
+					).catch((error: unknown) => {
+						early?.discard();
+						throw error;
+					});
 			newMessages.push(message);
 			// A message cut by error, abort or the output limit runs none of its calls, early ones included.
 			if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "length")
@@ -351,8 +345,8 @@ async function runLoop(
 			await emit({ type: "turn_end", message, toolResults });
 
 			// A boundary can veto continuation after a completed tool batch. A run aborted earlier, during its tools,
-			// deliberately goes on: queued steering is committed, and the next request returns at once as an aborted
-			// assistant message that marks the interruption in the transcript (pinned by the session runtime tests).
+			// deliberately goes on: queued steering is committed, and the turn ends with an aborted assistant message that
+			// marks the interruption in the transcript, made without preparing or sending a request.
 			if ((!abortedBeforeBoundary && signal?.aborted) || decision?.action === "end") {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;

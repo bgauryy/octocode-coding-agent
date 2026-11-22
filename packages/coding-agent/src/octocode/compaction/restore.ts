@@ -15,7 +15,7 @@ import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { covers, shownRanges } from "./restore-shown.ts";
 import { type Outline, outlineOf } from "./restore-outline.ts";
 import { restoreLimits, type RestoreLimits, RESTORE_TOTAL_CHARS } from "./restore-limits.ts";
-import { reserveTokensFor } from "../shared/tokens.ts";
+import { autoCompactAt } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "@octocodeai/octocode-common/text";
 import { RESTORE_MAX_BYTES, sameStamp, type Stamp, textOf } from "./restore-read.ts";
@@ -297,7 +297,7 @@ export async function deliverRestoredFiles(
 				ctx.sessionManager.buildSessionProjection(),
 				ctx.sessionManager.getBranch(),
 			).tokens;
-			const remaining = ctx.model.contextWindow - reserveTokensFor(ctx.model, thinking) - tokens;
+			const remaining = autoCompactAt(ctx.model, thinking) - tokens;
 			total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
 		} catch {
 			return undefined;

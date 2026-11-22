@@ -1,45 +1,52 @@
+import { liftedProperties, resolveLocalRef } from "@octocodeai/octocode-ai/utils/json-schema-shape";
+import { MAX_ECHOED_ARGUMENTS_CHARS, type ToolValidationFailure } from "@octocodeai/octocode-ai";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { queriesCap } from "./validation-hint.ts";
 
 type Schema = Record<string, unknown>;
 
-const MAX_ECHO_CHARS = 1500;
-
-/** The properties a `queries` item of the server's schema declares, from the root or any root alternative. */
-function itemProperties(schema: Schema): Set<string> {
-	const names = new Set<string>();
-	for (const shape of [schema, ...((schema.anyOf ?? schema.oneOf ?? []) as unknown[])]) {
-		if (!isRecord(shape) || !isRecord(shape.properties)) continue;
-		const queries = shape.properties.queries;
-		const items = isRecord(queries) ? queries.items : undefined;
-		if (isRecord(items) && isRecord(items.properties)) for (const key of Object.keys(items.properties)) names.add(key);
+/** Move a rejected root field only when exactly one declared child owns that name and has one unoccupied destination. */
+function relocate(args: Schema, names: string[], schema: Schema): Schema | undefined {
+	const fields = liftedProperties(schema);
+	const result = { ...args };
+	for (const name of names) {
+		if (!Object.hasOwn(args, name) || Object.hasOwn(fields, name)) return undefined;
+		const destinations = Object.entries(fields).filter(([, field]) => {
+			const child = resolveLocalRef(field, schema);
+			if (!isRecord(child)) return false;
+			return Object.hasOwn(liftedProperties(child.items ?? child, schema), name);
+		});
+		if (destinations.length !== 1) return undefined;
+		const [key] = destinations[0];
+		const child = result[key];
+		const item = Array.isArray(child) && child.length === 1 ? child[0] : child;
+		if (!isRecord(item) || Object.hasOwn(item, name)) return undefined;
+		const moved = { [name]: args[name], ...item };
+		result[key] = Array.isArray(child) ? [moved] : moved;
+		delete result[name];
 	}
-	return names;
+	return result;
 }
 
-/**
- * The call a repeated identical validation failure should have been: root fields the schema does not declare move into
- * each `queries` item that declares them (and are dropped otherwise), and a batch over the server's cap splits into
- * calls of at most the cap. Only the shape the model already sent is rearranged; undefined when the arguments have no
- * `queries` array, when nothing would change, or when the echo is too long to be useful.
- */
-export function correctedCalls(schema: Schema, args: unknown, offending: string[]): string | undefined {
-	if (!isRecord(args) || !Array.isArray(args.queries)) return undefined;
-	const declared = isRecord(schema.properties) ? schema.properties : {};
-	const strays = offending.filter((key) => key in args && !(key in declared) && key !== "queries");
-	const accepted = itemProperties(schema);
-	const moved = strays.filter((key) => accepted.has(key));
-	const rest = Object.fromEntries(Object.entries(args).filter(([key]) => !strays.includes(key) && key !== "queries"));
-	const queries = args.queries.map((query) =>
-		isRecord(query) ? { ...Object.fromEntries(moved.map((key) => [key, args[key]])), ...query } : query,
-	);
+/** Text only. Keep all values, check every proposed call against the original validator and bound the complete example. */
+export function correctedCalls(schema: Schema, failure: ToolValidationFailure): string | undefined {
+	const { arguments: args, accepts, unexpected } = failure;
+	if (!isRecord(args) || !accepts) return undefined;
+	const names = [...new Set(unexpected?.filter((error) => !error.instancePath).flatMap((error) => error.names))];
+	const candidate = names.length ? relocate(args, names, schema) : args;
+	if (!candidate) return undefined;
 	const cap = queriesCap(schema);
-	const size = cap !== undefined && cap > 0 ? cap : queries.length || 1;
-	const calls: Schema[] = [];
-	for (let i = 0; i < Math.max(queries.length, 1); i += size)
-		calls.push({ ...rest, queries: queries.slice(i, i + size) });
-	if (strays.length === 0 && calls.length === 1) return undefined;
-	const text = calls.map((call) => JSON.stringify(call)).join("\n");
-	if (text.length > MAX_ECHO_CHARS) return undefined;
-	return `This failed identically twice. Send ${calls.length === 1 ? "this call" : `these ${calls.length} calls in the same turn`}:\n${text}`;
+	const queries = candidate.queries;
+	const split =
+		Array.isArray(queries) && Number.isSafeInteger(cap) && cap !== undefined && cap > 0 && queries.length > cap;
+	if (!split && !names.length) return undefined;
+	const count = split ? Math.ceil(queries.length / cap) : 1;
+	let example = `This failed identically twice. Send ${count === 1 ? "this call" : `these ${count} calls in the same turn`}:`;
+	for (let index = 0; index < count; index++) {
+		const call = split ? { ...candidate, queries: queries.slice(index * cap, (index + 1) * cap) } : candidate;
+		const text = JSON.stringify(call);
+		if (example.length + 1 + text.length > MAX_ECHOED_ARGUMENTS_CHARS || !accepts(call)) return undefined;
+		example += `\n${text}`;
+	}
+	return example;
 }

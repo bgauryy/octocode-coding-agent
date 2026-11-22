@@ -108,6 +108,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		description: "Pick a model for this chat or as the default",
 		argumentHint: "[provider/model] [--set-default]",
 	},
+	{ name: "models", description: "Turn models on or off per provider" },
 	{ name: "tree", description: "Browse session branches and jump to a message" },
 	{
 		name: "effort",
@@ -208,6 +209,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 export const SLASH_MENU_ORDER: readonly string[] = [
 	"help",
 	"model",
+	"models",
 	"providers",
 	"effort",
 	"new",
@@ -272,7 +274,6 @@ export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["release-notes", "changelog"],
 	["feedback", "bug"],
 	["login", "providers"],
-	["models", "model"],
 	["continue", "resume"],
 	["allowed-tools", "permissions"],
 	["doctor", "debug"],

@@ -18,7 +18,6 @@ const APPLICATION_OPERATIONS = [
 	"sendUserMessage",
 	"abort",
 	"stopActiveWork",
-	"abortRetry",
 	"abortCompaction",
 	"abortBranchSummary",
 	"compact",

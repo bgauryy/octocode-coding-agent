@@ -242,8 +242,9 @@ export class ManagePageComponent implements Component, Focusable {
 	private renderRow(row: PageRow, width: number, nameWidth: number, selected: boolean): string[] {
 		const narrow = width < 72;
 		const long = !!row.detail && visibleWidth(`   ${row.name}  ${row.detail}  ${row.badge ?? ""}`) > width;
-		const line = this.rowLine(narrow ? { ...row, detail: undefined } : row, width, nameWidth, selected);
-		if (!selected || !row.detail || !(narrow || long)) return [line];
+		const wrapped = selected && !!row.detail && (narrow || long);
+		const line = this.rowLine(narrow || wrapped ? { ...row, detail: undefined } : row, width, nameWidth, selected);
+		if (!wrapped || !row.detail) return [line];
 		return [line, ...wrapIndented(`   ${theme.fg("muted", row.detail)}`, width, 3)];
 	}
 

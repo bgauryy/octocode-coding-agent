@@ -126,7 +126,10 @@ export function createHistoryTool() {
 				Type.String({ description: "Topic words ranked by BM25: synonyms, ids, paths; quote phrases" }),
 			),
 			file: Type.Optional(
-				Type.String({ description: "Listed file or folder: search narrows to it; get reads it from line" }),
+				Type.String({
+					description:
+						"History file or folder. Relative to this session's archive folder, or absolute within readable history. Use a file reader for scratch files. Narrows search or reads from line with get.",
+				}),
 			),
 			line: Type.Optional(Type.Integer({ description: "Read from this line" })),
 			errors: Type.Optional(

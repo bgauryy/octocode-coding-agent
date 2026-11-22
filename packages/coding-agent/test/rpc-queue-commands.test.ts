@@ -40,6 +40,24 @@ describe("RPC queue commands", () => {
 		expect(session.moveQueuedInput).toHaveBeenCalledWith("q1", "down");
 	});
 
+	it("gives a Stop's withdrawn queue back in the abort response, taken before the abort", async () => {
+		const order: string[] = [];
+		const session = {
+			clearQueue: vi.fn(() => {
+				order.push("clearQueue");
+				return { steering: ["guide"], followUp: ["later"] };
+			}),
+			abort: vi.fn(async () => {
+				order.push("abort");
+			}),
+		};
+		expect(await handleCommand({ session } as unknown as RpcCommandHost, { id: "1", type: "abort" })).toMatchObject({
+			success: true,
+			data: { steering: ["guide"], followUp: ["later"] },
+		});
+		expect(order).toEqual(["clearQueue", "abort"]);
+	});
+
 	it("validates the commands' fields", () => {
 		const bad: unknown[] = [
 			{ type: "edit_queued", queueId: "q1" },

@@ -17,7 +17,12 @@ import {
 } from "../openai-completions/reasoning-details.ts";
 import type { AssistantMessage, Model } from "../../types.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
-import { applyAnthropicCacheControl, getCompatCacheControl } from "../openai-completions/cache-control.ts";
+import {
+	applyAnthropicCacheControl,
+	getCompatCacheControl,
+	takeUnmarkedClaudeNotice,
+} from "../openai-completions/cache-control.ts";
+import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import {
 	resolveCacheRetention,
 	resolveInstructionCacheRetention,
@@ -114,6 +119,14 @@ export function completionsMapping(
 				if (block.type === "thinking" && streamed.details) block.thinkingSignature = JSON.stringify(streamed.details);
 			return true;
 		}
+		if (part.type === "finish") {
+			const notice = takeUnmarkedClaudeNotice(
+				model,
+				compat,
+				resolveCacheRetention(options.cacheRetention, options.env),
+			);
+			if (notice) appendAssistantMessageDiagnostic(output, notice);
+		}
 		if (
 			(part.type === "finish" || part.type === "text-start") &&
 			streamed.details?.length &&
@@ -171,6 +184,7 @@ function augmentCompletionsRequest(
 						options.instructionVolatileBoundary,
 					)
 				: undefined,
+			options.toolCacheBoundary,
 		);
 	const rule = promptCacheKeyRule(model);
 	if (retention !== "none" && (rule === "cached" || (rule === "long" && retention === "long")))

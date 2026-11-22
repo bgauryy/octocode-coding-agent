@@ -14,6 +14,7 @@ import { isOfflineModeEnabled } from "../../utils/env-flag.ts";
 import { AuthStorage as DefaultAuthStorage, ReadOnlyAuthStorage } from "../auth-storage.ts";
 import { PiFallbackCredentialStore } from "../auth-storage/pi-fallback.ts";
 import { ModelConfig } from "../model-config.ts";
+import type { ModelsProject } from "../model-config/project.ts";
 import { withCopilotEnvSource } from "../provider-sources/copilot-env.ts";
 import { FileModelsStore } from "../models-store.ts";
 import { withPersonalizedCatalog, withRemoteCatalog } from "../remote-catalog-provider.ts";
@@ -26,6 +27,7 @@ export interface ModelRuntimeParts {
 	credentials: RuntimeCredentials;
 	config: ModelConfig;
 	modelsPath: string | undefined;
+	project: ModelsProject | undefined;
 	modelsStore: ModelsStore;
 	providers: Provider[];
 	/** False in offline mode: catalog and availability refreshes stay local. */
@@ -46,7 +48,7 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 	const credentials = new RuntimeCredentials(
 		options.credentials ?? createDefaultCredentialStore({ ...options, modelsPath: modelsPath ?? null }, providers),
 	);
-	const config = await ModelConfig.load(modelsPath);
+	const config = await ModelConfig.load(modelsPath, options.project);
 	const modelsStore =
 		options.modelsStore ??
 		(modelsPath
@@ -57,6 +59,7 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 		credentials,
 		config,
 		modelsPath,
+		project: options.project,
 		modelsStore,
 		providers,
 		modelNetworkEnabled,

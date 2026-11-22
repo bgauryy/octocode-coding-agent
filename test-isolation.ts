@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import { processRow, type ProcessRow, visitProcesses } from "./test-process-list.ts";
+import { basename, delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
 /**
  * The isolation every test run gets before its first worker or test process starts: its own temporary root, its own home
@@ -75,8 +76,8 @@ export function sweepStaleTmuxSockets(dir: string = tmuxSocketDir()): string[] {
  * folders. Its teardown never ran, so nothing else stops them, and some cannot carry the run's marker (tmux started
  * with `env -i`, a grandchild that only shares the process group).
  */
-export function sweepStaleRunDirs(parent: string): void {
-	stopStaleRunOrphans(parent);
+export async function sweepStaleRunDirs(parent: string): Promise<void> {
+	await stopStaleRunOrphans(parent);
 	for (const name of readdirSync(parent)) {
 		if (!name.startsWith(PREFIX)) continue;
 		const dir = join(parent, name);
@@ -86,28 +87,43 @@ export function sweepStaleRunDirs(parent: string): void {
 
 /**
  * Orphaned processes (re-parented to pid 1) whose command line or environment names a folder of a run that is no longer
- * alive under `parent`, as `[pid, process group]`. A process whose parent lives is left alone: it belongs to something
- * still running. Exported for its test.
+ * alive under `parent`. The group and start stamp identify the candidate again before signalling it.
  */
-export function staleRunOrphans(parent: string, listing?: string): Array<[number, number]> {
+export async function staleRunOrphans(parent: string, listing?: string, pids?: readonly number[]): Promise<Orphan[]> {
 	if (process.platform === "win32") return [];
 	const roots = [...new Set([parent, realpathOr(parent)])].map((each) => each.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 	const folder = new RegExp(`(?:${roots.join("|")})/(${PREFIX}[A-Za-z0-9]+)`, "g");
-	const text =
-		listing ??
-		spawnSync("ps", ["axeww", "-o", "pid=,ppid=,pgid=,command="], { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 })
-			.stdout ??
-		"";
-	const found: Array<[number, number]> = [];
-	for (const line of text.split("\n")) {
-		const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s(.*)$/.exec(line);
-		if (!match || match[2] !== "1" || Number(match[1]) === process.pid) continue;
-		const names = new Set([...match[4].matchAll(folder)].map((each) => each[1]));
-		if (names.size > 0 && [...names].every((name) => staleRun(parent, name)))
-			found.push([Number(match[1]), Number(match[3])]);
+	const found: Orphan[] = [];
+	const visit = ({ pid, ppid, pgid, started, command }: ProcessRow) => {
+		if (ppid !== 1 || pid === process.pid) return;
+		const names = new Set<string>();
+		for (const match of command.matchAll(folder)) {
+			if (!names.has(match[1]) && !staleRun(parent, match[1])) return;
+			names.add(match[1]);
+		}
+		if (names.size > 0) found.push({ pid, pgid, started });
+	};
+	if (listing !== undefined) {
+		for (const line of listing.split("\n")) {
+			const row = processRow(line);
+			if (row) visit(row);
+		}
+	} else {
+		// Most processes have a live parent; skip their environments altogether.
+		const orphans: number[] = [];
+		await visitProcesses(
+			false,
+			({ pid, ppid }) => {
+				if (ppid === 1 && pid !== process.pid) orphans.push(pid);
+			},
+			pids,
+		);
+		await visitProcesses(true, visit, orphans);
 	}
 	return found;
 }
+
+type Orphan = Pick<ProcessRow, "pid" | "pgid" | "started">;
 
 function realpathOr(path: string): string {
 	try {
@@ -118,19 +134,23 @@ function realpathOr(path: string): string {
 }
 
 /** Stops `staleRunOrphans`: their whole process group when they lead it, TERM first, then KILL; again for new orphans. */
-function stopStaleRunOrphans(parent: string): void {
+async function stopStaleRunOrphans(parent: string): Promise<void> {
 	for (let pass = 0; pass < 3; pass++) {
-		const orphans = staleRunOrphans(parent);
+		const orphans = await staleRunOrphans(parent);
 		if (orphans.length === 0) return;
+		const initial = new Map(orphans.map((each) => [each.pid, each]));
 		for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-			for (const [pid, group] of orphans) {
+			const current = await staleRunOrphans(parent, undefined, [...initial.keys()]);
+			for (const { pid, pgid, started } of current) {
+				const owned = initial.get(pid);
+				if (owned?.started !== started || owned.pgid !== pgid) continue;
 				try {
-					process.kill(group === pid ? -group : pid, signal);
-				} catch {
-					// Already gone.
+					process.kill(pgid === pid ? -pgid : pid, signal);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
 				}
 			}
-			if (signal === "SIGTERM") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+			if (signal === "SIGTERM" && current.length) await pause(500);
 		}
 	}
 }
@@ -211,6 +231,7 @@ export function guardRecords(file: string): string[] {
 
 interface RunProcess {
 	pid: number;
+	started: string;
 	command: string;
 }
 
@@ -219,32 +240,37 @@ interface RunProcess {
  * (`OCTOCODE_TEST_GUARD_FILE=<this run's file>`): what the run's tests started, daemons included. Read with `ps`, which
  * shows another process's environment only for the same user; empty on Windows.
  */
-export function runProcesses(marker: string): RunProcess[] {
+export async function runProcesses(marker: string, pids?: readonly number[]): Promise<RunProcess[]> {
 	if (process.platform === "win32") return [];
-	const env = { ...process.env };
-	delete env[GUARD_FILE_ENV];
-	const listing = spawnSync("ps", ["axeww", "-o", "pid=,ppid=,command="], {
-		encoding: "utf8",
-		env,
-		maxBuffer: 512 * 1024 * 1024,
-	});
-	if (listing.status !== 0 || !listing.stdout) return [];
-	const pids: number[] = [];
-	for (const line of listing.stdout.split("\n")) {
-		const match = /^\s*(\d+)\s+(\d+)\s(.*)$/.exec(line);
-		if (!match || !(match[3].includes(`${marker} `) || match[3].endsWith(marker))) continue;
-		const pid = Number(match[1]);
-		if (pid !== process.pid && Number(match[2]) !== process.pid) pids.push(pid);
-	}
-	if (pids.length === 0) return [];
-	// The command lines again without `e`: the environment can hold credentials and is never printed.
-	const commands = spawnSync("ps", ["-o", "pid=,command=", "-p", pids.join(",")], { encoding: "utf8", env });
+	const prefix = GUARD_FILE_ENV + "=";
+	if (!marker.startsWith(prefix) || marker.length === prefix.length || /[\r\n\0]/.test(marker))
+		throw new Error("Expected a nonempty test-run guard marker.");
+	const field = " " + marker;
+	const key = " " + prefix;
+	const owners = new Map<number, string>();
+	await visitProcesses(
+		true,
+		({ pid, ppid, started, command }) => {
+			if (pid === process.pid || ppid === process.pid) return;
+			const at = command.indexOf(key);
+			if (at < 0 || command.indexOf(key, at + 1) >= 0) return;
+			if (command.startsWith(field, at) && (at + field.length === command.length || command[at + field.length] === " "))
+				owners.set(pid, started);
+		},
+		pids,
+	);
 	const found: RunProcess[] = [];
-	for (const line of (commands.stdout ?? "").split("\n")) {
-		const match = /^\s*(\d+)\s(.*)$/.exec(line);
-		if (match && pids.includes(Number(match[1])))
-			found.push({ pid: Number(match[1]), command: match[2].slice(0, 300) });
-	}
+	// Only the unmarked argv snapshot can label a process. Reject a guard in argv, a reused pid or a direct child.
+	await visitProcesses(
+		false,
+		({ pid, ppid, started, command }) => {
+			if (owners.get(pid) !== started || ppid === process.pid || command.includes(prefix)) return;
+			const executable = basename(command.split(" ", 1)[0]);
+			const daemon = command.split(/\s+/).includes(DAEMON_COMMAND);
+			found.push({ pid, started, command: daemon ? `${executable} ${DAEMON_COMMAND}` : executable });
+		},
+		[...owners.keys()],
+	);
 	return found;
 }
 
@@ -252,23 +278,25 @@ const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 /** Waits while the run's processes keep exiting; returns once none is left or none exited for `quietMs`. */
 async function settle(marker: string, quietMs: number): Promise<RunProcess[]> {
-	let left = runProcesses(marker);
+	let left = await runProcesses(marker);
 	let lastChange = Date.now();
 	while (left.length > 0 && Date.now() - lastChange < quietMs) {
 		await pause(200);
-		const now = runProcesses(marker);
+		const now = await runProcesses(marker);
 		if (now.length !== left.length) lastChange = Date.now();
 		left = now;
 	}
 	return left;
 }
 
-function signal(processes: RunProcess[], name: NodeJS.Signals): void {
-	for (const { pid } of processes) {
+async function signal(marker: string, processes: RunProcess[], name: NodeJS.Signals): Promise<void> {
+	const owners = new Map(processes.map((each) => [each.pid, each.started]));
+	for (const { pid, started } of await runProcesses(marker, [...owners.keys()])) {
+		if (owners.get(pid) !== started) continue;
 		try {
 			process.kill(pid, name);
-		} catch {
-			// Already gone.
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
 		}
 	}
 }
@@ -280,8 +308,8 @@ function signal(processes: RunProcess[], name: NodeJS.Signals): void {
 export async function stopRunProcesses(marker: string): Promise<{ daemons: RunProcess[]; others: RunProcess[] }> {
 	const left = await settle(marker, 2000);
 	if (left.length > 0) {
-		signal(left, "SIGTERM");
-		signal(await settle(marker, 3000), "SIGKILL");
+		await signal(marker, left, "SIGTERM");
+		await signal(marker, await settle(marker, 3000), "SIGKILL");
 		await settle(marker, 1000);
 	}
 	return {

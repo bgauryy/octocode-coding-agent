@@ -3,6 +3,7 @@ import { clampMaxTokensToContext } from "@octocodeai/octocode-ai/api/simple-opti
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { describe, expect, it } from "vitest";
 import { builtInCompactionSettings, thinkingBudgetTokens } from "../src/core/compaction/settings.ts";
+import { exceedsContextWindow, shouldCompact } from "../src/core/compaction/compaction.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { autoCompactAt, reserveTokensFor } from "../src/octocode/shared/tokens.ts";
 
@@ -12,6 +13,17 @@ const reserve = (contextWindow: number, level: ModelThinkingLevel, model: object
 	builtInCompactionSettings({ contextWindow, ...model }, { level }).reserveTokens;
 
 describe("thinking-sized compaction reserve", () => {
+	it("uses the independent prompt ceiling for compaction and leaves the output reserve unchanged", () => {
+		const model = { id: "route", provider: "custom", contextWindow: 200_000, inputLimits: { maxInputTokens: 90_000 } };
+		const settings = builtInCompactionSettings(model, { level: "high" });
+		expect(settings.reserveTokens).toBe(reserve(model.contextWindow, "high"));
+		expect(autoCompactAt(model, { level: "high" })).toBe(90_000);
+		expect(shouldCompact(90_000, model.contextWindow, settings)).toBe(false);
+		expect(exceedsContextWindow(90_001, model.contextWindow, settings, 40_000)).toBe(true);
+		expect(shouldCompact(90_001, model.contextWindow, settings)).toBe(true);
+		expect(autoCompactAt({ ...model, contextWindow: 64_000 })).toBeLessThan(64_000);
+	});
+
 	// The rule these rows pin: reserve = max(today, min(max(budget + 8192 + 4096, summary room), window / 6)), where the
 	// summary room (24,576) applies only to windows whose sixth can hold an inline summary.
 	it.each([

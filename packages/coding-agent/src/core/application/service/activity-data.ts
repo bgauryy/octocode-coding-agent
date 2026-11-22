@@ -238,8 +238,8 @@ export function nativeActivity(event: AgentSessionEvent): ActivityData | undefin
 		case "auto_retry_end":
 			return {
 				kind: event.type,
-				text: event.success ? "Retry succeeded" : "Retry failed",
-				data: pick(event, ["success", "attempt", "finalError", "offlineMs"]),
+				text: event.cancelledBeforeRetry ? "Retry cancelled" : event.success ? "Retry succeeded" : "Retry failed",
+				data: pick(event, ["success", "attempt", "finalError", "offlineMs", "cancelledBeforeRetry"]),
 			};
 		case "summarization_retry_attempt_start":
 			return { kind: event.type, text: "Summary retry started", data: pick(event, ["source", "reason"]) };

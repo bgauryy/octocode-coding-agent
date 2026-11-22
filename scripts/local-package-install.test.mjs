@@ -162,12 +162,17 @@ test("installs a package as the only direct dependency", (t) => {
 	);
 	const installedManifestContents = readFileSync(installedManifestPath, "utf8");
 	const installedManifest = JSON.parse(installedManifestContents);
-	delete installedManifest.main;
-	writeFileSync(installedManifestPath, JSON.stringify(installedManifest));
+	writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, main: undefined }));
 	assert.throws(
 		() =>
 			smokeTestNpmConsumer({ artifactSet, directory: consumerDirectory, packageName: "@octocode-package-test/target" }),
 		/Public Octocode package @octocode-package-test\/target must declare a string main field/,
+	);
+	writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, types: undefined }));
+	assert.throws(
+		() =>
+			smokeTestNpmConsumer({ artifactSet, directory: consumerDirectory, packageName: "@octocode-package-test/target" }),
+		/Public Octocode package @octocode-package-test\/target must declare a string types field/,
 	);
 	writeFileSync(installedManifestPath, installedManifestContents);
 	const lockPath = join(consumerDirectory, "package-lock.json");

@@ -7,6 +7,7 @@ import {
 	mayRetry,
 	mayRetryOffline,
 	planOfflineRetry,
+	retryAfterBeyondCap,
 	retryBudget,
 	retryDelayFor,
 } from "@octocodeai/octocode-ai";
@@ -20,6 +21,7 @@ import {
 import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
 import type { CustomMessage } from "../messages.ts";
 import { formatDuration } from "../../utils/duration.ts";
+import { RETRY_CANCELLED_ENTRY } from "./types.ts";
 import type { SessionInternals } from "./host.ts";
 import type { AgentSessionEvent } from "./types.ts";
 
@@ -31,13 +33,17 @@ function clockTime(at: number): string {
 	return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-/** How an outage ended: the request went through, the user cancelled, the outage limit ran out, or the network came back to a different failure. */
-export type OutageEnd = "resumed" | "cancelled" | "gave_up" | "network_back";
+/**
+ * How an outage ended: the request went through, the user cancelled, the outage limit ran out, the run ended before a
+ * retried request answered, or the network came back to a different failure.
+ */
+export type OutageEnd = "resumed" | "cancelled" | "gave_up" | "ended" | "network_back";
 
 const OUTAGE_END_TEXT: Record<OutageEnd, (retries: string) => string> = {
 	resumed: (retries) => `The network is back after ${retries}; this request resumes the turn.`,
 	cancelled: (retries) => `The user cancelled the retry after ${retries}.`,
 	gave_up: (retries) => `Retrying stopped at the configured outage limit after ${retries}; the request failed.`,
+	ended: (retries) => `The run ended after ${retries} without a reply to the retried request.`,
 	network_back: (retries) =>
 		`The network is back after ${retries}; the request now fails for another reason and is retried as usual.`,
 };
@@ -49,11 +55,14 @@ function networkOutageNote(since: number, until: number, attempts: number, end: 
 	return `[Network was unavailable for ${lasted} (${clockTime(since)}–${clockTime(until)}). ${OUTAGE_END_TEXT[end](retries)} Time-dependent state (servers, CI, background jobs, peers) may have changed meanwhile.]`;
 }
 
-export { isRateLimitedText, RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "@octocodeai/octocode-ai";
+export { RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "@octocodeai/octocode-ai";
+
+/** What `prepare` decided for a retryable failure: retry it, let it stand, or stop because the wait was cancelled. */
+export type RetryDecision = "retry" | "no_retry" | "cancelled";
 
 export interface RetryHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	modelForMessage(message: AssistantMessage): Model<any> | undefined;
-	omitRecoveryAttempt(message: AssistantMessage): void;
+	omitRecoveryAttempt(message: AssistantMessage): string | undefined;
 	/** Adds a context-only message the model reads on its next request. */
 	deliverContextNote(message: CustomMessage): void;
 }
@@ -140,18 +149,32 @@ export class SessionRetry {
 				const offline = this._offlineSince !== undefined && mayRetryOffline(settings, Date.now() - this._offlineSince);
 				return (
 					(offline ||
-						mayRetry(
-							this.attempt + 1,
-							settings.maxRetries,
-							message.errorMessage ?? "",
-							this.sinceFirstFailureMs(),
-							this.sinceFirstRequestMs(message),
-						)) &&
+						(retryAfterBeyondCap(settings, message) === undefined &&
+							mayRetry(
+								this.attempt + 1,
+								settings.maxRetries,
+								message.errorMessage ?? "",
+								this.sinceFirstFailureMs(),
+								this.sinceFirstRequestMs(message),
+							))) &&
 					this.isRetryableError(message)
 				);
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * A retryable failure whose provider asks for a wait past `retry.maxAgentDelayMs` is final at once: no retry goes out
+	 * before the provider's time and none waits past the cap. Its error says so before features, views or the transcript
+	 * read it (the assistant's `message_end`).
+	 */
+	noteRetryAfterBeyondCap(message: AssistantMessage): void {
+		const settings = this.host.session.settingsManager.getRetrySettings();
+		if (!settings.enabled || message.stopReason !== "error" || !this.isRetryableError(message)) return;
+		const note = retryAfterBeyondCap(settings, message);
+		if (note && !message.errorMessage?.includes(note))
+			message.errorMessage = `${message.errorMessage || "Unknown error"}\n${note}`;
 	}
 
 	/** Wall-clock time since the first failure, so a request that stalls before failing spends the window as a sleep does. */
@@ -224,27 +247,40 @@ export class SessionRetry {
 	}
 
 	finishCancelled(): void {
+		this.finishOpen("cancelled", "Retry cancelled");
+	}
+
+	/**
+	 * Close a series no reply closed when its run settles: preparing the retry failed, or the retried turn stopped before
+	 * its request. Otherwise the next run's first failure would be measured from this series' first failure.
+	 */
+	finishUnresolved(reason: string | undefined): void {
+		this.finishOpen("ended", reason ?? "The run ended before the retried request answered");
+	}
+
+	private finishOpen(end: OutageEnd, finalError: string, cancelledBeforeRetry = false): void {
 		if (this.attempt === 0) return;
 		const attempt = this.attempt;
-		const offlineMs = this.endOutage("cancelled");
+		const offlineMs = this.endOutage(end);
 		this.resetAttempts();
 		this.host.emit({
 			type: "auto_retry_end",
 			success: false,
 			attempt,
-			finalError: "Retry cancelled",
+			finalError,
+			...(cancelledBeforeRetry ? { cancelledBeforeRetry: true as const } : {}),
 			...(offlineMs === undefined ? {} : { offlineMs }),
 		});
 	}
 
 	/**
-	 * Prepare a retryable error for continuation with exponential backoff.
-	 * @returns true if the caller should continue the agent, false otherwise
+	 * Prepare a retryable error for continuation with exponential backoff. "cancelled": `abort()` ended the wait, and the
+	 * series is already closed; the run stops there rather than falling back or continuing.
 	 */
-	async prepare(message: AssistantMessage): Promise<boolean> {
+	async prepare(message: AssistantMessage): Promise<RetryDecision> {
 		const settings = this.host.session.settingsManager.getRetrySettings();
 		if (!settings.enabled) {
-			return false;
+			return "no_retry";
 		}
 
 		const errorText = message.errorMessage ?? "";
@@ -254,6 +290,8 @@ export class SessionRetry {
 			this.endOutage("network_back");
 			this.resetAttempts();
 		}
+		// A wait past the cap is no retry at all (`noteRetryAfterBeyondCap` put the reason on the error); offline waits differ.
+		if (offline.kind !== "wait" && retryAfterBeyondCap(settings, message) !== undefined) return "no_retry";
 		this.attempt++;
 		const elapsedMs = this.sinceFirstFailureMs();
 
@@ -264,7 +302,7 @@ export class SessionRetry {
 		) {
 			// Preserve the completed attempt count so post-run handling can emit the final failure.
 			this.attempt--;
-			return false;
+			return "no_retry";
 		}
 
 		this._firstFailureAt ??= Date.now();
@@ -276,38 +314,37 @@ export class SessionRetry {
 		const delayMs =
 			offline.kind === "wait" ? offline.delayMs : retryDelayFor(settings, this.attempt, message, elapsedMs);
 
-		this.host.emit({
-			type: "auto_retry_start",
-			attempt: this.attempt,
-			maxAttempts: offline.kind === "wait" ? 0 : retryBudget(settings.maxRetries, errorText),
-			delayMs,
-			errorMessage: message.errorMessage || "Unknown error",
-			...(offline.kind === "wait" ? { offlineSince: offline.since } : {}),
-		});
-
-		// Keep the failed attempt in raw history while durably omitting it from model projection.
-		this.host.omitRecoveryAttempt(message);
-
-		// Wait out the backoff or the provider's retry-after (abortable)
-		this._abortController = new AbortController();
+		const controller = new AbortController();
+		this._abortController = controller;
 		try {
-			await sleepUnlessAborted(delayMs, this._abortController.signal, createAbortError);
-		} catch {
-			// Aborted during sleep - emit end event so UI can clean up
-			this.finishCancelled();
-			return false;
+			this.host.emit({
+				type: "auto_retry_start",
+				attempt: this.attempt,
+				maxAttempts: offline.kind === "wait" ? 0 : retryBudget(settings.maxRetries, errorText),
+				delayMs,
+				errorMessage: message.errorMessage || "Unknown error",
+				...(offline.kind === "wait" ? { offlineSince: offline.since } : {}),
+			});
+
+			const omittedId = this.host.omitRecoveryAttempt(message);
+			try {
+				await sleepUnlessAborted(delayMs, controller.signal, createAbortError);
+			} catch (error) {
+				if (!controller.signal.aborted) throw error;
+				if (omittedId) this.host.session.sessionManager.appendCustomEntry(RETRY_CANCELLED_ENTRY, omittedId);
+				this.finishOpen("cancelled", "Retry cancelled", true);
+				return "cancelled";
+			}
 		} finally {
 			this._abortController = undefined;
 		}
 
 		// Back online: the note goes in before the retry, so the resumed request already knows how long it was away.
 		if (this._offlineSince !== undefined && !(await isMachineOffline())) this.endOutage("resumed");
-		return true;
+		return "retry";
 	}
 
-	/**
-	 * Cancel in-progress retry.
-	 */
+	/** Cancel the wait before a retry: `prepare` answers "cancelled" and the run ends with the failure it was retrying. */
 	abort(): void {
 		this._abortController?.abort();
 	}

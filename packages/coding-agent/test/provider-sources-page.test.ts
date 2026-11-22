@@ -9,7 +9,9 @@ import { ModelRegistry } from "../src/core/model-registry.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { providerSourceGate } from "../src/core/provider-sources/index.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import type { CustomModelsFile } from "../src/core/provider-sources/models-files.ts";
 import { showProviderManager } from "../src/modes/interactive/interactive-mode/provider-manager.ts";
+import { fileRow, modelFileRows } from "../src/modes/interactive/interactive-mode/provider-sources-page.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
@@ -40,6 +42,16 @@ afterEach(() => {
 });
 
 const text = (page: Page) => stripAnsi(page.render(160).join("\n"));
+/** The whole page: the list scrolls, so every row is read by walking the cursor down. */
+const fullText = (page: Page) => {
+	for (let step = 0; step < 80; step++) page.handleInput("\x1b[A");
+	let all = text(page);
+	for (let step = 0; step < 80; step++) {
+		page.handleInput("\x1b[B");
+		all += `\n${text(page)}`;
+	}
+	return all;
+};
 
 describe("/providers source toggle", () => {
 	it("Pi off hides a Pi-only provider from the list and the ModelRegistry; on restores it", async () => {
@@ -61,7 +73,7 @@ describe("/providers source toggle", () => {
 			pages.push(create(vi.fn()).component as Page);
 		});
 		const host = createFakeHost({
-			session: { modelRuntime: runtime, settingsManager },
+			session: { modelRuntime: runtime, settingsManager, sessionManager: { getCwd: () => join(home, "work") } },
 			showSelector,
 			ui: { terminal: { rows: 40 } },
 			showStatus: vi.fn(),
@@ -76,7 +88,7 @@ describe("/providers source toggle", () => {
 			return pages[index];
 		};
 		const choose = (page: Page, label: string) => {
-			for (let step = 0; step < 40; step++) {
+			for (let step = 0; step < 400; step++) {
 				const selected =
 					text(page)
 						.split("\n")
@@ -89,7 +101,7 @@ describe("/providers source toggle", () => {
 
 		const run = showProviderManager(host, "", { sourceEnvironment: environment });
 		const list = await open(0);
-		expect(text(list)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
+		expect(fullText(list)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
 		choose(list, "Sources and custom models");
 		choose(await open(1), "Pi ");
 		choose(await open(2), "Turn off");
@@ -99,7 +111,8 @@ describe("/providers source toggle", () => {
 		expect(text(off)).toMatch(/Pi .* off/);
 		off.handleInput("\x1b");
 		const mainOff = await open(4);
-		expect(text(mainOff)).not.toMatch(/Cerebras/);
+		// Without Pi its key is gone: Cerebras is only an available built-in.
+		expect(fullText(mainOff)).not.toMatch(/Cerebras .*✓ ready/);
 		choose(mainOff, "Sources and custom models");
 		choose(await open(5), "Pi ");
 		choose(await open(6), "Turn on");
@@ -107,8 +120,44 @@ describe("/providers source toggle", () => {
 		const on = await open(8);
 		expect(settingsManager.getProviderSources()).toEqual({});
 		expect(availableProviders()).toContain("cerebras");
-		expect(text(on)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
+		expect(fullText(on)).toMatch(/Cerebras .*Cerebras API key.*✓ ready/);
 		on.handleInput("\x1b");
 		await run;
+	});
+});
+
+describe("models.json file rows", () => {
+	const file = (over: Partial<CustomModelsFile>): CustomModelsFile => ({
+		origin: "Octocode",
+		scope: "global",
+		trusted: true,
+		path: "/p/models.json",
+		exists: true,
+		defines: [],
+		keyed: [],
+		unset: [],
+		details: {},
+		...over,
+	});
+
+	it("says an untrusted project file is not read and names the trust command", () => {
+		const row = fileRow(file({ scope: "project", trusted: false, path: "/w/.octocode/models.json" }), 0);
+		expect(row.name).toBe("Octocode project models.json");
+		expect(row.detail).toContain("not read — trust this folder to use it");
+		expect(row.detail).toContain("octocode trust add");
+	});
+
+	it("lists a trusted project file with what it defines, and hides a missing project file", () => {
+		const trusted = file({
+			scope: "project",
+			path: "/w/.octocode/models.json",
+			defines: ["acme", "openai"],
+			shadows: ["openai"],
+		});
+		const missing = file({ scope: "project", exists: false, origin: "Pi", path: "/w/.pi/models.json" });
+		const rows = modelFileRows([trusted, missing, file({})]);
+		expect(rows.map((row) => row.name)).toEqual(["Octocode project models.json", "Octocode models.json"]);
+		expect(rows[0].detail).toContain("defines acme, openai");
+		expect(rows[0].detail).toContain("replaces global: openai");
 	});
 });

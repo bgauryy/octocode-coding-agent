@@ -16,6 +16,7 @@ import { WAKE_TYPE, wakeGateOf } from "../../src/octocode/wake/gate.ts";
 import { registerWake, wakeHoldMs, writtenRefs } from "../../src/octocode/wake/register.ts";
 import { collapsedWakeRow, wakeLines } from "../../src/octocode/ui/wake-row.ts";
 import { sendAgentReport } from "../../src/octocode/subagents/handoff/wake.ts";
+import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
@@ -46,7 +47,8 @@ const reportOn = (item: string | undefined, agent = "jolly-reef"): AgentEvent =>
 	reportId: `r-${agent}`,
 });
 
-function setup(settings: Record<string, unknown> = {}) {
+/** Without settings the gate is unheld: most cases are about rows and nudges, and those that hold set their window. */
+function setup(settings: Record<string, unknown> = { subagents: { wakeHoldSeconds: 0 } }) {
 	const fake = fakeHost(settings);
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
@@ -211,8 +213,22 @@ describe("idle-item nudge gate (rule D2)", () => {
 describe("hold window", () => {
 	const msg = (n: number) => ({ customType: "t", content: `m${n}`, display: true });
 
-	it("is off by default: each wake is sent at once", async () => {
-		const s = setup();
+	it("holds an idle session's wakes for the default window, then starts one turn for them", async () => {
+		vi.useFakeTimers();
+		const s = setup({});
+		const windowMs = SETTINGS_DEFAULTS.subagents.wakeHoldSeconds * 1000;
+		expect(windowMs).toBeGreaterThan(0);
+		const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
+		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
+		vi.advanceTimersByTime(windowMs - 1);
+		expect(s.fake.sent).toHaveLength(0);
+		vi.advanceTimersByTime(1);
+		await first;
+		expect(s.fake.sent.map((entry) => entry.options.triggerTurn)).toEqual([false, true]);
+	});
+
+	it("is off at 0: each wake is sent at once", async () => {
+		const s = setup({ subagents: { wakeHoldSeconds: 0 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true });
 		expect(s.fake.sent.map((entry) => entry.options.triggerTurn)).toEqual([true, true]);

@@ -21,7 +21,6 @@ import {
 } from "./outcome.ts";
 import { concludeRun } from "./conclusion.ts";
 import { leftBehind } from "./left-behind.ts";
-import { startGate } from "../rate-gate.ts";
 import { type ChildRun, RunPhase } from "./run-phase.ts";
 import { reportDir } from "./session.ts";
 import { savedNotices, StderrTail } from "./stderr.ts";
@@ -346,8 +345,9 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			stderr.close();
 			const saved = savedNotices(state, outputDir);
 			if (saved) progress({ usage: state.usage, notices: saved });
+			// A rate limit it met is already its provider's cool-down (recorded by the child's own request), which holds
+			// sibling starts (`rate-gate.ts`): the child's final failure adds no pause of its own.
 			const result = report.result();
-			startGate.noteFailure(result.error);
 			const end = concludeRun({
 				report: result,
 				code,

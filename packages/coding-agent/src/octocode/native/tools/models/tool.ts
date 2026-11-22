@@ -60,7 +60,7 @@ export function registerModelsTool(
 					"List enabled models, estimated size, context/output limits, cost and abilities. Use routes for task choices.",
 				parameters: Type.Object({
 					routes: Type.Optional(Type.Boolean({ description: "Add routes" })),
-					offset: Type.Optional(Type.Integer({ minimum: 0, description: "Continue a large inventory at this row" })),
+					offset: Type.Optional(Type.Integer({ description: "Continue a large inventory at this zero-based row" })),
 					provider: Type.Optional(Type.String({ description: "Provider, or external vendor/runner ID" })),
 					size: Type.Optional(
 						StringEnum(["small", "medium", "large"] as const, { description: "Estimated model size" }),
@@ -80,6 +80,8 @@ export function registerModelsTool(
 				}),
 				async execute(_id, params, signal, _onUpdate, ctx) {
 					signal?.throwIfAborted();
+					if (params.offset !== undefined && (!Number.isSafeInteger(params.offset) || params.offset < 0))
+						throw new Error("offset must be a nonnegative safe integer.");
 					const { catalog, source } = await modelCatalog();
 					const query = params.query?.trim().toLowerCase();
 					const provider = params.provider?.trim().toLowerCase();

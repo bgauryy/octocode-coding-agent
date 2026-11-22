@@ -14,6 +14,7 @@ import {
 	sweepStaleTmuxSockets,
 } from "../../../../test-isolation.ts";
 import setup from "../../../../vitest.tmp.global.ts";
+import { readProcessRows } from "../../../../test-process-list.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
 
 const child = fileURLToPath(new URL("./real-home-guard-child.ts", import.meta.url));
@@ -24,13 +25,13 @@ const accountHome = os.userInfo().homedir;
 let savedEnv: NodeJS.ProcessEnv;
 let savedExitCode: typeof process.exitCode;
 let parent: string;
-it("preserves another runner's folder while it creates the owner marker", () => {
+it("preserves another runner's folder while it creates the owner marker", async () => {
 	const dir = path.join(parent, "vt-starting");
 	fs.mkdirSync(dir);
-	sweepStaleRunDirs(parent);
+	await sweepStaleRunDirs(parent);
 	expect(fs.existsSync(dir)).toBe(true);
 	fs.writeFileSync(path.join(dir, ".owner-pid"), "");
-	sweepStaleRunDirs(parent);
+	await sweepStaleRunDirs(parent);
 	expect(fs.existsSync(dir)).toBe(true);
 });
 
@@ -62,7 +63,7 @@ describe("the test runs' temporary root", () => {
 		const unrelated = path.join(parent, "other");
 		fs.mkdirSync(unrelated);
 
-		const teardown = setup();
+		const teardown = await setup();
 		const own = process.env.TMPDIR as string;
 		const home = process.env.VITEST_TEST_USER_HOME as string;
 		expect(path.dirname(own)).toBe(parent);
@@ -128,11 +129,48 @@ describe("the run's home", () => {
 });
 
 describe("the run's teardown", () => {
+	it("streams more than the whole-table string limit and discards uncertain rows", async () => {
+		const block = Buffer.alloc(64 * 1024, 120);
+		async function* rows() {
+			yield Buffer.from("first\noversized ");
+			for (let i = 0; i < 8193; i++) yield block;
+			yield Buffer.from(" suffix\nsec");
+			yield Buffer.from("ond\npartial");
+		}
+		const found: string[] = [];
+		await readProcessRows(rows(), (row) => found.push(row));
+		expect(found).toEqual(["first", "second"]);
+	});
+	it.skipIf(process.platform === "win32")("requires an environment marker and a matching PID start stamp", async () => {
+		const marker = GUARD_FILE_ENV + "=/fixture/guard";
+		const stamp = "Sun Nov 22 00:00:00 2026";
+		const row = (pid: number, command: string, ppid = 1) => `${pid} ${ppid} ${pid} ${stamp} ${command}`;
+		const marked = [
+			row(101, `/bin/node --api-key private-argument ${marker} PRIVATE=private-environment`),
+			row(102, `/bin/node ${marker}`),
+			row(103, `/bin/node ${marker}`),
+			row(104, `/bin/node ${marker}`, process.pid),
+			row(105, `/bin/node ${marker} ${GUARD_FILE_ENV}=/another/run`),
+			row(106, `/bin/node X${marker}`),
+		];
+		const plain = [
+			row(101, "/bin/node --api-key private-argument"),
+			row(102, `/bin/node ${marker}`),
+			row(103, "/bin/node").replace("00:00:00", "00:00:01"),
+		];
+		fs.writeFileSync(
+			path.join(parent, "ps"),
+			`#!/bin/sh\nif [ "$1" = axeww ]; then\ncat <<'END'\n${marked.join("\n")}\nEND\nelse\ncat <<'END'\n${plain.join("\n")}\nEND\nfi\n`,
+			{ mode: 0o700 },
+		);
+		process.env.PATH = parent + path.delimiter + process.env.PATH;
+		expect(await runProcesses(marker)).toEqual([{ pid: 101, started: stamp, command: "node" }]);
+	});
 	it("fails the run for a child that resolved a protected home's database and for a daemon that outlived it, and stops both", async () => {
 		// A stand-in for the developer's home that the run protects, as an outer run's list would name it.
 		const fakeHome = fs.mkdtempSync(path.join(parent, "fake-real-home-"));
 		process.env[PROTECTED_HOMES_ENV] = fakeHome;
-		const teardown = setup();
+		const teardown = await setup();
 		const marker = `${GUARD_FILE_ENV}=${process.env[GUARD_FILE_ENV]}`;
 
 		const childEnv: NodeJS.ProcessEnv = { ...process.env, HOME: fakeHome };
@@ -154,7 +192,9 @@ describe("the run's teardown", () => {
 			Number(spawnSync(process.execPath, ["-e", launch, arg], { env: process.env, encoding: "utf8" }).stdout);
 		const daemon = forgotten("__web-daemon");
 		const helper = forgotten("helper");
-		await vi.waitFor(() => expect(runProcesses(marker).map((each) => each.pid)).toContain(helper));
+		await vi.waitFor(async () => expect((await runProcesses(marker)).map((each) => each.pid)).toContain(helper), {
+			timeout: 15_000,
+		});
 
 		const warn = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 		try {
@@ -200,7 +240,7 @@ describe.skipIf(process.platform === "win32")("e2e tmux sockets", () => {
 });
 
 describe("orphans of a run killed before its teardown", () => {
-	it("names orphaned processes of dead or deleted runs, leaving live runs and processes with a living parent", () => {
+	it("names orphaned processes of dead or deleted runs, leaving live runs and processes with a living parent", async () => {
 		const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sweep-")));
 		try {
 			const dead = path.join(parent, "vt-dead01");
@@ -226,7 +266,8 @@ describe("orphans of a run killed before its teardown", () => {
 				// Not a test run's folder.
 				"  107     1   107 tmux new-session -d -s octoux",
 			].join("\n");
-			expect(staleRunOrphans(parent, listing)).toEqual([
+			const stamped = listing.replace(/^(\s*\d+\s+\d+\s+\d+\s)/gm, "$1Sun Nov 22 00:00:00 2026 ");
+			expect((await staleRunOrphans(parent, stamped)).map(({ pid, pgid }) => [pid, pgid])).toEqual([
 				[101, 101],
 				[102, 102],
 				[103, 90],

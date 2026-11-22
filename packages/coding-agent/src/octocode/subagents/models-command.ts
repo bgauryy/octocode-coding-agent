@@ -63,7 +63,7 @@ export function modelAbilities(model: ModelRef, catalog: Catalog | undefined): M
 	return [
 		...(known?.toolCall === false ? [] : ["tools" as const]),
 		...((model.input ?? known?.input)?.includes("image") ? ["images" as const] : []),
-		...(known?.reasoning ? ["reasoning" as const] : []),
+		...((model.reasoning ?? known?.reasoning) ? ["reasoning" as const] : []),
 	];
 }
 
@@ -87,9 +87,9 @@ export const priceRank = (cost: { input: number; output: number } | undefined): 
 /** ` · thinking …` with the levels `clampThinkingLevel` would accept, or "" for a model without reasoning. */
 function thinkingLevelsText(model: ModelRef): string {
 	// The registry's model carries `reasoning` and `thinkingLevelMap`; `ModelRef` names only what routing reads.
-	if (!(model as { reasoning?: boolean }).reasoning) return "";
+	if (!model.reasoning) return "";
 	const levels = getSupportedThinkingLevels(model as Parameters<typeof getSupportedThinkingLevels>[0]).join("/");
-	return ` · thinking ${levels}`;
+	return ` · thinking ${levels || "provider-managed"}`;
 }
 
 /**
@@ -129,7 +129,10 @@ export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog
 	const cutoff =
 		known?.knowledge && /^\d{4}-\d{2}(?:-\d{2})?$/.test(known.knowledge) ? ` · cutoff ${known.knowledge}` : "";
 	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
-	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}${sourceText(model, catalog)} · ${modelSizeClass(model)} (estimated size)${model.maxTokens ? ` · ${formatTokens(model.maxTokens)} max output` : ""}`;
+	const inputLimit = model.inputLimits?.maxInputTokens;
+	const promptCap =
+		inputLimit && (window === undefined || inputLimit < window) ? ` · ${formatTokens(inputLimit)} max input` : "";
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)}${promptCap} · ${caps}${levels}${cutoff}${sourceText(model, catalog)} · ${modelSizeClass(model)} (estimated size)${model.maxTokens ? ` · ${formatTokens(model.maxTokens)} max output` : ""}`;
 }
 
 /**

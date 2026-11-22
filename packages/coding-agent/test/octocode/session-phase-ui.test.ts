@@ -27,7 +27,8 @@ const turnEntries = (fake: ReturnType<typeof fakeHost>) => fake.entries.filter((
 describe("the turn line follows the session's phase", () => {
 	function setup() {
 		vi.useFakeTimers({ now: 10_000 });
-		const fake = fakeHost();
+		// The phase without the hold window: a held wake is pinned in wake-gate.test.ts.
+		const fake = fakeHost({ subagents: { wakeHoldSeconds: 0 } });
 		registerWake(fake.api);
 		registerTurnLine(fake.api);
 		const ctx = fakeCtx({ cwd: "/x" });

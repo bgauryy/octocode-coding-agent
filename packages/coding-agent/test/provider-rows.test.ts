@@ -39,7 +39,7 @@ async function groupsFor(options: Options) {
 
 async function rowFor(options: Options) {
 	const { groups } = await groupsFor(options);
-	return [...groups.ready, ...groups.attention, ...groups.off][0];
+	return [...groups.ready, ...groups.attention, ...groups.off, ...groups.available][0];
 }
 
 describe("provider row sources", () => {
@@ -109,5 +109,11 @@ describe("provider row sources", () => {
 	it("declares the enable/disable key on provider rows only", async () => {
 		const row = await rowFor({ status: { configured: true, source: "environment", label: "K" } });
 		expect(row.keys).toEqual({ e: "disable" });
+	});
+
+	it("lists a built-in with no credential and no definition in the Available group", async () => {
+		const { groups } = await groupsFor({ status: { configured: false, source: "none" } as never, saved: false });
+		expect(groups.available.map((row) => row.name)).toEqual(["P"]);
+		expect([...groups.ready, ...groups.attention, ...groups.off]).toEqual([]);
 	});
 });

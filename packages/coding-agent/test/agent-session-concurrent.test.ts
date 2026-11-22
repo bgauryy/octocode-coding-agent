@@ -301,7 +301,10 @@ describe("AgentSession concurrent prompt guard", () => {
 		await session.abort();
 		await firstPrompt.catch(() => {});
 
-		expect(sawSteeringMessage).toBe(true);
+		// The Stop withdrew the queued steering: the stopped run does not send it, and no later run does either.
+		expect(sawSteeringMessage).toBe(false);
+		expect(session.pendingMessageCount).toBe(0);
+		expect(queueEvents.at(-1)).toEqual({ steering: [], followUp: [] });
 	});
 
 	it("should allow prompt() after previous completes", async () => {

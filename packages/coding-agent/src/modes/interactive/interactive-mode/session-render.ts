@@ -27,6 +27,7 @@ import { compactionUsage } from "./compaction-cost.ts";
 import { noticeLine } from "./display.ts";
 import { isCustomSessionEntry, isCompactionCostNotice, isUsageSessionEntry } from "./helpers.ts";
 import { stoppedToolText } from "../../../core/application/interrupted-tools.ts";
+import { retriedAttemptIds } from "./retried-attempts.ts";
 import type { CompactionCostNotice, RenderSessionItem } from "./types.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
@@ -132,6 +133,7 @@ export function renderSessionItems(
 			host.addMessageToChat(message);
 			const last = host.chatContainer.children.at(-1);
 			const parent = last instanceof AssistantMessageComponent ? last : undefined;
+			if (options.retriedMessages?.has(message)) parent?.markRetried();
 			for (const content of message.content) {
 				if (content.type === "toolCall") {
 					const retained = options.liveTools?.get(content.id);
@@ -188,18 +190,21 @@ export function renderSessionEntries(
 ): void {
 	// Selection coordinates point into the transcript being replaced.
 	if (host.renderer instanceof TuiAltScreen) host.renderer.resetTextSelection();
+	const retriedIds = options.retriedIds ?? retriedAttemptIds(entries);
+	let retriedMessages: WeakSet<object> | undefined;
 	const items = entries.flatMap((entry): RenderSessionItem[] => {
 		if (entry.type === "custom" || (entry.type === "usage" && entry.kind === "cache_warm")) {
 			return [entry];
 		}
 		const messages = sessionEntryToContextMessages(entry);
+		if (retriedIds.has(entry.id)) for (const message of messages) (retriedMessages ??= new WeakSet()).add(message);
 		if ((entry.type === "compaction" || entry.type === "branch_summary") && messages.length > 0) {
 			const usage = compactionUsage(entry, (id) => host.sessionManager.getEntry(id));
 			if (usage) return [...messages, { type: "compaction_cost", kind: entry.type, usage }];
 		}
 		return messages;
 	});
-	host.renderSessionItems(items, options);
+	host.renderSessionItems(items, retriedMessages ? { ...options, retriedMessages } : options);
 }
 
 export function addCacheWarmingUsage(host: SessionRenderHost, entry: UsageEntry): void {

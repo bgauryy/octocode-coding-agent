@@ -33,6 +33,7 @@ import {
 	type Provider,
 } from "@octocodeai/octocode-ai";
 import type { ModelConfig } from "./model-config.ts";
+import type { ModelsProject } from "./model-config/project.ts";
 import { missingCredentialWarning } from "./model-runtime/missing-credentials.ts";
 import { ProviderPins } from "./model-runtime/provider-pins.ts";
 import { loadSettledConfig } from "./model-runtime/settled-config.ts";
@@ -80,11 +81,12 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	private readonly credentials: RuntimeCredentials;
 	protected readonly layers: ProviderLayers;
 	protected readonly modelsPath: string | undefined;
+	private readonly project: ModelsProject | undefined;
 	private readonly modelNetworkEnabled: boolean;
 	protected readonly availability: ModelAvailability;
 	private readonly credentialOperations: CredentialOperations;
 	private readonly registrations: ProviderRegistrations;
-	/** Why the last refresh a provider (un)registration or a live reload started failed; shown by getError until one succeeds. */
+	/** Why the last provider-registration or live-reload refresh failed; getError shows it until one succeeds. */
 	private readonly reloadErrors = new ReloadErrors();
 	private readonly credentialRefresh = new CredentialNetworkRefresh((o) => this.refresh(o), this.reloadErrors.set);
 	private readonly liveReload: RuntimeLiveReload;
@@ -94,7 +96,8 @@ export class ModelRuntime extends ModelCatalog implements Models {
 
 	private constructor(parts: ModelRuntimeParts) {
 		super();
-		const { credentials, config, modelsPath, modelsStore, providers } = parts;
+		const { credentials, config, modelsPath, modelsStore, providers, project } = parts;
+		this.project = project;
 		this.credentials = credentials;
 		this.modelsPath = modelsPath;
 		this.modelNetworkEnabled = parts.modelNetworkEnabled;
@@ -116,13 +119,13 @@ export class ModelRuntime extends ModelCatalog implements Models {
 			this.refresh({ allowNetwork: false }).then(() => this.reloadErrors.set(undefined), this.reloadErrors.set);
 		});
 		this.rebuildProviders();
-		// A change to models.json or auth.json reaches a running session through one full local reload.
 		this.liveReload = new RuntimeLiveReload({
 			modelsPath,
+			project,
 			credentials,
 			reload: async () => {
-				// Only a settled, parsed models.json is applied (that result, not a second read); else the providers stay.
-				const next = await loadSettledConfig(this.modelsPath);
+				// A change to a models.json (global or project) or auth.json reloads once; only a settled, parsed file applies.
+				const next = await loadSettledConfig(this.modelsPath, undefined, this.project);
 				if (next.isUnreadable()) return this.reloadErrors.set(next.getError());
 				await this.applyRefresh({ allowNetwork: false }, next);
 				this.clearModelAccess();
@@ -144,11 +147,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		}
 	}
 
-	/**
-	 * Stop watching models.json and the credential file for changes other processes make. The runtime keeps serving requests and the
-	 * last availability snapshot; only refreshes driven by those outside changes stop. A replaced session's runtime is
-	 * disposed so watchers and refresh passes do not pile up per switch. Repeated calls do nothing.
-	 */
+	/** Stop watching models.json and the credential file; requests and the last availability snapshot stay. Idempotent. */
 	dispose(): void {
 		this.credentialRefresh.dispose();
 		this.liveReload.dispose();
@@ -185,7 +184,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.hasContextWindowOverride(providerId, modelId);
 	}
 
-	/** models.json fields that load but do nothing (a misspelled key, an `api` no built-in serves), each naming its file. */
+	/** models.json fields that load but do nothing, and untrusted project files not read; each names its file. */
 	getConfigWarnings(): readonly string[] {
 		return this.layers.config.getWarnings();
 	}
@@ -206,17 +205,17 @@ export class ModelRuntime extends ModelCatalog implements Models {
 			.map((providerId) => missingCredentialWarning(this.layers, providerId));
 	}
 
-	/** Calls `listener` with the ids of providers a reload removed. Returns the unsubscribe. */
+	/** Calls `listener` with the provider ids a reload removed. Returns the unsubscribe. */
 	onProvidersRemoved(listener: (providerIds: readonly string[]) => void): () => void {
 		return this.pins.onRemoved(listener);
 	}
 
-	/** Why the last live reload of models.json or auth.json failed; the providers loaded before stay in use. Cleared by a good reload. */
+	/** Why the last live reload failed; the providers loaded before stay in use. A good reload clears it. */
 	getReloadError(): string | undefined {
 		return this.reloadErrors.current;
 	}
 
-	/** Calls `listener` once for each new reload failure (not again for the same message). Returns the unsubscribe. */
+	/** Calls `listener` once per new reload failure message. Returns the unsubscribe. */
 	onReloadError(listener: (message: string) => void): () => void {
 		return this.reloadErrors.subscribe(listener);
 	}
@@ -338,9 +337,9 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	private applyRefresh(options: ModelsRefreshOptions, config?: ModelConfig): Promise<ModelsRefreshResult> {
-		const { models, layers, availability, modelsPath, modelNetworkEnabled, pins } = this;
+		const { models, layers, availability, modelsPath, project, modelNetworkEnabled, pins } = this;
 		return refreshModelRuntime(
-			{ models, layers, availability, modelsPath, modelNetworkEnabled, pins },
+			{ models, layers, availability, modelsPath, project, modelNetworkEnabled, pins },
 			options,
 			config,
 		);

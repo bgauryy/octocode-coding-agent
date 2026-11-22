@@ -12,7 +12,8 @@ import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 import type { CustomMessage } from "../messages.ts";
 import { abortSessionDispatches, trackSessionDispatch } from "./dispatch.ts";
 import type { AbortReason } from "./host.ts";
-import { prompt, queueUserInput, sendCustomMessage, splitUserContent } from "./prompting.ts";
+import { prompt, queueUserInput, releaseQueuedInput, sendCustomMessage } from "./prompting.ts";
+import { splitUserContent } from "./queued-start.ts";
 import { AgentSessionState } from "./session-state.ts";
 import type {
 	PromptOptions,
@@ -31,6 +32,9 @@ export abstract class AgentSessionControl extends AgentSessionState {
 			() => prompt(this._c.prompting, text, options),
 			(active, dispatchId) => this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
 		);
+		// Input queued while this submission was under way waited for its run; when it started none, or the input came
+		// after that run's end, nothing else delivers it.
+		releaseQueuedInput(this._c.prompting);
 	}
 	async steer(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition> {
 		return queueUserInput(this._c.prompting, text, images, "steer", options);
@@ -43,11 +47,12 @@ export abstract class AgentSessionControl extends AgentSessionState {
 		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn"; together?: boolean },
 	): Promise<void> {
 		const send = () => sendCustomMessage(this._c.prompting, message, options);
-		if (options?.triggerTurn)
+		if (options?.triggerTurn) {
 			await trackSessionDispatch(this, send, (active, dispatchId) =>
 				this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
 			);
-		else await send();
+			releaseQueuedInput(this._c.prompting);
+		} else await send();
 	}
 	async sendUserMessage(
 		content: string | (TextContent | ImageContent)[],
@@ -101,7 +106,14 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput {
 		return this._c.inputs.release(id, text);
 	}
+	/**
+	 * The user's Stop ("interrupted", the default) withdraws all queued input first, so neither the run going down nor the
+	 * next one delivers it. An interface that gives the input back takes it with `clearQueue()` in the same tick, before
+	 * this call. Other reasons leave the queues to whoever stops the run (a peer's held mail, a compaction, a replacement).
+	 */
 	async abort(reason: AbortReason = "interrupted"): Promise<void> {
+		if (reason === "interrupted" && (this._c.inputs.pendingMessageCount > 0 || this.agent.hasQueuedMessages()))
+			this._c.inputs.clear();
 		abortSessionDispatches(this);
 		await this._c.runLoop.abort(reason);
 	}

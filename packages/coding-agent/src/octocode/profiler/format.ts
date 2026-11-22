@@ -111,9 +111,21 @@ function layersOf(request: ProfileRequest): string {
 		: grid;
 }
 
+function outcomesText({ outcomes }: ProfileRequest): string {
+	if (!outcomes) return "";
+	const { mcpResults, validationErrors, compactions } = outcomes;
+	return [
+		mcpResults ? `MCP validation errors ${validationErrors}/${mcpResults} results` : "",
+		compactions ? `compactions ${compactions}` : "",
+	]
+		.filter(Boolean)
+		.join(", ");
+}
+
 function requestHeader(request: ProfileRequest): string {
 	const miss = request.missReason ? `  miss: ${request.missReason}` : "";
-	return `#${request.index}  ${time(request.at)}  ${request.model}${request.estimated ? "  (estimated)" : ""}\n  ${usageLine(request.usage)}${miss}`;
+	const outcomes = outcomesText(request);
+	return `#${request.index}  ${time(request.at)}  ${request.model}${request.estimated ? "  (estimated)" : ""}\n  ${usageLine(request.usage)}${miss}${outcomes ? `\n  After request: ${outcomes}` : ""}`;
 }
 
 /** One agent's requests, a line each; `layers` adds each request's layers (a single request always shows them). */
@@ -121,6 +133,7 @@ export function requestsTable({ agentId, requests }: ProfileRequests, layers: bo
 	if (!requests.length) return `${agentId}: no requests.`;
 	if (layers || requests.length === 1)
 		return requests.map((request) => `${requestHeader(request)}\n${layersOf(request)}`).join("\n\n");
+	const showOutcomes = requests.some((request) => request.outcomes);
 	const rows = requests.map((request) => {
 		const prompt = request.usage.input + request.usage.cacheRead + request.usage.cacheWrite;
 		return [
@@ -131,9 +144,10 @@ export function requestsTable({ agentId, requests }: ProfileRequests, layers: bo
 			tokens(request.usage.cacheWrite),
 			dollars(request.usage.cost),
 			request.missReason ?? "",
+			...(showOutcomes ? [outcomesText(request)] : []),
 		];
 	});
-	return `${agentId}: ${requests.length} request${requests.length === 1 ? "" : "s"}\n${table(["#", "AT", "PROMPT", "HIT", "WRITTEN", "COST", "MISS"], rows, [0, 2, 3, 4, 5])}`;
+	return `${agentId}: ${requests.length} request${requests.length === 1 ? "" : "s"}\n${table(["#", "AT", "PROMPT", "HIT", "WRITTEN", "COST", "MISS", ...(showOutcomes ? ["AFTER REQUEST"] : [])], rows, [0, 2, 3, 4, 5])}`;
 }
 
 /** `prepare 2.1s, held 0.4s`: an event's phases other than its own span, or empty. */

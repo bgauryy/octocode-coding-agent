@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -46,16 +46,16 @@ function createFixture(t, { importUndeclared = false } = {}) {
 			},
 		);
 	}
+	const agentPackage = join(repoRoot, "packages", codingAgentName.split("/")[1]);
 	writePackage(
-		join(repoRoot, "packages", codingAgentName.split("/")[1]),
+		agentPackage,
 		{
 			name: codingAgentName,
 			version: "1.0.0",
 			type: "module",
 			main: "./dist/bundle/index.js",
-			types: "./dist/types/index.d.ts",
 			exports: {
-				".": { types: "./dist/types/index.d.ts", import: "./dist/bundle/index.js" },
+				".": { import: "./dist/bundle/index.js" },
 				"./mcp": "./dist/bundle/mcp.js",
 				"./mcp/oauth": "./dist/bundle/mcp-oauth.js",
 			},
@@ -70,7 +70,6 @@ export function runRpcMode() {}
 export function runPrintMode() {}
 export function main() {}
 `,
-			"dist/types/index.d.ts": "export {};\n",
 			"dist/bundle/mcp.js": "export class McpClient {}\nexport class StdioTransport {}\n",
 			"dist/bundle/mcp-oauth.js": "export class McpOAuthProvider {}\n",
 			"dist/bundle/cli.js": 'console.log("1.0.0");\n',
@@ -82,8 +81,12 @@ export function main() {}
 			"dist/octocode/native/skills/resume-external-harness/SKILL.md":
 				"---\nname: resume-external-harness\ndescription: Test\n---\n",
 			"dist/octocode/native/agents/researcher.md": "---\nname: researcher\n---\nResearch the requested code.\n",
-			"dist/octocode/native/prompts/policy/work.md": "# Work and verification\n",
 		},
+	);
+	cpSync(
+		new URL("../packages/coding-agent/src/octocode/native/prompts/policy/", import.meta.url),
+		join(agentPackage, "dist/octocode/native/prompts/policy"),
+		{ recursive: true },
 	);
 	const artifactSet = produceArtifactSet({ build: false, outDir: join(root, "artifacts"), repoRoot, source: null });
 	const directory = join(root, "consumer");
@@ -115,8 +118,8 @@ test("rejects a package missing its bundled subagent profiles", (t) => {
 
 test("rejects a package missing the bundled prompt instructions", (t) => {
 	const directory = createFixture(t);
-	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native/prompts/policy"), { recursive: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled prompt instructions/);
+	rmSync(join(directory, "node_modules", codingAgentName, "dist/octocode/native/prompts/policy/finish.md"));
+	assert.throws(() => smokeTestCodingAgent(directory), /missing the bundled prompt instructions in finish\.md/);
 });
 
 test("rejects a package missing the bundled octocode-context-optimization skill", (t) => {

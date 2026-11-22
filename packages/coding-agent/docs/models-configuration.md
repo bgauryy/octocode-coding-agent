@@ -121,6 +121,7 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 
 | Field | Type | Default | Description |
 |---|---|---|---|
+| `maxInputTokens` | integer |  | Maximum prompt tokens accepted independently of the combined context window. |
 | `maxRequestBytes` | integer |  | Maximum serialized provider request size in bytes. |
 | `images` | object |  |  |
 | `images.resize` | object |  | Cache-safe resize profile applied before a new image enters conversation history. |

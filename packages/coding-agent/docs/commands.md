@@ -38,6 +38,7 @@ Shell entry points are at the end; flags and output modes are in [CLI](cli.md).
 | `/providers [provider\|pi\|runner:<id>]` | Sign in, enable or disable providers and sources; `pi` imports saved Pi sign-ins. See [providers](providers.md)                            |
 | `/logout [provider]`                     | Sign-out picker for saved credentials, search prefilled with the provider                                                                  |
 | `/model [provider/model]`                | Choose this chat's model; Ctrl+S saves a global or project default                                                                         |
+| `/models`                                | Turn models on or off per provider and set a default; `/model` stays the quick picker                                                      |
 | `/modelsettings [check]`                 | Shortcuts, native catalog, prices and agent routing; `check` tests provider credentials. Headless it prints the catalog and routing report |
 | `/effort [level]`                        | Show or set the coordinator's reasoning effort                                                                                             |
 | `/optimize [on\|off]`                    | Rewrite each submitted prompt with a helper model, shown before it is sent; no argument shows the state                                    |

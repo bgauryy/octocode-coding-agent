@@ -78,4 +78,17 @@ describe("narrow management pages", () => {
 		expect(note.slice(0, 2).every((line) => line.startsWith(" "))).toBe(true);
 		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(40);
 	});
+
+	it("shows a long selected row's detail once, wrapped beneath the name, never cut", () => {
+		const path = "/very/long/directory/for/the/models/file/that/holds/the/provider/definition/models.json";
+		const view = new ManagePageComponent({
+			title: "Providers",
+			sections: [{ heading: "Files", rows: [{ id: "a", name: "Octocode", detail: `${path} · defines one` }] }],
+			onSelect: vi.fn(),
+			onCancel: vi.fn(),
+		});
+		const text = view.render(60).map(stripAnsi).join("");
+		expect(text.split("models.json").length - 1).toBe(1);
+		expect(text.replaceAll(/\s+/g, "")).toContain(path.replaceAll("/", "/"));
+	});
 });

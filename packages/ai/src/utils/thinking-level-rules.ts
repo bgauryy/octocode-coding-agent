@@ -1,3 +1,4 @@
+import type { ReasoningOption as ModelsDevReasoningOption } from "@opencode-ai/models";
 import type { Api, Model, ThinkingLevel, ThinkingLevelMap } from "../types.ts";
 
 /**
@@ -5,13 +6,7 @@ import type { Api, Model, ThinkingLevel, ThinkingLevelMap } from "../types.ts";
  * built-in catalog and the host applies them to models a user defines, so both agree.
  */
 
-export type ModelsDevReasoningOption =
-	| { type: "toggle" }
-	| {
-			type: "effort";
-			values: Array<"none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "default" | null>;
-	  }
-	| { type: "budget_tokens"; min?: number; max?: number };
+export type { ModelsDevReasoningOption };
 
 const THINKING_LEVELS: readonly ThinkingLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 

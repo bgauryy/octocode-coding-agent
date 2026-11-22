@@ -18,7 +18,7 @@ export const ToolPinStateSchema = StringEnum(TOOL_PIN_STATES);
 export type ToolPinState = Static<typeof ToolPinStateSchema>;
 
 /** The native tools a pin can defer under every `mcpExposure` value; every other native tool is declared in full. */
-export const NATIVE_PINNABLE_TOOLS = ["web", "archive", "models", "backlogPlan", "configuration"] as const;
+export const NATIVE_PINNABLE_TOOLS = ["archive", "models", "backlogPlan", "configuration"] as const;
 
 /**
  * Native tools deferred only under `mcpExposure: "usage"` or by a `nativeToolExposure` setting, never by `recent`. With
@@ -29,8 +29,8 @@ export const NATIVE_USAGE_ONLY_TOOLS = ["memory", "notify"] as const;
 /**
  * Native tools a session leaves undeclared until first use (`onDemand`) when it would otherwise declare them deferred,
  * on a transport that adds declarations after the cached prefix. A `nativeToolExposure` pin opts a tool out. Shows as
- * `deferred` on the Tools panel. `web` stays declared: a model asked for live content without naming a tool fetches it
- * through the shell instead of calling an undeclared `web`.
+ * `deferred` on the Tools panel. `web` is core, never deferred or pinned: a model asked for live content without naming
+ * a tool fetches it through the shell instead of calling an undeclared or thin `web`.
  */
 export const NATIVE_ON_DEMAND_TOOLS = ["archive", "models", "configuration"] as const;
 

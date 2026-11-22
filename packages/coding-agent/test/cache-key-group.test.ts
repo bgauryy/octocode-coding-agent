@@ -2,12 +2,14 @@ import { type Api, type Context, type Model, normalizeContext } from "@octocodea
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	childRunPromptCacheKey,
 	groupsByPrefix,
 	instructionPrefixHash,
 	PromptCacheKeyShards,
 	prefixGroupKey,
 	promptCacheKeyFor,
 	sessionPromptCacheKey,
+	shardedKey,
 } from "../src/core/cache-key-group.ts";
 import type { SessionHeader } from "../src/core/session-manager/types.ts";
 
@@ -127,6 +129,42 @@ describe("prompt cache key by prefix group", () => {
 		expect(shards.assign("g", "d", 10 * MIN)).toBe(0);
 		expect(shards.assign("g", "b", 11 * MIN)).toBe(0);
 		expect(shards.assign("other", "c", 0)).toBe(0);
+	});
+
+	it("holds a child run's shard for the whole run, and frees its load when the run ends", () => {
+		const shards = new PromptCacheKeyShards();
+		const a = shards.hold("g", "a", 0);
+		const b = shards.hold("g", "b", 0);
+		expect([a.shard, b.shard]).toEqual([0, 0]);
+		// Held members count however long ago they were assigned: a child sends where the parent cannot see.
+		expect(shards.hold("g", "c", 60 * MIN).shard).toBe(1);
+		a.release(61 * MIN);
+		a.release(61 * MIN); // idempotent
+		expect(shards.assign("g", "d", 61 * MIN)).toBe(0);
+		// A resumed conversation keeps its shard (its history is cached there), even on a full shard.
+		expect(shards.hold("g", "a", 62 * MIN).shard).toBe(0);
+		expect(shards.assign("g", "e", 62 * MIN)).toBe(1);
+		expect(shards.assign("g", "f", 62 * MIN)).toBe(2);
+	});
+
+	it("shards a child's key on OpenAI before GPT-5.6 only, within the 64-character limit", () => {
+		const shards = new PromptCacheKeyShards();
+		const key = `octocode-child-${"a".repeat(48)}`;
+		const runs = ["one", "two", "three"].map((member) => childRunPromptCacheKey(key, routed, member, shards));
+		expect(runs.map((run) => run.shard)).toEqual([0, 0, 1]);
+		expect(runs[0].key).toBe(key);
+		expect(runs[1].key).toBe(key);
+		expect(runs[2].key).not.toBe(key);
+		expect(runs[2].key.length).toBeLessThanOrEqual(64);
+		expect(runs[2].key).toMatch(/-1$/);
+		// Ended runs free their shard for the next child.
+		runs[0].release();
+		runs[1].release();
+		expect(childRunPromptCacheKey(key, routed, "four", shards).shard).toBe(0);
+		for (const model of [explicit, anthropic, undefined])
+			expect(childRunPromptCacheKey(key, model, "five", shards)).toMatchObject({ key, shard: 0 });
+		expect(shardedKey("x".repeat(64), 12)).toHaveLength(64);
+		expect(shardedKey("short", 0)).toBe("short");
 	});
 
 	it("shards sessions where the key routes (before GPT-5.6), never where OpenAI routes by itself", () => {

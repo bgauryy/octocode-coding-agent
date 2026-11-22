@@ -3,13 +3,15 @@
  * that `resolveConfigValue` runs to read it back, so the credential format does not change.
  *
  * Writes never use a shell and never put the secret in argv: macOS reads commands from `security -i` on stdin and
- * Linux passes the secret to `secret-tool store` on stdin.
+ * Linux passes the secret to `secret-tool store` on stdin. Windows runs a PowerShell script (keychain-windows.ts) that
+ * reads the secret from stdin.
  */
 
 import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { clearConfigValueCache } from "../config-value.ts";
+import { windowsSpec } from "./keychain-windows.ts";
 
 /** Keychain service name shared by every entry; the account is the provider id. */
 const SERVICE = "octocode";
@@ -193,7 +195,7 @@ const runKeychainCommand: KeychainRunner = (file, args, input) =>
 		child.stdin.end(input);
 	});
 
-/** The keychain for `platform`, or undefined when there is none (Windows, other platforms or a missing tool). */
+/** The keychain for `platform`, or undefined when there is none (other platforms or a missing tool). */
 export function detectKeychain(
 	platform: NodeJS.Platform,
 	which: KeychainWhich = whichCommand,
@@ -205,6 +207,12 @@ export function detectKeychain(
 	}
 	if (platform === "linux") {
 		return which(SECRET_TOOL) ? createBackend(linuxSpec(), run) : undefined;
+	}
+	if (platform === "win32") {
+		for (const command of ["powershell.exe", "pwsh.exe"]) {
+			const file = which(command);
+			if (file) return createBackend(windowsSpec(file, command, SERVICE), run);
+		}
 	}
 	return undefined;
 }

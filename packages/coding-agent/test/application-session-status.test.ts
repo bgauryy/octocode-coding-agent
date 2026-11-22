@@ -63,6 +63,29 @@ describe("session status precedence", () => {
 		expect(feed({ type: "auto_retry_end", success: true, attempt: 1 })).toEqual({ status: "idle" });
 	});
 
+	it("names a request waiting out its provider's rate-limit cool-down until it goes out", () => {
+		vi.useFakeTimers({ now: 1_000_000 });
+		const { feed } = follow();
+		const cooling: AgentSessionEvent = {
+			type: "model_wait",
+			idleMs: 0,
+			cooldown: { provider: "anthropic", until: 1_012_000 },
+		};
+		expect(feed(cooling)).toEqual({
+			status: "retrying",
+			detail: "Waiting out anthropic rate limit",
+			until: 1_012_000,
+		});
+		// A compaction still wins; the cool-down shows again once it ends.
+		expect(feed({ type: "compaction_start", reason: "threshold" })).toEqual({ status: "compacting" });
+		expect(
+			feed({ type: "compaction_end", reason: "threshold", result: undefined, aborted: false, willRetry: false }),
+		).toEqual({ status: "retrying", detail: "Waiting out anthropic rate limit", until: 1_012_000 });
+		// The request went out: the wait is over, and a later silence reads as the model's.
+		expect(feed(quiet(0))).toEqual({ status: "idle" });
+		expect(feed(quiet(25_000))).toEqual({ status: "stalled", detail: "Model not answering for 25s" });
+	});
+
 	it("publishes only changes: a repeated end event says nothing", () => {
 		const { feed, published } = follow();
 		feed(

@@ -48,17 +48,7 @@ describe("built-in slash commands", () => {
 			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
 		}
-		for (const name of [
-			"qui",
-			"Settings",
-			"sessions",
-			"login",
-			"models",
-			"thinking",
-			"exit",
-			"config",
-			"configuration",
-		])
+		for (const name of ["qui", "Settings", "sessions", "login", "thinking", "exit", "config", "configuration"])
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 
@@ -92,6 +82,7 @@ describe("built-in slash commands", () => {
 			"shutdown",
 			"handleProvidersCommand",
 			"handleModelCommand",
+			"handleModelsCommand",
 			"handleThinkingCommand",
 			"handleSessionCommand",
 		])
@@ -99,7 +90,7 @@ describe("built-in slash commands", () => {
 		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/models");
-		expect(effects.splice(0)).toEqual(["handleModelCommand"]);
+		expect(effects.splice(0)).toEqual(["handleModelsCommand"]);
 		for (const removed of ["/thinking high", "/stats"]) await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual(

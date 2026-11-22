@@ -684,6 +684,11 @@
     "ModelInputLimits": {
       "type": "object",
       "properties": {
+        "maxInputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum prompt tokens accepted independently of the combined context window."
+        },
         "maxRequestBytes": {
           "type": "integer",
           "minimum": 1,

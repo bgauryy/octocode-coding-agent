@@ -289,6 +289,7 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		// Only entries that give a usable credential: signed-out, keyless and unset-reference entries are not an origin.
 		octocodeAuthIds: [...stored.byProvider].filter(([, sources]) => sources.length > 0).map(([id]) => id),
 		settings: manager,
+		...(options.cwd !== undefined ? { project: { cwd: options.cwd, trusted } } : {}),
 		env,
 	});
 	const credentialsError = stored.error ?? origins.error;

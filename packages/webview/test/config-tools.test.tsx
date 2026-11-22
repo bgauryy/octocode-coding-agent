@@ -31,7 +31,7 @@ const list: ToolExposureList = {
 			name: "native",
 			pinnable: true,
 			tools: [
-				{ name: "web", state: "deferred", decidedBy: "recent" },
+				{ name: "models", state: "deferred", decidedBy: "recent" },
 				{ name: "archive", pin: "deferred", state: "direct", decidedBy: "recent" },
 				{ name: "bash", state: "direct", decidedBy: "core" },
 			],
@@ -69,8 +69,8 @@ describe("ConfigView Tools panel", () => {
 		render(<ConfigView load={async () => snapshot(true)} tools={toolsApi(async () => list)} />);
 		const native = await screen.findByRole("table", { name: "Native tools exposure" });
 		expect(within(native).getByRole("columnheader", { name: "This session" })).toBeInTheDocument();
-		expect(rowOf("Native tools", "web")).toHaveTextContent("Deferred");
-		expect(rowOf("Native tools", "web")).toHaveTextContent("Not used in the last 24 hours");
+		expect(rowOf("Native tools", "models")).toHaveTextContent("Deferred");
+		expect(rowOf("Native tools", "models")).toHaveTextContent("Not used in the last 24 hours");
 		// Pinned after the session started: the session's state, and the pin that waits.
 		expect(rowOf("Native tools", "archive")).toHaveTextContent("Direct");
 		expect(rowOf("Native tools", "archive")).toHaveTextContent("Deferred from the next session");
@@ -92,19 +92,19 @@ describe("ConfigView Tools panel", () => {
 					? { ...group, tools: group.tools.map((row) => (row.name === command.tool ? { ...row, pin: "direct" } : row)) }
 					: group,
 			),
-			message: "Pinned web direct. It applies from the next session; running sessions keep what they declared.",
+			message: "Pinned models direct. It applies from the next session; running sessions keep what they declared.",
 		}));
 		render(<ConfigView load={async () => snapshot(true)} tools={api} />);
-		const pin = await screen.findByRole("combobox", { name: "Pin web" });
+		const pin = await screen.findByRole("combobox", { name: "Pin models" });
 		expect(within(pin).queryByRole("option", { name: "Hidden" })).toBeNull();
 		expect(
 			within(screen.getByRole("combobox", { name: "Pin search" })).getByRole("option", { name: "Hidden" }),
 		).toBeInTheDocument();
 		await userEvent.selectOptions(pin, "direct");
-		expect(api.pin).toHaveBeenCalledWith({ kind: "native", tool: "web", pin: "direct", scope: "global" });
-		expect(await screen.findByRole("status")).toHaveTextContent("Pinned web direct");
-		expect(screen.getByRole("combobox", { name: "Pin web" })).toHaveValue("direct");
-		expect(rowOf("Native tools", "web")).toHaveTextContent("Direct from the next session");
+		expect(api.pin).toHaveBeenCalledWith({ kind: "native", tool: "models", pin: "direct", scope: "global" });
+		expect(await screen.findByRole("status")).toHaveTextContent("Pinned models direct");
+		expect(screen.getByRole("combobox", { name: "Pin models" })).toHaveValue("direct");
+		expect(rowOf("Native tools", "models")).toHaveTextContent("Direct from the next session");
 	});
 
 	it("unpins with null, names the server of an MCP pin and shows a refusal beside the row", async () => {

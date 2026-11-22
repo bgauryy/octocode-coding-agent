@@ -178,9 +178,9 @@ describe("the queue list and long queues", () => {
 		await t!.until(shows(/1\. Next turn: steer two/), "reordered");
 		t!.press(KEY.esc);
 		first.release();
-		await t!.until(() => t!.requests.length === 3 && !t!.host.session.isStreaming, "both steer turns");
-		expect(userTexts(t!.requests[1]).at(-1)).toBe("steer two");
-		expect(userTexts(t!.requests[2]).at(-1)).toBe("steer one");
+		// Queued steering reaches the model together (`steeringMode: "all"`): one request, in the order the list shows.
+		await t!.until(() => t!.requests.length === 2 && !t!.host.session.isStreaming, "the steer turn");
+		expect(userTexts(t!.requests[1]).slice(-2)).toEqual(["steer two", "steer one"]);
 	});
 
 	it("deletes a queued message from the ↑ manager so it is never sent", async () => {

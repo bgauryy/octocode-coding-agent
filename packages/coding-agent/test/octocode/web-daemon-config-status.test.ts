@@ -232,6 +232,21 @@ describe("settings and trust", () => {
 		expect(snapshot.settingsErrors).toBeUndefined();
 	});
 
+	it("lists a project models.json provider only once the folder is trusted", async () => {
+		const cwd = workspace();
+		fs.writeFileSync(
+			path.join(cwd, ".octocode", "models.json"),
+			JSON.stringify({
+				providers: { projectonly: { baseUrl: "http://localhost:1/v1", apiKey: "$PROJECT_KEY", models: [{ id: "m" }] } },
+			}),
+		);
+		const ids = async () =>
+			(await buildConfigSnapshot({ agentDir, cwd, keychain: null })).providers.map((p) => p.provider);
+		expect(await ids()).not.toContain("projectonly");
+		trustFolder(cwd);
+		expect(await ids()).toContain("projectonly");
+	});
+
 	it("shows an invalid settings file as an error with fixed text and leaves it untouched", async () => {
 		const cwd = workspace();
 		const file = path.join(agentDir, "settings.json");

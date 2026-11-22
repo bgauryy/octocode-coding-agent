@@ -50,6 +50,7 @@ type CommandDispatchHost = ConfigurationHost &
 		| "handleHotkeysCommand"
 		| "handleImportCommand"
 		| "handleProvidersCommand"
+		| "handleModelsCommand"
 		| "handleModelCommand"
 		| "handleNameCommand"
 		| "handleReloadCommand"
@@ -70,6 +71,7 @@ type CommandDispatchHost = ConfigurationHost &
 		| "showSelectorDialog"
 		| "showCustomDialog"
 		| "showModelsSelector"
+		| "updateAvailableProviderCount"
 		| "showOAuthSelector"
 		| "showQueueManager"
 		| "showSelector"
@@ -202,6 +204,9 @@ export async function runBuiltinCommand(host: CommandDispatchHost, name: string,
 			return;
 		case "model":
 			await host.handleModelCommand(args || undefined);
+			return;
+		case "models":
+			await host.handleModelsCommand();
 			return;
 		case "effort":
 			host.handleThinkingCommand(args || undefined);

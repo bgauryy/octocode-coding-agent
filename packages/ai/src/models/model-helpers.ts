@@ -1,4 +1,4 @@
-import type { Api, AnyModel, Model, ModelCost, ModelCostRates, ModelThinkingLevel, Usage } from "../types.ts";
+import type { Api, AnyModel, Model, ModelCost, ModelCostRates, Usage } from "../types.ts";
 import { getModelType, isModelType } from "../utils/model-operations.ts";
 
 /**
@@ -71,39 +71,7 @@ export function calculateCost(model: AnyModel, usage: Usage, now: Date | number 
 	return usage.cost;
 }
 
-const EXTENDED_THINKING_LEVELS: ModelThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-export function getSupportedThinkingLevels<TApi extends Api>(model: Model<TApi>): ModelThinkingLevel[] {
-	if (!model.reasoning) return ["off"];
-
-	return EXTENDED_THINKING_LEVELS.filter((level) => {
-		const mapped = model.thinkingLevelMap?.[level];
-		if (mapped === null) return false;
-		if (level === "xhigh" || level === "max") return mapped !== undefined;
-		return true;
-	});
-}
-
-export function clampThinkingLevel<TApi extends Api>(
-	model: Model<TApi>,
-	level: ModelThinkingLevel,
-): ModelThinkingLevel {
-	const availableLevels = getSupportedThinkingLevels(model);
-	if (availableLevels.includes(level)) return level;
-
-	const requestedIndex = EXTENDED_THINKING_LEVELS.indexOf(level);
-	if (requestedIndex === -1) return availableLevels[0] ?? "off";
-
-	for (let i = requestedIndex; i < EXTENDED_THINKING_LEVELS.length; i++) {
-		const candidate = EXTENDED_THINKING_LEVELS[i];
-		if (availableLevels.includes(candidate)) return candidate;
-	}
-	for (let i = requestedIndex - 1; i >= 0; i--) {
-		const candidate = EXTENDED_THINKING_LEVELS[i];
-		if (availableLevels.includes(candidate)) return candidate;
-	}
-	return availableLevels[0] ?? "off";
-}
+export { clampThinkingLevel, getSupportedThinkingLevels } from "./thinking.ts";
 
 /**
  * Check if two models are equal by comparing their type, id, and provider.

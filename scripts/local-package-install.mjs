@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseDocument } from "yaml";
+import { codingAgentName } from "./coding-agent-smoke.mjs";
 import { execNpmSync } from "./npm-command.mjs";
 
 const dependencySections = ["dependencies", "devDependencies", "optionalDependencies"];
@@ -177,10 +178,13 @@ export function smokeTestNpmConsumer({ directory, artifactSet, packageName }) {
 	}
 	if (typeof manifest.main !== "string")
 		throw new Error(`Public Octocode package ${packageName} must declare a string main field`);
-	if (typeof manifest.types !== "string")
-		throw new Error(`Public Octocode package ${packageName} must declare a string types field`);
 	assertPackageFile(installedDirectory, manifest.main, `${packageName} main`);
-	assertPackageFile(installedDirectory, manifest.types, `${packageName} types`);
+	// The CLI ships JavaScript bundles. Libraries also promise a root declaration file.
+	if (packageName !== codingAgentName || manifest.types !== undefined) {
+		if (typeof manifest.types !== "string")
+			throw new Error(`Public Octocode package ${packageName} must declare a string types field`);
+		assertPackageFile(installedDirectory, manifest.types, `${packageName} types`);
+	}
 
 	const runtimeSpecifiers = [];
 	for (const [subpath, value] of literalExports(manifest)) {

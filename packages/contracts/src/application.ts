@@ -153,6 +153,8 @@ const ReceiptSchema = Type.Object({
 	id: Type.String(),
 	status: Type.Union([Type.Literal("accepted"), Type.Literal("completed"), Type.Literal("failed")]),
 	message: Type.Optional(Type.String()),
+	/** A completed Stop: the queued messages it withdrew (guidance first, then follow-ups) for its sender to restore. */
+	withdrawn: Type.Optional(Type.Array(Type.String())),
 });
 export const ApplicationToolSchema = Type.Object({
 	toolCallId: Type.String(),

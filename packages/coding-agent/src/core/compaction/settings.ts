@@ -10,8 +10,14 @@ const CONTEXT_CLAMP_TOKENS = 4096;
 /** The part of a model the policy reads. */
 export interface CompactionModel {
 	contextWindow?: number;
+	inputLimits?: { maxInputTokens?: number };
 	reasoning?: boolean;
 	compat?: unknown;
+}
+
+/** Prompt room after reserving output in the combined window and applying any independent input ceiling. */
+export function inputRoomTokens(contextWindow: number, reserveTokens: number, maxInputTokens?: number): number {
+	return Math.max(0, Math.min(contextWindow - reserveTokens, maxInputTokens ?? Infinity));
 }
 
 /** The session's thinking setup: the level in force and any custom per-level token budgets. */
@@ -58,6 +64,7 @@ export function builtInCompactionSettings(model?: CompactionModel, thinking?: Co
 	const wanted = thinking ? Math.max(need, summaryRoom) : summaryRoom;
 	return {
 		enabled: true,
+		...(model?.inputLimits?.maxInputTokens ? { maxInputTokens: model.inputLimits.maxInputTokens } : {}),
 		reserveTokens: Math.max(base, Math.min(wanted, sixth)),
 		keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.max(1, Math.floor(window / 4))),
 	};

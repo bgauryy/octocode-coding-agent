@@ -10,16 +10,14 @@ import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost, meteredBilling } from "./fake-host.ts";
 import { allSections, tmp } from "./helpers.ts";
 
-// `reasoning` lets a profile's thinking level stand (`supportedThinking`); it is a registry field ModelRef leaves out.
-const m = (provider: string, id: string, input: number, output: number): ModelRef =>
-	({
-		provider,
-		id,
-		cost: { input, output },
-		contextWindow: 200_000,
-		input: ["text", "image"],
-		reasoning: true,
-	}) as ModelRef;
+const m = (provider: string, id: string, input: number, output: number): ModelRef => ({
+	provider,
+	id,
+	cost: { input, output },
+	contextWindow: 200_000,
+	input: ["text", "image"],
+	reasoning: true,
+});
 const opus = m("p", "opus", 4, 20);
 const sonnet = m("p", "sonnet", 2, 10);
 const haiku = m("p", "haiku", 0.1, 0.5);

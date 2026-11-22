@@ -2,6 +2,7 @@ import { JOBS_SCHEMA } from "./schema-jobs.ts";
 import { EVENTS_SCHEMA } from "./schema-events.ts";
 import { ITEM_HANDOFFS_SCHEMA } from "./schema-handoffs.ts";
 import { MACHINE_ALERTS_SCHEMA, SAMPLES_SCHEMA } from "./schema-samples.ts";
+import { PROVIDER_COOLDOWNS_SCHEMA } from "./schema-cooldowns.ts";
 
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
 const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
@@ -17,7 +18,7 @@ const AGENT_RUNS_PARENT_INDEX =
 	"CREATE INDEX IF NOT EXISTS agent_runs_parent_session ON agent_runs(parent_session_id);";
 
 /** The objects an existing file of this version may lack; run each time the coordination file is opened. */
-export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}`;
+export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}\n${PROVIDER_COOLDOWNS_SCHEMA}`;
 
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `

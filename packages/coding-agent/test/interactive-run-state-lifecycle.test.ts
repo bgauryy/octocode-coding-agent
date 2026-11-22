@@ -1,3 +1,4 @@
+import { Container } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import { handleRunStateEvent } from "../src/modes/interactive/interactive-mode/run-state-events.ts";
@@ -7,12 +8,12 @@ import { createFakeHost } from "./interactive-mode-host.ts";
 
 describe("interactive retry lifecycle", () => {
 	beforeAll(() => initTheme("dark"));
-	test("restores the original Escape handler after multiple retry attempts", async () => {
+	test("keeps Escape as the Stop key while a run waits to retry, across attempts", async () => {
 		const originalEscape = vi.fn();
 		let active: StatusIndicator | undefined;
 		const host = createFakeHost({
 			defaultEditor: { onEscape: originalEscape },
-			retryEscapeHandler: undefined as (() => void) | undefined,
+			chatContainer: new Container(),
 			ui: { requestRender: vi.fn() },
 			showStatusIndicator(indicator: StatusIndicator) {
 				active?.dispose();
@@ -35,11 +36,11 @@ describe("interactive retry lifecycle", () => {
 					errorMessage: "temporary failure",
 				});
 				expect(active?.kind).toBe("retry");
-				expect(host.defaultEditor.onEscape).not.toBe(originalEscape);
+				// Escape during the wait reaches the editor's own handler: it stops the run and restores queued messages.
+				expect(host.defaultEditor.onEscape).toBe(originalEscape);
 			}
 			await handleRunStateEvent(host, { type: "auto_retry_end", success: true, attempt: 2 });
 			expect(host.defaultEditor.onEscape).toBe(originalEscape);
-			expect(host.retryEscapeHandler).toBeUndefined();
 			expect(active).toBeUndefined();
 		} finally {
 			active?.dispose();
@@ -153,10 +154,10 @@ describe("interactive retry lifecycle", () => {
 	test("an outage is one updating row with a countdown and adds nothing to the transcript per attempt", async () => {
 		const host = createFakeHost({
 			defaultEditor: { onEscape: vi.fn() },
-			retryEscapeHandler: undefined as (() => void) | undefined,
 			autoCompactionEscapeHandler: undefined as (() => void) | undefined,
 			activeStatusIndicator: undefined as StatusIndicator | undefined,
 			editor: {},
+			chatContainer: new Container(),
 			ui: { requestRender: vi.fn() },
 			showStatusIndicator(indicator: StatusIndicator) {
 				host.activeStatusIndicator?.dispose();

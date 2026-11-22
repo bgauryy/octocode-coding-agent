@@ -1,3 +1,4 @@
+import { inputRoomTokens } from "../../core/compaction/settings.ts";
 import type { NativeCompactionResult } from "../../core/compaction/native-result.ts";
 import type { Api, Context, Model, SimpleStreamOptions } from "@octocodeai/octocode-ai";
 import {
@@ -74,9 +75,13 @@ export function windowBudget(
 	reserveTokens: number,
 	share: number,
 	max: number,
+	maxInputTokens?: number,
 ): number {
 	if (!contextWindow) return max;
-	return Math.max(0, Math.min(max, Math.floor((contextWindow - reserveTokens) * CHARS_PER_TOKEN * share)));
+	return Math.max(
+		0,
+		Math.min(max, Math.floor(inputRoomTokens(contextWindow, reserveTokens, maxInputTokens) * CHARS_PER_TOKEN * share)),
+	);
 }
 
 /** Of the room after the reserve, the kept user messages take at most this share (a tenth: the summary and restored files need the rest). */
@@ -150,7 +155,13 @@ function codeSections(
 	const reserveTokens = event.preparation.settings.reserveTokens;
 	const inlineRoom = inlineSummaryTokens(reserveTokens) * CHARS_PER_TOKEN - body.length - note.length;
 	const total = Math.min(
-		windowBudget(ctx.model?.contextWindow, reserveTokens, USER_MESSAGES_SHARE, USER_MESSAGES_CHARS),
+		windowBudget(
+			ctx.model?.contextWindow,
+			reserveTokens,
+			USER_MESSAGES_SHARE,
+			USER_MESSAGES_CHARS,
+			ctx.model?.inputLimits?.maxInputTokens,
+		),
 		Math.max(USER_REFERENCE_CHARS, inlineRoom),
 	);
 	const perMessage = Math.min(USER_MESSAGE_CHARS, Math.max(500, Math.floor(total / 4)));

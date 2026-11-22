@@ -11,9 +11,11 @@ export interface ModelRef {
 	/** A time-limited price also carries its last day (`until`) and the rates that follow it (`after`). */
 	cost?: { input: number; output: number; until?: string; after?: { input: number; output: number } };
 	contextWindow?: number;
+	inputLimits?: { maxInputTokens?: number };
 	/** Maximum output tokens per response. */
 	maxTokens?: number;
 	input?: readonly string[];
+	reasoning?: boolean;
 	/** Where the entry's facts come from (`ModelRuntime.getModelOrigin`); undefined when not looked up. */
 	origin?: "models.json" | "models.json+built-in" | "models.json+default" | "built-in";
 }
@@ -91,10 +93,12 @@ function facts(ref: ModelRef, catalog: Catalog | undefined): Facts {
 	const cost = own && own.input + own.output > 0 ? own : listedCost(catalog, ref.provider, ref.id);
 	// An id like `anthropic/claude-x` (a router's) names its lab when models.dev does not.
 	const slash = ref.id.indexOf("/");
+	const window = ref.contextWindow !== undefined && ref.contextWindow > 0 ? ref.contextWindow : known?.context;
+	const inputLimit = ref.inputLimits?.maxInputTokens;
 	return {
 		ref,
 		price: cost && cost.input + cost.output > 0 ? (3 * cost.input + cost.output) / 4 : undefined,
-		context: ref.contextWindow !== undefined && ref.contextWindow !== 0 ? ref.contextWindow : known?.context,
+		context: inputLimit === undefined ? window : Math.min(window ?? inputLimit, inputLimit),
 		output: ref.maxTokens !== undefined && ref.maxTokens !== 0 ? ref.maxTokens : known?.output,
 		input: ref.input ?? known?.input,
 		toolCall: known?.toolCall,

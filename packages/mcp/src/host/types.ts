@@ -6,7 +6,7 @@
 
 import type { ToolDisplay } from "@octocodeai/octocode-contracts";
 import type { AgentToolResult, AgentToolUpdateCallback, EventBus } from "@octocodeai/octocode-agent-core";
-import type { ModelInputLimits } from "@octocodeai/octocode-ai";
+import type { ModelInputLimits, Tool } from "@octocodeai/octocode-ai";
 import type { AutocompleteItem, Component } from "@octocodeai/octocode-tui";
 import type { Static, TSchema } from "typebox";
 import type { McpServerConfig, RegisteredMcpServer } from "@octocodeai/octocode-contracts/mcp-server";
@@ -106,7 +106,7 @@ export interface McpToolDefinition<TParams extends TSchema = TSchema, TDetails =
 	promptGuidelines?: string[];
 	parameters: TParams;
 	validationParameters?: TSchema;
-	validationHint?: (failure: { envelope: boolean; properties: string[]; arguments?: unknown }) => string | undefined;
+	validationHint?: Tool["validationHint"];
 	coerceArguments?: false;
 	renderShell?: "default" | "self";
 	prepareArguments?: (args: unknown) => Static<TParams>;

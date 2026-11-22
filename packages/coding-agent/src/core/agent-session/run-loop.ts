@@ -22,6 +22,7 @@ import type { SessionInputQueue } from "./input-queue.ts";
 import { findLastAssistantMessage } from "./messages.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import { normalizePromptImages } from "./prompt-expansion.ts";
+import { startQueuedInput } from "./queued-start.ts";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
 import type { SessionRetry } from "./retry.ts";
 import { SessionFallback } from "./retry-fallback.ts";
@@ -59,6 +60,8 @@ function incomingMessages(trigger: BeforeAgentStartTrigger): AgentMessage[] {
 
 export class SessionRunLoop {
 	private _abortReason?: AbortReason;
+	/** Replaced or shut down (only teardown aborts so): the interface carries its queues over; no run starts from them. */
+	private _retiring = false;
 	private _pendingInterruption?: AgentInterruptedEvent;
 	private readonly _interruptionCallback = new AsyncLocalStorage<{ active: boolean }>();
 
@@ -166,6 +169,8 @@ export class SessionRunLoop {
 			recordRunFailure(run.outcome, errorMessage(error));
 		}
 		if (run.agentRunAbortRequested) this.host.retry.finishCancelled();
+		// A series no reply closed ends with its run: the next run's first failure starts a series of its own.
+		else this.host.retry.finishUnresolved(failure ? errorMessage(failure.error) : undefined);
 		run.failedResponse = undefined;
 		this.host.tools.runSystemPromptOptions = undefined;
 		// A run that worked stays a success: what could not be written stays queued for the next write, and a reply already
@@ -177,8 +182,15 @@ export class SessionRunLoop {
 		} catch (error) {
 			failure ??= { error };
 		}
+		// Input queued after the run's last delivery point would wait for an unrelated prompt and land after it: unless the
+		// run failed or was stopped for its replacement, shutdown or an internal step (which delivers what waits itself),
+		// it starts a run as this one settles.
+		const drainQueue =
+			!failure &&
+			!this._retiring &&
+			!(run.agentRunAbortRequested && ["internal", "shutdown", "replacement"].includes(this._abortReason ?? ""));
 		try {
-			await settleSessionDispatch(session, () => this._emitAgentSettled());
+			await settleSessionDispatch(session, () => this._emitAgentSettled(drainQueue));
 		} catch (error) {
 			failure ??= { error };
 		} finally {
@@ -274,10 +286,14 @@ export class SessionRunLoop {
 		}
 		if (!message) return session.agent.hasQueuedMessages();
 
-		if (retry.isRetryableError(message) && (await retry.prepare(message))) {
-			if (run.agentRunAbortRequested) retry.finishCancelled();
-			run.failedResponse = message;
-			return !run.agentRunAbortRequested;
+		if (retry.isRetryableError(message)) {
+			const decision = await retry.prepare(message);
+			// A cancelled wait stops the run: no fallback model, compaction resume or queued continuation follows it.
+			if (decision === "cancelled") run.agentRunAbortRequested = true;
+			if (decision === "retry" && !run.agentRunAbortRequested) {
+				run.failedResponse = message;
+				return true;
+			}
 		}
 		if (run.agentRunAbortRequested) {
 			retry.finishCancelled();
@@ -298,7 +314,7 @@ export class SessionRunLoop {
 		return !run.agentRunAbortRequested && session.agent.hasQueuedMessages();
 	}
 
-	private async _emitAgentSettled(): Promise<void> {
+	private async _emitAgentSettled(drainQueue: boolean): Promise<void> {
 		const { session, run } = this.host;
 		this.host.cacheWarmer?.onAgentSettled();
 		run.active = false;
@@ -318,10 +334,20 @@ export class SessionRunLoop {
 		const deferred = run.deferredSettledActions.splice(0);
 		try {
 			for (const action of deferred) await action();
+			if (drainQueue && !run.active && !session.isCompacting)
+				await startQueuedInput({
+					session,
+					inputs: this.host.inputs,
+					startRun: (trigger, onStarted, input) => this.startRun(trigger, onStarted, input),
+				});
 		} finally {
 			await session.featureHost.emit({ type: "agent_settle_end" });
 			this.host.resolveIdleWaitIfIdle();
 		}
+	}
+
+	get retiring(): boolean {
+		return this._retiring;
 	}
 
 	recordAbortReason(reason: AbortReason): void {
@@ -356,6 +382,7 @@ export class SessionRunLoop {
 
 	async abort(reason: AbortReason): Promise<void> {
 		const { session, run } = this.host;
+		if (reason === "replacement" || reason === "shutdown") this._retiring = true;
 		this.recordAbortReason(reason);
 		if (run.active) {
 			run.agentRunAbortRequested = true;

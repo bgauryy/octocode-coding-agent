@@ -35,8 +35,8 @@ describe("set_auto_retry", () => {
 	it("survives a later write and reload of the session's settings", async () => {
 		const { rpc, settingsManager } = host();
 		await handleCommand(rpc, { type: "set_auto_retry", enabled: false });
-		settingsManager.setSteeringMode("all");
-		expect(settingsManager.getSteeringMode()).toBe("all");
+		settingsManager.setSteeringMode("one-at-a-time");
+		expect(settingsManager.getSteeringMode()).toBe("one-at-a-time");
 		expect(settingsManager.getRetryEnabled()).toBe(false);
 		await settingsManager.reload();
 		expect(settingsManager.getRetryEnabled()).toBe(false);

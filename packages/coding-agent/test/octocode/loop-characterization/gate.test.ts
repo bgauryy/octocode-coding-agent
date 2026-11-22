@@ -2,8 +2,9 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKLOG_PEER_TYPE } from "../../../src/octocode/backlog/peer-notify.ts";
 import { SETTINGS_DEFAULTS } from "../../../src/core/settings-defaults.ts";
+import { RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
 import type { AgentEvent } from "../../../src/octocode/wake/catalog.ts";
-import { blockingTool, count, createRig, sleep, wakeGateOf, wakeRows, type Rig } from "./rig.ts";
+import { blockingTool, count, createRig, IN_NEW_MODE, sleep, wakeGateOf, wakeRows, type Rig } from "./rig.ts";
 
 /**
  * Characterization of the wake gate in a real session (RFC agent-event-loop R0, §4). Every case pins what the code does
@@ -26,11 +27,54 @@ const ended = (agent: string): AgentEvent => ({ kind: "agent.ended", agent, reas
 const message = (text: string) => ({ customType: "loop-test", content: text, display: true });
 const wake = { triggerTurn: true, deliverAs: "followUp" as const, together: true };
 
+/** The default windows of both schedulers: the gate's hold and the event loop's window (`new`, for the topics it delivers). */
+const defaultWindows = {
+	subagents: { wakeHoldSeconds: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds },
+	runtime: { eventWindowSeconds: RUNTIME_DEFAULTS.eventWindowSeconds },
+};
+
 describe("the wake gate with the default hold window", () => {
-	it("defaults the hold window to 0 (setting subagents.wakeHoldSeconds) — R4 replaces it with a 2 s window", () => {
-		expect(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds).toBe(0);
+	it("defaults the hold window to the event loop's 2 s window (R4)", () => {
+		expect(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds).toBe(2);
+		expect(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds).toBe(RUNTIME_DEFAULTS.eventWindowSeconds);
 	});
 
+	it("merges two wakes sent back to back while idle into one turn, sent once the window ends", async () => {
+		const r = await rig({ settings: defaultWindows });
+		r.harness.setResponses([r.reply("merged"), r.reply("never used")]);
+		const gate = wakeGateOf(r.api);
+		const began = Date.now();
+		await Promise.all([
+			gate.emit(ended("child-1"), message("WAKE-A"), wake),
+			gate.emit(ended("child-2"), message("WAKE-B"), wake),
+		]);
+		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 10_000 });
+		await r.harness.session.waitForIdle();
+		expect(Date.now() - began).toBeGreaterThanOrEqual(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds * 1000 - 50);
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-A")).toBe(1);
+		expect(count(r.requests[0], "WAKE-B")).toBe(1);
+	});
+
+	it("starts a prompt sent inside the window at once and still delivers the held wake, once", async () => {
+		const r = await rig({ settings: { subagents: { wakeHoldSeconds: 0.3 }, runtime: { eventWindowSeconds: 0.3 } } });
+		r.harness.setResponses([r.reply("answered the prompt"), r.reply("answered the wake")]);
+		const held = wakeGateOf(r.api).emit(ended("child-1"), message("WAKE-HELD"), wake);
+		await r.harness.session.prompt("PROMPT-NOW");
+		expect(count(r.requests[0], "PROMPT-NOW")).toBe(1);
+		await held;
+		const carrying = () => r.requests.findIndex((request) => count(request, "WAKE-HELD") > 0);
+		await vi.waitFor(() => expect(carrying()).toBeGreaterThanOrEqual(0), { timeout: 10_000 });
+		await r.harness.session.waitForIdle();
+		// The gate sends what it holds when the window closes, read after the prompt's run; the loop (`new`) hands it to
+		// the prompt's own turn.
+		expect(carrying()).toBe(IN_NEW_MODE ? 0 : 1);
+		expect(count(r.requests.at(-1) ?? [], "WAKE-HELD")).toBe(1);
+		expect(r.harness.session.agent.hasQueuedMessages()).toBe(false);
+	});
+});
+
+describe("the wake gate without a hold window (the suite's pinned 0)", () => {
 	it("wakes an idle session at once, in one turn that carries the message (no hold)", async () => {
 		const r = await rig();
 		r.harness.setResponses([r.reply("woken")]);
@@ -40,7 +84,7 @@ describe("the wake gate with the default hold window", () => {
 		expect(count(r.requests[0], "WAKE-A")).toBe(1);
 	});
 
-	it("costs two turns for two wakes sent back to back while idle (N events, N turns) — R4 merges them", async () => {
+	it("costs two turns for two wakes sent back to back while idle (N events, N turns) — the default window merges them", async () => {
 		const r = await rig();
 		r.harness.setResponses([r.reply("first"), r.reply("second")]);
 		const gate = wakeGateOf(r.api);

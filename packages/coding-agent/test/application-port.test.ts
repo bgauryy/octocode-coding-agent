@@ -20,6 +20,7 @@ function fixture() {
 			runs++;
 		},
 		async abort() {},
+		clearQueue: () => ({ steering: [] as string[], followUp: [] as string[] }),
 	} as unknown as AgentSession;
 	return {
 		session,
@@ -212,6 +213,29 @@ it("does not dispatch an accepted abort to a newer run in the same session", asy
 	expect(aborts).toBe(0);
 	const snapshot = (await service.connect()[Symbol.asyncIterator]().next()).value.snapshot;
 	expect(snapshot.receipts).toContainEqual(expect.objectContaining({ id: "abort-old", status: "failed" }));
+	service.dispose();
+});
+it("gives a Stop's withdrawn queue back on its completed receipt, taken before the abort", async () => {
+	const f = fixture();
+	const order: string[] = [];
+	f.session.clearQueue = () => {
+		order.push("clearQueue");
+		return { steering: ["guide"], followUp: ["later"] };
+	};
+	f.session.abort = async () => {
+		order.push("abort");
+	};
+	const service = getApplicationPort(f.session);
+	f.emit({ type: "agent_start" });
+	const live = service.connect()[Symbol.asyncIterator]();
+	const runId = (await live.next()).value.snapshot.runId;
+	await service.execute({ id: "stop", sessionId: "session-A", action: "abort", runId });
+	expect((await live.next()).value.event.receipt.status).toBe("accepted");
+	expect((await live.next()).value.event).toMatchObject({
+		type: "command.receipt",
+		receipt: { id: "stop", status: "completed", withdrawn: ["guide", "later"] },
+	});
+	expect(order).toEqual(["clearQueue", "abort"]);
 	service.dispose();
 });
 it("bounds a command failure so the receipt does not overflow a live view", async () => {

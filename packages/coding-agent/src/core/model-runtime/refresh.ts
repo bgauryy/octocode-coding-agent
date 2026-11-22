@@ -1,6 +1,7 @@
 import { type MutableModels, type ModelsRefreshOptions, type ModelsRefreshResult } from "@octocodeai/octocode-ai";
 import { operationSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { ModelConfig } from "../model-config.ts";
+import type { ModelsProject } from "../model-config/project.ts";
 import type { ModelAvailability } from "./availability.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ProviderPins } from "./provider-pins.ts";
@@ -11,6 +12,7 @@ export interface RuntimeRefreshHost {
 	readonly layers: ProviderLayers;
 	readonly availability: ModelAvailability;
 	readonly modelsPath: string | undefined;
+	readonly project: ModelsProject | undefined;
 	readonly modelNetworkEnabled: boolean;
 	/** Keeps the providers this refresh removes serving requests that already hold one of their models. */
 	readonly pins: ProviderPins;
@@ -25,7 +27,7 @@ export async function refreshModelRuntime(
 	const { models, layers, availability } = host;
 	const before = models.getProviders();
 	// A caller that already loaded and checked models.json passes it: reading again could meet a later mid-save state.
-	layers.config = config ?? (await ModelConfig.load(host.modelsPath));
+	layers.config = config ?? (await ModelConfig.load(host.modelsPath, host.project));
 	if (options.providers) {
 		for (const providerId of new Set(options.providers)) layers.recomposeProvider(providerId);
 		availability.updateModelSnapshot();

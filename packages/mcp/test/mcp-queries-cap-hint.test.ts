@@ -65,6 +65,37 @@ describe("MCP queries batch cap", () => {
 		expect(message({ queries: Array.from({ length: 7 }, () => ({ path: "a" })) })).toContain("queries holds at most 5");
 	});
 
+	it("keeps the deferred schema or compact signature beside the nested field hint", () => {
+		const inputSchema = {
+			...batchSchema(),
+			properties: {
+				queries: {
+					type: "array",
+					items: {
+						type: "object",
+						additionalProperties: false,
+						properties: { path: { type: "string" } },
+					},
+				},
+			},
+		};
+		for (const compact of [
+			{ signature: () => "declare function read(path: string): unknown;" },
+			{ signature: () => undefined, whole: true },
+		]) {
+			const tool = define(inputSchema, compact);
+			const call = () =>
+				validateToolArguments(tool, {
+					type: "toolCall",
+					id: "c",
+					name: tool.name,
+					arguments: { queries: [{ pathValue: "a" }] },
+				});
+			expect(call).toThrow("Declared fields at /queries/0: path.");
+			expect(call).toThrow(compact.signature() ?? JSON.stringify(inputSchema));
+		}
+	});
+
 	it("accepts a batch within the cap and adds no cap hint where the server declares no cap", () => {
 		expect(validate(define(batchSchema(5)), 5)).toMatchObject({ queries: expect.any(Array) });
 		const uncapped = define(batchSchema());

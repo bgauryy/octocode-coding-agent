@@ -104,6 +104,21 @@ describe("turn summary line", () => {
 		]);
 	});
 
+	it("Esc during a retry countdown restores the error without sending another request", async () => {
+		t = await startUi();
+		t.host.session.settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 60_000 } });
+		t.script(fauxAssistantMessage("", { stopReason: "error", errorMessage: "529 overloaded" }), "unexpected retry");
+		await t.type("go");
+		t.press(KEY.enter);
+		await t.until(async () => (await t!.text()).includes("Retried after error"), "the retry countdown");
+		t.press(KEY.esc);
+		await t.until(async () => (await t!.text()).includes("Retry cancelled"), "the cancelled retry");
+		const screen = await t.text();
+		expect(screen).toContain("Error: 529 overloaded");
+		expect(screen).not.toContain("Retried after error");
+		expect(t.requests).toHaveLength(1);
+	});
+
 	describe("persistent footer", () => {
 		/** The footer's two rows: model, permission and context fill on the first, total tokens on the second. */
 		const footer = async () => {

@@ -23,9 +23,9 @@ const WEB = {
 
 function port(): McpNativeTools & { loaded: Mock<(name: string) => void> } {
 	return {
-		deferred: () => ["archive", "web"],
+		deferred: () => ["archive", "models"],
 		schema: (name) =>
-			name === "web" ? WEB : name === "archive" ? { description: "Search history.", parameters: {} } : undefined,
+			name === "models" ? WEB : name === "archive" ? { description: "Search history.", parameters: {} } : undefined,
 		loaded: vi.fn<(name: string) => void>(),
 	};
 }
@@ -50,18 +50,18 @@ describe("mcp tools with server native", () => {
 
 	it("returns a deferred native tool's full description and input schema and counts a load", async () => {
 		const { run, loaded } = setup();
-		const result = await run({ intent: "tools", server: "native", tool: "web" });
+		const result = await run({ intent: "tools", server: "native", tool: "models" });
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toContain("Fetch a public page. Second sentence with more detail.");
 		expect(text).toContain(JSON.stringify(WEB.parameters, null, 2));
-		expect(loaded).toHaveBeenCalledWith("native", "web");
-		expect(result.details).toMatchObject({ server: "native", tool: { name: "web", inputSchema: WEB.parameters } });
+		expect(loaded).toHaveBeenCalledWith("native", "models");
+		expect(result.details).toMatchObject({ server: "native", tool: { name: "models", inputSchema: WEB.parameters } });
 	});
 
 	it("answers an unknown native tool by naming what is deferred, and counts nothing", async () => {
 		const { run, loaded } = setup();
 		await expect(run({ intent: "tools", server: "native", tool: "bash" })).rejects.toThrow(
-			/No native tool named "bash" in this session.*archive, web/,
+			/No native tool named "bash" in this session.*archive, models/,
 		);
 		expect(loaded).not.toHaveBeenCalled();
 	});
@@ -82,7 +82,7 @@ describe("mcp tools with server native", () => {
 		const { run } = setup();
 		const listed = (await run({ intent: "tools", server: "native" })).content[0] as { text: string };
 		expect(listed.text).toContain("archive");
-		expect(listed.text).toContain("web");
+		expect(listed.text).toContain("models");
 		const none = setup({ deferred: () => [], schema: () => undefined, loaded: vi.fn() });
 		expect(((await none.run({ intent: "tools", server: "native" })).content[0] as { text: string }).text).toMatch(
 			/No native tool is deferred/,
@@ -90,7 +90,7 @@ describe("mcp tools with server native", () => {
 	});
 
 	it("is an unknown server where the host passes no native port", async () => {
-		await expect(setup(false).run({ intent: "tools", server: "native", tool: "web" })).rejects.toThrow(
+		await expect(setup(false).run({ intent: "tools", server: "native", tool: "models" })).rejects.toThrow(
 			/No MCP server "native"/,
 		);
 	});
@@ -105,10 +105,11 @@ describe("mcp tools with server native", () => {
 		registerMcpManageTool(state);
 		const ctx = fakeCtx({ cwd: "/workspace", hasUI: false });
 		const mcp = fake.tools.get("mcp");
-		const call = () => mcp.execute("c", { intent: "tools", server: "native", tool: "web" }, undefined, undefined, ctx);
+		const call = () =>
+			mcp.execute("c", { intent: "tools", server: "native", tool: "models" }, undefined, undefined, ctx);
 		await call();
 		await call();
-		expect(usageCounts(join(dir, "tool-usage.json"), "main")["native/web"]).toMatchObject({ loaded: 1, used: 1 });
-		expect(nativeTools.loaded).toHaveBeenCalledWith("web");
+		expect(usageCounts(join(dir, "tool-usage.json"), "main")["native/models"]).toMatchObject({ loaded: 1, used: 1 });
+		expect(nativeTools.loaded).toHaveBeenCalledWith("models");
 	});
 });

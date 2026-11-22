@@ -13,8 +13,9 @@ export const DEFAULT_RESERVE_TOKENS = 16384;
 /** Runtime defaults shared by settings accessors and the published JSON Schema. */
 export const SETTINGS_DEFAULTS = {
 	transport: "auto",
-	steeringMode: "one-at-a-time",
-	followUpMode: "one-at-a-time",
+	/** Messages queued during a run reach the model together, one request for all of them (`agent/state.ts`). */
+	steeringMode: "all",
+	followUpMode: "all",
 	/** Working context for a session: this many tokens, at most 90% of the model's capacity. */
 	contextBudget: 300_000,
 	/** When the main session gets the lean policy: "auto" decides by the model's window and tier (`octocode/turn.ts`). */
@@ -63,7 +64,8 @@ export const SETTINGS_DEFAULTS = {
 	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
 	backlog: { qa: "important" as "important" | "all" | "off" },
 	subagents: {
-		wakeHoldSeconds: 0,
+		/** The event loop's window (`runtime.eventWindowSeconds`): wakes merge alike whichever scheduler delivers them. */
+		wakeHoldSeconds: RUNTIME_DEFAULTS.eventWindowSeconds,
 		peerOverlapWake: true,
 	},
 	monitor: MONITOR_DEFAULTS,

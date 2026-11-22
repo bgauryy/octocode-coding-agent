@@ -1,10 +1,13 @@
+import type { Api, Model } from "@octocodeai/octocode-ai";
+import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { describe, expect, it } from "vitest";
+import type { Run } from "../../src/octocode/subagents/claim.ts";
 import { childCacheLabel, noteChildCache } from "../../src/octocode/subagents/cache-monitor.ts";
 import { renderAgentResult } from "../../src/octocode/subagents/render.ts";
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
-import { childPromptCacheKey, prefixKey } from "../../src/octocode/subagents/task-skills.ts";
+import { childCacheGroup, childPromptCacheKey, prefixKey } from "../../src/octocode/subagents/task-skills.ts";
 
 describe("child cache monitoring and affinity", () => {
 	it("shows the latest message's reads and writes while running and the conversation rate when finished", () => {
@@ -71,6 +74,39 @@ describe("child cache monitoring and affinity", () => {
 			key,
 		);
 		expect(subagentProcessEnv(undefined, env, { id: "child-c" }).OCTOCODE_PROMPT_CACHE_KEY).toBeUndefined();
+	});
+	it("spreads siblings over shards of their group key where the key routes, and staggers them per shard", () => {
+		const routed = getBuiltinModel("openai", "gpt-5.5") as Model<Api>;
+		const released: string[] = [];
+		const run = (id: string): Run => ({
+			identity: { id, sessionId: `session-${id}`, role: "shard-test", goal: "g" },
+			profile: undefined,
+			route: { model: "openai/gpt-5.5" },
+			teamNote: "",
+			release: () => released.push(id),
+		});
+		const runs = ["a", "b", "c"].map(run);
+		const staggers = runs.map((child) => childCacheGroup(child, routed));
+		const keys = runs.map((child) => child.identity.promptCacheKey!);
+		expect(keys[1]).toBe(keys[0]);
+		expect(keys[2]).not.toBe(keys[0]);
+		expect(keys[2].length).toBeLessThanOrEqual(64);
+		// The third child is on its own key: it cannot read what the first wrote, so it does not wait for it.
+		expect(staggers[1]).toBe(staggers[0]);
+		expect(staggers[2]).not.toBe(staggers[0]);
+		// The run's own release still runs; its shard is free for the next sibling.
+		runs[0].release();
+		runs[1].release();
+		expect(released).toEqual(["a", "b"]);
+		const next = run("d");
+		childCacheGroup(next, routed);
+		expect(next.identity.promptCacheKey).toBe(keys[0]);
+		// Without a routing key (Anthropic caches by prefix) or a known model, every sibling shares one key and stagger.
+		const anthropic = getBuiltinModel("anthropic", "claude-opus-5-5") as Model<Api>;
+		const unsharded = ["e", "f", "g"].map(run);
+		const unshardedStaggers = unsharded.map((child, index) => childCacheGroup(child, index ? anthropic : undefined));
+		expect(new Set(unsharded.map((child) => child.identity.promptCacheKey)).size).toBe(1);
+		expect(new Set(unshardedStaggers).size).toBe(1);
 	});
 	it("records every reply's prompt buckets and replaces the latest request without mutating earlier updates", () => {
 		const first = noteChildCache(undefined, { usage: { input: 50, cacheRead: 0, cacheWrite: 4000 } });

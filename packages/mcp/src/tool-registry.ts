@@ -142,10 +142,10 @@ export function registerTools(state: McpFeatureState, connection: McpServerConne
 			},
 		});
 		// A call a deferred tool's schema rejected is demand for its full declaration (`usage-counts.ts`).
-		const definition = {
+		const definition: typeof built = {
 			...built,
 			...(onDemand ? { defaultActive: false, onDemand: true } : {}),
-			validationHint: (failure: { envelope: boolean; properties: string[]; arguments?: unknown }) => {
+			validationHint: (failure) => {
 				if (thin && presentation.isDeferred(server, tool.name)) state.recordToolRefused(server, tool.name);
 				return built.validationHint?.(failure);
 			},

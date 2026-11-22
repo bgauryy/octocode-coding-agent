@@ -1,5 +1,6 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { INTERACTIVE_RETRY } from "../shared/side-retry.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
 /** The rewrite request (`native/prompts/workflows/optimize-prompt.md`). */
@@ -16,8 +17,9 @@ function rewriteFromReply(reply: string): string {
 }
 
 /**
- * One small-tier call (the session's model when no cheaper one resolves) that rewrites `prompt` for a coding agent.
- * Never rejects: a failed, cancelled or empty call gives `{ error }`.
+ * One small-tier call (the session's model when no cheaper one resolves) that rewrites `prompt` for a coding agent. The
+ * user waits on it, so a rate limit or transient failure gets a short retry. Never rejects: a failed, cancelled or empty
+ * call gives `{ error }`.
  */
 export async function rewritePrompt(
 	ctx: FeatureContext,
@@ -31,6 +33,7 @@ export async function rewritePrompt(
 		signal,
 		maxTokens: Math.min(MAX_REPLY_TOKENS, Math.max(MIN_REPLY_TOKENS, prompt.length)),
 		fallbackToSession: true,
+		retry: INTERACTIVE_RETRY,
 		...(complete ? { complete } : {}),
 	});
 	if ("error" in reply) return reply;

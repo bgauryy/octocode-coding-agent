@@ -49,6 +49,7 @@ function setup(mode: Mode) {
 	};
 	const session = {
 		abort: unused,
+		clearQueue: unused,
 		prompt: unused,
 		steer: unused,
 		followUp: unused,

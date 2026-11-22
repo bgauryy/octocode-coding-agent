@@ -59,9 +59,7 @@ export function recentToolsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> 
 const AUTO = /^auto:(\d+)$/;
 
 /**
- * The `mcpExposure` setting when none is configured: every MCP tool is deferred unless the promotion snapshot names it,
- * so only tools that sessions of the same role group often use are declared in full. The coding agent's settings
- * defaults name the same value.
+ * The default defers open tools. Usage can promote an on-demand tool to an initial thin declaration.
  */
 export const DEFAULT_MCP_EXPOSURE_SETTING = "usage";
 

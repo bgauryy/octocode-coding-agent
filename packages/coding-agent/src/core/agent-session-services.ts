@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { getAgentDir, providerFallbackDirs } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
+import { projectModelsPaths } from "./model-config/project.ts";
 import { modelsFileHoldsLiteralKey } from "./models-json-keys.ts";
 import { resolvePath } from "@octocodeai/octocode-common/paths";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -78,6 +79,8 @@ export async function createAgentSessionServices(
 		(await ModelRuntime.create({
 			authPath: join(agentDir, "auth.json"),
 			modelsPath: join(agentDir, "models.json"),
+			// Asked on every load: trusting or untrusting the folder takes effect on the next reload.
+			project: { cwd, isTrusted: () => settingsManager.isProjectTrusted() },
 			signal: options.modelRuntimeSignal,
 		}));
 	try {
@@ -95,7 +98,9 @@ export async function createAgentSessionServices(
 			const dirs = [agentDir, ...providerFallbackDirs(agentDir)];
 			const keyFiles = [
 				...dirs.map((dir) => join(dir, "auth.json")),
-				...dirs.map((dir) => join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),
+				...[...dirs.map((dir) => join(dir, "models.json")), ...projectModelsPaths(cwd, true)].filter(
+					modelsFileHoldsLiteralKey,
+				),
 			];
 			for (const file of keyFiles) {
 				diagnostics.push(...checkAuthFileSafety(file).map((message) => ({ type: "warning" as const, message })));

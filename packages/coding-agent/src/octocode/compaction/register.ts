@@ -193,6 +193,7 @@ export function registerCompaction(
 			event.preparation.settings.reserveTokens,
 			RESTORE_SHARE,
 			restoreLimits(ctx.model?.contextWindow).totalChars,
+			ctx.model?.inputLimits?.maxInputTokens,
 		);
 		// The file lists know only Octocode's read/write/edit and drop a hook summary's lists: both are added first, so Octocode's
 		// default summary (when Octocode's fails) has them too.

@@ -191,3 +191,16 @@ it("distinguishes a queued follow-up from a completed answer", async () => {
 	expect(await screen.findByText("Follow-up queued")).toBeVisible();
 	expect(screen.queryByText("Completed")).toBeNull();
 });
+
+it("gives the messages a Stop withdrew from the queue back to the message box, once, before the draft", async () => {
+	const view = await composer(true);
+	const box = screen.getByRole("textbox", { name: "Message" });
+	await userEvent.type(box, "my draft");
+	await userEvent.click(screen.getByRole("button", { name: "Stop current run" }));
+	const id = posted()[0].id;
+	const stopped = { id, status: "completed" as const, withdrawn: ["queued guidance", "queued follow-up"] };
+	await view.session({ streaming: false, receipts: [stopped] });
+	await waitFor(() => expect(box).toHaveValue("queued guidance\n\nqueued follow-up\n\nmy draft"));
+	await view.session({ streaming: false, receipts: [{ ...stopped }] });
+	expect(box).toHaveValue("queued guidance\n\nqueued follow-up\n\nmy draft");
+});

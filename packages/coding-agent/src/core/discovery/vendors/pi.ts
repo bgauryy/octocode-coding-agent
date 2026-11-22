@@ -55,7 +55,7 @@ export const piVendor: Vendor = {
 			kind: "keybinding",
 			discover: (input) => namedFileItems("keybinding", "keybindings.json", ["global"], roots(input), input),
 		},
-		{ kind: "model", discover: (input) => namedFileItems("model", "models.json", ["global"], roots(input), input) },
+		{ kind: "model", discover: (input) => namedFileItems("model", "models.json", ["project", "global"], roots(input), input) },
 		{
 			kind: "setting",
 			discover: (input) => namedFileItems("setting", "settings.json", ["project", "global"], roots(input), input),

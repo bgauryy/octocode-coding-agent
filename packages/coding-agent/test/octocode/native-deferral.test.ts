@@ -34,18 +34,34 @@ const agentDir = () => {
 describe("native tool deferral", () => {
 	it("defers only deferrable tools, only under recent exposure or a pin", () => {
 		agentDir();
-		expect(nativeToolDeferred("web", { mcpExposure: "direct" })).toBe(false);
-		expect(nativeToolDeferred("web", { mcpExposure: "recent" })).toBe(true);
+		expect(nativeToolDeferred("backlogPlan", { mcpExposure: "direct" })).toBe(false);
+		expect(nativeToolDeferred("backlogPlan", { mcpExposure: "recent" })).toBe(true);
 		expect(nativeToolDeferred("bash", { mcpExposure: "recent" })).toBe(false);
-		expect(nativeToolDeferred("web", { mcpExposure: "recent", nativeToolExposure: { web: "direct" } })).toBe(false);
-		expect(nativeToolDeferred("web", { mcpExposure: "direct", nativeToolExposure: { web: "deferred" } })).toBe(true);
+		expect(
+			nativeToolDeferred("backlogPlan", { mcpExposure: "recent", nativeToolExposure: { backlogPlan: "direct" } }),
+		).toBe(false);
+		expect(
+			nativeToolDeferred("backlogPlan", { mcpExposure: "direct", nativeToolExposure: { backlogPlan: "deferred" } }),
+		).toBe(true);
 		expect(nativeToolDeferred("bash", { nativeToolExposure: { bash: "deferred" } })).toBe(false);
 	});
 
-	it("defers web and archive by default (no mcpExposure set) until the working directory calls them", () => {
+	it("never defers web, the core fetch tool: not under any exposure, and a pin naming it is ignored", () => {
+		agentDir();
+		for (const mcpExposure of ["usage", "recent", "direct", "deferred", undefined]) {
+			expect(nativeToolDeferred("web", { mcpExposure })).toBe(false);
+			expect(nativeToolDeferred("web", { mcpExposure, nativeToolExposure: { web: "deferred" } })).toBe(false);
+		}
+		const full = tool("web");
+		expect(
+			withNativeDeferral(api({ mcpExposure: "usage", nativeToolExposure: { web: "deferred" } }), full as never),
+		).toBe(full);
+	});
+
+	it("defers backlogPlan and archive by default (no mcpExposure set) until the working directory calls them", () => {
 		agentDir();
 		expect(SETTINGS_DEFAULTS.mcpExposure).toBe(DEFAULT_MCP_EXPOSURE_SETTING);
-		expect(nativeToolDeferred("web", {})).toBe(true);
+		expect(nativeToolDeferred("backlogPlan", {})).toBe(true);
 		expect(nativeToolDeferred("archive", undefined)).toBe(true);
 		expect(nativeToolDeferred("bash", {})).toBe(false);
 		expect(nativeToolDeferred("file", {})).toBe(false);
@@ -53,7 +69,7 @@ describe("native tool deferral", () => {
 
 	it("declares a deferred tool with its description, field types, allowed values and required fields, and validates in full", () => {
 		agentDir();
-		const full = tool("web");
+		const full = tool("backlogPlan");
 		const thin = withNativeDeferral(api({ mcpExposure: "recent" }), full as never) as never as typeof full & {
 			validationParameters: unknown;
 			validationHint: (failure: { envelope: boolean; properties: string[] }) => string;
@@ -80,16 +96,16 @@ describe("native tool deferral", () => {
 	it("records a call, so the next session declares the tool in full; a subagent takes its parent's set", async () => {
 		const dir = agentDir();
 		const settings = { mcpExposure: "recent" };
-		const first = withNativeDeferral(api(settings), tool("web") as never);
+		const first = withNativeDeferral(api(settings), tool("backlogPlan") as never);
 		await first.execute("id", { reason: "r", op: "search" }, undefined, undefined, {} as never);
 		expect(Object.values(JSON.parse(fs.readFileSync(path.join(dir, "tool-use.json"), "utf8")))[0]).toHaveProperty(
-			"native/web",
+			"native/backlogPlan",
 		);
-		expect(nativeToolDeferred("web", settings)).toBe(false);
+		expect(nativeToolDeferred("backlogPlan", settings)).toBe(false);
 		expect(nativeToolDeferred("archive", settings)).toBe(true);
 		vi.stubEnv("OCTOCODE_SUBAGENT", "1");
 		vi.stubEnv("OCTOCODE_MCP_RECENT_TOOLS", JSON.stringify(["native/archive"]));
-		expect(nativeToolDeferred("web", settings)).toBe(true);
+		expect(nativeToolDeferred("backlogPlan", settings)).toBe(true);
 		expect(nativeToolDeferred("archive", settings)).toBe(false);
 	});
 
@@ -123,23 +139,26 @@ describe("native tool deferral", () => {
 		it("declares a tool as the transcript declared it, in place, and fails open on anything else", () => {
 			agentDir();
 			const at = host(undefined);
-			const web = withNativeDeferral(at.api as never, tool("web") as never);
-			const full = tool("web");
+			const plan = withNativeDeferral(at.api as never, tool("backlogPlan") as never);
+			const full = tool("backlogPlan");
 			// Registered deferred (nothing called it); the session declared it direct before.
-			expect(web.validationParameters).toBeDefined();
-			settleNativeDeferral(at.api as never, at.ctx([{ name: "web", parameters: json(full.parameters) }]) as never);
-			expect(at.registered.map((definition) => definition.name)).toEqual(["web"]);
+			expect(plan.validationParameters).toBeDefined();
+			settleNativeDeferral(
+				at.api as never,
+				at.ctx([{ name: "backlogPlan", parameters: json(full.parameters) }]) as never,
+			);
+			expect(at.registered.map((definition) => definition.name)).toEqual(["backlogPlan"]);
 			expect(json(at.registered[0].parameters)).toEqual(json(full.parameters));
 
 			// The transcript holds the form now registered, a form neither declaration has, or cannot be read: nothing changes.
 			for (const declared of [
-				[{ name: "web", parameters: json(web.parameters) }],
-				[{ name: "web", parameters: { type: "object", properties: { other: { type: "string" } } } }],
+				[{ name: "backlogPlan", parameters: json(plan.parameters) }],
+				[{ name: "backlogPlan", parameters: { type: "object", properties: { other: { type: "string" } } } }],
 				[],
 				new Error("unreadable"),
 			]) {
 				const again = host(undefined);
-				withNativeDeferral(again.api as never, tool("web") as never);
+				withNativeDeferral(again.api as never, tool("backlogPlan") as never);
 				settleNativeDeferral(again.api as never, again.ctx(declared) as never);
 				expect(again.registered).toEqual([]);
 			}
@@ -150,11 +169,11 @@ describe("native tool deferral", () => {
 			const settings: { current: object | undefined } = { current: undefined };
 			const at = host(undefined);
 			const api = { ...at.api, settings: { get: () => settings.current ?? at.api.settings.get() } };
-			withNativeDeferral(api as never, tool("web") as never);
+			withNativeDeferral(api as never, tool("backlogPlan") as never);
 			withNativeDeferral(api as never, tool("archive") as never);
-			// Registered deferred; the session declared both direct; `web` is pinned deferred, the setting is not `recent`.
-			settings.current = { mcpExposure: "direct", nativeToolExposure: { web: "deferred" } };
-			const declared = ["web", "archive"].map((name) => ({ name, parameters: json(tool(name).parameters) }));
+			// Registered deferred; the session declared both direct; `backlogPlan` is pinned deferred, the setting is not `recent`.
+			settings.current = { mcpExposure: "direct", nativeToolExposure: { backlogPlan: "deferred" } };
+			const declared = ["backlogPlan", "archive"].map((name) => ({ name, parameters: json(tool(name).parameters) }));
 			settleNativeDeferral(api as never, at.ctx(declared) as never);
 			expect(at.registered.map((definition) => definition.name)).toEqual(["archive"]);
 			expect(json(at.registered[0].parameters)).toEqual(json(tool("archive").parameters));

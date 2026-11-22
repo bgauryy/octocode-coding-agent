@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { getApplicationPort } from "../../src/core/application/index.ts";
 import { createHarness, type Harness } from "./harness.ts";
@@ -47,9 +47,23 @@ it.each(["steer", "followUp"] as const)(
 
 it("rechecks queued input against a later model selection", async () => {
 	const harness = await setup(["text", "image"]);
+	// Input waits in the queue only while a run holds it: the first reply waits until the model changed.
+	let release = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	harness.setResponses([
+		async () => {
+			await held;
+			return fauxAssistantMessage("seen");
+		},
+	]);
+	const running = harness.session.prompt("continue");
+	await vi.waitFor(() => expect(harness.faux.state.callCount).toBe(1));
 	await harness.session.followUp("inspect", [image]);
 	harness.session.agent.state.model = { ...harness.getModel(), input: ["text"] };
-	await harness.session.prompt("continue");
+	release();
+	await running;
 	expect(harness.session.messages.at(-1)).toMatchObject({
 		role: "assistant",
 		stopReason: "error",

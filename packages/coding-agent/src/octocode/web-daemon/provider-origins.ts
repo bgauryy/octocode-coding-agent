@@ -31,6 +31,8 @@ export interface ProviderOriginsOptions {
 	/** The Octocode provider ids that `auth.json` holds an entry for. */
 	octocodeAuthIds: Iterable<string>;
 	settings: SettingsManager;
+	/** The workspace folder and whether it is trusted: its project models.json files are listed, and read only when trusted. */
+	project?: { cwd: string; trusted: boolean };
 	/** Resolves the environment variables a models.json key names; default: the process's. */
 	env?: NodeJS.ProcessEnv;
 }
@@ -76,7 +78,11 @@ export async function readProviderOrigins(options: ProviderOriginsOptions): Prom
 		});
 		for (const entry of entries) add(entry.providerId, { product: "pi", file: "auth-json" });
 	}
-	const files = await customModelsFiles({ ownDir: options.agentDir, piDirs: options.piDirs }, piOn, options.env);
+	const files = await customModelsFiles(
+		{ ownDir: options.agentDir, piDirs: options.piDirs, ...(options.project ? { project: options.project } : {}) },
+		piOn,
+		options.env,
+	);
 	const custom = new Map<string, CustomProviderInfo>();
 	for (const file of files) {
 		if (file.unreadable) error ??= "A models.json file could not be read; its providers are not shown.";

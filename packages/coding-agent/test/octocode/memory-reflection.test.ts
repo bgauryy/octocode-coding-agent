@@ -9,7 +9,7 @@ import { listCandidates, noticedLines, queueCandidates } from "../../src/octocod
 import { consolidateDue } from "../../src/octocode/memory/file/consolidation.ts";
 import { countedLines, parseMemoryFile, serializeMemoryFile } from "../../src/octocode/memory/file/format.ts";
 import { claimConsolidation } from "../../src/octocode/memory/file/lease.ts";
-import { MEMORY_PASS_TYPE, type SmallModel } from "../../src/octocode/memory/file/passes.ts";
+import { askSmallModel, MEMORY_PASS_TYPE, type SmallModel } from "../../src/octocode/memory/file/passes.ts";
 import { ensureMemoryDir } from "../../src/octocode/memory/file/paths.ts";
 import { globalMemoryFile, workspaceMemoryFile } from "../../src/octocode/permission/memory-files.ts";
 import { NO_TAINT } from "../../src/octocode/memory/file/quarantine.ts";
@@ -20,6 +20,7 @@ import type { MemoryFileSync } from "../../src/octocode/memory/file/sync.ts";
 import { selectInjection } from "../../src/octocode/memory/inject.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/exposure.ts";
+import { BACKGROUND_RETRY } from "../../src/octocode/shared/side-retry.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -256,6 +257,23 @@ describe("session signals", () => {
 		expect(review.userTurns).toBe(2);
 		expect(review.signals.map((signal) => signal.kind)).toEqual(["recovered", "refused", "repeated", "correction"]);
 		expect(review.signals[0].entries).toHaveLength(2);
+	});
+});
+
+describe("the memory passes' model call", () => {
+	it("asks with the background retry, inside the pass's own deadline", async () => {
+		const call = vi.fn<SmallModel["call"]>(async () => ({ error: "429 Too Many Requests" }));
+		const reply = await askSmallModel(
+			{ usage: { record: vi.fn() } } as never,
+			fakeCtx({ cwd }),
+			{
+				call,
+				label: () => "faux/small",
+			},
+			{ kind: "memory_reflection", prompt: "p", maxTokens: 8, timeoutMs: 1_000 },
+		);
+		expect(reply).toEqual({ error: "429 Too Many Requests" });
+		expect(call.mock.calls[0][1]).toMatchObject({ retry: BACKGROUND_RETRY, signal: expect.any(AbortSignal) });
 	});
 });
 

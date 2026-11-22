@@ -1,6 +1,7 @@
 import { textResultDisplay } from "../../render/display.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { Type } from "typebox";
+import { StringEnum } from "@octocodeai/octocode-contracts/schema";
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../shared/messages.ts";
 import { resultBlock, toolHeader } from "../../render/tool.ts";
@@ -244,10 +245,9 @@ export function registerSendMessageTool(
 				callback: Type.Optional(
 					Type.Object(
 						{
-							on: Type.Union(
-								["reply", "done", "item.state", "job.exit", "agent.ended"].map((each) => Type.Literal(each)),
-								{ description: "What settles it; reply is replyRequired" },
-							),
+							on: StringEnum(["reply", "done", "item.state", "job.exit", "agent.ended"] as const, {
+								description: "What settles it; reply is replyRequired",
+							}),
 							filter: Type.Optional(
 								Type.Object(
 									{

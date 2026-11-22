@@ -106,7 +106,6 @@ export interface InteractiveModeState {
 	readonly pendingUserInputs: string[];
 	readonly programStatus: SessionStatusReporter;
 	renderer: TuiMainScreen | TuiAltScreen;
-	retryEscapeHandler: (() => void) | undefined;
 	readonly runtimeHost: AgentSessionRuntime;
 	readonly session: AgentSession;
 	readonly sessionManager: SessionManager;

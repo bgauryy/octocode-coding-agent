@@ -5,6 +5,7 @@ import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestSession } from "./helpers/session.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
+import { SettingsManager } from "../src/core/settings-manager.ts";
 
 describe("session session manager defaults", () => {
 	let tempDir: string;
@@ -43,6 +44,27 @@ describe("session session manager defaults", () => {
 		expect(sessionFile?.startsWith(`${expectedSessionDir}/`)).toBe(true);
 
 		session.dispose();
+	});
+
+	it("delivers each message queue whole unless the settings ask for one message at a time", async () => {
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
+		const { session } = await createTestSession({
+			cwd,
+			agentDir,
+			model,
+			settingsManager: SettingsManager.inMemory(),
+		});
+		expect([session.steeringMode, session.followUpMode]).toEqual(["all", "all"]);
+		session.dispose();
+
+		const { session: single } = await createTestSession({
+			cwd,
+			agentDir,
+			model,
+			settingsManager: SettingsManager.inMemory({ steeringMode: "one-at-a-time", followUpMode: "one-at-a-time" }),
+		});
+		expect([single.steeringMode, single.followUpMode]).toEqual(["one-at-a-time", "one-at-a-time"]);
+		single.dispose();
 	});
 
 	it("keeps an explicit sessionManager override", async () => {

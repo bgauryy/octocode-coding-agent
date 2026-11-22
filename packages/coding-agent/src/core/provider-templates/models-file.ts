@@ -6,7 +6,7 @@ import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file
 import { hasJsonComments, stripJsonComments } from "@octocodeai/octocode-common/json";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { type ModelsJsonModel, type ModelsJsonProvider, ModelsConfigSchema } from "../model-config.ts";
+import { ModelConfig, type ModelsJsonModel, type ModelsJsonProvider, ModelsConfigSchema } from "../model-config.ts";
 
 const validateModelsConfig = Compile(ModelsConfigSchema);
 
@@ -98,5 +98,34 @@ export async function editModelsProvider(file: string, id: string, edit: ModelsP
 			};
 		},
 		`Edit "${id}" under "providers": ${JSON.stringify(edit)}`,
+	);
+}
+
+/** The `apiKey` of one provider of models.json, or undefined when it sets none. The value is a secret: never print it. */
+export async function readModelsProviderKey(file: string, id: string): Promise<string | undefined> {
+	const config = await ModelConfig.loadFile(file);
+	if (config.isUnreadable()) throw new Error(`${file} cannot be read; fix it first, then try again.`);
+	const apiKey = config.getProvider(id)?.apiKey;
+	return typeof apiKey === "string" ? apiKey : undefined;
+}
+
+/**
+ * Replace the `apiKey` of one provider with `reference` (a keychain `!command`). Fails, writing nothing, when the
+ * entry no longer holds `expected`, so a key edited meanwhile is never overwritten. The rest of the file is kept.
+ */
+export async function replaceModelsProviderKey(
+	file: string,
+	id: string,
+	expected: string,
+	reference: string,
+): Promise<void> {
+	await rewriteProviders(
+		file,
+		(providers) => {
+			const current = requireProvider(file, providers, id);
+			if (current.apiKey !== expected) throw new Error(`The key of "${id}" in ${file} changed; try again.`);
+			return { ...providers, [id]: { ...current, apiKey: reference } };
+		},
+		`Set "apiKey" of "${id}" under "providers" to the keychain reference.`,
 	);
 }

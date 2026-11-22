@@ -22,6 +22,7 @@ import { applyToolModifiers, getToolListError, isToolModifier } from "../setting
 import { getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import { createConvertToLlmWithBlockImages } from "./block-images.ts";
 import { withRequestTrace } from "./request-trace.ts";
+import type { AgentSessionConfig } from "./types.ts";
 import { listenerErrorReporter } from "../listener-diagnostics.ts";
 
 /** Session inputs resolved against already-created, cwd-bound services. */
@@ -189,6 +190,7 @@ export async function createSessionFromServices(
 	const convertToLlmWithBlockImages = createConvertToLlmWithBlockImages(settingsManager);
 
 	const featureHostRef: { current?: FeatureHost } = {};
+	const cooldownWaitRef: NonNullable<AgentSessionConfig["cooldownWaitRef"]> = {};
 	// A main session's idle gaps join the pool every session's warmer reads; a subagent's follow its coordinator.
 	const subagent = envFlag(process.env, SUBAGENT_ENV);
 	const idleGaps = new IdleContinuationPool(agentDbIdleGapStore(), (error) =>
@@ -275,9 +277,13 @@ export async function createSessionFromServices(
 			// the current transcript still extends the request's prefix. Agent state may
 			// shallow-copy the messages array or refresh the model object without changing
 			// the provider request, so top-level object identity is not a valid cache key.
-			if (options?.sessionId === sessionManager.getSessionId())
-				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
-			return withRequestTrace(requestOptions, (traced) => modelRuntime.streamSimple(model, context, traced));
+			const turnRequest = options?.sessionId === sessionManager.getSessionId();
+			if (turnRequest) cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
+			// Added after the warmer took its copy: a cache refresh that waits out a cool-down is not the turn's wait.
+			const onCooldownWait = turnRequest ? cooldownWaitRef.current : undefined;
+			return withRequestTrace(requestOptions, (traced) =>
+				modelRuntime.streamSimple(model, context, onCooldownWait ? { ...traced, onCooldownWait } : traced),
+			);
 		},
 		sessionId: sessionManager.getSessionId(),
 		transformContext: async (messages) => {
@@ -326,6 +332,7 @@ export async function createSessionFromServices(
 		allowedToolNames,
 		excludedToolNames,
 		featureHostRef,
+		cooldownWaitRef,
 		sessionStartEvent: options.sessionStartEvent ?? {
 			type: "session_start",
 			reason: resumedSession ? "resume" : "startup",

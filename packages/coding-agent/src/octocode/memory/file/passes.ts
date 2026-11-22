@@ -3,6 +3,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext, FeatureSetup } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { publishUserNotice } from "../../shared/user-notice.ts";
+import { BACKGROUND_RETRY } from "../../shared/side-retry.ts";
 import type { SmallModel as SmallModelOf } from "../../shared/small-model.ts";
 import type { MemoryStore } from "../store.ts";
 import { type MemoryOp, parseMemoryOps } from "./consolidate.ts";
@@ -66,7 +67,10 @@ export function filesBlock(files: readonly PassFile[]): string {
 		.join("\n\n");
 }
 
-/** One call to the `small` model with its own deadline; the spend goes on the session's cost. */
+/**
+ * One call to the `small` model with its own deadline, which also bounds its background retry of a rate limit or
+ * transient failure; the spend goes on the session's cost.
+ */
 export async function askSmallModel(
 	api: Pick<FeatureSetup, "usage">,
 	ctx: FeatureContext,
@@ -78,6 +82,7 @@ export async function askSmallModel(
 		text: request.prompt,
 		signal: request.signal ? AbortSignal.any([request.signal, deadline]) : deadline,
 		maxTokens: request.maxTokens,
+		retry: BACKGROUND_RETRY,
 	});
 	if ("error" in reply) return reply;
 	api.usage.record(request.kind, reply.provider, reply.modelId, reply.usage);

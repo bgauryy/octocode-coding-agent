@@ -29,8 +29,8 @@ export function registerSkillTool(api: FeatureSetup, existing?: SkillCatalog): S
 			promptSnippet: renderPrompt("tools/skill/snippet.md"),
 			description: renderPrompt("tools/skill/description.md", { listing: "(no skills are enabled)" }),
 			parameters: Type.Object({
+				// One list field; a call that still passes `name` is accepted by `requestedSkills`.
 				names: Type.Optional(Type.Array(Type.String())),
-				name: Type.Optional(Type.String()),
 			}),
 			prepareLoadout() {
 				const listing = catalog.listing();

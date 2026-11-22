@@ -14,7 +14,7 @@ try {
 		const directory = join(root, "consumers", packageConsumerDirectoryName(pkg.name));
 		installConsumer({ artifactSet, directory, packageNames: [pkg.name] });
 		smokeTestNpmConsumer({ artifactSet, directory, packageName: pkg.name });
-		if (pkg.name === codingAgentName) smokeTestCodingAgent(directory);
+		if (pkg.name === codingAgentName) smokeTestCodingAgent(directory, process.execPath, { strictRuntime: true });
 	}
 	console.log(`Verified ${artifactSet.packages.length} isolated package consumers.`);
 } finally {

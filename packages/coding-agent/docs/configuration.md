@@ -79,7 +79,7 @@ Workspace files are relative to the session's working directory; agent profiles 
 | ------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
 | Settings, default model   | `settings.json`                                                        | `.octocode/settings.json`                           | `/settings`; `/reload` after file edits                          |
 | MCP servers, exposure     | `~/.octocode/mcp.json`                                                 | `.octocode/mcp.json`                                | `/mcp config`; [MCP](mcp.md)                                     |
-| Providers, model defs     | `models.json`                                                          | none; select a model in workspace settings          | `/model` reloads definitions; `/modelsettings`                   |
+| Providers, model defs     | `models.json`                                                          | `.octocode/models.json` (trusted folder)            | `/providers`; `/reload` after file edits; `/modelsettings`       |
 | Provider sign-in, keys    | `auth.json`                                                            | none                                                | `/providers`, `/logout`                                          |
 | MCP OAuth tokens          | `mcp-auth.json`                                                        | none                                                | `/mcp login\|logout <server>`                                    |
 | Derived context files     | `context-optimization/` (project ones under `projects/<repo>-<hash>/`) | none in the repository                              | Rewritten on change; `octocode context`                          |
@@ -110,6 +110,12 @@ Your MCP servers and skills serve the main session. A subagent runs only Octocod
 - A later MCP definition replaces a server of the same name; a later control-only entry (`enabled`, `exposure`, `toolExposure`, `defaultActive`) changes it without copying credentials. Details: [MCP](mcp.md#configure-servers), [MCP reference](mcp-reference.md#configuration-and-precedence).
 - Keys the settings schema does not define still load and are preserved on save, with no effect; startup warns once per load naming each (a removed key says what replaced it).
 - Settings, MCP and trust files are saved by atomic replacement, and settings saves lock the read-merge-write step, so concurrent writers keep each other's changes. An empty settings file, or one whose root is not a JSON object, is reported as invalid and never overwritten, also if it turns invalid after startup: repair it, then `/reload`.
+
+### Project `models.json`
+
+In a trusted folder `<project>/.octocode/models.json` (and `<project>/.pi/models.json` while the Pi source is on) is read in full: it can add providers and override a provider's `baseUrl` and `models`. For the same provider id the project file wins over the global file, and Octocode's file wins over Pi's at each scope. In a folder that is not trusted the file is not read and `/providers` shows a warning naming it. Editing the file takes effect on `/reload` or automatically. Trust is fixed for a running session: after `octocode trust add <folder>`, start a new session. A project provider with the same id as a global one replaces it; `/providers` and startup warn, naming both files and the new host. An invalid project file is skipped with a warning; global providers still load. The checks that apply to the global file apply here too: no credential inside a `baseUrl`, and a literal `apiKey` counts as a stored credential.
+
+**Security:** a trusted repository can point a provider at another host, and your key for that provider is then sent there. Trust only repositories you would run code from.
 
 ## Changing configuration
 
@@ -204,7 +210,7 @@ The startup screen and read-only `/harness config` show each kind with its count
 
 ### Tool exposure
 
-A session declares each tool to the model in one of four states. The state is fixed when the session starts, so the cached prompt does not change while it runs.
+Exposure sets a tool’s initial state. For MCP tools, presentation also determines where a direct tool’s full contract appears. A session can load more detail after its cached prefix. See [MCP presentation modes](mcp-reference.md#presentation-modes).
 
 | State      | The model gets                                                                                                                                                                                                                                  |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -215,12 +221,12 @@ A session declares each tool to the model in one of four states. The state is fi
 
 What decides the state, first match wins:
 
-| Tools                                                      | Decided by                                                                                                   |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| An MCP tool                                                | Its `toolExposure` entry in `mcp.json` (a pin), then its server's `exposure`, then the `mcpExposure` setting |
-| `web`, `archive`, `models`, `backlogPlan`, `configuration` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
-| `memory`, `notify`                                         | Its `nativeToolExposure` pin, then `mcpExposure` under `"usage"`; `direct` under every other value           |
-| Every other native tool                                    | Always `direct`                                                                                              |
+| Tools                                               | Decided by                                                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| An MCP tool                                         | Its `toolExposure` entry in `mcp.json` (a pin), then its server's `exposure`, then the `mcpExposure` setting |
+| `archive`, `models`, `backlogPlan`, `configuration` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
+| `memory`, `notify`                                  | Its `nativeToolExposure` pin, then `mcpExposure` under `"usage"`; `direct` under every other value           |
+| Every other native tool                             | Always `direct`                                                                                              |
 
 `mcpExposure` is `"usage"` by default: a tool without a pin is `deferred`, however often sessions use it. Use only decides whether a tool that would be `onDemand` is declared `deferred` from the start instead: the promotion snapshot names the tools that at least 10% of the last 7 days' sessions of the same role used, with 20 or more such sessions, kept while their declarations fit `mcpPromotedBytes` (default 8192 bytes per role: main or subagent). A tool with fewer sessions keeps its default, so a new install gets the same tools as a warm one. The snapshot is computed once per UTC day and installed version. `"recent"` instead declares a tool in full while this working directory called it in the last 24 hours. A resumed session in the same folder keeps the MCP and native tool states it started with ([MCP reference](mcp-reference.md#exposure-and-results)). A pin beats that rule. `"direct"` declares every tool without a pin in full, as earlier versions did.
 
@@ -235,7 +241,7 @@ What decides the state, first match wins:
 ```json
 {
 	"mcpExposure": "direct",
-	"nativeToolExposure": { "web": "direct", "models": "deferred" }
+	"nativeToolExposure": { "archive": "direct", "models": "deferred" }
 }
 ```
 
@@ -481,11 +487,13 @@ Positive process sample intervals are bounded to 1–2,147,483,647 milliseconds;
 
 A transient model failure is retried up to `retry.maxRetries` times (default 3), waiting `retry.baseDelayMs` (default 2000) doubled per attempt, never more than `retry.maxAgentDelayMs`. `retry.maxRetries: 0` and `retry.enabled: false` turn retries off; account quota and billing errors fail at once.
 
-| Failure class                                                                                                                                                                                                                                    | Policy                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rate limits (`429`, "too many requests") and capacity or transport failures (`overloaded`, `502`, `503`, `504`, `520`, `524`, `529`, `server_busy`, "at capacity", connection reset, closed socket or websocket, `terminated`, early stream end) | At least six retries even if `retry.maxRetries` is lower (those beyond the configured count only within three minutes of the first failure). Wait spreads by up to half again the backoff, is at least the provider's `retry-after` plus up to 1 s, and stays capped by `retry.maxAgentDelayMs`                  |
-| The machine is offline: a DNS or transport failure (`ENOTFOUND`, `ENETUNREACH`, `EAI_AGAIN`, `fetch failed`, connection reset) while no interface has a routable address or public DNS names do not resolve                                      | Retried every `retry.offlineIntervalMs` (default 60000) with no attempt cap until the network returns or you press Esc; `retry.offlineMaxMs` (unset: no limit; print mode: 30 minutes) bounds the outage. A host that does not resolve while the network works (a mistyped `baseUrl`) keeps the configured count |
-| Other retryable errors                                                                                                                                                                                                                           | Configured count and exact backoff (some never clear, and each attempt resends the context)                                                                                                                                                                                                                      |
+| Failure class                                                                                                                                                                                                                                    | Policy                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rate limits (`429`, "too many requests") and capacity or transport failures (`overloaded`, `502`, `503`, `504`, `520`, `524`, `529`, `server_busy`, "at capacity", connection reset, closed socket or websocket, `terminated`, early stream end) | At least six retries even if `retry.maxRetries` is lower (those beyond the configured count only within three minutes of the first failure). Wait spreads by up to half again the backoff and is at least the provider's `retry-after` plus up to 1 s; a `retry-after` longer than `retry.maxAgentDelayMs` ends the retries at once, naming the wait |
+| The machine is offline: a DNS or transport failure (`ENOTFOUND`, `ENETUNREACH`, `EAI_AGAIN`, `fetch failed`, connection reset) while no interface has a routable address or public DNS names do not resolve                                      | Retried every `retry.offlineIntervalMs` (default 60000) with no attempt cap until the network returns or you press Esc; `retry.offlineMaxMs` (unset: no limit; print mode: 30 minutes) bounds the outage. A host that does not resolve while the network works (a mistyped `baseUrl`) keeps the configured count                                     |
+| Other retryable errors                                                                                                                                                                                                                           | Configured count and exact backoff (some never clear, and each attempt resends the context)                                                                                                                                                                                                                                                          |
+
+An attempt that is retried, or sent again on a fallback model, stays in the terminal transcript, dimmed, as `Retried after error: …` instead of `Error: …`, also after a resume; the model does not see it again, and the web workspace shows only the retry status. When the retries run out, the last attempt keeps its `Error: …`. Cancelling during the countdown keeps the original error visible, including after reopening the session.
 
 While offline, the working row shows one line that updates in place, such as `✗ ◆ Retry failed after 3 attempts: fetch failed (ENOTFOUND) - trying again in 42s · esc cancel`, and the transcript gains no row per attempt. When the run continues, the model gets one hidden note saying how long the network was down, so it knows time has passed; the note is not shown in the transcript.
 
@@ -522,7 +530,22 @@ flowchart LR
 | Subagents       | A subagent whose model a purpose (`small`, `medium`, `large`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential             |
 | Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                                                                                                                                         |
 
-Compaction and branch summaries use the same policy; Esc stops a wait. After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to 30 for each further failure, and resets after a quiet minute.
+Compaction and branch summaries use the same policy; Esc stops a wait.
+
+Model calls outside a turn retry a rate limit or transient failure briefly: prompt optimization and prompt hooks at most twice within 5 s, memory passes three times within 12 s, a session title once; `!` completions and timer checks do not retry. A rate limit or transient failure does not count toward the two failed judgments that end a `check` wait.
+
+### Rate-limit cool-down
+
+The main session, its subagents, side calls and Octocode sessions in other terminals usually send with the same key. When a request ends in a rate limit (`429`, "too many requests"; a usage or billing limit is not one), its provider cools down: every Octocode process on the machine that uses the same agent database waits before it sends that provider another request.
+
+| Part                     | Rule                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Length                   | The provider's `retry-after` when it sent one, at most 60 s (a request after that asks the provider again, so a stale wait never blocks it for long). Otherwise 2 seconds, doubling up to 30 when a request sent after the pause ended is refused again; requests already sent that fail on the same throttle do not double it. A calm minute starts over at 2 |
+| Scope                    | One provider: a rate limit on one provider never delays requests or subagents on another                                                                                                                                                                                                                                                                       |
+| Wait                     | Only what is left of the cool-down, so it does not add to the retry's own wait; Esc stops it                                                                                                                                                                                                                                                                   |
+| Longer than the limit    | With `retry.provider.maxRetryDelayMs` set below 60 s, a cool-down with more than that left is not waited: the request fails at once without being sent, naming the wait, and the retry rules above decide                                                                                                                                                      |
+| Subagents                | A new, queued or resumed subagent starts only when its model's provider is not cooling down; one on another provider takes a free slot meanwhile                                                                                                                                                                                                               |
+| Early compaction summary | Not requested while the provider cools down; the compaction requests its own summary when it runs                                                                                                                                                                                                                                                              |
 
 ## Lean policy for small models
 
@@ -546,6 +569,8 @@ Automatic compaction is always on; `/compact` runs the same flow by hand. No set
 | Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                                                                                   |
 | Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                                                                                 |
 | Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off. The same limit ends a silent model stream as a retryable error                                                            |
+
+Context, output and thinking defaults follow the selected model. The session’s cache preferences are applied according to its endpoint’s capabilities. [Model defaults](models.md#model-defaults)
 
 ## Prompt cache warming
 
@@ -659,17 +684,32 @@ On Linux, Octocode tries one `bwrap` run before the first command, so a kernel o
 
 When the sandbox cannot start (another platform, a missing program, user namespaces turned off), a warning says why and what to install, and one question asks whether this session's commands run unsandboxed; a no refuses them, and so does `sandbox.allowUnsandboxed: false`, without asking. When the session starts in your home folder (which would make all of it writable), a command is refused with the reason. Each command costs a few tens of milliseconds more to start.
 
+## Queued messages
+
+Messages you send while the agent works wait in a queue: steering for the next turn, follow-ups for the end of the run. By default each queue is delivered whole, so five messages typed during a run cost one model request, not five that each resend the whole context.
+
+| Setting        | Default | `one-at-a-time`                                                                     |
+| -------------- | ------- | ----------------------------------------------------------------------------------- |
+| `steeringMode` | `"all"` | One steering message per turn; the rest wait for the next turn boundary             |
+| `followUpMode` | `"all"` | One follow-up per turn after the run would stop, each answered before the next goes |
+
+```json
+{ "followUpMode": "one-at-a-time" }
+```
+
+`/settings` and the RPC commands `set_steering_mode` and `set_follow_up_mode` change them too. Child reports and background job results that wait together are delivered together in either mode.
+
 ## Wake hold window
 
-A child's report, a background job's exit or team mail starts a turn of an idle session at once. Reports and exits that arrive seconds apart each cost a turn that re-reads the whole prompt. `subagents.wakeHoldSeconds` (default `0`, off; at most `10`) makes an idle session hold a wake: the first one opens the window, and everything that arrives before it closes is delivered together and starts one turn.
+A child's report, a background job's exit or team mail wakes an idle session for a turn. Reports and exits that arrive seconds apart would each cost a turn that re-reads the whole prompt, so an idle session holds a wake for `subagents.wakeHoldSeconds` (default `2`, the same as `runtime.eventWindowSeconds`; `0` turns it off; at most `10`): the first wake opens the window, and everything that arrives before it closes is delivered together and starts one turn.
 
 The setting is deprecated: the event loop (below) replaces it one kind of event at a time and the setting goes when the last one moves. With `runtime.eventLoop: "new"` a background job's exit, a child's report or end and team mail no longer follow it (the loop's own window, `runtime.eventWindowSeconds`, applies); every other wake still does.
 
 ```json
-{ "subagents": { "wakeHoldSeconds": 2 } }
+{ "subagents": { "wakeHoldSeconds": 0 } }
 ```
 
-A wake costs up to that many seconds of latency, so leave it off unless several children or jobs routinely finish within seconds of each other. A session that is already running a turn is not delayed. When the session ends inside the window, what is held is delivered without starting a turn.
+A lone wake waits the whole window before its turn starts; a longer window merges more wakes and delays each batch more. A session that is already running a turn is not delayed: its wakes join that run. When you send a prompt inside the window, your turn starts at once and what is held arrives when the window closes, read after your run like any other follow-up (with `runtime.eventLoop: "new"`, the events the loop delivers join your turn instead). When the session ends inside the window, what is held is delivered without starting a turn.
 
 Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
 

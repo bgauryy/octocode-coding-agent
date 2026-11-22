@@ -200,7 +200,7 @@ describe("AgentSession retry", () => {
 		}
 	});
 
-	it("waits at least the provider retry-after on a rate limit, capped by maxAgentDelayMs", async () => {
+	it("waits the provider retry-after on a rate limit; one past maxAgentDelayMs is final at once, with a note", async () => {
 		const random = vi.spyOn(Math, "random").mockReturnValue(0);
 		try {
 			const created = await createSession({
@@ -231,7 +231,10 @@ describe("AgentSession retry", () => {
 				if (event.type === "auto_retry_start") cappedDelays.push(event.delayMs);
 			});
 			await capped.session.prompt("Test");
-			expect(cappedDelays).toEqual([40]);
+			expect(cappedDelays).toEqual([]);
+			const final = capped.session.messages.at(-1);
+			expect(final).toMatchObject({ role: "assistant", stopReason: "error" });
+			expect(final?.role === "assistant" ? final.errorMessage : "").toContain("longer than retry.maxAgentDelayMs");
 		} finally {
 			random.mockRestore();
 		}

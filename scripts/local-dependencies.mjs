@@ -3,9 +3,10 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /**
  * Entry files the host loads from a local dependency that ships no `bin`: `@octocodeai/octocode-native` is a library
- * whose resolver returns the platform binary (`getNativeBinaryPath`).
+ * whose resolver returns the platform binary (`resolveNativeBinaryPath`).
  */
-const LIBRARY_ENTRIES = { "@octocodeai/octocode-native": ["bin/resolve-binary.cjs"] };
+export const nativeResolverEntry = "bin/resolve-binary.cjs";
+const LIBRARY_ENTRIES = { "@octocodeai/octocode-native": [nativeResolverEntry] };
 
 export function validateLocalDependencies(packageDirectory, libraryEntries = LIBRARY_ENTRIES) {
 	const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));

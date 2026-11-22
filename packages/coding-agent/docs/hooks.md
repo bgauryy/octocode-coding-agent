@@ -270,7 +270,7 @@ See the upstream [HTTP hook fields](https://code.claude.com/docs/en/hooks#http-h
 
 ### Claude prompt hooks
 
-`type: "prompt"` handlers make one tool-less model call for PermissionRequest, PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch, Stop, SubagentStop and UserPromptSubmit. Set a non-empty `prompt`; `$ARGUMENTS` inserts the event JSON once (an escaped placeholder stays literal; without a placeholder the JSON is appended). `model` selects a unique registered model ID or `provider/model-id` (missing or ambiguous is a hook failure); without it the session model is used, unlike Claude Code's background-model default. Timeout default 30 s; responses cap at 64 KiB and 1,024 generated tokens. Evaluations can incur provider usage, and different models may judge differently.
+`type: "prompt"` handlers make one tool-less model call for PermissionRequest, PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch, Stop, SubagentStop and UserPromptSubmit. Set a non-empty `prompt`; `$ARGUMENTS` inserts the event JSON once (an escaped placeholder stays literal; without a placeholder the JSON is appended). `model` selects a unique registered model ID or `provider/model-id` (missing or ambiguous is a hook failure); without it the session model is used, unlike Claude Code's background-model default. Timeout default 30 s; a rate limit or transient failure is retried at most twice within 5 s of that time. Responses cap at 64 KiB and 1,024 generated tokens. Evaluations can incur provider usage, and different models may judge differently.
 
 The response must be JSON with boolean `ok`; `ok: false` needs a non-empty `reason`. A missing `ok` is a hook failure under the failure policy.
 

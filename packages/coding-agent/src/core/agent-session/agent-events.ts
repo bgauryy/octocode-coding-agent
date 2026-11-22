@@ -63,6 +63,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	if (event.type === "message_end" && event.message.role === "assistant" && !signal?.aborted) {
 		session.modelRuntime.observeModelAccess(event.message, run.modelAccessGeneration);
 		host.observeContextCapacity(event.message);
+		host.retry.noteRetryAfterBeyondCap(event.message);
 	}
 	// Emit to features first, then notify public listeners.
 	await host.emitFeatureEvent(event);
@@ -108,7 +109,8 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 
 			// Reset retry counter immediately on successful assistant response
 			// This prevents accumulation across multiple LLM calls within a turn
-			if (assistantMsg.stopReason !== "error" && host.retry.attempt > 0) {
+			// An aborted reply is not a success: the run's abort reports the series as cancelled.
+			if (assistantMsg.stopReason !== "error" && assistantMsg.stopReason !== "aborted" && host.retry.attempt > 0) {
 				host.retry.finishSucceeded();
 			}
 		}

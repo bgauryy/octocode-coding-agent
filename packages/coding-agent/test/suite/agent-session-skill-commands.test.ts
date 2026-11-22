@@ -108,6 +108,11 @@ it("keeps discovery and invocation aligned without shadowing templates or extens
 		expect(user && getMessageText(user)).toContain(expected);
 		if (command.includes("keep")) expect(user && getMessageText(user)).toContain("keep  two spaces");
 	}
+	// Steered while idle, the expanded input starts a run of its own.
+	harness.setResponses([fauxAssistantMessage("done")]);
+	const before = harness.session.messages.length;
 	await harness.session.steer('/prompt:configuration "steering argument"');
-	expect(harness.session.getSteeringMessages()).toEqual(["Settings steering argument"]);
+	await harness.session.settled();
+	const steered = harness.session.messages.slice(before).find((message) => message.role === "user");
+	expect(steered && getMessageText(steered)).toBe("Settings steering argument");
 });

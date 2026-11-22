@@ -206,7 +206,8 @@ export function registerBashTool(
 			// What the shell is for, then the work other tools own: code research goes to the declared search and read tools,
 			// content changes to `file` (checkpointed for /rewind). `sed` stays out of the list so it does not read as an editor.
 			promptSnippet: renderPrompt("tools/bash/snippet.md"),
-			...(builtin.constrainedSampling !== undefined ? { constrainedSampling: builtin.constrainedSampling } : {}),
+			// Not strict: provider strict mode makes every optional field required and nullable, so each call would spell
+			// out eight nulls and every request would carry a third more schema; a malformed call is refused with the schema anyway.
 			// Programmatic callers receive `structuredContent` only from tools that declare its schema.
 			...(builtin.outputSchema !== undefined ? { outputSchema: bashOutputSchema(builtin.outputSchema) } : {}),
 			promptGuidelines: [...(builtin.promptGuidelines ?? []), renderPrompt("tools/bash/guidelines.md")],

@@ -15,7 +15,7 @@ import { createBranchSummaryMessage, createCompactionSummaryMessage, createCusto
 import type { ContextEditEntry, ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
 import { projectContextEntry } from "../session-manager/context.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
-import { summaryMaxTokens } from "./settings.ts";
+import { inputRoomTokens, summaryMaxTokens } from "./settings.ts";
 import { completeBounded } from "./summarization.ts";
 import { getSummarizationFailure } from "./summary-failure.ts";
 import { DEFAULT_RESERVE_TOKENS } from "../settings-defaults.ts";
@@ -295,7 +295,7 @@ export async function generateBranchSummary(
 
 	// Token budget = context window minus reserved space for prompt + response
 	const contextWindow = model.contextWindow || 128000;
-	const tokenBudget = contextWindow - reserveTokens;
+	const tokenBudget = inputRoomTokens(contextWindow, reserveTokens, model.inputLimits?.maxInputTokens);
 
 	const { messages, fileOps, totalTokens, dropped } = prepareBranchEntries(entries, tokenBudget);
 

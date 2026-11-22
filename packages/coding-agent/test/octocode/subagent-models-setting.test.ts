@@ -13,8 +13,14 @@ import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { meteredBilling, asSetup } from "./fake-host.ts";
 
-const model = (provider: string, id: string, input: number, output: number, extra: object = {}): ModelRef =>
-	({ provider, id, cost: { input, output }, contextWindow: 200_000, reasoning: true, ...extra }) as ModelRef;
+const model = (provider: string, id: string, input: number, output: number, extra: object = {}): ModelRef => ({
+	provider,
+	id,
+	cost: { input, output },
+	contextWindow: 200_000,
+	reasoning: true,
+	...extra,
+});
 const parent = model("home", "big", 10, 40);
 const cheap = model("cheap", "tiny", 0.1, 0.4);
 const mid = model("other", "mid", 4, 16);

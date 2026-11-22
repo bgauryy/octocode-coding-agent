@@ -1,1 +1,1 @@
-[After compaction] The input schemas (JSON Schema) of the deferred tools you called earlier in this session, most recent first. They are still declared with their field names only. Send arguments that match these schemas.
+[After compaction] These tools you called earlier still have thin declarations. Use the full input schemas below for their arguments.

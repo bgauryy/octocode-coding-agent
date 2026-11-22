@@ -7,6 +7,7 @@ import type {
 	Model,
 	ModelsStore,
 } from "@octocodeai/octocode-ai";
+import type { ModelsProject } from "../model-config/project.ts";
 import type { VirtualModelDefinition } from "../virtual-models.ts";
 import type { KeychainBackend } from "../auth-storage/keychain.ts";
 import type { CredentialWriteTransform } from "../runtime-credentials.ts";
@@ -33,6 +34,8 @@ export interface CreateModelRuntimeOptions {
 	/** Keychain behind `!` references in the default credential store; default: this platform's. */
 	keychain?: KeychainBackend;
 	modelsPath?: string | null;
+	/** The session folder's project models.json files; read while `isTrusted()` is true (see `ModelConfig.load`). */
+	project?: ModelsProject;
 	modelsStore?: ModelsStore;
 	modelsStorePath?: string;
 	/** Allow create() to refresh model catalogs over the network. Defaults to false. */

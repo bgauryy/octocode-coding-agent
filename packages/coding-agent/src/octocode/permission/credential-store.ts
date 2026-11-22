@@ -9,6 +9,7 @@ import { readerLocations } from "../shared/local-reads.ts";
 import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 import { SHELL_TOOLS } from "./shell.ts";
 import { optionalString } from "../shared/util.ts";
+import { projectModelsPaths } from "../../core/model-config/project.ts";
 import { modelsFileHoldsLiteralKey } from "../../core/models-json-keys.ts";
 import type { AskReason } from "./mode.ts";
 import type { SourceGrant } from "./request.ts";
@@ -24,7 +25,7 @@ import {
  * Reads of Octocode's credential store: the `auth.json` files a session loads keys from (the agent directory's, the
  * Octocode home's, and Pi's when Pi's roots are a read-only fallback), a `models.json` that holds a literal `apiKey`, the
  * MCP OAuth tokens in `mcp-auth.json`, the credential files of other command-line tools under the home (`~/.aws/credentials`,
- * `~/.netrc`, …), the OS keychain commands that read an entry back (`security find-generic-password … -w`, `secret-tool lookup`),
+ * `~/.netrc`, …), the OS keychain commands that read an entry back (`security find-generic-password … -w`, `secret-tool lookup`, a PowerShell run with `-EncodedCommand`: the Windows Credential Manager read),
  * and `octocode auth print-api-key` / `print-bearer-token`. What they print enters the model context, so a
  * read is a `credential.read` reason: it asks in `manual` and `workspace`, and `full` runs it and records it. A read of
  * another coding agent's store (`vendor-credentials.ts`) also carries `credential.vendor`, which asks in `full` too. Writes are
@@ -59,7 +60,7 @@ const WORD_LIMIT = 400;
 const key = (file: string): string => canonicalPath(file).toLowerCase();
 
 /** The `auth.json` paths a session reads, and the folders whose read can reach one: each store's folder, and its parent when that is an Octocode or Pi root folder. */
-function credentialPaths(): { files: Set<string>; models: Set<string>; folders: Set<string> } {
+function credentialPaths(cwd: string): { files: Set<string>; models: Set<string>; folders: Set<string> } {
 	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyConfigDirs()]);
 	const spelled: Array<["files" | "models" | "folders", string]> = [];
 	for (const home of homes) {
@@ -69,6 +70,8 @@ function credentialPaths(): { files: Set<string>; models: Set<string>; folders: 
 		if (CREDENTIAL_ROOTS.has(path.basename(parent).toLowerCase()) && parent !== os.homedir())
 			spelled.push(["folders", parent]);
 	}
+	// A project models.json (read once its folder is trusted) holds literal keys like the global one.
+	for (const file of projectModelsPaths(cwd, true)) spelled.push(["models", file]);
 	for (const name of CLI_CREDENTIAL_FILES) spelled.push(["files", path.join(os.homedir(), name)]);
 	// Canonicalized together, and reused while none of the folders they resolve through changes.
 	const canonical = canonicalPaths(spelled.map(([, file]) => file));
@@ -84,8 +87,8 @@ export interface CredentialHit {
 }
 
 /** Whether reading a file (an absolute path) can read a credential store: it is one, or a folder that holds one. Paths are resolved once per check. */
-function storeLookup(): (file: string) => { store?: VendorStore } | undefined {
-	const { files, models, folders } = credentialPaths();
+function storeLookup(cwd: string): (file: string) => { store?: VendorStore } | undefined {
+	const { files, models, folders } = credentialPaths(cwd);
 	const vendor = vendorStores();
 	return (file) => {
 		const at = key(file);
@@ -101,6 +104,21 @@ function storeLookup(): (file: string) => { store?: VendorStore } | undefined {
 const KEYCHAIN_READ =
 	/(?:^|[\s;|&(`'"])(?:\/usr\/bin\/)?security\s+(?:-\S+\s+)*(?:find-generic-password|find-internet-password|dump-keychain)\b|(?:^|[\s;|&(`'"])(?:\/usr\/bin\/)?security\s+-i\b|(?:^|[\s;|&(`'"])secret-tool\s+(?:lookup|search)\b/;
 
+/**
+ * A PowerShell host run with an encoded script (`-EncodedCommand`, `-enc`, `-e`: PowerShell accepts any prefix of the
+ * name from `-e`). The script is opaque and is how the Windows Credential Manager backend reads a secret, so it may print one.
+ */
+const POWERSHELL_HOST = /(?:^|[\s;|&(`'"\\/])(?:powershell|pwsh)(?:\.exe)?(?=[\s'"])/i;
+const POWERSHELL_FLAG = /(?:^|\s)-(e[a-z]*)(?=[\s:'"]|$)/gi;
+
+function powershellEncoded(command: string): boolean {
+	const host = POWERSHELL_HOST.exec(command);
+	if (!host) return false;
+	for (const [, name] of command.slice(host.index).matchAll(POWERSHELL_FLAG))
+		if ("encodedcommand".startsWith(name.toLowerCase())) return true;
+	return false;
+}
+
 /** A word a command line spells that cannot be resolved before it runs, and still names the store file. */
 const UNRESOLVED_STORE = /[$*?[`]/;
 
@@ -112,7 +130,7 @@ function shellCredentialRead(command: string, cwd: string): CredentialHit | unde
 	const printed = vendorPrint(command);
 	if (printed) return printed;
 	if (OCTOCODE_PRINT.test(command)) return { found: "octocode auth print-*" };
-	if (KEYCHAIN_READ.test(command)) return { found: "the keychain read command" };
+	if (KEYCHAIN_READ.test(command) || powershellEncoded(command)) return { found: "the keychain read command" };
 	// Quotes only group words (`"$HOME"/x`, `bash -c "cat ~/x"`): dropped, the words of an inner script are read like the rest.
 	const words = command
 		.replace(/["'`]/g, "")
@@ -121,7 +139,7 @@ function shellCredentialRead(command: string, cwd: string): CredentialHit | unde
 		.slice(0, WORD_LIMIT);
 	// Built on the first word that may name a store: most commands name none.
 	let built: ReturnType<typeof storeLookup> | undefined;
-	const lookup = (file: string) => (built ??= storeLookup())(file);
+	const lookup = (file: string) => (built ??= storeLookup(cwd))(file);
 	for (const word of words) {
 		const base = path.basename(word).toLowerCase();
 		const storeName = STORE_FILES.find((name) => base === name);
@@ -150,7 +168,7 @@ export function credentialHit(
 	if (!isMcpToolName(toolName)) return undefined;
 	const { files } = readerLocations(input);
 	if (files.length === 0) return undefined;
-	const lookup = storeLookup();
+	const lookup = storeLookup(cwd);
 	for (const file of files) {
 		const hit = lookup(resolveToolPath(cwd, file));
 		if (hit) return { found: file, ...hit };

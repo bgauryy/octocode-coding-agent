@@ -1,5 +1,6 @@
 import type { Model, ThinkingLevel } from "../../types.ts";
 import { bedrockRequestEffort, isBedrockNova2 } from "../../utils/bedrock-models.ts";
+import { thinkingBudgetForLevel } from "../simple-options.ts";
 import { getConfiguredBedrockRegion } from "./client-config.ts";
 import { getModelMatchCandidates, isAnthropicClaudeModel, supportsAdaptiveThinking } from "./model-match.ts";
 import { mapThinkingLevelToEffort, supportsThinkingBlockBinding } from "./model-support.ts";
@@ -47,28 +48,13 @@ export function buildAdditionalModelRequestFields(
 					output_config: { effort: mapThinkingLevelToEffort(model, options.reasoning) },
 					...(useBlockBinding ? { anthropic_beta: [THINKING_BINDING_CONTROLS_BETA] } : {}),
 				}
-			: (() => {
-					const defaultBudgets: Record<ThinkingLevel, number> = {
-						minimal: 1024,
-						low: 2048,
-						medium: 8192,
-						high: 16384,
-						xhigh: 16384, // Budget-based Claude clamps extended levels to high
-						max: 16384,
-					};
-
-					// Custom budgets only cover token-based levels through high.
-					const level = options.reasoning === "xhigh" || options.reasoning === "max" ? "high" : options.reasoning;
-					const budget = options.thinkingBudgets?.[level] ?? defaultBudgets[options.reasoning];
-
-					return {
-						thinking: {
-							type: "enabled",
-							budget_tokens: budget,
-							...(display !== undefined ? { display } : {}),
-						},
-					};
-				})();
+			: {
+					thinking: {
+						type: "enabled",
+						budget_tokens: thinkingBudgetForLevel(options.reasoning, options.thinkingBudgets),
+						...(display !== undefined ? { display } : {}),
+					},
+				};
 
 		if (!supportsAdaptiveThinking(model.id, model.name) && (options.interleavedThinking ?? true)) {
 			result.anthropic_beta = ["interleaved-thinking-2025-05-14"];

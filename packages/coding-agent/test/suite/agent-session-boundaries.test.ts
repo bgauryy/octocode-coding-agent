@@ -1,4 +1,4 @@
-import type { AgentTool } from "@octocodeai/octocode-agent-core";
+import type { AgentMessage, AgentTool } from "@octocodeai/octocode-agent-core";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -742,12 +742,25 @@ describe("AgentSession actionable boundaries", () => {
 			]),
 		});
 		harnesses.push(harness);
-		harness.setResponses([fauxAssistantMessage("first"), fauxAssistantMessage("must not run")]);
+		let followUpRequest: AgentMessage[] | undefined;
+		harness.setResponses([
+			fauxAssistantMessage("first"),
+			(context) => {
+				followUpRequest = context.messages;
+				return fauxAssistantMessage("follow-up");
+			},
+		]);
 
 		await harness.session.prompt("start");
+		await harness.session.settled();
 
-		expect(harness.faux.state.callCount).toBe(1);
-		expect(harness.session.pendingMessageCount).toBe(1);
+		// The run whose drafts left system-only context sends no request with it; the follow-up it queued is not left
+		// waiting for an unrelated prompt: it starts its own run from the context the drafts left.
+		expect(harness.faux.state.callCount).toBe(2);
+		expect(followUpRequest?.filter((message) => message.role !== "system").map(getMessageText)).toEqual([
+			"still queued",
+		]);
+		expect(harness.session.pendingMessageCount).toBe(0);
 	});
 
 	it("commits pre-settlement drafts but suppresses continuation when aborted during the hook", async () => {

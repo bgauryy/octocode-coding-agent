@@ -1,5 +1,6 @@
 import type { AgentDb } from "../db.ts";
 import * as memories from "../queries/memories.ts";
+import * as providerCooldowns from "../queries/provider-cooldowns.ts";
 import * as sessions from "../queries/sessions.ts";
 import { withBusyTimeout } from "../sqlite.ts";
 import { runTranscriptCommand, type TranscriptCommand, type TranscriptResult } from "./transcript-mirror.ts";
@@ -26,7 +27,9 @@ export type DerivedCommand =
 			fileMtime: number | null;
 			owner: { cwd: string; file: string };
 	  }
-	| { kind: "session-end"; id: string; pid: number };
+	| { kind: "session-end"; id: string; pid: number }
+	/** A provider's rate-limit cool-down, which peers read at the start of their next model request. */
+	| { kind: "provider-cooldown"; provider: string; cooldown: providerCooldowns.ProviderCooldown };
 
 /** Every command a database writer runs: the session mirror's and the bookkeeping ones. */
 export type DbWriterCommand =
@@ -44,6 +47,7 @@ const DERIVED = new Set<DerivedCommand["kind"]>([
 	"session-git",
 	"session-title",
 	"session-end",
+	"provider-cooldown",
 ]);
 
 const isDerived = (command: DbWriterCommand): command is DerivedCommand =>
@@ -98,5 +102,7 @@ function runDerived(agent: AgentDb, command: DerivedCommand): void {
 			return sessions.saveTitle(db, command.id, command.title, command.source, command.fileMtime, command.owner);
 		case "session-end":
 			return sessions.clearPid(db, command.id, command.pid);
+		case "provider-cooldown":
+			return providerCooldowns.record(db, command.provider, command.cooldown);
 	}
 }

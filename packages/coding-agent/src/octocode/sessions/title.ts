@@ -3,6 +3,7 @@ import { GOAL_HEADING, summarySection } from "../../core/compaction/summary-form
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
+import type { SideRetry } from "../shared/side-retry.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 
@@ -10,6 +11,8 @@ import { deadline } from "@octocodeai/octocode-common/deadline";
 // The call runs in the background and its write is guarded, so a slow model costs nothing; 5 s dropped 13 of 30 titles
 // on a frontier model.
 const TITLE_TIMEOUT_MS = 20_000;
+/** A title is cheap to drop (the session keeps its fallback title): one quick retry of a rate limit or transient failure. */
+const TITLE_RETRY: SideRetry = { retries: 1, maxWaitMs: 3_000 };
 /** Most characters of the request the model sees. */
 const INPUT_MAX = 2000;
 /**
@@ -67,6 +70,7 @@ async function requestTitle(
 		text: `${TITLE_PROMPT}\n\n<request>\n${quoted}\n</request>`,
 		signal,
 		maxTokens: 256,
+		retry: TITLE_RETRY,
 		...(complete ? { complete } : {}),
 	});
 	if ("error" in reply) return undefined;

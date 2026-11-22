@@ -123,6 +123,14 @@ export interface ProfileCacheGroup {
 	prefix: string;
 }
 
+/** Recorded events whose latest profiled request on their transcript branch was this request. */
+export interface ProfileRequestOutcomes {
+	mcpResults: number;
+	/** Error results carrying the local validation diagnostic. */
+	validationErrors: number;
+	compactions: number;
+}
+
 export interface ProfileRequest {
 	agentId: string;
 	/** 0-based position among the agent's requests; pages continue with `after`. */
@@ -134,6 +142,7 @@ export interface ProfileRequest {
 	provider?: string;
 	usage: ProfileUsage;
 	layers: ProfileLayer[];
+	outcomes?: ProfileRequestOutcomes;
 	/** Index into `layers` of the first layer that changed and broke the cached prefix; absent when the prefix held. */
 	firstBreak?: number;
 	/** Why the cache missed, as the provider or Octocode's own accounting explains it (`idle past the cache lifetime`). */
